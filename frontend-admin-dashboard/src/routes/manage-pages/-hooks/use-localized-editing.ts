@@ -15,7 +15,9 @@
  * Guards for edits a dictionary cannot represent (each is blocked with a
  * notice instead of silently corrupting either language):
  *  - typing into a field whose base text is empty ("add the English text
- *    first"): there is no source string to hang the translation on;
+ *    first"): there is no source string to hang the translation on. That
+ *    holds for anything typed — digits and lowercase words too, which is how
+ *    '2025 बैच' or 'naya batch' begin; only a link or colour may go to the base;
  *  - typing over a base value that looks like data (a code, a number): those
  *    are shared by every language;
  *  - one action rewriting several texts at once (a preset, "sync with pages",
@@ -23,9 +25,11 @@
  *    would record wrong translations or delete good ones. When every text it
  *    touches is still untranslated, it is simply applied to the base.
  * A section-type swap (e.g. "switch to product page offer") always goes to the
- * base. New content an edit introduces (a duplicated item) is mapped back to
- * its base text through the dictionary, so a copy of a translated item never
- * writes the translation into the base.
+ * base. New content an edit introduces (a duplicated item) takes the base text
+ * of the item it copies (or, failing that, of an unambiguous dictionary
+ * entry), so a copy of a translated item never writes the translation into
+ * the base. After a refused edit the panel is rebuilt from the stored values
+ * (useLocalizedPanelKey), so no editor keeps showing text that was not saved.
  */
 import { useCallback, useMemo } from 'react';
 import { create } from 'zustand';
@@ -342,6 +346,38 @@ const setIn = <T>(value: T, path: Path, next: unknown): T => {
 
 type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'other';
 
+/**
+ * The only values that may land in a text field that is EMPTY in the base
+ * language while another language is edited: a link, an anchor or a colour —
+ * shared by every language, never prose. Not the generic looksLikeData: typed
+ * text starts out looking like data ('2' of '2025 बैच', 'n' of 'naya batch',
+ * a lowercase brand name) and would leak into the base text keystroke by
+ * keystroke. No whitespace, so prose that starts with '#' or '/' is not a link.
+ */
+const SHARED_VALUE_RE =
+    /^(?:(?:https?:|mailto:|tel:|www\.|\/)\S*|#[\w-]+|(?:rgba?|hsla?|var)\([^)\s]*\)?)$/i;
+
+const isBlank = (v: unknown): boolean =>
+    v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+
+/** A string typed into a text field (as opposed to a link/anchor/colour picked into it). */
+const isTypedText = (value: string, key: Key): boolean =>
+    isTextKey(key) && value !== '' && !SHARED_VALUE_RE.test(value.trim());
+
+/** Every typed-text string under `value` (same key inheritance and opaque keys as localizeDeep). */
+const collectTypedText = (value: unknown, key: Key, out: string[] = []): string[] => {
+    if (isOpaqueKey(key)) return out;
+    if (typeof value === 'string') {
+        if (isTypedText(value, key)) out.push(value);
+    } else if (Array.isArray(value)) {
+        const childKey = childKeyOf(key);
+        value.forEach((v) => collectTypedText(v, childKey, out));
+    } else if (isPlainObject(value)) {
+        for (const [k, v] of Object.entries(value)) collectTypedText(v, k, out);
+    }
+    return out;
+};
+
 const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
     const { key, before, after } = leaf;
     if (isOpaqueKey(key)) return 'other';
@@ -354,25 +390,32 @@ const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
         if (typeof after === 'string') return 'text';
         if (after === undefined || after === null) return 'textClear';
     }
-    if (typeof after === 'string' && !looksLikeData(after) && isTextKey(key)) {
-        if (
-            baseValue === undefined ||
-            baseValue === null ||
-            (typeof baseValue === 'string' && baseValue.trim() === '')
-        ) {
-            return 'emptySource';
-        }
-        if (typeof baseValue === 'string') return 'sharedData';
-    }
+    if (typeof after !== 'string' || !isTextKey(key)) return 'other';
+    // Typing into a field that is empty in the base language: there is no
+    // base text to hang a translation on ("add the English text first").
+    if (isBlank(baseValue)) return isTypedText(after, key) ? 'emptySource' : 'other';
+    // Prose typed over a base value that is data (a code, a number): shared.
+    if (typeof baseValue === 'string' && !looksLikeData(after)) return 'sharedData';
     return 'other';
 };
 
-/** translation → source, to map copied translated text back to the base. */
+/**
+ * translation → source, to map copied translated text back to the base. Only
+ * translations that belong to exactly ONE source: when two base texts share a
+ * translation ('Course' and 'Courses' → 'कोर्स') there is no telling which one
+ * a copy came from, so neither is guessed.
+ */
 export const reverseDictionary = (dict: TranslationDictionary | undefined): Map<string, string> => {
     const reverse = new Map<string, string>();
+    const ambiguous = new Set<string>();
     for (const [source, translation] of Object.entries(dict || {})) {
-        if (translation && translation !== source && !reverse.has(translation))
-            reverse.set(translation, source);
+        if (!translation || translation === source || ambiguous.has(translation)) continue;
+        const known = reverse.get(translation);
+        if (known === undefined) reverse.set(translation, source);
+        else if (known !== source) {
+            reverse.delete(translation);
+            ambiguous.add(translation);
+        }
     }
     return reverse;
 };
@@ -428,6 +471,104 @@ const delocalizeIntroduced = <T>(
     return walk(nextBase, undefined) as T;
 };
 
+/** Structural equality of two JSON-like values (the config is JSON). */
+const sameValue = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true;
+    if (Array.isArray(a) || Array.isArray(b)) {
+        return (
+            Array.isArray(a) &&
+            Array.isArray(b) &&
+            a.length === b.length &&
+            a.every((v, i) => sameValue(v, b[i]))
+        );
+    }
+    if (!isPlainObject(a) || !isPlainObject(b)) return false;
+    const keys = Object.keys(a);
+    return (
+        keys.length === Object.keys(b).length &&
+        keys.every((k) => Object.prototype.hasOwnProperty.call(b, k) && sameValue(a[k], b[k]))
+    );
+};
+
+const cloneJson = <V>(value: V): V => JSON.parse(JSON.stringify(value)) as V;
+
+/**
+ * The base item `item` (at position `i` of the edited list) is a copy of: the
+ * base counterpart of the view item it equals. When several view items are
+ * equal, the one at its own position wins, then the one just before it (a
+ * duplicate is inserted right after its original); failing both, they must
+ * all have the same base item. Otherwise (two base texts sharing one
+ * translation, no telling which was copied) undefined: never guessed.
+ */
+const duplicatedBaseItem = (
+    item: unknown,
+    i: number,
+    view: unknown[],
+    baseArr: unknown[]
+): unknown => {
+    const matches: number[] = [];
+    view.forEach((v, j) => {
+        if (j < baseArr.length && isComposite(v) && isComposite(baseArr[j]) && sameValue(v, item))
+            matches.push(j);
+    });
+    if (matches.length === 0) return undefined;
+    if (matches.includes(i)) return baseArr[i];
+    if (matches.includes(i - 1)) return baseArr[i - 1];
+    const first = baseArr[matches[0]!];
+    return matches.every((j) => sameValue(baseArr[j], first)) ? first : undefined;
+};
+
+/**
+ * A duplicated item (a copy of an item the editor rendered: equal to it, but
+ * not that object) is replaced by a copy of the matching BASE item, so the
+ * copy carries the base text whatever its translation — even one shared by
+ * several base texts, which the reverse dictionary cannot map back. Walks the
+ * edit alongside the view and the base the way applyLocalizedEdit pairs them.
+ */
+const baseCopiesOfDuplicates = (
+    base: unknown,
+    view: unknown,
+    edited: unknown,
+    key: Key
+): unknown => {
+    if (edited === view || isOpaqueKey(key)) return edited;
+    if (Array.isArray(edited) && Array.isArray(view)) {
+        const baseArr = Array.isArray(base) ? base : [];
+        const childKey = childKeyOf(key);
+        let changed = false;
+        const out = edited.map((item, i) => {
+            if (view.includes(item)) return item; // kept as is: paired by identity
+            if (isComposite(item)) {
+                const source = duplicatedBaseItem(item, i, view, baseArr);
+                if (source !== undefined) {
+                    changed = true;
+                    return cloneJson(source);
+                }
+            }
+            // A modified item: compare it with the item that sat at its position.
+            if (i < view.length && !edited.includes(view[i])) {
+                const next = baseCopiesOfDuplicates(baseArr[i], view[i], item, childKey);
+                if (next !== item) changed = true;
+                return next;
+            }
+            return item;
+        });
+        return changed ? out : edited;
+    }
+    if (isPlainObject(edited) && isPlainObject(view)) {
+        const baseObj = isPlainObject(base) ? base : {};
+        let changed = false;
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(edited)) {
+            const next = baseCopiesOfDuplicates(baseObj[k], view[k], v, k);
+            if (next !== v) changed = true;
+            out[k] = next;
+        }
+        return changed ? out : edited;
+    }
+    return edited;
+};
+
 /**
  * Splits one edit made in another language. `view` must be the exact object
  * the editor rendered from (items are matched by reference). Pure.
@@ -448,12 +589,13 @@ export const decideLocalizedEdit = <T>(
         if (info.arrays === 0) {
             // No item was added or removed: an object appeared or vanished
             // because a field was typed into or cleared (e.g. a highlight
-            // phrase). New text there has no base source; a vanishing object
-            // would delete the base text for every language.
+            // phrase). New text there has no base source — whatever it looks
+            // like, the first keystrokes of '2025 बैच' included; a vanishing
+            // object would delete the base text for every language.
             const known = new Set<string>();
             collectStrings(base, known);
             const typesNewText = info.added.some((p) =>
-                collectTranslatableStrings(getIn(edited, p)).some(
+                collectTypedText(getIn(edited, p), undefined).some(
                     (s) => !known.has(s) && !reverse.has(s)
                 )
             );
@@ -465,7 +607,9 @@ export const decideLocalizedEdit = <T>(
         }
         // Added / removed / reordered items: structure is shared. A structural
         // edit that ALSO rewrites translated text cannot be split safely.
-        const result = applyLocalizedEdit(base, view, edited);
+        // Duplicated items take their base item's text first.
+        const prepared = baseCopiesOfDuplicates(base, view, edited, undefined) as T;
+        const result = applyLocalizedEdit(base, view, prepared);
         if (Object.keys(result.translations).length > 0) return { kind: 'blocked', reason: 'bulk' };
         return {
             kind: 'commit',
@@ -580,17 +724,50 @@ const findComponentIn = (
 
 /* ── blocked-edit notices (read by the bar above the panel) ─────────── */
 
+/** A refused edit rebuilds the property panel at most this often (see `refusals`). */
+export const REFUSAL_RESYNC_MIN_MS = 400;
+
 interface LocalizedEditNoticeState {
     notice: { id: number; reason: LocalizedBlockReason } | null;
+    /**
+     * Counts refused edits; the property panel is keyed by it. An editor that
+     * keeps its own draft (the rich-text box, list drafts) still shows what
+     * was typed after a refusal — the stored value never changed, so nothing
+     * tells it to resync. Rebuilding the panel does. Clearing the notice
+     * leaves it alone. Bumped at most once per REFUSAL_RESYNC_MIN_MS, so an
+     * editor that writes from a mount effect cannot remount the panel forever.
+     */
+    refusals: number;
+    lastRefusalAt: number;
     show: (reason: LocalizedBlockReason) => void;
     clear: () => void;
 }
 
 export const useLocalizedEditNotice = create<LocalizedEditNoticeState>((set) => ({
     notice: null,
-    show: (reason) => set((s) => ({ notice: { id: (s.notice?.id ?? 0) + 1, reason } })),
+    refusals: 0,
+    lastRefusalAt: 0,
+    show: (reason) =>
+        set((s) => {
+            const now = Date.now();
+            const resync = now - s.lastRefusalAt >= REFUSAL_RESYNC_MIN_MS;
+            return {
+                notice: { id: (s.notice?.id ?? 0) + 1, reason },
+                ...(resync ? { refusals: s.refusals + 1, lastRefusalAt: now } : {}),
+            };
+        }),
     clear: () => set({ notice: null }),
 }));
+
+/**
+ * The key for the property panel: changes on a language flip (editors keep
+ * state that belongs to one language) and after a refused edit (editors with
+ * a local draft must show the stored text again).
+ */
+export const useLocalizedPanelKey = (locale: string | null): string => {
+    const refusals = useLocalizedEditNotice((s) => s.refusals);
+    return `${locale ?? 'base'}:${refusals}`;
+};
 
 export const localizedBlockMessage = (reason: LocalizedBlockReason, baseName: string): string => {
     switch (reason) {

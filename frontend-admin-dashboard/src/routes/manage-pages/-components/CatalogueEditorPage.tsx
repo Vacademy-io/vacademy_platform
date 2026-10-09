@@ -42,7 +42,7 @@ import {
 } from '@dnd-kit/core';
 import { getComponentTemplate } from '../-utils/component-templates';
 import { Textarea } from '@/components/ui/textarea';
-import { activeEditingLocale } from '../-hooks/use-localized-editing';
+import { activeEditingLocale, useLocalizedPanelKey } from '../-hooks/use-localized-editing';
 import { EditingLanguageToggle } from './i18n/EditingLanguageToggle';
 import { LocalizedEditingBar } from './i18n/LocalizedEditingBar';
 
@@ -74,6 +74,9 @@ export const CatalogueEditorPage = () => {
     // The site language being edited (null = base). UI state only: never saved,
     // never in undo history, and a stale choice falls back to the base language.
     const activeLocale = activeEditingLocale(config?.globalSettings?.i18n, editingLocale);
+    // Rebuilds the property panel on a language flip and after a refused edit
+    // (editors with a local draft must not keep showing unsaved text).
+    const propertyPanelKey = useLocalizedPanelKey(activeLocale);
     const { toast } = useToast();
     const openBlog = useBlogManagerStore((s) => s.open);
     const openFolders = useFolderLibraryStore((s) => s.open);
@@ -653,9 +656,10 @@ export const CatalogueEditorPage = () => {
                                             globalSettingsSelected={selectedGlobalSettings}
                                         />
                                     )}
-                                    {/* Remount on a language flip: editors keep local state
-                                        (rich-text, list drafts) that belongs to one language. */}
-                                    <PropertyPanel key={activeLocale ?? 'base'} />
+                                    {/* Remount on a language flip and after a refused edit:
+                                        editors keep local state (rich-text, list drafts)
+                                        that must match the stored text. */}
+                                    <PropertyPanel key={propertyPanelKey} />
                                 </div>
                             ) : selectedGlobalSettings || selectedGlobalLayout ? (
                                 // Global Settings selected → AI edits the shared site

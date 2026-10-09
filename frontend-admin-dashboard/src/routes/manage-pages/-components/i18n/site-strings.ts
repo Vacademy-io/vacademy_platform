@@ -24,10 +24,48 @@ type SiteConfig = Pick<CatalogueConfig, 'pages' | 'globalSettings'> | null | und
 export const languageName = (code: string, fallbackLabel?: string): string =>
     (LOCALE_LABELS as Record<string, string>)[code] || fallbackLabel || code.toUpperCase();
 
+/**
+ * Props whose values look like text but are never shown to visitors: the
+ * cached name of a picked lead campaign or folder library (the site uses the
+ * id) and icon identifiers ('GraduationCap' — the renderer looks the icon up
+ * by that exact name, so a translation would remove the icon). The shared
+ * classifier (catalogue-i18n isTextKey) still calls them text, so they are
+ * left out of coverage, the publish check and AI translation here.
+ */
+const INTERNAL_TEXT_KEYS = new Set(['audienceName', 'gateAudienceName', 'libraryName', 'iconName']);
+
+/** `value` without the internal keys, at any depth (shares untouched branches). */
+const withoutInternalKeys = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+        let changed = false;
+        const out = value.map((v) => {
+            const next = withoutInternalKeys(v);
+            if (next !== v) changed = true;
+            return next;
+        });
+        return changed ? out : value;
+    }
+    if (value && typeof value === 'object') {
+        let changed = false;
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            if (INTERNAL_TEXT_KEYS.has(k)) {
+                changed = true;
+                continue;
+            }
+            const next = withoutInternalKeys(v);
+            if (next !== v) changed = true;
+            out[k] = next;
+        }
+        return changed ? out : value;
+    }
+    return value;
+};
+
 const visitComponent = (c: Component | null | undefined, out: string[], seen: Set<string>) => {
     if (!c || typeof c !== 'object' || c.enabled === false) return;
     if (!c.props || typeof c.props !== 'object') return;
-    collectTranslatableStrings(c.props, out, seen);
+    collectTranslatableStrings(withoutInternalKeys(c.props), out, seen);
     // Column children sit under the opaque `slots` key: walk them as sections.
     const slots = c.props.slots;
     if (Array.isArray(slots)) {

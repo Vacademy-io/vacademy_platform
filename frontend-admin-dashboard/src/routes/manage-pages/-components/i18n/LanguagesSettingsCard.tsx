@@ -45,10 +45,21 @@ export const LanguagesSettingsCard = ({
 }) => {
     const [panelLocale, setPanelLocale] = useState<string | null>(null);
     const base = baseLocaleOf(i18n);
+    // The label exactly as stored — untrimmed, possibly empty — for a language
+    // in the stored list (undefined when it is not stored). localesOf trims it
+    // and falls back to the code; that happens only where visitors see it.
+    const storedLabel = (code: string): string | undefined => {
+        const entry = i18n?.locales?.find(
+            (l) => typeof l?.code === 'string' && l.code.trim().toLowerCase() === code
+        );
+        if (!entry) return undefined;
+        return typeof entry.label === 'string' ? entry.label : '';
+    };
     // The stored list, or just the base language until a second one is added
-    // (localesOf would otherwise invent the en/hi default).
+    // (localesOf would otherwise invent the en/hi default). Codes normalized,
+    // labels kept as stored, so saving one change never rewrites another label.
     const offered: CatalogueLocale[] = i18n?.locales?.length
-        ? localesOf(i18n)
+        ? localesOf(i18n).map((l) => ({ ...l, label: storedLabel(l.code) ?? l.label }))
         : [{ code: base, label: defaultSwitchLabel(base) }];
     const enabled = !!i18n?.enabled;
     const coverage = useMemo(
@@ -76,10 +87,20 @@ export const LanguagesSettingsCard = ({
         setLocales([...offered, { code, label: defaultSwitchLabel(code) }]);
     };
 
+    // Stored as typed ('Hindi (हिन्दी)' needs its spaces mid-typing).
     const setLabel = (code: string, label: string) =>
         setLocales(offered.map((l) => (l.code === code ? { ...l, label } : l)));
 
-    const removeLanguage = (code: string) => setLocales(offered.filter((l) => l.code !== code));
+    const removeLanguage = (code: string) => {
+        const locales = offered.filter((l) => l.code !== code);
+        // A single language leaves nothing to switch between: the visitor
+        // switch goes off too. Translations are kept for when one is re-added.
+        commit({
+            defaultLocale: base,
+            locales,
+            ...(enabled && locales.length < 2 ? { enabled: false } : {}),
+        });
+    };
 
     const addable = SUPPORTED_LOCALES.filter((code) => !offered.some((l) => l.code === code));
 

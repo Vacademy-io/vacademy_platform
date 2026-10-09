@@ -3,13 +3,16 @@ import { act, renderHook } from '@testing-library/react';
 import { useEditorStore } from '../-stores/editor-store';
 import type { CatalogueConfig } from '../-types/editor-types';
 import {
+    REFUSAL_RESYNC_MIN_MS,
     activeEditingLocale,
     buildLocalizedView,
     decideLocalizedEdit,
+    delocalizeSwapProps,
     restoreSlotsFromBase,
     reverseDictionary,
     useLocalizedEditNotice,
     useLocalizedEditing,
+    useLocalizedPanelKey,
 } from './use-localized-editing';
 
 /**
@@ -249,6 +252,47 @@ describe('decideLocalizedEdit', () => {
         expect(d.base.features[0]).toBe(base.features[0]);
     });
 
+    it('a duplicated item keeps ITS base text even when two base texts share its translation', () => {
+        // 'Courses' and 'Course' are both 'कोर्स': the reverse dictionary cannot
+        // tell them apart, so it maps neither; the copy is matched to the item
+        // it was copied from instead.
+        const reverse = reverseDictionary(HI);
+        expect(reverse.has('कोर्स')).toBe(false);
+        expect(reverse.get('लाइव कक्षाएं')).toBe('Live classes');
+        const base = {
+            items: [
+                { title: 'Courses', icon: 'book' },
+                { title: 'Course', icon: 'cap' },
+                { title: 'Live classes', icon: 'cam' },
+            ],
+        };
+        const view = {
+            items: [
+                { title: 'कोर्स', icon: 'book' },
+                { title: 'कोर्स', icon: 'cap' },
+                { title: 'लाइव कक्षाएं', icon: 'cam' },
+            ],
+        };
+        const copy = JSON.parse(JSON.stringify(view.items[1]));
+        const d = decideLocalizedEdit(
+            base,
+            view,
+            { items: [view.items[0], view.items[1], copy, view.items[2]] },
+            reverse
+        );
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.translations).toEqual({});
+        expect(d.base.items.map((x: { title: string }) => x.title)).toEqual([
+            'Courses',
+            'Course',
+            'Course',
+            'Live classes',
+        ]);
+        // A copy of the base item, never the same object twice.
+        expect(d.base.items[2]).not.toBe(base.items[1]);
+        expect(d.base.items[1]).toBe(base.items[1]);
+    });
+
     it('a new item is added to the base as is', () => {
         const { base, view, reverse } = setup();
         const d = decideLocalizedEdit(
@@ -279,6 +323,41 @@ describe('decideLocalizedEdit', () => {
                 reverse
             )
         ).toEqual({ kind: 'blocked', reason: 'emptySource' });
+    });
+
+    it.each(['l', '2', '2025', '2025 ', 'naya batch', 'neet', '#1 coaching', '#', ' '])(
+        'typing %j into a field that is empty in the base language is refused, however data-like it looks',
+        (typed) => {
+            // '2025 बैच', 'naya batch' or a lowercase brand begin like data; letting
+            // those keystrokes through would write them into the English text.
+            const { base, view, reverse } = setup();
+            expect(decideLocalizedEdit(base, view, { ...view, subtitle: typed }, reverse)).toEqual({
+                kind: 'blocked',
+                reason: 'emptySource',
+            });
+            // …also when typing creates the object that holds the text.
+            expect(
+                decideLocalizedEdit(base, view, { ...view, highlight: { text: typed } }, reverse)
+            ).toEqual({ kind: 'blocked', reason: 'emptySource' });
+        }
+    );
+
+    it('a link, anchor or colour put into an empty field is shared, so it goes to the base', () => {
+        const { base, view, reverse } = setup();
+        for (const value of [
+            '/courses',
+            'https://example.org/a?b=1',
+            'mailto:hi@example.org',
+            '#contact',
+            '#ff6600', // design-lint-ignore: test data — a colour value typed into a field, not styling
+            'rgb(0,0,0)',
+        ]) {
+            const d = decideLocalizedEdit(base, view, { ...view, ctaLink: value }, reverse);
+            expect(d).toMatchObject({ kind: 'commit', translations: {} });
+            if (d.kind !== 'commit') throw new Error(value);
+            expect(d.base.ctaLink).toBe(value);
+            expect(d.base.title).toBe('Learn the Indian way');
+        }
     });
 
     it('typing over a value that looks like data (a code) is refused — it is shared by every language', () => {
@@ -486,6 +565,24 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         expect(heroOf(useEditorStore.getState().config).enabled).toBe(false);
     });
 
+    it.each(['l', '2025', 'naya batch'])(
+        'refuses typing %j into a field that is empty in English and leaves English untouched',
+        (typed) => {
+            const { result } = renderHook(useStoreBackedEditing);
+            const before = useEditorStore.getState().config;
+            const hero = heroOf(result.current.config);
+            act(() =>
+                result.current.updateComponent('home', 'hero', {
+                    props: { ...hero.props, subtitle: typed },
+                })
+            );
+            expect(useEditorStore.getState().config).toBe(before);
+            expect(heroOf(useEditorStore.getState().config).props.subtitle).toBe('');
+            expect(strings()).toEqual(HI);
+            expect(useLocalizedEditNotice.getState().notice?.reason).toBe('emptySource');
+        }
+    );
+
     it('refuses a blocked edit without touching the store, and says why', () => {
         const { result } = renderHook(useStoreBackedEditing);
         const before = useEditorStore.getState().config;
@@ -505,7 +602,7 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         act(() =>
             result.current.updateComponent('home', 'hero', {
                 type: 'productPageOffer',
-                props: { title: hero.props.title, columns: 3, heading: 'कोर्स' },
+                props: { title: hero.props.title, columns: 3, heading: 'लाइव कक्षाएं' },
             })
         );
         const swapped = heroOf(useEditorStore.getState().config);
@@ -513,9 +610,21 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         expect(swapped.props).toEqual({
             title: 'Learn the Indian way',
             columns: 3,
-            heading: 'Courses',
+            heading: 'Live classes',
         });
         expect(strings()).toEqual(HI);
+    });
+
+    it('never guesses the base text of a translation two base texts share', () => {
+        const reverse = reverseDictionary(HI);
+        // 'कोर्स' is both 'Courses' and 'Course': left as it is rather than
+        // silently written back as the wrong English word.
+        expect(delocalizeSwapProps({}, {}, { heading: 'कोर्स' }, reverse)).toEqual({
+            heading: 'कोर्स',
+        });
+        expect(delocalizeSwapProps({}, {}, { heading: 'नया' }, reverse)).toEqual({
+            heading: 'New',
+        });
     });
 
     it('edits the global header through layout without disturbing the footer', () => {
@@ -612,5 +721,65 @@ describe('editor store — editing locale and commitLocalizedEdit', () => {
         expect(useEditorStore.getState().config!.globalSettings.i18n!.strings!.mr).toEqual({
             Courses: 'अभ्यासक्रम',
         });
+    });
+});
+
+describe('refused edits rebuild the property panel', () => {
+    beforeEach(() => {
+        useLocalizedEditNotice.setState({ notice: null, refusals: 0, lastRefusalAt: 0 });
+    });
+
+    it('the panel key changes with the language and after a refusal, not when the notice is cleared', () => {
+        const { result, rerender } = renderHook(({ locale }) => useLocalizedPanelKey(locale), {
+            initialProps: { locale: 'hi' as string | null },
+        });
+        expect(result.current).toBe('hi:0');
+        act(() => useLocalizedEditNotice.getState().show('emptySource'));
+        expect(result.current).toBe('hi:1');
+        act(() => useLocalizedEditNotice.getState().clear());
+        expect(useLocalizedEditNotice.getState().notice).toBeNull();
+        expect(result.current).toBe('hi:1');
+        rerender({ locale: null });
+        expect(result.current).toBe('base:1');
+    });
+
+    it('rebuilds at most once per interval, so an editor refused from a mount effect cannot loop', () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(1_000_000);
+            const notices = useLocalizedEditNotice.getState();
+            notices.show('emptySource');
+            expect(useLocalizedEditNotice.getState().refusals).toBe(1);
+            // Refused again straight away (e.g. while the rebuilt panel mounts):
+            // the notice updates, the panel is not rebuilt again.
+            notices.show('emptySource');
+            expect(useLocalizedEditNotice.getState().refusals).toBe(1);
+            expect(useLocalizedEditNotice.getState().notice?.id).toBe(2);
+            vi.setSystemTime(1_000_000 + REFUSAL_RESYNC_MIN_MS);
+            notices.show('sharedData');
+            expect(useLocalizedEditNotice.getState().refusals).toBe(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('a refused edit through the hook counts', () => {
+        useEditorStore.getState().setConfig(makeConfig());
+        useEditorStore.getState().setEditingLocale('hi');
+        const { result } = renderHook(useStoreBackedEditing);
+        const hero = heroOf(result.current.config);
+        act(() =>
+            result.current.updateComponent('home', 'hero', {
+                props: { ...hero.props, subtitle: 'उपशीर्षक' },
+            })
+        );
+        expect(useLocalizedEditNotice.getState().refusals).toBe(1);
+        // An accepted edit does not.
+        act(() =>
+            result.current.updateComponent('home', 'hero', {
+                props: { ...heroOf(result.current.config).props, showBadge: false },
+            })
+        );
+        expect(useLocalizedEditNotice.getState().refusals).toBe(1);
     });
 });

@@ -169,6 +169,49 @@ describe('Global Settings → Languages', () => {
         const i18n = state().config!.globalSettings.i18n!;
         expect(i18n.locales).toEqual([{ code: 'en', label: 'EN' }]);
         expect(i18n.strings!.hi).toEqual(HI);
+        // One language left: nothing to switch between, so the visitor switch is off.
+        expect(i18n.enabled).toBe(false);
+        expect(
+            screen.getByRole('switch', { name: 'Show the language switch to visitors' })
+        ).not.toBeChecked();
+    });
+
+    it('keeps the visitor switch on while two languages remain', () => {
+        useEditorStore.getState().setConfig({
+            pages: [],
+            globalSettings: {
+                i18n: {
+                    enabled: true,
+                    defaultLocale: 'en',
+                    locales: [...LOCALES, { code: 'mr', label: 'मराठी' }],
+                    strings: {},
+                },
+            },
+        } as never);
+        state().selectGlobalSettings();
+        render(<PropertyPanel />);
+        fireEvent.click(screen.getByRole('button', { name: 'Stop offering मराठी' }));
+        expect(state().config!.globalSettings.i18n!.enabled).toBe(true);
+        expect(state().config!.globalSettings.i18n!.locales).toEqual(LOCALES);
+    });
+
+    it('lets the switch label be typed as is — spaces mid-typing, emptied to retype', () => {
+        state().selectGlobalSettings();
+        const { container } = render(<PropertyPanel />);
+        const label = () => container.querySelector<HTMLInputElement>('#switch-label-hi')!;
+        const stored = () => state().config!.globalSettings.i18n!.locales!.find((l) => l.code === 'hi')!.label;
+
+        fireEvent.change(label(), { target: { value: 'Hindi ' } });
+        expect(stored()).toBe('Hindi ');
+        expect(label()).toHaveValue('Hindi ');
+        fireEvent.change(label(), { target: { value: 'Hindi (हिन्दी)' } });
+        expect(label()).toHaveValue('Hindi (हिन्दी)');
+
+        fireEvent.change(label(), { target: { value: '' } });
+        expect(stored()).toBe('');
+        expect(label()).toHaveValue('');
+        // Editing one label never rewrites another.
+        expect(state().config!.globalSettings.i18n!.locales![0]).toEqual({ code: 'en', label: 'EN' });
     });
 
     it('renders for a site without languages, with the visitor switch locked until a second language exists', () => {

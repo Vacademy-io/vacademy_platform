@@ -117,6 +117,45 @@ describe('collectSiteStrings', () => {
     it('is empty without a config', () => {
         expect(collectSiteStrings(null)).toEqual([]);
     });
+
+    it('leaves out text-shaped props no visitor reads (campaign/library names, icon identifiers)', () => {
+        const config = site();
+        config.pages[0]!.components.push(
+            {
+                id: 'lead',
+                type: 'leadForm',
+                enabled: true,
+                props: {
+                    title: 'Talk to us',
+                    audienceId: 'aud-1',
+                    audienceName: 'Spring Campaign',
+                    gateAudienceName: 'Brochure Leads',
+                },
+            } as never,
+            {
+                id: 'fg',
+                type: 'featureGrid',
+                enabled: true,
+                props: {
+                    libraryName: 'Streams Library',
+                    features: [{ title: 'Expert mentors', iconName: 'GraduationCap' }],
+                },
+            } as never
+        );
+        const strings = collectSiteStrings(config);
+        expect(strings).toContain('Talk to us');
+        expect(strings).toContain('Expert mentors');
+        for (const hidden of ['Spring Campaign', 'Brochure Leads', 'Streams Library', 'GraduationCap'])
+            expect(strings).not.toContain(hidden);
+        // The same text where a visitor does read it still counts.
+        config.pages[0]!.components.push({
+            id: 'b',
+            type: 'ctaBanner',
+            enabled: true,
+            props: { text: 'Spring Campaign' },
+        } as never);
+        expect(collectSiteStrings(config)).toContain('Spring Campaign');
+    });
 });
 
 describe('coverage', () => {

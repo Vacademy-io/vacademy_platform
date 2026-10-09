@@ -20,6 +20,10 @@
  *    '2025 बैच' or 'naya batch' begin; only a link or colour may go to the base;
  *  - typing over a base value that looks like data (a code, a number): those
  *    are shared by every language;
+ *  - changing a value typed to match real data (a course tag to filter by, a
+ *    level filter value): retyped here it would be a translation that
+ *    matches nothing, in every language. A value picked from a list (a sort,
+ *    a button action, a blog category) is shared and simply changes;
  *  - one action rewriting several texts at once (a preset, "sync with pages",
  *    "move styles to CSS") over text that is already translated — splitting it
  *    would record wrong translations or delete good ones. When every text it
@@ -40,6 +44,7 @@ import {
     baseLocaleOf,
     collectTranslatableStrings,
     isTextKey,
+    keyInItemOf,
     localesOf,
     localizeDeep,
     looksLikeData,
@@ -232,14 +237,17 @@ const childKeyOf = (key: Key): Key =>
 /**
  * Walks view → edited. Returns false when the STRUCTURE changed (an item added,
  * removed or moved, an object appearing or disappearing); otherwise collects
- * every changed leaf value. Opaque values count as one leaf.
+ * every changed leaf value. Opaque values count as one leaf. Keys inside list
+ * items are resolved the way catalogue-i18n judges them (keyInItemOf), so an
+ * announcement's tag pill is text here exactly as it is on the site.
  */
 const diffShape = (
     before: unknown,
     after: unknown,
     key: Key,
     path: Path,
-    out: LeafChange[]
+    out: LeafChange[],
+    itemOf?: Key
 ): boolean => {
     if (after === before) return true;
     if (isOpaqueKey(key)) {
@@ -257,7 +265,7 @@ const diffShape = (
                 const j = before.indexOf(a);
                 if (j >= 0 && j !== i) return false; // moved
             }
-            if (!diffShape(b, a, childKey, [...path, i], out)) return false;
+            if (!diffShape(b, a, childKey, [...path, i], out, key)) return false;
         }
         return true;
     }
@@ -265,7 +273,9 @@ const diffShape = (
         const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
         for (const k of keys) {
             if (after[k] === before[k]) continue;
-            if (!diffShape(before[k], after[k], k, [...path, k], out)) return false;
+            if (!diffShape(before[k], after[k], keyInItemOf(k, itemOf), [...path, k], out)) {
+                return false;
+            }
         }
         return true;
     }
@@ -344,7 +354,7 @@ const setIn = <T>(value: T, path: Path, next: unknown): T => {
     return obj as T;
 };
 
-type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'other';
+type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'matchedValue' | 'other';
 
 /**
  * The only values that may land in a text field that is EMPTY in the base
@@ -365,18 +375,46 @@ const isTypedText = (value: string, key: Key): boolean =>
     isTextKey(key) && value !== '' && !SHARED_VALUE_RE.test(value.trim());
 
 /** Every typed-text string under `value` (same key inheritance and opaque keys as localizeDeep). */
-const collectTypedText = (value: unknown, key: Key, out: string[] = []): string[] => {
+const collectTypedText = (value: unknown, key: Key, out: string[] = [], itemOf?: Key): string[] => {
     if (isOpaqueKey(key)) return out;
     if (typeof value === 'string') {
         if (isTypedText(value, key)) out.push(value);
     } else if (Array.isArray(value)) {
         const childKey = childKeyOf(key);
-        value.forEach((v) => collectTypedText(v, childKey, out));
+        value.forEach((v) => collectTypedText(v, childKey, out, key));
     } else if (isPlainObject(value)) {
-        for (const [k, v] of Object.entries(value)) collectTypedText(v, k, out);
+        for (const [k, v] of Object.entries(value)) {
+            collectTypedText(v, keyInItemOf(k, itemOf), out);
+        }
     }
     return out;
 };
+
+/**
+ * Keys whose value an admin TYPES to match real data: a course tag to filter
+ * by (courseShowcase.tag, a stream tab's tag, tags) or a level name
+ * (levelFilterValue). Retyped in another language it would be a translation
+ * that matches nothing, in every language, since the value is shared. Inside
+ * announcements[] and blocks[] a tag is copy (keyInItemOf) and never gets
+ * here. Values picked from a list (a sort, a source, a button action, a blog
+ * category) are not on it: choosing another option is a shared change any
+ * language may make.
+ */
+const MATCHED_VALUE_KEY_RE = /^(?:tags?|.+(?:Tags?|_tags?|FilterValue))$/;
+
+/**
+ * Does this leaf change a typed match value? Whatever is typed, from the first
+ * keystroke: every keystroke let through is stored, so refusing only prose
+ * would leave the 'J' of 'JEE' (or the '2 y' of '2 year old') as the filter
+ * for every language. A toggle under such a key (showTag) is not a value, and
+ * blank to blank is no change.
+ */
+const changesMatchedValue = (key: Key, baseValue: unknown, after: unknown): boolean =>
+    typeof key === 'string' &&
+    MATCHED_VALUE_KEY_RE.test(key) &&
+    (typeof baseValue === 'string' || typeof after === 'string') &&
+    after !== baseValue &&
+    !(isBlank(baseValue) && isBlank(after));
 
 const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
     const { key, before, after } = leaf;
@@ -390,7 +428,13 @@ const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
         if (typeof after === 'string') return 'text';
         if (after === undefined || after === null) return 'textClear';
     }
-    if (typeof after !== 'string' || !isTextKey(key)) return 'other';
+    if (!isTextKey(key)) {
+        // Shared data goes to the base (a sort, a source, an action, an icon,
+        // a link) — except a value typed to match real data, which another
+        // language cannot change at all.
+        return changesMatchedValue(key, baseValue, after) ? 'matchedValue' : 'other';
+    }
+    if (typeof after !== 'string') return 'other';
     // Typing into a field that is empty in the base language: there is no
     // base text to hang a translation on ("add the English text first").
     if (isBlank(baseValue)) return isTypedText(after, key) ? 'emptySource' : 'other';
@@ -439,7 +483,7 @@ const delocalizeIntroduced = <T>(
     if (reverse.size === 0) return nextBase;
     const existing = new Set<string>();
     collectStrings(oldBase, existing);
-    const walk = (value: unknown, key: Key): unknown => {
+    const walk = (value: unknown, key: Key, itemOf?: Key): unknown => {
         if (typeof value === 'string') {
             return isTextKey(key) && !existing.has(value) && reverse.has(value)
                 ? reverse.get(value)
@@ -450,7 +494,7 @@ const delocalizeIntroduced = <T>(
             let changed = false;
             const childKey = childKeyOf(key);
             const out = value.map((v) => {
-                const n = walk(v, childKey);
+                const n = walk(v, childKey, key);
                 if (n !== v) changed = true;
                 return n;
             });
@@ -460,7 +504,7 @@ const delocalizeIntroduced = <T>(
             let changed = false;
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(value)) {
-                const n = walk(v, k);
+                const n = walk(v, keyInItemOf(k, itemOf));
                 if (n !== v) changed = true;
                 out[k] = n;
             }
@@ -632,6 +676,12 @@ export const decideLocalizedEdit = <T>(
         return { leaf, baseValue, kind };
     });
 
+    // A typed match value is refused even when the edit changes other values
+    // with it (a stream tab's URL key follows its tag while it is typed).
+    if (classified.some((c) => c.kind === 'matchedValue')) {
+        return { kind: 'blocked', reason: 'sharedData' };
+    }
+
     if (classified.length === 1) {
         const only = classified[0]!;
         if (only.kind === 'emptySource') return { kind: 'blocked', reason: 'emptySource' };
@@ -774,7 +824,7 @@ export const localizedBlockMessage = (reason: LocalizedBlockReason, baseName: st
         case 'emptySource':
             return `Add the ${baseName} text first. This has no ${baseName} text yet, so there is nothing to translate.`;
         case 'sharedData':
-            return `This value (a code, number or link) is shared by every language. Change it while editing ${baseName}.`;
+            return `This value (a code, number, link, tag or filter value) is shared by every language. Change it while editing ${baseName}.`;
         case 'structure':
             return `This would remove content from every language. Switch to ${baseName} to do it.`;
         default:

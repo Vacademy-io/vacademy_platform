@@ -14,6 +14,7 @@ import {
     courseCardDescription,
     courseTextsFromRows,
     dedupeLiveTexts,
+    displayedLevelName,
     folderTextsFromNodes,
     isLiveText,
 } from './translation-sources';
@@ -156,6 +157,157 @@ describe('collectSiteStrings', () => {
         } as never);
         expect(collectSiteStrings(config)).toContain('Spring Campaign');
     });
+
+    it("counts an announcement's tag pill and a detail block's eyebrow — not a course tag to filter by", () => {
+        const config = site();
+        config.pages[0]!.components.push(
+            {
+                id: 'feed',
+                type: 'announcementFeed',
+                enabled: true,
+                props: {
+                    announcements: [{ title: 'Admissions open', tag: 'News', date: '2025-01-15' }],
+                },
+            } as never,
+            {
+                id: 'programs',
+                type: 'detailBlocks',
+                enabled: true,
+                props: {
+                    anchorPrefix: 'fees-',
+                    blocks: [{ title: 'Weekend Batch', tag: 'Flagship Program' }],
+                },
+            } as never,
+            {
+                id: 'showcase',
+                type: 'courseShowcase',
+                enabled: true,
+                props: {
+                    title: 'Picked for you',
+                    source: 'tag',
+                    tag: 'Featured',
+                    badges: { types: ['Popular'] },
+                },
+            } as never
+        );
+        const strings = collectSiteStrings(config);
+        for (const shown of [
+            'Admissions open',
+            'News',
+            'Weekend Batch',
+            'Flagship Program',
+            'Picked for you',
+        ])
+            expect(strings).toContain(shown);
+        for (const data of ['Featured', 'Popular', 'fees-', '2025-01-15'])
+            expect(strings).not.toContain(data);
+    });
+
+    it("leaves out a contact form's field names (the keys answers are submitted under) and counts its labels", () => {
+        const config = site({
+            enabled: true,
+            locales: [
+                { code: 'en', label: 'EN' },
+                { code: 'hi', label: 'हिन्दी' },
+            ],
+            strings: { hi: {} },
+        });
+        config.pages[0]!.components = [
+            {
+                id: 'form',
+                type: 'contactForm',
+                enabled: true,
+                props: {
+                    heading: 'Ask us',
+                    fields: [
+                        { name: 'fullName', label: 'Your name', type: 'text', required: true },
+                        { name: 'City', label: 'Your city', type: 'text' },
+                        { name: 'email', label: 'Email', type: 'email' },
+                    ],
+                    submitLabel: 'Send',
+                },
+            } as never,
+            {
+                id: 'team',
+                type: 'teamSection',
+                enabled: true,
+                props: { members: [{ name: 'Asha Rao', role: 'Mentor' }] },
+            } as never,
+        ];
+        // What a visitor reads, in order — a team member's name included; the
+        // field names 'fullName' and 'City' are not on it.
+        const shown = [
+            'Smart Academy',
+            'Courses',
+            'Ask us',
+            'Your name',
+            'Your city',
+            'Email',
+            'Send',
+            'Asha Rao',
+            'Mentor',
+            'Home of learning',
+        ];
+        expect(collectSiteStrings(config)).toEqual(shown);
+
+        // Every shown text translated = complete: no field name left "missing".
+        config.globalSettings.i18n!.strings!.hi = Object.fromEntries(
+            shown.map((s) => [s, `हि ${s}`])
+        );
+        const [hi] = siteCoverage(config);
+        expect(hi).toMatchObject({ code: 'hi', percent: 100, missing: [] });
+    });
+
+    it("counts every published page's title (title band, site search), once and trimmed", () => {
+        const config = site();
+        config.pages.push(
+            { id: 'about', route: 'about', title: ' About us ', components: [] } as never,
+            { id: 'faq', route: 'faq', title: 'faq', components: [] } as never,
+            { id: 'courses', route: 'courses', title: 'Courses', components: [] } as never,
+            {
+                id: 'draft',
+                route: 'draft',
+                title: 'Coming soon',
+                published: false,
+                components: [],
+            } as never
+        );
+        const strings = collectSiteStrings(config);
+        expect(strings).toEqual(expect.arrayContaining(['About us', 'faq']));
+        expect(strings.filter((s) => s === 'Courses')).toHaveLength(1);
+        expect(strings).not.toContain('Coming soon');
+    });
+});
+
+describe('course languages', () => {
+    const withLanguages = (
+        courseLanguages: NonNullable<CatalogueConfig['globalSettings']['courseLanguages']>
+    ) => {
+        const config = site();
+        config.globalSettings.courseLanguages = courseLanguages;
+        return collectSiteStrings(config);
+    };
+
+    it("counts the site's language names and chips while course languages are on", () => {
+        const strings = withLanguages({
+            enabled: true,
+            languages: [
+                { code: 'en', label: 'English', chip: 'EN' },
+                { code: 'ta', label: 'Tamil', chip: 'TA', match: ['tamil'] },
+            ],
+        });
+        expect(strings).toEqual(expect.arrayContaining(['English', 'EN', 'Tamil', 'TA']));
+        expect(strings).not.toContain('tamil');
+    });
+
+    it('counts the built-in English / Hindi pair when the site keeps no list, and nothing while off', () => {
+        expect(withLanguages({ enabled: true })).toEqual(
+            expect.arrayContaining(['English', 'EN', 'Hindi', 'हिं'])
+        );
+        const off = withLanguages({ enabled: false, languages: [{ code: 'ta', label: 'Tamil' }] });
+        expect(off).not.toContain('Tamil');
+        expect(off).not.toContain('English');
+    });
 });
 
 describe('coverage', () => {
@@ -251,6 +403,22 @@ describe('live data texts', () => {
         expect(courseCardDescription('  <b>Hi</b> there ')).toBe('Hi there');
     });
 
+    it('takes each level name as stored AND as the Courses page shows it (title-cased, placeholders hidden)', () => {
+        expect(displayedLevelName('beginner')).toBe('Beginner');
+        expect(displayedLevelName('class_10')).toBe('Class 10');
+        expect(displayedLevelName('Pre-Foundation')).toBe('Pre Foundation');
+        expect(displayedLevelName(' IIT JEE advanced ')).toBe('IIT JEE Advanced');
+        expect(displayedLevelName('Default')).toBe('');
+        const levels = courseTextsFromRows([
+            { package_name: 'Vedic Maths', level_name: 'class_10' },
+            { package_name: 'Algebra', level_name: 'Beginner Hindi' },
+            { package_name: 'Geometry', level_name: 'default' },
+        ])
+            .filter((t) => t.group === 'Level')
+            .map((t) => t.source);
+        expect(levels).toEqual(['class_10', 'Class 10', 'Beginner Hindi', 'default']);
+    });
+
     it('walks folders (title, subtitle, tagline, description, call to action), skipping hidden ones', () => {
         const node = (over: Partial<FolderNode>): FolderNode =>
             ({
@@ -309,13 +477,57 @@ describe('site-settings texts the learner translates', () => {
                     enabled: true,
                     fields: [{ label: 'Class', placeholder: 'Pick one', options: [{ label: 'Class 10', value: 'class-10' }] }],
                 },
-                introPage: { enabled: false, imageSlider: { images: [{ caption: 'Hidden intro' }] } },
             },
+            // The intro screen sits at the top of the config, as the learner reads it.
+            introPage: { enabled: false, imageSlider: { images: [{ caption: 'Hidden intro' }] } },
         };
         const out = collectSiteStrings(config);
         expect(out).toEqual(expect.arrayContaining(['Chat with us', 'Hi, I have a question', 'Your class', 'Class', 'Pick one', 'Class 10']));
         expect(out).not.toContain('class-10');
         expect(out).not.toContain('+911234');
         expect(out).not.toContain('Hidden intro');
+    });
+
+    it("counts an enabled intro screen's slide captions — and only those", () => {
+        const intro = {
+            enabled: true,
+            imageSlider: {
+                images: [
+                    { source: 'https://cdn.example.org/1.png', caption: 'Welcome to Gurukul' },
+                    { source: 'https://cdn.example.org/2.png', caption: ' ' },
+                ],
+            },
+            actions: { buttons: [{ label: 'Sign up', action: 'navigateToSignup' }] },
+        };
+        const config = {
+            pages: [],
+            globalSettings: {},
+            introPage: intro,
+        } as unknown as CatalogueConfig;
+        expect(collectSiteStrings(config)).toEqual(['Welcome to Gurukul']);
+        // Older hand-edited JSON that put it under globalSettings still counts.
+        const legacy = {
+            pages: [],
+            globalSettings: { introPage: intro },
+        } as unknown as CatalogueConfig;
+        expect(collectSiteStrings(legacy)).toEqual(['Welcome to Gurukul']);
+        const i18n = {
+            enabled: true,
+            locales: [
+                { code: 'en', label: 'EN' },
+                { code: 'hi', label: 'हिन्दी' },
+            ],
+            strings: { hi: {} },
+        };
+        const [hi] = siteCoverage({
+            ...config,
+            globalSettings: { ...config.globalSettings, i18n },
+        });
+        expect(hi).toMatchObject({
+            code: 'hi',
+            total: 1,
+            translated: 0,
+            missing: ['Welcome to Gurukul'],
+        });
     });
 });

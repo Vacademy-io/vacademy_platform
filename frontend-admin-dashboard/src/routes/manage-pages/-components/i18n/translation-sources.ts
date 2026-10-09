@@ -65,6 +65,29 @@ interface CourseSearchRow {
     course_html_description_html?: string | null;
 }
 
+/** Backend placeholder level names the learner never shows. */
+const SENTINEL_LEVEL_NAMES = new Set(['default', 'none', 'null', 'undefined', '']);
+
+/**
+ * A level name as the Courses page shows it: the learner's displayLevelName
+ * (CourseCatalogComponent) — placeholders hidden, the rest title-cased by
+ * lib/utils toTitleCase ('class_10' → 'Class 10', 'Pre-Foundation' →
+ * 'Pre Foundation', acronyms kept). Copied on purpose: the dictionary is
+ * keyed by the exact text shown, so keep the two in step.
+ */
+export const displayedLevelName = (raw: string | null | undefined): string => {
+    const trimmed = (raw || '').trim();
+    if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return '';
+    return trimmed
+        .split(/[\s_-]+/)
+        .map((word) =>
+            word.length > 1 && word === word.toUpperCase() && word !== word.toLowerCase()
+                ? word
+                : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        )
+        .join(' ');
+};
+
 /** Course rows → texts (names, card descriptions, level names). */
 export const courseTextsFromRows = (rows: CourseSearchRow[]): LiveText[] => {
     const names: LiveText[] = [];
@@ -74,7 +97,13 @@ export const courseTextsFromRows = (rows: CourseSearchRow[]): LiveText[] => {
         if (row?.package_name) names.push({ source: row.package_name, group: 'Course name' });
         const description = courseCardDescription(row?.course_html_description_html);
         if (description) descriptions.push({ source: description, group: 'Course description' });
-        if (row?.level_name) levels.push({ source: row.level_name, group: 'Level' });
+        if (row?.level_name) {
+            // As stored (the course page and learning paths show it so) and
+            // as the Courses page cards and level filter show it.
+            levels.push({ source: row.level_name, group: 'Level' });
+            const shown = displayedLevelName(row.level_name);
+            if (shown) levels.push({ source: shown, group: 'Level' });
+        }
     }
     return dedupeLiveTexts([...names, ...levels, ...descriptions]);
 };

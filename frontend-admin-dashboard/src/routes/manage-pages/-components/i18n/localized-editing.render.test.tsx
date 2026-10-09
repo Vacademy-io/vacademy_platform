@@ -163,8 +163,9 @@ describe('Global Settings → Languages', () => {
         state().selectGlobalSettings();
         render(<PropertyPanel />);
         expect(screen.getByText('Languages')).toBeInTheDocument();
-        // header title, section title, page SEO title — all three translated
-        expect(screen.getByText('3 of 3 texts translated')).toBeInTheDocument();
+        // header title, section title, page SEO title translated; the page
+        // title 'Home' (shown by the site search) is counted and still open.
+        expect(screen.getByText('3 of 4 texts translated')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Stop offering हिन्दी' }));
         const i18n = state().config!.globalSettings.i18n!;
         expect(i18n.locales).toEqual([{ code: 'en', label: 'EN' }]);

@@ -69,6 +69,9 @@ export interface DetailBlocksProps {
   backgroundColor?: string;
   /** Admin canvas / learner preview passes this so the section shows guidance. */
   isPreviewMode?: boolean;
+  /** The untranslated props (JsonRenderer): anchor ids come from the authored
+   *  anchor or title, so a deep link (#new-program) works in every language. */
+  baseProps?: { blocks?: DetailBlock[] };
 }
 
 const slugify = (s: string): string =>
@@ -107,9 +110,17 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
   anchorPrefix = "",
   backgroundColor,
   isPreviewMode = false,
+  baseProps,
 }) => {
   const { t } = useTranslation("coursePlayerB");
-  const list = Array.isArray(blocks) ? blocks.filter((b) => b && b.title) : [];
+  // Each shown block with the authored block it was translated from (paired
+  // by position: a translation keeps the list's order and length).
+  const baseBlocks = baseProps?.blocks;
+  const authored =
+    Array.isArray(blocks) && Array.isArray(baseBlocks) && baseBlocks.length === blocks.length ? baseBlocks : null;
+  const list = Array.isArray(blocks)
+    ? blocks.map((b, i) => ({ b, base: authored?.[i] || b })).filter(({ b }) => b && b.title)
+    : [];
 
   const section = (children: React.ReactNode) => (
     <section
@@ -150,8 +161,8 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
 
   return section(
     <div className="space-y-12">
-      {list.map((b, i) => {
-        let anchorId = `${anchorPrefix}${slugify(b.anchor || b.title)}` || `block-${i}`;
+      {list.map(({ b, base }, i) => {
+        let anchorId = `${anchorPrefix}${slugify(base.anchor || base.title)}` || `block-${i}`;
         while (used.has(anchorId)) anchorId = `${anchorId}-${i}`;
         used.add(anchorId);
 

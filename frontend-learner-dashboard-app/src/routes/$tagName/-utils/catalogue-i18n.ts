@@ -68,8 +68,23 @@ const NON_TEXT_KEYS = new Set(
         'provider', 'transition', 'padding', 'margin', 'version', 'category', 'tone', 'speed', 'weight',
         // Looked up by exact value (FEATURE_ICON_MAP[iconName]) or shown only in the builder.
         'iconname', 'audiencename', 'gateaudiencename', 'libraryname',
+        // Enum tokens (badges.types: 'bestseller', 'new'…) and the prefix of
+        // detail-block anchor ids ('fees-'): never shown as text.
+        'types', 'anchorprefix',
     ].map((k) => k.toLowerCase())
 );
+
+/**
+ * Keys that are data in general but visitor-facing copy inside the items of
+ * one list: an announcement's 'tag' is the pill it shows ('News') and a
+ * detail block's 'tag' its eyebrow ('Flagship Program'), while
+ * courseShowcase.tag or streams.items[].tag name a course tag to filter by.
+ * List key → those keys.
+ */
+const TEXT_KEYS_IN_ITEMS_OF = new Map<string, ReadonlySet<string>>([
+    ['announcements', new Set(['tag'])],
+    ['blocks', new Set(['tag'])],
+]);
 
 /**
  * Text keys whose NAME looks like data (a suffix rule would catch them) but
@@ -101,6 +116,19 @@ export const isTextKey = (key: string | number | undefined): boolean => {
     if (NON_TEXT_SUFFIX.test(key)) return false;
     return true;
 };
+
+/**
+ * The key a value is judged by when it sits under `key` in an ITEM of the
+ * list stored under `itemOf` (announcements[0].tag: key 'tag', itemOf
+ * 'announcements'). A key that is copy only there reads as plain text —
+ * undefined, the verdict a text list passes to its items; any other key
+ * stays itself. Every walker below (and the builder's) resolves object keys
+ * through this, so the renderer, the collector and the editor always agree.
+ */
+export const keyInItemOf = (key: string, itemOf: string | number | undefined): string | undefined =>
+    typeof itemOf === 'string' && TEXT_KEYS_IN_ITEMS_OF.get(itemOf.toLowerCase())?.has(key.toLowerCase())
+        ? undefined
+        : key;
 
 /** A value under `key` that must be left exactly as is, nested strings included. */
 const isOpaqueKey = (key: string | number | undefined): boolean =>
@@ -195,9 +223,15 @@ export const translateText = (text: string, dict: TranslationDictionary | undefi
 /**
  * Walks props and swaps every translated text value. Returns the SAME
  * reference wherever nothing changed (whole tree included), so memoised
- * children and reference-equality checks keep working.
+ * children and reference-equality checks keep working. `itemOf`: the key of
+ * the list `value` is an item of (see keyInItemOf).
  */
-export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefined, key?: string | number): T => {
+export const localizeDeep = <T>(
+    value: T,
+    dict: TranslationDictionary | undefined,
+    key?: string | number,
+    itemOf?: string | number
+): T => {
     if (!dict) return value;
     if (isOpaqueKey(key)) return value;
     if (typeof value === 'string') {
@@ -207,7 +241,7 @@ export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefine
     if (Array.isArray(value)) {
         let changed = false;
         const out = value.map((item) => {
-            const next = localizeDeep(item, dict, typeof key === 'string' && !isTextKey(key) ? key : undefined);
+            const next = localizeDeep(item, dict, typeof key === 'string' && !isTextKey(key) ? key : undefined, key);
             if (next !== item) changed = true;
             return next;
         });
@@ -217,7 +251,7 @@ export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefine
         let changed = false;
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-            const next = localizeDeep(v, dict, k);
+            const next = localizeDeep(v, dict, keyInItemOf(k, itemOf));
             if (next !== v) changed = true;
             out[k] = next;
         }
@@ -227,7 +261,13 @@ export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefine
 };
 
 /** Every distinct translatable string under `value`, in first-seen order (for AI translation and coverage). */
-export const collectTranslatableStrings = (value: unknown, out: string[] = [], seen = new Set<string>(), key?: string | number): string[] => {
+export const collectTranslatableStrings = (
+    value: unknown,
+    out: string[] = [],
+    seen = new Set<string>(),
+    key?: string | number,
+    itemOf?: string | number
+): string[] => {
     if (isOpaqueKey(key)) return out;
     if (typeof value === 'string') {
         if (isTranslatable(value, key) && !seen.has(value)) {
@@ -238,11 +278,13 @@ export const collectTranslatableStrings = (value: unknown, out: string[] = [], s
     }
     if (Array.isArray(value)) {
         const inherited = typeof key === 'string' && !isTextKey(key) ? key : undefined;
-        for (const item of value) collectTranslatableStrings(item, out, seen, inherited);
+        for (const item of value) collectTranslatableStrings(item, out, seen, inherited, key);
         return out;
     }
     if (value && typeof value === 'object') {
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) collectTranslatableStrings(v, out, seen, k);
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            collectTranslatableStrings(v, out, seen, keyInItemOf(k, itemOf));
+        }
     }
     return out;
 };
@@ -281,7 +323,13 @@ export interface LocalizedEditResult<T> {
 export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): LocalizedEditResult<T> => {
     const translations: Record<string, string> = {};
 
-    const rebuild = (b: unknown, before: unknown, after: unknown, key?: string | number): unknown => {
+    const rebuild = (
+        b: unknown,
+        before: unknown,
+        after: unknown,
+        key?: string | number,
+        itemOf?: string | number
+    ): unknown => {
         if (after === before) return b === undefined ? after : b;
         if (isOpaqueKey(key)) return after;
         if (typeof after === 'string') {
@@ -301,7 +349,7 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
                 // A modified item: pair it with the item that sat at the same
                 // position, unless that one survived elsewhere in the list.
                 if (i < beforeArr.length && !after.includes(beforeArr[i])) {
-                    return rebuild(bArr[i], beforeArr[i], item, childKey);
+                    return rebuild(bArr[i], beforeArr[i], item, childKey, key);
                 }
                 return item;
             });
@@ -312,7 +360,7 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
                 before && typeof before === 'object' && !Array.isArray(before) ? (before as Record<string, unknown>) : {};
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(after as Record<string, unknown>)) {
-                out[k] = rebuild(bObj[k], beforeObj[k], v, k);
+                out[k] = rebuild(bObj[k], beforeObj[k], v, keyInItemOf(k, itemOf));
             }
             return out;
         }

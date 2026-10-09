@@ -16,6 +16,8 @@ const nav = vi.hoisted(() => ({ searchStr: "", forbidLocation: false, replace: v
 const captured = vi.hoisted(() => ({
   header: null as Record<string, unknown> | null,
   learningPath: null as Record<string, unknown> | null,
+  /** How often the learning path module was loaded (the mock factory runs on first import). */
+  learningPathLoads: 0,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -50,12 +52,15 @@ vi.mock("./components/HeaderComponent", () => ({
     return null;
   },
 }));
-vi.mock("./components/LearningPathComponent", () => ({
-  LearningPathComponent: (props: Record<string, unknown>) => {
-    captured.learningPath = props;
-    return null;
-  },
-}));
+vi.mock("./components/LearningPathComponent", () => {
+  captured.learningPathLoads += 1;
+  return {
+    LearningPathComponent: (props: Record<string, unknown>) => {
+      captured.learningPath = props;
+      return null;
+    },
+  };
+});
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -261,11 +266,35 @@ describe("visibleWhen", () => {
 });
 
 describe("learningPath", () => {
-  it("renders the learning path section with the renderer's context", () => {
-    renderPage([{ id: "lp", type: "learningPath", enabled: true, props: { mode: "list", title: "Paths" } }], {
-      provider: false,
-      isPreviewMode: true,
+  it("is not loaded by pages without a learning path section", () => {
+    const html = renderPage([heading("intro", "Six streams of knowledge")], { provider: false });
+    expect(html).toContain("Six streams of knowledge");
+    expect(captured.learningPathLoads).toBe(0);
+  });
+
+  it("loads on demand and renders the section with the renderer's context", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(JsonRenderer, {
+          page: pageOf({ id: "lp", type: "learningPath", enabled: true, props: { mode: "list", title: "Paths" } }),
+          globalSettings: {} as never,
+          instituteId: "inst",
+          tagName: "site",
+          isPreviewMode: true,
+        } as never),
+      );
     });
+    // The section's code arrives asynchronously, behind its own boundary.
+    for (let i = 0; i < 5 && !captured.learningPath; i++) {
+      await act(async () => {
+        await vi.dynamicImportSettled();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    expect(captured.learningPathLoads).toBe(1);
     expect(captured.learningPath).toMatchObject({
       mode: "list",
       title: "Paths",
@@ -274,6 +303,7 @@ describe("learningPath", () => {
       isPreviewMode: true,
     });
     expect(captured.learningPath?.globalSettings).toEqual({});
+    await act(async () => root.unmount());
   });
 });
 

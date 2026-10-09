@@ -1,5 +1,6 @@
 {
     "loading": "Chargement...",
+    "loadError": "Impossible de charger ces paramètres. Actualisez la page pour réessayer.",
     "page": {
         "title": "Paramètres d'affichage des étudiants",
         "description": "Contrôlez ce que voient les apprenants — barre latérale, cours, connexion, certificats, notifications et plus encore."
@@ -118,7 +119,13 @@
     "allCourses": {
         "cardTitle": "Page Tous les cours",
         "cardDescription": "Onglets et sélection par défaut",
-        "hideInstructorName": "Masquer le nom du formateur (cartes de cours)"
+        "hideInstructorName": "Masquer le nom du formateur (cartes de cours)",
+        "addCustomTab": "+ Ajouter un onglet personnalisé",
+        "customTabLabelPlaceholder": "ex. Cours gratuits",
+        "customTabTags": "Afficher les cours ayant l'un de ces tags",
+        "customTabTagsPlaceholder": "Sélectionner des tags de cours",
+        "customTabIncomplete": "Les apprenants ne verront pas cet onglet tant qu'il n'a pas de nom et au moins un tag.",
+        "customTabNoTags": "Aucun tag de cours pour l'instant. Ajoutez d'abord des tags aux cours, puis choisissez-les ici."
     },
     "liveClasses": {
         "cardTitle": "Cours en direct",

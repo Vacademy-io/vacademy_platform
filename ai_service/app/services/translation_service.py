@@ -1133,13 +1133,15 @@ def estimate_translation(
 # result here is keyed by the exact source string the caller sent.
 #
 # Website copy differs from UI strings and course content: short headings and
-# buttons sit next to whole HTML blocks with links, prices and dates. On top of
-# mask_protected (placeholders, data-code, LaTeX — shared, untouched) every
-# HTML tag (attributes byte-exact), URL, email, entity and digit run is masked
-# as a __PH_n__ token. A translation is accepted only when every token comes
-# back exactly once, the markup is intact (inline spans may move — Hindi word
-# order — block structure may not) and the numbers are unchanged (no
-# Devanagari digits). Anything else is reported as failed, never "fixed".
+# buttons sit next to whole HTML blocks with links, prices and dates. Besides
+# mask_protected's spans (placeholders, data-code, LaTeX — its patterns are
+# reused read-only, its code is untouched) every HTML tag (attributes
+# byte-exact), raw-text element (style/script/pre/code, whole), URL, email,
+# entity and digit run is masked as a __PH_n__ token. A translation is
+# accepted only when every token comes back exactly once, the markup is
+# intact (inline spans may move — Hindi word order — block structure may not)
+# and the numbers are unchanged (no Devanagari digits). Anything else is
+# reported as failed, never "fixed".
 
 WEBSITE_TM_DOMAIN = "WEBSITE"
 WEBSITE_MAX_STRINGS = 200            # texts per request
@@ -1151,17 +1153,43 @@ WEBSITE_BATCH_ITEMS = 25             # texts per batched call
 WEBSITE_LLM_CONCURRENCY = 3          # LLM calls in flight per request
 
 _WEBSITE_TOKEN_RE = re.compile(r"__PH_\d+__")
-# Order matters: an existing token is matched (and kept) before anything else.
+
+
+def _scoped(pattern: "re.Pattern[str]") -> str:
+    """`pattern` as a group carrying its own flags, to join it into one regex."""
+    letters = "".join(
+        letter
+        for flag, letter in ((re.IGNORECASE, "i"), (re.MULTILINE, "m"), (re.DOTALL, "s"), (re.VERBOSE, "x"))
+        if pattern.flags & flag
+    )
+    return f"(?{letters}:{pattern.pattern})" if letters else f"(?:{pattern.pattern})"
+
+
+# ONE left-to-right pass where the leftmost span wins, so no masked span ever
+# holds a token: a placeholder inside a tag or link (`<img src="{{course.image}}">`,
+# `https://x.org/{{id}}`) stays inside that tag's/link's token byte-exact, and
+# digits inside a placeholder or LaTeX (`{{step2}}`, `$$x^2$$`) stay inside
+# theirs. (Masking one kind after another nests tokens, and the reply can then
+# never carry every token exactly once.) Where two spans start at the same
+# place, the order below decides: a literal token already in the source,
+# mask_protected's spans, comments, raw-text elements whose content is never
+# prose (style, script, pre, code — masked whole, so CSS/JS is neither sent
+# nor translated), tags, links, emails, entities, digit runs.
 _WEBSITE_MASK_RE = re.compile(
-    r"__PH_\d+__"
-    r"|<!--.*?-->"
-    r"|<[^<>]+>"
-    r"|https?://[^\s<>\"']+"
-    r"|www\.[^\s<>\"']+"
-    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
-    r"|&(?:[A-Za-z]+|#[0-9]+|#x[0-9A-Fa-f]+);"
-    r"|[0-9]+(?:[.,:/-][0-9]+)*",
-    re.DOTALL,
+    "|".join(
+        [r"__PH_\d+__"]
+        + [_scoped(p) for p in _PROTECTED_PATTERNS]
+        + [r"(?s:<!--.*?-->)"]
+        + [rf"(?is:<{tag}\b[^>]*>.*?</{tag}\s*>)" for tag in ("style", "script", "pre", "code")]
+        + [
+            r"<[^<>]+>",
+            r"https?://[^\s<>\"']+",
+            r"www\.[^\s<>\"']+",
+            r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+            r"&(?:[A-Za-z]+|#[0-9]+|#x[0-9A-Fa-f]+);",
+            r"[0-9]+(?:[.,:/-][0-9]+)*",
+        ]
+    )
 )
 _ANY_DIGITS_RE = re.compile(r"\d+")  # Unicode-aware: catches १२३ as well as 123
 _VOID_TAGS = {
@@ -1177,22 +1205,25 @@ _INLINE_TAGS = {
 
 
 def mask_website_text(value: str) -> Tuple[str, Dict[str, str]]:
-    """mask_protected plus the website spans (tags, URLs, emails, entities,
-    digit runs), all as __PH_n__ tokens. Returns (masked, token → original)."""
-    masked, mapping = mask_protected(value)
-    counter = len(mapping)
+    """mask_protected's spans plus the website spans (comments, style/script/
+    pre/code elements, tags, URLs, emails, entities, digit runs), each as a
+    __PH_n__ token, in one pass — every token stands for source text, none for
+    another token. Returns (masked, token → original); undo with
+    restore_website_tokens."""
+    mapping: Dict[str, str] = {}
 
     def _sub(match: "re.Match[str]") -> str:
-        nonlocal counter
-        text_value = match.group(0)
-        if text_value in mapping and _WEBSITE_TOKEN_RE.fullmatch(text_value):
-            return text_value
-        token = f"__PH_{counter}__"
-        counter += 1
-        mapping[token] = text_value
+        token = f"__PH_{len(mapping)}__"
+        mapping[token] = match.group(0)
         return token
 
-    return _WEBSITE_MASK_RE.sub(_sub, masked), mapping
+    return _WEBSITE_MASK_RE.sub(_sub, value), mapping
+
+
+def restore_website_tokens(masked: str, mapping: Dict[str, str]) -> str:
+    """Puts every token back in one pass, so restored text is never scanned
+    again (a source that itself contains '__PH_3__' comes back as written)."""
+    return _WEBSITE_TOKEN_RE.sub(lambda m: mapping.get(m.group(0), m.group(0)), masked)
 
 
 def _tags_balanced(sequence: List[str]) -> bool:
@@ -1240,7 +1271,7 @@ def _restore_website_translation(source: str, masked_out: Any, mapping: Dict[str
     stray = _WEBSITE_TOKEN_RE.findall(masked_out)
     if any(token not in mapping for token in stray):
         return None, "the AI invented a placeholder"
-    restored = restore_protected(masked_out, mapping)
+    restored = restore_website_tokens(masked_out, mapping)
     problem = website_translation_problem(source, restored)
     if problem:
         return None, problem
@@ -1303,6 +1334,34 @@ def _website_batches(
     return singles, batches
 
 
+async def lookup_website_memory(
+    *,
+    strings: List[str],
+    source_locale: str,
+    target_locale: str,
+    institute_id: Optional[str],
+) -> Dict[str, str]:
+    """Remembered translations (translation memory) of `strings` that still
+    pass the website checks, keyed by the exact source. Free to serve — the
+    route pre-flights credits on the texts NOT found here."""
+    def _lookup_all() -> Dict[str, str]:
+        hits: Dict[str, str] = {}
+        with db_session() as db:
+            for s in strings:
+                cached = tm_lookup(db, institute_id, source_locale, target_locale, sha256_text(s))
+                if cached is not None:
+                    hits[s] = cached
+        return hits
+
+    try:
+        memory = await asyncio.to_thread(_lookup_all)
+    except Exception as exc:  # noqa: BLE001 — memory is an optimisation, never a failure
+        logger.warning("Website TM lookup failed: %s", exc)
+        return {}
+    # A remembered translation still has to pass the website checks.
+    return {s: t for s, t in memory.items() if website_translation_problem(s, t) is None}
+
+
 async def translate_website_strings(
     *,
     strings: List[str],
@@ -1310,10 +1369,12 @@ async def translate_website_strings(
     target_locale: str,
     institute_id: Optional[str],
     use_memory: bool = True,
+    memory: Optional[Dict[str, str]] = None,
     preferred_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Translate website texts, translation memory first (domain WEBSITE; skip
-    with use_memory=False), the rest through the LLM in parallel chunks.
+    with use_memory=False, or pass the result of lookup_website_memory as
+    `memory`), the rest through the LLM in parallel chunks.
 
     Does NOT bill: the caller charges once per request from `usage` and
     `llm_chars`. Returns {translations: {source: text}, failed: [{source,
@@ -1325,23 +1386,17 @@ async def translate_website_strings(
     pending: List[str] = []
     tm_hits = 0
 
-    if use_memory:
-        def _lookup_all() -> Dict[str, str]:
-            hits: Dict[str, str] = {}
-            with db_session() as db:
-                for s in strings:
-                    cached = tm_lookup(db, institute_id, source_locale, target_locale, sha256_text(s))
-                    if cached is not None:
-                        hits[s] = cached
-            return hits
-
-        try:
-            memory = await asyncio.to_thread(_lookup_all)
-        except Exception as exc:  # noqa: BLE001 — memory is an optimisation, never a failure
-            logger.warning("Website TM lookup failed: %s", exc)
-            memory = {}
-    else:
-        memory = {}
+    if memory is None:
+        memory = (
+            await lookup_website_memory(
+                strings=strings,
+                source_locale=source_locale,
+                target_locale=target_locale,
+                institute_id=institute_id,
+            )
+            if use_memory
+            else {}
+        )
 
     for s in strings:
         cached = memory.get(s)

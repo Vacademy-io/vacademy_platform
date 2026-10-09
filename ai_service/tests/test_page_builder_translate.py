@@ -3,12 +3,15 @@
 The builder keeps each other language as a dictionary keyed by the EXACT base
 text, so these pin: results keyed by the exact source; HTML tags (attributes
 included), links, digits and {{placeholders}} never reach the model and come
-back byte-exact; a reply that drops/invents a token, changes the block markup
-or the numbers (Devanagari digits) is reported as failed — inline spans may
-move (Hindi word order); long HTML gets a call of its own; at most three calls
-run at once; translation memory first (and re-checked), skippable; credits
-pre-flighted, ONE charge per request on the summed usage, nothing charged when
-the model never answered.
+back byte-exact — also when one sits inside another (`<img src="{{course.image}}">`,
+`https://x.org/{{id}}`, `{{step2}}`); style/script/pre/code elements are masked
+whole; a reply that drops/invents a token, changes the block markup or the
+numbers (Devanagari digits) is reported as failed — inline spans may move
+(Hindi word order); long HTML gets a call of its own; at most three calls run
+at once; translation memory first (and re-checked), skippable; only website
+editors (admin/owner) may spend credits here; credits pre-flighted on the
+texts the model translates, ONE charge per request on the summed usage,
+nothing charged when the model never answered.
 
 The model, the translation memory, the glossary and billing are stubbed;
 nothing here touches the network or a database.
@@ -58,6 +61,10 @@ def default_reply(label: str, prompt: str) -> Dict[str, Any]:
     return {alias: _hindi(masked) for alias, masked in _batch_payload(prompt).items()}
 
 
+def admin() -> SimpleNamespace:
+    return SimpleNamespace(institute_id="inst-1", user_id="u1", roles=["ADMIN"], is_root_user=False)
+
+
 class Harness:
     def __init__(
         self,
@@ -67,6 +74,7 @@ class Harness:
         memory: Optional[Dict[str, str]] = None,
         model_down: bool = False,
         sufficient: bool = True,
+        principal: Optional[SimpleNamespace] = None,
     ):
         self.calls: List[tuple] = []
         self.billed: List[Dict[str, Any]] = []
@@ -115,7 +123,8 @@ class Harness:
 
         app = FastAPI()
         app.include_router(pb.router)
-        app.dependency_overrides[get_pinned_principal] = lambda: SimpleNamespace(institute_id="inst-1", user_id="u1")
+        who = principal or admin()
+        app.dependency_overrides[get_pinned_principal] = lambda: who
         app.dependency_overrides[db_dependency] = lambda: object()
         self.client = TestClient(app)
 
@@ -244,6 +253,86 @@ def test_website_checks_unit():
     assert ts.website_translation_problem("x", "  ") == "the translation is empty"
 
 
+# ── protected parts inside protected parts ───────────────────────────────────
+
+IMG = '<p><img src="{{course.image}}" alt="Course"> Learn with us</p>'
+ANCHOR = '<a href="{{link}}">Enroll</a>'
+LINKED = "Visit https://x.org/{{id}} today"
+DATA_CODE = '<div data-code="abc">Hello</div>'
+STEP = "Step {{step2}} of 3"
+MATH = "Solve $$x^2$$ now"
+NESTED = [IMG, ANCHOR, LINKED, DATA_CODE, STEP, MATH]
+
+
+@pytest.mark.parametrize("source", NESTED + ["<b>Only</b> ₹499 at https://x.org &amp; {{city}}"])
+def test_masking_never_nests_tokens_and_restores_byte_exact(source):
+    masked, mapping = ts.mask_website_text(source)
+    # Every token stands for source text, never for another token…
+    assert not any(TOKEN.search(original) for original in mapping.values())
+    assert TOKEN.findall(masked) == list(mapping)
+    # …so a reply that carries each token once restores the source exactly.
+    assert ts.restore_website_tokens(masked, mapping) == source
+
+
+def test_a_token_written_in_the_source_comes_back_as_written():
+    masked, mapping = ts.mask_website_text("Use __PH_3__ here")
+    assert masked == "Use __PH_0__ here" and mapping == {"__PH_0__": "__PH_3__"}
+    assert ts.restore_website_tokens("यहाँ __PH_0__ लिखें", mapping) == "यहाँ __PH_3__ लिखें"
+
+
+def test_texts_with_placeholders_in_tags_and_links_translate(monkeypatch):
+    """Course-page templates put {{course.*}} tokens in src/href attributes."""
+    h = Harness(monkeypatch)
+    res = h.post(strings=NESTED)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["failed"] == []
+    t = data["translations"]
+    assert t[IMG] == "हिं " + IMG
+    assert t[ANCHOR] == "हिं " + ANCHOR
+    assert t[LINKED] == "हिं " + LINKED
+    assert t[DATA_CODE] == "हिं " + DATA_CODE
+    assert t[STEP] == "हिं " + STEP and t[MATH] == "हिं " + MATH
+    for hidden in ("{{course.image}}", "{{link}}", "https://x.org", "data-code", "{{step2}}", "$$x^2$$"):
+        assert hidden not in h.prompts
+
+
+def test_style_script_pre_and_code_are_masked_whole(monkeypatch):
+    source = (
+        "<style>.hero{color:red;font-family:Roboto}</style><p>Hello</p>"
+        "<SCRIPT>if (a < b) go()</SCRIPT><pre>npm run dev</pre> Use <code>npm i</code> first"
+    )
+    masked, mapping = ts.mask_website_text(source)
+    assert TOKEN.sub("|", masked) == "||Hello||| Use | first"
+    assert mapping["__PH_0__"] == "<style>.hero{color:red;font-family:Roboto}</style>"
+    h = Harness(monkeypatch)
+    data = h.post(strings=[source]).json()
+    assert data["translations"] == {source: "हिं " + source}
+    for hidden in ("color:red", "Roboto", "go()", "npm"):
+        assert hidden not in h.prompts
+
+
+# ── who may spend credits ────────────────────────────────────────────────────
+
+def _member(*roles: str, root: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(institute_id="inst-1", user_id="u2", roles=list(roles), is_root_user=root)
+
+
+@pytest.mark.parametrize("principal", [_member("STUDENT"), _member("TEACHER"), _member()])
+def test_only_website_editors_can_translate(monkeypatch, principal):
+    h = Harness(monkeypatch, principal=principal)
+    res = h.post(strings=["Join now"])
+    assert res.status_code == 403
+    assert "admins" in res.json()["detail"]
+    assert h.preflights == [] and h.calls == [] and h.billed == [] and h.lookups == 0
+
+
+@pytest.mark.parametrize("principal", [_member("OWNER"), _member("TEACHER", "ADMIN"), _member(root=True)])
+def test_admins_owners_and_root_users_can_translate(monkeypatch, principal):
+    h = Harness(monkeypatch, principal=principal)
+    assert h.post(strings=["Join now"]).status_code == 200
+
+
 # ── chunking ─────────────────────────────────────────────────────────────────
 
 def test_long_html_gets_its_own_call_and_concurrency_is_capped(monkeypatch):
@@ -290,6 +379,18 @@ def test_all_from_memory_costs_nothing(monkeypatch):
     assert data["translations"] == {"Join now": "अभी जुड़ें"}
     assert data["model"] == "translation-memory"
     assert h.calls == [] and h.billed == []
+
+
+def test_credits_are_checked_only_for_what_the_model_translates(monkeypatch):
+    h = Harness(monkeypatch, memory={"Join now": "अभी जुड़ें"})
+    h.post(strings=["Join now", "Learn the Indian way"])
+    assert h.preflights[0]["tool_params"] == {"transcript_chars": len("Learn the Indian way")}
+    # Served from memory with no credits left: no 402, no credit check at all.
+    broke = Harness(monkeypatch, memory={"Join now": "अभी जुड़ें"}, sufficient=False)
+    res = broke.post(strings=["Join now"])
+    assert res.status_code == 200, res.text
+    assert res.json()["translations"] == {"Join now": "अभी जुड़ें"}
+    assert broke.preflights == [] and broke.calls == [] and broke.billed == []
 
 
 # ── refusals ─────────────────────────────────────────────────────────────────

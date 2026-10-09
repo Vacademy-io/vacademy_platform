@@ -4589,11 +4589,25 @@ async def edit_site_chrome(
 # pre-flights credits and charges ONCE per request on the summed usage.
 #
 # Auth is the pinned principal (membership of the clientId institute is
-# checked), stricter than get_current_user, which trusts clientId verbatim.
+# checked), stricter than get_current_user, which trusts clientId verbatim —
+# and, because it spends the institute's credits, only for the people who can
+# edit the website: the builder's own write gate is ADMIN or OWNER
+# (use-catalogue-permissions.ts). Platform root users pass.
 from ..core.security import get_pinned_principal  # noqa: E402
 from ..schemas.auth import PinnedPrincipal  # noqa: E402
 
 _TRANSLATE_TOOL_KEY = "page_translate"
+
+
+def _can_translate_site(principal: Any) -> bool:
+    if getattr(principal, "is_root_user", False):
+        return True
+    roles = {
+        str(r).strip().upper().replace("-", "_").replace(" ", "_")
+        for r in (getattr(principal, "roles", None) or [])
+        if r
+    }
+    return "OWNER" in roles or any("ADMIN" in r for r in roles)
 
 
 class SiteTranslateRequest(BaseModel):
@@ -4633,6 +4647,11 @@ async def translate_site_strings(
     institute_id = getattr(principal, "institute_id", None)
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
+    if not _can_translate_site(principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only institute admins can translate the website.",
+        )
     actor_user_id = getattr(principal, "user_id", None)
 
     source = (body.source_locale or "en").strip().lower()
@@ -4677,20 +4696,31 @@ async def translate_site_strings(
             translations={}, failed=failures, run_id=run_id, model="", warnings=warnings
         )
 
-    estimate = preflight_tool_credits(
-        db,
-        tool_key=_TRANSLATE_TOOL_KEY,
-        tool_params={"transcript_chars": total_chars},
-        institute_id=institute_id,
-    )
-    if estimate.get("sufficient") is False:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                f"Insufficient credits: translating these texts needs ~{estimate['estimated_credits']} "
-                f"credits but the balance is {estimate.get('current_balance')}."
-            ),
+    # Translation memory first: remembered texts are free, so credits are
+    # pre-flighted only on what goes to the model (none → no credit check).
+    memory: Dict[str, str] = (
+        {}
+        if body.skip_memory
+        else await ts.lookup_website_memory(
+            strings=texts, source_locale=source, target_locale=target, institute_id=institute_id
         )
+    )
+    model_chars = sum(len(s) for s in texts if s not in memory)
+    if model_chars:
+        estimate = preflight_tool_credits(
+            db,
+            tool_key=_TRANSLATE_TOOL_KEY,
+            tool_params={"transcript_chars": model_chars},
+            institute_id=institute_id,
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: translating these texts needs ~{estimate['estimated_credits']} "
+                    f"credits but the balance is {estimate.get('current_balance')}."
+                ),
+            )
 
     try:
         result = await ts.translate_website_strings(
@@ -4698,7 +4728,7 @@ async def translate_site_strings(
             source_locale=source,
             target_locale=target,
             institute_id=institute_id,
-            use_memory=not body.skip_memory,
+            memory=memory,
             preferred_model=body.preferred_model,
         )
     except Exception as e:  # noqa: BLE001

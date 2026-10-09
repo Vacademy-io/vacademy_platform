@@ -63,6 +63,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -399,20 +400,22 @@ class ProductPageEnrollmentPlanCheckTest {
     }
 
     @Test
-    @DisplayName("Razorpay Phase 2 with no Phase 1 order to complete enrolls on the mapping's current plan")
-    void phase2FallbackUsesTheLockedPlan() throws Exception {
-        ProductPageInviteMapping m = razorpayMapping("psli-a", "plan-p2");
+    @DisplayName("Razorpay Phase 2 with no product-page Phase 1 order to complete is refused (a replayed payment enrols nothing)")
+    void phase2WithoutAProvisionedCheckoutIsRefused() throws Exception {
+        razorpayMapping("psli-a", "plan-p2");
         plan("plan-p1", 4999);
-        PaymentPlan current = plan("plan-p2", 3999);
+        plan("plan-p2", 3999);
+        // A valid signature for an order no product-page Phase 1 opened (another
+        // flow's order, replayed): nothing to complete, so nothing is enrolled.
         when(paymentLogRepository.findAllByOrderIdInJson(ORDER)).thenReturn(List.of());
 
-        ProductPageEnrollResponse res = service.enrollForProductPage(phase2Request("psli-a", "plan-p1"));
+        VacademyException e = assertThrows(VacademyException.class,
+                () -> service.enrollForProductPage(phase2Request("psli-a", "plan-p1")));
 
-        assertEquals("PAID", res.getStatus());
-        verify(userPlanService).createUserPlan(eq("user-1"), same(current), any(),
-                same(m.getPsInvitePaymentOption().getEnrollInvite()),
-                same(m.getPsInvitePaymentOption().getPaymentOption()), any(), eq("INVITED"));
-        verify(paymentPlanRepository, never()).findById("plan-p1");
+        assertTrue(e.getMessage().contains("could not match this payment"));
+        verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any());
+        verify(paymentLogService, never()).updatePaymentLog(any(), any(), any(), any());
+        verify(userPlanService, never()).createUserPlan(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

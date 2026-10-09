@@ -481,27 +481,22 @@ public class ProductPageEnrollmentService {
                         .build();
             }
 
-            // No provisioned Phase 1 order to complete — an order created before this
-            // two-phase provisioning shipped, or one whose Phase 1 enrollment failed. Fall
-            // back to the original behaviour so those payments still enrol.
-            log.warn("Razorpay Phase 2: no provisioned Phase 1 enrollment found for razorpayOrderId={}. "
-                    + "Falling back to enrolling from the confirmation call.",
-                    payReq.getRazorpayRequest().getRazorpayOrderId());
-
-            // Create a payment log with PAID status (payment already collected by Razorpay)
-            parentPaymentLogId = paymentLogService.createPaymentLog(
-                    user.getId(), finalTotal,
-                    payReq.getVendor(), payReq.getVendorId(), payReq.getCurrency(),
-                    null, null);
-            payReq.setOrderId(parentPaymentLogId);
-            paymentLogService.updatePaymentLog(
-                    parentPaymentLogId,
-                    "ACTIVE",
-                    PaymentStatusEnum.PAID.name(),
-                    "{\"razorpayPaymentId\":\"" + payReq.getRazorpayRequest().getRazorpayPaymentId() + "\","
-                            + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
-            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
-            log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
+            // No provisioned Phase 1 checkout to complete. Every product-page Razorpay
+            // checkout provisions its enrollments in Phase 1, in the same transaction that
+            // opens the order (provisionPendingEnrollments), so a paid order of THIS
+            // checkout always has one. A confirmation without it carries a payment made
+            // somewhere else - another flow's order, replayed here with its valid
+            // signature - and enrolling from it handed out any cart, as PAID, for the
+            // price of whatever was paid there. Refuse, as
+            // LearnerEnrollRequestService.completeGatewayPaymentConfirmation does for the
+            // invite flow; nothing has been created for this call yet.
+            String razorpayPaymentId = payReq.getRazorpayRequest().getRazorpayPaymentId();
+            log.warn("Razorpay Phase 2: no provisioned Phase 1 enrollment for razorpayOrderId={} "
+                    + "(payment {}); refusing to enrol from the confirmation call.",
+                    gatewayOrderRef, razorpayPaymentId);
+            throw new VacademyException("We could not match this payment to your checkout. "
+                    + "If money was taken, please contact the institute with payment id "
+                    + razorpayPaymentId + ".");
 
         } else if (finalTotal <= 0.0) {
             // Free enrollment: bypass gateway entirely, create a PAID log directly
@@ -900,9 +895,8 @@ public class ProductPageEnrollmentService {
      * {@code childPaymentLogIds} entry that {@link #provisionPendingEnrollments} writes
      * there — that, not a linked UserPlan, is what the parent carries.
      *
-     * <p>Returns {@code null} when there is nothing to complete: an order opened before
-     * this provisioning shipped, or one whose Phase 1 enrollment failed. The caller then
-     * falls back to enrolling from the confirmation call itself.
+     * <p>Returns {@code null} when there is nothing to complete - the order was not
+     * opened by a product-page checkout. The caller then refuses the confirmation.
      */
     private PaymentLog findPhase1PaymentLog(String gatewayOrderRef) {
         if (!StringUtils.hasText(gatewayOrderRef)) {

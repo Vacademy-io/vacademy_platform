@@ -1,5 +1,16 @@
 {
     "catalogHero": {
+        "searchPlaceholder": "{{courses}}, विषय या शिक्षक खोजें",
+        "searchButton": "खोजें",
+        "popularLabel": "लोकप्रिय:",
+        "statCourses": "{{courses}}",
+        "statStreams": "धाराएँ",
+        "statCategories": "श्रेणियाँ",
+        "showingCount_one": "{{count}} {{course}} दिखाया जा रहा है",
+        "showingCount_other": "{{count}} {{courses}} दिखाए जा रहे हैं",
+        "allStreams": "सभी धाराएँ",
+        "sortPrefix": "क्रम:",
+        "sortAriaLabel": "क्रमबद्ध करें",
         "_owner": "Feature 'hero' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogTabs": {

@@ -3021,6 +3021,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
                         p.package_type AS packageType,
+                    p.created_at AS createdAt,
                     ps.id AS packageSessionId,
                     l.id AS levelId,
                     l.level_name AS levelName,
@@ -3131,6 +3132,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
                     AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -3183,6 +3185,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
                     AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (
                     :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                     EXISTS (
@@ -3217,6 +3220,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("paymentPlanStatus") List<String> paymentPlanStatus,
             @Param("createdByUserId") String createdByUserId,
+            @Param("packageIds") List<String> packageIds,
             Pageable pageable);
 
     @Query(value = """
@@ -3391,6 +3395,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
                     AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -3445,6 +3450,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
                     AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -3479,6 +3485,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("paymentPlanStatus") List<String> paymentPlanStatus,
             @Param("createdByUserId") String createdByUserId,
+            @Param("packageIds") List<String> packageIds,
             Pageable pageable);
 
     @Query(value = """

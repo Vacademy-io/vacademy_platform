@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -267,10 +268,18 @@ public class OpenPackageService {
                         String instituteId,
                         int pageNo,
                         int pageSize) {
+                // Outside the try: an oversized list is the caller's mistake (400), not a failure to log.
+                List<String> packageIds = normalizePackageIdsFilter(
+                                learnerPackageFilterDTO != null ? learnerPackageFilterDTO.getPackageIds() : null);
                 try {
 
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
+
+                if (packageIds != null && packageIds.isEmpty()) {
+                        // package_ids was sent but held no usable id: nothing can match, skip the query.
+                        return new PageImpl<>(List.of(), pageable, 0);
+                }
 
                 Page<PackageDetailV2Projection> learnerPackageDetail;
                 if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
@@ -298,6 +307,7 @@ public class OpenPackageService {
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
                                         learnerPackageFilterDTO.getCreatedByUserId(),
+                                        packageIds, // null = no package filter
                                         pageable);
                 } else {
                         // Corrected getTag() to getTags() to match List<String> type
@@ -324,6 +334,7 @@ public class OpenPackageService {
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
                                         learnerPackageFilterDTO.getCreatedByUserId(),
+                                        packageIds, // null = no package filter
                                         pageable);
                 }
 
@@ -396,7 +407,9 @@ public class OpenPackageService {
                                                 projection.getEnrollInviteStartDate(),
                                                 projection.getEnrollInviteEndDate()),
                                         ComingSoonDTO.fromCourseSetting(
-                                                projection.getComingSoonSettingJson(), objectMapper));
+                                                projection.getComingSoonSettingJson(), objectMapper),
+                                        // createdAt: MUST stay the last argument (last DTO field)
+                                        projection.getCreatedAt());
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
@@ -407,6 +420,41 @@ public class OpenPackageService {
                                         e);
                         throw e;
                 }
+        }
+
+        /**
+         * Most package ids one public v2 search may filter by. Real callers send one course (course
+         * page) or a few dozen (a learning path, the cart, capped at 40); the cap keeps a public body
+         * from building a giant IN list (PgJDBC fails past 32767 bind parameters anyway).
+         */
+        static final int MAX_PACKAGE_IDS_FILTER = 500;
+
+        /**
+         * The v2 {@code package_ids} filter, normalised:
+         * <ul>
+         *   <li>{@code null} = no filter. Returned for an absent or empty list, so every existing
+         *       caller (none sends package_ids) gets exactly today's results.</li>
+         *   <li>empty list = a filter was asked for but held no usable id (only blanks/nulls):
+         *       nothing can match.</li>
+         *   <li>otherwise the trimmed, de-duplicated ids in request order.</li>
+         * </ul>
+         * More than {@link #MAX_PACKAGE_IDS_FILTER} distinct ids is rejected with 400.
+         */
+        static List<String> normalizePackageIdsFilter(List<String> requested) {
+                if (requested == null || requested.isEmpty()) {
+                        return null;
+                }
+                LinkedHashSet<String> ids = new LinkedHashSet<>();
+                for (String id : requested) {
+                        if (StringUtils.hasText(id)) {
+                                ids.add(id.trim());
+                        }
+                }
+                if (ids.size() > MAX_PACKAGE_IDS_FILTER) {
+                        throw new VacademyException(HttpStatus.BAD_REQUEST,
+                                        "package_ids accepts at most " + MAX_PACKAGE_IDS_FILTER + " ids");
+                }
+                return List.copyOf(ids);
         }
 
         private Long getReadTimeInMinutes(String packageId) {

@@ -3,12 +3,14 @@
  *
  * A card can add a version to the cart only when that version can be bought
  * right now: it has a package session, a price, an open enrolment window and
- * is not "coming soon". Free versions keep the course-page enrol path.
+ * is not "coming soon" — and the store page sells it (cardCartOffer). Free
+ * versions keep the course-page enrol path.
  */
 
 import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import type { SiteCartItem } from "../../../-utils/site-cart";
 import { levelBeyondLanguage } from "../../site-cart/site-cart-items";
+import { storeCartRoute, type StoreSale } from "../../site-cart/store-sale";
 import { isBuyableNowRow, rowLanguage, type CatalogRowLike } from "./catalog-cards";
 
 export const packageSessionOf = (row: CatalogRowLike): string =>
@@ -19,6 +21,29 @@ export const isPurchasableRow = (row: CatalogRowLike): boolean =>
 
 /** The versions of a card that can go in the cart, in catalogue order. */
 export const purchasableVersions = <R extends CatalogRowLike>(rows: R[]): R[] => rows.filter(isPurchasableRow);
+
+/**
+ * What a card's cart CTA offers. The cart checks out through the store page,
+ * so a version goes in only when the store sells it as it is — the rule of
+ * the course page, offers and learning paths (storeCartRoute). "cart": those
+ * versions, for SiteCartCta. "page": none of them (or the store page will not
+ * load) — the card keeps its own CTA to the course page, as on a site without
+ * a site cart. "pending": the store page is loading; a card with a version to
+ * sell offers nothing until it is known.
+ */
+export type CardCartOffer<R> = { route: "cart"; versions: R[] } | { route: "page" | "pending" };
+
+// The course page a card leads to enrols through the version's invite, which
+// sells it once — what storeCartRoute asks of a section's own checkout.
+const coursePageSells = () => true;
+
+export const cardCartOffer = <R extends CatalogRowLike>(rows: R[], sale: StoreSale): CardCartOffer<R> => {
+  const candidates = purchasableVersions(rows);
+  const routes = candidates.map((v) => storeCartRoute(sale, [packageSessionOf(v)], coursePageSells));
+  if (routes.includes("pending")) return { route: "pending" };
+  const versions = candidates.filter((_, i) => routes[i] === "cart");
+  return versions.length ? { route: "cart", versions } : { route: "page" };
+};
 
 /** A cart line for one version. Title and level stay in the base language (translated at display). */
 export const toSiteCartItem = (

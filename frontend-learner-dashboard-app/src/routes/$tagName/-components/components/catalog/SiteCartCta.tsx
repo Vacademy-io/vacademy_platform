@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { CaretDown, Check, ShoppingCart, Trash } from "@phosphor-icons/react";
+import { CaretDown, Check, ShoppingCart, SpinnerGap, Trash } from "@phosphor-icons/react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,26 @@ import {
   versionChoiceLabel,
 } from "./catalog-site-cart";
 import { ThemedPortalSurface } from "./ThemedPortalSurface";
+
+/**
+ * In place of SiteCartCta while the store page loads (cardCartOffer
+ * "pending"): whether this card's versions go to the cart or keep the course
+ * page's enrol flow is not known yet, so there is nothing to press.
+ */
+export const SiteCartCtaPending = () => {
+  const { t } = useTranslation("coursePlayerB");
+  return (
+    <button
+      type="button"
+      disabled
+      aria-busy="true"
+      aria-label={t("siteCart.checking", "Checking availability…")}
+      className="catalogue-btn catalogue-btn-primary mt-2 w-full"
+    >
+      <SpinnerGap size={16} weight="bold" className="animate-spin" aria-hidden="true" />
+    </button>
+  );
+};
 
 /**
  * The card CTA when the site-wide cart is on: "Add to cart" ⇄ "In cart".
@@ -41,7 +61,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   /** The institute the page's site cart belongs to (the catalogue hydrates it). */
   instituteId: string;
   courseId: string;
-  /** Purchasable versions only (see purchasableVersions). */
+  /** The versions the store sells, purchasable now (cardCartOffer). */
   versions: R[];
   /** Base-language course title (translated here for display). */
   title: string;

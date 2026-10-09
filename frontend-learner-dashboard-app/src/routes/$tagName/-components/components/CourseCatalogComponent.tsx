@@ -110,7 +110,8 @@ import {
 } from "./catalog/catalog-url";
 import { isQuickFilterActive, toggleQuickFilter } from "./catalog/catalog-quick-filters";
 import { findStream, streamTabId } from "./catalog/catalog-streams";
-import { purchasableVersions } from "./catalog/catalog-site-cart";
+import { cardCartOffer } from "./catalog/catalog-site-cart";
+import { useStoreSale } from "../site-cart/use-store-sale";
 import { useCatalogStreams, useDiscoveryState } from "./catalog/use-catalog-discovery";
 import { StreamTabs } from "./catalog/StreamTabs";
 import { DiscoveryFilterGroup } from "./catalog/DiscoveryFilterGroup";
@@ -118,7 +119,7 @@ import { AppliedFilterChips } from "./catalog/AppliedFilterChips";
 import { QuickFilterBar } from "./catalog/QuickFilterBar";
 import { CourseBadgePills, LanguageChips } from "./catalog/CardDiscoveryMeta";
 import { badgeLabel } from "./catalog/catalog-labels";
-import { SiteCartCta } from "./catalog/SiteCartCta";
+import { SiteCartCta, SiteCartCtaPending } from "./catalog/SiteCartCta";
 import { MobileFilterSheet, MobileFiltersButton } from "./catalog/MobileFilterSheet";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
@@ -1518,6 +1519,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   useEffect(() => {
     if (siteCartOn && instituteId) void hydrateSiteCart(instituteId);
   }, [siteCartOn, instituteId, hydrateSiteCart]);
+  // The cart checks out through the store page, so a card puts in only the
+  // versions the store sells (cardCartOffer). Reads nothing without a site cart.
+  const storeSale = useStoreSale(instituteId, globalSettings?.siteCart, siteCartOn);
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const gridId = useId();
@@ -2140,7 +2144,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   SystemTerms.Course,
                 );
                 const courseTitle = siteT(course.title);
-                const cartVersions = siteCartOn ? purchasableVersions(card.rows) : [];
+                const cartOffer = siteCartOn ? cardCartOffer(card.rows, storeSale) : null;
                 // Merged versions: the price speaks for the versions that match
                 // the filters and can be bought now (null: none can — show this
                 // version's own status). Single-version cards: always null.
@@ -2411,19 +2415,25 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         </div>
                       )}
 
-                      {siteCartOn && !comingSoon && cartVersions.length > 0 ? (
+                      {siteCartOn && !comingSoon && cartOffer && cartOffer.route !== "page" ? (
                         <>
                           {/* Site-wide cart: add this course (choosing its
-                              language when it has several versions). */}
-                          <SiteCartCta
-                            instituteId={instituteId}
-                            courseId={card.courseId}
-                            versions={cartVersions}
-                            title={course.title}
-                            languages={discovery.languages}
-                            translate={siteT}
-                            themeAnchor={scrollRef}
-                          />
+                              language when it has several versions) — the
+                              versions the store sells; nothing to press
+                              while the store page loads. */}
+                          {cartOffer.route === "cart" ? (
+                            <SiteCartCta
+                              instituteId={instituteId}
+                              courseId={card.courseId}
+                              versions={cartOffer.versions}
+                              title={course.title}
+                              languages={discovery.languages}
+                              translate={siteT}
+                              themeAnchor={scrollRef}
+                            />
+                          ) : (
+                            <SiteCartCtaPending />
+                          )}
                           <button
                             type="button"
                             onClick={(e) => {

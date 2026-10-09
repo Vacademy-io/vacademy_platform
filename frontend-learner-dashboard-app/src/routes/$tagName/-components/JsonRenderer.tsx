@@ -1,6 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "@tanstack/react-router";
 import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
+import { useCatalogueLocale } from "../-utils/catalogue-locale";
+import {
+  hasVisibleWhenRules,
+  localizeComponentProps,
+  sectionVisibility,
+} from "../-utils/catalogue-site-language";
 import {
   buildComponentStyle,
   buildResponsiveCSS,
@@ -72,6 +79,7 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
+import { LearningPathComponent } from "./components/LearningPathComponent";
 
 interface JsonRendererProps {
   page: Page;
@@ -96,6 +104,26 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   selectedComponentId = null,
   onComponentClick,
 }) => {
+  // Site language (catalogue-locale): the dictionary for the visitor's
+  // language, undefined in the base language or on a single-language site.
+  const { dict } = useCatalogueLocale();
+
+  /** A section with visibleWhen rules (e.g. "Start free" only on the
+   *  unfiltered Courses view) follows the URL through VisibleWhenGate, around
+   *  its whole wrapper so a hidden section leaves no styled band behind.
+   *  Sections without rules render exactly as before — no URL subscription. */
+  const withVisibleWhen = (
+    component: { id?: string; visibleWhen?: unknown },
+    element: React.ReactNode,
+  ): React.ReactNode =>
+    element && hasVisibleWhenRules(component) ? (
+      <VisibleWhenGate key={component.id} rules={component.visibleWhen} isPreviewMode={isPreviewMode}>
+        {element}
+      </VisibleWhenGate>
+    ) : (
+      element
+    );
+
   /** Slot-child rendering (columnLayout columns, accordion/tab slots): same
    *  ComponentStyle treatment as top-level components — children previously
    *  went through bare renderComponent and silently lost their style. */
@@ -103,8 +131,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     const rendered = renderComponent(child);
     if (!rendered) return null;
     const hasStyle = child.style && Object.keys(child.style).length > 0;
-    if (!hasStyle) return <React.Fragment key={child.id}>{rendered}</React.Fragment>;
-    return (
+    if (!hasStyle) return withVisibleWhen(child, <React.Fragment key={child.id}>{rendered}</React.Fragment>);
+    return withVisibleWhen(
+      child,
       <ComponentStyleWrapper
         key={child.id}
         component={child}
@@ -122,7 +151,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   };
 
   const renderComponent = (component: any) => {
-    const { type, props, id, enabled = true, showCondition } = component;
+    const { type, props: baseProps, id, enabled = true, showCondition } = component;
 
     // Check if component is enabled
     if (!enabled) {
@@ -158,6 +187,11 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       }
     }
 
+    // Authored text in the visitor's language — the very same object as the
+    // base props when there is no dictionary. Slot children are localized
+    // when renderChild reaches them.
+    const props = localizeComponentProps(baseProps, dict);
+
     switch (type) {
       case "header":
         return (
@@ -168,6 +202,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             authLinks={props.authLinks}
             catalogueData={catalogueData}
             tagName={tagName}
+            // The untranslated props, for logic that keys on authored labels
+            // or links (which button opens the lead form, and so on).
+            baseProps={baseProps}
           />
         );
       case "banner":
@@ -214,6 +251,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             catalogueData={catalogueData}
             tagName={tagName}
+            baseProps={baseProps}
           />
         );
       case "heroSection":
@@ -367,6 +405,20 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           />
         );
 
+      case "learningPath":
+        // Ordered product pages as numbered steps, or a stream's paths as
+        // cards — read live, like productPageOffer.
+        return (
+          <LearningPathComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+            globalSettings={globalSettings}
+            isPreviewMode={isPreviewMode}
+          />
+        );
+
       case "htmlPage":
         // A whole pasted page. Always a page's only component (created by the
         // Add Page > HTML page flow), so it takes the site stylesheet and
@@ -461,75 +513,112 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     (component) => component.type === 'header' && component.enabled !== false
   );
 
+  /** One top-level section inside its style / preview wrapper. */
+  const renderTopLevel = (component: Page["components"][number]) => {
+    const rendered = renderComponent(component);
+    if (!rendered) return null;
+
+    const componentStyle = buildComponentStyle(component.style);
+    const responsiveCSS = buildResponsiveCSS(component.id, component.style);
+    const hoverClass = getHoverClass(component.style);
+    const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
+    const hasStyle = component.style && Object.keys(component.style).length > 0;
+
+    if (isPreviewMode) {
+      const isSelected = component.id === selectedComponentId;
+      const shell = hasSectionShell(component.style);
+      const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
+      const outerStyle = shellStyles ? shellStyles.canvasStyle : componentStyle;
+      const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
+      return (
+        <div
+          key={component.id}
+          id={component.anchorId || undefined}
+          data-component-id={component.id}
+          data-cid={component.id}
+          onClick={() => onComponentClick?.(component.id, page.id)}
+          className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
+          style={{ cursor: 'pointer', ...outerStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
+        >
+          {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
+          {hasOverlay && (
+            <div style={{ position: 'absolute', inset: 0, backgroundColor: component.style!.backgroundOverlay, zIndex: 0, borderRadius: outerStyle.borderRadius }} />
+          )}
+          {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
+          <div
+            style={
+              shellStyles
+                ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
+                : { pointerEvents: 'none', position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
+            }
+          >
+            {rendered}
+          </div>
+          {isSelected && (
+            <div className="absolute top-0 start-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-ee-md font-medium select-none">
+              {component.type}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Normal (non-preview) rendering with style wrapper
+    if (hasStyle) {
+      return (
+        <ComponentStyleWrapper key={component.id} component={component} componentStyle={componentStyle} responsiveCSS={responsiveCSS} hoverClass={hoverClass} motionOff={(globalSettings as any)?.motion?.personality === 'none'}>
+          {rendered}
+        </ComponentStyleWrapper>
+      );
+    }
+
+    // Plain rendering — still add anchor ID if present
+    if (component.anchorId) {
+      return <div key={component.id} id={component.anchorId}>{rendered}</div>;
+    }
+    return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
+  };
+
   return (
     <div
       className={`page w-full ${hasHeader ? 'pt-16 md:pt-20' : ''}`}
       data-page-id={page.id}
     >
-      {page.components.map((component) => {
-        const rendered = renderComponent(component);
-        if (!rendered) return null;
+      {page.components.map((component) => withVisibleWhen(component, renderTopLevel(component)))}
+    </div>
+  );
+};
 
-        const componentStyle = buildComponentStyle(component.style);
-        const responsiveCSS = buildResponsiveCSS(component.id, component.style);
-        const hoverClass = getHoverClass(component.style);
-        const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
-        const hasStyle = component.style && Object.keys(component.style).length > 0;
+/**
+ * Shows its section only when the section's visibleWhen rules hold for the
+ * current query string. In the builder preview a section hidden for the URL
+ * still renders, marked, so the admin can see and select it.
+ */
+const VisibleWhenGate: React.FC<{ rules: unknown; isPreviewMode: boolean; children: React.ReactNode }> = ({
+  rules,
+  isPreviewMode,
+  children,
+}) => {
+  const searchStr = useLocation({ select: (location) => location.searchStr || "" });
+  const visibility = sectionVisibility({ visibleWhen: rules }, searchStr, isPreviewMode);
+  if (visibility === "hide") return null;
+  if (visibility === "hint") return <HiddenForUrlHint>{children}</HiddenForUrlHint>;
+  return <>{children}</>;
+};
 
-        if (isPreviewMode) {
-          const isSelected = component.id === selectedComponentId;
-          const shell = hasSectionShell(component.style);
-          const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
-          const outerStyle = shellStyles ? shellStyles.canvasStyle : componentStyle;
-          const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
-          return (
-            <div
-              key={component.id}
-              id={component.anchorId || undefined}
-              data-component-id={component.id}
-              data-cid={component.id}
-              onClick={() => onComponentClick?.(component.id, page.id)}
-              className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
-              style={{ cursor: 'pointer', ...outerStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
-            >
-              {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
-              {hasOverlay && (
-                <div style={{ position: 'absolute', inset: 0, backgroundColor: component.style!.backgroundOverlay, zIndex: 0, borderRadius: outerStyle.borderRadius }} />
-              )}
-              {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
-              <div
-                style={
-                  shellStyles
-                    ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
-                    : { pointerEvents: 'none', position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
-                }
-              >
-                {rendered}
-              </div>
-              {isSelected && (
-                <div className="absolute top-0 start-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-ee-md font-medium select-none">
-                  {component.type}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // Normal (non-preview) rendering with style wrapper
-        if (hasStyle) {
-          return (
-            <ComponentStyleWrapper key={component.id} component={component} componentStyle={componentStyle} responsiveCSS={responsiveCSS} hoverClass={hoverClass} motionOff={(globalSettings as any)?.motion?.personality === 'none'}>
-              {rendered}
-            </ComponentStyleWrapper>
-          );
-        }
-
-        // Plain rendering — still add anchor ID if present
-        if (component.anchorId) {
-          return <div key={component.id} id={component.anchorId}>{rendered}</div>;
-        }
-        return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
-      })}
+/**
+ * Builder preview only: a section whose visibleWhen rules hide it for the
+ * current URL (e.g. "Start free" on a filtered Courses view). Visitors never
+ * see it; the admin sees it dimmed and labelled so it can still be selected.
+ */
+const HiddenForUrlHint: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <div className="relative rounded-catalogue-md border border-dashed border-catalogue-border">
+      <span className="absolute end-2 top-2 z-10 rounded-full bg-catalogue-bg-elevated px-2 py-0.5 text-xs font-medium text-catalogue-text-muted shadow-sm">
+        {t("jsonRenderer.hiddenForUrl", "Hidden for this URL")}
+      </span>
+      <div className="opacity-60">{children}</div>
     </div>
   );
 };

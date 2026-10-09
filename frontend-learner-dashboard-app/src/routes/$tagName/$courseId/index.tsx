@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, Navigate } from "@tanstack/react-router";
 import { RouteMatcher } from "../-services/route-matcher";
 import { CatalogueTagContext } from "../-components/CatalogueTagContext";
+import { retainSiteLanguage } from "../-utils/catalogue-route-search";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
 import { CourseSubPage } from "../-components/CourseSubPage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -12,6 +13,9 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 
 export const Route = createFileRoute("/$tagName/$courseId/")({
+  // Keep the visitor's site language (?lang=) across catalogue navigation
+  // (sites with languages only; a no-op everywhere else).
+  search: { middlewares: [retainSiteLanguage] },
   // Reader mode (iOS always / reader-mode institutes): the public course
   // details / enroll page is a marketplace surface — block it (Apple 3.1.1).
   beforeLoad: async () => {

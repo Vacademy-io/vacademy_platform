@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
+import { useSiteT } from "@/routes/$tagName/-utils/catalogue-locale";
 import { ProductPageOfferComponent } from "./ProductPageOfferComponent";
 import {
   fetchPublicFolderTree,
@@ -142,6 +143,11 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const terms = useCourseTerms();
+  // Folder names and descriptions are live data from the library, so they
+  // are translated where they are shown. Navigation, search matching and
+  // folder ids keep reading the stored values.
+  const siteT = useSiteT();
+  const titleOf = (n: PublicFolderNode) => siteT(nodeTitle(n));
   const location = useLocation();
   const router = useRouter();
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -235,17 +241,18 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return null;
+    // A visitor may type the name as they read it (translated) or as stored.
     return searchable.filter(({ node }) =>
-      [nodeTitle(node), node.description || "", node.product_page_name || ""].some((s) =>
-        s.toLowerCase().includes(q),
-      ),
+      [nodeTitle(node), node.description || "", node.product_page_name || ""]
+        .flatMap((s) => (s ? [s, siteT(s)] : []))
+        .some((s) => s.toLowerCase().includes(q)),
     );
-  }, [query, searchable]);
+  }, [query, searchable, siteT]);
 
   const isCenter = align === "center";
-  const homeLabel = base ? nodeTitle(base) : t("folderBrowser.home", "All");
-  const heading = current ? nodeTitle(current) : title;
-  const lead = current ? current.description : subtitle;
+  const homeLabel = base ? titleOf(base) : t("folderBrowser.home", "All");
+  const heading = current ? titleOf(current) : title;
+  const lead = current ? (current.description ? siteT(current.description) : current.description) : subtitle;
 
   // ── Not configured / nothing to show ──
   const hint = (message: string) =>
@@ -302,7 +309,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
   };
 
   const folderCard = (n: PublicFolderNode) => {
-    const label = nodeTitle(n);
+    const label = titleOf(n);
+    const description = n.description ? siteT(n.description) : n.description;
     const counts = view.showCounts ? countLine(n) : "";
 
     if (view.layout === "tiles") {
@@ -317,8 +325,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
           {/* Over a photo the text must stay light whatever the theme. */}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent p-4 pt-10 text-white">
             <p className="line-clamp-2 text-base font-semibold leading-snug">{label}</p>
-            {view.showDescription && n.description && (
-              <p className="mt-1 line-clamp-2 text-xs opacity-90">{n.description}</p>
+            {view.showDescription && description && (
+              <p className="mt-1 line-clamp-2 text-xs opacity-90">{description}</p>
             )}
             {counts && <p className="mt-1 text-xs font-medium opacity-80">{counts}</p>}
           </div>
@@ -347,8 +355,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-semibold text-catalogue-text-primary">{label}</p>
-            {view.showDescription && n.description && (
-              <p className="mt-0.5 line-clamp-1 text-sm text-catalogue-text-muted">{n.description}</p>
+            {view.showDescription && description && (
+              <p className="mt-0.5 line-clamp-1 text-sm text-catalogue-text-muted">{description}</p>
             )}
             {counts && <p className="mt-0.5 text-xs text-catalogue-text-muted">{counts}</p>}
           </div>
@@ -376,8 +384,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
             )}
             <p className="line-clamp-2 flex-1 text-base font-semibold leading-snug text-catalogue-text-primary">{label}</p>
           </div>
-          {view.showDescription && n.description && (
-            <p className="line-clamp-2 text-sm text-catalogue-text-muted">{n.description}</p>
+          {view.showDescription && description && (
+            <p className="line-clamp-2 text-sm text-catalogue-text-muted">{description}</p>
           )}
           {counts && (
             <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-semibold text-catalogue-brand-ink">
@@ -421,8 +429,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
     <ProductPageOfferComponent
       embedded
       productPageCode={n.product_page_code || undefined}
-      title={soleItem && !(n.title || "").trim() ? undefined : nodeTitle(n)}
-      subtitle={soleItem && !(n.title || "").trim() ? undefined : n.description || undefined}
+      title={soleItem && !(n.title || "").trim() ? undefined : titleOf(n)}
+      subtitle={soleItem && !(n.title || "").trim() ? undefined : n.description ? siteT(n.description) : undefined}
       align={isCenter ? "center" : "left"}
       headerScale="md"
       columns={clampColumns(courseColumns)}
@@ -468,7 +476,7 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
                 <CaretRight className="size-3 text-catalogue-text-muted rtl:rotate-180" aria-hidden="true" />
                 {i === trail.length - 1 ? (
                   <span aria-current="page" className="px-1 font-semibold text-catalogue-text-primary">
-                    {nodeTitle(n)}
+                    {titleOf(n)}
                   </span>
                 ) : (
                   <button
@@ -476,7 +484,7 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
                     onClick={() => openFolder(n.id)}
                     className="rounded px-1 font-medium text-catalogue-brand-ink hover:underline"
                   >
-                    {nodeTitle(n)}
+                    {titleOf(n)}
                   </button>
                 )}
               </span>
@@ -577,11 +585,11 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
                       <ShoppingCartSimple className="size-5 shrink-0 text-catalogue-brand-ink" weight="duotone" aria-hidden="true" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-catalogue-text-primary">{nodeTitle(node)}</p>
+                      <p className="truncate text-sm font-semibold text-catalogue-text-primary">{titleOf(node)}</p>
                       {path.length > 0 && (
                         <p className="truncate text-xs text-catalogue-text-muted">
                           {t("folderBrowser.inPath", {
-                            path: [homeLabel, ...path.map(nodeTitle)].join(" › "),
+                            path: [homeLabel, ...path.map(titleOf)].join(" › "),
                             defaultValue: "in {{path}}",
                           })}
                         </p>

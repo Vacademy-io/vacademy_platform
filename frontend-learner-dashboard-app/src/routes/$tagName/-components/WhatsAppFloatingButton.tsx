@@ -2,6 +2,7 @@ import React from "react";
 import { WhatsappLogo } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { emitLeadCaptured } from "../-utils/catalogue-tracking";
+import { useSiteT } from "../-utils/catalogue-locale";
 
 /**
  * Floating WhatsApp / call button for catalogue sites.
@@ -33,11 +34,15 @@ interface Props {
 
 export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar = false }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Label and prefilled message are authored once in Global Settings; a
+  // हिन्दी visitor gets their translations (the phone number never changes).
+  const siteT = useSiteT();
   const phone = (settings?.phone || "").replace(/\D/g, "");
   if (!settings?.enabled || !phone) return null;
 
+  const label = settings.label ? siteT(settings.label) : "";
   const href = `https://wa.me/${phone}${
-    settings.message ? `?text=${encodeURIComponent(settings.message)}` : ""
+    settings.message ? `?text=${encodeURIComponent(siteT(settings.message))}` : ""
   }`;
   const isLeft = settings.position === "left";
 
@@ -52,14 +57,14 @@ export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar
       onClick={() =>
         emitLeadCaptured({ sourceType: "WHATSAPP_CLICK", sourceId: "floating-button" })
       }
-      aria-label={settings.label || t("whatsAppFloatingButton.chatWithUs")}
-      title={settings.label || t("whatsAppFloatingButton.chatWithUs")}
+      aria-label={label || t("whatsAppFloatingButton.chatWithUs")}
+      title={label || t("whatsAppFloatingButton.chatWithUs")}
       className={`catalogue-floating-cta fixed z-catalogue-fixed flex items-center gap-2 rounded-full bg-success-500 px-4 py-3 font-semibold text-white no-underline shadow-lg transition hover:opacity-90 active:scale-[0.98] ${
         isLeft ? "start-4" : "end-4"
       } ${hasMobileBar ? "bottom-32 md:bottom-6" : "bottom-6"}`}
     >
       <WhatsappLogo weight="fill" className="size-6 shrink-0" aria-hidden="true" />
-      {settings.label && <span className="hidden text-sm sm:inline">{settings.label}</span>}
+      {label && <span className="hidden text-sm sm:inline">{label}</span>}
     </a>
   );
 };

@@ -15,6 +15,7 @@ import {
   levelWithoutLanguage,
   missingFromCart,
   onePerCourse,
+  pathCardDetails,
   pathCartItems,
   pathCheckoutTotals,
   pathCourseIds,
@@ -318,5 +319,30 @@ describe("list mode: paths from the folder library", () => {
     expect(resolvePathScope(library, { folderId: "p1" })).toEqual({ kind: "missing" });
     expect(pathsInScope(library, { kind: "missing" })).toEqual([]);
     expect(pathsInScope(library, resolvePathScope(library, { folderId: "soon" }))).toEqual([]);
+  });
+});
+
+describe("pathCardDetails: the item's own card fields", () => {
+  it("reads subtitle, tagline, button label and a validated accent colour", () => {
+    expect(
+      pathCardDetails({
+        subtitle: " Foundations ",
+        tagline: "Start with the basics",
+        cta_label: "Begin path",
+        accent_color: " #F59E0B ", // design-lint-ignore: test fixture colour
+      }),
+    ).toEqual({
+      subtitle: "Foundations",
+      tagline: "Start with the basics",
+      ctaLabel: "Begin path",
+      accentColor: "#F59E0B", // design-lint-ignore: test fixture colour
+    });
+  });
+
+  it("is empty for a card without them, and never passes an unsafe colour through", () => {
+    expect(pathCardDetails({})).toEqual({ subtitle: "", tagline: "", ctaLabel: "", accentColor: null });
+    for (const bad of ["red", "url(x)", "#12", "#1234567", "var(--x)", "#abc; background:url(x)"]) { // design-lint-ignore: test fixture colour
+      expect(pathCardDetails({ accent_color: bad }).accentColor).toBeNull();
+    }
   });
 });

@@ -36,6 +36,7 @@ import { useFallbackCartReopen, useSiteCart, useSiteCartNotifier } from "../site
 import { useStoreSale } from "../site-cart/use-store-sale";
 import {
   buildPathSteps,
+  pathCardDetails,
   pathCartItems,
   pathCheckoutTotals,
   pathCourseIds,
@@ -775,9 +776,25 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
           const name = siteT(nodeTitle(entry.node)) || entry.code;
           const description = siteT(entry.node.description);
           const eyebrow = eyebrowOf(entry);
+          // The item's own card fields, each only when the admin set it.
+          const details = pathCardDetails(entry.node);
+          const cardSubtitle = details.subtitle ? siteT(details.subtitle) : "";
+          const tagline = details.tagline ? siteT(details.tagline) : "";
+          const buttonLabel = (details.ctaLabel && siteT(details.ctaLabel)) || viewLabel;
+          const accent = details.accentColor;
           return (
             <li key={entry.code} className="catalogue-card-elevated group flex flex-col overflow-hidden">
-              <div className="relative aspect-[16/9] w-full bg-catalogue-bg-muted">
+              {accent && (
+                <span
+                  aria-hidden="true"
+                  className="block h-1 w-full shrink-0"
+                  style={{ backgroundColor: accent }} // design-lint-ignore: path accent colour is admin data (validated hex)
+                />
+              )}
+              <div
+                className={cn("relative aspect-[16/9] w-full", !accent && "bg-catalogue-bg-muted")}
+                style={accent ? { backgroundColor: accent } : undefined} // design-lint-ignore: path accent colour is admin data (validated hex)
+              >
                 {entry.node.image_url ? (
                   <img src={entry.node.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
                 ) : (
@@ -791,15 +808,19 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
                   <p className="text-xs font-semibold uppercase tracking-wide text-catalogue-brand-ink">{eyebrow}</p>
                 )}
                 <h3 className="line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">{name}</h3>
+                {cardSubtitle && cardSubtitle !== name && (
+                  <p className="text-sm font-medium text-catalogue-text-secondary">{cardSubtitle}</p>
+                )}
+                {tagline && <p className="line-clamp-2 text-sm font-semibold text-catalogue-text-primary">{tagline}</p>}
                 {description && <p className="line-clamp-2 text-sm text-catalogue-text-muted">{description}</p>}
                 <div className="mt-auto pt-3">
                   <button
                     type="button"
                     onClick={() => openPath(entry.code)}
-                    aria-label={`${viewLabel} — ${name}`}
+                    aria-label={`${buttonLabel} — ${name}`}
                     className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
                   >
-                    {viewLabel}
+                    {buttonLabel}
                     <ArrowRight className="size-3.5 rtl:rotate-180" weight="bold" aria-hidden="true" />
                   </button>
                 </div>

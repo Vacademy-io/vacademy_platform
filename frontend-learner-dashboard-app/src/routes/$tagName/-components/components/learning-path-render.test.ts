@@ -329,6 +329,71 @@ describe("learningPath and the site's store page", () => {
   });
 });
 
+describe("learningPath (list): the cards", () => {
+  const LIBRARY = "lib-1";
+  const pathNode = (id: string, code: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    node_type: "PRODUCT_PAGE",
+    product_page_code: code,
+    title: `Path ${id}`,
+    description: `About ${id}`,
+    children: [],
+    ...extra,
+  });
+  const renderList = (nodes: Record<string, unknown>[]) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], {
+      library: { id: LIBRARY, name: "Library" },
+      roots: [{ id: "f1", node_type: "FOLDER", title: "Shiksha", children: nodes }],
+    });
+    return renderToStaticMarkup(
+      React.createElement(
+        QueryClientProvider,
+        { client },
+        React.createElement(LearningPathComponent, {
+          instituteId: INSTITUTE,
+          tagName: "site",
+          mode: "list",
+          libraryId: LIBRARY,
+          viewPathLabel: "Open path",
+        }),
+      ),
+    );
+  };
+  const cardOf = (html: string, title: string) => {
+    const at = html.indexOf(`>${title}<`);
+    return html.slice(html.lastIndexOf("<li", at), html.indexOf("</li>", at));
+  };
+
+  it("shows the item's own subtitle, tagline, button label and accent colour", () => {
+    const html = renderList([
+      pathNode("a", "PA", {
+        subtitle: "Foundations",
+        tagline: "Start with the basics",
+        cta_label: "Begin path",
+        accent_color: "#f59e0b", // design-lint-ignore: test fixture colour
+      }),
+    ]);
+    const card = cardOf(html, "Path a");
+    const lines = text(card);
+    expect(lines).toEqual(["Shiksha", "Path a", "Foundations", "Start with the basics", "About a", "Begin path"]);
+    expect(card).toContain('aria-label="Begin path — Path a"');
+    expect(card).toContain("background-color:#f59e0b"); // design-lint-ignore: test fixture colour
+    expect(card).not.toContain("bg-catalogue-bg-muted");
+  });
+
+  it("renders a card without them exactly as before", () => {
+    const html = renderList([pathNode("b", "PB"), pathNode("c", "PC", { accent_color: "javascript:alert(1)" })]);
+    for (const title of ["Path b", "Path c"]) {
+      const card = cardOf(html, title);
+      expect(text(card)).toEqual(["Shiksha", title, `About ${title.slice(-1)}`, "Open path"]);
+      expect(card).toContain(`aria-label="Open path — ${title}"`);
+      expect(card).not.toContain("style=");
+      expect(card).toContain('<div class="relative aspect-[16/9] w-full bg-catalogue-bg-muted">');
+    }
+  });
+});
+
 describe("SiteCartButton", () => {
   const button = (props: Record<string, unknown>) =>
     renderToStaticMarkup(

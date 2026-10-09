@@ -27,6 +27,7 @@ import type {
 } from "../../-types/course-catalogue-types";
 import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
 import { isSiteCartEnabled } from "../../-utils/site-cart";
+import { courseLanguagesOf } from "../../-utils/course-variants";
 import { SiteCartButton } from "../site-cart/SiteCartButton";
 import { MegaMenuNavItem } from "../header/MegaMenuNavItem";
 import { MobileMegaMenu } from "../header/MobileMegaMenu";
@@ -748,8 +749,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   </button>
                   )}
 
-                  {/* Cart Icon */}
-                  {!hideCart && (
+                  {/* Cart Icon — the book-store cart; a site cart (below) replaces it. */}
+                  {!hideCart && !showSiteCart && (
                   <button
                     onClick={() => {
                       navigate({ to: `${RouteMatcher.basePath(effectiveTagName)}/cart` });
@@ -791,6 +792,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   instituteId={resolvedInstituteId ?? undefined}
                   tagName={effectiveTagName}
                   settings={resolvedGlobalSettings?.siteCart}
+                  languages={
+                    resolvedGlobalSettings?.courseLanguages?.enabled
+                      ? courseLanguagesOf(resolvedGlobalSettings.courseLanguages)
+                      : undefined
+                  }
                 />
               )}
 

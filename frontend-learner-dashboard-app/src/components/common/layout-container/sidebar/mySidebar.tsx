@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 import { sideBarStateType } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
+import { collectSidebarNavRoutes } from "./active-route";
 import {
   getHamBurgerSidebarItemsData,
   stripOfflineEntries,
@@ -759,6 +760,10 @@ export const MySidebar = ({
               // unknown, so hide until we're sure rather than flashing it in.
               const items =
                 offlineAvailable === true ? baseItems : stripOfflineEntries(baseItems);
+              const navRoutes = collectSidebarNavRoutes(
+                items.map((obj) => ({ ...obj, to: obj.to || "/" })),
+                pathname
+              );
 
               return items.map((obj, key) => (
                 <div
@@ -778,6 +783,7 @@ export const MySidebar = ({
                     title={obj.title}
                     to={(obj.to || "/") as string}
                     badgeCount={obj.id === "chat" ? chatUnreadCount : undefined}
+                    navRoutes={navRoutes}
                   />
                 </div>
               ));

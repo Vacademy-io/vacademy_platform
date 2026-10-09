@@ -1092,7 +1092,7 @@
         "addAllLabel": "Add whole path to cart",
         "enrolLabel": "Enrol in this path",
         "viewPathLabel": "View path",
-        "emptyText": "Learning paths are coming soon."
+        "emptyText": "New learning paths will appear here."
       },
       "dataBound": "Renders LIVE learning paths: one product page's courses as numbered steps (mode 'single', productPageCode) or the product pages of a folder library as path cards (mode 'list', libraryId/folderId). The product page and library are chosen by the admin, so NEVER ADD this section (a generated one renders as nothing). When a page already has one, keep productPageCode/libraryId/folderId exactly as they are; you may change only title/subtitle/labels/showStepNumbers/showTotal/streamFromUrl."
     },

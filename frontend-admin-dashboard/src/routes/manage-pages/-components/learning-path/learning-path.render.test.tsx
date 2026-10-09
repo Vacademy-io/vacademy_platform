@@ -35,10 +35,11 @@ beforeEach(() => {
 });
 
 describe('learningPath template', () => {
+    const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as unknown as Parameters<
+        typeof getComponentTemplate
+    >[1];
+
     it('starts from the spec defaults', () => {
-        const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as unknown as Parameters<
-            typeof getComponentTemplate
-        >[1];
         const c = getComponentTemplate('learningPath', t);
         expect(c.type).toBe('learningPath');
         expect(c.props).toMatchObject({
@@ -50,7 +51,20 @@ describe('learningPath template', () => {
             addAllLabel: 'Add whole path to cart',
             enrolLabel: 'Enrol in this path',
             viewPathLabel: 'View path',
+            emptyText: 'New learning paths will appear here.',
         });
+    });
+
+    it('ships no copy the AI page review takes for a placeholder', () => {
+        // Mirrors ai_service page_quality._PLACEHOLDER_RE: one match is a "fix"
+        // item on every page that keeps the default, which the assistant then
+        // rewrites ("Learning paths are coming soon." used to trip it).
+        const placeholder =
+            /lorem ipsum|\byour (?:institute|company|school) name\b|\bplaceholder\b|\bexample\.com\b|\bcoming soon\b|\bwelcome to our platform\b|\bmy platform\b|\bdescription here\b|\bwrite your content here\b|\bnew program\b/i;
+        const copy = Object.values(getComponentTemplate('learningPath', t).props).filter(
+            (v): v is string => typeof v === 'string'
+        );
+        expect(copy.filter((s) => placeholder.test(s))).toEqual([]);
     });
 });
 
@@ -68,6 +82,14 @@ describe('LearningPathEditor', () => {
         expect(updateComponent).toHaveBeenCalledWith('home', 'lp-1', {
             props: { mode: 'single', productPageCode: 'yoga-path', productPageName: 'Yoga path', title: 'Paths' },
         });
+    });
+
+    it('suggests the template’s empty-state copy, not "coming soon"', () => {
+        renderEditor({ mode: 'single', productPageCode: '' });
+        expect(screen.getByRole('textbox', { name: 'When there is nothing to show' })).toHaveAttribute(
+            'placeholder',
+            'New learning paths will appear here.'
+        );
     });
 
     it('lists paths from a library and resets the start folder when the library changes', () => {

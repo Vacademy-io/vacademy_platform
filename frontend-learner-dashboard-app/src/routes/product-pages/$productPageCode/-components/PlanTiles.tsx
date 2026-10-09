@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, CheckCircle, Star } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
@@ -10,6 +11,8 @@ import type {
 } from "../-types/product-page-types";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCatalogueLocale } from "@/routes/$tagName/-utils/catalogue-locale";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 
 /**
  * "Choose a Plan" tiles, built entirely from the payment plans already
@@ -87,6 +90,12 @@ interface PlanTilesProps {
 
 export const PlanTiles = ({ pageData, settings, primaryColor }: PlanTilesProps) => {
   const { selectedPsOptionIds, setSelection } = useProductPageStore();
+  // On a site with languages (a checkout inside CatalogueChrome) the course
+  // word is the site language's, so the line under each tile is a sentence
+  // of that language too. Anywhere else it is the English line it always was.
+  const { enabled: siteLanguages } = useCatalogueLocale();
+  const { t } = useTranslation("productPages");
+  const terms = useCourseTerms();
 
   const config = settings.planSelector;
   const groups = useMemo(() => groupByPlan(pageData.mappings), [pageData.mappings]);
@@ -128,6 +137,24 @@ export const PlanTiles = ({ pageData, settings, primaryColor }: PlanTilesProps) 
   const isSelected = (group: PlanGroup) =>
     group.mappings.length > 0 &&
     group.mappings.every((m) => selectedPsOptionIds.includes(m.ps_invite_payment_option_id));
+
+  /** The line under a tile on a site with languages: what the plan sells, and for how long. */
+  const siteContentsLine = (count: number, validity: number): string => {
+    const contents =
+      count > 1
+        ? t("planTiles.coursesIncluded", {
+            count,
+            courses: terms.courses.toLocaleLowerCase(),
+            defaultValue: "{{count}} {{courses}} included",
+          })
+        : t("planTiles.oneCourse", {
+            course: terms.course.toLocaleLowerCase(),
+            defaultValue: "1 {{course}}",
+          });
+    return validity > 0
+      ? `${contents} · ${t("success.access.days", { count: validity, defaultValue: "{{count}} days access" })}`
+      : contents;
+  };
 
   const choosePlan = (group: PlanGroup) => {
     const groupIds = group.mappings.map((m) => m.ps_invite_payment_option_id);
@@ -254,10 +281,16 @@ export const PlanTiles = ({ pageData, settings, primaryColor }: PlanTilesProps) 
               )}
 
               <p className="mt-auto text-2xs text-gray-400">
-                {group.mappings.length > 1
-                  ? `${group.mappings.length} ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} included`
-                  : `1 ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}
-                {validity > 0 ? ` · ${validity} days access` : ""}
+                {siteLanguages ? (
+                  siteContentsLine(group.mappings.length, validity)
+                ) : (
+                  <>
+                    {group.mappings.length > 1
+                      ? `${group.mappings.length} ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} included`
+                      : `1 ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}
+                    {validity > 0 ? ` · ${validity} days access` : ""}
+                  </>
+                )}
               </p>
             </button>
           );

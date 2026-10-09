@@ -44,8 +44,8 @@ const getNamingSettings = (): LocalizedNamingSettings[] => {
 /* -------------------------------------------------------------------------- *
  * Locale-aware terminology resolution — mirrors the admin app's
  * components/common/layout-container/sidebar/utils.ts; keep the two in sync.
- * (The site language scope further down is learner-only: the admin app has
- * no public site.)
+ * (The site language scope further down, and getAppTerminology, are
+ * learner-only: the admin app has no public site.)
  *
  * Institutes rename terms ("Course" → "Programme") AND the UI can render in a
  * language other than the one those renames were typed in. resolveLocalizedTerm
@@ -58,7 +58,8 @@ const getNamingSettings = (): LocalizedNamingSettings[] => {
  *   (d) null                                 → caller's existing fallback
  *
  * `lng` is the app's language — or, while a public site with languages is on
- * screen, that site's language (see "Site language scope" below).
+ * screen, that site's language (see "Site language scope" below), except in
+ * getAppTerminology, which always reads the app's.
  *
  * ENGLISH IS UNTOUCHED: with no `locales` map and no LANGUAGE_SETTING, the
  * source locale defaults to 'en', so an 'en' UI always exits at (b) with null
@@ -251,18 +252,23 @@ export const ensureSiteTermsCatalog = async (
   return true;
 };
 
+/** The site scope `key` resolves under right now (none: the app's language). */
+const activeScopeFor = (key: string): SiteTermScope | null =>
+  APP_LANGUAGE_TERMS.has(key) ? null : siteTermScope?.scope ?? null;
+
 /**
- * Steps (a)-(c) above. `null` means "use your own fallback" (step (d)).
+ * Steps (a)-(c) above under `site`, or in the app's language when it is
+ * null. `null` means "use your own fallback" (step (d)).
  *
  * Plural reads the `_other` suffix: it is the bare plural LABEL in every
  * catalog (en "Courses", ar broken plural "دورات"), not a count-driven form.
  */
-export const resolveLocalizedTerm = (
+const resolveTermIn = (
+  site: SiteTermScope | null,
   setting: LocalizedNamingSettings | undefined,
   key: string,
   form: "singular" | "plural"
 ): string | null => {
-  const site = APP_LANGUAGE_TERMS.has(key) ? null : siteTermScope?.scope ?? null;
   const locale = site ? normalizeLocale(site.locale) : getActiveLocale();
 
   // (a) Institute's own word for the active locale. `locales` is optional —
@@ -283,6 +289,16 @@ export const resolveLocalizedTerm = (
   return translateTerm(key, suffix);
 };
 
+/**
+ * Steps (a)-(c) above, under the site scope when one is up. `null` means
+ * "use your own fallback" (step (d)).
+ */
+export const resolveLocalizedTerm = (
+  setting: LocalizedNamingSettings | undefined,
+  key: string,
+  form: "singular" | "plural"
+): string | null => resolveTermIn(activeScopeFor(key), setting, key, form);
+
 /* --- Reactivity ----------------------------------------------------------- *
  * Same window-event contract as the admin app's useNamingSettingsVersion hook.
  * Terminology is locale-aware, so a language switch changes the same labels a
@@ -300,17 +316,34 @@ i18next.on("languageChanged", () => {
   notifyNamingSettingsUpdated();
 });
 
-// Utility function to get custom terminology with fallback to default
-export const getTerminology = (key: string, defaultValue: string): string => {
+/** getTerminology() under `site` (null: the app's language). */
+const terminologyIn = (
+  site: SiteTermScope | null,
+  key: string,
+  defaultValue: string
+): string => {
   const settings = getNamingSettings();
   const setting = settings.find((item) => item.key === key);
 
   // Steps (a)-(c); null → step (d), the original line below, unchanged.
-  const localized = resolveLocalizedTerm(setting, key, "singular");
+  const localized = resolveTermIn(site, setting, key, "singular");
   if (localized) return localized;
 
   return setting?.customValue || defaultValue;
 };
+
+// Utility function to get custom terminology with fallback to default
+export const getTerminology = (key: string, defaultValue: string): string =>
+  terminologyIn(activeScopeFor(key), key, defaultValue);
+
+/**
+ * getTerminology() in the app's language even while a site with languages is
+ * on screen — for UI outside the site's pages that renders in the app's
+ * language (the chatbot, mounted at the app root). Without a site scope it is
+ * getTerminology().
+ */
+export const getAppTerminology = (key: string, defaultValue: string): string =>
+  terminologyIn(null, key, defaultValue);
 
 // Utility function to get pluralized terminology.
 // Handles two storage formats:

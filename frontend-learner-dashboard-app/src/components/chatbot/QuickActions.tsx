@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { MessageIntent } from "@/services/chatbot-api";
 import { cn } from "@/lib/utils";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { getAppTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface QuickAction {
@@ -143,8 +143,9 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   compact = false,
 }) => {
   const { t } = useTranslation("chatFeatureB");
-  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);
+  // The chatbot speaks the app's language, also over a public site in another.
+  const course = getAppTerminology(ContentTerms.Course, SystemTerms.Course);
+  const slide = getAppTerminology(ContentTerms.Slides, SystemTerms.Slides);
   const quickActions = getQuickActions(pathname, t, course, slide);
 
   return (

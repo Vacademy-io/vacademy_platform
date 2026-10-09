@@ -11,6 +11,7 @@ import {
   NAMING_SETTINGS_UPDATED_EVENT,
   clearSiteTermScope,
   ensureSiteTermsCatalog,
+  getAppTerminology,
   getTerminology,
   getTerminologyPlural,
   setSiteTermScope,
@@ -313,6 +314,42 @@ describe("ensureSiteTermsCatalog", () => {
 
     expect(await loaded).toBe(true);
     expect(reads.filter((read) => read === "hi/terms")).toHaveLength(1);
+  });
+});
+
+describe("getAppTerminology", () => {
+  it("reads the app's language whatever site is on screen", async () => {
+    scoped({ locale: "hi", i18n: siteI18nInstance(await makeApp("en"), "hi") });
+    await settle();
+    expect(getTerminology("Course", "Course")).toBe("कोर्स");
+    expect(getAppTerminology("Course", "Course")).toBe("Course");
+    clearSiteTermScope(token);
+
+    await i18next.changeLanguage("hi");
+    await i18next.loadNamespaces("terms");
+    scoped({ locale: "en", i18n: siteI18nInstance(await makeApp("hi"), "en") });
+    expect(getTerminology("Course", "Course")).toBe("Course");
+    expect(getAppTerminology("Course", "Course")).toBe("कोर्स");
+  });
+
+  it("keeps the app's language for the institute's own words too", async () => {
+    naming([{ ...PROGRAMME, locales: { hi: { customValue: "पाठ्यक्रम" } } }]);
+    scoped({ locale: "hi", i18n: siteI18nInstance(await makeApp("en"), "hi") });
+    await settle();
+
+    expect(getTerminology("Course", "Course")).toBe("पाठ्यक्रम");
+    expect(getAppTerminology("Course", "Course")).toBe("Programme");
+  });
+
+  it("is getTerminology() when no site has set a scope", async () => {
+    naming([PROGRAMME]);
+    expect(getAppTerminology("Course", "Course")).toBe("Programme");
+    expect(getAppTerminology("Level", "Level")).toBe("Level");
+
+    await i18next.changeLanguage("hi");
+    await i18next.loadNamespaces("terms");
+    expect(getAppTerminology("Course", "Course")).toBe(getTerminology("Course", "Course"));
+    expect(getAppTerminology("Level", "Level")).toBe("स्तर");
   });
 });
 

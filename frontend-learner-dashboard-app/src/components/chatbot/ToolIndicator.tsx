@@ -2,7 +2,7 @@ import React from "react";
 import { MagnifyingGlass, BookOpen, ChartBar, SpinnerGap } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { getAppTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface ToolIndicatorProps {
@@ -11,7 +11,8 @@ interface ToolIndicatorProps {
 
 export const ToolIndicator: React.FC<ToolIndicatorProps> = ({ toolName }) => {
   const { t } = useTranslation("chatFeatureB");
-  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  // The chatbot speaks the app's language, also over a public site in another.
+  const course = getAppTerminology(ContentTerms.Course, SystemTerms.Course);
 
   const TOOL_DISPLAY_MAP: Record<string, { label: string; icon: React.ElementType }> = {
     get_learning_progress: { label: t("toolIndicator.checkingProgress"), icon: ChartBar },

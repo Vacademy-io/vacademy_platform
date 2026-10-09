@@ -33,7 +33,7 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { getAppTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 const markdownComponents = {
@@ -84,9 +84,10 @@ const markdownComponents = {
 export const ChatbotWidget = () => {
   const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
-  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);
-  const learnerModule = getTerminology(ContentTerms.Modules, SystemTerms.Modules);
+  // The chatbot speaks the app's language, also over a public site in another.
+  const course = getAppTerminology(ContentTerms.Course, SystemTerms.Course);
+  const slide = getAppTerminology(ContentTerms.Slides, SystemTerms.Slides);
+  const learnerModule = getAppTerminology(ContentTerms.Modules, SystemTerms.Modules);
   const {
     isOpen,
     setIsOpen,

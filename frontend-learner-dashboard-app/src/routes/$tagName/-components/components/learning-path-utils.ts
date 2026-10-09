@@ -21,7 +21,8 @@ import { cartTotals, type CartTotals, type SiteCartItem } from "../../-utils/sit
 import { folderSlug, pathTo, type PublicFolderNode } from "../../-services/folder-library-service";
 import { parseBasketPricing, quoteBasket } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
 import { bestOffer, parseOffers } from "@/routes/product-pages/$productPageCode/-utils/offers";
-import { cartItemFromMapping, type CartMappingLike } from "../site-cart/site-cart-items";
+import { cartItemFromMapping, languageTokens, type CartMappingLike } from "../site-cart/site-cart-items";
+import { safeAccentColor } from "../header/header-links";
 
 /** The part of a by-code mapping a path step reads. */
 export interface PathMapping extends CartMappingLike {
@@ -61,13 +62,7 @@ export const levelWithoutLanguage = (
   language: CourseLanguageOption,
 ): string => {
   let name = ` ${(levelName || "").toLowerCase()} `;
-  const tokens = [...(language.match || []), language.label, language.code]
-    .filter(Boolean)
-    .map((t) => t.toLowerCase().trim())
-    .filter(Boolean)
-    // Longest first, so a longer token is not left half-removed by a shorter one.
-    .sort((a, b) => b.length - a.length);
-  for (const token of tokens) {
+  for (const token of languageTokens(language)) {
     name = isAscii(token)
       ? name.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}(?=[^a-z0-9]|$)`, "g"), "$1 ")
       : name.split(token).join(" ");
@@ -292,6 +287,30 @@ export interface PathEntry {
   /** The folder the path sits in (null at the library's top level). */
   parent: PublicFolderNode | null;
 }
+
+/** A path card's own words and colour (Manage Pages → Folders → Advanced); "" / null when not set. */
+export interface PathCardDetails {
+  /** Second line under the title. */
+  subtitle: string;
+  /** One-line pitch. */
+  tagline: string;
+  /** The card's button label (the section's "View path" when empty). */
+  ctaLabel: string;
+  /** A validated #rgb / #rrggbb / #rrggbbaa colour. */
+  accentColor: string | null;
+}
+
+const textOf = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
+/** The card fields of a path's folder-library item, raw (translated where shown). */
+export const pathCardDetails = (
+  node: Pick<PublicFolderNode, "subtitle" | "tagline" | "cta_label" | "accent_color">,
+): PathCardDetails => ({
+  subtitle: textOf(node.subtitle),
+  tagline: textOf(node.tagline),
+  ctaLabel: textOf(node.cta_label),
+  accentColor: safeAccentColor(node.accent_color),
+});
 
 /**
  * The paths (product pages) under `nodes`, in library order, each code once.

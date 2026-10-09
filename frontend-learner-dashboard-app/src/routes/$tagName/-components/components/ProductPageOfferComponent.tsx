@@ -14,6 +14,7 @@ import {
   Funnel,
   MagnifyingGlass,
   ShoppingCartSimple,
+  SpinnerGap,
   X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -41,12 +42,14 @@ import {
   type CourseFinderSelectionPayload,
 } from "../../-utils/course-finder-bus";
 import type { GlobalSettings } from "../../-types/course-catalogue-types";
-import { useSiteT } from "../../-utils/catalogue-locale";
+import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
 import { courseLanguagesOf } from "../../-utils/course-variants";
 import { isSiteCartEnabled } from "../../-utils/site-cart";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { cartItemFromMapping } from "../site-cart/site-cart-items";
+import { pageSells, storeCartRoute } from "../site-cart/store-sale";
+import { useStoreSale } from "../site-cart/use-store-sale";
 import {
   useFallbackCartReopen,
   useHasSiteCartOpener,
@@ -163,9 +166,10 @@ interface ProductPageOfferProps {
   isPreviewMode?: boolean;
   /**
    * The site's settings, from the renderer. With a site cart
-   * (globalSettings.siteCart) the add-to-cart CTA fills the SITE's cart and
-   * this section shows no basket bar of its own; without one — or without
-   * this prop — the section keeps its own basket exactly as before.
+   * (globalSettings.siteCart) the add-to-cart CTA fills the SITE's cart — for
+   * the courses its store page sells; the others link to this product page's
+   * checkout — and this section shows no basket bar of its own. Without one —
+   * or without this prop — the section keeps its own basket exactly as before.
    */
   globalSettings?: Partial<GlobalSettings>;
 }
@@ -392,6 +396,14 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const localCartOn = enableCart && !siteCartOn;
   const siteCart = useSiteCart(instituteId, siteCartOn);
   const notifySiteCart = useSiteCartNotifier();
+  // The site cart checks out through the store page, so only a course the
+  // store sells goes in; any other keeps a link to THIS page's checkout (its
+  // own prices and coupons) instead of an add that could never be paid for —
+  // unless this page would charge it twice too (see storeCartRoute).
+  const storeSale = useStoreSale(instituteId, globalSettings?.siteCart, siteCartOn);
+  const ownPageSells = useMemo(() => pageSells(data?.mappings), [data]);
+  const { enabled: languagesEnabled, locale, baseLocale } = useCatalogueLocale();
+  const siteLang = languagesEnabled && locale !== baseLocale ? locale : undefined;
   const cartLanguages = useMemo(
     () => courseLanguagesOf(globalSettings?.courseLanguages),
     [globalSettings?.courseLanguages],
@@ -982,6 +994,20 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           courseIds: m.package_session_id,
           defaultTab: "CART" as const,
         };
+        const enrolLink = (search: typeof enrolSearch & { lang?: string }) => (
+          <Link
+            to="/product-pages/$productPageCode"
+            params={{ productPageCode }}
+            search={search}
+            className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
+            aria-label={`${ctaLabel || t("productPageOffer.enrolNow")} — ${name}`}
+          >
+            {ctaLabel || t("productPageOffer.enrolNow")}
+            <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
+          </Link>
+        );
+        // Site-cart mode: into the site cart only when the store sells it.
+        const cartRoute = siteCartOn ? storeCartRoute(storeSale, [m.package_session_id], ownPageSells) : null;
 
         // The details page carries productPageCode so ITS enrol CTA re-enters
         // this exact checkout instead of the standalone enroll-invite dialog.
@@ -1113,7 +1139,21 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                       {viewCourseLabel || t("productPageOffer.viewCourse", { course: courseTerm })}
                     </Link>
                   )}
-                  {enableCart ? (
+                  {siteCartOn && cartRoute === "pending" ? (
+                    // The store page is still loading: no action until it is
+                    // known whether this course goes to the cart or its page.
+                    <button
+                      type="button"
+                      disabled
+                      aria-busy="true"
+                      aria-label={t("siteCart.checking", "Checking availability…")}
+                      className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap disabled:opacity-60"
+                    >
+                      <SpinnerGap className="size-3.5 animate-spin" aria-hidden="true" />
+                    </button>
+                  ) : siteCartOn && cartRoute === "page" ? (
+                    enrolLink({ ...enrolSearch, ...(siteLang ? { lang: siteLang } : {}) })
+                  ) : enableCart ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -1143,16 +1183,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                       )}
                     </button>
                   ) : (
-                    <Link
-                      to="/product-pages/$productPageCode"
-                      params={{ productPageCode }}
-                      search={enrolSearch}
-                      className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
-                      aria-label={`${ctaLabel || t("productPageOffer.enrolNow")} — ${name}`}
-                    >
-                      {ctaLabel || t("productPageOffer.enrolNow")}
-                      <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
-                    </Link>
+                    enrolLink(enrolSearch)
                   )}
                 </div>
               </div>

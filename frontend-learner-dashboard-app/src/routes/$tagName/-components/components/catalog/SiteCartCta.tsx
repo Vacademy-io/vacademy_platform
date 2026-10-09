@@ -10,13 +10,22 @@ import { SITE_CART_MAX_ITEMS } from "../../../-utils/site-cart";
 import { useCourseTerms } from "../../../-utils/catalogue-naming";
 import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import { rowLanguage, type CatalogRowLike } from "./catalog-cards";
-import { cartVersionOf, packageSessionOf, toSiteCartItem } from "./catalog-site-cart";
+import {
+  cartVersionOf,
+  choosesLanguageOnly,
+  inCartVersionText,
+  packageSessionOf,
+  toSiteCartItem,
+  versionChoiceLabel,
+} from "./catalog-site-cart";
 import { ThemedPortalSurface } from "./ThemedPortalSurface";
 
 /**
  * The card CTA when the site-wide cart is on: "Add to cart" ⇄ "In cart".
  * A course sold in several languages opens a small chooser first; picking
  * another language swaps the version in the cart (one version per course).
+ * Two versions in the same language (two levels) are told apart by their
+ * level, in the chooser and on the button.
  * Disabled until the stored cart has loaded for this institute — an add made
  * before that would be overwritten when the stored cart arrives.
  */
@@ -53,10 +62,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   const current = cartVersionOf(versions, inCart);
   const displayTitle = translate(title);
   const languageOf = (v: R) => rowLanguage(v, languages);
-  const versionLabel = (v: R) => {
-    const lang = languageOf(v);
-    return lang ? translate(lang.label || lang.code) : translate(String(v.level_name || v.level || ""));
-  };
+  const versionLabel = (v: R) => versionChoiceLabel(v, versions, languages, translate);
 
   const addVersion = (v: R) => {
     add(toSiteCartItem(v, courseId, languages));
@@ -80,11 +86,12 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
     setOpen(false);
   };
 
-  const currentLanguage = current ? languageOf(current) : null;
+  // Which version is in the cart, when the course has more than one.
+  const currentVersion = current && versions.length > 1 ? inCartVersionText(current, languages, translate) : "";
   const label = current
-    ? versions.length > 1 && currentLanguage
+    ? currentVersion
       ? t("courseCatalog.inCartWithLanguage", {
-          language: currentLanguage.chip || currentLanguage.label || currentLanguage.code,
+          language: currentVersion,
           defaultValue: "In cart · {{language}}",
         })
       : t("courseCatalog.inCart", "In cart")
@@ -145,7 +152,9 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
           className="rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-elevated p-2 text-catalogue-text-primary shadow-lg"
         >
           <p className="px-2 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-catalogue-text-muted">
-            {t("courseCatalog.chooseLanguage", "Choose a language")}
+            {choosesLanguageOnly(versions, languages)
+              ? t("courseCatalog.chooseLanguage", "Choose a language")
+              : t("courseCatalog.chooseVersion", "Choose a version")}
           </p>
           <ul className="space-y-0.5">
             {versions.map((v) => {

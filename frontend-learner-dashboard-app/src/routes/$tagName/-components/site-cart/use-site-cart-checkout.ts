@@ -2,9 +2,10 @@ import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { storeCheckoutTarget, type SiteCartItem, type SiteCartSettings } from "../../-utils/site-cart";
 import { useCatalogueLocale } from "../../-utils/catalogue-locale";
-import { precheckSiteCart, type SiteCartPrecheck } from "./site-cart-precheck";
+import { canCheckOutDirectly, precheckSiteCart, type SiteCartPrecheck } from "./site-cart-precheck";
 import { isStoreCheckoutPath, SITE_CART_CHECKOUT_SOURCE, SITE_CART_MAX_ITEMS } from "./site-cart-items";
 
 export type CheckoutState =
@@ -12,7 +13,10 @@ export type CheckoutState =
   | { status: "checking" }
   | { status: "overLimit" }
   | { status: "error" }
-  /** Some items cannot go to checkout as they are; the visitor decides. */
+  /**
+   * The visitor decides first: some items cannot go to checkout as they are,
+   * or a price changed since it was added (checkout charges the store's).
+   */
   | { status: "review"; result: SiteCartPrecheck };
 
 /** How fresh the store page must be for the pre-check (the checkout then reuses it). */
@@ -21,8 +25,9 @@ const STORE_STALE_MS = 30_000;
 /**
  * "Checkout" for the site cart: confirms the store product page can sell every
  * item (see site-cart-precheck), then opens its checkout on the cart step with
- * exactly those courses. Anything the store cannot sell is put in front of the
- * visitor instead of being dropped.
+ * exactly those courses. Anything the store cannot sell — and any price that
+ * changed since it was added — is put in front of the visitor instead of being
+ * dropped or charged silently.
  */
 export const useSiteCartCheckout = ({
   instituteId,
@@ -98,7 +103,8 @@ export const useSiteCartCheckout = ({
         const page = await queryClient.fetchQuery({ queryKey, queryFn, staleTime: STORE_STALE_MS });
         if (run !== runRef.current) return null;
         const result = precheckSiteCart(items, page?.mappings);
-        if (result.ok) goToCheckout(result.ready);
+        // Prices hidden (Apple store builds): there is no price to confirm.
+        if (canCheckOutDirectly(result, { pricesShown: !shouldHidePaidPurchaseUI() })) goToCheckout(result.ready);
         else setState({ status: "review", result });
         return result;
       } catch {

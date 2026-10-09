@@ -31,9 +31,12 @@ import { CourseThumbnail } from "../site-cart/CourseThumbnail";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { isMeaningfulLevel } from "../site-cart/site-cart-items";
+import { pageSells, storeCartRoute } from "../site-cart/store-sale";
 import { useFallbackCartReopen, useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
+import { useStoreSale } from "../site-cart/use-store-sale";
 import {
   buildPathSteps,
+  pathCardDetails,
   pathCartItems,
   pathCheckoutTotals,
   pathCourseIds,
@@ -53,8 +56,9 @@ import {
  *
  * single: the product page's courses in display order, a course's language
  *   versions folded into one step with a language choice, the path's total,
- *   and "Add whole path to cart" (site cart) or "Enrol in this path" (the
- *   product page's own checkout with every course selected).
+ *   and "Add whole path to cart" (site cart, when its store page sells every
+ *   chosen course) or "Enrol in this path" (the product page's own checkout
+ *   with every course selected).
  * list: the product pages under the stream folder named by ?stream=, a chosen
  *   folder, or the whole library; "View path" sets ?path=<code> (pushed, so
  *   Back returns to the list) and the section shows that path.
@@ -228,19 +232,29 @@ const PathDetail: React.FC<PathDetailProps> = ({
   const siteCartOn = isSiteCartEnabled(siteCartSettings);
   const cart = useSiteCart(instituteId, siteCartOn);
   const notify = useSiteCartNotifier();
+  // The site cart checks out through its store page: the path goes into it
+  // only when the store sells every course the visitor chose. Otherwise
+  // "Enrol in this path" keeps the path's own checkout, as on a site without
+  // a site cart — unless that would charge a course twice (see
+  // storeCartRoute); while the store page loads, neither is offered.
+  const storeSale = useStoreSale(instituteId, siteCartSettings, siteCartOn);
+  const ownPageSells = useMemo(() => pageSells(data?.mappings), [data?.mappings]);
+  const route = siteCartOn
+    ? storeCartRoute(storeSale, items.map((i) => i.packageSessionId), ownPageSells)
+    : "page";
+  const toCart = route === "cart";
   // The cart holds one version per course, so the path is measured (and
   // added) one version per course — one add always settles the button.
   const plan = useMemo(() => planPathCart(items, cart.has), [items, cart.has]);
-  const allInCart = siteCartOn && cart.hydrated && plan.allInCart;
-  const someInCart = siteCartOn && cart.hydrated && plan.someInCart;
+  const allInCart = toCart && cart.hydrated && plan.allInCart;
+  const someInCart = toCart && cart.hydrated && plan.someInCart;
 
-  // The total for what the button does: the cart's courses with a site cart;
-  // otherwise the product page's own price for the path (basket pricing and
-  // offers included), as its checkout will charge it.
+  // The total for what the button does: the cart's courses when the path
+  // goes to the site cart; otherwise the product page's own price for the
+  // path (basket pricing and offers included), as its checkout will charge it.
   const totals = useMemo(
-    () =>
-      siteCartOn ? pathTotals(plan.targets) : pathCheckoutTotals(pathTotals(items), chosen, data?.settings_json),
-    [siteCartOn, plan.targets, items, chosen, data?.settings_json],
+    () => (toCart ? pathTotals(plan.targets) : pathCheckoutTotals(pathTotals(items), chosen, data?.settings_json)),
+    [toCart, plan.targets, items, chosen, data?.settings_json],
   );
 
   const [adding, setAdding] = useState(false);
@@ -277,8 +291,10 @@ const PathDetail: React.FC<PathDetailProps> = ({
     course: (steps.length === 1 ? terms.course : terms.courses).toLocaleLowerCase(),
     defaultValue: "{{count}} {{course}}",
   });
+  // Which total applies is known once the store page has loaded.
+  const totalPending = route === "pending";
   const totalText =
-    totals.total === null
+    totalPending || totals.total === null
       ? null
       : totals.total === 0
         ? t("productPageOffer.free", "Free")
@@ -462,7 +478,17 @@ const PathDetail: React.FC<PathDetailProps> = ({
     );
   };
 
-  const cta = siteCartOn ? (
+  const cta = route === "pending" ? (
+    <button
+      type="button"
+      disabled
+      aria-busy="true"
+      className="catalogue-btn catalogue-btn-primary disabled:opacity-60"
+    >
+      <SpinnerGap className="size-4 animate-spin" aria-hidden="true" />
+      {t("siteCart.checking", "Checking availability…")}
+    </button>
+  ) : toCart ? (
     allInCart ? (
       <>
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-success-600">
@@ -537,7 +563,9 @@ const PathDetail: React.FC<PathDetailProps> = ({
               <p className="text-3xs font-medium uppercase tracking-wide text-catalogue-text-muted">
                 {t("learningPath.pathTotal", "Path total")}
               </p>
-              {totalText === null ? (
+              {totalPending ? (
+                <span aria-hidden="true" className="catalogue-skeleton-shimmer mt-1 block h-6 w-24 rounded-catalogue-xs" />
+              ) : totalText === null ? (
                 <p className="text-sm text-catalogue-text-muted">
                   {t("learningPath.totalAtCheckout", "Total shown at checkout")}
                 </p>
@@ -554,7 +582,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
             </>
           )}
           <p className="text-xs text-catalogue-text-muted">{countLabel}</p>
-          {siteCartOn && plan.collapsed && (
+          {toCart && plan.collapsed && (
             // Two steps of one course (its levels, or ungrouped language
             // versions): say why fewer go into the cart than the path lists.
             <p className="mt-1 max-w-md text-xs text-catalogue-text-muted">
@@ -752,9 +780,25 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
           const name = siteT(nodeTitle(entry.node)) || entry.code;
           const description = siteT(entry.node.description);
           const eyebrow = eyebrowOf(entry);
+          // The item's own card fields, each only when the admin set it.
+          const details = pathCardDetails(entry.node);
+          const cardSubtitle = details.subtitle ? siteT(details.subtitle) : "";
+          const tagline = details.tagline ? siteT(details.tagline) : "";
+          const buttonLabel = (details.ctaLabel && siteT(details.ctaLabel)) || viewLabel;
+          const accent = details.accentColor;
           return (
             <li key={entry.code} className="catalogue-card-elevated group flex flex-col overflow-hidden">
-              <div className="relative aspect-[16/9] w-full bg-catalogue-bg-muted">
+              {accent && (
+                <span
+                  aria-hidden="true"
+                  className="block h-1 w-full shrink-0"
+                  style={{ backgroundColor: accent }} // design-lint-ignore: path accent colour is admin data (validated hex)
+                />
+              )}
+              <div
+                className={cn("relative aspect-[16/9] w-full", !accent && "bg-catalogue-bg-muted")}
+                style={accent ? { backgroundColor: accent } : undefined} // design-lint-ignore: path accent colour is admin data (validated hex)
+              >
                 {entry.node.image_url ? (
                   <img src={entry.node.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
                 ) : (
@@ -768,15 +812,19 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
                   <p className="text-xs font-semibold uppercase tracking-wide text-catalogue-brand-ink">{eyebrow}</p>
                 )}
                 <h3 className="line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">{name}</h3>
+                {cardSubtitle && cardSubtitle !== name && (
+                  <p className="text-sm font-medium text-catalogue-text-secondary">{cardSubtitle}</p>
+                )}
+                {tagline && <p className="line-clamp-2 text-sm font-semibold text-catalogue-text-primary">{tagline}</p>}
                 {description && <p className="line-clamp-2 text-sm text-catalogue-text-muted">{description}</p>}
                 <div className="mt-auto pt-3">
                   <button
                     type="button"
                     onClick={() => openPath(entry.code)}
-                    aria-label={`${viewLabel} — ${name}`}
+                    aria-label={`${buttonLabel} — ${name}`}
                     className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
                   >
-                    {viewLabel}
+                    {buttonLabel}
                     <ArrowRight className="size-3.5 rtl:rotate-180" weight="bold" aria-hidden="true" />
                   </button>
                 </div>

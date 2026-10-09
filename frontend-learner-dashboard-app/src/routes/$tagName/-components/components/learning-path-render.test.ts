@@ -62,6 +62,21 @@ vi.mock("@/components/common/layout-container/sidebar/utils", () => ({
 vi.mock("@/utils/ios-iap-compliance", () => ({ shouldHidePaidPurchaseUI: () => false }));
 vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promise.resolve("") }));
 
+// A store page that fails to load cannot be staged on a server render (the
+// query would retry on mount), so that state is set here when a test needs it.
+type StoreSale = import("../site-cart/store-sale").StoreSale;
+const storeOverride = vi.hoisted(() => ({ current: null as StoreSale | null }));
+vi.mock("../site-cart/use-store-sale", async (importOriginal: () => Promise<unknown>) => {
+  const real = (await importOriginal()) as typeof import("../site-cart/use-store-sale");
+  return {
+    ...real,
+    useStoreSale: (...args: Parameters<typeof real.useStoreSale>) => {
+      const sale = real.useStoreSale(...args);
+      return storeOverride.current ?? sale;
+    },
+  };
+});
+
 const { LearningPathComponent } = await import("./LearningPathComponent");
 const { SiteCartButton } = await import("../site-cart/SiteCartButton");
 const { useSiteCartStore } = await import("../../-stores/site-cart-store");
@@ -95,9 +110,30 @@ const page = {
   ],
 };
 
-const render = (props: Record<string, unknown>, pageData: Record<string, unknown> = page) => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** The site's store page, selling these versions (seeded where the store has loaded). */
+const STORE = "STORE";
+const storePage = (ids: string[]) => ({
+  id: "store",
+  code: STORE,
+  name: "Store",
+  mappings: ids.map((id, n) => ({
+    id: `s-${id}`,
+    package_session_id: id,
+    status: "ACTIVE",
+    display_order: n,
+    payment_plan: { actual_price: 100, currency: "INR" },
+  })),
+});
+const SELLS_ALL = ["c1-en", "c1-hi", "c2-hi"];
+
+const render = (
+  props: Record<string, unknown>,
+  pageData: Record<string, unknown> = page,
+  storeSells: string[] | null = null,
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) => {
   client.setQueryData(["PRODUCT_PAGE_BY_CODE", CODE, INSTITUTE], pageData);
+  if (storeSells) client.setQueryData(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE], storePage(storeSells));
   return renderToStaticMarkup(
     React.createElement(
       QueryClientProvider,
@@ -139,11 +175,15 @@ describe("learningPath (single)", () => {
   });
 
   it("with a site cart, offers to add the whole path to it", () => {
-    const html = render({
-      productPageCode: CODE,
-      addAllLabel: "",
-      globalSettings: { ...grouped, siteCart: { enabled: true, storeProductPageCode: "STORE" } },
-    });
+    const html = render(
+      {
+        productPageCode: CODE,
+        addAllLabel: "",
+        globalSettings: { ...grouped, siteCart: { enabled: true, storeProductPageCode: "STORE" } },
+      },
+      page,
+      SELLS_ALL,
+    );
     expect(html).toContain("Add whole path to cart");
     expect(html).not.toContain("Enrol in this path");
   });
@@ -191,7 +231,7 @@ describe("learningPath and the site cart", () => {
 
   it("explains that two versions of one course go into the cart as one", () => {
     seedCart([]);
-    const lines = text(render({ productPageCode: CODE, addAllLabel: "", globalSettings: siteCart }));
+    const lines = text(render({ productPageCode: CODE, addAllLabel: "", globalSettings: siteCart }, page, SELLS_ALL));
     expect(lines).toContain("3 courses");
     expect(lines).toContain(ONE_PER_COURSE);
     expect(lines).toContain("Add whole path to cart");
@@ -200,14 +240,14 @@ describe("learningPath and the site cart", () => {
   it("settles once the cart holds one version of each course (the button never flips back)", () => {
     // What one "Add whole path to cart" leaves in the cart for this path.
     seedCart(["c1-en", "c2-hi"]);
-    const html = render({ productPageCode: CODE, globalSettings: siteCart });
+    const html = render({ productPageCode: CODE, globalSettings: siteCart }, page, SELLS_ALL);
     expect(html).toContain("Whole path is in your cart");
     expect(html).not.toContain("Add the remaining");
   });
 
   it("keeps the version already in the cart and adds only the rest", () => {
     seedCart(["c1-hi"]);
-    const html = render({ productPageCode: CODE, globalSettings: siteCart });
+    const html = render({ productPageCode: CODE, globalSettings: siteCart }, page, SELLS_ALL);
     expect(html).toContain("Add the remaining 1 to cart");
     // The step in the cart wears the selected ring.
     expect(html).toContain("ring-primary-500/35");
@@ -215,9 +255,167 @@ describe("learningPath and the site cart", () => {
 
   it("says nothing about versions when every step is a different course", () => {
     seedCart([]);
-    expect(render({ productPageCode: CODE, globalSettings: { ...grouped, ...siteCart } })).not.toContain(
+    expect(render({ productPageCode: CODE, globalSettings: { ...grouped, ...siteCart } }, page, SELLS_ALL)).not.toContain(
       "one version of each",
     );
+  });
+});
+
+describe("learningPath and the site's store page", () => {
+  const initial = useSiteCartStore.getInitialState();
+  const pristine = { ...initial };
+  afterEach(() => {
+    Object.assign(initial, pristine);
+    storeOverride.current = null;
+  });
+  const settings = { ...grouped, siteCart: { enabled: true, storeProductPageCode: STORE } };
+  const OWN_CHECKOUT =
+    "/product-pages/PATH1?instituteId=inst-1&amp;tagName=site&amp;courseIds=c1-en%2Cc2-hi&amp;defaultTab=CART";
+
+  it("keeps the path's own checkout when the store does not sell every chosen course", () => {
+    Object.assign(initial, { instituteId: INSTITUTE, hydrated: true, items: [] });
+    // The store sells C1 in English, not C2.
+    const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings }, page, ["c1-en", "c1-hi"]);
+    expect(html).toContain("Enrol in this path");
+    expect(html).toContain(OWN_CHECKOUT);
+    expect(html).not.toContain("Add whole path to cart");
+    expect(html).not.toContain("Checking availability");
+  });
+
+  it("goes by the versions the visitor chose", () => {
+    // C1 shows in English (the visitor's language); the store sells only its Hindi version.
+    expect(render({ productPageCode: CODE, globalSettings: settings }, page, ["c1-hi", "c2-hi"])).toContain(
+      "Enrol in this path",
+    );
+    // A version nobody chose does not stand in the way.
+    expect(render({ productPageCode: CODE, globalSettings: settings }, page, ["c1-en", "c2-hi"])).toContain(
+      "Add whole path to cart",
+    );
+  });
+
+  it("offers neither action, nor a total, while the store page loads", () => {
+    const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings });
+    const lines = text(html);
+    expect(lines).toContain("Checking availability…");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-busy="true"/);
+    expect(html).not.toContain("Add whole path to cart");
+    expect(html).not.toContain("Enrol in this path");
+    expect(lines).not.toContain("Total shown at checkout");
+    expect(html).toContain("catalogue-skeleton-shimmer");
+  });
+
+  it("falls back to the path's own checkout when the store page cannot load", () => {
+    storeOverride.current = { status: "error", sells: () => false, lists: () => false };
+    const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings });
+    expect(html).toContain("Enrol in this path");
+    expect(html).toContain(OWN_CHECKOUT);
+    expect(html).not.toContain("Add whole path to cart");
+  });
+
+  it("adds the path to the cart when its page is the store page itself, even with a course listed twice", () => {
+    Object.assign(initial, { instituteId: INSTITUTE, hydrated: true, items: [] });
+    // The store lists C1 in English twice (two plans): its own checkout would
+    // select both and charge C1 twice; the cart's pre-check holds it back.
+    const storeAsPath = {
+      ...page,
+      code: STORE,
+      mappings: [...page.mappings, { ...mapping("c1", "c1-en", "English", 450, 3), id: "m-c1-en-b", ps_invite_payment_option_id: "b-c1-en-b" }],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE], storeAsPath);
+    const html = render({ productPageCode: STORE, addAllLabel: "", globalSettings: settings }, page, null, client);
+    expect(html).toContain("Add whole path to cart");
+    expect(html).not.toContain("Enrol in this path");
+    expect(html).not.toContain("/product-pages/STORE?");
+  });
+
+  it("keeps the path's own checkout for a course the store lists twice when the path's page sells it as it is", () => {
+    Object.assign(initial, { instituteId: INSTITUTE, hydrated: true, items: [] });
+    const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings }, page, ["c1-en", "c1-en", "c2-hi"]);
+    expect(html).toContain("Enrol in this path");
+    expect(html).toContain(OWN_CHECKOUT);
+    expect(html).not.toContain("Add whole path to cart");
+  });
+
+  it("reads no store page on a site without a site cart", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const html = render({ productPageCode: CODE, globalSettings: grouped }, page, null, client);
+    expect(html).toContain("Enrol in this path");
+    const keys = client.getQueryCache().getAll().map((q) => q.queryKey);
+    expect(keys.some((k) => k.includes(STORE))).toBe(false);
+    expect(keys.filter((k) => k[0] === "PRODUCT_PAGE_BY_CODE" && k[1])).toEqual([["PRODUCT_PAGE_BY_CODE", CODE, INSTITUTE]]);
+  });
+
+  it("asks the store page once a site cart is on (the checkout reuses it)", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render({ productPageCode: CODE, globalSettings: settings }, page, SELLS_ALL, client);
+    const keys = client.getQueryCache().getAll().map((q) => q.queryKey);
+    expect(keys).toContainEqual(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE]);
+  });
+});
+
+describe("learningPath (list): the cards", () => {
+  const LIBRARY = "lib-1";
+  const pathNode = (id: string, code: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    node_type: "PRODUCT_PAGE",
+    product_page_code: code,
+    title: `Path ${id}`,
+    description: `About ${id}`,
+    children: [],
+    ...extra,
+  });
+  const renderList = (nodes: Record<string, unknown>[]) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], {
+      library: { id: LIBRARY, name: "Library" },
+      roots: [{ id: "f1", node_type: "FOLDER", title: "Shiksha", children: nodes }],
+    });
+    return renderToStaticMarkup(
+      React.createElement(
+        QueryClientProvider,
+        { client },
+        React.createElement(LearningPathComponent, {
+          instituteId: INSTITUTE,
+          tagName: "site",
+          mode: "list",
+          libraryId: LIBRARY,
+          viewPathLabel: "Open path",
+        }),
+      ),
+    );
+  };
+  const cardOf = (html: string, title: string) => {
+    const at = html.indexOf(`>${title}<`);
+    return html.slice(html.lastIndexOf("<li", at), html.indexOf("</li>", at));
+  };
+
+  it("shows the item's own subtitle, tagline, button label and accent colour", () => {
+    const html = renderList([
+      pathNode("a", "PA", {
+        subtitle: "Foundations",
+        tagline: "Start with the basics",
+        cta_label: "Begin path",
+        accent_color: "#f59e0b", // design-lint-ignore: test fixture colour
+      }),
+    ]);
+    const card = cardOf(html, "Path a");
+    const lines = text(card);
+    expect(lines).toEqual(["Shiksha", "Path a", "Foundations", "Start with the basics", "About a", "Begin path"]);
+    expect(card).toContain('aria-label="Begin path — Path a"');
+    expect(card).toContain("background-color:#f59e0b"); // design-lint-ignore: test fixture colour
+    expect(card).not.toContain("bg-catalogue-bg-muted");
+  });
+
+  it("renders a card without them exactly as before", () => {
+    const html = renderList([pathNode("b", "PB"), pathNode("c", "PC", { accent_color: "javascript:alert(1)" })]);
+    for (const title of ["Path b", "Path c"]) {
+      const card = cardOf(html, title);
+      expect(text(card)).toEqual(["Shiksha", title, `About ${title.slice(-1)}`, "Open path"]);
+      expect(card).toContain(`aria-label="Open path — ${title}"`);
+      expect(card).not.toContain("style=");
+      expect(card).toContain('<div class="relative aspect-[16/9] w-full bg-catalogue-bg-muted">');
+    }
   });
 });
 

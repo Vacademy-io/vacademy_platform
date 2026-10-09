@@ -141,17 +141,88 @@ export const languageOption = (
   return list.find((l) => l.code === code) ?? null;
 };
 
+const isAsciiToken = (s: string) => /^[\x00-\x7F]*$/.test(s);
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The words that name a language inside a level name — its match words, label
+ * and code (as languageOfLevel reads them), lower-case, longest first so a
+ * longer word is never left half-removed by a shorter one.
+ */
+export const languageTokens = (language: CourseLanguageOption): string[] =>
+  [...(language.match || []), language.label, language.code]
+    .filter(Boolean)
+    .map((t) => t.toLowerCase().trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+const SEPARATOR = "[,;:|/·•\\-–—_]";
+const DANGLING_SEPARATORS = new RegExp(`^(?:\\s|${SEPARATOR})+|(?:\\s|${SEPARATOR})+$`, "g");
+const REPEATED_SEPARATORS = new RegExp(`\\s(${SEPARATOR})(?:\\s*${SEPARATOR})+\\s`, "g");
+
+/**
+ * A level name for display without its language words, as written:
+ * "Advanced Hindi" → "Advanced", "Beginner (English)" → "Beginner",
+ * "Hindi - Batch 2" → "Batch 2", and "" when only the language is left.
+ * Matches like languageOfLevel: whole words for ASCII, anywhere otherwise.
+ */
+export const stripLanguageWords = (text: string, language: CourseLanguageOption): string => {
+  let out = ` ${text} `;
+  for (const token of languageTokens(language)) {
+    out = isAsciiToken(token)
+      ? out.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}(?=[^a-z0-9]|$)`, "gi"), "$1")
+      : out.replace(new RegExp(escapeRegExp(token), "giu"), "");
+  }
+  const cleaned = out
+    // Brackets the language word sat in: "Beginner ()" / "(, Live)".
+    .replace(new RegExp(`\\(\\s*(?:${SEPARATOR}\\s*)*\\)|\\[\\s*\\]|\\{\\s*\\}`, "g"), " ")
+    .replace(new RegExp(`\\(\\s*(?:${SEPARATOR}\\s*)+`, "g"), "(")
+    .replace(new RegExp(`(?:\\s*${SEPARATOR})+\\s*\\)`, "g"), ")")
+    .replace(/\s+/g, " ")
+    // "Beginner - - Batch 2" → "Beginner - Batch 2".
+    .replace(REPEATED_SEPARATORS, " $1 ")
+    .replace(DANGLING_SEPARATORS, "")
+    .trim();
+  return /[\p{L}\p{N}]/u.test(cleaned) ? cleaned : "";
+};
+
+/**
+ * What a version's level says beyond its language, for display: "Advanced"
+ * for "Advanced Hindi", "" for a level that is only its language ("Hindi") or
+ * a placeholder; without a language, the level itself. The level is
+ * translated first (live data), then its language words come out — so a Hindi
+ * page shows "उन्नत" for "Advanced Hindi" when the site translates it.
+ */
+export const levelBeyondLanguage = (
+  levelName: string | null | undefined,
+  language: CourseLanguageOption | null | undefined,
+  translate: (s: string) => string = (s) => s,
+): string => {
+  // Translated as stored (the dictionary is keyed by the stored text).
+  const raw = levelName || "";
+  if (!isMeaningfulLevel(raw)) return "";
+  if (!language) return translate(raw).trim();
+  if (!stripLanguageWords(raw, language)) return "";
+  const shown = translate(raw).trim();
+  return stripLanguageWords(shown, language) || shown;
+};
+
 /**
  * What a cart row says about its version: the language chip ("हिं") when the
- * level names a language, otherwise the level itself ("Batch 2"), otherwise
- * nothing.
+ * level names a language — with the rest of the level ("Advanced") when it
+ * says more than the language — otherwise the level itself ("Batch 2"),
+ * otherwise nothing. `level` comes out translated (pass the site's translate).
  */
 export const versionLabel = (
   item: Pick<SiteCartItem, "languageCode" | "levelName">,
   languages?: CourseLanguageOption[],
-): { chip: string; label: string } | null => {
+  translate?: (s: string) => string,
+): { chip: string; label: string; level?: string } | null => {
   const lang = languageOption(item.languageCode, languages);
-  if (lang) return { chip: lang.chip || lang.label, label: lang.label };
+  if (lang) {
+    const level = levelBeyondLanguage(item.levelName, lang, translate);
+    return { chip: lang.chip || lang.label, label: lang.label, ...(level ? { level } : {}) };
+  }
   if (item.languageCode) return { chip: item.languageCode.toUpperCase(), label: item.languageCode };
   if (isMeaningfulLevel(item.levelName)) return { chip: item.levelName!, label: item.levelName! };
   return null;

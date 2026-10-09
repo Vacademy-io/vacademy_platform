@@ -3,9 +3,11 @@
  * Languages card, the Translations panel and the publish checks.
  *
  * Authored text = every translatable string a visitor can see in the page
- * sections (column children included), page SEO and the global header/footer.
- * It is exactly the set the learner renderer localizes, so "100%" means the
- * whole page reads in that language.
+ * sections (column children included), page titles and SEO, the global
+ * header/footer and the site settings the public site translates (course
+ * languages, intro captions, WhatsApp, Course Finder, lead popup). It is
+ * exactly the set the learner localizes, so "100%" means the whole page
+ * reads in that language.
  */
 import {
     collectTranslatableStrings,
@@ -16,9 +18,10 @@ import {
     type TranslationDictionary,
 } from '../../-utils/catalogue-i18n';
 import type { CatalogueConfig, Component } from '../../-types/editor-types';
+import { effectiveCourseLanguages } from '../settings/course-languages';
 import { LOCALE_LABELS } from '@/i18n/locales';
 
-type SiteConfig = Pick<CatalogueConfig, 'pages' | 'globalSettings'> | null | undefined;
+type SiteConfig = Pick<CatalogueConfig, 'pages' | 'globalSettings' | 'introPage'> | null | undefined;
 
 /** What a language is called in the builder: its own name ('English', 'हिन्दी'). */
 export const languageName = (code: string, fallbackLabel?: string): string =>
@@ -102,6 +105,22 @@ const collectSettingsTexts = (node: unknown, out: string[], seen: Set<string>, d
     }
 };
 
+/**
+ * One text the site shows through its dictionary as is (a page title, a
+ * language chip, a slide caption), stored trimmed: the learner looks a
+ * text up exactly and then trimmed, so the trimmed key serves both. Blanks,
+ * links and bare numbers are skipped.
+ */
+const pushShownText = (value: unknown, out: string[], seen: Set<string>): void => {
+    if (typeof value !== 'string') return;
+    const text = value.trim();
+    if (!text || seen.has(text)) return;
+    if (/^(https?:|mailto:|tel:|\/\/|www\.)/i.test(text)) return;
+    if (/^[\d\s.,:;%+\-–—/×x*₹$€£¥()]+$/.test(text)) return;
+    seen.add(text);
+    out.push(text);
+};
+
 export const collectSiteStrings = (config: SiteConfig): string[] => {
     const out: string[] = [];
     const seen = new Set<string>();
@@ -110,10 +129,22 @@ export const collectSiteStrings = (config: SiteConfig): string[] => {
     const layout = gs?.layout;
     visitComponent(layout?.header, out, seen);
     for (const page of config.pages || []) {
+        // The title band of a page and the header's site search show the
+        // title of every published page.
+        if (page && page.published !== false) pushShownText(page.title, out, seen);
         for (const c of page?.components || []) visitComponent(c, out, seen);
         if (page?.seo) collectTranslatableStrings(page.seo, out, seen);
     }
     visitComponent(layout?.footer, out, seen);
+    // Course language names and chips: the language filter, card chips,
+    // course page picker and cart lines (the built-in English / Hindi pair
+    // when the site keeps no list of its own).
+    if (gs?.courseLanguages?.enabled) {
+        for (const lang of effectiveCourseLanguages(gs.courseLanguages)) {
+            pushShownText(lang?.label, out, seen);
+            pushShownText(lang?.chip, out, seen);
+        }
+    }
     if (gs?.whatsapp?.enabled !== false) collectSettingsTexts(gs?.whatsapp, out, seen);
     const stepLabels = gs?.courseFinder?.stepLabels;
     if (gs?.courseFinder?.enabled && stepLabels) {
@@ -124,7 +155,13 @@ export const collectSiteStrings = (config: SiteConfig): string[] => {
             }
         }
     }
-    if (gs?.introPage?.enabled) collectSettingsTexts(gs.introPage, out, seen);
+    // The intro screen lives at the top of the config (the learner reads
+    // catalogue.introPage); only its slide captions are translated there —
+    // its buttons show the app's own labels.
+    const intro = config.introPage ?? gs?.introPage;
+    if (intro?.enabled && Array.isArray(intro.imageSlider?.images)) {
+        for (const image of intro.imageSlider.images) pushShownText(image?.caption, out, seen);
+    }
     if (gs?.leadCollection?.enabled) collectSettingsTexts(gs.leadCollection?.fields, out, seen);
     return out;
 };

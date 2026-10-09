@@ -153,6 +153,10 @@ const READDED = 'If your catalogue still sells it, it was added again on the cat
  * The sync sells a course only through its default invite link, so a closed
  * link is fixed by opening THAT link — never by reopening whichever link was
  * reported, which may be a promo or private one.
+ *
+ * currency_mismatch covers two cases: a currency other than the page's, and
+ * a course whose own invite link and plan name different currencies (on any
+ * page, even an empty one). Its own product page would not fix the second.
  */
 const SYNC_REASONS: Record<string, SyncReasonText> = {
     no_active_invite: {
@@ -188,8 +192,8 @@ const SYNC_REASONS: Record<string, SyncReasonText> = {
         hint: 'Add it by hand if that price is intended.',
     },
     currency_mismatch: {
-        label: 'Priced in a different currency from this store page',
-        hint: 'Sell it from its own product page.',
+        label: 'Priced in a different currency from this store page, or its invite link and payment plan name different currencies',
+        hint: 'If its invite link and payment plan name different currencies, give them the same one, then sync again. Otherwise sell it from its own product page.',
     },
     vendor_mismatch: {
         label: 'Paid through a different payment gateway from this store page',

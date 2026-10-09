@@ -191,6 +191,12 @@ const DATA_BOUND = {
         "has one, keep its libraryId/rootFolderId exactly as they are; you may change only title/subtitle/" +
         "align and the look (layout: cards|tiles|list, imageShape: landscape|square|portrait|none, columns " +
         "2-5, show* toggles). For a generated course listing use courseCatalog or productPageOffer.",
+    learningPath:
+        "Renders LIVE learning paths: one product page's courses as numbered steps (mode 'single', productPageCode) " +
+        "or the product pages of a folder library as path cards (mode 'list', libraryId/folderId). The product page " +
+        "and library are chosen by the admin, so NEVER ADD this section (a generated one renders as nothing). When a " +
+        "page already has one, keep productPageCode/libraryId/folderId exactly as they are; you may change only " +
+        "title/subtitle/labels/showStepNumbers/showTotal/streamFromUrl.",
     courseCatalog: 'Renders the institute\'s LIVE course grid. Configure filters/title only — never invent course entries.',
     bookCatalogue: 'Renders the LIVE book store. Configure presentation only.',
     cartComponent: 'Live cart. Placement only.',

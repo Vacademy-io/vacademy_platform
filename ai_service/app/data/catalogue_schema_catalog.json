@@ -25,9 +25,13 @@
         "authLinks": [
           {
             "label": "Login",
-            "route": "login"
+            "route": "login",
+            "style": "primary"
           }
-        ]
+        ],
+        "activeStyle": "pill",
+        "showSearch": false,
+        "showLanguageSwitcher": true
       }
     },
     {
@@ -128,7 +132,61 @@
             "roundedEdges": true,
             "backgroundColor": "#FFFFFF"
           }
-        }
+        },
+        "streams": {
+          "enabled": false,
+          "source": "folderLibrary",
+          "libraryId": "",
+          "sticky": true,
+          "labelMode": "title"
+        },
+        "showFilterCounts": true,
+        "showAppliedChips": true,
+        "mobileFilterSheet": true,
+        "categoryFilter": {
+          "enabled": true
+        },
+        "languageFilter": {
+          "enabled": true
+        },
+        "priceFilter": {
+          "enabled": true,
+          "showFree": true,
+          "maxOptions": [
+            500,
+            1000
+          ]
+        },
+        "groupLanguageVersions": true,
+        "badges": {
+          "enabled": true,
+          "types": [
+            "bestseller",
+            "popular",
+            "new",
+            "free"
+          ],
+          "newDays": 60,
+          "bestsellerTop": 3,
+          "max": 2
+        },
+        "quickFilters": [
+          {
+            "id": "qf-popular",
+            "label": "",
+            "kind": "popular"
+          },
+          {
+            "id": "qf-new",
+            "label": "",
+            "kind": "new"
+          },
+          {
+            "id": "qf-free",
+            "label": "",
+            "kind": "free"
+          }
+        ]
       },
       "dataBound": "Renders the institute's LIVE course grid. Configure filters/title only — never invent course entries."
     },
@@ -1014,6 +1072,29 @@
         "coursePageSize": 9
       },
       "dataBound": "Renders a LIVE folder library (Class → Subject → …) that visitors open one level at a time; a product page inside the open folder shows its courses with add-to-cart. The folders live in a shared library the admin builds in Manage Pages → Folders and binds by hand, so NEVER ADD this section to a page (a generated one has no library and renders as nothing). When a page already has one, keep its libraryId/rootFolderId exactly as they are; you may change only title/subtitle/align and the look (layout: cards|tiles|list, imageShape: landscape|square|portrait|none, columns 2-5, show* toggles). For a generated course listing use courseCatalog or productPageOffer."
+    },
+    {
+      "type": "learningPath",
+      "templateKey": "learningPath",
+      "exampleProps": {
+        "mode": "single",
+        "productPageCode": "",
+        "productPageName": "",
+        "libraryId": "",
+        "libraryName": "",
+        "folderId": "",
+        "streamFromUrl": true,
+        "pathParam": "path",
+        "title": "Learning paths",
+        "subtitle": "Courses in the order we recommend taking them.",
+        "showStepNumbers": true,
+        "showTotal": true,
+        "addAllLabel": "Add whole path to cart",
+        "enrolLabel": "Enrol in this path",
+        "viewPathLabel": "View path",
+        "emptyText": "Learning paths are coming soon."
+      },
+      "dataBound": "Renders LIVE learning paths: one product page's courses as numbered steps (mode 'single', productPageCode) or the product pages of a folder library as path cards (mode 'list', libraryId/folderId). The product page and library are chosen by the admin, so NEVER ADD this section (a generated one renders as nothing). When a page already has one, keep productPageCode/libraryId/folderId exactly as they are; you may change only title/subtitle/labels/showStepNumbers/showTotal/streamFromUrl."
     },
     {
       "type": "htmlBlock",

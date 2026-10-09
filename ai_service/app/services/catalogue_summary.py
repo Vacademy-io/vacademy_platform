@@ -35,6 +35,7 @@ COMPONENT_LABELS: Dict[str, str] = {
     "bookCatalogue": "Book Catalogue",
     "productPageOffer": "Product Page Offer",
     "folderBrowser": "Folder Browser",
+    "learningPath": "Learning Path",
     "productCourseGrid": "Course Grid (full catalogue)",
     "mediaShowcase": "Media Showcase",
     "courseShowcase": "Course showcase",
@@ -75,7 +76,7 @@ COMPONENT_LABELS: Dict[str, str] = {
 
 #: Blocks whose content comes from live institute data rather than authored props.
 LIVE_DATA_TYPES = frozenset({
-    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer", "folderBrowser",
+    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer", "folderBrowser", "learningPath",
     "courseDetails", "bookCatalogue", "bookDetails", "announcementFeed", "leadForm",
 })
 
@@ -272,6 +273,16 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
             return "folder library: NONE selected (section hidden from visitors)"
         start = " from a chosen folder" if str(p.get("rootFolderId") or "").strip() else ""
         return f'folders from library "{name or lib}"{start} (live; product pages inside show their courses)'
+    if t == "learningPath":
+        if str(p.get("mode") or "single") == "list":
+            lib = str(p.get("libraryId") or "").strip()
+            if not lib:
+                return "learning paths: NO folder library selected (section hidden from visitors)"
+            return f'learning paths from folder library "{str(p.get("libraryName") or lib)}" (live)'
+        code = str(p.get("productPageCode") or "").strip()
+        if not code:
+            return "learning path: NO product page selected (section hidden from visitors)"
+        return f'learning path = product page "{str(p.get("productPageName") or code)}" in step order (live)'
     if t == "courseDetails":
         return "the selected course's details (live)"
     if t in ("bookCatalogue", "bookDetails"):
@@ -645,6 +656,16 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "fix": "Pick a product page in its properties, or remove the section. It is hidden from visitors as-is.",
                     **cctx,
                 })
+            if c.get("type") == "learningPath":
+                list_mode = str(p.get("mode") or "single") == "list"
+                bound = str((p.get("libraryId") if list_mode else p.get("productPageCode")) or "").strip()
+                if not bound:
+                    issues.append({
+                        "severity": "error",
+                        "title": "A Learning Path section has no " + ("folder library" if list_mode else "product page") + " selected",
+                        "fix": "Pick one in its properties, or remove the section. It is hidden from visitors as-is.",
+                        **cctx,
+                    })
             if c.get("type") == "folderBrowser" and not str(p.get("libraryId") or "").strip():
                 issues.append({
                     "severity": "error",

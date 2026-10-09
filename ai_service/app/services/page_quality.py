@@ -21,7 +21,7 @@ from .catalogue_summary import CAPTURE_TYPES, heading_of, strip_html, walk_compo
 PROOF_TYPES = frozenset({"statsHighlights", "testimonialSection", "logoCloud", "trustChip"})
 CONVERSION_TYPES = frozenset({"ctaBanner", "leadForm", "contactForm", "newsletterSignup", "pricingTable",
                               "courseCatalog", "courseShowcase", "productCourseGrid", "productPageOffer",
-                              "folderBrowser"})
+                              "folderBrowser", "learningPath"})
 BAND_TYPES = frozenset({"heroSection", "ctaBanner", "statsHighlights", "logoCloud", "marquee", "trustChip", "spacer"})
 
 _PLACEHOLDER_RE = re.compile(

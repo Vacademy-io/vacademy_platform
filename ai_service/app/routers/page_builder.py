@@ -3433,8 +3433,8 @@ def _build_variants_prompt(
         parts.append(
             f"The current section is a '{target.get('type')}'. Prefer keeping that type; switch to a "
             "different component only when the instruction genuinely calls for a different kind of "
-            "section, and never to header, footer, productPageOffer or folderBrowser (an admin must "
-            "bind those to a product page / folder library by hand, so a generated one renders as nothing)."
+            "section, and never to header, footer, productPageOffer, folderBrowser or learningPath (an admin "
+            "must bind those to a product page / folder library by hand, so a generated one renders as nothing)."
         )
     parts.append(_VOCAB_HEADER + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
@@ -3556,7 +3556,7 @@ async def generate_section_variants(
             continue
         # productPageOffer needs an admin-chosen product page, so a generated
         # one is guaranteed to render as nothing (audit rule 'offer-unbound').
-        if comp_in.get("type") in ("productPageOffer", "folderBrowser") and comp_in.get("type") != target.get("type"):
+        if comp_in.get("type") in ("productPageOffer", "folderBrowser", "learningPath") and comp_in.get("type") != target.get("type"):
             rejected += 1
             continue
         # Fresh seen_ids per variant: they are alternatives, not siblings, so

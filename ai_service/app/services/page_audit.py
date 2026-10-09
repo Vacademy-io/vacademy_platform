@@ -48,7 +48,7 @@ _LIST_PROPS: Dict[str, str] = {
 # no way to convert, which is the whole reason the page exists.
 _CONVERSION_TYPES = {
     "ctaBanner", "leadForm", "contactForm", "newsletterSignup",
-    "courseCatalog", "productPageOffer", "folderBrowser", "pricingTable", "bookCatalogue",
+    "courseCatalog", "productPageOffer", "folderBrowser", "learningPath", "pricingTable", "bookCatalogue",
 }
 _CONVERSION_ACTIONS = {"openLeadCollection", "openAudienceForm", "enroll", "enrol"}
 
@@ -186,6 +186,18 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
             "generated. Use courseCatalog if the page needs a live listing.",
             cid,
         ))
+
+    # 2c. A learning path bound to no product page (single) or library (list).
+    if ctype == "learningPath":
+        list_mode = str(props.get("mode") or "single") == "list"
+        bound = str((props.get("libraryId") if list_mode else props.get("productPageCode")) or "").strip()
+        if not bound:
+            issues.append(_issue(
+                "path-unbound", "fix",
+                "'learningPath' has no " + ("libraryId" if list_mode else "productPageCode") + ", so the section is invisible to visitors.",
+                "Remove this component — only an admin can pick the product page or folder library, so it cannot be generated.",
+                cid,
+            ))
 
     # 3. ctaBanner's renderer reads {heading, subheading, button}; without
     #    them it paints an empty coloured band.
@@ -343,7 +355,7 @@ def audit_reference_fidelity(
         "features": {"featureGrid", "detailBlocks", "tabsAccordion"},
         "stats": {"statsHighlights", "trustChip"},
         "steps": {"stepsProcess"},
-        "courses": {"courseCatalog", "featureGrid", "detailBlocks", "productPageOffer", "folderBrowser", "bookCatalogue"},
+        "courses": {"courseCatalog", "featureGrid", "detailBlocks", "productPageOffer", "folderBrowser", "learningPath", "bookCatalogue"},
         "testimonials": {"testimonialSection"},
         "faq": {"tabsAccordion", "faqSection"},
         "cta": {"ctaBanner", "leadForm", "contactForm", "newsletterSignup"},

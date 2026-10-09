@@ -606,6 +606,63 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
     });
 });
 
+describe('decideLocalizedEdit — picking another product page in हिन्दी', () => {
+    // The pickers write the page code and its cached name in one edit
+    // (ProductPageOfferEditor, LearningPathEditor). The cached name is the
+    // page's own name, which the Translations panel offers as a live text, so
+    // it is often translated already: the pick must still reach the base.
+    const DICT = {
+        'JEE Store': 'जेईई स्टोर',
+        'Courses on offer': 'ऑफ़र पर कोर्स',
+        'Learning paths': 'सीखने के रास्ते',
+    };
+    const reverse = reverseDictionary(DICT);
+    const sections: Array<[string, Record<string, unknown>]> = [
+        [
+            'productPageOffer',
+            {
+                productPageCode: 'jee-store',
+                productPageName: 'JEE Store',
+                title: 'Courses on offer',
+                columns: 3,
+                showViewAll: true,
+            },
+        ],
+        [
+            'learningPath',
+            {
+                mode: 'single',
+                productPageCode: 'jee-store',
+                productPageName: 'JEE Store',
+                libraryId: '',
+                libraryName: '',
+                title: 'Learning paths',
+            },
+        ],
+    ];
+
+    it.each(sections)(
+        'a %s section takes the new page code and cached name for every language, with the name translated',
+        (_type, base) => {
+            const view = localizeDeep(base, DICT);
+            // The cached name is builder data, shown as stored; the title is copy.
+            expect(view.productPageName).toBe('JEE Store');
+            expect(view.title).not.toBe(base.title);
+            const d = decideLocalizedEdit(
+                base,
+                view,
+                { ...view, productPageCode: 'neet-store', productPageName: 'NEET Store' },
+                reverse
+            );
+            expect(d).toEqual({
+                kind: 'commit',
+                base: { ...base, productPageCode: 'neet-store', productPageName: 'NEET Store' },
+                translations: {},
+            });
+        }
+    );
+});
+
 describe('decideLocalizedEdit — an option picked from a list is a shared setting in any language', () => {
     const HI_COPY = {
         'Our courses': 'हमारे कोर्स',
@@ -909,6 +966,38 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         );
         expect(stored('strip').props.tag).toBe('Featured');
         expect(useLocalizedEditNotice.getState().notice?.reason).toBe('sharedData');
+    });
+
+    it('in हिन्दी, picking another product page saves the pick for every language once its name is translated', () => {
+        const config = makeConfig();
+        config.globalSettings.i18n!.strings!.hi!['JEE Store'] = 'जेईई स्टोर';
+        config.pages[0]!.components.push({
+            id: 'offer',
+            type: 'productPageOffer',
+            enabled: true,
+            props: { productPageCode: 'jee-store', productPageName: 'JEE Store', title: 'Courses' },
+        } as never);
+        useEditorStore.getState().setConfig(config);
+        useEditorStore.getState().setEditingLocale('hi');
+        const { result } = renderHook(useStoreBackedEditing);
+        const offer = result.current.config!.pages[0]!.components[2]!;
+        expect(offer.props.title).toBe('कोर्स');
+        act(() =>
+            result.current.updateComponent('home', 'offer', {
+                props: {
+                    ...offer.props,
+                    productPageCode: 'neet-store',
+                    productPageName: 'NEET Store',
+                },
+            })
+        );
+        expect(useLocalizedEditNotice.getState().notice).toBeNull();
+        expect(useEditorStore.getState().config!.pages[0]!.components[2]!.props).toEqual({
+            productPageCode: 'neet-store',
+            productPageName: 'NEET Store',
+            title: 'Courses',
+        });
+        expect(strings()).toEqual({ ...HI, 'JEE Store': 'जेईई स्टोर' });
     });
 
     it('passes non-props updates (enabled, anchor, style) straight through', () => {

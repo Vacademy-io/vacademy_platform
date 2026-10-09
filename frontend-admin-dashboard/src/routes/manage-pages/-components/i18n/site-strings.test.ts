@@ -158,6 +158,32 @@ describe('collectSiteStrings', () => {
         expect(collectSiteStrings(config)).toContain('Spring Campaign');
     });
 
+    it("leaves out a picked product page's cached name: the live tab lists the page's own name", () => {
+        const config = site();
+        config.pages[0]!.components.push(
+            {
+                id: 'offer',
+                type: 'productPageOffer',
+                enabled: true,
+                props: {
+                    productPageCode: 'jee-store',
+                    productPageName: 'JEE Store',
+                    title: 'On offer',
+                },
+            } as never,
+            {
+                id: 'path',
+                type: 'learningPath',
+                enabled: true,
+                props: { mode: 'single', productPageCode: 'neet', productPageName: 'NEET Path' },
+            } as never
+        );
+        const strings = collectSiteStrings(config);
+        expect(strings).toContain('On offer');
+        expect(strings).not.toContain('JEE Store');
+        expect(strings).not.toContain('NEET Path');
+    });
+
     it("counts an announcement's tag pill and a detail block's eyebrow — not a course tag to filter by", () => {
         const config = site();
         config.pages[0]!.components.push(

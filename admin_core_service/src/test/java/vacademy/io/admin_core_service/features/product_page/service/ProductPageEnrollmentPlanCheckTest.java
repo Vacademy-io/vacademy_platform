@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -246,6 +247,24 @@ class ProductPageEnrollmentPlanCheckTest {
         // Another course's locked plan is not this course's.
         assertThrows(ConflictException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-b", pageMappings));
+    }
+
+    @Test
+    @DisplayName("the plan the gateway is read from: the requested one when locked, else the locked one, never any other")
+    void pricedPlanRule() {
+        mapping("psli-a", "plan-single", "ONE_TIME");
+        mapping("psli-a", "plan-combo", "ONE_TIME");
+        mapping("psli-b", "plan-b", "ONE_TIME");
+
+        assertEquals("plan-combo", ProductPageEnrollmentService.pricedPlanId("psli-a", "plan-combo", pageMappings));
+        assertEquals("plan-combo", ProductPageEnrollmentService.pricedPlanId("psli-a", " plan-combo ", pageMappings));
+        assertEquals("plan-single", ProductPageEnrollmentService.pricedPlanId("psli-a", null, pageMappings));
+        assertEquals("plan-single", ProductPageEnrollmentService.pricedPlanId("psli-a", "", pageMappings));
+        // A stale or foreign plan is never read: the course's own locked plan stands in, as in Phase 2.
+        assertEquals("plan-single", ProductPageEnrollmentService.pricedPlanId("psli-a", "plan-cheap", pageMappings));
+        assertEquals("plan-single", ProductPageEnrollmentService.pricedPlanId("psli-a", "plan-b", pageMappings));
+        // Nothing to read for a row the page does not sell; pricing refuses it.
+        assertNull(ProductPageEnrollmentService.pricedPlanId("psli-unknown", "plan-a", pageMappings));
     }
 
     /* ── through the endpoint ──────────────────────────────────────────── */

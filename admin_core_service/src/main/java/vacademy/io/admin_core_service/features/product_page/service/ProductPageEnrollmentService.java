@@ -234,18 +234,29 @@ public class ProductPageEnrollmentService {
                         .map(ProductPageSelectedMappingDTO::getPsInvitePaymentOptionId)
                         .collect(Collectors.toList()));
 
-        // Override vendor/vendorId/currency from the first EnrollInvite so we always
-        // use the invite's configured payment gateway, ignoring whatever the client
-        // sends. Settled before pricing, which has to know whether this call is
-        // Razorpay Phase 2.
+        // Override vendor/vendorId from the invite of the first course in the cart
+        // that costs something (gatewayInvite), and currency from the first
+        // EnrollInvite (checkoutCurrency below replaces it with the priced
+        // courses' one), so we always use the invites' configured payment gateway,
+        // ignoring whatever the client sends. Settled before pricing, which has to
+        // know whether this call is Razorpay Phase 2, so the courses' plans are
+        // read here by the rule pricing locks them with, which Phase 1 and Phase 2
+        // share (gatewayPlans): the same cart picks the same gateway in both.
         PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         EnrollInvite firstInvite = null;
         if (!selectedMappings.isEmpty()) {
             firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
-            if (firstInvite.getVendor() != null)
-                payReq.setVendor(firstInvite.getVendor());
-            if (firstInvite.getVendorId() != null)
-                payReq.setVendorId(firstInvite.getVendorId());
+            EnrollInvite gatewayInvite = gatewayInvite(selectedMappings,
+                    gatewayPlans(request.getSelectedMappings(), selectedMappings));
+            if (gatewayInvite != firstInvite && !Objects.equals(gatewayInvite.getVendor(), firstInvite.getVendor())) {
+                log.info("Product page checkout: the cart's first course (invite {}, gateway {}) is free; charging "
+                        + "through the first priced course's gateway {} (invite {})", firstInvite.getId(),
+                        firstInvite.getVendor(), gatewayInvite.getVendor(), gatewayInvite.getId());
+            }
+            if (gatewayInvite.getVendor() != null)
+                payReq.setVendor(gatewayInvite.getVendor());
+            if (gatewayInvite.getVendorId() != null)
+                payReq.setVendorId(gatewayInvite.getVendorId());
             if (firstInvite.getCurrency() != null)
                 payReq.setCurrency(firstInvite.getCurrency());
         }
@@ -1084,8 +1095,9 @@ public class ProductPageEnrollmentService {
         }
 
         // In display order, with each bridge row loaded in the same query. The
-        // first selected course decides the gateway and currency below, so the
-        // order must be the page's own rather than whatever the database returns.
+        // first selected course that costs something decides the gateway below
+        // (gatewayInvite), so the order must be the page's own rather than
+        // whatever the database returns.
         List<ProductPageInviteMapping> activeMappings = mappingRepository
                 .findOrderedWithBridge(page.getId(), List.of(STATUS_ACTIVE));
 
@@ -1180,6 +1192,59 @@ public class ProductPageEnrollmentService {
     }
 
     /**
+     * The invite whose payment gateway charges a product-page order: the
+     * first selected course, in display order, that costs something (a plan
+     * priced above 0), else the first selected course.
+     *
+     * A free course adds nothing to the order, and its gateway is often a
+     * fallback its invite got before the institute set one up, so it never
+     * decides how the priced courses are paid: a free STRIPE orientation
+     * first in a cart of RAZORPAY courses used to send the whole order to
+     * Stripe. This is the rule checkoutCurrency applies to the currency, and
+     * the one by-code shows the page's gateway by
+     * (ProductPageService.gatewayMapping). A cart of free courses only (also
+     * a basket-priced one, whose courses are all 0) keeps the first course's
+     * invite, as before; so does a cart whose first course is priced.
+     *
+     * Visible for testing.
+     *
+     * @param selectedMappings the courses in the order, in display order, with their bridge rows; not empty
+     * @param planByBridgeId   each course's plan, by bridge row id
+     */
+    static EnrollInvite gatewayInvite(List<ProductPageInviteMapping> selectedMappings,
+                                      Map<String, PaymentPlan> planByBridgeId) {
+        for (ProductPageInviteMapping m : selectedMappings) {
+            PaymentPlan plan = planByBridgeId.get(m.getPsInvitePaymentOption().getId());
+            if (plan != null && plan.getActualPrice() > 0) {
+                return m.getPsInvitePaymentOption().getEnrollInvite();
+            }
+        }
+        return selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
+    }
+
+    /**
+     * Each selected course's plan by bridge row id, read before pricing so
+     * gatewayInvite can tell the priced courses from the free ones: the plan
+     * pricedPlanId resolves, which is the plan pricing locks the course on
+     * for every request it accepts, in Razorpay Phase 1 and Phase 2 alike.
+     * Nothing is refused here; pricing below still refuses what it refused
+     * before, in the same order. A course whose plan cannot be read counts
+     * as free.
+     */
+    private Map<String, PaymentPlan> gatewayPlans(List<ProductPageSelectedMappingDTO> selections,
+                                                  List<ProductPageInviteMapping> selectedMappings) {
+        Map<String, PaymentPlan> plans = new HashMap<>();
+        for (ProductPageSelectedMappingDTO sel : selections) {
+            String bridgeId = sel.getPsInvitePaymentOptionId();
+            String planId = pricedPlanId(bridgeId, sel.getPaymentPlanId(), selectedMappings);
+            if (planId != null) {
+                paymentPlanRepository.findById(planId).ifPresent(plan -> plans.put(bridgeId, plan));
+            }
+        }
+        return plans;
+    }
+
+    /**
      * The plan a selected course is priced and enrolled on: the plan the page
      * locked on that course's mapping, never one the request picks.
      *
@@ -1218,14 +1283,7 @@ public class ProductPageEnrollmentService {
      */
     static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
                                List<ProductPageInviteMapping> pageMappings, boolean refuseUnlocked) {
-        Set<String> locked = new LinkedHashSet<>();
-        for (ProductPageInviteMapping m : pageMappings) {
-            if (m.getPsInvitePaymentOption() != null
-                    && Objects.equals(m.getPsInvitePaymentOption().getId(), psInvitePaymentOptionId)
-                    && StringUtils.hasText(m.getPaymentPlanId())) {
-                locked.add(m.getPaymentPlanId());
-            }
-        }
+        Set<String> locked = lockedPlanIds(psInvitePaymentOptionId, pageMappings);
         if (locked.isEmpty()) {
             throw new VacademyException("Mapping " + psInvitePaymentOptionId + " is not part of this course page");
         }
@@ -1246,6 +1304,39 @@ public class ProductPageEnrollmentService {
         log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
                 requested, psInvitePaymentOptionId, locked);
         throw new ConflictException(PRICE_CHANGED_MESSAGE);
+    }
+
+    /**
+     * The plan a course is priced on when lockedPlanId accepts the request:
+     * the requested plan when the page locks it on that course's mapping,
+     * else the mapping's own locked plan (what Razorpay Phase 2 resolves a
+     * stale plan to). It never refuses and never logs, and never names a plan
+     * the page does not lock; null when the page locks no plan on the row.
+     *
+     * Visible for testing.
+     */
+    static String pricedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings) {
+        Set<String> locked = lockedPlanIds(psInvitePaymentOptionId, pageMappings);
+        if (locked.isEmpty()) {
+            return null;
+        }
+        String requested = StringUtils.hasText(requestedPlanId) ? requestedPlanId.trim() : null;
+        return requested != null && locked.contains(requested) ? requested : locked.iterator().next();
+    }
+
+    /** The plans the page locks on a bridge row's mappings, in page order. */
+    private static Set<String> lockedPlanIds(String psInvitePaymentOptionId,
+                                             List<ProductPageInviteMapping> pageMappings) {
+        Set<String> locked = new LinkedHashSet<>();
+        for (ProductPageInviteMapping m : pageMappings) {
+            if (m.getPsInvitePaymentOption() != null
+                    && Objects.equals(m.getPsInvitePaymentOption().getId(), psInvitePaymentOptionId)
+                    && StringUtils.hasText(m.getPaymentPlanId())) {
+                locked.add(m.getPaymentPlanId());
+            }
+        }
+        return locked;
     }
 
     private PaymentInitiationRequestDTO clonePaymentRequest(PaymentInitiationRequestDTO source) {

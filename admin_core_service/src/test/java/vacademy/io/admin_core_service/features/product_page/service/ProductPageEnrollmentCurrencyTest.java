@@ -42,11 +42,13 @@ import vacademy.io.admin_core_service.features.user_subscription.service.UserPla
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 
 import javax.crypto.Mac;
@@ -61,6 +63,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -79,7 +82,9 @@ import static org.mockito.Mockito.when;
  * none. A cart whose courses disagree is refused (409) before a user, a
  * payment log or an enrollment exists, and the request's own currency never
  * overrides one the courses name. Razorpay Phase 2 (the money is taken) and
- * free carts are never refused.
+ * free carts are never refused. The order goes through one gateway too: the
+ * invite's of the first course in the cart that costs something, never a
+ * free course's (the first course's when none costs anything).
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -515,5 +520,147 @@ class ProductPageEnrollmentCurrencyTest {
 
         assertEquals("PAID", res.getStatus());
         verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+    }
+
+    /* ── the gateway: the first priced course's ────────────────────────── */
+
+    /** Razorpay answers Phase 1 with an order; each course's enrollment is provisioned without a child log. */
+    private void razorpayOrder() {
+        PaymentResponseDTO order = new PaymentResponseDTO();
+        order.setResponseData(Map.of("razorpayKeyId", "rzp_key", "razorpayOrderId", ORDER));
+        when(paymentService.handlePaymentWithUser(any(), eq(INSTITUTE), any(), isNull())).thenReturn(order);
+        when(oneTimePaymentOptionOperation.enrollLearnerToBatch(any(), any(), anyString(), any(), any(), any(), any(),
+                any())).thenReturn(new LearnerEnrollResponseDTO());
+    }
+
+    private static EnrollInvite inviteOf(ProductPageInviteMapping m) {
+        return m.getPsInvitePaymentOption().getEnrollInvite();
+    }
+
+    @Test
+    @DisplayName("a free course first in the cart does not pick the gateway: the first priced course's invite does")
+    void freeCourseFirstDoesNotPickTheGateway() {
+        // A free orientation labelled INR on a stale STRIPE invite, then paid AUD courses on Eway.
+        ProductPageInviteMapping free = course("free", 0, "STRIPE", "INR", "INR");
+        ProductPageInviteMapping be = course("be", 499, "EWAY", "AUD", "AUD");
+        course("cb", 299, "EWAY", "AUD", "AUD");
+        inviteOf(free).setVendorId("stripe-account");
+        inviteOf(be).setVendorId("eway-account");
+
+        // The learner app sends the gateway and currency by-code read off the free course.
+        service.enrollForProductPage(checkout("STRIPE", "INR", "free", "be", "cb"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("EWAY", charged.getVendor());
+        assertEquals("eway-account", charged.getVendorId());
+        assertEquals("AUD", charged.getCurrency());
+        assertEquals(798.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("a cart whose first course is priced is charged through that course's gateway, as before")
+    void pricedFirstCourseKeepsItsGateway() {
+        inviteOf(course("a", 499, "STRIPE", "INR", "INR")).setVendorId("stripe-account");
+        course("free", 0, "EWAY", "INR", "INR");
+        course("b", 299, "RAZORPAY", "INR", "INR");
+
+        service.enrollForProductPage(checkout("STRIPE", "INR", "a", "free", "b"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("STRIPE", charged.getVendor());
+        assertEquals("stripe-account", charged.getVendorId());
+        assertEquals("INR", charged.getCurrency());
+        assertEquals(798.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("a cart of free courses only keeps the first course's gateway, as before (a basket price goes through it)")
+    void freeCartKeepsTheFirstCoursesGateway() {
+        course("x", 0, "STRIPE", "INR", "INR");
+        course("y", 0, "RAZORPAY", "INR", "INR");
+        when(basketPricingCalculator.price(any(), any())).thenReturn(new BasketPricingCalculator.BasketPrice(799, 0));
+
+        service.enrollForProductPage(checkout("RAZORPAY", "INR", "x", "y"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("STRIPE", charged.getVendor());
+        assertEquals(799.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("a free STRIPE course first in a Razorpay cart: Phase 1 opens a Razorpay order for the paid course")
+    void phase1GoesThroughThePricedCoursesGateway() {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        course("bio", 999, "RAZORPAY", "INR", "INR");
+        razorpayOrder();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(checkout("STRIPE", "INR", "intro", "bio"));
+
+        assertEquals("PAYMENT_PENDING", res.getStatus());
+        assertEquals(ORDER, res.getOrderId());
+        assertEquals(List.of("ps-intro", "ps-bio"), res.getEnrolledPackageSessionIds());
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("RAZORPAY", charged.getVendor());
+        assertEquals("INR", charged.getCurrency());
+        assertEquals(999.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("...and Phase 2 of that cart is recognised as Razorpay too, and completes the paid order")
+    void phase2OfTheSameCartIsRazorpay() throws Exception {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        course("bio", 999, "RAZORPAY", "INR", "INR");
+        when(institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData("RAZORPAY", INSTITUTE))
+                .thenReturn(Map.of("keySecret", RAZORPAY_SECRET));
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("intro", "bio"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(paymentService, userPlanService, oneTimePaymentOptionOperation);
+    }
+
+    @Test
+    @DisplayName("Phase 2 picks the same gateway after the paid course was re-planned mid-checkout, without reading the stale plan")
+    void phase2GatewaySurvivesAPlanChange() throws Exception {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        ProductPageInviteMapping bio = course("bio", 999, "RAZORPAY", "INR", "INR");
+        // The admin moved the course to plan-bio2; the browser still sends plan-bio.
+        PaymentPlan now = new PaymentPlan();
+        now.setId("plan-bio2");
+        now.setActualPrice(899);
+        now.setCurrency("INR");
+        plans.put(now.getId(), now);
+        bio.setPaymentPlanId(now.getId());
+        when(institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData("RAZORPAY", INSTITUTE))
+                .thenReturn(Map.of("keySecret", RAZORPAY_SECRET));
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("intro", "bio"));
+
+        assertEquals("PAID", res.getStatus());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verify(paymentPlanRepository, never()).findById("plan-bio");
+    }
+
+    @Test
+    @DisplayName("the gateway rule itself: the first course whose plan costs something, else the first course")
+    void gatewayInviteRule() {
+        ProductPageInviteMapping free = course("f", 0, "STRIPE", "INR", "INR");
+        ProductPageInviteMapping paid = course("p", 10, "EWAY", "AUD", "AUD");
+        ProductPageInviteMapping later = course("l", 20, "CASHFREE", "USD", "USD");
+        ProductPageInviteMapping noPlan = course("n", 30, "PHONEPE", "INR", "INR");
+        Map<String, PaymentPlan> byBridge = new HashMap<>();
+        for (ProductPageInviteMapping m : List.of(free, paid, later)) {
+            byBridge.put(m.getPsInvitePaymentOption().getId(), plans.get(m.getPaymentPlanId()));
+        }
+
+        assertSame(inviteOf(paid), ProductPageEnrollmentService.gatewayInvite(List.of(free, paid, later), byBridge));
+        // A course whose plan could not be read counts as free.
+        assertSame(inviteOf(later), ProductPageEnrollmentService.gatewayInvite(List.of(noPlan, free, later), byBridge));
+        assertSame(inviteOf(noPlan), ProductPageEnrollmentService.gatewayInvite(List.of(noPlan, free), byBridge));
+        assertSame(inviteOf(free), ProductPageEnrollmentService.gatewayInvite(List.of(free), byBridge));
     }
 }

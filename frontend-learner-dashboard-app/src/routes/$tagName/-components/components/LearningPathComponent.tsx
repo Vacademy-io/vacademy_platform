@@ -285,7 +285,9 @@ const PathDetail: React.FC<PathDetailProps> = ({
   };
 
   const lang = languagesEnabled && locale !== baseLocale ? locale : undefined;
-  const title = heading || siteT(data?.name) || productPageName || "";
+  // productPageName is the picked page's cached name: data the renderer leaves
+  // as stored, so it goes through the site dictionary here like the live name.
+  const title = heading || siteT(data?.name) || siteT(productPageName) || "";
   const countLabel = t("learningPath.courseCount", {
     count: steps.length,
     course: (steps.length === 1 ? terms.course : terms.courses).toLocaleLowerCase(),

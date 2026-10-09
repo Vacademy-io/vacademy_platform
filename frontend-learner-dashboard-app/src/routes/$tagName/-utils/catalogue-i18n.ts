@@ -66,8 +66,10 @@ const NON_TEXT_KEYS = new Set(
         'aspect', 'easing', 'direction', 'orientation', 'kind', 'param', 'op', 'key', 'ref', 'columns',
         'gap', 'radius', 'platform', 'display', 'tile', 'anchor', 'date', 'compactness', 'audience',
         'provider', 'transition', 'padding', 'margin', 'version', 'category', 'tone', 'speed', 'weight',
-        // Looked up by exact value (FEATURE_ICON_MAP[iconName]) or shown only in the builder.
-        'iconname', 'audiencename', 'gateaudiencename', 'libraryname',
+        // Looked up by exact value (FEATURE_ICON_MAP[iconName]), or the cached name of a
+        // picked campaign, library or product page: shown in the builder (a learning
+        // path's fallback title puts productPageName through siteT itself).
+        'iconname', 'audiencename', 'gateaudiencename', 'libraryname', 'productpagename',
         // Enum tokens (badges.types: 'bestseller', 'new'…) and the prefix of
         // detail-block anchor ids ('fees-'): never shown as text.
         'types', 'anchorprefix',

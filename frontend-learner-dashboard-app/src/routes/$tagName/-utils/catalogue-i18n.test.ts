@@ -163,6 +163,21 @@ describe("data that looks like text is never translated", () => {
     expect(out.megaMenu).toEqual({ ctaLabelPattern: "{stream} देखें", libraryName: "Rocket" });
   });
 
+  it("keeps a picked product page's cached name as stored, so picking another page in Hindi edits the base", () => {
+    // The learning path puts it through siteT itself when it is the title.
+    const dict = { "JEE Store": "जेईई स्टोर", "Learning paths": "सीखने के रास्ते" };
+    const props = { productPageCode: "jee-store", productPageName: "JEE Store", title: "Learning paths" };
+    expect(isTextKey("productPageName")).toBe(false);
+    const localized = localizeDeep(props, dict);
+    expect(localized).toEqual({ ...props, title: "सीखने के रास्ते" });
+    expect(collectTranslatableStrings(props)).toEqual(["Learning paths"]);
+    const picked = { ...localized, productPageCode: "neet-store", productPageName: "NEET Store" };
+    expect(applyLocalizedEdit(props, localized, picked)).toEqual({
+      base: { ...props, productPageCode: "neet-store", productPageName: "NEET Store" },
+      translations: {},
+    });
+  });
+
   it("does not offer data strings for translation", () => {
     const props = { defaultSort: "Price: Low to High", title: "Courses", formFields: [{ name: "email", label: "Email" }] };
     expect(collectTranslatableStrings(props)).toEqual(["Courses", "Email"]);

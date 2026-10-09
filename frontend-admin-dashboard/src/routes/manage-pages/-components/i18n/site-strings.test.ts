@@ -12,13 +12,16 @@ import {
 } from './site-strings';
 import {
     courseCardDescription,
+    courseRichText,
     courseTextsFromRows,
     dedupeLiveTexts,
     displayedLevelName,
     folderTextsFromNodes,
     isLiveText,
+    offerChipName,
 } from './translation-sources';
 import type { FolderNode } from '../../-services/folder-library-service';
+import { translateText } from '../../-utils/catalogue-i18n';
 
 const site = (i18n?: Record<string, unknown>) =>
     ({
@@ -156,6 +159,32 @@ describe('collectSiteStrings', () => {
             props: { text: 'Spring Campaign' },
         } as never);
         expect(collectSiteStrings(config)).toContain('Spring Campaign');
+    });
+
+    it("leaves out a picked product page's cached name: the live tab lists the page's own name", () => {
+        const config = site();
+        config.pages[0]!.components.push(
+            {
+                id: 'offer',
+                type: 'productPageOffer',
+                enabled: true,
+                props: {
+                    productPageCode: 'jee-store',
+                    productPageName: 'JEE Store',
+                    title: 'On offer',
+                },
+            } as never,
+            {
+                id: 'path',
+                type: 'learningPath',
+                enabled: true,
+                props: { mode: 'single', productPageCode: 'neet', productPageName: 'NEET Path' },
+            } as never
+        );
+        const strings = collectSiteStrings(config);
+        expect(strings).toContain('On offer');
+        expect(strings).not.toContain('JEE Store');
+        expect(strings).not.toContain('NEET Path');
     });
 
     it("counts an announcement's tag pill and a detail block's eyebrow — not a course tag to filter by", () => {
@@ -399,6 +428,8 @@ describe('live data texts', () => {
             { source: 'physics', group: 'Course name' },
             { source: 'Beginner Hindi', group: 'Level' },
             { source: 'Learn fast', group: 'Course description' },
+            // With no About text, the course page's About shows the description as HTML.
+            { source: '<p>Learn&nbsp;fast</p>', group: 'About the course' },
         ]);
         expect(courseCardDescription('  <b>Hi</b> there ')).toBe('Hi there');
     });
@@ -417,6 +448,140 @@ describe('live data texts', () => {
             .filter((t) => t.group === 'Level')
             .map((t) => t.source);
         expect(levels).toEqual(['class_10', 'Class 10', 'Beginner Hindi', 'default']);
+    });
+
+    /** The sources of one group, in order. */
+    const groupOf = (texts: ReturnType<typeof courseTextsFromRows>, group: string) =>
+        texts.filter((t) => t.group === group).map((t) => t.source);
+
+    it('takes each course tag as the Tags filter shows it, each session as stored and as shown, and the card category', () => {
+        const texts = courseTextsFromRows([
+            {
+                package_name: 'Vedic Maths',
+                comma_separeted_tags: ' JEE, Board exams ,,JEE ',
+                session_name: 'summer_batch',
+                package_type: 'COURSE',
+            },
+            {
+                package_name: 'Algebra',
+                comma_separeted_tags: '',
+                session_name: 'Default',
+                package_type: 'General',
+            },
+            {
+                package_name: 'Geometry',
+                comma_separeted_tags: null,
+                session_name: null,
+                package_type: null,
+            },
+        ]);
+        expect(groupOf(texts, 'Course tag')).toEqual(['JEE', 'Board exams']);
+        // A learning path shows 'summer_batch'; the session filter 'Summer Batch'.
+        expect(groupOf(texts, 'Session')).toEqual(['summer_batch', 'Summer Batch']);
+        // The card's category label: the course type unless it is 'General'.
+        expect(groupOf(texts, 'Card category')).toEqual(['COURSE']);
+    });
+
+    it("takes each level and session name as a product page offer card's chips show it", () => {
+        // Acronyms of up to three letters stay; longer all-caps words keep one capital.
+        expect(offerChipName('NEET 2025')).toBe('Neet 2025');
+        expect(offerChipName(' CBSE ')).toBe('Cbse');
+        expect(offerChipName('JEE MAIN')).toBe('JEE Main');
+        expect(offerChipName('class_10')).toBe('class_10');
+        expect(offerChipName('Class   10')).toBe('Class 10');
+        expect(offerChipName('DEFAULT')).toBe('');
+        expect(offerChipName(null)).toBe('');
+        const texts = courseTextsFromRows([
+            { package_name: 'Physics', level_name: 'CBSE', session_name: 'NEET 2025' },
+            // Chips matching a form already listed add nothing; placeholders show no chip.
+            { package_name: 'Chemistry', level_name: 'class_10', session_name: 'DEFAULT' },
+        ]);
+        expect(texts.map((t) => t.source)).toEqual([
+            'Physics',
+            'Chemistry',
+            'CBSE',
+            'Cbse',
+            'class_10',
+            'Class 10',
+            'NEET 2025',
+            'Neet 2025',
+        ]);
+        expect(groupOf(texts, 'Level')).toEqual(['CBSE', 'Cbse', 'class_10', 'Class 10']);
+        expect(groupOf(texts, 'Session')).toEqual(['NEET 2025', 'Neet 2025']);
+    });
+
+    it("takes the course page's About / What learners will gain / Who should join as the page passes them to the dictionary", () => {
+        const texts = courseTextsFromRows([
+            {
+                package_name: 'Vedic Maths',
+                about_the_course_html: '\n<p>All about <b>Vedic</b> maths</p>\n',
+                why_learn_html: '<ul><li>Speed</li></ul>',
+                // A field-name echo for an unset field: the page shows nothing.
+                who_should_learn_html: 'who_should_learn',
+            },
+            {
+                package_name: 'Algebra',
+                // No visible text: the page's About falls back to the description.
+                about_the_course_html: '<p>&nbsp;</p>',
+                course_html_description_html: '<p>Equations made easy</p>',
+                why_learn_html: '<p></p>',
+                who_should_learn_html: '<p>Class 9 students</p>',
+            },
+        ]);
+        expect(groupOf(texts, 'About the course')).toEqual([
+            '<p>All about <b>Vedic</b> maths</p>',
+            '<p>Equations made easy</p>',
+        ]);
+        expect(groupOf(texts, 'What learners will gain')).toEqual(['<ul><li>Speed</li></ul>']);
+        expect(groupOf(texts, 'Who should join')).toEqual(['<p>Class 9 students</p>']);
+        // The card shows the description as plain text: a text of its own.
+        expect(groupOf(texts, 'Course description')).toEqual(['Equations made easy']);
+        // The page passes the HTML as stored; the trimmed key still matches it.
+        expect(
+            translateText('\n<p>All about <b>Vedic</b> maths</p>\n', {
+                '<p>All about <b>Vedic</b> maths</p>': '<p>वैदिक गणित के बारे में</p>',
+            })
+        ).toBe('\n<p>वैदिक गणित के बारे में</p>\n');
+        expect(courseRichText('<p>about_the_course</p>')).toBe('');
+        expect(courseRichText(null)).toBe('');
+    });
+
+    it("takes the course page's authors as it shows them: name and subtitle trimmed, a bio only with text", () => {
+        const texts = courseTextsFromRows([
+            {
+                package_name: 'Vedic Maths',
+                instructors: [
+                    {
+                        full_name: ' Asha Rao ',
+                        author_subtitle: 'Maths mentor ',
+                        author_description: '<p>Ten years of teaching.</p>',
+                    },
+                    { full_name: 'Ravi Kumar', author_subtitle: '', author_description: '<p></p>' },
+                ],
+            },
+            { package_name: 'Algebra', instructors: [{ full_name: 'Asha Rao' }, { full_name: '' }] },
+            { package_name: 'Geometry', instructors: null },
+        ]);
+        expect(groupOf(texts, 'Author')).toEqual([
+            'Asha Rao',
+            'Maths mentor',
+            '<p>Ten years of teaching.</p>',
+            'Ravi Kumar',
+        ]);
+    });
+
+    it('a text shown in several places is listed once, under the first group that has it', () => {
+        const texts = courseTextsFromRows([
+            {
+                package_name: 'Physics',
+                comma_separeted_tags: 'Physics, Mechanics',
+                level_name: 'Mechanics',
+            },
+        ]);
+        expect(texts).toEqual([
+            { source: 'Physics', group: 'Course name' },
+            { source: 'Mechanics', group: 'Level' },
+        ]);
     });
 
     it('walks folders (title, subtitle, tagline, description, call to action), skipping hidden ones', () => {

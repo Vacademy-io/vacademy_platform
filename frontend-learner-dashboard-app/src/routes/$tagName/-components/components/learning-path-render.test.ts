@@ -30,6 +30,8 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+// The query string the mocked router reports (?lang= picks the site language).
+const routerState = vi.hoisted(() => ({ searchStr: "" }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     to,
@@ -50,7 +52,7 @@ vi.mock("@tanstack/react-router", () => ({
     ).toString();
     return React.createElement("a", { href: qs ? `${path}?${qs}` : path, className }, children);
   },
-  useLocation: () => ({ pathname: "/courses", searchStr: "" }),
+  useLocation: () => ({ pathname: "/courses", searchStr: routerState.searchStr }),
   useRouter: () => ({ history: { push: () => {}, replace: () => {} } }),
   useNavigate: () => () => Promise.resolve(),
 }));
@@ -80,6 +82,7 @@ vi.mock("../site-cart/use-store-sale", async (importOriginal: () => Promise<unkn
 const { LearningPathComponent } = await import("./LearningPathComponent");
 const { SiteCartButton } = await import("../site-cart/SiteCartButton");
 const { useSiteCartStore } = await import("../../-stores/site-cart-store");
+const { CatalogueLocaleProvider } = await import("../../-utils/catalogue-locale");
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 const INSTITUTE = "inst-1";
@@ -208,6 +211,57 @@ describe("learningPath (single)", () => {
     // Two courses (C1 in English, C2): 500 + 300 = 800 list, 649 at checkout.
     expect(lines.some((l) => l.includes("649"))).toBe(true);
     expect(lines.some((l) => l.includes("800"))).toBe(true);
+  });
+});
+
+describe("learningPath title in the site's language", () => {
+  const i18n = {
+    enabled: true,
+    defaultLocale: "en",
+    locales: [
+      { code: "en", label: "EN" },
+      { code: "hi", label: "हिन्दी" },
+    ],
+    strings: { hi: { "JEE Store": "जेईई स्टोर", "Shiksha basics": "शिक्षा की बुनियाद" } },
+  };
+  /** The section inside the site's language provider, in `lang` (?lang=). */
+  const renderIn = (lang: string, props: Record<string, unknown>, pageData: Record<string, unknown>) => {
+    routerState.searchStr = lang ? `?lang=${lang}` : "";
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      client.setQueryData(["PRODUCT_PAGE_BY_CODE", CODE, INSTITUTE], pageData);
+      return renderToStaticMarkup(
+        React.createElement(
+          QueryClientProvider,
+          { client },
+          React.createElement(CatalogueLocaleProvider, {
+            settings: i18n,
+            scope: "site",
+            persist: false,
+            children: React.createElement(LearningPathComponent, { instituteId: INSTITUTE, tagName: "site", ...props }),
+          }),
+        ),
+      );
+    } finally {
+      routerState.searchStr = "";
+    }
+  };
+  // The cached name is data the renderer leaves as stored (catalogue-i18n), so
+  // the component puts it through the dictionary itself.
+  const cachedOnly = { productPageCode: CODE, productPageName: "JEE Store", globalSettings: grouped };
+  const unnamedPage = { ...page, name: "" };
+
+  it("shows the picked page's cached name in Hindi when neither a heading nor the page's name is there", () => {
+    const lines = text(renderIn("hi", cachedOnly, unnamedPage));
+    expect(lines).toContain("जेईई स्टोर");
+    expect(lines).not.toContain("JEE Store");
+  });
+
+  it("shows it as stored in the base language, and the page's own name first when it has one", () => {
+    expect(text(renderIn("", cachedOnly, unnamedPage))).toContain("JEE Store");
+    const named = text(renderIn("hi", cachedOnly, page));
+    expect(named).toContain("शिक्षा की बुनियाद");
+    expect(named).not.toContain("जेईई स्टोर");
   });
 });
 

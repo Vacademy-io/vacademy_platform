@@ -11,6 +11,8 @@ export interface CatalogStreamsTabsExtension {
    * round image (its folder's image_url), its name and a second line, with a
    * saffron underline under the active tab. Colours follow
    * globalSettings.theme.palette. Default "pills" (the original tabs).
+   * The icon band does not stick under the header unless `sticky: true` is
+   * set explicitly (unlike the pills, whose `sticky` defaults to true).
    */
   variant?: CatalogStreamTabsVariant;
   /**

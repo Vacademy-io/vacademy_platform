@@ -211,8 +211,12 @@ export interface CatalogSlotOutputs {
   streamTabs?: (props: StreamTabsProps) => React.ReactNode;
   /** 'band' = render the tabs full-bleed at the top of the section root, outside the content container. Default 'inline'. */
   streamTabsPlacement?: "inline" | "band";
-  /** Replaces the section root's className ("py-8 sm:py-10 bg-catalogue-bg-subtle w-full"). */
+  /** Replaces the section root's className ("py-8 sm:py-10 bg-catalogue-bg-subtle w-full") — the loading skeleton's root too. */
   rootClassName?: string;
+  /** Whether the rendered tabs stick under the header (sets the sidebar's sticky offset). Default discovery.streams.sticky. */
+  streamTabsSticky?: boolean;
+  /** 'band' placement only: a placeholder band at the top of the loading skeleton, so the page does not shift when the tabs arrive. */
+  loadingStreamTabs?: () => React.ReactNode;
 
   /* [sidebar] */
   /** Replaces the sidebar/results flex row's className. */
@@ -256,7 +260,10 @@ export interface CatalogSlotOutputs {
 }
 
 export type HeroSlotOutputs = Pick<CatalogSlotOutputs, "catalogHero" | "hideTitleBlock" | "resultsHeader" | "quickFilterBar">;
-export type TabsSlotOutputs = Pick<CatalogSlotOutputs, "streamTabs" | "streamTabsPlacement" | "rootClassName">;
+export type TabsSlotOutputs = Pick<
+  CatalogSlotOutputs,
+  "streamTabs" | "streamTabsPlacement" | "rootClassName" | "streamTabsSticky" | "loadingStreamTabs"
+>;
 export type SidebarSlotOutputs = Pick<
   CatalogSlotOutputs,
   | "columnsClassName"

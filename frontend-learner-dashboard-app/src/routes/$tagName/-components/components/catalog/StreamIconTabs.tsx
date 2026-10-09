@@ -23,6 +23,16 @@ const NAME = "max-w-full truncate whitespace-nowrap text-sm font-bold leading-5 
 // English line + count: Lato 11/14 (Medium → 400 inactive, Bold active).
 const SUB = "flex max-w-full items-center justify-center whitespace-nowrap text-2xs lg:leading-[14px]"; // design-lint-ignore: Figma 11/14
 
+/**
+ * Below lg the scrolling row runs to the screen edges (cancels the content
+ * column's gutter, then pads it back so the first tab still lines up with the
+ * content). One per shell: the default container's gutter is 16/24/32px, the
+ * `.catalogue-shell` one 16px at every width.
+ */
+export const ROW_BLEED_DEFAULT = "-mx-4 px-4 scroll-px-4 sm:-mx-6 sm:px-6 sm:scroll-px-6 lg:mx-0 lg:px-0 lg:scroll-px-0";
+export const ROW_BLEED_SHELL = "-mx-4 px-4 scroll-px-4 lg:mx-0 lg:px-0 lg:scroll-px-0";
+const ROW = "catalogue-no-scrollbar flex snap-x gap-1 overflow-x-auto";
+
 /** Tab props the catalog passes to <StreamTabs> (feature 'tabs' adds the rest). */
 type BaseProps = React.ComponentProps<typeof StreamTabs>;
 
@@ -34,6 +44,8 @@ export interface StreamIconTabsProps extends BaseProps {
   /** Class + style of the content container inside the band (the catalog's own content column). */
   shellClassName?: string;
   shellStyle?: React.CSSProperties;
+  /** Edge-to-edge bleed of the scrolling row below lg, matching shellClassName (ROW_BLEED_DEFAULT / ROW_BLEED_SHELL). */
+  rowBleedClassName?: string;
   /** Lower-case singular / plural course term for the screen-reader count ("3 courses"). */
   courseTerm?: string;
   coursesTerm?: string;
@@ -70,6 +82,7 @@ export const StreamIconTabs: React.FC<StreamIconTabsProps> = ({
   allSubtitle = "",
   shellClassName = "w-full px-4 sm:px-6 lg:px-8",
   shellStyle,
+  rowBleedClassName = ROW_BLEED_DEFAULT,
   courseTerm = "course",
   coursesTerm = "courses",
 }) => {
@@ -207,7 +220,7 @@ export const StreamIconTabs: React.FC<StreamIconTabsProps> = ({
           role="tablist"
           aria-orientation="horizontal"
           aria-label={t("courseCatalog.streamsAriaLabel", "Streams")}
-          className="catalogue-no-scrollbar flex snap-x gap-1 overflow-x-auto"
+          className={cn(ROW, rowBleedClassName)}
         >
           {tab({
             key: "__all__",
@@ -239,3 +252,36 @@ export const StreamIconTabs: React.FC<StreamIconTabsProps> = ({
     </div>
   );
 };
+
+/**
+ * The band while the streams load (rendered by the catalog's loading
+ * skeleton): the same band, row and tab boxes — so the same height — with
+ * shimmer circles and lines in place of the tabs. Decorative only.
+ */
+export const StreamIconTabsSkeleton: React.FC<{
+  shellClassName?: string;
+  shellStyle?: React.CSSProperties;
+  rowBleedClassName?: string;
+  tabs?: number;
+}> = ({ shellClassName = "w-full px-4 sm:px-6 lg:px-8", shellStyle, rowBleedClassName = ROW_BLEED_DEFAULT, tabs = 6 }) => (
+  <div className={BAND} aria-hidden="true">
+    <div className={shellClassName} style={shellStyle}>
+      <div className={cn(ROW, "overflow-x-hidden", rowBleedClassName)}>
+        {Array.from({ length: tabs }, (_, i) => (
+          <div key={i} className={cn(TAB, "border-transparent")}>
+            <span className={cn(ICON, "catalogue-skeleton-shimmer")} />
+            {/* The zero-width space keeps each line at its text line-height. */}
+            <span className={NAME}>
+              {"\u200b"}
+              <span className="catalogue-skeleton-shimmer inline-block h-3 w-16 align-middle" />
+            </span>
+            <span className={SUB}>
+              {"\u200b"}
+              <span className="catalogue-skeleton-shimmer inline-block h-2 w-12" />
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);

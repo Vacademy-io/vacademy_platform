@@ -69,12 +69,15 @@ vi.mock("axios", () => {
 
 import React, { act } from "react";
 import { readFileSync } from "node:fs";
+import enCoursePlayerB from "@/locales/en/coursePlayerB.json";
+import hiCoursePlayerB from "@/locales/hi/coursePlayerB.json";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CourseCatalogComponent } from "../CourseCatalogComponent";
-import { StreamIconTabs } from "./StreamIconTabs";
+import i18next from "i18next";
+import { ROW_BLEED_DEFAULT, ROW_BLEED_SHELL, StreamIconTabs } from "./StreamIconTabs";
 import { ICON_TABS_ROOT_CLASS } from "./slots/use-tabs-slots";
 import { firstGrapheme, resolveStreamIconTabs } from "./stream-icon-tabs-config";
 import type { CatalogStream } from "./catalog-streams";
@@ -381,5 +384,87 @@ describe("icon stream tabs in the Courses grid", () => {
       "utf8",
     );
     expect(stableIds(host.innerHTML)).toBe(golden);
+  });
+});
+
+describe("icon stream tabs — review fixes", () => {
+  const DEFAULT_ROOT = "py-8 sm:py-10 bg-catalogue-bg-subtle w-full";
+
+  it("streams that come back empty: no band and the original padded section root", async () => {
+    h.rows = h.streamRows;
+    const host = await mount({ streams: { ...ICONS, libraryId: "missing-library" }, syncUrl: false });
+    const sectionRoot = host.firstElementChild as HTMLElement;
+    expect(tabs(host)).toHaveLength(0);
+    expect(sectionRoot.className).toBe(DEFAULT_ROOT);
+    expect(sectionRoot.querySelector(".border-palette-border")).toBeNull();
+  });
+
+  it("the icon band does not stick unless sticky: true is set (sidebar offset follows)", async () => {
+    h.rows = h.streamRows;
+    const { sticky: _omit, ...noSticky } = ICONS;
+    void _omit;
+    let host = await mount({ streams: noSticky, syncUrl: false });
+    let band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement;
+    expect(band.className).not.toContain("sticky");
+    expect(host.querySelector(".lg\\:top-40")).toBeNull();
+    expect(host.querySelector(".lg\\:top-20")).not.toBeNull();
+    act(() => root?.unmount());
+    document.body.innerHTML = "";
+
+    host = await mount({ streams: { ...ICONS, sticky: true }, syncUrl: false });
+    band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement;
+    expect(band.className).toContain("sticky top-16 z-20 md:top-20");
+    expect(host.querySelector(".lg\\:top-40")).not.toBeNull();
+  });
+
+  it("the loading skeleton uses the band's root and a placeholder band", () => {
+    h.rows = h.streamRows;
+    const html = renderToStaticMarkup(e(QueryClientProvider, { client: client() }, section({ streams: ICONS })));
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const skeletonRoot = host.firstElementChild as HTMLElement;
+    expect(skeletonRoot.className).toBe(ICON_TABS_ROOT_CLASS);
+    const band = skeletonRoot.firstElementChild as HTMLElement;
+    expect(band.getAttribute("aria-hidden")).toBe("true");
+    expect(band.className).toContain("border-palette-border");
+    expect(band.querySelectorAll(".rounded-full.catalogue-skeleton-shimmer")).toHaveLength(6);
+    expect(band.querySelector('[role="tab"]')).toBeNull();
+  });
+
+  it("a section without the variant keeps the original loading skeleton", () => {
+    h.rows = h.streamRows;
+    const html = renderToStaticMarkup(e(QueryClientProvider, { client: client() }, section({ streams: STREAMS })));
+    expect(html.startsWith('<div class="py-8 sm:py-10 w-full bg-catalogue-bg-subtle"><div class="w-full px-4')).toBe(true);
+  });
+
+  it("the scrolling row runs to the screen edges below lg, matching the shell's gutter", async () => {
+    h.rows = h.streamRows;
+    let host = await mount({ streams: ICONS, syncUrl: false });
+    expect(host.querySelector('[role="tablist"]')!.className).toContain(ROW_BLEED_DEFAULT);
+    act(() => root?.unmount());
+    document.body.innerHTML = "";
+    host = await mount({ streams: ICONS, syncUrl: false }, { theme: { contentMaxWidth: 1152 } });
+    const list = host.querySelector('[role="tablist"]')!;
+    expect(list.className).toContain(ROW_BLEED_SHELL);
+    expect(list.className).not.toContain("sm:-mx-6");
+  });
+
+  it("the screen-reader count says '0 courses' in Hindi (CLDR 'one' includes 0)", async () => {
+    const i18n = i18next.createInstance();
+    await i18n.init({
+      lng: "hi",
+      fallbackLng: "en",
+      ns: ["coursePlayerB"],
+      defaultNS: "coursePlayerB",
+      resources: { en: { coursePlayerB: enCoursePlayerB }, hi: { coursePlayerB: hiCoursePlayerB } },
+      interpolation: { escapeValue: false },
+    });
+    const say = (count: number) => i18n.t("catalogTabs.countA11y", { count, course: "course", courses: "courses" });
+    expect(say(0)).toBe("0 courses");
+    expect(say(1)).toBe("1 course");
+    expect(say(3)).toBe("3 courses");
+    await i18n.changeLanguage("en");
+    expect(say(0)).toBe("0 courses");
+    expect(say(1)).toBe("1 course");
   });
 });

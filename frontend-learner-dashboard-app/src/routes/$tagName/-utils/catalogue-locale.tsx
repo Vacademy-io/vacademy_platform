@@ -12,6 +12,14 @@ import { useLocation, useRouter } from "@tanstack/react-router";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import type { i18n as I18nInstance } from "i18next";
 import {
+  clearSiteTermScope,
+  ensureSiteTermsCatalog,
+  setSiteTermScope,
+  siteTermsCatalogReady,
+  type SiteTermScope,
+} from "@/components/common/layout-container/sidebar/utils";
+import { NAMING_TERMS_CHANGED_EVENT } from "@/i18n/naming-terms";
+import {
   LOCALE_PARAM,
   baseLocaleOf,
   dictionaryFor,
@@ -84,6 +92,35 @@ const writeStored = (scope: string, code: string) => {
   } catch {
     // Private mode: the choice lasts as long as ?lang= stays in the URL.
   }
+};
+
+/** Where a provider's term scope stands (see the provider body). */
+interface TermScopeState {
+  /** Set by this provider's render (lifted by its render once languages go off). */
+  held: boolean;
+  /** This provider has committed at least once. */
+  committed: boolean;
+  /** The last commit-phase release lifted the scope (nobody had taken over). */
+  released: boolean;
+  /** The scope was lifted before this provider ever committed. */
+  dropped: boolean;
+}
+
+/**
+ * A render React throws away (an error boundary above the page, a first mount
+ * abandoned mid-way) never commits, so no cleanup lifts the term scope it set
+ * — the logged-in app would go on reading the site's words. A scope whose
+ * provider has not committed by then is lifted, and the app re-renders its
+ * translations. Long enough that only a render that never commits gets there.
+ */
+const UNCOMMITTED_TERM_SCOPE_MS = 10_000;
+
+const liftUnlessCommitted = (token: object, state: TermScopeState, app: I18nInstance | undefined) => {
+  setTimeout(() => {
+    if (state.committed || !clearSiteTermScope(token)) return;
+    state.dropped = true;
+    app?.emit(NAMING_TERMS_CHANGED_EVENT);
+  }, UNCOMMITTED_TERM_SCOPE_MS);
 };
 
 export const CatalogueLocaleProvider: React.FC<{
@@ -227,6 +264,80 @@ export const CatalogueLocaleProvider: React.FC<{
     });
     return () => handlers.forEach(({ event, forward }) => baseI18n.off(event, forward));
   }, [baseI18n, chromeI18n]);
+
+  // The institute's terms ("Course", "Level"…) follow the site language too.
+  // Sections read them through getTerminology() — dozens of calls, outside
+  // React — so this provider scopes that resolution to its language and clone
+  // (sidebar/utils): set right here, before the children render, so their
+  // first render and the one after a switch already resolve in it; re-asserted
+  // on commit; lifted by token on the way out, since the page that replaced
+  // this one may already have set its own. A site without languages sets
+  // nothing, and its terms resolve exactly as before.
+  const termScope = useMemo<SiteTermScope | null>(
+    () => (chromeI18n && chromeI18n !== baseI18n ? { locale, i18n: chromeI18n } : null),
+    [chromeI18n, baseI18n, locale],
+  );
+  const [termToken] = useState<object>(() => ({}));
+  const termState = useRef<TermScopeState>({ held: false, committed: false, released: false, dropped: false });
+  if (termScope) {
+    setSiteTermScope(termToken, termScope);
+    if (!termState.current.held) {
+      termState.current.held = true;
+      if (!termState.current.committed) liftUnlessCommitted(termToken, termState.current, baseI18n);
+    }
+  } else if (termState.current.held) {
+    termState.current.held = false;
+    clearSiteTermScope(termToken);
+  }
+
+  useLayoutEffect(() => {
+    if (!termScope) return;
+    const state = termState.current;
+    state.committed = true;
+    state.released = false;
+    setSiteTermScope(termToken, termScope);
+    return () => {
+      state.released = clearSiteTermScope(termToken);
+    };
+  }, [termToken, termScope]);
+
+  useEffect(() => {
+    if (!termScope) return;
+    const state = termState.current;
+    // Lifted before this provider first committed (a very slow first render):
+    // re-render the chrome in the scope now that the children are subscribed
+    // (their effects ran before this one).
+    if (state.dropped) {
+      state.dropped = false;
+      termScope.i18n.emit(NAMING_TERMS_CHANGED_EVENT);
+    }
+    return () => {
+      // Whatever replaced this page in the same render — the next route, the
+      // product page's success step — rendered while the scope still stood.
+      // Once it is lifted for good, re-render the app's translations so their
+      // terms follow the app's language again: from a microtask, after the
+      // new page's effects have subscribed it.
+      if (!state.released) return;
+      state.released = false;
+      queueMicrotask(() => baseI18n?.emit(NAMING_TERMS_CHANGED_EVENT));
+    };
+  }, [termScope, baseI18n]);
+
+  // terms:Course in the site language ("कोर्स") comes from the terms catalog,
+  // loaded through the clone (which asks for it as it starts); if it was not
+  // in for this render, make sure it loads and re-render the chrome when it
+  // lands.
+  const termsReady = termScope ? siteTermsCatalogReady(termScope) : true;
+  useEffect(() => {
+    if (!termScope || termsReady) return;
+    let live = true;
+    void ensureSiteTermsCatalog(termScope).then((loaded) => {
+      if (loaded && live) termScope.i18n.emit(NAMING_TERMS_CHANGED_EVENT);
+    });
+    return () => {
+      live = false;
+    };
+  }, [termScope, termsReady]);
 
   const tree = <CatalogueLocaleContext.Provider value={value}>{children}</CatalogueLocaleContext.Provider>;
   return chromeI18n ? <I18nextProvider i18n={chromeI18n}>{tree}</I18nextProvider> : tree;

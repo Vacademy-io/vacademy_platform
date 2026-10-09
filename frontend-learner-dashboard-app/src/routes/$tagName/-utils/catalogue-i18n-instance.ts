@@ -5,8 +5,13 @@ import type { i18n as I18nInstance } from "i18next";
  * CatalogueLocaleProvider in catalogue-locale.tsx, the only user).
  */
 
-/** react-i18next namespaces the public site's own chrome (buttons, empty states…) reads. */
-export const SITE_I18N_NAMESPACES = ["coursePlayerA", "coursePlayerB", "productPages"] as const;
+/**
+ * react-i18next namespaces the public site's own chrome (buttons, empty
+ * states…) reads — plus `terms`, the system words ("Course" → "कोर्स") that
+ * getTerminology() reads through this clone while the provider's site term
+ * scope is up (sidebar/utils), so they arrive with the chrome they go into.
+ */
+export const SITE_I18N_NAMESPACES = ["coursePlayerA", "coursePlayerB", "productPages", "terms"] as const;
 
 const siteInstances = new WeakMap<I18nInstance, Map<string, I18nInstance>>();
 

@@ -1,6 +1,11 @@
 import React from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { translateText } from "../-utils/catalogue-i18n";
 import { useCatalogueLocale } from "../-utils/catalogue-locale";
 import { computeCatalogueSeo, pageSeoOf } from "../-utils/catalogue-seo";
@@ -25,9 +30,14 @@ interface CatalogueSeoHeadProps {
   /** The catalogue page on screen (its `seo` block, when the editor set one). */
   page?: unknown;
   instituteName?: string | null;
-  /** The institute's words for course / courses (terminology). */
-  course: string;
-  courses: string;
+  /**
+   * Ignored: the page shells compute these outside CatalogueLocaleProvider,
+   * where they cannot follow the site language — this component reads the
+   * institute's words for course / courses itself, inside it.
+   * @deprecated Stop passing them.
+   */
+  course?: string;
+  courses?: string;
 }
 
 /**
@@ -40,9 +50,13 @@ interface CatalogueSeoHeadProps {
  * site keeps its original head — the catalogue home's document.title rule,
  * and no title from sub-pages (CourseCataloguePage / CourseSubPage).
  */
-export const CatalogueSeoHead: React.FC<CatalogueSeoHeadProps> = ({ page, instituteName, course, courses }) => {
+export const CatalogueSeoHead: React.FC<CatalogueSeoHeadProps> = ({ page, instituteName }) => {
   const { t } = useTranslation("coursePlayerA");
   const { dict } = useCatalogueLocale();
+  // Read here, inside the provider, so the term is in the site language like
+  // the sentence around it — on the first render and after a switch too.
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const institute = instituteName ? translateText(instituteName, dict) : "";
   const seo = computeCatalogueSeo({
     pageSeo: pageSeoOf(page),

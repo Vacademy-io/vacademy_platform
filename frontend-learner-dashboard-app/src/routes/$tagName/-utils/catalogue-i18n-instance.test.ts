@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import i18next from "i18next";
+import i18next, { type BackendModule } from "i18next";
 import { SITE_I18N_NAMESPACES, forwardedEvents, siteI18nInstance } from "./catalogue-i18n-instance";
 
 /** A stand-in for the app's global instance (src/i18n.ts), with in-memory catalogs. */
@@ -52,6 +52,27 @@ describe("siteI18nInstance", () => {
     expect(ns).toEqual(expect.arrayContaining(["common", ...SITE_I18N_NAMESPACES]));
     // The app's own namespace list is not modified.
     expect(app.options.ns).toEqual(["common"]);
+  });
+
+  it("fetches the site language's terms catalog as it starts, with the chrome's", async () => {
+    // The app's lazy backend: catalogs arrive asynchronously, one read each.
+    const reads: string[] = [];
+    const backend: BackendModule = {
+      type: "backend",
+      init() {},
+      read(lng, ns, callback) {
+        reads.push(`${lng}/${ns}`);
+        setTimeout(() => callback(null, ns === "terms" ? { Course: lng === "hi" ? "कोर्स" : "Course" } : {}), 1);
+      },
+    };
+    const app = i18next.createInstance();
+    await app.use(backend).init({ lng: "en", fallbackLng: "en", ns: ["common"], defaultNS: "common" });
+
+    const site = siteI18nInstance(app, "hi");
+    expect(reads).toEqual(expect.arrayContaining(["hi/terms", "hi/coursePlayerB"]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The getTerminology() site scope reads it from here (sidebar/utils).
+    expect(site.t("terms:Course")).toBe("कोर्स");
   });
 });
 

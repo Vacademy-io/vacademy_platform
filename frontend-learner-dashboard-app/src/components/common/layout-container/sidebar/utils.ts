@@ -14,10 +14,11 @@ import {
   ClipboardText,
   DownloadSimple,
 } from "@phosphor-icons/react";
-import i18next, { type TFunction } from "i18next";
+import i18next, { type TFunction, type i18n as I18nInstance } from "i18next";
 import {
   ContentTerms,
   NAMING_SETTINGS_KEY,
+  RoleTerms,
   SystemTerms,
   type LocalizedNamingSettings,
 } from "@/types/naming-settings";
@@ -43,6 +44,8 @@ const getNamingSettings = (): LocalizedNamingSettings[] => {
 /* -------------------------------------------------------------------------- *
  * Locale-aware terminology resolution — mirrors the admin app's
  * components/common/layout-container/sidebar/utils.ts; keep the two in sync.
+ * (The site language scope further down is learner-only: the admin app has
+ * no public site.)
  *
  * Institutes rename terms ("Course" → "Programme") AND the UI can render in a
  * language other than the one those renames were typed in. resolveLocalizedTerm
@@ -53,6 +56,9 @@ const getNamingSettings = (): LocalizedNamingSettings[] => {
  *   (b) lng === content source locale        → null (flat customValue path = today)
  *   (c) i18n.t('terms:<key>')                → translated SYSTEM default
  *   (d) null                                 → caller's existing fallback
+ *
+ * `lng` is the app's language — or, while a public site with languages is on
+ * screen, that site's language (see "Site language scope" below).
  *
  * ENGLISH IS UNTOUCHED: with no `locales` map and no LANGUAGE_SETTING, the
  * source locale defaults to 'en', so an 'en' UI always exits at (b) with null
@@ -108,6 +114,121 @@ const translateTerm = (key: string, suffix?: string): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
+/* --- Site language scope (public site only) ------------------------------- *
+ * A site with languages renders its chrome through an i18next clone pinned to
+ * the visitor's site language (CatalogueLocaleProvider) and never changes the
+ * app's language, which the logged-in app keeps. Its sections still read the
+ * institute's terms through getTerminology(), so without a scope the word
+ * inside "View {{course}}" followed the APP's language: "Course देखें" on a
+ * हिन्दी page, "View कोर्स" on an English page in a Hindi browser.
+ *
+ * While a scope is set, steps (a)-(c) resolve against the site language: (a)
+ * the institute's word for it, (b) the flat fields when it is the content
+ * source language, (c) its terms catalog, read through the site's clone. The
+ * provider sets the scope before its children render and lifts it by token —
+ * a page that replaced the one that set it may already have put up its own.
+ *
+ * With no scope (the logged-in app, sites without languages) every function
+ * in this file behaves exactly as before.
+ * -------------------------------------------------------------------------- */
+
+export interface SiteTermScope {
+  /** The language the site renders in (its ?lang=). */
+  locale: string;
+  /**
+   * The site's i18next clone (catalogue-i18n-instance): pinned to `locale`
+   * and sharing the app's loaded catalogs.
+   */
+  i18n: I18nInstance;
+}
+
+let siteTermScope: { token: object; scope: SiteTermScope } | null = null;
+
+/**
+ * Terms a site scope leaves in the app's language: the Learner word is also
+ * WRITTEN into records as a person's placeholder name (the site checkout's
+ * payload, the login and chatbot fallbacks), so a हिन्दी page must never
+ * turn somebody's stored name into "शिक्षार्थी".
+ */
+const APP_LANGUAGE_TERMS: ReadonlySet<string> = new Set<string>([RoleTerms.Learner]);
+
+/** Resolves terms against `scope` until `token` lifts it. Idempotent. */
+export const setSiteTermScope = (token: object, scope: SiteTermScope): void => {
+  if (siteTermScope?.token === token && siteTermScope.scope === scope) return;
+  siteTermScope = { token, scope };
+};
+
+/**
+ * Lifts the scope `token` set. Returns false (and lifts nothing) when another
+ * token has taken over since, or there is no scope.
+ */
+export const clearSiteTermScope = (token: object): boolean => {
+  if (siteTermScope?.token !== token) return false;
+  siteTermScope = null;
+  return true;
+};
+
+/**
+ * Step (c) under a site scope: the SITE language's terms catalog, read
+ * through the site's clone. Read only once that language's catalog is in —
+ * before that, i18next would answer from the English fallback catalog and
+ * beat the institute's own word at step (d).
+ */
+const translateSiteTerm = (
+  i18n: I18nInstance,
+  locale: SupportedLocale,
+  key: string,
+  suffix?: string
+): string | null => {
+  if (!i18n.hasResourceBundle(locale, TERMS_NAMESPACE)) return null;
+  const fullKey = suffix ? `${key}_${suffix}` : key;
+  if (!i18n.exists(fullKey, { ns: TERMS_NAMESPACE, lng: locale })) return null;
+  const value = i18n.t(fullKey, { ns: TERMS_NAMESPACE, lng: locale, defaultValue: "" });
+  return typeof value === "string" && value.length > 0 ? value : null;
+};
+
+/**
+ * True when step (c) under `scope` reads nothing that is not loaded yet: the
+ * site renders the content source language (step (b) answers), or that
+ * language's terms catalog is in.
+ */
+export const siteTermsCatalogReady = (scope: SiteTermScope): boolean => {
+  const locale = normalizeLocale(scope.locale);
+  return (
+    locale === getContentSourceLocale() ||
+    scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE)
+  );
+};
+
+/**
+ * Loads the site language's terms catalog through the scope's clone (the
+ * clone shares the app's store, so it is fetched once) and tells consumers to
+ * re-read, as ensureTermsCatalog does for the app. Resolves true once the
+ * catalog is in; false when the site renders the content source language
+ * (nothing to load) or the catalog could not be loaded — resolution then
+ * stays at step (d).
+ */
+export const ensureSiteTermsCatalog = async (
+  scope: SiteTermScope
+): Promise<boolean> => {
+  const locale = normalizeLocale(scope.locale);
+  if (locale === getContentSourceLocale()) return false;
+  if (!scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE)) {
+    try {
+      // Named language, not loadNamespaces(): until a new clone's own
+      // catalogs are in, its `language` is still the one it was cloned from.
+      await scope.i18n.reloadResources([locale], [TERMS_NAMESPACE]);
+    } catch {
+      // Missing/failed catalog is non-fatal — resolution stays at step (d).
+      return false;
+    }
+    if (!scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE)) return false;
+    // The catalog lands after the first paint; tell consumers to re-read.
+    notifyNamingSettingsUpdated();
+  }
+  return true;
+};
+
 /**
  * Steps (a)-(c) above. `null` means "use your own fallback" (step (d)).
  *
@@ -119,7 +240,8 @@ export const resolveLocalizedTerm = (
   key: string,
   form: "singular" | "plural"
 ): string | null => {
-  const locale = getActiveLocale();
+  const site = APP_LANGUAGE_TERMS.has(key) ? null : siteTermScope?.scope ?? null;
+  const locale = site ? normalizeLocale(site.locale) : getActiveLocale();
 
   // (a) Institute's own word for the active locale. `locales` is optional —
   // blobs cached before this field existed simply have nothing here.
@@ -131,9 +253,12 @@ export const resolveLocalizedTerm = (
   // (b) The flat fields already hold the right language — caller's path wins.
   if (locale === getContentSourceLocale()) return null;
 
-  // (c) Translated system default.
+  // (c) Translated system default — from the site language's catalog under a
+  // site scope (the provider loads it), else lazily from the app's.
+  const suffix = form === "plural" ? "other" : undefined;
+  if (site) return translateSiteTerm(site.i18n, locale, key, suffix);
   ensureTermsCatalog(locale);
-  return translateTerm(key, form === "plural" ? "other" : undefined);
+  return translateTerm(key, suffix);
 };
 
 /* --- Reactivity ----------------------------------------------------------- *

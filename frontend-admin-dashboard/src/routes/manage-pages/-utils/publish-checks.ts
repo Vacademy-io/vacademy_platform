@@ -130,6 +130,35 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     ...cctx,
                 });
             }
+            // Learning path: one path needs its product page, a list needs its library.
+            if (c?.type === 'learningPath') {
+                if (p.mode === 'list' ? !String(p.libraryId || '').trim() : !String(p.productPageCode || '').trim()) {
+                    issues.push({
+                        severity: 'error',
+                        title:
+                            p.mode === 'list'
+                                ? 'A Learning Path list has no folder library selected'
+                                : 'A Learning Path section has no product page selected',
+                        fix:
+                            p.mode === 'list'
+                                ? 'Pick the folder library that holds your paths in its properties, or remove the section. It shows nothing as-is.'
+                                : 'Pick the product page that holds the path in its properties, or remove the section. It shows nothing as-is.',
+                        ...cctx,
+                    });
+                }
+            }
+            // Visibility rules: a rule with no parameter is silently ignored by the site.
+            if (
+                Array.isArray(c?.visibleWhen) &&
+                c.visibleWhen.some((r: any) => !r || typeof r.param !== 'string' || !r.param.trim())
+            ) {
+                issues.push({
+                    severity: 'warning',
+                    title: 'A section has a visibility rule with no parameter',
+                    fix: 'Open the section’s “Show on” rules and fill in the address parameter (for example “stream”) or remove the rule. Until then it is ignored and the section always shows.',
+                    ...cctx,
+                });
+            }
             // A blog on the home page still works (?post=<slug>), but every
             // article then shares the home URL — no clean links, no sitemap entries.
             if (c?.type === 'blog' && c?.enabled !== false) {
@@ -175,6 +204,16 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     ...cctx,
                 });
             }
+        });
+    }
+
+    // Site cart switched on with no store page: the site quietly has no cart.
+    const siteCart = config?.globalSettings?.siteCart;
+    if (siteCart?.enabled === true && !String(siteCart?.storeProductPageCode || '').trim()) {
+        issues.push({
+            severity: 'error',
+            title: 'The site cart is on but has no store page',
+            fix: 'Choose a store product page in Global Settings → Site cart (then sync the catalogue into it), or switch the cart off. Visitors see no cart until then.',
         });
     }
 

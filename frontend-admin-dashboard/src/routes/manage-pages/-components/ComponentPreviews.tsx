@@ -20,6 +20,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { FolderBrowserPreview } from './folders/FolderBrowserPreview';
+import { LearningPathPreview } from './learning-path/LearningPathPreview';
 
 interface P { props: any }
 
@@ -1861,6 +1862,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return <ProductPageOfferPreview props={props} />;
         case 'folderBrowser':
             return <FolderBrowserPreview props={props} />;
+        case 'learningPath':
+            return <LearningPathPreview props={props} />;
         case 'detailBlocks':
             return <DetailBlocksPreview props={props} />;
         case 'leadForm':

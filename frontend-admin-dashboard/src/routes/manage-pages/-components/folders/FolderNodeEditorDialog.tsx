@@ -10,6 +10,14 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getAllProductPages } from '../../product-pages/-services/product-pages-service';
 import { ImageUploadField } from '../ImageUploadField';
 import { FolderViewFields } from './FolderViewFields';
+import { FolderNodeAdvancedFields } from './FolderNodeAdvancedFields';
+import {
+    buildAdvancedPatch,
+    draftFromNode,
+    hasAdvancedValues,
+    validateAdvancedDraft,
+    type FolderAdvancedDraft,
+} from './folder-node-advanced';
 import type { FolderNode, FolderNodeInput, FolderNodeType, FolderView } from '../../-services/folder-library-service';
 
 /**
@@ -27,7 +35,11 @@ interface FolderNodeEditorDialogProps {
     /** Shown in the heading so the admin knows where the item lands. */
     parentLabel: string;
     onSubmit: (input: FolderNodeInput) => Promise<void>;
+    /** Link keys other folders of the library already use → their names (duplicate warning). */
+    takenSlugs?: Map<string, string>;
 }
+
+const NO_TAKEN_SLUGS = new Map<string, string>();
 
 export const FolderNodeEditorDialog = ({
     open,
@@ -36,6 +48,7 @@ export const FolderNodeEditorDialog = ({
     node,
     parentLabel,
     onSubmit,
+    takenSlugs = NO_TAKEN_SLUGS,
 }: FolderNodeEditorDialogProps) => {
     const instituteId = getCurrentInstituteId();
     const isFolder = nodeType === 'FOLDER';
@@ -46,6 +59,7 @@ export const FolderNodeEditorDialog = ({
     const [visible, setVisible] = useState(true);
     const [customView, setCustomView] = useState(false);
     const [view, setView] = useState<FolderView>({});
+    const [advanced, setAdvanced] = useState<FolderAdvancedDraft>(() => draftFromNode(null));
     const [error, setError] = useState<string | null>(null);
 
     // Re-seed every time the dialog opens, so a cancelled edit never leaks into the next one.
@@ -60,6 +74,7 @@ export const FolderNodeEditorDialog = ({
         setCustomView(hasView);
         // Only what the admin sets is stored; everything else keeps following the section.
         setView(node?.view || {});
+        setAdvanced(draftFromNode(node));
         setError(null);
     }, [open, node]);
 
@@ -80,12 +95,19 @@ export const FolderNodeEditorDialog = ({
             setError('Choose a product page.');
             return;
         }
+        const advancedProblem = validateAdvancedDraft(advanced, nodeType);
+        if (advancedProblem) {
+            setError(advancedProblem);
+            return;
+        }
         setError(null);
         const input: FolderNodeInput = {
             title: title.trim(),
             description: description.trim(),
             image_url: imageUrl.trim(),
             status: visible ? 'ACTIVE' : 'HIDDEN',
+            // Only Advanced fields that changed — untouched items send what they always sent.
+            ...buildAdvancedPatch(node, advanced, nodeType),
         };
         // Only a changed link is sent: re-sending one whose product page was
         // deleted would be rejected, and the item could not even be renamed.
@@ -217,6 +239,20 @@ export const FolderNodeEditorDialog = ({
                             </div>
                         )}
                     </div>
+                )}
+
+                {open && (
+                    <FolderNodeAdvancedFields
+                        // A fresh section per item: its open/closed state never carries over.
+                        key={node?.id || `new-${nodeType}`}
+                        nodeType={nodeType}
+                        nodeId={node?.id || ''}
+                        title={title}
+                        draft={advanced}
+                        onChange={(patch) => setAdvanced((prev) => ({ ...prev, ...patch }))}
+                        takenSlugs={takenSlugs}
+                        defaultOpen={hasAdvancedValues(node)}
+                    />
                 )}
             </div>
         </MyDialog>

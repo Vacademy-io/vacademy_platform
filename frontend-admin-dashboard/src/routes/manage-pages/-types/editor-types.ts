@@ -149,6 +149,52 @@ export interface GlobalSettings {
     motion?: {
         personality: 'none' | 'calm' | 'balanced' | 'dynamic';
     };
+    /**
+     * How a course's language versions are told apart (one card per course,
+     * EN / हिं chips, a language filter). Edited under Global Settings → Course
+     * languages; read by the learner's -utils/course-variants.ts. Absent =
+     * every level stays its own card, exactly as before.
+     */
+    courseLanguages?: CourseLanguageSettings;
+    /**
+     * One site-wide course cart whose checkout is the store product page's.
+     * Edited under Global Settings → Site cart; read by the learner's
+     * -utils/site-cart.ts. On only when enabled AND a store page is chosen.
+     */
+    siteCart?: SiteCartSettings;
+}
+
+/** One language a course can be offered in (mirrors the learner CourseLanguageOption). */
+export interface CourseLanguageOption {
+    /** Stable code, also used in ?language= (e.g. "hi"). */
+    code: string;
+    /** Filter label: "Hindi". */
+    label: string;
+    /** Card chip: "हिं". Falls back to the label. */
+    chip?: string;
+    /** Words that identify this language inside a level name (case-insensitive). */
+    match?: string[];
+}
+
+export interface CourseLanguageSettings {
+    /** Fold a course's language levels into one card, with language chips and filter. */
+    enabled?: boolean;
+    /** Absent or empty = the built-in English / Hindi rules. */
+    languages?: CourseLanguageOption[];
+}
+
+export interface SiteCartSettings {
+    enabled?: boolean;
+    /** Code of the product page whose checkout takes the whole cart. */
+    storeProductPageCode?: string;
+    storeProductPageName?: string;
+}
+
+/** Show a section only for certain query strings (mirrors the learner VisibleWhenRule). */
+export interface VisibleWhenRule {
+    param: string;
+    op: 'empty' | 'notEmpty' | 'equals' | 'notEquals';
+    value?: string;
 }
 
 // Style schema now lives in the SHARED catalogue style engine (byte-synced
@@ -184,6 +230,12 @@ export interface Component {
     style?: ComponentStyle;
     /** Anchor ID for in-page linking (e.g. "pricing" → #pricing) */
     anchorId?: string;
+    /**
+     * Show the section only when every rule holds for the page's query string,
+     * e.g. [{ param: 'stream', op: 'empty' }] = only on the unfiltered view.
+     * Absent = always shown.
+     */
+    visibleWhen?: VisibleWhenRule[];
 }
 
 export interface Page {

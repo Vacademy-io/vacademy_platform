@@ -82,6 +82,7 @@ import {
     type FolderTree,
 } from '../../-services/folder-library-service';
 import { FolderNodeEditorDialog } from './FolderNodeEditorDialog';
+import { isValidAccentColor, takenFolderSlugs } from './folder-node-advanced';
 
 /**
  * Website Builder → Folders → one library: browse it the way a student will
@@ -223,6 +224,10 @@ const ItemCard = ({
     const isFolder = node.node_type === 'FOLDER';
     const warning = productPageWarning(node);
     const hidden = node.status === 'HIDDEN';
+    // The colour the live site paints behind this item's image or icon.
+    const accent = isValidAccentColor(node.accent_color) ? node.accent_color!.trim() : null;
+    const comingSoon = isFolder && !!node.coming_soon;
+    const subtitle = (node.subtitle || '').trim();
 
     return (
         <div
@@ -240,7 +245,10 @@ const ItemCard = ({
                 onClick={isFolder ? onOpen : canWrite ? onEdit : undefined}
                 className={cn('block text-start', !isFolder && !canWrite && 'cursor-default')}
             >
-                <div className="relative flex aspect-video items-center justify-center bg-neutral-100">
+                <div
+                    className="relative flex aspect-video items-center justify-center bg-neutral-100"
+                    style={accent ? { backgroundColor: accent } : undefined} // design-lint-ignore: admin-chosen accent colour
+                >
                     {node.image_url ? (
                         <img src={node.image_url} alt="" className="size-full object-cover" loading="lazy" />
                     ) : isFolder ? (
@@ -255,11 +263,17 @@ const ItemCard = ({
                 </div>
                 <div className="space-y-1 p-3">
                     <p className="line-clamp-2 text-sm font-semibold text-neutral-800">{nodeLabel(node)}</p>
+                    {subtitle && (
+                        <p className="truncate text-caption uppercase tracking-wide text-neutral-500">{subtitle}</p>
+                    )}
                     <p className="truncate text-caption text-neutral-500">
                         {isFolder ? countLabel(node) : node.product_page_name || 'Product page'}
                     </p>
                     <div className="flex flex-wrap gap-1">
                         {hidden && <StatusChip text="Hidden" textSize="text-xs" status="INFO" showIcon={false} />}
+                        {comingSoon && (
+                            <StatusChip text="Coming soon" textSize="text-xs" status="WARNING" showIcon={false} />
+                        )}
                         {isFolder && node.view && Object.keys(node.view).length > 0 && (
                             <StatusChip text="Custom look" textSize="text-xs" status="INFO" showIcon={false} />
                         )}
@@ -353,6 +367,9 @@ export const FolderLibraryManager = ({ libraryId, initialFolderId = null, onBack
     const trail = useMemo(() => pathTo(roots, currentId), [roots, currentId]);
     const current = trail.length ? trail[trail.length - 1]! : null;
     const items = current ? current.children || [] : roots;
+    // Link keys every other folder answers to, so the editor can flag a duplicate.
+    const editingId = editor?.node?.id ?? null;
+    const takenSlugs = useMemo(() => takenFolderSlugs(roots, editingId, nodeLabel), [roots, editingId]);
 
     // The folder being viewed was deleted (here or by another admin): go to the top.
     useEffect(() => {
@@ -635,6 +652,7 @@ export const FolderLibraryManager = ({ libraryId, initialFolderId = null, onBack
                 node={editor?.node || null}
                 parentLabel={here}
                 onSubmit={submitEditor}
+                takenSlugs={takenSlugs}
             />
 
             {moving && (

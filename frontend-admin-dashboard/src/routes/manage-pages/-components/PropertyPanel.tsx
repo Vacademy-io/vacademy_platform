@@ -63,6 +63,10 @@ import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
+import { LearningPathEditor } from './learning-path/LearningPathEditor';
+import { VisibleWhenEditor } from './settings/VisibleWhenEditor';
+import { CourseLanguagesSettingsCard } from './settings/CourseLanguagesSettingsCard';
+import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -288,6 +292,14 @@ export const PropertyPanel = () => {
                         <p className="text-caption text-gray-400">{t('anchorId.linkToThis')} <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
                     )}
                 </div>
+
+                {/* Show only for certain addresses (component.visibleWhen) */}
+                <VisibleWhenEditor
+                    key={component.id}
+                    idPrefix={component.id}
+                    rules={component.visibleWhen}
+                    onChange={(rules) => updateComponent(pageId, component!.id, { visibleWhen: rules })}
+                />
 
                 {/* Copy component */}
                 <Button
@@ -1607,6 +1619,13 @@ const GlobalSettingsEditor = ({
                 )}
             </div>
 
+            {/* Course languages + site cart (each card in its own file) */}
+            <CourseLanguagesSettingsCard
+                value={gs.courseLanguages}
+                onChange={(next) => updateField('courseLanguages', next)}
+            />
+            <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
+
             {/* Enquiry */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
                 <h4 className="font-medium text-gray-700">{t('global.enquiry.heading')}</h4>
@@ -1981,6 +2000,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'folderBrowser':
             return <FolderBrowserEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'learningPath':
+            return <LearningPathEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'leadForm':
             return <LeadFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productCourseGrid':

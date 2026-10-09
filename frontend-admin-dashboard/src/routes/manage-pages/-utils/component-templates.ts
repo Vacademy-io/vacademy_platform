@@ -924,6 +924,40 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    // A learning path = a product page whose courses are taken in order
+    // (display_order). 'single' shows one path as numbered steps; 'list' shows
+    // the product pages of a folder library as path cards ("View path" opens
+    // one in place via ?path=<code>). Only codes/ids are stored — courses,
+    // prices and the tree are read live. Defaults: Knowledge Streams spec §8.
+    // Copy uses { defaultValue } so a missing locale key never shows raw (the
+    // schema exporter honours the same option).
+    learningPath: {
+        type: 'learningPath',
+        enabled: true,
+        props: {
+            mode: 'single',
+            productPageCode: '',
+            productPageName: '',
+            libraryId: '',
+            libraryName: '',
+            // '' = every stream; else only paths under this folder.
+            folderId: '',
+            // List mode on the Courses page: a stream tab shows its own paths.
+            streamFromUrl: true,
+            pathParam: 'path',
+            title: t('learningPath.title', { defaultValue: 'Learning paths' }),
+            subtitle: t('learningPath.subtitle', {
+                defaultValue: 'Courses in the order we recommend taking them.',
+            }),
+            showStepNumbers: true,
+            showTotal: true,
+            addAllLabel: t('learningPath.addAllLabel', { defaultValue: 'Add whole path to cart' }),
+            enrolLabel: t('learningPath.enrolLabel', { defaultValue: 'Enrol in this path' }),
+            viewPathLabel: t('learningPath.viewPathLabel', { defaultValue: 'View path' }),
+            emptyText: t('learningPath.emptyText', { defaultValue: 'Learning paths are coming soon.' }),
+        },
+    },
+
     htmlBlock: {
         type: 'htmlBlock',
         enabled: true,

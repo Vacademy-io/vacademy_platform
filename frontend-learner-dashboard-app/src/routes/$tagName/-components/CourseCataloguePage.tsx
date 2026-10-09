@@ -36,6 +36,7 @@ import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
@@ -549,6 +550,22 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     );
   }
 
+  // Keep the tenant's branded tab title (set by TabBranding/use-domain-routing);
+  // only fall back to a sensible default if none was applied. og:* uses the
+  // richer institute name for link previews without overriding the tab title.
+  // (A site with languages uses CatalogueSeoHead instead — see below.)
+  const brandedTitle =
+    (typeof document !== "undefined" && document.title) || "";
+  const defaultCatalogueTitle = t("courseCataloguePage.defaultTitle", { course });
+  const seoTitle = brandedTitle || domainRouting.instituteName || defaultCatalogueTitle;
+  const ogTitle = domainRouting.instituteName || defaultCatalogueTitle;
+  const seoDescription = domainRouting.instituteName
+    ? t("courseCataloguePage.seoDescriptionWithInstitute", {
+        courses,
+        institute: domainRouting.instituteName,
+      })
+    : t("courseCataloguePage.seoDescription", { courses });
+
   /** Which page this URL resolves to. Shared by the chrome check and the
    *  render so the two can never disagree about what is on screen. */
   const matchesActivePage = (page: { id?: string; route?: string }) =>
@@ -586,14 +603,25 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
       style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
-      {/* Title/description from stable inputs (page SEO, institute branding)
-          in the visitor's language — never read back from document.title. */}
-      <CatalogueSeoHead
-        page={activePage}
-        instituteName={domainRouting.instituteName}
-        course={course}
-        courses={courses}
-      />
+      {catalogueData.globalSettings?.i18n?.enabled ? (
+        // A site with languages: title/description from stable inputs (page
+        // SEO, institute branding) in the visitor's language — never read
+        // back from document.title.
+        <CatalogueSeoHead
+          page={activePage}
+          instituteName={domainRouting.instituteName}
+          course={course}
+          courses={courses}
+        />
+      ) : (
+        <Helmet>
+          <title>{seoTitle}</title>
+          <meta name="description" content={seoDescription} />
+          <meta property="og:title" content={ogTitle} />
+          <meta property="og:description" content={seoDescription} />
+          <meta property="og:type" content="website" />
+        </Helmet>
+      )}
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent

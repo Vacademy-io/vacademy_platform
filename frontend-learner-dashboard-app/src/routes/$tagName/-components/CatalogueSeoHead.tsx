@@ -35,6 +35,10 @@ interface CatalogueSeoHeadProps {
  * language. Rendered inside CatalogueLocaleProvider, so both the chrome
  * fallbacks (react-i18next) and the authored page SEO follow ?lang=. A blog
  * post's own Helmet, rendered further down the tree, still wins.
+ *
+ * Only for a site with languages (globalSettings.i18n.enabled): any other
+ * site keeps its original head — the catalogue home's document.title rule,
+ * and no title from sub-pages (CourseCataloguePage / CourseSubPage).
  */
 export const CatalogueSeoHead: React.FC<CatalogueSeoHeadProps> = ({ page, instituteName, course, courses }) => {
   const { t } = useTranslation("coursePlayerA");

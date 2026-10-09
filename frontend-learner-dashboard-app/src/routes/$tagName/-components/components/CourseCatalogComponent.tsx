@@ -94,7 +94,7 @@ import {
   type FacetOption,
 } from "./catalog/catalog-filters";
 import { formatAmountLabel, formatRangeLabel } from "./catalog/catalog-format";
-import { sortCatalogCards } from "./catalog/catalog-sort";
+import { sortCatalogCards, sortOptionLabel, withCreatedAt } from "./catalog/catalog-sort";
 import {
   countDiscoveryFilters,
   discoveryLinkScope,
@@ -1099,9 +1099,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
             sessionId: course.session_id,
             sessionName: course.session_name,
-            // Package created time from the v2 search; the Newest / Oldest
-            // sorts and the "New" badge read it (absent from older backends).
-            createdAt: course.created_at,
             // Add all other fields from the API response for dynamic filtering
             ...course,
           };
@@ -1218,6 +1215,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     setSearchTerm(urlQuery ?? "");
   }, [urlQuery, discovery.syncUrl]);
 
+  // Course dates (created_at) for the Newest / Oldest sorts and the "New"
+  // badge, on a discovery section only: an older grid keeps the order it has
+  // always shown under "Newest" — the search's own (see withCreatedAt).
+  const datedCourses = useMemo(
+    () => withCreatedAt(courses, discovery.active),
+    [courses, discovery.active],
+  );
+
   // ── Badges: enrolment ranks are fetched only when something uses them ──
   const badgeRules = discovery.badges;
   const needsRanks =
@@ -1241,7 +1246,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       string,
       { courseId: string; createdAt: string | null; price: number | null; tags: Set<string> }
     >();
-    for (const c of courses) {
+    for (const c of datedCourses) {
       const courseId = String(c.id || "");
       if (!courseId) continue;
       const entry = byCourse.get(courseId) ?? {
@@ -1264,7 +1269,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       for (const s of streamList) if (s.tags.some((tag) => e.tags.has(tag))) tags.add(s.tag);
       return { courseId: e.courseId, createdAt: e.createdAt, price: e.price, tags: [...tags] };
     });
-  }, [wantsBadges, courses, streamList]);
+  }, [wantsBadges, datedCourses, streamList]);
   const displayBadges = useMemo(
     () =>
       badgeRules
@@ -1296,12 +1301,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     : null;
   const allCards = useMemo(
     () =>
-      buildCatalogCards(courses, {
+      buildCatalogCards(datedCourses, {
         grouping: discovery.grouping,
         languages: discovery.languages,
         preferredLanguage,
       }),
-    [courses, discovery.grouping, discovery.languages, preferredLanguage],
+    [datedCourses, discovery.grouping, discovery.languages, preferredLanguage],
   );
   const criteria = useMemo<CatalogCriteria>(
     () => ({
@@ -2086,7 +2091,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     >
                       {sortOptions.map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {sortOptionLabel(t, option)}
                         </option>
                       ))}
                     </select>

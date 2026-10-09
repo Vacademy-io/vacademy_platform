@@ -21,6 +21,8 @@ export const URL_PARAMS = {
   query: "q",
   quick: "quick",
   path: "path",
+  /** Learning paths (featured layout): the goal chip picked. */
+  goal: "goal",
 } as const;
 
 export const readSearchParam = (searchStr: string | undefined | null, key: string): string | null => {

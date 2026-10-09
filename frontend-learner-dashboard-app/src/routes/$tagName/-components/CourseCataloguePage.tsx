@@ -75,9 +75,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string; unlockTitle?: string } | null>(null);
 
+  // Preview mode: bidirectional communication with admin editor iframe
+  const isPreviewMode = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('preview') === 'true';
+
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
-  // first-touch UTM capture for lead attribution.
-  useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+  // first-touch UTM capture for lead attribution. Never from the editor's
+  // preview: an admin opening the page is not a visitor, and their pixels
+  // and Traffic numbers must not count it.
+  useCatalogueTracking(isPreviewMode ? null : (catalogueData?.globalSettings as any)?.tracking);
 
 
   useEffect(() => { captureUtmOnce(); }, []);
@@ -85,11 +91,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // counted — the GA4/Pixel hooks above only serve the institute's own tools,
   // and most institutes never connect one.
   useCataloguePageView(
-    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+    catalogueData && !isPreviewMode ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
   // Freebie downloads need the same institute/page; resource cards do not know it.
   useResourceTrackingContext(
-    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+    catalogueData && !isPreviewMode ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
@@ -111,10 +117,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // basket; a first-visit open is a fresh start. Only the latter may reset it.
   const reopenedFromCheckout = useRef(false);
 
-  // Preview mode: bidirectional communication with admin editor iframe
-  const isPreviewMode = typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('preview') === 'true';
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  // Once the editor has posted its draft, the slower published fetch must not
+  // land on top of it and show the old site.
+  const previewConfigReceived = useRef(false);
 
 
   // Fetch course catalogue data
@@ -130,6 +136,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         // Memoised: on a root-mounted host the route already fetched this
         // catalogue to classify the URL, so this is normally a cache hit.
         const data = await CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName);
+        if (previewConfigReceived.current) return;
 
         console.log("[CourseCataloguePage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -169,7 +176,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         }
       } catch (err) {
         console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
-        setError(t("courseSubPage.loadCatalogueFailed", { course }));
+        // A draft-only site has nothing published; the editor's config stands.
+        if (!previewConfigReceived.current) setError(t("courseSubPage.loadCatalogueFailed", { course }));
       } finally {
         setIsLoading(false);
       }
@@ -201,12 +209,25 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'CATALOGUE_CONFIG_UPDATE' && event.data.payload) {
+        previewConfigReceived.current = true;
         setCatalogueData(event.data.payload);
         setIsLoading(false);
         setError(null);
       }
       if (event.data?.type === 'HIGHLIGHT_COMPONENT') {
-        setSelectedComponentId(event.data.componentId || null);
+        const componentId: string | null = event.data.componentId || null;
+        setSelectedComponentId(componentId);
+        // Picked in the editor's Layers panel: bring it into view. A block
+        // already on screen (e.g. just clicked here) is left where it is.
+        if (componentId) {
+          requestAnimationFrame(() => {
+            const el = document.querySelector(`[data-cid="${CSS.escape(componentId)}"]`);
+            const box = el?.getBoundingClientRect();
+            if (el && box && (box.bottom < 0 || box.top > window.innerHeight)) {
+              el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+          });
+        }
       }
     };
 

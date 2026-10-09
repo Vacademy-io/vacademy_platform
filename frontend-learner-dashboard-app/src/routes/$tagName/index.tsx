@@ -19,6 +19,10 @@ const CourseCataloguePage = lazy(() =>
   })),
 );
 
+const isPreviewUrl = () =>
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("preview") === "true";
+
 export const Route = createFileRoute("/$tagName/")({
   // On a site with languages, the language picked on one page (?lang=hi)
   // follows every link into another catalogue page; on every other site this
@@ -151,7 +155,9 @@ function RouteComponent() {
   const rootTag = getCachedRootCatalogueTag();
   if (rootTag) {
     if (RouteMatcher.isRootMounted(resolvedTagName)) {
-      return <Navigate to="/" replace />;
+      // The page editor's preview (?preview=true) must survive the hop, or the
+      // root page renders as a normal visit and never answers the editor.
+      return isPreviewUrl() ? <Navigate to="/" search={true} replace /> : <Navigate to="/" replace />;
     }
     return (
       <RootMountedSegment

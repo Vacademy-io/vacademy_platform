@@ -6,15 +6,16 @@
  *   • Instant live preview with no postMessage round-trip
  *   • Reliable click-to-select
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Monitor, DeviceTablet, DeviceMobile, ArrowSquareOut } from '@phosphor-icons/react';
+import { Monitor, DeviceTablet, DeviceMobile, ArrowSquareOut, Globe, PencilSimple } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { componentLabel } from '../-utils/component-labels';
 import { useEditorStore } from '../-stores/editor-store';
 import { activeEditingLocale, useLocalizedView } from '../-hooks/use-localized-editing';
 import { LOCALE_PARAM } from '../-utils/catalogue-i18n';
 import { renderComponentPreview } from './ComponentPreviews';
+import { LiveSiteFrame } from './LiveSiteFrame';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
 import { buildComponentStyle, hasSectionShell, buildSectionShellStyles, buildPrimaryScaleVars } from '../-utils/style-utils';
 import { ensureFontsLoaded, collectConfigFontFamilies } from '../-utils/catalogue-fonts';
@@ -164,6 +165,11 @@ const ColumnLayoutCanvas = ({
     );
 };
 
+type CanvasView = 'website' | 'editor';
+const CANVAS_VIEW_KEY = 'catalogue-editor-canvas-view';
+const readCanvasView = (): CanvasView =>
+    localStorage.getItem(CANVAS_VIEW_KEY) === 'editor' ? 'editor' : 'website';
+
 export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     const {
         config: storeConfig,
@@ -180,6 +186,14 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     // language (the store config itself in the base language). Localized here,
     // never inside renderComponentPreview, which other screens share.
     const config = useLocalizedView(storeConfig, editingLocale);
+
+    // "Website" = the real learner site with unsaved edits; "Editor" = the
+    // drag-and-drop canvas. Remembered per browser.
+    const [canvasView, setCanvasView] = useState<CanvasView>(readCanvasView);
+    const changeCanvasView = (view: CanvasView) => {
+        setCanvasView(view);
+        localStorage.setItem(CANVAS_VIEW_KEY, view);
+    };
 
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
     const { setNodeRef, isOver } = useDroppable({ id: 'canvas-drop-zone' });
@@ -212,9 +226,12 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
         : `${encodeURIComponent(tagName)}/${encodeURIComponent(pageRoute)}`;
     // Editing another language: "View live" opens the page in that language.
     const liveLocale = activeEditingLocale(storeConfig?.globalSettings?.i18n, editingLocale);
-    const previewUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/${fullRoute}${
-        liveLocale ? `?${LOCALE_PARAM}=${encodeURIComponent(liveLocale)}` : ''
-    }`;
+    const siteOrigin = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+    const localeQuery = liveLocale ? `?${LOCALE_PARAM}=${encodeURIComponent(liveLocale)}` : '';
+    const previewUrl = `${siteOrigin}/${fullRoute}${localeQuery}`;
+    // The Website view always loads the site root; the page shown is chosen by
+    // the config it is sent (see LiveSiteFrame).
+    const siteRootUrl = `${siteOrigin}/${encodeURIComponent(tagName)}${localeQuery}`;
     const isPageUnpublished = !!page && !page.published;
 
     const canvasWidth = previewViewport === 'desktop' ? '100%' : currentSize.width;
@@ -255,6 +272,30 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                         </Button>
                     </div>
 
+                    {/* Website (real render) vs Editor (drag-and-drop canvas) */}
+                    <div className="flex rounded-lg border bg-catalogue-bg-muted p-1">
+                        <Button
+                            variant={canvasView === 'website' ? 'default' : 'ghost'}
+                            size="sm"
+                            className="h-8 gap-1 px-2"
+                            onClick={() => changeCanvasView('website')}
+                            title="Exactly what visitors will see, with your unsaved changes"
+                        >
+                            <Globe className="size-4" />
+                            Website
+                        </Button>
+                        <Button
+                            variant={canvasView === 'editor' ? 'default' : 'ghost'}
+                            size="sm"
+                            className="h-8 gap-1 px-2"
+                            onClick={() => changeCanvasView('editor')}
+                            title="Simplified blocks for dragging and arranging"
+                        >
+                            <PencilSimple className="size-4" />
+                            Editor
+                        </Button>
+                    </div>
+
                     {page && (
                         <span className="text-xs text-catalogue-text-muted">
                             {page.title || page.route || 'Untitled'} ·{' '}
@@ -278,7 +319,15 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                 </Button>
             </div>
 
-            {/* Drop zone + scrollable canvas */}
+            {canvasView === 'website' ? (
+                <LiveSiteFrame
+                    siteUrl={siteRootUrl}
+                    nameInstitute={!instituteDetails?.learner_portal_base_url}
+                    dropRef={setNodeRef}
+                    isDropOver={isOver}
+                />
+            ) : (
+            /* Drop zone + scrollable canvas */
             <div
                 ref={setNodeRef}
                 className={`flex flex-1 justify-center overflow-auto p-6 transition-colors ${
@@ -481,6 +530,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     )}
                 </div>
             </div>
+            )}
         </div>
     );
 };

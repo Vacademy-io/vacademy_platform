@@ -32,6 +32,13 @@ declare global {
   }
 }
 
+/** The page editor's preview (`?preview=true`) is an admin looking at a
+ *  draft, not a visitor: no analytics event and no GA4/GTM/Pixel from it.
+ *  Checked here, at the lowest level, so every caller is covered. */
+const isEditorPreview = (): boolean =>
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("preview") === "true";
+
 const once = (id: string): boolean => {
   if (document.getElementById(id)) return false;
   return true;
@@ -111,6 +118,7 @@ export const useCatalogueTracking = (tracking?: TrackingSettings | null) => {
   const gtm = tracking?.gtmId?.trim();
 
   useEffect(() => {
+    if (isEditorPreview()) return;
     if (ga4) injectGa4(ga4);
     if (gtm) injectGtm(gtm);
     if (pixel) injectMetaPixel(pixel);
@@ -204,7 +212,7 @@ export interface CatalogueEventInput {
  */
 export const sendCatalogueEvent = (input: CatalogueEventInput): void => {
   try {
-    if (!input?.instituteId) return;
+    if (!input?.instituteId || isEditorPreview()) return;
     const utm = getStoredUtm();
     const body = JSON.stringify({
       instituteId: input.instituteId,

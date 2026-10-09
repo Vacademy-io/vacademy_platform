@@ -55,6 +55,17 @@ const NO_AUTH_POLICY = {
   allowPhoneAuth: null,
 } as const;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Institute named by the admin page editor's preview iframe, else null.
+ *  Framed only: a top-level visit always resolves by domain as before. */
+const getPreviewInstituteId = (): string | null => {
+  if (typeof window === "undefined" || window.self === window.top) return null;
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("instituteId");
+  return params.get("preview") === "true" && id && UUID_RE.test(id) ? id : null;
+};
+
 const boolOrNull = (v: unknown): boolean | null =>
   typeof v === "boolean" ? v : null;
 
@@ -325,6 +336,31 @@ export const useDomainRouting = () => {
   };
 
   const resolveRouting = async () => {
+    // Admin page-editor preview (`?preview=true&instituteId=…` in an iframe):
+    // the editor names the institute, because one without its own domain
+    // would otherwise resolve to the host's institute and its course blocks
+    // would show the wrong data. Never persisted or cached — preview only.
+    const previewInstituteId = getPreviewInstituteId();
+    if (previewInstituteId) {
+      setState({
+        isLoading: false,
+        instituteId: previewInstituteId,
+        instituteName: null,
+        instituteLogoFileId: null,
+        instituteThemeCode: null,
+        redirectPath: "/login",
+        error: null,
+        homeIconClickRoute: null,
+        convertUsernamePasswordToLowercase: null,
+        hideInstituteName: null,
+        logoWidthPx: null,
+        logoHeightPx: null,
+        stackNameBelowLogo: null,
+        ...NO_AUTH_POLICY,
+      });
+      return;
+    }
+
     // If already resolving globally, use the cached result
     if (isResolvingGlobally && globalDomainRoutingState) {
       setState(globalDomainRoutingState);

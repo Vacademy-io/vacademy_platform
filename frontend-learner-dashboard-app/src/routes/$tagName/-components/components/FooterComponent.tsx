@@ -129,7 +129,7 @@ export const FooterComponent: React.FC<FooterProps & {
   // Opt-in "brand" footer (logo + newsletter + four columns + bottom bar).
   // Every other footer renders the original markup below.
   if (allProps.variant === "brand") {
-    return <FooterBrand {...allProps} tagName={tagName} onNavigate={handleLinkNavigation} />;
+    return <FooterBrand {...allProps} tagName={tagName} />;
   }
 
   // Determine grid columns based on layout

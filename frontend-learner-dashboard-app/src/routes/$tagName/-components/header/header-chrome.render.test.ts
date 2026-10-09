@@ -264,7 +264,13 @@ describe("header with the design's opt-in props", () => {
     await click(trigger);
     await flush();
     expect(trigger.className).toContain("font-bold text-palette-gold");
+    expect(trigger.className).toContain("gap-1.5");
     expect(trigger.querySelector(".bg-palette-accent")).not.toBeNull();
+    // Figma 0:29: a 10×6 chevron, up and in the accent while open.
+    const chevron = trigger.querySelector(":scope > svg")!;
+    expect(chevron.getAttribute("viewBox")).toBe("0 0 10 6");
+    expect(chevron.getAttribute("class")).toContain("h-1.5 w-2.5");
+    expect(chevron.getAttribute("class")).toContain("rotate-180 text-palette-accent");
     const panel = container.querySelector('[role="region"]')!;
     expect(panel.className).toContain("rounded-b-3xl");
     expect(panel.className).toContain("border-palette-border");
@@ -278,9 +284,12 @@ describe("header with the design's opt-in props", () => {
     expect(panel.querySelector(".bg-palette-cream.p-8")!.textContent).toContain("Learn the Indian way of learning.");
     expect(panel.textContent).toContain("Gurukul Education");
     expect(panel.textContent).toContain("Coming soon subjects");
+    // The detail button keeps a keyboard focus ring.
+    expect(Array.from(panel.querySelectorAll("a, button")).some((x) => x.className.includes("focus-visible:ring-2"))).toBe(true);
     // Closing removes the underline again.
     await click(trigger);
     expect(trigger.querySelector(".bg-palette-accent")).toBeNull();
+    expect(trigger.querySelector(":scope > svg")!.getAttribute("class")).not.toContain("rotate-180");
     expect(container.querySelector('[role="region"]')).toBeNull();
   });
 
@@ -325,6 +334,8 @@ describe("header with the design's opt-in props", () => {
     await flush();
     const panel = container.querySelector('[role="region"]')!;
     expect(panel.className).toContain("rounded-b-catalogue-2xl");
+    // The original bold 14px caret, not the editorial chevron.
+    expect(container.querySelector("nav [aria-controls] > svg")!.getAttribute("class")).toContain("size-3.5");
     expect(panel.previousElementSibling?.className ?? "").not.toContain("bg-palette-text/35");
   });
 });

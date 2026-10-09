@@ -63,6 +63,15 @@ export const editorialNavItemClasses = (active: boolean): string =>
 /** 2px accent bar under the open mega menu's label, on the bar's bottom edge (Figma y 62.7–64.7 of 65). */
 export const EDITORIAL_OPEN_UNDERLINE = "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-palette-accent";
 
+/**
+ * The mega menu trigger's chevron: 10×6, 1.6px round stroke, 6px after the
+ * label (Figma 0:29 / chevron-up fd3d5.svg). Points down while closed; open,
+ * it turns up and takes the accent, as in the design.
+ */
+export const EDITORIAL_CHEVRON = "h-1.5 w-2.5 shrink-0 transition-transform duration-200";
+export const editorialChevronClasses = (open: boolean): string =>
+  `${EDITORIAL_CHEVRON}${open ? " rotate-180 text-palette-accent" : ""}`;
+
 /** Right cluster: 16px apart. */
 export const EDITORIAL_RIGHT_GROUP = "flex items-center gap-4 flex-shrink-0";
 
@@ -87,9 +96,13 @@ export const EDITORIAL_AUTH_CLASSES: Record<AuthLinkVariant, string> = {
  */
 const SEGMENT_GROUP = "inline-flex shrink-0 items-center gap-1 overflow-hidden rounded-[8px] border border-palette-border"; // design-lint-ignore: Figma toggle radius 8
 const SEGMENT_BUTTON = "px-2.5 py-1.5 text-xs font-normal leading-4 transition-colors duration-200";
-/** Footer: 84×28 with the border inside, no fill; both halves in the body colour. */
+/**
+ * Footer: 84×28 (43 + 4 + 37) with the border inside, no fill; both halves in
+ * the body colour. The 1px CSS border is taken back from the outer padding
+ * (9px) and the vertical padding (5px), so the box stays 84×28.
+ */
 const FOOTER_SEGMENT_GROUP = "inline-flex shrink-0 items-center gap-1 overflow-hidden rounded-[8px] border border-palette-border"; // design-lint-ignore: Figma toggle radius 8
-const FOOTER_SEGMENT_BUTTON = "px-2.5 py-[5px] text-xs font-normal leading-4 transition-colors duration-200"; // design-lint-ignore: Figma 28px toggle incl. border
+const FOOTER_SEGMENT_BUTTON = "px-2.5 py-[5px] first:ps-[9px] last:pe-[9px] text-xs font-normal leading-4 transition-colors duration-200"; // design-lint-ignore: Figma 84×28 toggle incl. border
 
 export type LanguageSwitcherVariant = "pill" | "segmented" | "footer";
 

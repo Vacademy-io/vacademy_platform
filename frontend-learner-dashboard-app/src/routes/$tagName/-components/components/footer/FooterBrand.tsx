@@ -5,6 +5,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../../-services/route-matcher";
 import type { FooterProps, GlobalSettings } from "../../../-types/course-catalogue-types";
 import type { FooterBrandProps, FooterLinkColumn } from "../../../-types/site-chrome-types";
+import { CatalogueLink } from "../../CatalogueLink";
 import { HeaderLanguageSwitcher } from "../../header/HeaderLanguageSwitcher";
 import { useNewsletterSignup } from "../newsletter/use-newsletter-signup";
 
@@ -23,8 +24,6 @@ type Props = FooterProps &
     instituteId?: string;
     tagName?: string;
     globalSettings?: GlobalSettings;
-    /** The footer's own link handling (catalogue pages, external tabs). */
-    onNavigate: (route: string, openInSameTab?: boolean) => void;
   };
 
 // Exact design values, one per line so each carries its design-lint note.
@@ -91,7 +90,6 @@ export const FooterBrand: React.FC<Props> = ({
   instituteId,
   tagName,
   globalSettings,
-  onNavigate,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const left = (leftSection ?? {}) as FooterProps["leftSection"] & NonNullable<FooterBrandProps["leftSection"]>;
@@ -119,9 +117,11 @@ export const FooterBrand: React.FC<Props> = ({
         {link.label}
       </a>
     ) : (
-      <button type="button" onClick={() => onNavigate(link.route, link.openInSameTab)} className={LINK}>
+      // A real link (href with the site prefix and the visitor's language), so
+      // it opens in a new tab, copies and is followed by crawlers.
+      <CatalogueLink to={link.route} className={LINK}>
         {link.label}
-      </button>
+      </CatalogueLink>
     );
 
   return (
@@ -204,14 +204,16 @@ export const FooterBrand: React.FC<Props> = ({
                 <ul className="flex flex-wrap gap-3" aria-label={t("siteChrome.socialLinks", "Social media")}>
                   {socials.map((social, i) => {
                     const Icon = SOCIAL_ICONS[(social.icon || social.platform || "").toLowerCase()] ?? Globe;
+                    // The icon is hidden from screen readers, so the link always needs a name.
+                    const name = social.platform || social.icon || social.url;
                     return (
                       <li key={i}>
                         <a
                           href={social.url}
                           target={social.openInSameTab ? "_self" : "_blank"}
                           rel={social.openInSameTab ? undefined : "noopener noreferrer"}
-                          aria-label={social.platform}
-                          title={social.platform}
+                          aria-label={name}
+                          title={name}
                           className={SOCIAL}
                         >
                           <Icon aria-hidden="true" size={14} />

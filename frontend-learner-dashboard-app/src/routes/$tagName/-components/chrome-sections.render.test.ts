@@ -337,6 +337,29 @@ describe("ctaBanner variant band", () => {
     expect(el.textContent).toContain("ऐप पाएँ");
   });
 
+  it("a band without a background colour gets the dark ink and light text, so the heading stays readable", async () => {
+    const props = { ...(HELP_BAND.props as Record<string, unknown>) };
+    delete props.backgroundColor;
+    delete props.textColor;
+    delete props.subheadingColor;
+    const el = await renderPage([{ ...HELP_BAND, props: { ...props, eyebrow: "Need help?" } }]);
+    const band = el.querySelector('[data-cta-band="md"]') as HTMLElement;
+    expect(band.className).toContain("bg-palette-text");
+    expect(band.style.backgroundColor).toBe("");
+    const h2 = band.querySelector("h2")!;
+    expect(h2.className).toContain("text-white");
+    expect(h2.className).not.toContain("text-palette-text");
+    const [eyebrow, sub] = Array.from(band.querySelectorAll("p"));
+    expect(eyebrow.className).toContain("text-palette-accent-on-dark");
+    expect(sub.className).toContain("text-palette-body-on-dark");
+  });
+
+  it("a band with a light author colour keeps dark text", async () => {
+    const el = await renderPage([INSTITUTIONS]);
+    expect(el.querySelector("h2")!.className).toContain("text-palette-text");
+    expect(el.querySelector("h2")!.className).not.toContain("text-white");
+  });
+
   it("a banner without the variant keeps the original renderer and its white button", async () => {
     const el = await renderPage([{ ...HELP_BAND, props: { ...(HELP_BAND.props as object), variant: undefined } }]);
     expect(el.querySelector("[data-cta-band]")).toBeNull();
@@ -393,6 +416,48 @@ describe("footer variant brand", () => {
       ["EN", "true"],
     ]);
     expect(toggle.querySelector("button")!.className).not.toContain("bg-");
+  });
+
+  it("column links are real links: internal ones carry the site prefix, external ones open a new tab", async () => {
+    const el = await renderPage([FOOTER], { pageId: "footer" });
+    const links = Array.from(el.querySelectorAll("footer nav a")) as HTMLAnchorElement[];
+    expect(el.querySelectorAll("footer nav button")).toHaveLength(0);
+    // column(): even index = internal "/x-<i>", odd = external.
+    expect(links[0].textContent).toBe("Knowledge Streams");
+    expect(links[0].getAttribute("href")).toBe("/site/x-0");
+    expect(links[0].getAttribute("target")).toBeNull();
+    expect(links[1].getAttribute("href")).toBe("https://example.test/1");
+    expect(links[0].className).toBe(links[1].className);
+  });
+
+  it("an internal link keeps a हिन्दी visitor's language in its address", async () => {
+    const el = await renderPage([FOOTER], { pageId: "footer", hindi: true });
+    expect((el.querySelector("footer nav a") as HTMLAnchorElement).getAttribute("href")).toBe("/site/x-0?lang=hi");
+  });
+
+  it("a social link without a platform is still named for screen readers", async () => {
+    const left = (FOOTER.props as { leftSection: Record<string, unknown> }).leftSection;
+    const el = await renderPage(
+      [
+        {
+          ...FOOTER,
+          props: {
+            ...(FOOTER.props as object),
+            leftSection: {
+              ...left,
+              socials: [
+                { icon: "youtube", url: "https://youtube.test/bv" },
+                { url: "https://example.test/profile" },
+              ],
+            },
+          },
+        },
+      ],
+      { pageId: "footer" },
+    );
+    const socials = Array.from(el.querySelectorAll("footer ul[aria-label] a"));
+    expect(socials.map((a) => a.getAttribute("aria-label"))).toEqual(["youtube", "https://example.test/profile"]);
+    expect(socials.map((a) => a.getAttribute("title"))).toEqual(["youtube", "https://example.test/profile"]);
   });
 
   it("the newsletter submits a NEWSLETTER lead to its campaign, tagged as the footer's", async () => {

@@ -100,7 +100,8 @@ export const CtaBand: React.FC<CtaBannerBandProps> = ({
   secondaryButton,
   mockup,
 }) => {
-  const dark = isDarkHex(backgroundColor);
+  // No author colour = the dark ink fallback below (bg-palette-text), so light text.
+  const dark = backgroundColor ? isDarkHex(backgroundColor) : true;
   const large = bandSize === "lg";
   const app = !!mockup && (mockup.kind ?? "phone") === "phone";
   const buttons = [button, secondaryButton].filter((b): b is CtaBandButtonConfig => !!b && b.enabled !== false && !!b.text);

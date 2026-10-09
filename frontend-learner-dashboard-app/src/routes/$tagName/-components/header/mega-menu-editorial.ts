@@ -37,7 +37,7 @@ export const EDITORIAL_DETAIL_TITLE = "flex flex-wrap items-center gap-x-2 text-
 export const EDITORIAL_DETAIL_ICON = "size-14";
 export const EDITORIAL_DETAIL_TAGLINE = "text-[22px] font-bold leading-[30px] text-palette-text"; // design-lint-ignore: Figma 22/30
 export const EDITORIAL_DETAIL_TEXT = "text-sm leading-[22px] text-palette-body"; // design-lint-ignore: Figma 14/22
-export const EDITORIAL_DETAIL_CTA = "inline-flex items-center gap-2 rounded-[8px] bg-palette-primary px-[22px] py-3 text-sm font-normal leading-5 text-white transition-colors duration-200 hover:bg-palette-primary/90"; // design-lint-ignore: Figma button radius 8, px 22
+export const EDITORIAL_DETAIL_CTA = "inline-flex items-center gap-2 rounded-[8px] bg-palette-primary px-[22px] py-3 text-sm font-normal leading-5 text-white transition-colors duration-200 hover:bg-palette-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-primary/40 focus-visible:ring-offset-2"; // design-lint-ignore: Figma button radius 8, px 22
 
 export const EDITORIAL_DETAIL_RIGHT = "min-w-0 flex-1";
 export const EDITORIAL_CATEGORIES_HEADING = "text-[11px] font-bold uppercase leading-4 tracking-[1.3px] text-palette-muted"; // design-lint-ignore: Figma 11/16, tracking 1.3px

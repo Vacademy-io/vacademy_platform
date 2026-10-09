@@ -17,7 +17,7 @@ import {
 import { openNotifyForm, useHeaderLinkNavigation, useMegaMenuTexts, useMegaMenuTree } from "./header-hooks";
 import { desktopNavItemClasses } from "./header-variants";
 import { AvailabilityDot, AvailabilityLegend, ComingSoonTag, MegaItemIcon } from "./MegaMenuParts";
-import { EDITORIAL_OPEN_UNDERLINE, editorialNavItemClasses } from "./header-chrome";
+import { EDITORIAL_OPEN_UNDERLINE, editorialChevronClasses, editorialNavItemClasses } from "./header-chrome";
 import * as ED from "./mega-menu-editorial";
 
 /**
@@ -632,13 +632,18 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
         ) : (
           label
         )}
-        {!libraryGone && (
-          <CaretDown
-            aria-hidden="true"
-            weight="bold"
-            className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")}
-          />
-        )}
+        {!libraryGone &&
+          (edNav ? (
+            <svg aria-hidden="true" viewBox="0 0 10 6" fill="none" className={editorialChevronClasses(open)}>
+              <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <CaretDown
+              aria-hidden="true"
+              weight="bold"
+              className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")}
+            />
+          ))}
       </button>
       {open && !libraryGone && ed && <div aria-hidden="true" className={ED.EDITORIAL_DIM} />}
       {open && !libraryGone && (

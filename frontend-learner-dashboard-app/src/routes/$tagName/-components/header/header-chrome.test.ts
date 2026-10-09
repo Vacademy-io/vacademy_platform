@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   EDITORIAL_AUTH_CLASSES,
+  editorialChevronClasses,
   editorialNavItemClasses,
   hasHeaderChrome,
   headerOffsetClass,
   languageSwitcherClasses,
   resolveHeaderChrome,
 } from "./header-chrome";
+import { EDITORIAL_DETAIL_CTA } from "./mega-menu-editorial";
 
 describe("resolveHeaderChrome", () => {
   it("turns nothing on for a header without the opt-in props", () => {
@@ -72,5 +74,18 @@ describe("editorial classes (Figma header 1:37 / 73:325)", () => {
     const foot = languageSwitcherClasses("footer");
     expect(foot.button(true)).not.toContain("bg-");
     expect(foot.button(true)).toContain("text-palette-body");
+    // 84×28 (Figma 73:681): the 1px border comes off the outer padding.
+    expect(foot.button(true)).toContain("first:ps-[9px] last:pe-[9px]"); // design-lint-ignore: asserts the exact Figma class
+    expect(seg.button(true)).not.toContain("first:ps-");
+  });
+
+  it("editorial chevron: 10×6, turned up and in the accent while open", () => {
+    expect(editorialChevronClasses(false)).toContain("h-1.5 w-2.5");
+    expect(editorialChevronClasses(false)).not.toContain("rotate-180");
+    expect(editorialChevronClasses(true)).toContain("rotate-180 text-palette-accent");
+  });
+
+  it("the editorial detail button keeps a visible keyboard focus ring", () => {
+    expect(EDITORIAL_DETAIL_CTA).toContain("focus-visible:ring-2 focus-visible:ring-palette-primary/40");
   });
 });

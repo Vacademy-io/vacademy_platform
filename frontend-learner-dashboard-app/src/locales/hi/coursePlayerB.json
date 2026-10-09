@@ -27,10 +27,10 @@
         "_owner": "Feature 'sidebar' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogSections": {
-        "freeTitle": "नए हैं? निःशुल्क शुरू करें",
-        "seeAllFree": "सभी {{count}} निःशुल्क देखें",
-        "startFree": "निःशुल्क शुरू करें",
-        "freeBadge": "निःशुल्क",
+        "freeTitle": "नए हैं? मुफ़्त से शुरू करें",
+        "seeAllFree": "सभी {{count}} मुफ़्त देखें",
+        "startFree": "मुफ़्त शुरू करें",
+        "freeBadge": "मुफ़्त",
         "comingSoonTitle": "जल्द आ रहा है",
         "carouselLabel": "विशेष कार्यक्रम",
         "carouselRole": "कैरोसेल",

@@ -1,6 +1,7 @@
 {
     "menu": {
-        "sendReminder": "Envoyer un rappel",
+        "sendWhatsApp": "Envoyer un rappel sur WhatsApp",
+        "sendEmail": "Envoyer un rappel par e-mail",
         "removeParticipants": "Retirer des participants"
     },
     "actionInfo": {

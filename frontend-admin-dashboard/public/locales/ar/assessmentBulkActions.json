@@ -6,5 +6,12 @@
     "selectedCount_many": "[{{count}}] محددًا",
     "selectedCount_other": "[{{count}}] محدد",
     "reset": "إعادة تعيين",
-    "bulkActions": "إجراءات جماعية"
+    "bulkActions": "إجراءات جماعية",
+    "selectAll_zero": "تحديد الكل ({{count}})",
+    "selectAll_one": "تحديد الكل ({{count}})",
+    "selectAll_two": "تحديد الكل ({{count}})",
+    "selectAll_few": "تحديد الكل ({{count}})",
+    "selectAll_many": "تحديد الكل ({{count}})",
+    "selectAll_other": "تحديد الكل ({{count}})",
+    "selectingAll": "جارٍ تحديد الكل…"
 }

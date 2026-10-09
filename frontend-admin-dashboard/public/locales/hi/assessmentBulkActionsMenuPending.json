@@ -1,6 +1,7 @@
 {
     "menu": {
-        "sendReminder": "अनुस्मारक भेजें",
+        "sendWhatsApp": "WhatsApp पर रिमाइंडर भेजें",
+        "sendEmail": "ईमेल पर रिमाइंडर भेजें",
         "removeParticipants": "प्रतिभागियों को हटाएं"
     },
     "actionInfo": {

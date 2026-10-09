@@ -83,5 +83,8 @@
         "costsUnavailable": "Generating this report uses AI credits. The exact cost could not be loaded — it will be charged once, and every later download is free.",
         "historyTitle": "Previously generated",
         "historyDownload": "Download"
+    },
+    "selectAll": {
+        "failed": "Could not select every pending learner. Please try again."
     }
 }

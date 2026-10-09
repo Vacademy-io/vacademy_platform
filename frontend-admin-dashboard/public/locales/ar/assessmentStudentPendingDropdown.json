@@ -1,12 +1,6 @@
 {
     "dialogs": {
         "attentionLabel": "تنبيه",
-        "sendReminder": {
-            "title": "إرسال تذكير",
-            "confirmMessagePrefix": "سيتم إرسال تذكير إلى",
-            "confirmMessageSuffix": "الذي لم يحضر بعد للتقييم",
-            "send": "إرسال"
-        },
         "removeParticipant": {
             "title": "إزالة المشارك",
             "confirmMessagePrefix": "هل أنت متأكد أنك تريد إزالة",
@@ -15,7 +9,8 @@
         }
     },
     "dropdown": {
-        "sendReminder": "إرسال تذكير",
+        "sendWhatsApp": "إرسال تذكير عبر واتساب",
+        "sendEmail": "إرسال تذكير عبر البريد الإلكتروني",
         "removeParticipants": "إزالة المشاركين"
     }
 }

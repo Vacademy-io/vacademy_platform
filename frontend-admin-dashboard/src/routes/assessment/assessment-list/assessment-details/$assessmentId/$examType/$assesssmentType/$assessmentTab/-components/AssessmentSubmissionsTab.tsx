@@ -94,6 +94,10 @@ import {
 } from './submissions-selection-mode';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { toast } from 'sonner';
+import type { SubmissionStudentData } from '@/types/assessments/assessment-overview';
+import { SendMessageDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-message-dialog';
+import { SendEmailDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-email-dialog';
 
 export interface SelectedSubmissionsFilterInterface {
     name: string;
@@ -135,6 +139,9 @@ export interface SelectedReleaseResultFilterInterface {
 // current tab actually has, dropping the ones it doesn't.
 const COLUMN_PREFS_KEY = 'assessment-submissions:hidden-columns';
 const COLUMN_ORDER_KEY = 'assessment-submissions:column-order';
+
+// Rows per request when "Select all" pulls the whole Pending list.
+const SELECT_ALL_PAGE_SIZE = 200;
 
 // End Time starts hidden: Attempt Date + Start Time + Duration already say when the
 // attempt ran, and with everything visible the Attempted table's min-widths total well
@@ -341,11 +348,31 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 .filter(Boolean),
         [assessmentDetailsData]
     );
-    const currentPageSelection = rowSelections[page] || {};
-    const totalSelectedCount = Object.values(rowSelections).reduce(
-        (count, pageSelection) => count + Object.keys(pageSelection).length,
-        0
+    // "Select all N" on the Pending tab: every learner matching the current filter, across
+    // all pages, fetched up front so the WhatsApp / email reminder reaches the whole list
+    // and not just the rows on screen. null = the normal per-page selection is in charge.
+    const [allSelectedRows, setAllSelectedRows] = useState<SubmissionStudentData[] | null>(null);
+    const [isSelectingAll, setIsSelectingAll] = useState(false);
+    // Bumped on every reset, so a select-all fetch that finishes after the admin moved on
+    // (other tab, filter, search) is dropped instead of selecting the old list.
+    const selectAllRequest = useRef(0);
+    const allSelectedIds = useMemo(
+        () => (allSelectedRows ? new Set(allSelectedRows.map((row) => row.user_id)) : null),
+        [allSelectedRows]
     );
+    const currentPageSelection = allSelectedIds
+        ? Object.fromEntries(
+              (participantsData.content ?? []).flatMap((row, index) =>
+                  allSelectedIds.has(row.user_id) ? [[String(index), true]] : []
+              )
+          )
+        : rowSelections[page] || {};
+    const totalSelectedCount = allSelectedRows
+        ? allSelectedRows.length
+        : Object.values(rowSelections).reduce(
+              (count, pageSelection) => count + Object.keys(pageSelection).length,
+              0
+          );
 
     const [attemptedCount, setAttemptedCount] = useState(0);
     const [ongoingCount, setOngoingCount] = useState(0);
@@ -418,6 +445,27 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
 
     const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updaterOrValue) => {
+        if (allSelectedRows) {
+            // Select-all is on: a checkbox on this page adds / drops that learner from the
+            // full list rather than falling back to the page-only selection.
+            const nextSelection =
+                typeof updaterOrValue === 'function'
+                    ? updaterOrValue(currentPageSelection)
+                    : updaterOrValue;
+            const pageRows: SubmissionStudentData[] = participantsData.content ?? [];
+            const dropped = new Set(
+                pageRows.filter((_, index) => !nextSelection[index]).map((row) => row.user_id)
+            );
+            const kept = allSelectedRows.filter((row) => !dropped.has(row.user_id));
+            const keptIds = new Set(kept.map((row) => row.user_id));
+            const added = pageRows.filter(
+                (row, index) => nextSelection[index] && !keptIds.has(row.user_id)
+            );
+            const next = [...kept, ...added];
+            // Unticking everyone ends select-all, back to the plain per-page selection.
+            setAllSelectedRows(next.length > 0 ? next : null);
+            return;
+        }
         const newSelection =
             typeof updaterOrValue === 'function'
                 ? updaterOrValue(rowSelections[page] || {})
@@ -431,9 +479,55 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     const handleResetSelections = () => {
         setRowSelections({});
+        setAllSelectedRows(null);
+        selectAllRequest.current += 1;
+        setIsSelectingAll(false);
     };
 
+    // Pages through the same request the table makes (PENDING, current registration
+    // source, filters and search) in large chunks, one after another.
+    const handleSelectAll = async () => {
+        const requestId = ++selectAllRequest.current;
+        setIsSelectingAll(true);
+        const filter = {
+            ...selectedFilter,
+            registration_source: registrationSource,
+            attempt_type: ['PENDING'],
+        };
+        try {
+            const rows: SubmissionStudentData[] = [];
+            for (let pageNo = 0; ; pageNo++) {
+                const data = await getAdminParticipants(
+                    assessmentId,
+                    instituteId,
+                    pageNo,
+                    SELECT_ALL_PAGE_SIZE,
+                    filter
+                );
+                if (requestId !== selectAllRequest.current) return;
+                rows.push(...(data?.content ?? []));
+                if (data?.last || pageNo + 1 >= (data?.total_pages ?? 0)) break;
+            }
+            setRowSelections({});
+            setAllSelectedRows(rows);
+        } catch (error) {
+            if (requestId === selectAllRequest.current) {
+                toast.error(t('selectAll.failed'));
+            }
+            console.error(error);
+        } finally {
+            if (requestId === selectAllRequest.current) setIsSelectingAll(false);
+        }
+    };
+
+    // Page-index selections and the select-all list both describe ONE list; another tab,
+    // participant source or filter is a different list, so neither may carry over.
+    useEffect(() => {
+        handleResetSelections();
+    }, [selectedTab, registrationSource, selectedFilter]);
+
     const getSelectedStudents = (): StudentTable[] => {
+        if (allSelectedRows) return allSelectedRows;
         return Object.entries(rowSelections).flatMap(([pageNum, selections]) => {
             const pageData = allPagesData[parseInt(pageNum)];
             if (!pageData) return [];
@@ -1818,6 +1912,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             selectedStudents={getSelectedStudents()}
                             onReset={handleResetSelections}
                             selectedTab={selectedTab}
+                            totalCount={participantsData.total_elements}
+                            onSelectAll={selectedTab === 'Pending' ? handleSelectAll : undefined}
+                            isSelectingAll={isSelectingAll}
+                            isAllSelected={
+                                allSelectedRows !== null &&
+                                allSelectedRows.length >= participantsData.total_elements
+                            }
                             onExportReports={() => setBulkReportZipOpen(true)}
                             onCheckWithAi={
                                 isManualEvaluation
@@ -1853,6 +1954,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     </div>
                 </div>
             </Tabs>
+            {/* Pending-tab reminders (bulk menu and row menu) open these. */}
+            <SendMessageDialog />
+            <SendEmailDialog />
         </ControlledStudentSidebarProvider>
     );
 };

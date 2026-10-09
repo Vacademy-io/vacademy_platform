@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { CheckCircle } from "@phosphor-icons/react";
+import { CheckCircle, ListChecks } from "@phosphor-icons/react";
 import QuizTimer from "./QuizTimer";
 import QuizTimeWarning from "./QuizTimeWarning";
 import { MyInput } from "@/components/design-system/input";
@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 import { trackOrQueue, isNetworkError } from "@/lib/offline/events/track-or-queue";
 import QuizReview from "./QuizReview";
+import { isMultiSelectQuestion, partialCreditFraction } from "./quiz-scoring";
 import { useGetQuizSlideActivityLogs } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import confetti from "canvas-confetti";
@@ -58,6 +59,8 @@ export interface ScoreCard {
   earned: number;
   totalMarks: number;
   correct: number;
+  /** Not fully correct, but earned a share of the marks (partial-marking quizzes). */
+  partial?: number;
   wrong: number;
   skipped: number;
 }
@@ -69,6 +72,8 @@ interface QuizViewerProps {
   timeLimitMinutes?: number | null;
   marksPerQuestion?: number;
   defaultNegativeMarking?: number;
+  /** Multiple-correct questions earn a share of their marks for a subset of the key. */
+  partialMarking?: boolean;
   passPercentage?: number | null;
   reAttemptCount?: number | null;
 }
@@ -141,8 +146,16 @@ const isAnswerCorrect = (q: Question, answer: AnswerValue): boolean => {
     const ans = answer.map(String);
     return ans.length === correct.length && correct.every((c) => ans.includes(c));
   }
-  return correct.includes(String(answer));
+  return isSingleAnswerCorrect(q, String(answer), correct);
 };
+
+// On a multiple-correct question a lone option id must match the WHOLE key: picking
+// one of two correct options is not a correct answer. Single-select questions keep
+// accepting any keyed option (an author may key two options as both acceptable).
+const isSingleAnswerCorrect = (q: Question, answer: string, correct: string[]): boolean =>
+  isMultiSelectQuestion(q.question_type)
+    ? correct.length === 1 && correct[0] === answer
+    : correct.includes(answer);
 
 const getQuestionTypeDescription = (type: string | undefined, t: TFunction): string => {
   const baseDescriptions = getBaseQuestionTypeDescriptions(t);
@@ -179,6 +192,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   timeLimitMinutes,
   marksPerQuestion = 1,
   defaultNegativeMarking = 0,
+  partialMarking = false,
   passPercentage,
   reAttemptCount,
 }) => {
@@ -454,7 +468,15 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         const isAnswered =
           answer != null && !(typeof answer === "string" && answer.trim() === "");
         const correct = isAnswered && isAnswerCorrect(q, answer);
-        const earnedMarks = correct ? qMaxMarks : isAnswered ? -qNeg : 0;
+        const partial =
+          !correct && isAnswered && partialMarking ? partialCreditFraction(answer, correctIds) : 0;
+        const earnedMarks = correct
+          ? qMaxMarks
+          : partial > 0
+            ? qMaxMarks * partial
+            : isAnswered
+              ? -qNeg
+              : 0;
         const responseStatus = !isAnswered ? "SKIPPED" : correct ? "CORRECT" : "WRONG";
         return {
           id: uuidv4(),
@@ -465,6 +487,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             marks: earnedMarks,
             maxMarks: qMaxMarks,
             isCorrect: correct,
+            isPartial: partial > 0,
             questionType: q.question_type ?? "",
           }),
           response_status: responseStatus,
@@ -551,6 +574,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     let earned = 0;
     let totalMarks = 0;
     let correct = 0;
+    let partial = 0;
     let wrong = 0;
     let skipped = 0;
 
@@ -570,7 +594,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           const corrStr = correctAnswers.map(String);
           return asStr.length === corrStr.length && corrStr.every((c) => asStr.includes(c));
         }
-        return correctAnswers.map(String).includes(String(userAns));
+        return isSingleAnswerCorrect(q, String(userAns), correctAnswers.map(String));
       } catch {
         return false;
       }
@@ -582,9 +606,16 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       totalMarks += qMarks;
       const isAnswered = finalAnswers[q.id] != null;
       const isCorrect = isAnswered && checkAnswerCorrect(q, finalAnswers[q.id]);
+      const partialShare =
+        !isCorrect && isAnswered && partialMarking
+          ? partialCreditFraction(finalAnswers[q.id], getCorrectOptionIds(q))
+          : 0;
       if (isCorrect) {
         earned += qMarks;
         correct++;
+      } else if (partialShare > 0) {
+        earned += qMarks * partialShare;
+        partial++;
       } else if (isAnswered) {
         earned -= qNeg;
         wrong++;
@@ -593,7 +624,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       }
     });
 
-    return { earned: Math.max(0, earned), totalMarks, correct, wrong, skipped };
+    return { earned: Math.max(0, earned), totalMarks, correct, partial, wrong, skipped };
   };
 
   // Show review whenever we have answers OR the user has exhausted attempts
@@ -682,6 +713,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       showCorrectAnswers={showReportAndCorrectAnswers}
       passed={effectivePassed}
       passPercentage={passPercentage}
+      partialMarking={partialMarking}
       attemptNumber={displayedAttemptNumber}
       maxAttempts={reAttemptCount}
       canReattempt={canReattempt}
@@ -1171,6 +1203,13 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       case "CMCQM":
       case "MCQM":
         return (
+          <>
+          {/* Single- and multiple-correct options used to look identical, so learners
+              ticked one box on a multi-answer question. Say it where they are looking. */}
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-500">
+            <ListChecks size={18} weight="bold" className="shrink-0" />
+            <span>{t("quizViewer.selectAllThatApply")}</span>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack sm:gap-4 mt-4">
             {currentQuestion.options.map((option, index) => {
               const selected = Array.isArray(currentAnswer) && currentAnswer.includes(option.id);
@@ -1204,6 +1243,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               );
             })}
           </div>
+          </>
         );
       case "CMCQS":
       case "MCQS":
@@ -1224,13 +1264,14 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                   `}
                   style={{ userSelect: "none" }}
                 >
+                  {/* Round radio = pick one; the multi-answer case keeps square checkboxes. */}
                   <div className="relative flex items-center">
                     <div
-                      className={`w-5 h-5 border rounded-md flex items-center justify-center transition-colors
-                        ${selected ? "bg-primary-500 border-primary-500" : "border-primary-200 bg-white"}
+                      className={`w-5 h-5 border-2 rounded-full flex items-center justify-center transition-colors
+                        ${selected ? "border-primary-500" : "border-primary-200 bg-white"}
                       `}
                     >
-                      {selected && <span className="text-white text-sm">✓</span>}
+                      {selected && <span className="w-2.5 h-2.5 rounded-full bg-primary-500" />}
                     </div>
                   </div>
                   <label

@@ -414,6 +414,7 @@ function AttemptRow({
 
 const verdictLabelKey: Record<AnswerVerdict, string> = {
     CORRECT: 'verdict.correct',
+    PARTIAL: 'verdict.partial',
     WRONG: 'verdict.wrong',
     SKIPPED: 'verdict.skipped',
     UNGRADED: 'verdict.needsMarking',
@@ -422,6 +423,7 @@ const verdictLabelKey: Record<AnswerVerdict, string> = {
 
 const VERDICT_CLASS: Record<AnswerVerdict, string> = {
     CORRECT: 'border-success-400 bg-success-50 text-success-700',
+    PARTIAL: 'border-warning-400 bg-warning-50 text-warning-700',
     WRONG: 'border-danger-400 bg-danger-50 text-danger-600',
     SKIPPED: 'border-neutral-300 bg-neutral-50 text-neutral-600',
     UNGRADED: 'border-neutral-300 bg-neutral-50 text-neutral-500',

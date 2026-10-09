@@ -46,6 +46,8 @@
         "marksSuffix": "/ {{totalMarks}} अंक",
         "correctLabel": "सही: {{count}}",
         "wrongLabel": "गलत: {{count}}",
+        "partialLabel": "आंशिक: {{count}}",
+        "partiallyCorrect": "आंशिक रूप से सही · {{percent}}% अंक",
         "skippedLabel": "छोड़े गए: {{count}}",
         "attemptPassed": "प्रयास पास हुआ",
         "youPassed": "आप पास हो गए!",

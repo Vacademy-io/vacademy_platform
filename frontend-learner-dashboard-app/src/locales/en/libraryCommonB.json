@@ -112,6 +112,7 @@
     }
   },
   "quizViewer": {
+    "selectAllThatApply": "More than one option can be correct — select all that apply",
     "questionTypeDescriptions": {
       "mcqs": "Multiple Choice Questions - Single Correct Option",
       "mcqm": "Multiple Choice Questions - Multiple Correct Option",

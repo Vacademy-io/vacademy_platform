@@ -151,6 +151,7 @@ export interface QuizSlide {
     time_limit_in_minutes?: number | null;
     marks_per_question?: number;
     negative_marking?: number;
+    partial_marking?: boolean | null;
     pass_percentage?: number | null;
 }
 

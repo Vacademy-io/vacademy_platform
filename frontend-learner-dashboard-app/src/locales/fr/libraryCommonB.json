@@ -113,6 +113,7 @@
         }
     },
     "quizViewer": {
+        "selectAllThatApply": "Plusieurs réponses peuvent être correctes — sélectionnez toutes celles qui s’appliquent",
         "questionTypeDescriptions": {
             "mcqs": "Questions à choix multiples - Une seule bonne réponse",
             "mcqm": "Questions à choix multiples - Plusieurs bonnes réponses",

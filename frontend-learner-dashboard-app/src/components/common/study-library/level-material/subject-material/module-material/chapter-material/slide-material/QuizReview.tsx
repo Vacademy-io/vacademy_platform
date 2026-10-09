@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ScoreCard } from "./quiz-viewer";
+import { isMultiSelectQuestion, partialCreditFraction } from "./quiz-scoring";
 import type { QuizAttemptLog, QuizSideEntry } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getPublicUrl } from "@/services/upload_file";
 import { isRichTextEmpty } from "@/lib/utils";
@@ -47,6 +48,8 @@ interface QuizReviewProps {
   showCorrectAnswers?: boolean;
   passed?: boolean | null;
   passPercentage?: number | null;
+  /** Quiz awards a share of the marks for a subset of a multiple-correct key. */
+  partialMarking?: boolean;
   attemptNumber?: number;
   maxAttempts?: number | null;
   canReattempt?: boolean;
@@ -168,7 +171,28 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
   return [];
 };
 
-export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
+// Single answers are collapsed to a plain id when the learner picked one option,
+// so on a multiple-correct question a lone id must still match the WHOLE key: one
+// of two correct options is wrong. Single-select questions keep accepting any keyed
+// option (an author may key two options as both acceptable).
+const isAnswerMatch = (
+  q: Question,
+  answer: string | number | (string | number)[],
+  correctAnswers: (string | number)[],
+): boolean => {
+  if (correctAnswers.length === 0) return false;
+  const correct = correctAnswers.map(String);
+  if (Array.isArray(answer)) {
+    const ans = new Set(answer.map(String));
+    return ans.size === correct.length && correct.every((c) => ans.has(c));
+  }
+  const ans = String(answer);
+  return isMultiSelectQuestion(q.question_type)
+    ? correct.length === 1 && correct[0] === ans
+    : correct.includes(ans);
+};
+
+export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, partialMarking = false, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
   const { t } = useTranslation("libraryCommonA");
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const [showPastAttempts, setShowPastAttempts] = useState(false);
@@ -328,6 +352,42 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
     return map;
   }, [activeAttempt]);
 
+  // What the active attempt actually recorded per question, so the per-question
+  // status agrees with the score even if the quiz's partial-marking setting changed
+  // after the attempt. Only answers flagged isPartial count as partial: a recorded
+  // answer without the flag keeps its old correct/wrong rendering.
+  const recordedMarksByQuestionId = useMemo(() => {
+    const map = new Map<string, { partialShare: number }>();
+    activeAttempt?.quiz_sides?.forEach((qs) => {
+      if (!qs.question_id || !qs.response_json) return;
+      try {
+        const parsed = JSON.parse(qs.response_json);
+        if (typeof parsed.marks === 'number' && typeof parsed.maxMarks === 'number') {
+          map.set(qs.question_id, {
+            partialShare:
+              parsed.isPartial === true && parsed.marks > 0 && parsed.maxMarks > 0
+                ? parsed.marks / parsed.maxMarks
+                : 0,
+          });
+        }
+      } catch {
+        // skip malformed entries
+      }
+    });
+    return map;
+  }, [activeAttempt]);
+
+  // Share of the marks a not-fully-correct answer earned (0 = plain wrong).
+  const partialShareFor = (
+    q: Question,
+    answer: string | number | (string | number)[],
+    correctAnswers: (string | number)[],
+  ): number => {
+    const recorded = activeAttemptAnswers.has(q.id) ? recordedMarksByQuestionId.get(q.id) : undefined;
+    if (recorded) return recorded.partialShare;
+    return partialMarking ? partialCreditFraction(answer, correctAnswers) : 0;
+  };
+
   // Score for the active attempt — drives the Score Card and Pass/Fail banner
   // when the learner clicks into a past attempt.
   // Decision matrix:
@@ -364,6 +424,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   const effectiveScoreCardWithCounts = useMemo(() => {
     if (!effectiveScoreCard) return scoreCard;
     let correct = 0;
+    let partial = 0;
     let wrong = 0;
     let skipped = 0;
     questions.forEach((q) => {
@@ -375,17 +436,13 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
         return;
       }
       const correctAnswers = getCorrectAnswers(q);
-      const ok =
-        correctAnswers.length > 0 &&
-        (Array.isArray(ans)
-          ? ans.length === correctAnswers.length && correctAnswers.map(String).every((c) => ans.map(String).includes(c))
-          : correctAnswers.map(String).includes(String(ans)));
-      if (ok) correct++;
+      if (isAnswerMatch(q, ans, correctAnswers)) correct++;
+      else if (partialShareFor(q, ans, correctAnswers) > 0) partial++;
       else wrong++;
     });
-    return { ...effectiveScoreCard, correct, wrong, skipped };
+    return { ...effectiveScoreCard, correct, partial, wrong, skipped };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveScoreCard, activeAttemptAnswers, userAnswers, questions]);
+  }, [effectiveScoreCard, activeAttemptAnswers, recordedMarksByQuestionId, userAnswers, questions, partialMarking]);
   const effectivePassed =
     effectiveScoreCardWithCounts && passPercentage != null && effectiveScoreCardWithCounts.totalMarks > 0
       ? (effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100 >= passPercentage
@@ -481,6 +538,11 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             <span className="flex items-center gap-1.5 font-medium text-green-700">
               <span>✅</span> {t("quizReview.correctLabel", { count: effectiveScoreCardWithCounts.correct })}
             </span>
+            {(effectiveScoreCardWithCounts.partial ?? 0) > 0 && (
+              <span className="flex items-center gap-1.5 font-medium text-warning-700">
+                <span>◐</span> {t("quizReview.partialLabel", { count: effectiveScoreCardWithCounts.partial })}
+              </span>
+            )}
             <span className="flex items-center gap-1.5 font-medium text-red-600">
               <span>❌</span> {t("quizReview.wrongLabel", { count: effectiveScoreCardWithCounts.wrong })}
             </span>
@@ -687,27 +749,27 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             userAnswer === '' ||
             (Array.isArray(userAnswer) && userAnswer.length === 0)
           );
-          const isUserAnswerCorrect = (() => {
-            if (!hasUserAnswer || correctAnswers.length === 0) return false;
-            const correctSet = new Set(correctAnswers.map(String));
-            if (Array.isArray(userAnswer)) {
-              const userSet = new Set(userAnswer.map(String));
-              if (userSet.size !== correctSet.size) return false;
-              for (const v of userSet) if (!correctSet.has(v)) return false;
-              return true;
-            }
-            return correctSet.has(String(userAnswer));
-          })();
-          const answerStatus: 'correct' | 'wrong' | 'skipped' = !hasUserAnswer
+          const isUserAnswerCorrect =
+            hasUserAnswer && isAnswerMatch(q, userAnswer!, correctAnswers);
+          const partialShare =
+            hasUserAnswer && !isUserAnswerCorrect ? partialShareFor(q, userAnswer!, correctAnswers) : 0;
+          const answerStatus: 'correct' | 'partial' | 'wrong' | 'skipped' = !hasUserAnswer
             ? 'skipped'
             : isUserAnswerCorrect
               ? 'correct'
-              : 'wrong';
+              : partialShare > 0
+                ? 'partial'
+                : 'wrong';
           const yourAnswerStyles = {
             correct: {
               label: 'text-green-800',
               box: 'bg-green-50 border-green-200',
               text: 'text-green-900',
+            },
+            partial: {
+              label: 'text-warning-700',
+              box: 'bg-warning-50 border-warning-200',
+              text: 'text-warning-700',
             },
             wrong: {
               label: 'text-red-800',
@@ -747,9 +809,15 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 <div className="flex-1">
                   <div className={`mb-1 text-xs font-semibold flex items-center ${yourAnswerStyles.label}`}>
                     {answerStatus === 'correct' && <CheckIcon />}
+                    {answerStatus === 'partial' && <CheckIcon className="text-warning-600" />}
                     {answerStatus === 'wrong' && <CrossIcon />}
                     {answerStatus === 'skipped' && <UserIcon />}
                     {t("quizReview.yourAnswerLabel")}
+                    {answerStatus === 'partial' && (
+                      <span className="ms-2 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-semibold text-warning-700">
+                        {t("quizReview.partiallyCorrect", { percent: Math.round(partialShare * 100) })}
+                      </span>
+                    )}
                   </div>
                   <div className={`w-full rounded-lg border p-3 flex flex-col gap-2 ${yourAnswerStyles.box}`}>
                     {!hasUserAnswer ? (

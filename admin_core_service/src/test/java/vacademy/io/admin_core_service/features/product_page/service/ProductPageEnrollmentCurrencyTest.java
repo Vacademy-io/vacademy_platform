@@ -84,7 +84,9 @@ import static org.mockito.Mockito.when;
  * overrides one the courses name. Razorpay Phase 2 (the money is taken) and
  * free carts are never refused. The order goes through one gateway too: the
  * invite's of the first course in the cart that costs something, never a
- * free course's (the first course's when none costs anything).
+ * free course's (the first course's when none costs anything). A genuine
+ * Razorpay confirmation completes the order Phase 1 opened, whatever the
+ * cart's courses cost by then.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -450,12 +452,16 @@ class ProductPageEnrollmentCurrencyTest {
         return req;
     }
 
-    private void phase1Log() {
+    /** The parent payment log a Razorpay Phase 1 left for the order, with its gateway and provisioned children. */
+    private PaymentLog phase1Log() {
         PaymentLog parent = new PaymentLog();
         parent.setId("phase1-log");
+        parent.setVendor("RAZORPAY");
+        parent.setVendorId("rzp-account");
         parent.setCreatedAt(LocalDateTime.now().minusMinutes(3));
         parent.setPaymentSpecificData("{\"razorpayOrderId\":\"" + ORDER + "\",\"childPaymentLogIds\":[\"child-1\"]}");
         when(paymentLogRepository.findAllByOrderIdInJson(ORDER)).thenReturn(List.of(parent));
+        return parent;
     }
 
     @Test
@@ -643,6 +649,147 @@ class ProductPageEnrollmentCurrencyTest {
         assertEquals("PAID", res.getStatus());
         verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
         verify(paymentPlanRepository, never()).findById("plan-bio");
+    }
+
+    /* ── Phase 2 follows the order Phase 1 opened, whatever the courses cost now ── */
+
+    /** The admin moves a course of the page onto a new plan at {@code price} while the Razorpay widget is open. */
+    private void rePlan(ProductPageInviteMapping m, String planId, double price) {
+        PaymentPlan now = new PaymentPlan();
+        now.setId(planId);
+        now.setActualPrice(price);
+        now.setCurrency("INR");
+        plans.put(planId, now);
+        m.setPaymentPlanId(planId);
+    }
+
+    private void razorpaySecret() {
+        when(institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData("RAZORPAY", INSTITUTE))
+                .thenReturn(Map.of("keySecret", RAZORPAY_SECRET));
+    }
+
+    @Test
+    @DisplayName("Phase 2 completes the paid order after its only paid course was moved to a free plan mid-checkout")
+    void phase2CompletesAfterThePaidCourseWentFree() throws Exception {
+        // Phase 1 opened a Razorpay order for bio's 999; with bio free now,
+        // nothing in the cart is priced and the rule would pick intro's STRIPE.
+        course("intro", 0, "STRIPE", "INR", "INR");
+        rePlan(course("bio", 999, "RAZORPAY", "INR", "INR"), "plan-bio-free", 0);
+        razorpaySecret();
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("intro", "bio"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(paymentService, userPlanService, oneTimePaymentOptionOperation);
+        verify(paymentPlanRepository, never()).findById("plan-bio");
+    }
+
+    @Test
+    @DisplayName("Phase 2 completes the paid order after the free course ahead of it was moved to a priced plan mid-checkout")
+    void phase2CompletesAfterTheFreeCourseWentPriced() throws Exception {
+        // intro, first in the cart, is priced now, so the rule would pick its STRIPE.
+        rePlan(course("intro", 0, "STRIPE", "INR", "INR"), "plan-intro2", 199);
+        course("bio", 999, "RAZORPAY", "INR", "INR");
+        razorpaySecret();
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("intro", "bio"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(paymentService, userPlanService, oneTimePaymentOptionOperation);
+        verify(paymentPlanRepository, never()).findById("plan-intro");
+    }
+
+    @Test
+    @DisplayName("Phase 2 completes the paid order after the cart's first course, the paid Razorpay one, was moved to a free plan ahead of a paid STRIPE course")
+    void phase2CompletesAfterTheFirstPaidCourseWentFree() throws Exception {
+        // Phase 1 charged the whole cart through bio's Razorpay; with bio free
+        // now, the first priced course is chem, so the rule would pick STRIPE.
+        rePlan(course("bio", 999, "RAZORPAY", "INR", "INR"), "plan-bio-free", 0);
+        course("chem", 500, "STRIPE", "INR", "INR");
+        razorpaySecret();
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("bio", "chem"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(paymentService, userPlanService, oneTimePaymentOptionOperation);
+    }
+
+    @Test
+    @DisplayName("an order Phase 1 opened through the cart's first, free course's Razorpay (the previous release) completes in Phase 2")
+    void phase2CompletesAnOrderOpenedByTheFirstCourse() throws Exception {
+        // The previous release took the gateway from the first course; this one
+        // takes it from the priced STRIPE course, which never saw the order.
+        course("orientation", 0, "RAZORPAY", "INR", "INR");
+        course("maths", 499, "STRIPE", "INR", "INR");
+        razorpaySecret();
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2("orientation", "maths"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(paymentService, userPlanService, oneTimePaymentOptionOperation);
+    }
+
+    @Test
+    @DisplayName("a confirmation whose signature does not verify is not taken for Phase 2, and costs no order lookup")
+    void forgedConfirmationIsNotPhase2() throws Exception {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        rePlan(course("bio", 999, "RAZORPAY", "INR", "INR"), "plan-bio-free", 0);
+        razorpaySecret();
+        phase1Log();
+        ProductPageEnrollRequest forged = phase2("intro", "bio");
+        forged.getPaymentInitiationRequest().getRazorpayRequest().setRazorpaySignature("0".repeat(64));
+
+        // The cart's own gateway (STRIPE) refuses the stale plan, as for any request.
+        assertThrows(ConflictException.class, () -> service.enrollForProductPage(forged));
+
+        verify(paymentLogRepository, never()).findAllByOrderIdInJson(anyString());
+        verifyNoInteractions(paymentService, paymentLogService, userPlanService);
+    }
+
+    @Test
+    @DisplayName("a genuine confirmation of an order no Razorpay Phase 1 opened leaves the cart on its own gateway")
+    void confirmationWithoutAPhase1OrderIsNotPhase2() throws Exception {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        course("bio", 999, "STRIPE", "INR", "INR");
+        razorpaySecret();
+        // Another flow's order, or one a redirect gateway's checkout opened.
+        PaymentLog other = phase1Log();
+        other.setVendor("CASHFREE");
+
+        service.enrollForProductPage(phase2("intro", "bio"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("STRIPE", charged.getVendor());
+        assertEquals(999.0, charged.getAmount());
+        verify(paymentLogService, never()).updatePaymentLog(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("a confirmation for an institute with no Razorpay set up leaves the cart on its own gateway")
+    void confirmationWithoutRazorpayIsNotPhase2() throws Exception {
+        course("intro", 0, "STRIPE", "INR", "INR");
+        course("bio", 999, "STRIPE", "INR", "INR");
+        when(institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData("RAZORPAY", INSTITUTE))
+                .thenThrow(new VacademyException("No configurartion found for this payment gateway type"));
+        phase1Log();
+
+        service.enrollForProductPage(phase2("intro", "bio"));
+
+        assertEquals("STRIPE", charged().getVendor());
+        verify(paymentLogRepository, never()).findAllByOrderIdInJson(anyString());
+        verify(paymentLogService, never()).updatePaymentLog(anyString(), anyString(), anyString());
     }
 
     @Test

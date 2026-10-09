@@ -49,11 +49,13 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -241,7 +243,8 @@ public class ProductPageEnrollmentService {
         // ignoring whatever the client sends. Settled before pricing, which has to
         // know whether this call is Razorpay Phase 2, so the courses' plans are
         // read here by the rule pricing locks them with, which Phase 1 and Phase 2
-        // share (gatewayPlans): the same cart picks the same gateway in both.
+        // share (gatewayPlans): on an unchanged page the same cart picks the same
+        // gateway in both. A page changed mid-payment is handled below.
         PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         EnrollInvite firstInvite = null;
         if (!selectedMappings.isEmpty()) {
@@ -263,11 +266,30 @@ public class ProductPageEnrollmentService {
 
         // Razorpay Phase 2 is the call the browser makes AFTER Razorpay has
         // captured the money for the order Phase 1 created (see below).
-        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
-        boolean isRazorpayPhase2 = isRazorpay
-                && payReq.getRazorpayRequest() != null
+        boolean confirmsRazorpayPayment = payReq.getRazorpayRequest() != null
                 && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
                 && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+        // Phase 1 chose Razorpay by the plans the cart's courses were on then.
+        // An admin who moves one of them between a free and a priced plan while
+        // the Razorpay widget is open can make the rule above name another
+        // course's gateway now, and so can an order opened by the release that
+        // took the gateway from the cart's first course. The order is on record,
+        // though: a genuine confirmation of an order a product-page Razorpay
+        // Phase 1 opened is that order's Phase 2, through Razorpay and the
+        // account the order was opened with, so the paid checkout completes
+        // instead of being refused or sent to another gateway.
+        if (confirmsRazorpayPayment && !"RAZORPAY".equalsIgnoreCase(payReq.getVendor())) {
+            PaymentLog razorpayOrder = razorpayPhase1Order(payReq.getRazorpayRequest(), request.getInstituteId());
+            if (razorpayOrder != null) {
+                log.info("Product page checkout: completing Razorpay order {} (payment log {}) that Phase 1 opened, "
+                        + "although the cart's courses now pick gateway {}",
+                        payReq.getRazorpayRequest().getRazorpayOrderId(), razorpayOrder.getId(), payReq.getVendor());
+                payReq.setVendor("RAZORPAY");
+                payReq.setVendorId(razorpayOrder.getVendorId());
+            }
+        }
+        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
+        boolean isRazorpayPhase2 = isRazorpay && confirmsRazorpayPayment;
 
         // Validate + compute total server-side. Every line is priced on the plan
         // locked on its mapping, never on a plan the request picks (lockedPlanId).
@@ -966,14 +988,7 @@ public class ProductPageEnrollmentService {
             if (razorpayOrderId == null || razorpayPaymentId == null || signature == null) {
                 throw new VacademyException("Missing Razorpay verification fields");
             }
-            String payload = razorpayOrderId + "|" + razorpayPaymentId;
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash)
-                hex.append(String.format("%02x", b));
-            if (!hex.toString().equals(signature)) {
+            if (!razorpaySignatureMatches(keySecret, razorpayOrderId, razorpayPaymentId, signature)) {
                 throw new VacademyException("Razorpay payment signature verification failed");
             }
             log.info("Razorpay signature verified for orderId={}", razorpayOrderId);
@@ -982,6 +997,54 @@ public class ProductPageEnrollmentService {
         } catch (Exception e) {
             throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Whether a signature is the one Razorpay gives a payment of an order:
+     * the hex HMAC-SHA256 of "orderId|paymentId" under the key secret,
+     * compared in constant time.
+     */
+    private static boolean razorpaySignatureMatches(String keySecret, String razorpayOrderId,
+                                                    String razorpayPaymentId, String signature) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] hash = mac.doFinal((razorpayOrderId + "|" + razorpayPaymentId).getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder();
+        for (byte b : hash)
+            hex.append(String.format("%02x", b));
+        return MessageDigest.isEqual(hex.toString().getBytes(StandardCharsets.UTF_8),
+                signature.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The parent payment log of the Razorpay order a confirmation call pays,
+     * when the call is genuine and the order is a product-page checkout's:
+     * the signature verifies with the institute's Razorpay secret, and a
+     * Razorpay Phase 1 opened the order and provisioned its enrollments
+     * (findPhase1PaymentLog). Null otherwise. Nothing is refused or changed
+     * here; the Phase 2 branch verifies the call again before it completes
+     * anything. The signature is checked first, so a made-up confirmation
+     * never costs the order lookup, which searches the payment logs' JSON.
+     */
+    private PaymentLog razorpayPhase1Order(RazorpayRequestDTO confirmation, String instituteId) {
+        String orderId = confirmation.getRazorpayOrderId();
+        String paymentId = confirmation.getRazorpayPaymentId();
+        String signature = confirmation.getRazorpaySignature();
+        if (!StringUtils.hasText(orderId) || !StringUtils.hasText(paymentId) || !StringUtils.hasText(signature)) {
+            return null;
+        }
+        try {
+            String keySecret = razorpayKeySecret(institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData("RAZORPAY", instituteId));
+            if (keySecret == null || !razorpaySignatureMatches(keySecret, orderId, paymentId, signature)) {
+                return null;
+            }
+        } catch (Exception e) {
+            // No Razorpay set up for the institute: no order of its can be confirmed.
+            return null;
+        }
+        PaymentLog phase1Log = findPhase1PaymentLog(orderId);
+        return phase1Log != null && "RAZORPAY".equalsIgnoreCase(phase1Log.getVendor()) ? phase1Log : null;
     }
 
     /** publishableKey, else keySecret: the precedence RazorpayPaymentManager creates orders with. */

@@ -89,6 +89,56 @@ describe('CatalogDiscoveryEditor', () => {
         });
     });
 
+    it('keeps a typed dash in a tab URL key', () => {
+        const { lastProps } = setup({
+            streams: {
+                enabled: true,
+                source: 'tags',
+                items: [{ label: 'Vedic', slug: 'vedic', tag: 'vedic' }],
+            },
+        });
+        fireEvent.change(screen.getByLabelText('Tab 1 URL key'), {
+            target: { value: 'vedic-' },
+        });
+        expect(lastProps().streams).toMatchObject({ items: [{ slug: 'vedic-' }] });
+    });
+
+    it('tidies a tab URL key when the field loses focus', () => {
+        const { updateComponent, lastProps } = setup({
+            streams: {
+                enabled: true,
+                source: 'tags',
+                items: [
+                    { label: 'Vedic', slug: 'vedic-maths-', tag: 'x' },
+                    { label: 'Kala', slug: 'kala', tag: 'kala' },
+                ],
+            },
+        });
+        fireEvent.blur(screen.getByLabelText('Tab 1 URL key'));
+        expect(lastProps().streams).toMatchObject({
+            items: [{ slug: 'vedic-maths' }, { slug: 'kala' }],
+        });
+        updateComponent.mockClear();
+        fireEvent.blur(screen.getByLabelText('Tab 2 URL key'));
+        expect(updateComponent).not.toHaveBeenCalled();
+    });
+
+    it('warns about tabs the site would drop', () => {
+        setup({
+            streams: {
+                enabled: true,
+                source: 'tags',
+                items: [
+                    { label: 'शिक्षा', slug: '', tag: 'शिक्षा' },
+                    { label: 'Kala', slug: 'kala', tag: 'kala' },
+                    { label: 'Kala 2', slug: '', tag: 'Kala' },
+                ],
+            },
+        });
+        expect(screen.getByText(/This tab needs a URL key/)).toBeInTheDocument();
+        expect(screen.getByText(/Same URL key as tab 2/)).toBeInTheDocument();
+    });
+
     it('adds a quick filter with a unique id and the next unused kind', () => {
         const { lastProps } = setup({ quickFilters: [{ id: 'qf-1', label: '', kind: 'popular' }] });
         fireEvent.click(screen.getByRole('button', { name: /Add quick filter/ }));
@@ -116,6 +166,52 @@ describe('CatalogDiscoveryEditor', () => {
             max: 2,
             enabled: true,
         });
+    });
+
+    it('keeps the last badge type ticked', () => {
+        const { updateComponent, lastProps } = setup({ badges: { enabled: true, types: ['new'] } });
+        const onlyType = screen.getByRole('checkbox', { name: /^New/ });
+        expect(onlyType).toBeDisabled();
+        fireEvent.click(onlyType);
+        expect(updateComponent).not.toHaveBeenCalled();
+        expect(screen.getByText(/Keep at least one type/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('checkbox', { name: /^Free/ }));
+        expect(lastProps().badges).toEqual({ enabled: true, types: ['new', 'free'] });
+    });
+
+    it('warns when a stored badge list ticks no type', () => {
+        setup({ badges: { enabled: true, types: [] } });
+        expect(screen.getByText(/No badge type is ticked/)).toBeInTheDocument();
+    });
+
+    it('lets a badge number be cleared and retyped without snapping back', () => {
+        const { updateComponent, lastProps } = setup({ badges: { enabled: true, newDays: 30 } });
+        const days = screen.getByLabelText('New for (days)');
+        fireEvent.change(days, { target: { value: '' } });
+        expect(days).toHaveValue(null);
+        expect(updateComponent).not.toHaveBeenCalled();
+        fireEvent.change(days, { target: { value: '45' } });
+        expect(lastProps().badges).toEqual({ enabled: true, newDays: 45 });
+        // Leaving the field empty restores the saved value instead of a default.
+        updateComponent.mockClear();
+        fireEvent.change(days, { target: { value: '' } });
+        fireEvent.blur(days);
+        expect(days).toHaveValue(30);
+        expect(updateComponent).not.toHaveBeenCalled();
+    });
+
+    it('lets a quick-filter amount be cleared and retyped', () => {
+        const { updateComponent, lastProps } = setup({
+            quickFilters: [{ id: 'qf-1', label: '', kind: 'priceMax', value: 1000 }],
+        });
+        const amount = screen.getByLabelText('Quick filter 1 amount');
+        fireEvent.change(amount, { target: { value: '' } });
+        expect(amount).toHaveValue(null);
+        expect(updateComponent).not.toHaveBeenCalled();
+        fireEvent.change(amount, { target: { value: '500' } });
+        expect(lastProps().quickFilters).toEqual([
+            { id: 'qf-1', label: '', kind: 'priceMax', value: 500 },
+        ]);
     });
 
     it('warns that language features wait for Course languages in Site settings', () => {

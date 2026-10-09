@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    badgeTypesOf,
     enableBadges,
     enableStreams,
     formatAmountList,
@@ -9,10 +10,17 @@ import {
     parseAmountList,
     positiveIntOrUndefined,
     readCourseLanguages,
+    streamItemKey,
+    streamItemProblems,
     toggleBadgeType,
     toStreamKey,
+    toStreamKeyDraft,
     withQuickFilterKind,
 } from './catalog-discovery-props';
+
+/** What the URL-key box holds after typing `text` one key at a time. */
+const typeKeyByKey = (text: string) =>
+    [...text].reduce((value, ch) => toStreamKeyDraft(value + ch), '');
 
 describe('amount lists', () => {
     it('parses loose input into unique ascending positive amounts', () => {
@@ -32,6 +40,36 @@ describe('keys and ids', () => {
     it('makes URL keys', () => {
         expect(toStreamKey(' Vedic Maths ')).toBe('vedic-maths');
         expect(toStreamKey('शिक्षा')).toBe('');
+    });
+
+    it('lets a multi-word URL key be typed one key at a time', () => {
+        expect(typeKeyByKey('vedic-maths')).toBe('vedic-maths');
+        expect(typeKeyByKey('vedic maths')).toBe('vedic-maths');
+        expect(typeKeyByKey('Vedic  Maths!')).toBe('vedic-maths-');
+        // Tidied on blur.
+        expect(toStreamKey(typeKeyByKey('Vedic  Maths!'))).toBe('vedic-maths');
+        expect(toStreamKeyDraft(' -x')).toBe('x');
+        expect(toStreamKeyDraft('a'.repeat(130))).toHaveLength(120);
+    });
+
+    it('reads a tab key the way the site does (key, else tag, else text)', () => {
+        expect(streamItemKey({ label: 'Shiksha', slug: '', tag: 'Shiksha Courses' })).toBe(
+            'shiksha-courses'
+        );
+        expect(streamItemKey({ label: 'Kala', slug: ' kala-arts ', tag: 'x' })).toBe('kala-arts');
+        expect(streamItemKey({ label: 'शिक्षा', slug: '', tag: 'शिक्षा' })).toBe('');
+        expect(streamItemKey(null)).toBe('');
+    });
+
+    it('flags tabs the site would drop', () => {
+        expect(
+            streamItemProblems([
+                { label: 'Shiksha', slug: 'shiksha', tag: 'shiksha' },
+                { label: 'शिक्षा', slug: '', tag: 'शिक्षा' },
+                { label: 'Again', slug: '', tag: 'Shiksha' },
+                { label: 'Kala', slug: '', tag: 'kala' },
+            ])
+        ).toEqual([null, { kind: 'noKey' }, { kind: 'duplicate', firstIndex: 0 }, null]);
     });
 
     it('picks the first free quick-filter id', () => {
@@ -111,6 +149,23 @@ describe('defaults when switching a feature on', () => {
         });
     });
 
+    it('badges keep earlier choices but never come back with no type', () => {
+        expect(enableBadges({ enabled: false, types: ['new'], max: 1 })).toEqual({
+            types: ['new'],
+            newDays: 60,
+            bestsellerTop: 3,
+            max: 1,
+            enabled: true,
+        });
+        expect(enableBadges({ enabled: false, types: [] })).toMatchObject({
+            types: ['bestseller', 'popular', 'new', 'free'],
+            enabled: true,
+        });
+        expect(enableBadges({ types: ['bogus'] })).toMatchObject({
+            types: ['bestseller', 'popular', 'new', 'free'],
+        });
+    });
+
     it('toggles badge types in priority order', () => {
         expect(toggleBadgeType(['free', 'new'], 'bestseller')).toEqual([
             'bestseller',
@@ -118,6 +173,23 @@ describe('defaults when switching a feature on', () => {
             'free',
         ]);
         expect(toggleBadgeType(undefined, 'popular')).toEqual(['bestseller', 'new', 'free']);
+        expect(toggleBadgeType([], 'free')).toEqual(['free']);
+    });
+
+    it('never unticks the last badge type (an empty list would hide every badge)', () => {
+        expect(toggleBadgeType(['new'], 'new')).toEqual(['new']);
+        expect(toggleBadgeType(['new', 'bogus'], 'new')).toEqual(['new']);
+        let types: unknown = undefined;
+        for (const t of ['bestseller', 'popular', 'new', 'free'] as const) {
+            types = toggleBadgeType(types, t);
+        }
+        expect(types).toEqual(['free']);
+    });
+
+    it('reads stored badge types in priority order, dropping unknown ones', () => {
+        expect(badgeTypesOf(undefined)).toEqual(['bestseller', 'popular', 'new', 'free']);
+        expect(badgeTypesOf(['free', 'x', 'new'])).toEqual(['new', 'free']);
+        expect(badgeTypesOf([])).toEqual([]);
     });
 });
 

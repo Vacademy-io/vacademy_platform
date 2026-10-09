@@ -79,6 +79,47 @@ export const toStreamKey = (text: string): string =>
         .slice(0, 120)
         .replace(/-+$/g, '');
 
+/**
+ * A URL key while it is being typed: like toStreamKey but a trailing dash
+ * survives, so "vedic-maths" (or "vedic maths") can be typed one key at a
+ * time. The full toStreamKey runs when the field loses focus.
+ */
+export const toStreamKeyDraft = (text: string): string =>
+    text
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+/g, '')
+        .slice(0, 120);
+
+/**
+ * The URL key a tag-list tab gets on the site — the learner's
+ * resolveStreamItems reads `slug || tag || label` the same way. '' means the
+ * tab is dropped there (e.g. a Devanagari-only tag with no key typed).
+ */
+export const streamItemKey = (item: Partial<StreamItemProp> | null | undefined): string => {
+    const pick = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    return toStreamKey(pick(item?.slug) || pick(item?.tag) || pick(item?.label));
+};
+
+export type StreamItemProblem = { kind: 'noKey' } | { kind: 'duplicate'; firstIndex: number };
+
+/** Per tab: why the site would drop it (no usable URL key, or the same key as an earlier tab), else null. */
+export const streamItemProblems = (
+    items: (Partial<StreamItemProp> | null | undefined)[]
+): (StreamItemProblem | null)[] => {
+    const firstByKey = new Map<string, number>();
+    return items.map((item, index) => {
+        const key = streamItemKey(item);
+        if (!key) return { kind: 'noKey' };
+        const first = firstByKey.get(key);
+        if (first !== undefined) return { kind: 'duplicate', firstIndex: first };
+        firstByKey.set(key, index);
+        return null;
+    });
+};
+
 /** qf-1, qf-2… — the first id not already used. */
 export const nextQuickFilterId = (list: { id?: unknown }[]): string => {
     const used = new Set(list.map((q) => String(q.id ?? '')));
@@ -133,22 +174,44 @@ export const enableStreams = (current: unknown): Record<string, unknown> => ({
     enabled: true,
 });
 
-/** Badges as first switched on: all four, New = 60 days, top 3 bestsellers, 2 per card. */
-export const enableBadges = (current: unknown): Record<string, unknown> => ({
-    types: ['bestseller', 'popular', 'new', 'free'],
-    newDays: 60,
-    bestsellerTop: 3,
-    max: 2,
-    ...(isObject(current) ? current : {}),
-    enabled: true,
-});
+const ALL_BADGE_TYPES = BADGE_TYPES.map((b) => b.value);
 
-/** Toggle one badge type, keeping the fixed priority order. */
+/** The badge types a stored `badges.types` value ticks, in priority order (absent = all four). */
+export const badgeTypesOf = (types: unknown): CourseBadgeType[] => {
+    if (!Array.isArray(types)) return [...ALL_BADGE_TYPES];
+    return ALL_BADGE_TYPES.filter((t) => types.includes(t));
+};
+
+/**
+ * Badges as first switched on: all four, New = 60 days, top 3 bestsellers, 2
+ * per card. Earlier choices are kept — except a type list with nothing valid
+ * left in it, which would mean "no badges" and is reset to all four.
+ */
+export const enableBadges = (current: unknown): Record<string, unknown> => {
+    const kept = isObject(current) ? current : {};
+    const types = badgeTypesOf(kept.types);
+    return {
+        newDays: 60,
+        bestsellerTop: 3,
+        max: 2,
+        ...kept,
+        types: types.length ? types : [...ALL_BADGE_TYPES],
+        enabled: true,
+    };
+};
+
+/**
+ * Toggle one badge type, keeping the fixed priority order. The last ticked
+ * type cannot be unticked (the list is returned unchanged): an empty list
+ * would show no badges at all, which is what the "Badges on cards" switch is
+ * for.
+ */
 export const toggleBadgeType = (types: unknown, type: CourseBadgeType): CourseBadgeType[] => {
-    const current = new Set(Array.isArray(types) ? types : BADGE_TYPES.map((b) => b.value));
-    if (current.has(type)) current.delete(type);
-    else current.add(type);
-    return BADGE_TYPES.map((b) => b.value).filter((t) => current.has(t));
+    const current = badgeTypesOf(types);
+    const next = current.includes(type)
+        ? current.filter((t) => t !== type)
+        : ALL_BADGE_TYPES.filter((t) => t === type || current.includes(t));
+    return next.length ? next : current;
 };
 
 /** The site's course-language settings (globalSettings.courseLanguages), with the learner app's defaults. */

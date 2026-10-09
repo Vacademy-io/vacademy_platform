@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, FolderOpen, Plus, Trash } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -17,6 +17,7 @@ import {
 import {
     BADGE_TYPES,
     QUICK_FILTER_KINDS,
+    badgeTypesOf,
     enableBadges,
     enableStreams,
     formatAmountList,
@@ -25,10 +26,11 @@ import {
     parseAmountList,
     positiveIntOrUndefined,
     readCourseLanguages,
+    streamItemProblems,
     toStreamKey,
+    toStreamKeyDraft,
     toggleBadgeType,
     withQuickFilterKind,
-    type CourseBadgeType,
     type QuickFilterKind,
     type QuickFilterProp,
     type StreamItemProp,
@@ -140,6 +142,50 @@ const Warning = ({ children }: { children: ReactNode }) => (
     <p className="text-caption text-warning-600">{children}</p>
 );
 
+/**
+ * A whole-number input that can be cleared and retyped. A valid number is
+ * saved as it is typed (live preview); an empty or invalid field keeps what
+ * the admin typed until it loses focus, then shows the saved value again.
+ */
+const NumberField = ({
+    id,
+    value,
+    onCommit,
+    className,
+    ariaLabel,
+}: {
+    id?: string;
+    /** The saved number; null shows an empty field. */
+    value: number | null;
+    onCommit: (n: number) => void;
+    className?: string;
+    ariaLabel?: string;
+}) => {
+    const [draft, setDraft] = useState<string | null>(null);
+    return (
+        <Input
+            id={id}
+            className={className}
+            type="number"
+            min={1}
+            aria-label={ariaLabel}
+            value={draft ?? (value === null ? '' : String(value))}
+            onChange={(e) => {
+                setDraft(e.target.value);
+                const n = positiveIntOrUndefined(e.target.value);
+                if (n !== undefined && n !== value) onCommit(n);
+            }}
+            onBlur={() => setDraft(null)}
+        />
+    );
+};
+
+/** A stored positive amount (number or numeric text, as the site reads it), else null. */
+const amountOrNull = (v: unknown): number | null => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 const RowButtons = ({
     index,
     count,
@@ -215,6 +261,10 @@ export const CatalogDiscoveryEditor = ({
     const streamItems = (Array.isArray(streams.items) ? streams.items : []) as StreamItemProp[];
     const setStreams = (next: Props) => setNested('streams', next);
     const setStreamItems = (items: StreamItemProp[]) => setStreams({ items });
+    const updateStreamItem = (index: number, next: Partial<StreamItemProp>) =>
+        setStreamItems(streamItems.map((it, i) => (i === index ? { ...it, ...next } : it)));
+    // Tabs the site would drop: no usable URL key, or the key of an earlier tab.
+    const streamProblems = streamItemProblems(streamItems);
 
     const { data: libraries, isLoading: librariesLoading } = useQuery({
         queryKey: folderLibrariesQueryKey(instituteId),
@@ -243,9 +293,7 @@ export const CatalogDiscoveryEditor = ({
     /* ── badges ── */
     const badges = objectOf(props.badges);
     const badgesOn = badges.enabled === true;
-    const badgeTypes = (
-        Array.isArray(badges.types) ? badges.types : BADGE_TYPES.map((b) => b.value)
-    ) as CourseBadgeType[];
+    const badgeTypes = badgeTypesOf(badges.types);
 
     const languagesNote = !courseLanguages.enabled && (
         <Warning>
@@ -379,94 +427,98 @@ export const CatalogDiscoveryEditor = ({
                                     One tab per course tag. The URL key is what links use
                                     (…?stream=key).
                                 </p>
-                                {streamItems.map((item, index) => (
-                                    <div
-                                        key={index}
-                                        className="space-y-1.5 rounded border border-neutral-200 p-2"
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            <Input
-                                                className="h-8 text-xs"
-                                                value={item.label || ''}
-                                                placeholder="Tab text"
-                                                aria-label={`Tab ${index + 1} text`}
-                                                onChange={(e) =>
-                                                    setStreamItems(
-                                                        streamItems.map((it, i) =>
-                                                            i === index
-                                                                ? { ...it, label: e.target.value }
-                                                                : it
+                                {streamItems.map((item, index) => {
+                                    const problem = streamProblems[index];
+                                    return (
+                                        <div
+                                            key={index}
+                                            className="space-y-1.5 rounded border border-neutral-200 p-2"
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    value={item.label || ''}
+                                                    placeholder="Tab text"
+                                                    aria-label={`Tab ${index + 1} text`}
+                                                    onChange={(e) =>
+                                                        updateStreamItem(index, {
+                                                            label: e.target.value,
+                                                        })
+                                                    }
+                                                />
+                                                <RowButtons
+                                                    index={index}
+                                                    count={streamItems.length}
+                                                    noun="tab"
+                                                    onMove={(d) =>
+                                                        setStreamItems(
+                                                            moveItem(streamItems, index, d)
                                                         )
-                                                    )
-                                                }
-                                            />
-                                            <RowButtons
-                                                index={index}
-                                                count={streamItems.length}
-                                                noun="tab"
-                                                onMove={(d) =>
-                                                    setStreamItems(moveItem(streamItems, index, d))
-                                                }
-                                                onRemove={() =>
-                                                    setStreamItems(
-                                                        streamItems.filter((_, i) => i !== index)
-                                                    )
-                                                }
-                                            />
+                                                    }
+                                                    onRemove={() =>
+                                                        setStreamItems(
+                                                            streamItems.filter(
+                                                                (_, i) => i !== index
+                                                            )
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    value={item.tag || ''}
+                                                    placeholder="Course tag"
+                                                    aria-label={`Tab ${index + 1} course tag`}
+                                                    onChange={(e) =>
+                                                        updateStreamItem(index, {
+                                                            tag: e.target.value,
+                                                            // Follow the tag until the key is edited by hand.
+                                                            slug:
+                                                                !item.slug ||
+                                                                item.slug ===
+                                                                    toStreamKey(item.tag || '')
+                                                                    ? toStreamKey(e.target.value)
+                                                                    : item.slug,
+                                                        })
+                                                    }
+                                                />
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    value={item.slug || ''}
+                                                    placeholder="URL key"
+                                                    aria-label={`Tab ${index + 1} URL key`}
+                                                    // A trailing dash survives typing ("vedic-" → "vedic-maths");
+                                                    // the key is tidied once the field loses focus.
+                                                    onChange={(e) =>
+                                                        updateStreamItem(index, {
+                                                            slug: toStreamKeyDraft(e.target.value),
+                                                        })
+                                                    }
+                                                    onBlur={(e) => {
+                                                        const key = toStreamKey(e.target.value);
+                                                        if (key !== (item.slug || ''))
+                                                            updateStreamItem(index, { slug: key });
+                                                    }}
+                                                />
+                                            </div>
+                                            {problem?.kind === 'noKey' && (
+                                                <Warning>
+                                                    This tab needs a URL key in English letters or
+                                                    digits (e.g. shiksha) — until then it
+                                                    doesn&rsquo;t show on the site.
+                                                </Warning>
+                                            )}
+                                            {problem?.kind === 'duplicate' && (
+                                                <Warning>
+                                                    Same URL key as tab {problem.firstIndex + 1} —
+                                                    only that tab shows on the site. Give this one
+                                                    its own key.
+                                                </Warning>
+                                            )}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            <Input
-                                                className="h-8 text-xs"
-                                                value={item.tag || ''}
-                                                placeholder="Course tag"
-                                                aria-label={`Tab ${index + 1} course tag`}
-                                                onChange={(e) =>
-                                                    setStreamItems(
-                                                        streamItems.map((it, i) =>
-                                                            i === index
-                                                                ? {
-                                                                      ...it,
-                                                                      tag: e.target.value,
-                                                                      // Follow the tag until the key is edited by hand.
-                                                                      slug:
-                                                                          !it.slug ||
-                                                                          it.slug ===
-                                                                              toStreamKey(
-                                                                                  it.tag || ''
-                                                                              )
-                                                                              ? toStreamKey(
-                                                                                    e.target.value
-                                                                                )
-                                                                              : it.slug,
-                                                                  }
-                                                                : it
-                                                        )
-                                                    )
-                                                }
-                                            />
-                                            <Input
-                                                className="h-8 text-xs"
-                                                value={item.slug || ''}
-                                                placeholder="URL key"
-                                                aria-label={`Tab ${index + 1} URL key`}
-                                                onChange={(e) =>
-                                                    setStreamItems(
-                                                        streamItems.map((it, i) =>
-                                                            i === index
-                                                                ? {
-                                                                      ...it,
-                                                                      slug: toStreamKey(
-                                                                          e.target.value
-                                                                      ),
-                                                                  }
-                                                                : it
-                                                        )
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 <MyButton
                                     type="button"
                                     buttonType="secondary"
@@ -505,7 +557,7 @@ export const CatalogDiscoveryEditor = ({
                 )}
                 <Toggle
                     label="Keep the view in the page address"
-                    hint="Tabs, filters, sort and search go into the URL, so a filtered view can be shared or linked. On by default with stream tabs."
+                    hint="Tabs, filters, sort and search go into the URL, so a filtered view can be shared or linked. On by default with stream tabs. A link only applies the filters this section offers (or shows as applied-filter chips)."
                     checked={typeof props.syncUrl === 'boolean' ? props.syncUrl : streamsOn}
                     onChange={(v) => patch({ syncUrl: v })}
                 />
@@ -518,7 +570,7 @@ export const CatalogDiscoveryEditor = ({
             >
                 <Toggle
                     label="Category filter"
-                    hint="The sub-folders of the selected stream tab"
+                    hint="The sub-folders of the selected stream tab. Menu links that open one category (…&category=…) need it."
                     checked={categoryFilter.enabled === true}
                     onChange={(v) => setNested('categoryFilter', { enabled: v })}
                 />
@@ -693,18 +745,11 @@ export const CatalogDiscoveryEditor = ({
                             </>
                         )}
                         {qf.kind === 'priceMax' && (
-                            <Input
+                            <NumberField
                                 className="h-8 text-xs"
-                                type="number"
-                                min={1}
-                                value={typeof qf.value === 'number' ? qf.value : ''}
-                                aria-label={`Quick filter ${index + 1} amount`}
-                                onChange={(e) =>
-                                    updateQuick(index, {
-                                        ...qf,
-                                        value: positiveIntOrUndefined(e.target.value) ?? 1,
-                                    })
-                                }
+                                ariaLabel={`Quick filter ${index + 1} amount`}
+                                value={amountOrNull(qf.value)}
+                                onCommit={(n) => updateQuick(index, { ...qf, value: n })}
                             />
                         )}
                     </div>
@@ -736,30 +781,51 @@ export const CatalogDiscoveryEditor = ({
                 {badgesOn && (
                     <div className="space-y-3">
                         <div className="space-y-1.5">
-                            {BADGE_TYPES.map((b) => (
-                                <label
-                                    key={b.value}
-                                    className="flex cursor-pointer items-start gap-2 text-xs"
-                                >
-                                    <Checkbox
-                                        className="mt-0.5"
-                                        checked={badgeTypes.includes(b.value)}
-                                        onCheckedChange={() =>
-                                            setNested('badges', {
-                                                types: toggleBadgeType(badges.types, b.value),
-                                            })
-                                        }
-                                    />
-                                    <span>
-                                        <span className="font-medium text-neutral-700">
-                                            {b.label}
+                            {BADGE_TYPES.map((b) => {
+                                const checked = badgeTypes.includes(b.value);
+                                // The last ticked type stays ticked: switch badges off above instead.
+                                const locked = checked && badgeTypes.length === 1;
+                                return (
+                                    <label
+                                        key={b.value}
+                                        className={cn(
+                                            'flex items-start gap-2 text-xs',
+                                            locked ? 'cursor-not-allowed' : 'cursor-pointer'
+                                        )}
+                                    >
+                                        <Checkbox
+                                            className="mt-0.5"
+                                            checked={checked}
+                                            disabled={locked}
+                                            onCheckedChange={() =>
+                                                setNested('badges', {
+                                                    types: toggleBadgeType(badges.types, b.value),
+                                                })
+                                            }
+                                        />
+                                        <span>
+                                            <span className="font-medium text-neutral-700">
+                                                {b.label}
+                                            </span>
+                                            <span className="block text-caption text-neutral-500">
+                                                {b.hint}
+                                            </span>
                                         </span>
-                                        <span className="block text-caption text-neutral-500">
-                                            {b.hint}
-                                        </span>
-                                    </span>
-                                </label>
-                            ))}
+                                    </label>
+                                );
+                            })}
+                            {badgeTypes.length === 1 && (
+                                <p className="text-caption text-neutral-500">
+                                    Keep at least one type — to hide every badge, switch
+                                    &ldquo;Badges on cards&rdquo; off.
+                                </p>
+                            )}
+                            {badgeTypes.length === 0 && (
+                                <Warning>
+                                    No badge type is ticked, so cards show no badges. Tick at least
+                                    one.
+                                </Warning>
+                            )}
                         </div>
                         <div className="grid grid-cols-3 gap-2">
                             {(
@@ -776,19 +842,11 @@ export const CatalogDiscoveryEditor = ({
                                     >
                                         {label}
                                     </Label>
-                                    <Input
+                                    <NumberField
                                         id={`${component.id}-badge-${key}`}
                                         className="mt-1 h-8 text-xs"
-                                        type="number"
-                                        min={1}
                                         value={numberOr(badges[key], fallback)}
-                                        onChange={(e) =>
-                                            setNested('badges', {
-                                                [key]:
-                                                    positiveIntOrUndefined(e.target.value) ??
-                                                    fallback,
-                                            })
-                                        }
+                                        onCommit={(n) => setNested('badges', { [key]: n })}
                                     />
                                 </div>
                             ))}

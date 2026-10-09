@@ -31,15 +31,21 @@ public interface ProductPageCatalogueRepository extends org.springframework.data
      *       payment option and that option's ACTIVE plans: first a bridge row
      *       of an open DEFAULT invite (tag DEFAULT; status ACTIVE or unset;
      *       today inside its start and end dates, both inclusive - the rule of
-     *       EnrollInviteAvailabilityUtil, on the database clock), then the most
-     *       recently updated bridge row, then the cheapest plan. v2 has no
-     *       first step: it shows the newest bridge row whatever its invite, so
-     *       a newer scholarship or promo link sets the Courses page price but
-     *       never the store's. v2 leaves exact ties to the database; here the
-     *       ids break them so a sync is repeatable;</li>
-     *   <li>when no open DEFAULT invite exists the newest row is returned
-     *       anyway, with its invite joined regardless of tag or status, so the
-     *       sync can say why the course is skipped (CatalogueSyncPlanner).</li>
+     *       EnrollInviteAvailabilityUtil, on the database clock), then one of
+     *       any other DEFAULT invite (closed: inactive, not started, expired),
+     *       then the rest; within each, the most recently updated bridge row,
+     *       then the cheapest plan. v2 has no such steps: it shows the newest
+     *       bridge row whatever its invite, so a newer scholarship or promo
+     *       link sets the Courses page price but never the store's. v2 leaves
+     *       exact ties to the database; here the ids break them so a sync is
+     *       repeatable;</li>
+     *   <li>when no open DEFAULT invite exists a row is returned anyway, with
+     *       its invite joined regardless of tag or status, so the sync can say
+     *       why the course is skipped (CatalogueSyncPlanner): a closed DEFAULT
+     *       link wins over a newer promo one, so the reason is that the
+     *       default link is closed, and "no default link" is only reported for
+     *       a course that has none. Whether the course is skipped does not
+     *       depend on which of the two comes back.</li>
      * </ul>
      * Rows come back in a stable catalogue order (course, level, session), the
      * order new mappings are appended in.
@@ -88,7 +94,9 @@ public interface ProductPageCatalogueRepository extends org.springframework.data
                                              OR LENGTH(TRIM(pei.status)) = 0)
                                          AND (pei.start_date IS NULL OR pei.start_date <= CURRENT_DATE)
                                          AND (pei.end_date IS NULL OR pei.end_date >= CURRENT_DATE)
-                                     THEN 0 ELSE 1
+                                     THEN 0
+                                     WHEN UPPER(TRIM(pei.tag)) = 'DEFAULT' THEN 1
+                                     ELSE 2
                                  END ASC,
                                  psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST,
                                  psli.id ASC, pp.id ASC

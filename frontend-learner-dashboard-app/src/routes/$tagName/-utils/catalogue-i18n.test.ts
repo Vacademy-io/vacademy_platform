@@ -4,6 +4,7 @@ import {
   collectTranslatableStrings,
   dictionaryFor,
   isTextKey,
+  keyInItemOf,
   localesOf,
   localizeDeep,
   mergeTranslations,
@@ -27,6 +28,81 @@ describe("isTextKey", () => {
     for (const k of ["id", "route", "href", "backgroundColor", "productPageCode", "image_url", "layout", "audienceId", "css", "tags"]) {
       expect(isTextKey(k)).toBe(false);
     }
+  });
+
+  it("treats badge type lists and anchor-id prefixes as data", () => {
+    expect(isTextKey("types")).toBe(false);
+    expect(isTextKey("anchorPrefix")).toBe(false);
+  });
+});
+
+describe("keys that are copy only inside one list's items", () => {
+  const DICT = {
+    News: "समाचार",
+    "Flagship Program": "प्रमुख कार्यक्रम",
+    Featured: "विशेष",
+    Latest: "ताज़ा",
+    "fees-": "शुल्क-",
+    Popular: "लोकप्रिय",
+  };
+
+  it("resolves 'tag' as text inside announcements[] and blocks[] items only", () => {
+    expect(keyInItemOf("tag", "announcements")).toBeUndefined();
+    expect(keyInItemOf("tag", "blocks")).toBeUndefined();
+    expect(keyInItemOf("Tag", "Blocks")).toBeUndefined();
+    expect(keyInItemOf("tag", "items")).toBe("tag");
+    expect(keyInItemOf("tag", undefined)).toBe("tag");
+    expect(keyInItemOf("title", "announcements")).toBe("title");
+    // A plain lookup table: list names like 'constructor' are not special.
+    expect(keyInItemOf("tag", "constructor")).toBe("tag");
+  });
+
+  it("translates an announcement's pill and a detail block's eyebrow, never a course tag to filter by", () => {
+    const feed = { announcements: [{ title: "Latest", tag: "News", date: "2025-01-15" }] };
+    expect(localizeDeep(feed, DICT).announcements[0]).toEqual({ title: "ताज़ा", tag: "समाचार", date: "2025-01-15" });
+
+    const blocks = { anchorPrefix: "fees-", blocks: [{ title: "Flagship Program", tag: "Flagship Program", anchor: "flagship" }] };
+    const out = localizeDeep(blocks, DICT);
+    expect(out.blocks[0]).toEqual({ title: "प्रमुख कार्यक्रम", tag: "प्रमुख कार्यक्रम", anchor: "flagship" });
+    expect(out.anchorPrefix).toBe("fees-");
+
+    // courseShowcase.tag / streams.items[].tag pick courses by tag: data.
+    const showcase = {
+      tag: "Featured",
+      streams: { items: [{ tag: "Featured", label: "Featured" }] },
+      announcements: [{ meta: { tag: "Featured" } }],
+      badges: { types: ["bestseller", "Popular"] },
+    };
+    const shown = localizeDeep(showcase, DICT);
+    expect(shown.tag).toBe("Featured");
+    expect(shown.streams.items[0]).toEqual({ tag: "Featured", label: "विशेष" });
+    // Only the item's OWN tag is copy, not one nested deeper.
+    expect(shown.announcements).toBe(showcase.announcements);
+    expect(shown.badges).toBe(showcase.badges);
+  });
+
+  it("offers those pills for translation, but not filter tags, badge types or anchor prefixes", () => {
+    const props = {
+      announcements: [{ title: "Latest", tag: "News" }],
+      blocks: [{ title: "Flagship Program", tag: "Featured" }],
+      tag: "Popular",
+      badges: { types: ["bestseller", "Popular"] },
+      anchorPrefix: "fees-",
+    };
+    expect(collectTranslatableStrings(props)).toEqual(["Latest", "News", "Flagship Program", "Featured"]);
+  });
+
+  it("routes a Hindi edit of an announcement's tag into the dictionary and keeps the English base", () => {
+    const base = { tag: "Popular", announcements: [{ title: "Latest", tag: "News" }] };
+    const localized = localizeDeep(base, DICT);
+    const edited = { ...localized, announcements: [{ ...localized.announcements[0], tag: "खबर" }] };
+    const res = applyLocalizedEdit(base, localized, edited);
+    expect(res.base).toEqual(base);
+    expect(res.translations).toEqual({ News: "खबर" });
+    // The course filter tag is shared data: an edit goes to the base.
+    const filter = applyLocalizedEdit(base, localized, { ...localized, tag: "featured" });
+    expect(filter.base.tag).toBe("featured");
+    expect(filter.translations).toEqual({});
   });
 });
 

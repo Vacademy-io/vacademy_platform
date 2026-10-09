@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useEditorStore } from '../-stores/editor-store';
 import type { CatalogueConfig } from '../-types/editor-types';
+import { localizeDeep } from '../-utils/catalogue-i18n';
+import { enableBadges } from '../-components/catalog/catalog-discovery-props';
 import {
     REFUSAL_RESYNC_MIN_MS,
     activeEditingLocale,
@@ -409,6 +411,26 @@ describe('decideLocalizedEdit', () => {
         expect(decideLocalizedEdit(base, view, { ...view })).toEqual({ kind: 'noop' });
     });
 
+    it("turning on 'Badges on cards' in a section saved before badges existed is a shared setting, not new text", () => {
+        // enableBadges introduces { types: ['bestseller', 'popular', 'new', 'free'], … }:
+        // enum tokens, never something typed that needs an English source.
+        const base: Record<string, unknown> = { title: 'Our courses', showFilters: true };
+        const view = localizeDeep(base, { 'Our courses': 'हमारे कोर्स' });
+        const d = decideLocalizedEdit(
+            base,
+            view,
+            { ...view, badges: enableBadges(undefined) },
+            reverseDictionary({ 'Our courses': 'हमारे कोर्स' })
+        );
+        expect(d).toMatchObject({ kind: 'commit', translations: {} });
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.base.title).toBe('Our courses');
+        expect(d.base.badges).toMatchObject({
+            enabled: true,
+            types: ['bestseller', 'popular', 'new', 'free'],
+        });
+    });
+
     it('column children carried back by a layout edit are the base ones (matched by id)', () => {
         const config = makeConfig();
         const view = buildLocalizedView(config, 'hi')!;
@@ -417,6 +439,103 @@ describe('decideLocalizedEdit', () => {
         const restored = restoreSlotsFromBase([...viewSlots, []], baseSlots) as unknown[][];
         expect(restored[0]![0]).toBe(baseSlots[0][0]);
         expect(restored).toHaveLength(3);
+    });
+});
+
+describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere', () => {
+    const TAGS = {
+        News: 'समाचार',
+        Latest: 'ताज़ा',
+        'Flagship Program': 'प्रमुख कार्यक्रम',
+    };
+    const reverse = reverseDictionary(TAGS);
+
+    it("an announcement's tag pill is translated like any text: a dictionary entry, the English base kept", () => {
+        const base: Record<string, any> = {
+            headerText: 'Latest',
+            announcements: [{ title: 'Latest', date: '2025-01-15', summary: '', tag: 'News' }],
+        };
+        const view = localizeDeep(base, TAGS);
+        expect(view.announcements[0].tag).toBe('समाचार');
+        const edited = {
+            ...view,
+            announcements: [{ ...view.announcements[0], tag: 'खबर' }],
+        };
+        const d = decideLocalizedEdit(base, view, edited, reverse);
+        expect(d).toMatchObject({ kind: 'commit', translations: { News: 'खबर' } });
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.base).toEqual(base);
+    });
+
+    it("a detail block's eyebrow too — and an eyebrow that is empty in English cannot be typed in Hindi", () => {
+        const base: Record<string, any> = {
+            blocks: [
+                { title: 'Flagship Program', tag: 'Flagship Program', items: [] },
+                { title: 'Latest', tag: '', items: [] },
+            ],
+        };
+        const view = localizeDeep(base, TAGS);
+        const retag = (i: number, tag: string) => ({
+            ...view,
+            blocks: view.blocks.map((b: Record<string, unknown>, j: number) =>
+                j === i ? { ...b, tag } : b
+            ),
+        });
+        const d = decideLocalizedEdit(base, view, retag(0, 'मुख्य कार्यक्रम'), reverse);
+        expect(d).toMatchObject({
+            kind: 'commit',
+            translations: { 'Flagship Program': 'मुख्य कार्यक्रम' },
+        });
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.base.blocks[0].tag).toBe('Flagship Program');
+        expect(decideLocalizedEdit(base, view, retag(1, 'नया'), reverse)).toEqual({
+            kind: 'blocked',
+            reason: 'emptySource',
+        });
+    });
+
+    it('prose typed over a course tag to filter by (data) is refused, never written into the base', () => {
+        const base: Record<string, unknown> = { title: 'Latest', source: 'tag', tag: 'Featured' };
+        const view = localizeDeep(base, TAGS);
+        expect(view.tag).toBe('Featured');
+        for (const typed of ['विशेष', 'F', 'Featured courses']) {
+            expect(decideLocalizedEdit(base, view, { ...view, tag: typed }, reverse)).toEqual({
+                kind: 'blocked',
+                reason: 'sharedData',
+            });
+        }
+        // Clearing it to type afresh would empty the filter for every language.
+        expect(decideLocalizedEdit(base, view, { ...view, tag: '' }, reverse)).toEqual({
+            kind: 'blocked',
+            reason: 'sharedData',
+        });
+    });
+
+    it('data values that are not prose still change in any language (codes, links, icon picks)', () => {
+        const coded: Record<string, unknown> = { title: 'Latest', tag: 'neet-2026', ctaLink: '/a' };
+        const d = decideLocalizedEdit(coded, coded, { ...coded, tag: 'jee-2026' }, reverse);
+        expect(d).toMatchObject({ kind: 'commit', translations: {} });
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.base.tag).toBe('jee-2026');
+
+        const features: Record<string, any> = {
+            features: [{ title: 'Latest', iconName: 'GraduationCap', icon: '🎓' }],
+        };
+        const view = localizeDeep(features, TAGS);
+        for (const [key, value] of [
+            ['iconName', 'Rocket'],
+            ['icon', '🚀'],
+        ] as const) {
+            const picked = decideLocalizedEdit(
+                features,
+                view,
+                { ...view, features: [{ ...view.features[0], [key]: value }] },
+                reverse
+            );
+            expect(picked).toMatchObject({ kind: 'commit', translations: {} });
+            if (picked.kind !== 'commit') throw new Error(key);
+            expect(picked.base.features[0]).toEqual({ ...features.features[0], [key]: value });
+        }
     });
 });
 
@@ -557,6 +676,40 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         expect(useLocalizedEditNotice.getState().notice).toBeNull();
         expect(heroOf(useEditorStore.getState().config).props.gateAudienceId).toBe('list-1');
         expect(strings()['Learn the Indian way']).toBe('नया शीर्षक');
+    });
+
+    it("saves an announcement's tag pill typed in हिन्दी as its translation — the English pill stays", () => {
+        const config = makeConfig();
+        config.pages[0]!.components.push({
+            id: 'feed',
+            type: 'announcementFeed',
+            enabled: true,
+            props: {
+                headerText: 'Courses',
+                announcements: [{ title: 'Live classes', date: '2025-01-15', tag: 'New' }],
+            },
+        } as never);
+        useEditorStore.getState().setConfig(config);
+        useEditorStore.getState().setEditingLocale('hi');
+        const { result } = renderHook(useStoreBackedEditing);
+        const feed = result.current.config!.pages[0]!.components[2]!;
+        expect(feed.props.announcements[0].tag).toBe('नया');
+        act(() =>
+            result.current.updateComponent('home', 'feed', {
+                props: {
+                    ...feed.props,
+                    announcements: [{ ...feed.props.announcements[0], tag: 'नई खबर' }],
+                },
+            })
+        );
+        const stored = useEditorStore.getState().config!.pages[0]!.components[2]!;
+        expect(stored.props.announcements[0]).toEqual({
+            title: 'Live classes',
+            date: '2025-01-15',
+            tag: 'New',
+        });
+        expect(strings().New).toBe('नई खबर');
+        expect(useLocalizedEditNotice.getState().notice).toBeNull();
     });
 
     it('passes non-props updates (enabled, anchor, style) straight through', () => {

@@ -20,6 +20,9 @@
  *    '2025 बैच' or 'naya batch' begin; only a link or colour may go to the base;
  *  - typing over a base value that looks like data (a code, a number): those
  *    are shared by every language;
+ *  - typing over (or clearing) a value that reads as prose but sits under a
+ *    data key (a course tag to filter by, a category): that is translating
+ *    it in place, and it would rewrite the value for every language;
  *  - one action rewriting several texts at once (a preset, "sync with pages",
  *    "move styles to CSS") over text that is already translated — splitting it
  *    would record wrong translations or delete good ones. When every text it
@@ -40,6 +43,7 @@ import {
     baseLocaleOf,
     collectTranslatableStrings,
     isTextKey,
+    keyInItemOf,
     localesOf,
     localizeDeep,
     looksLikeData,
@@ -232,14 +236,17 @@ const childKeyOf = (key: Key): Key =>
 /**
  * Walks view → edited. Returns false when the STRUCTURE changed (an item added,
  * removed or moved, an object appearing or disappearing); otherwise collects
- * every changed leaf value. Opaque values count as one leaf.
+ * every changed leaf value. Opaque values count as one leaf. Keys inside list
+ * items are resolved the way catalogue-i18n judges them (keyInItemOf), so an
+ * announcement's tag pill is text here exactly as it is on the site.
  */
 const diffShape = (
     before: unknown,
     after: unknown,
     key: Key,
     path: Path,
-    out: LeafChange[]
+    out: LeafChange[],
+    itemOf?: Key
 ): boolean => {
     if (after === before) return true;
     if (isOpaqueKey(key)) {
@@ -257,7 +264,7 @@ const diffShape = (
                 const j = before.indexOf(a);
                 if (j >= 0 && j !== i) return false; // moved
             }
-            if (!diffShape(b, a, childKey, [...path, i], out)) return false;
+            if (!diffShape(b, a, childKey, [...path, i], out, key)) return false;
         }
         return true;
     }
@@ -265,7 +272,9 @@ const diffShape = (
         const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
         for (const k of keys) {
             if (after[k] === before[k]) continue;
-            if (!diffShape(before[k], after[k], k, [...path, k], out)) return false;
+            if (!diffShape(before[k], after[k], keyInItemOf(k, itemOf), [...path, k], out)) {
+                return false;
+            }
         }
         return true;
     }
@@ -365,18 +374,28 @@ const isTypedText = (value: string, key: Key): boolean =>
     isTextKey(key) && value !== '' && !SHARED_VALUE_RE.test(value.trim());
 
 /** Every typed-text string under `value` (same key inheritance and opaque keys as localizeDeep). */
-const collectTypedText = (value: unknown, key: Key, out: string[] = []): string[] => {
+const collectTypedText = (value: unknown, key: Key, out: string[] = [], itemOf?: Key): string[] => {
     if (isOpaqueKey(key)) return out;
     if (typeof value === 'string') {
         if (isTypedText(value, key)) out.push(value);
     } else if (Array.isArray(value)) {
         const childKey = childKeyOf(key);
-        value.forEach((v) => collectTypedText(v, childKey, out));
+        value.forEach((v) => collectTypedText(v, childKey, out, key));
     } else if (isPlainObject(value)) {
-        for (const [k, v] of Object.entries(value)) collectTypedText(v, k, out);
+        for (const [k, v] of Object.entries(value)) collectTypedText(v, keyInItemOf(k, itemOf), out);
     }
     return out;
 };
+
+/** A value that reads as prose: neither blank nor a code, number, link or colour. */
+const isProse = (value: unknown): value is string =>
+    typeof value === 'string' && !looksLikeData(value) && !SHARED_VALUE_RE.test(value.trim());
+
+/**
+ * Icon keys (iconName, icon, buttonIcon…): an identifier picked from a list
+ * ('GraduationCap') or an emoji. A value, never prose being translated.
+ */
+const isIconKey = (key: Key): boolean => typeof key === 'string' && /icon/i.test(key);
 
 const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
     const { key, before, after } = leaf;
@@ -390,7 +409,16 @@ const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
         if (typeof after === 'string') return 'text';
         if (after === undefined || after === null) return 'textClear';
     }
-    if (typeof after !== 'string' || !isTextKey(key)) return 'other';
+    if (!isTextKey(key)) {
+        // A data key whose shared value reads as prose (a course tag to filter
+        // by, a category): in another language, typing over it — or clearing
+        // it to type afresh — is translating it in place, and would rewrite it
+        // for EVERY language. Refused like any shared value.
+        const translatesInPlace =
+            isProse(baseValue) && !isIconKey(key) && (isProse(after) || isBlank(after));
+        return translatesInPlace ? 'sharedData' : 'other';
+    }
+    if (typeof after !== 'string') return 'other';
     // Typing into a field that is empty in the base language: there is no
     // base text to hang a translation on ("add the English text first").
     if (isBlank(baseValue)) return isTypedText(after, key) ? 'emptySource' : 'other';
@@ -439,7 +467,7 @@ const delocalizeIntroduced = <T>(
     if (reverse.size === 0) return nextBase;
     const existing = new Set<string>();
     collectStrings(oldBase, existing);
-    const walk = (value: unknown, key: Key): unknown => {
+    const walk = (value: unknown, key: Key, itemOf?: Key): unknown => {
         if (typeof value === 'string') {
             return isTextKey(key) && !existing.has(value) && reverse.has(value)
                 ? reverse.get(value)
@@ -450,7 +478,7 @@ const delocalizeIntroduced = <T>(
             let changed = false;
             const childKey = childKeyOf(key);
             const out = value.map((v) => {
-                const n = walk(v, childKey);
+                const n = walk(v, childKey, key);
                 if (n !== v) changed = true;
                 return n;
             });
@@ -460,7 +488,7 @@ const delocalizeIntroduced = <T>(
             let changed = false;
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(value)) {
-                const n = walk(v, k);
+                const n = walk(v, keyInItemOf(k, itemOf));
                 if (n !== v) changed = true;
                 out[k] = n;
             }

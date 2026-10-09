@@ -2582,7 +2582,12 @@ public class InvoiceService {
         // what was already paid, what is still owed and when the next installment falls due.
         // Only {{fees_paid_now}} is about this invoice alone. Every value is blank when the
         // plan has no schedule, so a template using them degrades to empty rather than zero.
-        ReceiptFigures rf = buildReceiptFigures(invoiceData);
+        // Only reach for the fee schedule when the template actually asks for it. Most
+        // institutes print an invoice, not a receipt, and they should not pay a query for
+        // placeholders their template never mentions.
+        ReceiptFigures rf = usesReceiptFields(template)
+                ? buildReceiptFigures(invoiceData)
+                : new ReceiptFigures();
         filled = filled.replace("{{course_fees}}", ov.apply("course_fees",
                 rf.courseFees != null ? currencySymbol + money(rf.courseFees) : ""));
         filled = filled.replace("{{total_fees}}", ov.apply("total_fees",
@@ -6243,7 +6248,7 @@ public class InvoiceService {
         // Seed the receipt fields too, so the review step shows what the PDF will actually
         // print rather than an empty box next to every amount.
         String recCur = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
-        ReceiptFigures rfd = buildReceiptFigures(invoiceData);
+        ReceiptFigures rfd = buildReceiptFigures(invoiceData);  // review step: always shown
         d.put("course_name", nz(rfd.courseName));
         d.put("course_code", nz(rfd.courseCode));
         d.put("course_fees", rfd.courseFees != null ? recCur + money(rfd.courseFees) : "");
@@ -6576,6 +6581,24 @@ public class InvoiceService {
                 .createdAt(dto.getCreatedAt())
                 .lineItems(items)
                 .build();
+    }
+
+    private static final List<String> RECEIPT_PLACEHOLDERS = List.of(
+            "{{course_fees}}", "{{total_fees}}", "{{previous_paid}}", "{{total_fees_due}}",
+            "{{total_amount_paid}}", "{{next_installment_amount}}", "{{next_installment_date}}",
+            "{{course_name}}", "{{course_code}}");
+
+    /** Whether a template mentions any placeholder that needs the learner fee schedule. */
+    static boolean usesReceiptFields(String template) {
+        if (template == null || template.isEmpty()) {
+            return false;
+        }
+        for (String token : RECEIPT_PLACEHOLDERS) {
+            if (template.contains(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

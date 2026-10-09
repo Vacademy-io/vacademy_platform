@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.invoice.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import org.junit.jupiter.api.DisplayName;
@@ -68,5 +70,17 @@ class ReceiptAmountInWordsTest {
         assertEquals("", InvoiceService.deriveCourseCode("Beginners - Evening Batch"));
         assertEquals("", InvoiceService.deriveCourseCode(null));
         assertEquals("", InvoiceService.deriveCourseCode(""));
+    }
+
+    @Test
+    @DisplayName("the fee schedule is read only when the template actually asks for it")
+    void receiptFieldDetection() {
+        // Most institutes print an invoice, not a receipt; they should not pay a query for
+        // placeholders their template never mentions.
+        assertTrue(InvoiceService.usesReceiptFields("<p>{{total_fees_due}}</p>"));
+        assertTrue(InvoiceService.usesReceiptFields("<p>{{course_name}}</p>"));
+        assertFalse(InvoiceService.usesReceiptFields("<p>{{total_amount}} {{user_name}}</p>"));
+        assertFalse(InvoiceService.usesReceiptFields(""));
+        assertFalse(InvoiceService.usesReceiptFields(null));
     }
 }

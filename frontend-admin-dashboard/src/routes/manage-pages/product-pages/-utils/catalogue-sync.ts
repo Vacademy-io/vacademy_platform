@@ -146,9 +146,13 @@ const READDED = 'If your catalogue still sells it, it was added again on the cat
 /**
  * The codes CatalogueSyncPlanner (admin_core) sends. Skipped: no_active_invite,
  * invite_inactive, invite_not_started, invite_expired, payment_option_inactive,
- * cpo_not_supported, no_active_plan. Switched off: left_catalogue,
- * bridge_inactive, invite_inactive, payment_option_inactive, plan_inactive,
- * plan_missing.
+ * cpo_not_supported, no_active_plan, non_default_invite, currency_mismatch,
+ * vendor_mismatch. Switched off: left_catalogue, bridge_inactive,
+ * invite_inactive, payment_option_inactive, plan_inactive, plan_missing.
+ *
+ * The sync sells a course only through its default invite link, so a closed
+ * link is fixed by opening THAT link — never by reopening whichever link was
+ * reported, which may be a promo or private one.
  */
 const SYNC_REASONS: Record<string, SyncReasonText> = {
     no_active_invite: {
@@ -157,7 +161,7 @@ const SYNC_REASONS: Record<string, SyncReasonText> = {
     },
     invite_inactive: {
         label: 'Its invite link is switched off',
-        hint: 'Switch the invite link back on, then sync again.',
+        hint: 'The store sells a course through its default invite link, which must be switched on. Then sync again.',
     },
     invite_not_started: {
         label: 'Its invite link has not opened yet',
@@ -165,7 +169,7 @@ const SYNC_REASONS: Record<string, SyncReasonText> = {
     },
     invite_expired: {
         label: 'Its invite link has expired',
-        hint: 'Extend the invite link’s end date, then sync again.',
+        hint: 'The store sells a course through its default invite link, which must be open. Then sync again.',
     },
     payment_option_inactive: {
         label: 'Its payment option is switched off or missing',
@@ -178,6 +182,18 @@ const SYNC_REASONS: Record<string, SyncReasonText> = {
     no_active_plan: {
         label: 'Its payment option has no active plan',
         hint: 'Add or switch on a payment plan, then sync again.',
+    },
+    non_default_invite: {
+        label: 'Only a non-default invite link sells this course',
+        hint: 'Add it by hand if that price is intended.',
+    },
+    currency_mismatch: {
+        label: 'Priced in a different currency from this store page',
+        hint: 'Sell it from its own product page.',
+    },
+    vendor_mismatch: {
+        label: 'Paid through a different payment gateway from this store page',
+        hint: 'Sell it from its own product page.',
     },
     left_catalogue: {
         label: 'Not published to your catalogue (including courses that never were)',

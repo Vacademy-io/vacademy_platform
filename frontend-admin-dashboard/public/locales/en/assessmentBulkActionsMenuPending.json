@@ -1,6 +1,7 @@
 {
     "menu": {
-        "sendReminder": "Send Reminder",
+        "sendWhatsApp": "Send Reminder on WhatsApp",
+        "sendEmail": "Send Reminder on Email",
         "removeParticipants": "Remove Participants"
     },
     "actionInfo": {

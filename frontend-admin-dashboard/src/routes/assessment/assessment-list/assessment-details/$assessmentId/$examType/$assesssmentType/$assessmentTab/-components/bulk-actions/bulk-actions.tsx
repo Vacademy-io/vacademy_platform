@@ -1,5 +1,5 @@
 import { MyButton } from '@/components/design-system/button';
-import { CaretUpDown, XCircle } from '@phosphor-icons/react';
+import { CaretUpDown, CircleNotch, XCircle } from '@phosphor-icons/react';
 import { BulkActionsMenuAttempted } from './bulk-actions-menu-attempted';
 import { SubmissionStudentData } from '@/types/assessments/assessment-overview';
 import { BulkActionsMenuOngoing } from './bulk-actions-menu-ongoing';
@@ -12,6 +12,11 @@ interface BulkActionsProps {
     selectedStudents: SubmissionStudentData[]; // Add this prop
     onReset: () => void;
     selectedTab: string;
+    // Rows matching the current list (all pages). With onSelectAll, offers "Select all N".
+    totalCount?: number;
+    onSelectAll?: () => void;
+    isSelectingAll?: boolean;
+    isAllSelected?: boolean;
     // Opens the report ZIP export dialog scoped to the checked rows
     // (Attempted tab only — other tabs have no reports to export).
     onExportReports?: () => void;
@@ -26,6 +31,10 @@ export const BulkActions = ({
     selectedStudents, // Add this
     onReset,
     selectedTab,
+    totalCount = 0,
+    onSelectAll,
+    isSelectingAll = false,
+    isAllSelected = false,
     onExportReports,
     onCheckWithAi,
 }: BulkActionsProps) => {
@@ -37,8 +46,22 @@ export const BulkActions = ({
 
     return (
         <div className="flex items-center gap-5 text-neutral-600">
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
                 <div>{t('selectedCount', { count: selectedCount })}</div>
+                {onSelectAll && !isAllSelected && selectedCount < totalCount && (
+                    <MyButton
+                        type="button"
+                        buttonType="text"
+                        scale="small"
+                        layoutVariant="default"
+                        className="flex items-center gap-1 !text-primary-500 hover:underline"
+                        disable={isSelectingAll}
+                        onClick={onSelectAll}
+                    >
+                        {isSelectingAll && <CircleNotch className="animate-spin" />}
+                        {isSelectingAll ? t('selectingAll') : t('selectAll', { count: totalCount })}
+                    </MyButton>
+                )}
             </div>
 
             <div className="flex items-center gap-20">

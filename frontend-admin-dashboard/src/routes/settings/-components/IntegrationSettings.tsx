@@ -892,6 +892,8 @@ function GoogleDeliveryStatus({ connector }: { connector: ConnectorListItem }) {
     );
 }
 
+const GOOGLE_SETUP_DIALOG_CLASS = 'flex max-h-[90vh] w-[95vw] max-w-2xl flex-col'; // design-lint-ignore: viewport-bounded so the guide scrolls on short screens
+
 /**
  * Setup & status for one Google connector: the two values to paste, the Google Ads
  * steps, live delivery status (the parent polls the list while this is open) and what
@@ -912,7 +914,7 @@ export function GoogleSetupDialog({
     const googleKey = connector?.vendorId;
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className={GOOGLE_SETUP_DIALOG_CLASS}>
                 <DialogHeader>
                     <DialogTitle>{t('google.dialogTitle')}</DialogTitle>
                     <DialogDescription>
@@ -922,39 +924,42 @@ export function GoogleSetupDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {!connector || !googleKey ? (
-                    <div className="flex items-center gap-2 py-4 text-sm text-neutral-500">
-                        <CircleNotch className="size-4 animate-spin" />
-                        {t('activeConnectors.loading')}
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <CopyableValue
-                                label={t('google.webhookUrlLabel')}
-                                value={buildGoogleWebhookUrl(googleKey)}
-                            />
-                            <CopyableValue label={t('google.keyLabel')} value={googleKey} />
+                {/* Header and footer stay put; only the guide scrolls on short screens. */}
+                <div className="-me-2 min-h-0 flex-1 overflow-y-auto pe-2">
+                    {!connector || !googleKey ? (
+                        <div className="flex items-center gap-2 py-4 text-sm text-neutral-500">
+                            <CircleNotch className="size-4 animate-spin" />
+                            {t('activeConnectors.loading')}
                         </div>
-                        <GoogleSetupSteps />
-                        <div className="space-y-1.5">
-                            <p className="text-xs font-medium text-neutral-500">
-                                {t('google.statusHeading')}
-                            </p>
-                            <GoogleDeliveryStatus connector={connector} />
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <CopyableValue
+                                    label={t('google.webhookUrlLabel')}
+                                    value={buildGoogleWebhookUrl(googleKey)}
+                                />
+                                <CopyableValue label={t('google.keyLabel')} value={googleKey} />
+                            </div>
+                            <GoogleSetupSteps />
+                            <div className="space-y-1.5">
+                                <p className="text-xs font-medium text-neutral-500">
+                                    {t('google.statusHeading')}
+                                </p>
+                                <GoogleDeliveryStatus connector={connector} />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-medium text-neutral-500">
+                                    {t('google.troubleshootHeading')}
+                                </p>
+                                <ul className="list-disc space-y-1 ps-5 text-caption text-neutral-600">
+                                    <li>{t('google.troubleshoot404')}</li>
+                                    <li>{t('google.troubleshoot401')}</li>
+                                    <li>{t('google.troubleshootNoLeads')}</li>
+                                </ul>
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-xs font-medium text-neutral-500">
-                                {t('google.troubleshootHeading')}
-                            </p>
-                            <ul className="list-disc space-y-1 ps-5 text-caption text-neutral-600">
-                                <li>{t('google.troubleshoot404')}</li>
-                                <li>{t('google.troubleshoot401')}</li>
-                                <li>{t('google.troubleshootNoLeads')}</li>
-                            </ul>
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 <DialogFooter>
                     <MyButton scale="medium" onClick={() => onOpenChange(false)}>

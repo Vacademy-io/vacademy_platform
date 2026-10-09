@@ -2,5 +2,8 @@
     "selectedCount_one": "[{{count}}] Selected",
     "selectedCount_other": "[{{count}}] Selected",
     "reset": "Reset",
-    "bulkActions": "Bulk Actions"
+    "bulkActions": "Bulk Actions",
+    "selectAll_one": "Select all {{count}}",
+    "selectAll_other": "Select all {{count}}",
+    "selectingAll": "Selecting all…"
 }

@@ -169,6 +169,15 @@ const getDefaultRowDateTime = (timeZone: string) => {
     return { startDate, startTime };
 };
 
+// Only BBB (host iframes the meeting) and YouTube can play inside the app.
+// Every other link — Google Meet, Zoom, Zoho, any "other" URL — must
+// redirect: the grid has no embed/redirect control, so defaulting those to
+// embed left learners on an iframe the provider refuses to load.
+const streamingTypeForPlatform = (platform?: string) =>
+    platform === 'bbb' || platform === 'youtube'
+        ? SessionPlatform.EMBED_IN_APP
+        : SessionPlatform.REDIRECT_TO_OTHER_PLATFORM;
+
 const blankRow = (
     defaultPlatform: string = 'other',
     timeZone: string = 'Asia/Kolkata'
@@ -1059,13 +1068,7 @@ export function BulkScheduleGrid() {
             const sessions = data.rows.map((row) => {
                 const startTimeISO = `${row.startDate}T${row.startTime}`;
                 const isBbb = row.platform === 'bbb';
-                const isMeet = row.platform === 'google meet';
-                // Mirror the single-class auto-set rules: BBB rows must use
-                // embed-in-app (the host iframes the meeting); Google Meet
-                // rows redirect; everything else defaults to embed.
-                const computedStreamingType = isMeet
-                    ? SessionPlatform.REDIRECT_TO_OTHER_PLATFORM
-                    : SessionPlatform.EMBED_IN_APP;
+                const computedStreamingType = streamingTypeForPlatform(row.platform);
                 // Compose a sessionFormSchema-shaped object so we can reuse the
                 // mature transformer without duplicating ISO/duration logic.
                 // NOTE: in the form schema, `sessionPlatform` is the streaming
@@ -1377,10 +1380,7 @@ export function BulkScheduleGrid() {
                     sessionType: SessionType.LIVE,
                     sessionPlatform: data.rows[0]?.platform || 'other',
                     enableWaitingRoom: false,
-                    streamingType:
-                        data.rows[0]?.platform === 'google meet'
-                            ? SessionPlatform.REDIRECT_TO_OTHER_PLATFORM
-                            : SessionPlatform.EMBED_IN_APP,
+                    streamingType: streamingTypeForPlatform(data.rows[0]?.platform),
                     allowRewind: true,
                     allowPause: true,
                     startTime: `${data.rows[0]?.startDate}T${data.rows[0]?.startTime}`,

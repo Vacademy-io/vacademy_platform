@@ -28,6 +28,10 @@ import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4SubOrg } from './steps/Step4SubOrg';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
+import {
+    getAdminDiscountValidationError,
+    toAdminDiscountPayload,
+} from '@/services/admin-discounts';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import {
@@ -218,6 +222,10 @@ export const BulkAssignDialog = ({
                 enroll_invite_id: ps.enrollInviteId ?? null,
                 access_days: ps.accessDays ?? null,
                 cpo_config: ps.cpoConfig ?? null,
+                // Omitted entirely when "No discount" so the request is unchanged from before.
+                ...(toAdminDiscountPayload(ps.adminDiscount)
+                    ? { admin_discount: toAdminDiscountPayload(ps.adminDiscount) }
+                    : {}),
                 // Only org-associated batches carry a sub-org; sending it for a normal batch
                 // would be ignored by the backend but is noise, so it's omitted entirely.
                 ...(ps.isOrgAssociated
@@ -564,7 +572,11 @@ export const BulkAssignDialog = ({
             );
         }
         if (currentStep === 'courses') return selectedPackageSessions.length > 0;
-        if (currentStep === 'config') return true;
+        // An admin discount that's half filled in (no value / no reason) must not be sent.
+        if (currentStep === 'config')
+            return selectedPackageSessions.every(
+                (ps) => !getAdminDiscountValidationError(ps.adminDiscount)
+            );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.
         if (currentStep === 'suborg') return selectedPackageSessions.every(isSubOrgSelectionReady);

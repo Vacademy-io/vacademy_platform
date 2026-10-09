@@ -13,7 +13,11 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo;
 import vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
@@ -55,6 +59,8 @@ public class RenewalChargeService {
     private final AuthService authService;
     private final RenewalGracePolicy gracePolicy;
     private final RenewalFailureRecorder renewalFailureRecorder;
+    private final AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     /** Default dunning ceiling when the plan/policy doesn't specify one. */
     private static final int DEFAULT_MAX_ATTEMPTS = 3;
@@ -289,11 +295,18 @@ public class RenewalChargeService {
             return Outcome.SKIPPED;
         }
 
-        double amount = resolveAmount(plan);
-        if (amount <= 0) {
+        double grossAmount = resolveAmount(plan);
+        if (grossAmount <= 0) {
             log.warn("[RenewalCharge] Plan {} has non-positive amount — skipping", plan.getId());
             return Outcome.SKIPPED;
         }
+        // Discount for this cycle: only an admin discount granted for N cycles (or every
+        // cycle). Coupons never reach renewals, as before. A scheduled plan change ends it.
+        AppliedCouponDiscount renewalDiscount = resolveRenewalDiscount(plan);
+        // No discount: charge exactly what was charged before (no rounding introduced).
+        double amount = renewalDiscount == null
+                ? grossAmount
+                : CouponDiscountUtil.applyDiscount(grossAmount, renewalDiscount);
         String currency = StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency()
                 : (mandate.getCurrency() != null ? mandate.getCurrency() : "INR");
 
@@ -337,9 +350,34 @@ public class RenewalChargeService {
         }
         request.setRazorpayRequest(razorpayRequest);
 
+        if (amount <= 0) {
+            // Fully discounted cycle: nothing to present to the gateway (they reject
+            // zero-amount charges), so settle it as PAID directly and extend the plan.
+            String zeroLogId = paymentLogService.createPaymentLog(plan.getUserId(), 0.0, vendor,
+                    invite.getVendorId(), currency, plan);
+            paymentService.recordRenewalDiscountLineItem(zeroLogId, renewalDiscount, grossAmount);
+            renewalPaymentService.handleRenewalPaymentConfirmation(
+                    zeroLogId, instituteId, PaymentStatusEnum.PAID, null);
+            log.info("[RenewalCharge] Plan {} renewed without a charge — discount covers the full {}",
+                    plan.getId(), grossAmount);
+            return Outcome.CHARGED;
+        }
+
         try {
             PaymentResponseDTO response = paymentService.handleRecurringCharge(
                     user, instituteId, vendor, request, plan, mandate);
+            // Before the sync confirmation below: confirming PAID counts the discounted
+            // cycle only when this log carries the discount line. Never let this
+            // bookkeeping turn a successful charge into a dunning retry.
+            if (renewalDiscount != null) {
+                try {
+                    paymentService.recordRenewalDiscountLineItem(response.getOrderId(), renewalDiscount,
+                            grossAmount);
+                } catch (Exception lineItemError) {
+                    log.error("[RenewalCharge] Plan {} charged but discount line not recorded: {}",
+                            plan.getId(), lineItemError.getMessage());
+                }
+            }
 
             if (isSyncSuccess(response)) {
                 // eWay / any gateway that confirms synchronously — extend now.
@@ -431,6 +469,25 @@ public class RenewalChargeService {
      * the old price here would take money for a plan they will not be on the moment the
      * charge settles.
      */
+    private AppliedCouponDiscount resolveRenewalDiscount(UserPlan plan) {
+        if (!StringUtils.hasText(plan.getAppliedCouponDiscountId())) {
+            return null;
+        }
+        try {
+            if (planChangeService.pendingTargetPlan(plan) != null) {
+                return null;
+            }
+            AppliedCouponDiscount discount = appliedCouponDiscountRepository
+                    .findById(plan.getAppliedCouponDiscountId()).orElse(null);
+            return AdminDiscountService.discountForNextCharge(plan, discount);
+        } catch (Exception e) {
+            // Fall back to the full price rather than skipping the renewal.
+            log.error("[RenewalCharge] Plan {} discount lookup failed — charging full price: {}",
+                    plan.getId(), e.getMessage());
+            return null;
+        }
+    }
+
     private double resolveAmount(UserPlan plan) {
         PaymentPlan pending = planChangeService.pendingTargetPlan(plan);
         if (pending != null) {

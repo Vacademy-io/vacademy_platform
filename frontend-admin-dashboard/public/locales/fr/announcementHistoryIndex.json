@@ -41,8 +41,11 @@
         "actions": "Actions",
         "loading": "Chargement…",
         "empty": "Aucune annonce",
-        "recipientsPrefix": "Destinataires :",
-        "recipientsMore": "+{{count}}"
+        "recipientsPrefix": "À :",
+        "recipientsMore": "+{{count}} de plus",
+        "channels": "Envoyé via",
+        "loadFailed": "Impossible de charger les annonces.",
+        "noMatch": "Aucune annonce de cette page ne correspond à la recherche."
     },
     "actions": {
         "view": "Voir",
@@ -50,7 +53,8 @@
         "approve": "Approuver",
         "reject": "Rejeter",
         "deliverNow": "Envoyer maintenant",
-        "delete": "Supprimer"
+        "delete": "Supprimer",
+        "more": "Plus d'actions"
     },
     "toasts": {
         "statsLoadFailed": "Échec du chargement des statistiques",
@@ -68,7 +72,18 @@
         "content": "Contenu",
         "modes": "Modes",
         "mediums": "Canaux",
-        "recipients": "Destinataires"
+        "recipients": "Destinataires",
+        "close": "Fermer",
+        "viewStats": "Voir les statistiques",
+        "createdLine": "Par {{name}} · {{when}}",
+        "system": "Système",
+        "createdBy": "Créé par",
+        "createdAt": "Créé le",
+        "schedule": "Planification",
+        "noContent": "Aucun contenu.",
+        "recipientsCount_one": "Destinataires ({{count}})",
+        "recipientsCount_other": "Destinataires ({{count}})",
+        "noRecipients": "Aucun destinataire."
     },
     "statsDialog": {
         "title": "Statistiques de livraison",
@@ -102,13 +117,26 @@
             "loading": "Chargement des destinataires...",
             "empty": "Aucun destinataire trouvé pour cette annonce.",
             "table": {
-                "name": "Nom",
+                "name": "Destinataire",
                 "mode": "Mode",
                 "status": "Statut",
                 "seenAt": "Vu le",
-                "dismissedAt": "Ignoré le"
+                "dismissedAt": "Ignoré le",
+                "deliveredAt": "Livré le"
             },
-            "pagePagination": "Page {{page}} sur {{totalPages}}"
+            "pagePagination": "Page {{page}} sur {{totalPages}}",
+            "titleCount_one": "Destinataires ({{count}})",
+            "titleCount_other": "Destinataires ({{count}})"
+        },
+        "nav": {
+            "recipients": "Destinataires",
+            "overview": "Vue d'ensemble",
+            "email": "E-mail"
+        },
+        "rates": {
+            "delivery": "Taux de livraison",
+            "read": "Taux de lecture",
+            "dismiss": "Taux de fermeture"
         }
     },
     "rejectDialog": {
@@ -122,6 +150,55 @@
         "immediate": "Immédiat",
         "oneTime": "Ponctuel",
         "recurring": "Récurrent",
-        "cron": "CRON : {{expr}}"
+        "cron": "CRON : {{expr}}",
+        "nextRun": "Prochain : {{when}}"
+    },
+    "subheading": "Toutes les annonces et alertes système envoyées par cet institut, avec leurs destinataires.",
+    "createAnnouncement": "Créer une annonce",
+    "retry": "Réessayer",
+    "recipients": {
+        "unknownUser": "Utilisateur inconnu",
+        "unknownBatch": "Groupe"
+    },
+    "recipientTypes": {
+        "USER": "Utilisateur",
+        "ROLE": "Rôle",
+        "PACKAGE_SESSION": "Groupe",
+        "PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES": "Rôles du groupe",
+        "TAG": "Tag",
+        "CUSTOM_FIELD_FILTER": "Filtre de champ personnalisé",
+        "AUDIENCE": "Audience"
+    },
+    "roles": {
+        "ADMIN": "Administrateur",
+        "TEACHER": "Enseignant",
+        "STUDENT": "Élève",
+        "SYSTEM": "Système"
+    },
+    "modes": {
+        "SYSTEM_ALERT": "Alerte système",
+        "DASHBOARD_PIN": "Épinglé au tableau de bord",
+        "DM": "Message direct",
+        "STREAM": "Flux",
+        "RESOURCES": "Ressources",
+        "COMMUNITY": "Communauté",
+        "TASKS": "Tâches",
+        "APP_OVERLAY": "Superposition d'app"
+    },
+    "mediums": {
+        "WHATSAPP": "WhatsApp",
+        "PUSH_NOTIFICATION": "Notification push",
+        "EMAIL": "E-mail"
+    },
+    "messageStatus": {
+        "PENDING": "En attente",
+        "SENT": "Envoyé",
+        "DELIVERED": "Livré",
+        "FAILED": "Échec",
+        "READ": "Lu"
+    },
+    "deleteDialog": {
+        "title": "Supprimer l'annonce ?",
+        "description": "« {{title}} » sera retirée de l'historique. Action irréversible."
     }
 }

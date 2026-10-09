@@ -71,5 +71,8 @@
         "costsUnavailable": "Générer ce rapport consomme des crédits IA. Le coût exact n’a pas pu être chargé — il est facturé une fois, et les téléchargements suivants sont gratuits.",
         "historyTitle": "Générés précédemment",
         "historyDownload": "Télécharger"
+    },
+    "selectAll": {
+        "failed": "Impossible de sélectionner tous les apprenants en attente. Veuillez réessayer."
     }
 }

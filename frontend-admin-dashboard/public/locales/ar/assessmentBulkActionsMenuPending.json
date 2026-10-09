@@ -1,6 +1,7 @@
 {
     "menu": {
-        "sendReminder": "إرسال تذكير",
+        "sendWhatsApp": "إرسال تذكير عبر واتساب",
+        "sendEmail": "إرسال تذكير عبر البريد الإلكتروني",
         "removeParticipants": "إزالة المشاركين"
     },
     "actionInfo": {

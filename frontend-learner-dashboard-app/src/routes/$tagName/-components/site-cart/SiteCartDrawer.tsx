@@ -228,7 +228,7 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
       {items.map((item, index) => {
         const issue = issues.get(item);
         const title = siteT(item.title) || terms.course;
-        const version = versionLabel(item, languages);
+        const version = versionLabel(item, languages, siteT);
         return (
           <li key={rowKeys[index]} className="flex gap-3 py-3">
             <CourseThumbnail image={item.image} className="size-14" />
@@ -244,6 +244,9 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
                   >
                     {siteT(version.chip)}
                   </span>
+                )}
+                {version?.level && (
+                  <span className="text-xs font-medium text-catalogue-text-secondary">{version.level}</span>
                 )}
                 {!hidePrices && typeof item.price === "number" && (
                   <PriceWithMrp

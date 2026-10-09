@@ -8,6 +8,7 @@
 
 import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import type { SiteCartItem } from "../../../-utils/site-cart";
+import { levelBeyondLanguage } from "../../site-cart/site-cart-items";
 import { isBuyableNowRow, rowLanguage, type CatalogRowLike } from "./catalog-cards";
 
 export const packageSessionOf = (row: CatalogRowLike): string =>
@@ -47,3 +48,60 @@ export const cartVersionOf = <R extends CatalogRowLike>(
   versions: R[],
   cartPackageSessionIds: Set<string>,
 ): R | undefined => versions.find((v) => cartPackageSessionIds.has(packageSessionOf(v)));
+
+const levelOf = (row: CatalogRowLike): string => String(row.level_name || row.level || "");
+
+/** Is another version of the card in this version's language? Then the language alone cannot tell them apart. */
+const sharesLanguage = <R extends CatalogRowLike>(v: R, versions: R[], languages: CourseLanguageOption[]): boolean => {
+  const code = rowLanguage(v, languages)?.code;
+  return !!code && versions.some((o) => o !== v && rowLanguage(o, languages)?.code === code);
+};
+
+/**
+ * Does the card's chooser pick between languages only (every version a
+ * different language)? Otherwise it picks between versions — levels.
+ */
+export const choosesLanguageOnly = <R extends CatalogRowLike>(versions: R[], languages: CourseLanguageOption[]): boolean => {
+  const codes = versions.map((v) => rowLanguage(v, languages)?.code);
+  return codes.every(Boolean) && new Set(codes).size === codes.length;
+};
+
+/**
+ * How the chooser names a version (its language chip shows beside it): the
+ * language — unless another version is in the same language ("Beginner Hindi"
+ * / "Advanced Hindi"), then the level without its language word ("Advanced"),
+ * or the whole level name when the language has no chip to say it. A version
+ * without a language is named by its level.
+ */
+export const versionChoiceLabel = <R extends CatalogRowLike>(
+  v: R,
+  versions: R[],
+  languages: CourseLanguageOption[],
+  translate: (s: string) => string,
+): string => {
+  const lang = rowLanguage(v, languages);
+  const level = levelOf(v);
+  if (!lang) return translate(level);
+  const languageName = translate(lang.label || lang.code);
+  if (!sharesLanguage(v, versions, languages)) return languageName;
+  const shown = translate(level).trim() || languageName;
+  return lang.chip ? levelBeyondLanguage(level, lang, translate) || shown : shown;
+};
+
+/**
+ * What "In cart · …" names for the version in the cart: its language chip,
+ * with the rest of its level when that says more than the language
+ * ("Advanced · हिं"); a version without a language, its level. "" when there
+ * is nothing to name.
+ */
+export const inCartVersionText = (
+  v: CatalogRowLike,
+  languages: CourseLanguageOption[],
+  translate: (s: string) => string,
+): string => {
+  const lang = rowLanguage(v, languages);
+  const level = levelBeyondLanguage(levelOf(v), lang, translate);
+  if (!lang) return level;
+  const chip = lang.chip || lang.label || lang.code;
+  return level ? `${level} · ${chip}` : chip;
+};

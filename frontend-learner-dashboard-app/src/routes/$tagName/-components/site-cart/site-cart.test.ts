@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SiteCartItem } from "../../-utils/site-cart";
+import { DEFAULT_COURSE_LANGUAGES } from "../../-utils/course-variants";
 import {
   SITE_CART_MAX_ITEMS,
   capCartAdd,
   cartItemFromMapping,
   isMeaningfulLevel,
   isStoreCheckoutPath,
+  levelBeyondLanguage,
+  stripLanguageWords,
   versionLabel,
 } from "./site-cart-items";
 import { precheckSiteCart, unavailableSessionIds } from "./site-cart-precheck";
@@ -112,6 +115,54 @@ describe("versionLabel", () => {
     expect(versionLabel({ levelName: "Batch 2" })).toEqual({ chip: "Batch 2", label: "Batch 2" });
     expect(versionLabel({ levelName: "DEFAULT" })).toBeNull();
     expect(isMeaningfulLevel(" none ")).toBe(false);
+  });
+
+  it("adds the level when it says more than the language (two levels in one language)", () => {
+    expect(versionLabel({ languageCode: "hi", levelName: "Advanced Hindi" })).toEqual({
+      chip: "हिं",
+      label: "Hindi",
+      level: "Advanced",
+    });
+    // A level that is only its language adds nothing.
+    expect(versionLabel({ languageCode: "hi", levelName: "Hindi" })).toEqual({ chip: "हिं", label: "Hindi" });
+    expect(versionLabel({ languageCode: "en", levelName: "English" })).toEqual({ chip: "EN", label: "English" });
+  });
+
+  it("translates the level before taking its language word out", () => {
+    const hindi: Record<string, string> = { "Advanced Hindi": "उन्नत हिंदी" };
+    const translate = (s: string) => hindi[s] ?? s;
+    expect(versionLabel({ languageCode: "hi", levelName: "Advanced Hindi" }, undefined, translate)?.level).toBe("उन्नत");
+  });
+});
+
+describe("level names without their language", () => {
+  const EN = DEFAULT_COURSE_LANGUAGES[0]!;
+  const HI = DEFAULT_COURSE_LANGUAGES[1]!;
+
+  it("keeps the level as written and drops only the language words", () => {
+    expect(stripLanguageWords("Advanced Hindi", HI)).toBe("Advanced");
+    expect(stripLanguageWords("ADVANCED HINDI", HI)).toBe("ADVANCED");
+    expect(stripLanguageWords("Beginner (English)", EN)).toBe("Beginner");
+    expect(stripLanguageWords("Hindi - Batch 2", HI)).toBe("Batch 2");
+    expect(stripLanguageWords("Beginner - Hindi - Batch 2", HI)).toBe("Beginner - Batch 2");
+    expect(stripLanguageWords("Level 2 (Hindi, Live)", HI)).toBe("Level 2 (Live)");
+    expect(stripLanguageWords("शुरुआती हिंदी", HI)).toBe("शुरुआती");
+    expect(stripLanguageWords("Engineering English", EN)).toBe("Engineering");
+  });
+
+  it("leaves nothing when the level is only its language", () => {
+    expect(stripLanguageWords("Hindi", HI)).toBe("");
+    expect(stripLanguageWords("(English)", EN)).toBe("");
+    expect(stripLanguageWords("हिन्दी", HI)).toBe("");
+  });
+
+  it("says what a level adds beyond its language, or the level when there is no language", () => {
+    expect(levelBeyondLanguage("Advanced Hindi", HI)).toBe("Advanced");
+    expect(levelBeyondLanguage("Hindi", HI)).toBe("");
+    expect(levelBeyondLanguage("default", HI)).toBe("");
+    expect(levelBeyondLanguage("Level 1", null)).toBe("Level 1");
+    // An untranslated level still loses its language word.
+    expect(levelBeyondLanguage("Advanced Hindi", HI, () => "Advanced Hindi")).toBe("Advanced");
   });
 });
 

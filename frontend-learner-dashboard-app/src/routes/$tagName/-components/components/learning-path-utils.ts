@@ -21,7 +21,7 @@ import { cartTotals, type CartTotals, type SiteCartItem } from "../../-utils/sit
 import { folderSlug, pathTo, type PublicFolderNode } from "../../-services/folder-library-service";
 import { parseBasketPricing, quoteBasket } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
 import { bestOffer, parseOffers } from "@/routes/product-pages/$productPageCode/-utils/offers";
-import { cartItemFromMapping, type CartMappingLike } from "../site-cart/site-cart-items";
+import { cartItemFromMapping, languageTokens, type CartMappingLike } from "../site-cart/site-cart-items";
 
 /** The part of a by-code mapping a path step reads. */
 export interface PathMapping extends CartMappingLike {
@@ -61,13 +61,7 @@ export const levelWithoutLanguage = (
   language: CourseLanguageOption,
 ): string => {
   let name = ` ${(levelName || "").toLowerCase()} `;
-  const tokens = [...(language.match || []), language.label, language.code]
-    .filter(Boolean)
-    .map((t) => t.toLowerCase().trim())
-    .filter(Boolean)
-    // Longest first, so a longer token is not left half-removed by a shorter one.
-    .sort((a, b) => b.length - a.length);
-  for (const token of tokens) {
+  for (const token of languageTokens(language)) {
     name = isAscii(token)
       ? name.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}(?=[^a-z0-9]|$)`, "g"), "$1 ")
       : name.split(token).join(" ");

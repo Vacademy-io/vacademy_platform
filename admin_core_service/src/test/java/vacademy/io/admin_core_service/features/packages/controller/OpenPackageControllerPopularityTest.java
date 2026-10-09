@@ -27,8 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Round-trips GET /open/packages/v1/popularity through Spring MVC with the real
- * ClientCacheResponseAdvice, so the JSON keys and the Cache-Control header are what a browser
- * would actually receive.
+ * ClientCacheResponseAdvice registered (as it is in the app), so the JSON keys and the
+ * Cache-Control header are what a browser would actually receive.
  */
 class OpenPackageControllerPopularityTest {
 
@@ -65,8 +65,35 @@ class OpenPackageControllerPopularityTest {
                 .andExpect(jsonPath("$.ranks[1].package_id").value("pkg-b"))
                 .andExpect(jsonPath("$.ranks[1].rank").value(2))
                 .andExpect(jsonPath("$.ranks[0].learner_count").doesNotExist())
-                .andExpect(jsonPath("$.ranks[0].count").doesNotExist());
+                .andExpect(jsonPath("$.ranks[0].count").doesNotExist())
+                .andExpect(jsonPath("$.unavailable").doesNotExist());
         verifyNoInteractions(openPackageService);
+    }
+
+    @Test
+    @DisplayName("An institute with no ranked course: an empty list, still cacheable for 10 minutes")
+    void emptyRanksAreCacheable() throws Exception {
+        when(popularityService.getPopularity("inst-1")).thenReturn(CatalogPopularityDTO.empty("inst-1"));
+
+        mockMvc.perform(get(URL).param("instituteId", "inst-1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "public, max-age=600"))
+                .andExpect(jsonPath("$.ranks", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("Ranks that failed to load: still 200 with an empty list, but never stored by the browser")
+    void unavailableRanksAreAnsweredButNotStored() throws Exception {
+        when(popularityService.getPopularity("inst-1")).thenReturn(CatalogPopularityDTO.unavailable("inst-1"));
+
+        mockMvc.perform(get(URL).param("instituteId", "inst-1"))
+                .andExpect(status().isOk())
+                // the server retries after a minute; a 10-minute browser copy would outlive that
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.institute_id").value("inst-1"))
+                .andExpect(jsonPath("$.ranks", hasSize(0)))
+                // same body shape the public site already reads as "no popularity data"
+                .andExpect(jsonPath("$.unavailable").doesNotExist());
     }
 
     @Test
@@ -74,6 +101,7 @@ class OpenPackageControllerPopularityTest {
     void blankInstituteIdIsAnsweredWithoutTheService() throws Exception {
         mockMvc.perform(get(URL).param("instituteId", "  "))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "public, max-age=600"))
                 .andExpect(jsonPath("$.ranks", hasSize(0)));
         verify(popularityService, never()).getPopularity(anyString());
     }
@@ -83,6 +111,7 @@ class OpenPackageControllerPopularityTest {
     void oversizedInstituteIdIsAnsweredWithoutTheService() throws Exception {
         mockMvc.perform(get(URL).param("instituteId", "x".repeat(OpenPackageController.MAX_INSTITUTE_ID_LENGTH + 1)))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "public, max-age=600"))
                 .andExpect(jsonPath("$.ranks", hasSize(0)));
         verify(popularityService, never()).getPopularity(anyString());
     }

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.packages.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Value;
@@ -27,13 +28,34 @@ public class CatalogPopularityDTO {
     String instituteId;
     List<PackageRank> ranks;
 
+    /**
+     * True only for the stand-in answered when the ranks could not be loaded (query error,
+     * statement timeout, no replica connection): no ranks, kept in the server cache for
+     * {@code CatalogPopularityService.FAILURE_TTL} instead of 10 minutes, and sent with
+     * {@code Cache-Control: no-store}. Server-side only -- never serialised, so on the wire it is
+     * the same "no ranks" body the public site already treats as "no popularity data".
+     */
+    @JsonIgnore
+    boolean unavailable;
+
     public CatalogPopularityDTO(String instituteId, List<PackageRank> ranks) {
-        this.instituteId = instituteId;
-        this.ranks = ranks == null ? List.of() : List.copyOf(ranks);
+        this(instituteId, ranks, false);
     }
 
+    private CatalogPopularityDTO(String instituteId, List<PackageRank> ranks, boolean unavailable) {
+        this.instituteId = instituteId;
+        this.ranks = ranks == null ? List.of() : List.copyOf(ranks);
+        this.unavailable = unavailable;
+    }
+
+    /** A real answer with nothing ranked (e.g. no enrolments, or an id that cannot exist). */
     public static CatalogPopularityDTO empty(String instituteId) {
         return new CatalogPopularityDTO(instituteId, List.of());
+    }
+
+    /** The stand-in for ranks that failed to load; see the {@code unavailable} field. */
+    public static CatalogPopularityDTO unavailable(String instituteId) {
+        return new CatalogPopularityDTO(instituteId, List.of(), true);
     }
 
     /** One ranked course. Deliberately carries no count. */

@@ -1,14 +1,17 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
-import lombok.RequiredArgsConstructor;
+import com.github.benmanes.caffeine.cache.Expiry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import vacademy.io.admin_core_service.features.packages.dto.CatalogPopularityDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackagePopularityProjection;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -25,14 +28,23 @@ import java.util.Map;
  *
  * <p>Load safety, because this sits behind a public, unauthenticated URL:
  * <ul>
- *   <li>{@code @Cacheable(sync = true)} on the {@code catalogPopularityRanks} cache (10-minute TTL,
- *       registered in {@code CacheConfiguration}): at most one query per institute per pod per 10
- *       minutes, and concurrent misses for one institute wait for that single query instead of
- *       each running it. The browser/CDN cache on the endpoint (max-age=600) sits in front.</li>
- *   <li>Spring's {@code @Transactional(readOnly = true)} -- NOT jakarta.transaction.Transactional,
- *       which has no read-only flag -- so {@code ReplicationRoutingDataSource} sends the query to
- *       the read replica, never the primary.</li>
- *   <li>The query itself is scoped to one institute and uses the partial enrolment indexes.</li>
+ *   <li>{@code @Cacheable(sync = true)} on the {@code catalogPopularityRanks} cache (registered in
+ *       {@code CacheConfiguration}): one load per institute per pod at a time; concurrent misses
+ *       for one institute wait for that load and then share its result. The browser/CDN cache on
+ *       the endpoint (max-age=600) sits in front.</li>
+ *   <li>A load never throws. sync = true caches results, not exceptions: if the load threw, every
+ *       request queued behind it would run the query again, one after another, each costing up to
+ *       the 10 s statement timeout or the read pool's connection timeout. So a failure is answered
+ *       with {@link CatalogPopularityDTO#unavailable} (no ranks): the queued requests get it as
+ *       soon as the failing load returns, and it stays cached for {@link #FAILURE_TTL} -- not the
+ *       {@link #RANKS_TTL} of real ranks -- so the next attempt comes a minute later, once per
+ *       institute per pod. The per-entry lifetime is {@link #cacheExpiry()}.</li>
+ *   <li>The query runs in its own read-only transaction (always a new one), so
+ *       {@code ReplicationRoutingDataSource} sends it to the read replica, never the primary, and
+ *       a failure rolls back only that transaction. A swallowed exception inside a transaction it
+ *       had joined would mark the caller's transaction rollback-only.</li>
+ *   <li>The query itself is scoped to one institute, uses the partial enrolment indexes and has a
+ *       10 s statement timeout.</li>
  * </ul>
  *
  * <p>Must stay a separate bean from its callers: {@code @Cacheable} only intercepts calls that
@@ -41,38 +53,82 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CatalogPopularityService {
 
     /** Registered in CacheConfiguration; a @Cacheable naming an unregistered cache throws at call time. */
     public static final String CACHE_NAME = "catalogPopularityRanks";
 
+    /** How long loaded ranks stay cached per institute; also the endpoint's browser max-age. */
+    public static final Duration RANKS_TTL = Duration.ofMinutes(10);
+
+    /**
+     * How long the no-ranks stand-in for a FAILED load stays cached before the next request for
+     * that institute tries again. Until then requests are answered from memory, so a failing (or
+     * slow to fail) query runs once per institute per pod per minute instead of once per request.
+     */
+    public static final Duration FAILURE_TTL = Duration.ofSeconds(60);
+
     /** A cache miss slower than this is logged at WARN so a degrading plan is noticed. */
     private static final long SLOW_QUERY_MS = 1_000;
 
     private final PackageRepository packageRepository;
+    private final TransactionTemplate readOnlyTransaction;
+
+    public CatalogPopularityService(PackageRepository packageRepository,
+                                    PlatformTransactionManager transactionManager) {
+        this.packageRepository = packageRepository;
+        this.readOnlyTransaction = new TransactionTemplate(transactionManager);
+        // Read-only: ReplicationRoutingDataSource picks the replica for read-only transactions.
+        this.readOnlyTransaction.setReadOnly(true);
+        // Always a new transaction: joining a caller's read-write one would skip the replica, and
+        // rolling back after a failure would then poison the caller's transaction.
+        this.readOnlyTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
 
     /**
-     * Ranks for one institute, cached per institute.
+     * Ranks for one institute, cached per institute. Never throws for a failed load; answers
+     * {@link CatalogPopularityDTO#unavailable} instead (see the class comment).
      *
      * @param instituteId the institute whose public catalogue is ranked; must not be null (it is
      *                    the cache key -- the controller rejects blank ids before calling)
      */
     @Cacheable(value = CACHE_NAME, key = "#instituteId", sync = true)
-    @Transactional(readOnly = true)
     public CatalogPopularityDTO getPopularity(String instituteId) {
         long startedAt = System.nanoTime();
-        List<CatalogPopularityDTO.PackageRank> ranks =
-                rank(packageRepository.countActiveLearnersPerCatalogPackage(instituteId));
-        long tookMs = (System.nanoTime() - startedAt) / 1_000_000;
-        if (tookMs > SLOW_QUERY_MS) {
-            log.warn("Catalogue popularity ranks for institute={} took {} ms ({} ranked courses)",
-                    instituteId, tookMs, ranks.size());
-        } else {
-            log.debug("Catalogue popularity ranks for institute={} took {} ms ({} ranked courses)",
-                    instituteId, tookMs, ranks.size());
+        try {
+            List<CatalogPopularityDTO.PackageRank> ranks = rank(readOnlyTransaction.execute(
+                    status -> packageRepository.countActiveLearnersPerCatalogPackage(instituteId)));
+            long tookMs = elapsedMs(startedAt);
+            if (tookMs > SLOW_QUERY_MS) {
+                log.warn("Catalogue popularity ranks for institute={} took {} ms ({} ranked courses)",
+                        instituteId, tookMs, ranks.size());
+            } else {
+                log.debug("Catalogue popularity ranks for institute={} took {} ms ({} ranked courses)",
+                        instituteId, tookMs, ranks.size());
+            }
+            return new CatalogPopularityDTO(instituteId, ranks);
+        } catch (RuntimeException e) {
+            log.warn("Catalogue popularity ranks for institute={} failed after {} ms; answering no ranks"
+                            + " for the next {} s instead of retrying per request",
+                    instituteId, elapsedMs(startedAt), FAILURE_TTL.toSeconds(), e);
+            return CatalogPopularityDTO.unavailable(instituteId);
         }
-        return new CatalogPopularityDTO(instituteId, ranks);
+    }
+
+    /**
+     * Per-entry lifetime of the {@code catalogPopularityRanks} cache, wired in by
+     * CacheConfiguration: {@link #RANKS_TTL} for loaded ranks, {@link #FAILURE_TTL} for the
+     * stand-in of a failed load. Counted from when the entry was written; reads never extend it.
+     */
+    public static Expiry<Object, Object> cacheExpiry() {
+        return new CacheEntryLifetime();
+    }
+
+    /** How long one cached value may live (see {@link #cacheExpiry()}). */
+    static Duration timeToLive(Object cachedValue) {
+        return cachedValue instanceof CatalogPopularityDTO popularity && popularity.isUnavailable()
+                ? FAILURE_TTL
+                : RANKS_TTL;
     }
 
     /**
@@ -109,5 +165,30 @@ public class CatalogPopularityService {
             ranks.add(new CatalogPopularityDTO.PackageRank(ordered.get(i).getKey(), i + 1));
         }
         return List.copyOf(ranks);
+    }
+
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
+    }
+
+    /** Caffeine variable expiry backed by {@link #timeToLive(Object)}. */
+    private static final class CacheEntryLifetime implements Expiry<Object, Object> {
+
+        @Override
+        public long expireAfterCreate(Object key, Object value, long currentTime) {
+            return timeToLive(value).toNanos();
+        }
+
+        @Override
+        public long expireAfterUpdate(Object key, Object value, long currentTime, long currentDuration) {
+            // A put over an existing entry (e.g. real ranks replacing a stand-in) gets the new
+            // value's full lifetime.
+            return timeToLive(value).toNanos();
+        }
+
+        @Override
+        public long expireAfterRead(Object key, Object value, long currentTime, long currentDuration) {
+            return currentDuration;
+        }
     }
 }

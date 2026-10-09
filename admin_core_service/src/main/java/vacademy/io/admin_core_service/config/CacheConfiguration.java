@@ -7,6 +7,7 @@ import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import vacademy.io.admin_core_service.features.packages.service.CatalogPopularityService;
 
 import java.util.concurrent.TimeUnit;
 
@@ -200,12 +201,14 @@ public class CacheConfiguration {
 
                 // catalogPopularityRanks: public catalogue popularity ranks per instituteId
                 // (CatalogPopularityService, behind the unauthenticated /open/packages/v1/popularity).
-                // 10m: enrolment ranks move slowly, and this caps the institute-scoped enrolment
-                // aggregate at one run per institute per pod per 10 minutes. MUST be registered or
-                // @Cacheable throws in the proxy.
+                // Lifetime per entry: loaded ranks 10m -- enrolment ranks move slowly, and this caps
+                // the institute-scoped enrolment aggregate at one run per institute per pod per 10
+                // minutes -- but the no-ranks stand-in for a FAILED load only 60s, so requests queued
+                // behind a failing query share its answer instead of each re-running it, and the
+                // ranks come back within a minute. MUST be registered or @Cacheable throws in the proxy.
                 CaffeineCache catalogPopularityRanks = new CaffeineCache(
                                 "catalogPopularityRanks",
-                                caffeineCache10mBuilder().build());
+                                caffeineCacheCatalogPopularityBuilder().build());
 
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
@@ -302,13 +305,15 @@ public class CacheConfiguration {
         }
 
         /**
-         * 10-minute TTL cache builder (for slow-moving aggregates). The size bound also caps
-         * memory when a public endpoint is called with many distinct (or made-up) keys.
+         * catalogPopularityRanks builder: the lifetime is set per entry by
+         * CatalogPopularityService.cacheExpiry() (loaded ranks 10 minutes, the stand-in for a
+         * failed load 60 seconds). The size bound caps memory when the public endpoint is called
+         * with many distinct (or made-up) institute ids.
          */
-        private Caffeine<Object, Object> caffeineCache10mBuilder() {
+        private Caffeine<Object, Object> caffeineCacheCatalogPopularityBuilder() {
                 return Caffeine.newBuilder()
                                 .maximumSize(1000)
-                                .expireAfterWrite(10, TimeUnit.MINUTES)
+                                .expireAfter(CatalogPopularityService.cacheExpiry())
                                 .recordStats();
         }
 

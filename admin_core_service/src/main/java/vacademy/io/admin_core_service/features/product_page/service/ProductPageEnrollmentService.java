@@ -331,6 +331,21 @@ public class ProductPageEnrollmentService {
 
         payReq.setAmount(finalTotal);
 
+        // One order is charged in one currency, and the server decides which.
+        // A cart whose courses are priced in different currencies used to add
+        // their prices up and charge the sum in the first course's currency
+        // (₹299 for a $299 course), so it is refused here, before a user, a
+        // payment log or an enrollment exists. Nothing is refused once the
+        // money is taken (Razorpay Phase 2) or when nothing is charged (a free
+        // cart). When the courses name one currency it replaces whatever the
+        // request carries; when none names any, the request's value and the
+        // fallback below stand as before.
+        String serverCurrency = checkoutCurrency(selectedMappings, planByMappingId,
+                !isRazorpayPhase2 && finalTotal > 0.0);
+        if (serverCurrency != null) {
+            payReq.setCurrency(serverCurrency);
+        }
+
         // Defensive: ensure currency always has a value (Razorpay gateway requires it).
         // Fall back to any plan's currency, then to "INR".
         if (!StringUtils.hasText(payReq.getCurrency())) {
@@ -925,11 +940,18 @@ public class ProductPageEnrollmentService {
         try {
             Map<String, Object> gatewayData = institutePaymentGatewayMappingService
                     .findInstitutePaymentGatewaySpecifData(payReq.getVendor(), instituteId);
-            String keySecret = (String) gatewayData.getOrDefault("publishableKey",
-                    gatewayData.get("keySecret"));
+            // The secret Phase 1 created the order with, read the way
+            // RazorpayPaymentManager reads it. Without one no order can have
+            // been created, so a confirmation that cannot be verified is
+            // refused. Skipping the check instead enrolled a made-up payment
+            // id whenever the institute's Razorpay mapping had no secret -
+            // also on pages whose invite names no gateway, where the request
+            // names RAZORPAY itself.
+            String keySecret = razorpayKeySecret(gatewayData);
             if (keySecret == null) {
-                log.warn("Razorpay key_secret not found; skipping signature verification");
-                return;
+                log.warn("Razorpay key secret not configured for institute {}; refusing an unverifiable payment",
+                        instituteId);
+                throw new VacademyException("Razorpay payment could not be verified");
             }
             String razorpayOrderId = payReq.getRazorpayRequest().getRazorpayOrderId();
             String razorpayPaymentId = payReq.getRazorpayRequest().getRazorpayPaymentId();
@@ -953,6 +975,20 @@ public class ProductPageEnrollmentService {
         } catch (Exception e) {
             throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
         }
+    }
+
+    /** publishableKey, else keySecret: the precedence RazorpayPaymentManager creates orders with. */
+    private static String razorpayKeySecret(Map<String, Object> gatewayData) {
+        if (gatewayData == null) {
+            return null;
+        }
+        for (String key : List.of("publishableKey", "keySecret")) {
+            Object value = gatewayData.get(key);
+            if (value instanceof String && StringUtils.hasText((String) value)) {
+                return (String) value;
+            }
+        }
+        return null;
     }
 
     private void triggerPostEnrollmentActions(
@@ -1074,6 +1110,65 @@ public class ProductPageEnrollmentService {
 
     static final String PRICE_CHANGED_MESSAGE =
             "The price of a course in your cart has changed. Please reload the page and try again.";
+
+    static final String MIXED_CURRENCY_MESSAGE =
+            "These courses are priced in different currencies. Please check them out separately.";
+
+    /**
+     * The currency a product-page order is charged in, decided by the server
+     * rather than the request.
+     *
+     * Each course is charged in its invite's currency, or its plan's when the
+     * invite names none: the rule this checkout has always used for the first
+     * course, now applied to every course in the cart. When they all agree
+     * (ignoring case and blanks) that one code is the order's currency. When
+     * none names a currency the answer is null, and the caller keeps what it
+     * did before. When they disagree there is no single currency to charge:
+     * with refuseMixed that is a 409 (ConflictException), otherwise null.
+     *
+     * A course whose invite and plan name different currencies is charged in
+     * its invite's, exactly as a single-course checkout of it is charged
+     * today; that misconfiguration is logged, not refused.
+     *
+     * Visible for testing.
+     *
+     * @param selectedMappings the courses in the order, with their bridge rows
+     * @param planByBridgeId   each course's plan, by bridge row id
+     * @param refuseMixed      true refuses courses in different currencies
+     */
+    static String checkoutCurrency(List<ProductPageInviteMapping> selectedMappings,
+                                   Map<String, PaymentPlan> planByBridgeId, boolean refuseMixed) {
+        Set<String> currencies = new TreeSet<>();
+        for (ProductPageInviteMapping m : selectedMappings) {
+            PackageSessionLearnerInvitationToPaymentOption bridge = m.getPsInvitePaymentOption();
+            EnrollInvite invite = bridge.getEnrollInvite();
+            PaymentPlan plan = planByBridgeId.get(bridge.getId());
+            String inviteCurrency = currencyCode(invite != null ? invite.getCurrency() : null);
+            String planCurrency = currencyCode(plan != null ? plan.getCurrency() : null);
+            if (inviteCurrency != null && planCurrency != null && !inviteCurrency.equals(planCurrency)) {
+                log.warn("Product page checkout: bridge {} is charged in its invite's currency {} "
+                        + "although its plan {} is priced in {}", bridge.getId(), inviteCurrency,
+                        plan.getId(), planCurrency);
+            }
+            String code = inviteCurrency != null ? inviteCurrency : planCurrency;
+            if (code != null) {
+                currencies.add(code);
+            }
+        }
+        if (currencies.size() == 1) {
+            return currencies.iterator().next();
+        }
+        if (currencies.size() > 1 && refuseMixed) {
+            log.warn("Product page checkout refused: the cart mixes currencies {}", currencies);
+            throw new ConflictException(MIXED_CURRENCY_MESSAGE);
+        }
+        return null;
+    }
+
+    /** A currency code as gateways expect it (trimmed, upper case); null when blank. */
+    private static String currencyCode(String raw) {
+        return StringUtils.hasText(raw) ? raw.trim().toUpperCase(Locale.ROOT) : null;
+    }
 
     /**
      * The plan a selected course is priced and enrolled on: the plan the page

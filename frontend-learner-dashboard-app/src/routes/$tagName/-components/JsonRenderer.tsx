@@ -202,6 +202,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             authLinks={props.authLinks}
             catalogueData={catalogueData}
             tagName={tagName}
+            instituteId={instituteId}
+            globalSettings={globalSettings}
             // The untranslated props, for logic that keys on authored labels
             // or links (which button opens the lead form, and so on).
             baseProps={baseProps}
@@ -389,6 +391,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             instituteId={instituteId}
             tagName={tagName}
             isPreviewMode={isPreviewMode}
+            // Joins the site-wide cart when globalSettings.siteCart is on;
+            // otherwise the section keeps its own basket, exactly as before.
+            globalSettings={globalSettings}
           />
         );
 
@@ -402,6 +407,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             instituteId={instituteId}
             tagName={tagName}
             isPreviewMode={isPreviewMode}
+            globalSettings={globalSettings}
           />
         );
 

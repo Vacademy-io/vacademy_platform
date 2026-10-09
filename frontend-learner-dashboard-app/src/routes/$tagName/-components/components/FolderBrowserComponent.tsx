@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import { useSiteT } from "@/routes/$tagName/-utils/catalogue-locale";
 import { ProductPageOfferComponent } from "./ProductPageOfferComponent";
+import { isSiteCartEnabled } from "../../-utils/site-cart";
+import type { GlobalSettings } from "../../-types/course-catalogue-types";
 import {
   fetchPublicFolderTree,
   nodeTitle,
@@ -66,6 +68,8 @@ interface FolderBrowserProps {
   instituteId?: string;
   tagName?: string;
   isPreviewMode?: boolean;
+  /** Passed to embedded product-page offers so they join the site-wide cart (globalSettings.siteCart). */
+  globalSettings?: Partial<GlobalSettings>;
 }
 
 const FOLDER_PARAM = "folder";
@@ -140,6 +144,7 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
   instituteId,
   tagName,
   isPreviewMode = false,
+  globalSettings,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const terms = useCourseTerms();
@@ -435,7 +440,10 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
       headerScale="md"
       columns={clampColumns(courseColumns)}
       layout="grid"
-      enableCart={enableCart && pageCount === 1}
+      // Without a site cart each offer docks its own basket bar, so a folder
+      // holding several product pages offers none; the site cart is one bar.
+      enableCart={enableCart && (pageCount === 1 || isSiteCartEnabled(globalSettings?.siteCart))}
+      globalSettings={globalSettings}
       showPrice={showPrice}
       showViewCourse={showViewCourse}
       showViewAll={false}

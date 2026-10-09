@@ -20,9 +20,10 @@
  *    '2025 बैच' or 'naya batch' begin; only a link or colour may go to the base;
  *  - typing over a base value that looks like data (a code, a number): those
  *    are shared by every language;
- *  - typing over (or clearing) a value that reads as prose but sits under a
- *    data key (a course tag to filter by, a category): that is translating
- *    it in place, and it would rewrite the value for every language;
+ *  - changing a value typed to match real data (a course tag to filter by, a
+ *    level filter value): retyped here it would be a translation that
+ *    matches nothing, in every language. A value picked from a list (a sort,
+ *    a button action, a blog category) is shared and simply changes;
  *  - one action rewriting several texts at once (a preset, "sync with pages",
  *    "move styles to CSS") over text that is already translated — splitting it
  *    would record wrong translations or delete good ones. When every text it
@@ -353,7 +354,7 @@ const setIn = <T>(value: T, path: Path, next: unknown): T => {
     return obj as T;
 };
 
-type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'other';
+type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'matchedValue' | 'other';
 
 /**
  * The only values that may land in a text field that is EMPTY in the base
@@ -382,20 +383,38 @@ const collectTypedText = (value: unknown, key: Key, out: string[] = [], itemOf?:
         const childKey = childKeyOf(key);
         value.forEach((v) => collectTypedText(v, childKey, out, key));
     } else if (isPlainObject(value)) {
-        for (const [k, v] of Object.entries(value)) collectTypedText(v, keyInItemOf(k, itemOf), out);
+        for (const [k, v] of Object.entries(value)) {
+            collectTypedText(v, keyInItemOf(k, itemOf), out);
+        }
     }
     return out;
 };
 
-/** A value that reads as prose: neither blank nor a code, number, link or colour. */
-const isProse = (value: unknown): value is string =>
-    typeof value === 'string' && !looksLikeData(value) && !SHARED_VALUE_RE.test(value.trim());
+/**
+ * Keys whose value an admin TYPES to match real data: a course tag to filter
+ * by (courseShowcase.tag, a stream tab's tag, tags) or a level name
+ * (levelFilterValue). Retyped in another language it would be a translation
+ * that matches nothing, in every language, since the value is shared. Inside
+ * announcements[] and blocks[] a tag is copy (keyInItemOf) and never gets
+ * here. Values picked from a list (a sort, a source, a button action, a blog
+ * category) are not on it: choosing another option is a shared change any
+ * language may make.
+ */
+const MATCHED_VALUE_KEY_RE = /^(?:tags?|.+(?:Tags?|_tags?|FilterValue))$/;
 
 /**
- * Icon keys (iconName, icon, buttonIcon…): an identifier picked from a list
- * ('GraduationCap') or an emoji. A value, never prose being translated.
+ * Does this leaf change a typed match value? Whatever is typed, from the first
+ * keystroke: every keystroke let through is stored, so refusing only prose
+ * would leave the 'J' of 'JEE' (or the '2 y' of '2 year old') as the filter
+ * for every language. A toggle under such a key (showTag) is not a value, and
+ * blank to blank is no change.
  */
-const isIconKey = (key: Key): boolean => typeof key === 'string' && /icon/i.test(key);
+const changesMatchedValue = (key: Key, baseValue: unknown, after: unknown): boolean =>
+    typeof key === 'string' &&
+    MATCHED_VALUE_KEY_RE.test(key) &&
+    (typeof baseValue === 'string' || typeof after === 'string') &&
+    after !== baseValue &&
+    !(isBlank(baseValue) && isBlank(after));
 
 const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
     const { key, before, after } = leaf;
@@ -410,13 +429,10 @@ const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
         if (after === undefined || after === null) return 'textClear';
     }
     if (!isTextKey(key)) {
-        // A data key whose shared value reads as prose (a course tag to filter
-        // by, a category): in another language, typing over it — or clearing
-        // it to type afresh — is translating it in place, and would rewrite it
-        // for EVERY language. Refused like any shared value.
-        const translatesInPlace =
-            isProse(baseValue) && !isIconKey(key) && (isProse(after) || isBlank(after));
-        return translatesInPlace ? 'sharedData' : 'other';
+        // Shared data goes to the base (a sort, a source, an action, an icon,
+        // a link) — except a value typed to match real data, which another
+        // language cannot change at all.
+        return changesMatchedValue(key, baseValue, after) ? 'matchedValue' : 'other';
     }
     if (typeof after !== 'string') return 'other';
     // Typing into a field that is empty in the base language: there is no
@@ -660,6 +676,12 @@ export const decideLocalizedEdit = <T>(
         return { leaf, baseValue, kind };
     });
 
+    // A typed match value is refused even when the edit changes other values
+    // with it (a stream tab's URL key follows its tag while it is typed).
+    if (classified.some((c) => c.kind === 'matchedValue')) {
+        return { kind: 'blocked', reason: 'sharedData' };
+    }
+
     if (classified.length === 1) {
         const only = classified[0]!;
         if (only.kind === 'emptySource') return { kind: 'blocked', reason: 'emptySource' };
@@ -802,7 +824,7 @@ export const localizedBlockMessage = (reason: LocalizedBlockReason, baseName: st
         case 'emptySource':
             return `Add the ${baseName} text first. This has no ${baseName} text yet, so there is nothing to translate.`;
         case 'sharedData':
-            return `This value (a code, number or link) is shared by every language. Change it while editing ${baseName}.`;
+            return `This value (a code, number, link, tag or filter value) is shared by every language. Change it while editing ${baseName}.`;
         case 'structure':
             return `This would remove content from every language. Switch to ${baseName} to do it.`;
         default:

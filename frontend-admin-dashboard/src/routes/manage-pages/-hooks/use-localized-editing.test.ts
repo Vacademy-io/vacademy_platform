@@ -451,15 +451,15 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
     const reverse = reverseDictionary(TAGS);
 
     it("an announcement's tag pill is translated like any text: a dictionary entry, the English base kept", () => {
-        const base: Record<string, any> = {
+        const base = {
             headerText: 'Latest',
             announcements: [{ title: 'Latest', date: '2025-01-15', summary: '', tag: 'News' }],
         };
         const view = localizeDeep(base, TAGS);
-        expect(view.announcements[0].tag).toBe('समाचार');
+        expect(view.announcements[0]!.tag).toBe('समाचार');
         const edited = {
             ...view,
-            announcements: [{ ...view.announcements[0], tag: 'खबर' }],
+            announcements: [{ ...view.announcements[0]!, tag: 'खबर' }],
         };
         const d = decideLocalizedEdit(base, view, edited, reverse);
         expect(d).toMatchObject({ kind: 'commit', translations: { News: 'खबर' } });
@@ -468,7 +468,7 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
     });
 
     it("a detail block's eyebrow too — and an eyebrow that is empty in English cannot be typed in Hindi", () => {
-        const base: Record<string, any> = {
+        const base = {
             blocks: [
                 { title: 'Flagship Program', tag: 'Flagship Program', items: [] },
                 { title: 'Latest', tag: '', items: [] },
@@ -477,9 +477,7 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
         const view = localizeDeep(base, TAGS);
         const retag = (i: number, tag: string) => ({
             ...view,
-            blocks: view.blocks.map((b: Record<string, unknown>, j: number) =>
-                j === i ? { ...b, tag } : b
-            ),
+            blocks: view.blocks.map((b, j) => (j === i ? { ...b, tag } : b)),
         });
         const d = decideLocalizedEdit(base, view, retag(0, 'मुख्य कार्यक्रम'), reverse);
         expect(d).toMatchObject({
@@ -487,38 +485,107 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
             translations: { 'Flagship Program': 'मुख्य कार्यक्रम' },
         });
         if (d.kind !== 'commit') throw new Error(d.kind);
-        expect(d.base.blocks[0].tag).toBe('Flagship Program');
+        expect(d.base.blocks[0]!.tag).toBe('Flagship Program');
         expect(decideLocalizedEdit(base, view, retag(1, 'नया'), reverse)).toEqual({
             kind: 'blocked',
             reason: 'emptySource',
         });
     });
 
-    it('prose typed over a course tag to filter by (data) is refused, never written into the base', () => {
+    it('anything typed over a course tag to filter by (data) is refused, never written into the base', () => {
         const base: Record<string, unknown> = { title: 'Latest', source: 'tag', tag: 'Featured' };
         const view = localizeDeep(base, TAGS);
         expect(view.tag).toBe('Featured');
-        for (const typed of ['विशेष', 'F', 'Featured courses']) {
+        // A Hindi word, a first keystroke, a longer phrase, a lowercase code:
+        // the filter is shared, so another language cannot retype it at all.
+        for (const typed of ['विशेष', 'F', 'Featured courses', 'f', 'featured-2026']) {
             expect(decideLocalizedEdit(base, view, { ...view, tag: typed }, reverse)).toEqual({
                 kind: 'blocked',
                 reason: 'sharedData',
             });
         }
         // Clearing it to type afresh would empty the filter for every language.
-        expect(decideLocalizedEdit(base, view, { ...view, tag: '' }, reverse)).toEqual({
-            kind: 'blocked',
-            reason: 'sharedData',
+        for (const cleared of ['', undefined]) {
+            expect(decideLocalizedEdit(base, view, { ...view, tag: cleared }, reverse)).toEqual({
+                kind: 'blocked',
+                reason: 'sharedData',
+            });
+        }
+    });
+
+    it('typing a tag into an empty filter is refused from the first keystroke, so no half-typed tag is stored', () => {
+        // Each keystroke that got through would become the next one's base:
+        // letting 'J' through and refusing 'JE' would leave 'J' as the filter
+        // of every language.
+        const base: Record<string, unknown> = { title: 'Latest', source: 'tag', tag: '' };
+        for (const typed of ['J', '2', 'j']) {
+            expect(decideLocalizedEdit(base, base, { ...base, tag: typed }, reverse)).toEqual({
+                kind: 'blocked',
+                reason: 'sharedData',
+            });
+        }
+        // An editor writing an empty default on mount is no change.
+        const unset: Record<string, unknown> = { title: 'Latest', source: 'tag' };
+        expect(decideLocalizedEdit(unset, unset, { ...unset, tag: '' }, reverse)).toMatchObject({
+            kind: 'commit',
+            translations: {},
         });
     });
 
+    it("a stream tab's tag is refused even when its URL key changes with it, and so is a level filter value", () => {
+        const base = {
+            streams: {
+                enabled: true,
+                source: 'tags',
+                items: [{ label: 'Latest', slug: 'jee', tag: 'JEE' }],
+            },
+            buy: { buttonLabel: 'Latest', levelFilterValue: 'Buy' },
+        };
+        const view = localizeDeep(base, TAGS);
+        const tab = view.streams.items[0]!;
+        // The tab editor re-derives the URL key from the tag as it is typed
+        // ('ज' has no Latin letters: the key empties) — two values in one edit.
+        const retagged = {
+            ...view,
+            streams: { ...view.streams, items: [{ ...tab, tag: 'ज', slug: '' }] },
+        };
+        expect(decideLocalizedEdit(base, view, retagged, reverse)).toEqual({
+            kind: 'blocked',
+            reason: 'sharedData',
+        });
+        const relevelled = { ...view, buy: { ...view.buy, levelFilterValue: 'खरीदें' } };
+        expect(decideLocalizedEdit(base, view, relevelled, reverse)).toEqual({
+            kind: 'blocked',
+            reason: 'sharedData',
+        });
+        // The tab's label is copy: a dictionary entry, the tag and key untouched.
+        const relabelled = {
+            ...view,
+            streams: { ...view.streams, items: [{ ...tab, label: 'नवीनतम' }] },
+        };
+        const d = decideLocalizedEdit(base, view, relabelled, reverse);
+        expect(d).toMatchObject({ kind: 'commit', translations: { Latest: 'नवीनतम' } });
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.base).toEqual(base);
+    });
+
     it('data values that are not prose still change in any language (codes, links, icon picks)', () => {
-        const coded: Record<string, unknown> = { title: 'Latest', tag: 'neet-2026', ctaLink: '/a' };
-        const d = decideLocalizedEdit(coded, coded, { ...coded, tag: 'jee-2026' }, reverse);
+        const coded: Record<string, unknown> = {
+            title: 'Latest',
+            productPageCode: 'neet-2026',
+            ctaLink: '/a',
+        };
+        const d = decideLocalizedEdit(
+            coded,
+            coded,
+            { ...coded, productPageCode: 'jee-2026' },
+            reverse
+        );
         expect(d).toMatchObject({ kind: 'commit', translations: {} });
         if (d.kind !== 'commit') throw new Error(d.kind);
-        expect(d.base.tag).toBe('jee-2026');
+        expect(d.base.productPageCode).toBe('jee-2026');
 
-        const features: Record<string, any> = {
+        const features = {
             features: [{ title: 'Latest', iconName: 'GraduationCap', icon: '🎓' }],
         };
         const view = localizeDeep(features, TAGS);
@@ -529,13 +596,104 @@ describe('decideLocalizedEdit — a tag is copy in some lists and data elsewhere
             const picked = decideLocalizedEdit(
                 features,
                 view,
-                { ...view, features: [{ ...view.features[0], [key]: value }] },
+                { ...view, features: [{ ...view.features[0]!, [key]: value }] },
                 reverse
             );
             expect(picked).toMatchObject({ kind: 'commit', translations: {} });
             if (picked.kind !== 'commit') throw new Error(key);
             expect(picked.base.features[0]).toEqual({ ...features.features[0], [key]: value });
         }
+    });
+});
+
+describe('decideLocalizedEdit — an option picked from a list is a shared setting in any language', () => {
+    const HI_COPY = {
+        'Our courses': 'हमारे कोर्स',
+        'Hot right now': 'अभी लोकप्रिय',
+        'Apply now': 'अभी आवेदन करें',
+        'From the blog': 'ब्लॉग से',
+    };
+    const reverse = reverseDictionary(HI_COPY);
+
+    /** Applies `change` to the Hindi view the way an editor would, and expects a plain base edit. */
+    const expectBaseEdit = <T extends object>(base: T, change: (view: T) => T, expected: T) => {
+        const view = localizeDeep(base, HI_COPY);
+        const d = decideLocalizedEdit(base, view, change(view), reverse);
+        expect(d).toEqual({ kind: 'commit', base: expected, translations: {} });
+    };
+
+    it("the catalogue's default sort ('Newest' → 'Popular'), even once one is set", () => {
+        expectBaseEdit(
+            { title: 'Our courses', defaultSort: 'Newest' },
+            (v) => ({ ...v, defaultSort: 'Popular' }),
+            { title: 'Our courses', defaultSort: 'Popular' }
+        );
+        expectBaseEdit(
+            { title: 'Our courses', defaultSort: 'Popular' },
+            (v) => ({ ...v, defaultSort: 'Price: Low to High' }),
+            { title: 'Our courses', defaultSort: 'Price: Low to High' }
+        );
+    });
+
+    it("a course strip's source ('onSale' → 'comingSoon')", () => {
+        expectBaseEdit(
+            { title: 'Hot right now', source: 'onSale' },
+            (v) => ({ ...v, source: 'comingSoon' }),
+            { title: 'Hot right now', source: 'comingSoon' }
+        );
+    });
+
+    it("a hero button's action ('openLeadCollection' → 'openForm')", () => {
+        const base = {
+            left: {
+                title: 'Hot right now',
+                buttons: [{ text: 'Apply now', action: 'openLeadCollection' }],
+            },
+        };
+        expectBaseEdit(
+            base,
+            (v) => ({
+                ...v,
+                left: { ...v.left, buttons: [{ ...v.left.buttons[0]!, action: 'openForm' }] },
+            }),
+            { left: { ...base.left, buttons: [{ text: 'Apply now', action: 'openForm' }] } }
+        );
+    });
+
+    it("a blog section's category, and back to 'All categories' (empty)", () => {
+        expectBaseEdit(
+            { headerText: 'From the blog', category: 'Exam Tips' },
+            (v) => ({ ...v, category: 'News' }),
+            { headerText: 'From the blog', category: 'News' }
+        );
+        expectBaseEdit(
+            { headerText: 'From the blog', category: 'Exam Tips' },
+            (v) => ({ ...v, category: '' }),
+            { headerText: 'From the blog', category: '' }
+        );
+    });
+
+    it('a currency, a font, a typed contact e-mail and a toggle under a tag key (showTag)', () => {
+        expectBaseEdit(
+            { title: 'Our courses', currency: 'INR' },
+            (v) => ({ ...v, currency: 'USD' }),
+            { title: 'Our courses', currency: 'USD' }
+        );
+        expectBaseEdit(
+            { title: 'Our courses', fontFamily: 'Inter' },
+            (v) => ({ ...v, fontFamily: 'Poppins' }),
+            { title: 'Our courses', fontFamily: 'Poppins' }
+        );
+        expectBaseEdit(
+            { title: 'Our courses', email: 'info@academy.org' },
+            (v) => ({ ...v, email: 'info@academy.or' }),
+            { title: 'Our courses', email: 'info@academy.or' }
+        );
+        expectBaseEdit(
+            { headerText: 'From the blog', showTag: true },
+            (v) => ({ ...v, showTag: false }),
+            { headerText: 'From the blog', showTag: false }
+        );
     });
 });
 
@@ -710,6 +868,47 @@ describe('useLocalizedEditing — editing हिन्दी against the real st
         });
         expect(strings().New).toBe('नई खबर');
         expect(useLocalizedEditNotice.getState().notice).toBeNull();
+    });
+
+    it('in हिन्दी a picked sort is saved for every language; a typed course tag is refused and left as it was', () => {
+        const config = makeConfig();
+        config.pages[0]!.components.push(
+            {
+                id: 'catalog',
+                type: 'courseCatalog',
+                enabled: true,
+                props: { title: 'Courses', defaultSort: 'Newest' },
+            } as never,
+            {
+                id: 'strip',
+                type: 'courseShowcase',
+                enabled: true,
+                props: { title: 'Courses', source: 'tag', tag: 'Featured' },
+            } as never
+        );
+        useEditorStore.getState().setConfig(config);
+        useEditorStore.getState().setEditingLocale('hi');
+        const { result } = renderHook(useStoreBackedEditing);
+        const stored = (id: string) =>
+            useEditorStore.getState().config!.pages[0]!.components.find((c) => c.id === id)!;
+
+        const catalog = result.current.config!.pages[0]!.components[2]!;
+        act(() =>
+            result.current.updateComponent('home', 'catalog', {
+                props: { ...catalog.props, defaultSort: 'Popular' },
+            })
+        );
+        expect(stored('catalog').props).toEqual({ title: 'Courses', defaultSort: 'Popular' });
+        expect(useLocalizedEditNotice.getState().notice).toBeNull();
+
+        const strip = result.current.config!.pages[0]!.components[3]!;
+        act(() =>
+            result.current.updateComponent('home', 'strip', {
+                props: { ...strip.props, tag: 'व' },
+            })
+        );
+        expect(stored('strip').props.tag).toBe('Featured');
+        expect(useLocalizedEditNotice.getState().notice?.reason).toBe('sharedData');
     });
 
     it('passes non-props updates (enabled, anchor, style) straight through', () => {

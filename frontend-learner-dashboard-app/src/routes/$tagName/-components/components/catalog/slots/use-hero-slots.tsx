@@ -1,7 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type CSSProperties } from "react";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import type { CourseCatalogSortOption } from "../../../../-types/course-catalogue-types";
+import { buildPaletteVars } from "../../../../-utils/catalogue-palette";
 import { CatalogHero, type CatalogHeroChipView, type CatalogHeroStatView } from "../CatalogHero";
 import { CatalogResultsHeader } from "../CatalogResultsHeader";
 import { QuickFilterBar } from "../QuickFilterBar";
@@ -55,6 +56,10 @@ export const useHeroSlots = (ctx: CatalogSlotContext): HeroSlotOutputs => {
     if (!String(ctx.props.title ?? "").trim()) out.hideTitleBlock = true;
 
     out.catalogHero = () => {
+      // courseCatalog.palette only reaches the section root; the hero renders
+      // outside it, so it carries the same vars itself (none = undefined).
+      const sectionPalette = buildPaletteVars(ctx.props.palette, { mode: ctx.globalSettings?.mode });
+      const paletteStyle = Object.keys(sectionPalette).length ? (sectionPalette as CSSProperties) : undefined;
       const categoriesCount = ctx.streamList.reduce((sum, s) => sum + s.categories.length, 0);
       const statValue = (kind: string): number =>
         kind === "courses" ? ctx.allCards.length : kind === "streams" ? ctx.streamList.length : categoriesCount;
@@ -105,6 +110,7 @@ export const useHeroSlots = (ctx: CatalogSlotContext): HeroSlotOutputs => {
           chips={chips}
           shellStyle={ctx.shellStyle}
           tagName={ctx.tagName}
+          paletteStyle={paletteStyle}
         />
       );
     };

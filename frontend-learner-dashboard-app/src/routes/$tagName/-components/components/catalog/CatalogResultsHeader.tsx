@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CaretDown, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { MobileFiltersButton } from "./MobileFilterSheet";
@@ -14,7 +14,7 @@ import { MobileFiltersButton } from "./MobileFilterSheet";
 const ROW = "mb-5 flex scroll-mt-24 flex-col gap-3 sm:mb-7 sm:flex-row sm:items-center sm:justify-between";
 const COUNT = "text-[15px] font-bold leading-[22px] text-palette-text"; // design-lint-ignore: Figma 15px/22px
 const STREAM_CHIP =
-  "inline-flex max-w-full items-center truncate rounded-full bg-palette-sand py-[5px] pe-2.5 ps-3 text-xs font-normal text-palette-primary"; // design-lint-ignore: Figma py 5px
+  "inline-block max-w-full truncate rounded-full align-middle bg-palette-sand py-[5px] pe-2.5 ps-3 text-xs font-normal text-palette-primary"; // design-lint-ignore: Figma py 5px
 const SORT_BOX =
   "relative inline-flex h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-[10px] border border-palette-border bg-catalogue-bg-elevated px-3.5 text-[13px] leading-[18px] text-palette-text focus-within:ring-2 focus-within:ring-primary-400 sm:h-[38px] sm:flex-none sm:justify-start"; // design-lint-ignore: Figma 38px box, radius 10px, 13px/18px
 
@@ -37,12 +37,34 @@ export interface CatalogResultsHeaderProps {
   search: { value: string; placeholder: string; onChange: (value: string) => void } | null;
 }
 
+/** How long the count must hold still before the live region speaks it. */
+export const COUNT_ANNOUNCE_DELAY_MS = 500;
+
+/**
+ * `value`, once it has held still for `delayMs`: the hero search filters as
+ * the visitor types, and a screen reader should hear the count once, not
+ * after every letter.
+ */
+const useSettled = (value: string, delayMs: number): string => {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (settled === value) return;
+    const id = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, settled, delayMs]);
+  return settled;
+};
+
 export const CatalogResultsHeader = React.forwardRef<HTMLDivElement, CatalogResultsHeaderProps>(
   ({ countLabel, chipLabel, sort, filters, search }, ref) => {
     const { t } = useTranslation("coursePlayerB");
+    const announced = useSettled(countLabel, COUNT_ANNOUNCE_DELAY_MS);
     return (
       <div ref={ref} className={ROW} data-catalog-results-header="">
-        <p className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-2" aria-live="polite">
+        <span className="sr-only" aria-live="polite" aria-atomic="true" data-catalog-results-live="">
+          {announced}
+        </span>
+        <p className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-2">
           <span className={COUNT}>{countLabel}</span>
           {chipLabel && <span className={STREAM_CHIP}>{chipLabel}</span>}
         </p>

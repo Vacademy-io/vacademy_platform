@@ -61,6 +61,8 @@ vi.mock("@/constants/urls", () => ({ BASE_URL: "", urlCourseDetails: "/courses-s
 vi.mock("../../../-services/route-matcher", () => ({
   RouteMatcher: {
     basePath: () => "",
+    normalizeRoute: (route: string) =>
+      route.toLowerCase().replace(/^\//, "").replace(/\/$/, "").replace(/^homepage$/, "home").trim(),
     pagePath: (tag: string, route?: string) =>
       !route || route === "homepage" ? `/${tag}` : `/${tag}/${route.replace(/^\/+/, "")}`,
   },
@@ -81,6 +83,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CourseCatalogComponent } from "../CourseCatalogComponent";
 import { QuickFilterBar } from "./QuickFilterBar";
+import { isSiteHomePath } from "./CatalogHero";
+import { COUNT_ANNOUNCE_DELAY_MS } from "./CatalogResultsHeader";
 
 const e = React.createElement;
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -264,6 +268,43 @@ describe("courseCatalog.hero: page hero", () => {
     expect(text(heroOf(host).querySelector("h1"))).toBe("All courses");
   });
 
+  it("also on the home page's own route (/site/home, /site/homepage), not on other pages", async () => {
+    for (const path of ["/site/home", "/site/Homepage/"]) {
+      h.pathname = path;
+      const host = await mount({ hero: HERO });
+      expect(heroOf(host).querySelector("nav")).toBeNull();
+      unmount();
+    }
+    expect(isSiteHomePath("/site/home", "site")).toBe(true);
+    expect(isSiteHomePath("/site", "site")).toBe(true);
+    expect(isSiteHomePath("/site/courses", "site")).toBe(false);
+    expect(isSiteHomePath("/site/courses/home", "site")).toBe(false);
+    expect(isSiteHomePath("/other/home", "site")).toBe(false);
+  });
+
+  it("carries a section palette (courseCatalog.palette), since it sits outside the section root", async () => {
+    const palette = { primary: "#883000", cream: "#FDF6E8" }; // design-lint-ignore: test fixture colours
+    const host = await mount({ hero: HERO, palette });
+    const hero = heroOf(host);
+    const sectionRoot = hero.nextElementSibling as HTMLElement;
+    expect(hero.style.getPropertyValue("--palette-primary")).toBe(
+      sectionRoot.style.getPropertyValue("--palette-primary"),
+    );
+    expect(hero.style.getPropertyValue("--palette-primary")).not.toBe("");
+    expect(hero.style.getPropertyValue("--palette-cream")).not.toBe("");
+    unmount();
+
+    // With an authored band fill too: both apply.
+    const both = await mount({ hero: { ...HERO, backgroundColor: "#FFFFFF" }, palette }); // design-lint-ignore: test fixture colour
+    expect(heroOf(both).style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(heroOf(both).style.getPropertyValue("--palette-primary")).not.toBe("");
+    unmount();
+
+    // No section palette: no style attribute at all.
+    const plain = await mount({ hero: HERO });
+    expect(heroOf(plain).hasAttribute("style")).toBe(false);
+  });
+
   it("uses an authored band colour and the theme's content width", async () => {
     const host = await mount(
       { hero: { ...HERO, backgroundColor: "#FDF6E8" } }, // design-lint-ignore: test fixture colour
@@ -365,6 +406,30 @@ describe("courseCatalog.hero.resultsHeader", () => {
     await click(tab);
     expect(text(headerOf(host).querySelectorAll("p > span")[1])).toBe("कला");
     expect(text(headerOf(host).querySelectorAll("p > span")[0])).toBe("Showing 2 courses");
+  });
+
+  it("the stream chip ellipsizes; the count is announced once it settles, not per keystroke", async () => {
+    const host = await mount({ hero: HERO });
+    const header = headerOf(host);
+    const streamChip = header.querySelectorAll("p > span")[1] as HTMLElement;
+    expect(streamChip.className.split(" ")).toEqual(expect.arrayContaining(["inline-block", "truncate", "max-w-full"]));
+    expect(streamChip.className).not.toContain("inline-flex");
+
+    expect(header.querySelector("p")!.hasAttribute("aria-live")).toBe(false);
+    const live = header.querySelector("[data-catalog-results-live]") as HTMLElement;
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.getAttribute("aria-atomic")).toBe("true");
+    expect(live.className).toBe("sr-only");
+    expect(text(live)).toBe("Showing 6 courses");
+
+    const input = heroOf(host).querySelector('input[type="search"]') as HTMLInputElement;
+    await typeInto(input, "Course");
+    await typeInto(input, "Course 4");
+    // The visible count follows at once; the live region waits.
+    expect(spans(headerOf(host))[0]).toBe("Showing 1 course");
+    expect(text(live)).toBe("Showing 6 courses");
+    await act(() => new Promise((resolve) => setTimeout(resolve, COUNT_ANNOUNCE_DELAY_MS + 50)));
+    expect(text(headerOf(host).querySelector("[data-catalog-results-live]"))).toBe("Showing 1 course");
   });
 
   it("built-in texts, subtitle chip, no chip, and a compact search when the hero has none", async () => {

@@ -42,9 +42,18 @@ const CHIP_ACTIVE = "border-palette-primary bg-palette-primary text-white";
 
 const trimPath = (path: string) => (path || "").replace(/\/+$/, "").toLowerCase();
 
-/** Is `pathname` the site's home page ("/<tag>" or "/" when root-mounted)? */
-export const isSiteHomePath = (pathname: string, tagName: string): boolean =>
-  trimPath(pathname) === trimPath(RouteMatcher.pagePath(tagName, ""));
+/**
+ * Is `pathname` the site's home page? The base ("/<tag>", or "/" when
+ * root-mounted) and the home page's own route ("/<tag>/home",
+ * "/<tag>/homepage"), which renders the same page.
+ */
+export const isSiteHomePath = (pathname: string, tagName: string): boolean => {
+  const path = trimPath(pathname);
+  const base = trimPath(RouteMatcher.pagePath(tagName, ""));
+  if (path === base) return true;
+  const cut = path.lastIndexOf("/");
+  return cut >= 0 && path.slice(0, cut) === base && RouteMatcher.normalizeRoute(path.slice(cut + 1)) === "home";
+};
 
 /** The breadcrumb, never on the site's home route (the home page reuses the courses section). */
 const HeroBreadcrumb: React.FC<{ items: BreadcrumbItem[]; tagName: string }> = ({ items, tagName }) => {
@@ -93,6 +102,8 @@ export interface CatalogHeroProps {
   shellStyle?: React.CSSProperties;
   /** The section's tag (fallback for the home-route check). */
   tagName: string;
+  /** The section's own palette vars (courseCatalog.palette); undefined = none. */
+  paletteStyle?: React.CSSProperties;
 }
 
 export const CatalogHero: React.FC<CatalogHeroProps> = ({
@@ -106,6 +117,7 @@ export const CatalogHero: React.FC<CatalogHeroProps> = ({
   chips,
   shellStyle,
   tagName,
+  paletteStyle,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const h1Id = useId();
@@ -116,8 +128,13 @@ export const CatalogHero: React.FC<CatalogHeroProps> = ({
       className="w-full bg-palette-cream"
       aria-labelledby={title ? h1Id : undefined}
       data-catalog-hero=""
-      // Author-picked band fill (validated colour), else the palette cream.
-      style={backgroundColor ? { backgroundColor } : undefined}
+      // The section palette (the hero sits outside the section root), then an
+      // author-picked band fill (validated colour), else the palette cream.
+      style={
+        paletteStyle || backgroundColor
+          ? { ...paletteStyle, ...(backgroundColor ? { backgroundColor } : {}) }
+          : undefined
+      }
     >
       <div className={cn("catalogue-shell", BAND_INNER)} style={shellStyle}>
         {breadcrumb.length > 0 && <HeroBreadcrumb items={breadcrumb} tagName={tagName} />}

@@ -33,6 +33,8 @@ export interface SidebarItemProps {
     onClick?: () => void;
     /** Unread count shown as a pill after the title (hidden when 0/undefined). */
     badgeCount?: number;
+    /** Every route in the same nav, so a more specific entry can own its pages. */
+    navRoutes?: string[];
 }
 
 export interface SidebarStateType {

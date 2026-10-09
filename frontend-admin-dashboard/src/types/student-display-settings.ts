@@ -308,8 +308,24 @@ export interface StudentAllCoursesTabConfig {
     visible: boolean;
 }
 
+/**
+ * Admin-defined tab on the learner's Courses page that lists every catalogue
+ * course carrying ANY of `tags`. Kept out of `tabs` on purpose: older learner
+ * builds map an unknown tab id to In Progress, so a custom entry there would
+ * surface as a duplicate In Progress tab. `order` shares the built-in tabs'
+ * numbering so the two lists interleave.
+ */
+export interface StudentAllCoursesCustomTab {
+    id: string;
+    label: string;
+    tags: string[];
+    order: number;
+    visible: boolean;
+}
+
 export interface StudentAllCoursesSettings {
     tabs: StudentAllCoursesTabConfig[];
+    customTabs?: StudentAllCoursesCustomTab[];
     defaultTab: StudentAllCoursesTabId;
     /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
     hideInstructorName?: boolean;

@@ -7,6 +7,7 @@ import {
     type StudentSidebarTabConfig,
     type StudentDashboardWidgetConfig,
     type StudentDashboardWidgetId,
+    type StudentAllCoursesCustomTab,
 } from '@/types/student-display-settings';
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from '@/constants/display-settings/student-defaults';
 
@@ -46,6 +47,24 @@ function mergeArrayById<T extends { id: string }>(
         else byId.set(i.id, i as T);
     });
     return Array.from(byId.values());
+}
+
+/** Drops custom Courses-page tabs without an id and fills missing fields. */
+function normalizeCustomCourseTabs(
+    incoming: Array<Partial<StudentAllCoursesCustomTab>> | undefined
+): StudentAllCoursesCustomTab[] {
+    if (!Array.isArray(incoming)) return [];
+    return incoming
+        .filter((t) => typeof t?.id === 'string' && t.id.length > 0)
+        .map((t) => ({
+            id: t.id as string,
+            label: typeof t.label === 'string' ? t.label : '',
+            tags: Array.isArray(t.tags)
+                ? t.tags.filter((tag): tag is string => typeof tag === 'string')
+                : [],
+            order: typeof t.order === 'number' ? t.order : 0,
+            visible: t.visible ?? true,
+        }));
 }
 
 /**
@@ -271,6 +290,7 @@ function mergeWithDefaults(
                 order: t.order ?? d.allCourses.tabs.find((x) => x.id === t.id)?.order ?? 0,
                 visible: t.visible ?? d.allCourses.tabs.find((x) => x.id === t.id)?.visible ?? true,
             })),
+            customTabs: normalizeCustomCourseTabs(incoming?.allCourses?.customTabs),
             defaultTab: incoming?.allCourses?.defaultTab ?? d.allCourses.defaultTab,
             hideInstructorName:
                 incoming?.allCourses?.hideInstructorName ??
@@ -352,6 +372,28 @@ function mergeWithDefaults(
 export const getStudentDisplaySettingsFromCache = (): StudentDisplaySettingsData | null => {
     return readCache();
 };
+
+/**
+ * Server copy for the settings editor. Unlike getStudentDisplaySettings it
+ * never answers from the 24h cache and THROWS instead of falling back to
+ * defaults — the editor saves the whole blob back, so either fallback would
+ * let one Save overwrite the institute's real settings.
+ */
+export async function fetchStudentDisplaySettingsForEdit(): Promise<StudentDisplaySettingsData> {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('No institute selected');
+    const res = await authenticatedAxiosInstance.get<{
+        data: StudentDisplaySettingsData | null;
+    }>(`${BASE_URL}/admin-core-service/institute/setting/v1/get`, {
+        params: { instituteId, settingKey: STUDENT_DISPLAY_SETTINGS_KEY },
+    });
+    const serverData = res.data?.data;
+    const merged = mergeWithDefaults(
+        serverData && Object.keys(serverData).length ? serverData : DEFAULT_STUDENT_DISPLAY_SETTINGS
+    );
+    writeCache(merged);
+    return merged;
+}
 
 export async function getStudentDisplaySettings(
     forceRefresh = false

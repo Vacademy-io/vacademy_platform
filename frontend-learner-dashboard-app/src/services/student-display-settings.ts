@@ -7,6 +7,7 @@ import {
   type StudentSidebarTabConfig,
   type StudentDashboardWidgetConfig,
   type StudentDashboardWidgetId,
+  type StudentAllCoursesCustomTab,
 } from "@/types/student-display-settings";
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
 import { resolveUiSkin } from "@/utils/institute-theme-roles";
@@ -26,6 +27,24 @@ function mergeArrayById<T extends { id: string }>(
     byId.set(i.id, def ? ({ ...def, ...i } as T) : (i as T));
   });
   return Array.from(byId.values());
+}
+
+/** Drops custom Courses-page tabs without an id and fills missing fields. */
+function normalizeCustomCourseTabs(
+  incoming: Array<Partial<StudentAllCoursesCustomTab>> | undefined
+): StudentAllCoursesCustomTab[] {
+  if (!Array.isArray(incoming)) return [];
+  return incoming
+    .filter((t) => typeof t?.id === "string" && t.id.length > 0)
+    .map((t) => ({
+      id: t.id as string,
+      label: typeof t.label === "string" ? t.label : "",
+      tags: Array.isArray(t.tags)
+        ? t.tags.filter((tag): tag is string => typeof tag === "string")
+        : [],
+      order: typeof t.order === "number" ? t.order : 0,
+      visible: t.visible ?? true,
+    }));
 }
 
 /**
@@ -278,6 +297,7 @@ function mergeWithDefaults(
             true,
         })
       ),
+      customTabs: normalizeCustomCourseTabs(incoming?.allCourses?.customTabs),
       defaultTab: incoming?.allCourses?.defaultTab ?? d.allCourses.defaultTab,
       hideInstructorName:
         incoming?.allCourses?.hideInstructorName ??

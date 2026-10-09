@@ -12,7 +12,7 @@ import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CourseLanguagePicker } from "./CourseLanguagePicker";
-import { CourseCartActions } from "./CourseCartActions";
+import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
 import type { LanguageVersionOption } from "../-utils/course-version-selection";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,6 +110,16 @@ describe("CourseCartActions", () => {
     act(() => buyNow.click());
     expect(h.onViewCart).toHaveBeenCalledTimes(1);
     expect(h.onBuyNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits with nothing to press while the store is being checked (CourseCartPending)", () => {
+    const el = render(React.createElement(CourseCartPending));
+    const buttons = Array.from(el.querySelectorAll("button"));
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].disabled).toBe(true);
+    expect(buttons[0].getAttribute("aria-busy")).toBe("true");
+    expect(buttons[0].getAttribute("aria-label")).toBe("Checking availability…");
+    expect(buttons[0].textContent).toBe("");
   });
 
   it("shows a note when another version of the course is in the cart", () => {

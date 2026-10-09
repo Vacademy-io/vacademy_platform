@@ -9,9 +9,11 @@
  *
  * One order is charged in ONE currency (the checkout adds its lines up), so an
  * item priced in another currency than the order's is set aside to be checked
- * out on its own. A price that changed since the item was added (a promo or a
- * product page's own price, against the store's plan) is put in front of the
- * visitor before checkout, never applied silently.
+ * out on its own. A free item costs nothing in any currency: it never sets or
+ * splits the order's currency, as the server's checkout currency skips
+ * zero-priced lines too. A price that changed since the item was added (a
+ * promo or a product page's own price, against the store's plan) is put in
+ * front of the visitor before checkout, never applied silently.
  */
 import type { SiteCartItem } from "../../-utils/site-cart";
 import { SITE_CART_MAX_ITEMS } from "./site-cart-items";
@@ -100,7 +102,7 @@ export const precheckSiteCart = (
   const priceChanges: PriceChange[] = [];
   const seenSessions = new Set<string>();
   const seenCourses = new Set<string>();
-  // The order's currency: that of its first sellable item that names one.
+  // The order's currency: that of its first priced sellable item that names one.
   let orderCurrency = "";
 
   for (const item of items) {
@@ -124,7 +126,10 @@ export const precheckSiteCart = (
 
     const plan = matches[0]!.payment_plan;
     const currency = currencyCode(plan?.currency || item.currency);
-    if (currency) {
+    // Priced: what the store's plan charges, else (no plan price) what the
+    // cart showed. A free item goes to checkout whatever its currency label.
+    const priced = typeof plan?.actual_price === "number" ? plan.actual_price > 0 : (item.price ?? 0) > 0;
+    if (priced && currency) {
       if (!orderCurrency) orderCurrency = currency;
       else if (currency !== orderCurrency) {
         flagged.push({ item, issue: "otherCurrency" });

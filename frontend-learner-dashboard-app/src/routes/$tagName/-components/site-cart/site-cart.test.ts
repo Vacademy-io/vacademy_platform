@@ -276,6 +276,64 @@ describe("precheckSiteCart", () => {
     });
   });
 
+  it("never lets a free item set or split the order's currency (the server charges priced lines only)", () => {
+    // An AUD store that also lists free courses labelled INR.
+    const paidAud = item("c1", "ps-paid", { price: 499, currency: "AUD" });
+    const freeInr = item("c2", "ps-free", { price: 0, currency: "INR" });
+    const store = [
+      mapping("ps-paid", { payment_plan: { actual_price: 499, currency: "AUD" } }),
+      mapping("ps-free", { payment_plan: { actual_price: 0, currency: "INR" } }),
+    ];
+    for (const cart of [
+      [paidAud, freeInr],
+      // Added first, the free course used to set the order's currency and hold the paid one back.
+      [freeInr, paidAud],
+    ]) {
+      const result = precheckSiteCart(cart, store);
+      expect(result.ok).toBe(true);
+      expect(result.ready).toEqual(cart);
+      expect(result.flagged).toEqual([]);
+      expect(canCheckOutDirectly(result, { pricesShown: true })).toBe(true);
+    }
+    // Two priced currencies still split, with a free item anywhere in the cart.
+    const paidInr = item("c3", "ps-inr", { price: 999, currency: "INR" });
+    const split = precheckSiteCart(
+      [freeInr, paidAud, paidInr],
+      [...store, mapping("ps-inr", { payment_plan: { actual_price: 999, currency: "INR" } })],
+    );
+    expect(split.ready).toEqual([freeInr, paidAud]);
+    expect(split.flagged).toEqual([{ item: paidInr, issue: "otherCurrency" }]);
+  });
+
+  it("decides free or priced by the store's plan price, else by the price the cart showed", () => {
+    const paidAud = item("c1", "ps-paid", { price: 499, currency: "AUD" });
+    const aud = mapping("ps-paid", { payment_plan: { actual_price: 499, currency: "AUD" } });
+    // Shown at a price, but the store's plan is free now: free.
+    const nowFree = precheckSiteCart(
+      [paidAud, item("c2", "ps-x", { price: 300, currency: "INR" })],
+      [aud, mapping("ps-x", { payment_plan: { actual_price: 0, currency: "INR" } })],
+    );
+    expect(nowFree.flagged).toEqual([]);
+    expect(nowFree.ready.map((i) => i.packageSessionId)).toEqual(["ps-paid", "ps-x"]);
+    // Shown free, but the store's plan charges: priced, in its own currency.
+    const nowPriced = precheckSiteCart(
+      [paidAud, item("c2", "ps-x", { price: 0, currency: "INR" })],
+      [aud, mapping("ps-x", { payment_plan: { actual_price: 300, currency: "INR" } })],
+    );
+    expect(nowPriced.flagged.map((f) => [f.item.packageSessionId, f.issue])).toEqual([["ps-x", "otherCurrency"]]);
+    // No plan price: the cart's own price decides.
+    const noPlan = [mapping("ps-paid", { payment_plan: null }), mapping("ps-x", { payment_plan: null })];
+    expect(
+      precheckSiteCart([paidAud, item("c2", "ps-x", { price: 0, currency: "INR" })], noPlan).flagged,
+    ).toEqual([]);
+    expect(precheckSiteCart([paidAud, item("c2", "ps-x", { currency: "INR" })], noPlan).flagged).toEqual([]);
+    expect(
+      precheckSiteCart([paidAud, item("c2", "ps-x", { price: 300, currency: "INR" })], noPlan).flagged.map(
+        (f) => f.issue,
+      ),
+    ).toEqual(["otherCurrency"]);
+  });
+
   it("reads the currency from the store's plan, else the cart line, and never flags an unknown one", () => {
     const result = precheckSiteCart(
       [item("c1", "a"), item("c2", "b", { currency: "USD" }), item("c3", "c"), item("c4", "d")],

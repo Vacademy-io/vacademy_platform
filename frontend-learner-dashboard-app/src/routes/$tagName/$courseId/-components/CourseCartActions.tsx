@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { CheckCircle, Lightning, ShoppingCartSimple } from "@phosphor-icons/react";
+import { CheckCircle, Lightning, ShoppingCartSimple, SpinnerGap } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
  * "Add to cart" (then "In cart", which opens the cart) and "Buy now", which
  * adds the version and goes on to checkout. Once the version is in the cart,
  * "Buy now" becomes the emphasised action. `ready` is false while the cart is
- * still being read from storage or the course's versions are loading.
+ * still being read from storage. Only for a version the store page sells;
+ * CourseCartPending stands in while that is being worked out.
  */
 export const CourseCartActions: React.FC<{
   inCart: boolean;
@@ -64,6 +65,26 @@ export const CourseCartActions: React.FC<{
         </p>
       )}
     </div>
+  );
+};
+
+/**
+ * In place of the enrol actions while a site-cart page works out where the
+ * version on screen is bought: the site cart (the store sells it) or its own
+ * enrol flow. Nothing to press until that is known, so neither shows first.
+ */
+export const CourseCartPending: React.FC<{ className?: string }> = ({ className }) => {
+  const { t } = useTranslation("coursePlayerB");
+  return (
+    <button
+      type="button"
+      disabled
+      aria-busy="true"
+      aria-label={t("siteCart.checking", "Checking availability…")}
+      className={cn("catalogue-btn catalogue-btn-primary min-h-11 w-full text-sm font-semibold", className)}
+    >
+      <SpinnerGap weight="bold" className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+    </button>
   );
 };
 

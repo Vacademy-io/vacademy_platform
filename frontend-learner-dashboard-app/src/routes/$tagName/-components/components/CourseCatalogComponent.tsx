@@ -2425,8 +2425,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   };
 
   if (isLoading || streamsLoading) {
+    // [slots: rootClassName, loadingStreamTabs — feature 'tabs'] the same root
+    // (and a placeholder band) as the loaded section, so nothing shifts.
     const skeleton = (
-      <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
+      <div className={slots.rootClassName ?? "py-8 sm:py-10 w-full bg-catalogue-bg-subtle"}>
+        {slots.streamTabsPlacement === "band" && slots.loadingStreamTabs?.()}
         <div
           className={contentMax === null ? "w-full px-4 sm:px-6 lg:px-8 space-y-section" : "catalogue-shell space-y-section"}
           style={shellStyle}
@@ -2467,7 +2470,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   // StreamTabs renders only with at least one stream; everything below the
   // tabs (filters, toolbar, grid) is then their tab panel.
   const tabsShown = !!discovery.streams && streamList.length > 0;
-  const stickyTabs = tabsShown && !!discovery.streams?.sticky;
+  // [slot: streamTabsSticky — feature 'tabs'] whether the tabs actually stick (sidebar offset).
+  const stickyTabs = tabsShown && (slots.streamTabsSticky ?? !!discovery.streams?.sticky);
 
   // [slots: streamTabs, streamTabsPlacement — feature 'tabs'] The tabs are
   // rendered through one call; 'band' places them full-bleed at the top of

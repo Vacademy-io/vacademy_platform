@@ -3,6 +3,9 @@
         "_owner": "Feature 'hero' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogTabs": {
+        "countA11y_zero": "{{count}} {{courses}}",
+        "countA11y_one": "{{count}} {{course}}",
+        "countA11y_other": "{{count}} {{courses}}",
         "_owner": "Feature 'tabs' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogSidebar": {

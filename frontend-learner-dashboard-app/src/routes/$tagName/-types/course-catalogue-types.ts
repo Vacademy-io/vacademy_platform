@@ -52,7 +52,9 @@ export interface GlobalSettings {
     course?: string;
     coursePlural?: string;
     level?: string;
+    levelPlural?: string;
     session?: string;
+    sessionPlural?: string;
   };
   courseCatalogeType: {
     enabled: boolean;

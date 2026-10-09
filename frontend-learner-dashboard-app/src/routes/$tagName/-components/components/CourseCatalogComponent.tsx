@@ -53,6 +53,7 @@ import {
 } from "../../-utils/coming-soon";
 import { ComingSoonRibbon } from "./ComingSoonRibbon";
 import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
+import { useCatalogueFilterHeadings } from "../../-utils/catalogue-naming";
 import {
   URL_PARAMS,
   readSearchParam,
@@ -626,6 +627,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // carries none resolves to `discovery.active === false` and renders the
   // original grid (same markup, same requests).
   const siteT = useSiteT();
+  const filterHeadings = useCatalogueFilterHeadings();
   const { locale: siteLocale } = useCatalogueLocale();
   const discovery = useMemo(
     () =>
@@ -1766,13 +1768,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       {/* Plural headings, as on the admin All Courses panel
           ("Categories" / "Streams" for an institute that renamed
           Level / Session). Resolved from Naming Settings, which
-          institute-naming-seed.ts guarantees are loaded first. */}
+          institute-naming-seed.ts guarantees are loaded first, unless
+          the site's own naming block names them (e.g. "Format"). */}
       {shouldShowLevelFilter && (
         <FilterSection
-          title={getTerminologyPlural(
-            ContentTerms.Level,
-            SystemTerms.Level,
-          )}
+          title={
+            filterHeadings.levels ??
+            getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)
+          }
           items={shownName(levels)}
           selectedItems={selectedLevels}
           handleChange={(id) =>
@@ -1785,10 +1788,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
       {shouldShowSessionFilter && (
         <FilterSection
-          title={getTerminologyPlural(
-            ContentTerms.Session,
-            SystemTerms.Session,
-          )}
+          title={
+            filterHeadings.sessions ??
+            getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)
+          }
           items={shownName(sessions)}
           selectedItems={selectedSessions}
           handleChange={(id) =>

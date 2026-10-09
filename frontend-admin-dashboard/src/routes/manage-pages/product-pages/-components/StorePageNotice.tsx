@@ -3,10 +3,11 @@ import { useStoreSites } from '../-hooks/use-store-sites';
 
 /**
  * Custom Fields tab warning for a site's STORE product page. Custom fields
- * are saved per enroll invite, and a store page maps the default invite of
- * every catalogue course — so a field added here also lands on those
- * courses' own invite links and catalogue enrolment. Renders nothing for any
- * other product page.
+ * are saved per enroll invite, and a store page's rows are its courses' own
+ * invite links (the catalogue sync adds each course through its default
+ * link; an admin may add others by hand) — so a field added here also lands
+ * on those links and on catalogue enrolment. Renders nothing for any other
+ * product page.
  */
 
 interface StorePageNoticeProps {
@@ -17,9 +18,11 @@ interface StorePageNoticeProps {
 }
 
 export const StorePageNotice = ({ productPageCode, instituteId, inviteCount }: StorePageNoticeProps) => {
-    // Shared with the sites list, so opening this tab usually costs nothing.
+    // Loads the sites itself when nothing is cached: this tab may be the first
+    // thing open (the site settings' "Open the store page" link opens a new
+    // browser tab). Shared with the sites list's cache.
     const sites = useStoreSites(instituteId, productPageCode);
-    if (!sites.length) return null;
+    if (!sites?.length) return null;
 
     const names = sites.map((s) => `“${s.tagName}”`).join(', ');
     return (
@@ -31,10 +34,10 @@ export const StorePageNotice = ({ productPageCode, instituteId, inviteCount }: S
                 </p>
                 <p>
                     Custom fields are saved on every enroll invite this page sells
-                    {inviteCount > 0 ? ` (${inviteCount} invite${inviteCount === 1 ? '' : 's'})` : ''}. A store page
-                    sells your whole catalogue, so adding, editing or reordering a field here also changes the
-                    enrolment form of those courses everywhere — their invite links and catalogue enrolment
-                    included. Keep the store form short (name, email, phone).
+                    {inviteCount > 0 ? ` (${inviteCount} invite${inviteCount === 1 ? '' : 's'})` : ''}. On a store
+                    page those are your courses’ own invite links, so adding, editing or reordering a field here also
+                    changes the enrolment form of those courses everywhere — their invite links and catalogue
+                    enrolment included. Keep the store form short (name, email, phone).
                 </p>
             </div>
         </div>

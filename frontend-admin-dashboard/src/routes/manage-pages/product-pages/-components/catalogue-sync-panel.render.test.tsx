@@ -6,7 +6,9 @@ import { CatalogueSyncPanel } from './CatalogueSyncPanel';
  * "Sync all catalogue courses" saves on the server at once, so it must wait
  * for unsaved edits, ask first, refresh the cached page wherever it runs from,
  * hand the fresh page back for the rows to be re-seeded, and say what it did
- * in plain words. Switching courses off is opt-in except on a store page.
+ * in plain words. Switching courses off is opt-in except on a store page —
+ * looked up when a sync starts, never on mount (it loads every site's JSON).
+ * store-page-lookup.render.test.tsx runs the lookup against a real cache.
  */
 
 const sync = vi.fn();
@@ -14,7 +16,11 @@ const getPage = vi.fn();
 const invalidateQueries = vi.fn();
 const setQueryData = vi.fn();
 const removeQueries = vi.fn();
+/** What the sites list left in the ['catalogueTags', instituteId] cache (undefined = nothing). */
+let cachedTags: unknown[] | undefined;
+/** What the lookup at sync time loads. */
 let catalogueTags: unknown[] = [];
+const fetchQuery = vi.fn();
 
 vi.mock('../-services/product-pages-service', () => ({
     syncProductPageCatalogue: (...args: unknown[]) => sync(...args),
@@ -23,9 +29,10 @@ vi.mock('../-services/product-pages-service', () => ({
 vi.mock('../../-services/catalogue-service', () => ({ getCatalogueTags: vi.fn() }));
 vi.mock('@tanstack/react-query', async (orig) => ({
     ...(await orig<Record<string, unknown>>()),
-    useQueryClient: () => ({ invalidateQueries, setQueryData, removeQueries }),
-    // Only the store-page lookup queries here (['catalogueTags', instituteId]).
-    useQuery: ({ enabled }: { enabled?: boolean }) => ({ data: enabled === false ? undefined : catalogueTags }),
+    useQueryClient: () => ({ invalidateQueries, setQueryData, removeQueries, fetchQuery }),
+    // Only the store-page lookup queries here (['catalogueTags', instituteId]); a
+    // disabled query only reads the cache, an enabled one would load the sites.
+    useQuery: ({ enabled }: { enabled?: boolean }) => ({ data: enabled === false ? cachedTags : catalogueTags }),
 }));
 
 const freshPage = { id: 'pp-1', name: 'Store', code: 'store', mappings: [{ id: 'm1' }, { id: 'm2' }] };
@@ -49,7 +56,10 @@ beforeEach(() => {
     invalidateQueries.mockReset();
     setQueryData.mockReset();
     removeQueries.mockReset();
+    cachedTags = undefined;
     catalogueTags = [];
+    fetchQuery.mockReset();
+    fetchQuery.mockImplementation(async () => catalogueTags);
 });
 
 describe('CatalogueSyncPanel', () => {
@@ -116,36 +126,72 @@ describe('CatalogueSyncPanel', () => {
         render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="summer" onSynced={vi.fn()} />);
         expect(screen.getByRole('checkbox')).not.toBeChecked();
         fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
-        expect(screen.getByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
+        expect(await screen.findByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
         await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: false }));
         expect(await screen.findByText('Nothing new to add')).toBeInTheDocument();
     });
 
-    it('ticks "switch off" by default once the page turns out to be a site’s store page', async () => {
+    it('looks the page up only when a sync starts, and ticks "switch off" on a site’s store page', async () => {
         catalogueTags = [storeSite];
         sync.mockResolvedValue({ ...freshPage });
         render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />);
+        // Nothing cached and nothing loaded yet: the default is not known.
+        expect(fetchQuery).not.toHaveBeenCalled();
+        expect(screen.getByRole('checkbox')).not.toBeChecked();
+        expect(screen.getByText(/Ticked by default if this is a site’s store page \(checked when you sync\)/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        expect(await screen.findByText(/never were — or that can no longer be sold/)).toBeInTheDocument();
+        expect(fetchQuery).toHaveBeenCalledTimes(1);
+        expect(fetchQuery.mock.calls[0]![0]).toMatchObject({ queryKey: ['catalogueTags', 'inst-1'], staleTime: 60_000 });
+        expect(screen.getByRole('checkbox', { hidden: true })).toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+        await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true }));
+    });
+
+    it('starts ticked when the sites list already cached that this is a store page', () => {
+        cachedTags = [storeSite];
+        render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />);
         expect(screen.getByRole('checkbox')).toBeChecked();
         expect(screen.getByText(/Ticked by default on a store page/)).toBeInTheDocument();
-        confirmSync();
-        await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true }));
+        expect(fetchQuery).not.toHaveBeenCalled();
     });
 
     it('settles the default when the dialog opens, so its wording and the sync agree', async () => {
         sync.mockResolvedValue({ ...freshPage });
-        // A fresh element each time, so the rerender really re-runs the store-page lookup.
+        // A fresh element each time, so the rerender really re-reads the cache.
         const panel = () => (
             <CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />
         );
         const { rerender } = render(panel());
         fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
-        expect(screen.getByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
-        // The sites' settings arrive while the dialog is open: it is a store page after all.
-        catalogueTags = [storeSite];
+        expect(await screen.findByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
+        // The sites' settings change while the dialog is open: it is a store page after all.
+        cachedTags = [storeSite];
         rerender(panel());
         expect(screen.getByText(/Ticked by default on a store page/)).toBeInTheDocument();
         expect(screen.getByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+        await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: false }));
+    });
+
+    it('needs no lookup once the admin has ticked or unticked the box', async () => {
+        sync.mockResolvedValue({ ...freshPage });
+        render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />);
+        fireEvent.click(screen.getByRole('checkbox'));
+        confirmSync();
+        await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true }));
+        expect(fetchQuery).not.toHaveBeenCalled();
+    });
+
+    it('still asks, with "switch off" unticked, when the sites cannot be loaded', async () => {
+        fetchQuery.mockRejectedValue(new Error('offline'));
+        sync.mockResolvedValue({ ...freshPage });
+        render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        expect(await screen.findByText(/Courses already on this page stay as they are/)).toBeInTheDocument();
+        expect(screen.getByRole('checkbox', { hidden: true })).not.toBeChecked();
         fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
         await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: false }));
     });
@@ -164,6 +210,8 @@ describe('CatalogueSyncPanel', () => {
         confirmSync();
         await waitFor(() => expect(setQueryData).toHaveBeenCalledWith(['productPage', 'pp-1'], freshPage));
         expect(await screen.findByText('Added 4 course versions')).toBeInTheDocument();
+        // The card already knows it is the store page: no sites lookup.
+        expect(fetchQuery).not.toHaveBeenCalled();
     });
 
     it('refetches the page when the response carries none', async () => {

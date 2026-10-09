@@ -18,6 +18,7 @@ import {
     displayedLevelName,
     folderTextsFromNodes,
     isLiveText,
+    offerChipName,
 } from './translation-sources';
 import type { FolderNode } from '../../-services/folder-library-service';
 import { translateText } from '../../-utils/catalogue-i18n';
@@ -479,6 +480,34 @@ describe('live data texts', () => {
         expect(groupOf(texts, 'Session')).toEqual(['summer_batch', 'Summer Batch']);
         // The card's category label: the course type unless it is 'General'.
         expect(groupOf(texts, 'Card category')).toEqual(['COURSE']);
+    });
+
+    it("takes each level and session name as a product page offer card's chips show it", () => {
+        // Acronyms of up to three letters stay; longer all-caps words keep one capital.
+        expect(offerChipName('NEET 2025')).toBe('Neet 2025');
+        expect(offerChipName(' CBSE ')).toBe('Cbse');
+        expect(offerChipName('JEE MAIN')).toBe('JEE Main');
+        expect(offerChipName('class_10')).toBe('class_10');
+        expect(offerChipName('Class   10')).toBe('Class 10');
+        expect(offerChipName('DEFAULT')).toBe('');
+        expect(offerChipName(null)).toBe('');
+        const texts = courseTextsFromRows([
+            { package_name: 'Physics', level_name: 'CBSE', session_name: 'NEET 2025' },
+            // Chips matching a form already listed add nothing; placeholders show no chip.
+            { package_name: 'Chemistry', level_name: 'class_10', session_name: 'DEFAULT' },
+        ]);
+        expect(texts.map((t) => t.source)).toEqual([
+            'Physics',
+            'Chemistry',
+            'CBSE',
+            'Cbse',
+            'class_10',
+            'Class 10',
+            'NEET 2025',
+            'Neet 2025',
+        ]);
+        expect(groupOf(texts, 'Level')).toEqual(['CBSE', 'Cbse', 'class_10', 'Class 10']);
+        expect(groupOf(texts, 'Session')).toEqual(['NEET 2025', 'Neet 2025']);
     });
 
     it("takes the course page's About / What learners will gain / Who should join as the page passes them to the dictionary", () => {

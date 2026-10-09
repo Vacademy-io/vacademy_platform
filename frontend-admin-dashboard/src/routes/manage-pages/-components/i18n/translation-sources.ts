@@ -114,6 +114,26 @@ export const displayedLevelName = (raw: string | null | undefined): string => {
 };
 
 /**
+ * A level or session name as a product page offer card's chips show it: the
+ * learner's ProductPageOfferComponent displayChips/toChipCase — placeholders
+ * hidden, every all-caps word longer than three letters lowered after its
+ * first letter ('NEET 2025' → 'Neet 2025', 'CBSE' → 'Cbse', 'JEE' kept), the
+ * rest as stored. Copied on purpose, like displayedLevelName.
+ */
+export const offerChipName = (raw: string | null | undefined): string => {
+    const trimmed = (raw || '').trim();
+    if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return '';
+    return trimmed
+        .split(/\s+/)
+        .map((word) =>
+            word === word.toUpperCase() && word.length > 3
+                ? word.charAt(0) + word.slice(1).toLowerCase()
+                : word
+        )
+        .join(' ');
+};
+
+/**
  * Field-name echoes the backend returns for an unset course field; the course
  * page shows nothing for them (CourseDetailsPage PLACEHOLDER_FIELD_NAMES).
  */
@@ -174,19 +194,24 @@ export const courseTextsFromRows = (rows: CourseSearchRow[]): LiveText[] => {
         const description = courseCardDescription(row.course_html_description_html);
         if (description) descriptions.push({ source: description, group: 'Course description' });
         if (row.level_name) {
-            // As stored (the course page and learning paths show it so) and
-            // as the Courses page cards and level filter show it.
+            // As stored (the course page and learning paths show it so), as
+            // the Courses page cards and level filter show it, and as a
+            // product page offer card's chip shows it.
             levels.push({ source: row.level_name, group: 'Level' });
             const shown = displayedLevelName(row.level_name);
             if (shown) levels.push({ source: shown, group: 'Level' });
+            const chip = offerChipName(row.level_name);
+            if (chip) levels.push({ source: chip, group: 'Level' });
         }
-        // The same two forms: a learning path shows the name as stored, the
-        // Courses page's session filter and chips title-cased. A placeholder
-        // session shows nowhere.
+        // The same three forms: a learning path shows the name as stored, the
+        // Courses page's session filter and chips title-cased, an offer card's
+        // chip in its own casing. Placeholder sessions are left out: the site
+        // hides them everywhere but a product page offer's Course Finder step.
         const session = displayedLevelName(row.session_name);
         if (session && row.session_name) {
             sessions.push({ source: row.session_name, group: 'Session' });
             sessions.push({ source: session, group: 'Session' });
+            sessions.push({ source: offerChipName(row.session_name), group: 'Session' });
         }
         // The Tags filter (and the course page hero): each entry, trimmed.
         if (typeof row.comma_separeted_tags === 'string') {

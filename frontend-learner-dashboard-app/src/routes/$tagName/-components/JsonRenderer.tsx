@@ -279,6 +279,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             instituteId={instituteId}
             tagName={tagName}
+            globalSettings={globalSettings}
           />
         );
       case "testimonialSection":

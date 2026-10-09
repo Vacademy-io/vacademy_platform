@@ -67,6 +67,8 @@ export interface CatalogDiscoveryConfig {
   grouping: boolean;
   badges: ResolvedBadgeRules | null;
   quickFilters: ResolvedQuickFilter[];
+  /** globalSettings.courseLanguages.versionGroups (2+ package ids each); only set when the site authors some (feature 'cards'). */
+  versionGroups?: string[][];
 }
 
 export const QUICK_FILTER_KINDS: CatalogQuickFilterKind[] = [
@@ -243,6 +245,7 @@ export const resolveCatalogDiscovery = (
   const mobileFilterSheet = p.mobileFilterSheet === true;
   const syncUrl = typeof p.syncUrl === "boolean" ? p.syncUrl : !!streams;
 
+  const versionGroups = resolveVersionGroups(languageSettings?.versionGroups);
   const active =
     !!streams ||
     p.syncUrl === true ||
@@ -277,7 +280,20 @@ export const resolveCatalogDiscovery = (
     grouping: groupingRequested && courseLanguagesOn,
     badges,
     quickFilters,
+    ...(versionGroups.length ? { versionGroups } : {}),
   };
+};
+
+/** Authored version groups: lists of 2+ distinct non-empty package ids (at most 500 lists). */
+export const resolveVersionGroups = (raw: unknown): string[][] => {
+  if (!Array.isArray(raw)) return [];
+  const out: string[][] = [];
+  for (const group of raw.slice(0, 500)) {
+    if (!Array.isArray(group)) continue;
+    const ids = [...new Set(group.map(text).filter(Boolean))];
+    if (ids.length >= 2) out.push(ids);
+  }
+  return out;
 };
 
 /** Do these badge types need enrolment ranks from the popularity endpoint? */

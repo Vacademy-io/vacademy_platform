@@ -47,6 +47,17 @@ export const withCreatedAt = <R extends { created_at?: unknown; createdAt?: stri
 export const sortOptionLabel = (t: TFunction, option: CourseCatalogSortOption): string =>
   t(`courseCatalog.sort.${SORT_URL_TOKENS[option]}`, option);
 
+/** The id with the best (lowest) rank; the first id when none is ranked. */
+export const bestRankedId = (ids: string[], ranks: Map<string, number>): string => {
+  let best = ids[0];
+  for (const id of ids) {
+    const rank = ranks.get(id);
+    const bestRank = ranks.get(best);
+    if (rank !== undefined && (bestRank === undefined || rank < bestRank)) best = id;
+  }
+  return best;
+};
+
 export const sortCatalogCards = <R extends CatalogRowLike>(
   cards: CatalogCard<R>[],
   sort: CourseCatalogSortOption,
@@ -83,7 +94,9 @@ export const sortCatalogCards = <R extends CatalogRowLike>(
       break;
     case "Popular": {
       const byRank = comparePopularity(opts.ranks);
-      out.sort((a, b) => byRank(a.courseId, b.courseId));
+      // A card folding several packages (version groups) ranks by its best one.
+      const idOf = (card: CatalogCard<R>) => (card.courseIds ? bestRankedId(card.courseIds, opts.ranks) : card.courseId);
+      out.sort((a, b) => byRank(idOf(a), idOf(b)));
       break;
     }
   }

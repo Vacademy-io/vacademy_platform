@@ -1333,8 +1333,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         grouping: discovery.grouping,
         languages: discovery.languages,
         preferredLanguage,
+        versionGroups: discovery.versionGroups,
       }),
-    [datedCourses, discovery.grouping, discovery.languages, preferredLanguage],
+    [datedCourses, discovery.grouping, discovery.languages, preferredLanguage, discovery.versionGroups],
   );
   const criteria = useMemo<CatalogCriteria>(
     () => ({

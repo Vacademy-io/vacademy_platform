@@ -33,8 +33,16 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             // this template long after, so AI-composed headers taught the wrong
             // field and produced headers with no working buttons.
             authLinks: [
-                { label: t('header.authLogin'), route: 'login' },
+                // style: 'primary' | 'outline' | 'text'; absent = first filled, the rest outlined.
+                { label: t('header.authLogin'), route: 'login', style: 'primary' },
             ],
+            // Optional header features (headers saved without these keys keep
+            // the original look). A nav item can open a streams mega menu with
+            // { type: 'megaMenu', megaMenu: { libraryId, … } } — set in the editor.
+            activeStyle: 'pill',
+            showSearch: false,
+            // Shows only once the site has more than one language.
+            showLanguageSwitcher: true,
         },
     },
 

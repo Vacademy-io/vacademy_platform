@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { JsonRenderer } from "./JsonRenderer";
+import { AudienceFormModal } from "./AudienceFormModal";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { applyCataloguePrimaryColor } from "../-utils/catalogue-theme";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
@@ -94,6 +95,21 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
     document.documentElement.style.setProperty("--app-font-family", family);
   }, [globalSettings?.fonts?.enabled, globalSettings?.fonts?.family, devanagari]);
 
+  // The site header's campaign buttons and the mega menu's coming-soon
+  // "Notify me" ask for a form through openAudienceForm, like on the
+  // catalogue pages. Only listened for while the site chrome is drawn.
+  const chromeDrawn = !!tagName && !!catalogueData;
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
+  useEffect(() => {
+    if (!chromeDrawn) return;
+    const handleOpenAudienceForm = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.audienceId) setAudienceForm({ audienceId: String(detail.audienceId), title: detail.title });
+    };
+    window.addEventListener("openAudienceForm", handleOpenAudienceForm);
+    return () => window.removeEventListener("openAudienceForm", handleOpenAudienceForm);
+  }, [chromeDrawn]);
+
   // Nothing to dress the page with — render it exactly as before, but still
   // supply the catalogue's words if we have them.
   // Both paths sit inside the site-language provider (settings undefined →
@@ -147,6 +163,15 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
       <div className={headerEnabled ? "pt-16 md:pt-20" : ""}>{children}</div>
 
       {showFooter && footer && footer.enabled !== false && renderBlock("footer", footer)}
+      {audienceForm && (
+        <AudienceFormModal
+          isOpen={!!audienceForm}
+          onClose={() => setAudienceForm(null)}
+          audienceId={audienceForm.audienceId}
+          title={audienceForm.title}
+          instituteId={instituteId}
+        />
+      )}
     </div>
     </CatalogueNamingProvider>
     </CatalogueLocaleProvider>

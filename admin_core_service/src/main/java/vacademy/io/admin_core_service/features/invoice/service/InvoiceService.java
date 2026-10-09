@@ -6583,6 +6583,28 @@ public class InvoiceService {
                 .build();
     }
 
+    /**
+     * Everything collected on the plan including the payment this receipt is for. The schedule
+     * only counts that payment once allocation has run, and that ordering differs per gateway
+     * path, so the ledger decides which side of it we are on.
+     */
+    static BigDecimal totalCollected(BigDecimal scheduledPaid, BigDecimal thisPayment,
+            boolean alreadyAllocated) {
+        BigDecimal scheduled = scheduledPaid != null ? scheduledPaid : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return alreadyAllocated ? scheduled : scheduled.add(now);
+    }
+
+    /**
+     * What the learner had paid before this receipt. Never negative: a payment recorded outside
+     * the schedule would otherwise print a nonsense figure on a financial document.
+     */
+    static BigDecimal paidBefore(BigDecimal totalCollected, BigDecimal thisPayment) {
+        BigDecimal total = totalCollected != null ? totalCollected : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return total.subtract(now).max(BigDecimal.ZERO);
+    }
+
     private static final List<String> RECEIPT_PLACEHOLDERS = List.of(
             "{{course_fees}}", "{{total_fees}}", "{{previous_paid}}", "{{total_fees_due}}",
             "{{total_amount_paid}}", "{{next_installment_amount}}", "{{next_installment_date}}",
@@ -6661,14 +6683,28 @@ public class InvoiceService {
                 expected = expected.add(row.getAmountExpected());
             }
         }
-        rf.totalPaid = paid;
         BigDecimal thisPayment = invoiceData.getTotalAmount() != null
                 ? invoiceData.getTotalAmount() : BigDecimal.ZERO;
-        // What the learner had paid before this receipt. Never negative: a receipt raised outside
-        // the schedule would otherwise show a nonsense figure.
-        rf.previousPaid = paid.subtract(thisPayment).max(BigDecimal.ZERO);
+
+        // Whether this payment is already counted in the schedule depends on whether allocation
+        // has run yet, and that ordering differs per gateway path. Asking the ledger makes the
+        // figures the same either way: a receipt must not report a different "previously paid"
+        // because it was rendered a moment earlier.
+        boolean alreadyAllocated = false;
+        String paymentLogId = invoiceData.getPaymentLog() != null ? invoiceData.getPaymentLog().getId() : null;
+        if (paymentLogId != null) {
+            try {
+                var allocations = studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLogId);
+                alreadyAllocated = allocations != null && !allocations.isEmpty();
+            } catch (Exception e) {
+                log.warn("Could not check fee allocation for payment log {} while building receipt figures",
+                        paymentLogId, e);
+            }
+        }
+        rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
+        rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
         BigDecimal courseTotal = rf.totalFees != null ? rf.totalFees : expected;
-        rf.totalDue = courseTotal.subtract(paid).max(BigDecimal.ZERO);
+        rf.totalDue = courseTotal.subtract(rf.totalPaid).max(BigDecimal.ZERO);
 
         // The earliest installment still carrying a balance is the one the learner owes next.
         rows.stream()

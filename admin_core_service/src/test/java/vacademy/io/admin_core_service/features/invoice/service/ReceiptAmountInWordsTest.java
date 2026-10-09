@@ -83,4 +83,36 @@ class ReceiptAmountInWordsTest {
         assertFalse(InvoiceService.usesReceiptFields(""));
         assertFalse(InvoiceService.usesReceiptFields(null));
     }
+
+    private static BigDecimal bd(String v) {
+        return new BigDecimal(v);
+    }
+
+    @Test
+    @DisplayName("the paid figures read the same whichever side of allocation the receipt is rendered on")
+    void paidFiguresAreOrderingIndependent() {
+        // Learner had paid 5,000 and is now paying 30,000.
+        // After allocation the schedule already totals 35,000.
+        BigDecimal afterTotal = InvoiceService.totalCollected(bd("35000"), bd("30000"), true);
+        // Before allocation it still totals only 5,000.
+        BigDecimal beforeTotal = InvoiceService.totalCollected(bd("5000"), bd("30000"), false);
+        assertEquals(0, afterTotal.compareTo(beforeTotal), "total paid must not depend on ordering");
+        assertEquals(0, afterTotal.compareTo(bd("35000")));
+
+        assertEquals(0, InvoiceService.paidBefore(afterTotal, bd("30000")).compareTo(bd("5000")));
+        assertEquals(0, InvoiceService.paidBefore(beforeTotal, bd("30000")).compareTo(bd("5000")));
+    }
+
+    @Test
+    @DisplayName("a first payment shows nothing paid previously, never a negative")
+    void firstPaymentAndEdges() {
+        BigDecimal total = InvoiceService.totalCollected(bd("0"), bd("5000"), false);
+        assertEquals(0, total.compareTo(bd("5000")));
+        assertEquals(0, InvoiceService.paidBefore(total, bd("5000")).compareTo(BigDecimal.ZERO));
+
+        // a payment recorded outside the schedule must not print a negative "previously paid"
+        assertEquals(0, InvoiceService.paidBefore(bd("1000"), bd("5000")).compareTo(BigDecimal.ZERO));
+        assertEquals(0, InvoiceService.totalCollected(null, null, false).compareTo(BigDecimal.ZERO));
+        assertEquals(0, InvoiceService.paidBefore(null, null).compareTo(BigDecimal.ZERO));
+    }
 }

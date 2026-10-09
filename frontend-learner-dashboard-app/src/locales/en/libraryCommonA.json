@@ -46,6 +46,8 @@
         "marksSuffix": "/ {{totalMarks}} marks",
         "correctLabel": "Correct: {{count}}",
         "wrongLabel": "Wrong: {{count}}",
+        "partialLabel": "Partial: {{count}}",
+        "partiallyCorrect": "Partially correct · {{percent}}% marks",
         "skippedLabel": "Skipped: {{count}}",
         "attemptPassed": "Attempt passed",
         "youPassed": "You passed!",

@@ -57,6 +57,9 @@ public class QuizResultsService {
     private static final Set<String> WRONG_STATUSES = Set.of("WRONG", "INCORRECT");
 
     private static final String STATUS_CORRECT = "CORRECT";
+
+    /** Per-answer verdict for a WRONG answer that still earned partial marks. */
+    private static final String VERDICT_PARTIAL = "PARTIAL";
     private static final String STATUS_SKIPPED = "SKIPPED";
 
     private final QuizResultsRepository quizResultsRepository;
@@ -639,7 +642,14 @@ public class QuizResultsService {
                             score.obtained += question.marks;
                             awarded = question.marks;
                         }
-                        case WRONG -> score.wrong++;
+                        case WRONG -> {
+                            score.wrong++;
+                            awarded = partialAward(question, response.getResponseJson());
+                            score.obtained += awarded;
+                            if (awarded > 0) {
+                                verdict = VERDICT_PARTIAL;
+                            }
+                        }
                         case SKIPPED -> score.skipped++;
                         case UNGRADED -> score.ungraded++;
                     }
@@ -860,6 +870,20 @@ public class QuizResultsService {
         };
     }
 
+    /**
+     * Marks a not-fully-correct answer still earns when its quiz has partial marking on
+     * and the answer was scored partial when submitted: a share of the question's marks
+     * for picking only correct options. 0 otherwise.
+     */
+    private double partialAward(QuestionInfo question, String responseJson) {
+        if (!question.partialMarking || !AutoEvaluationScorer.isMultiSelect(question.questionType)
+                || !autoEvaluationScorer.isMarkedPartial(responseJson)) {
+            return 0;
+        }
+        return question.marks * AutoEvaluationScorer.partialCreditFraction(
+                question.correctOptionIds, autoEvaluationScorer.selectedAnswerIds(responseJson));
+    }
+
     /** Grade every response into a per-(slide, learner) score. */
     private Map<String, Map<String, AttemptScore>> grade(List<QuizResponseProjection> responses,
             QuestionIndex index) {
@@ -879,7 +903,10 @@ public class QuizResultsService {
                     score.correct++;
                     score.obtained += question.marks;
                 }
-                case WRONG -> score.wrong++;
+                case WRONG -> {
+                    score.wrong++;
+                    score.obtained += partialAward(question, response.getResponseJson());
+                }
                 case SKIPPED -> score.skipped++;
                 case UNGRADED -> score.ungraded++;
             }
@@ -897,6 +924,7 @@ public class QuizResultsService {
             info.order = projection.getQuestionOrder();
             info.questionType = projection.getQuestionType();
             info.marks = nz(projection.getMarks());
+            info.partialMarking = Boolean.TRUE.equals(projection.getPartialMarking());
             info.autoEvaluationJson = projection.getAutoEvaluationJson();
             info.text = projection.getTextContent();
             info.explanation = projection.getExplanationContent();
@@ -934,6 +962,7 @@ public class QuizResultsService {
         private Integer order;
         private String questionType;
         private double marks;
+        private boolean partialMarking;
         private String autoEvaluationJson;
         private String text;
         private String explanation;

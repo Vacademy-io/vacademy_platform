@@ -48,6 +48,7 @@
     "verdict": {
         "correct": "Correct",
         "wrong": "Incorrect",
+        "partial": "Partiel",
         "skipped": "Ignoré",
         "needsMarking": "Correction requise",
         "notAnswered": "Sans réponse"

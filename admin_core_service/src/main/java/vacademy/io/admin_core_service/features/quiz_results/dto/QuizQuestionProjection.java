@@ -18,5 +18,8 @@ public interface QuizQuestionProjection {
 
     Double getMarks();
 
+    /** The quiz's partial-marking setting, repeated on each of its questions. */
+    Boolean getPartialMarking();
+
     String getAutoEvaluationJson();
 }

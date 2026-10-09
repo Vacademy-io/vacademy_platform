@@ -789,6 +789,7 @@ export const SlideMaterial = ({
                 time_limit_in_minutes?: number | null;
                 marks_per_question?: number;
                 negative_marking?: number;
+                partial_marking?: boolean | null;
               }
             | undefined;
           const questions = Array.isArray(quizSlide?.questions)
@@ -844,6 +845,7 @@ export const SlideMaterial = ({
               timeLimitMinutes={quizSlide?.time_limit_in_minutes ?? null}
               marksPerQuestion={quizSlide?.marks_per_question ?? 1}
               defaultNegativeMarking={quizSlide?.negative_marking ?? 0}
+              partialMarking={quizSlide?.partial_marking === true}
               passPercentage={(quizSlide as any)?.pass_percentage ?? null}
               reAttemptCount={(quizSlide as any)?.re_attempt_count ?? null}
               onAnswer={async (_questionId, selectedOptionId) => {

@@ -287,6 +287,7 @@ public interface QuizResultsRepository extends JpaRepository<ActivityLog, String
                    CASE WHEN CAST(:includeText AS boolean) THEN txt.content ELSE NULL END  AS textContent,
                    CASE WHEN CAST(:includeText AS boolean) THEN expl.content ELSE NULL END AS explanationContent,
                    CAST(COALESCE(q.marks, qz.marks_per_question, 1) AS double precision) AS marks,
+                   qz.partial_marking       AS partialMarking,
                    q.auto_evaluation_json   AS autoEvaluationJson
             FROM slide s
                 JOIN quiz_slide qz ON qz.id = s.source_id

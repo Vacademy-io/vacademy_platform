@@ -46,6 +46,8 @@
         "marksSuffix": "/ {{totalMarks}} درجة",
         "correctLabel": "صحيح: {{count}}",
         "wrongLabel": "خطأ: {{count}}",
+        "partialLabel": "جزئي: {{count}}",
+        "partiallyCorrect": "صحيح جزئيًا · {{percent}}% من الدرجة",
         "skippedLabel": "متخطى: {{count}}",
         "attemptPassed": "اجتازت المحاولة",
         "youPassed": "لقد نجحت!",

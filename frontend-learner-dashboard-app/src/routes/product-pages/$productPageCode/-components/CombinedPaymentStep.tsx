@@ -14,6 +14,12 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 import { resolveLearnerIdentity } from '../-utils/learner-identity';
+import {
+    clearPurchasedFromSiteCart,
+    isPaidEnrollment,
+    notePendingSiteCartPurchase,
+    purchasedPackageSessionIds,
+} from '../-utils/site-cart-housekeeping';
 
 interface CombinedPaymentStepProps {
     pageData: ProductPageData;
@@ -48,13 +54,17 @@ export const CombinedPaymentStep = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [paymentError, setPaymentError] = useState<string | null>(null);
 
-    const selectedMappings = pageData.mappings
-        .filter((m) => selectedPsOptionIds.includes(m.ps_invite_payment_option_id))
-        .map((m) => ({
-            ps_invite_payment_option_id: m.ps_invite_payment_option_id,
-            payment_plan_id: m.payment_plan_id,
-            amount: m.payment_plan?.actual_price ?? 0,
-        }));
+    const selectedPageMappings = pageData.mappings.filter((m) =>
+        selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
+    );
+    const selectedMappings = selectedPageMappings.map((m) => ({
+        ps_invite_payment_option_id: m.ps_invite_payment_option_id,
+        payment_plan_id: m.payment_plan_id,
+        amount: m.payment_plan?.actual_price ?? 0,
+    }));
+    // The site-wide cart is per institute; the page's and the route's are the
+    // same institute in practice — both are tried (see site-cart-housekeeping).
+    const cartInstituteIds = [pageData.institute_id, instituteId];
 
     const currency = (pageData.currency || pageData.mappings[0]?.payment_plan?.currency || 'INR') as string;
     const amount = finalPrice();
@@ -85,8 +95,24 @@ export const CombinedPaymentStep = ({
             });
 
             if (result.payment_url) {
+                // The gateway confirms by webhook after the visitor has left;
+                // note what this buys so the site cart can drop it once paid.
+                await notePendingSiteCartPurchase({
+                    paymentLogId: result.payment_log_id,
+                    instituteIds: cartInstituteIds,
+                    packageSessionIds: purchasedPackageSessionIds(result, selectedPageMappings),
+                });
                 window.location.href = result.payment_url;
                 return;
+            }
+
+            // Synchronously here, not on the success screen: that screen may
+            // redirect away. A no-op without a site cart.
+            if (isPaidEnrollment(result)) {
+                void clearPurchasedFromSiteCart(
+                    cartInstituteIds,
+                    purchasedPackageSessionIds(result, selectedPageMappings)
+                );
             }
 
             pushCombinedEnrollmentSuccess(amount, selectedPsOptionIds.length, utmParams);

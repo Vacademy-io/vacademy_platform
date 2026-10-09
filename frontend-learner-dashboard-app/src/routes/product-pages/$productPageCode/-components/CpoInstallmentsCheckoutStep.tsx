@@ -16,6 +16,11 @@ import { ArrowLeft, SpinnerGap, ShieldCheck } from '@phosphor-icons/react';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 import type { FieldValue } from '../-types/product-page-types';
 import { resolveLearnerIdentity } from '../-utils/learner-identity';
+import {
+    clearPurchasedFromSiteCart,
+    isPaidCpoPayment,
+    notePendingSiteCartPurchase,
+} from '../-utils/site-cart-housekeeping';
 
 interface CpoInstallmentsCheckoutStepProps {
     pageData: ProductPageData;
@@ -65,6 +70,8 @@ export const CpoInstallmentsCheckoutStep = ({
             selectedPsOptionIds.includes(m.ps_invite_payment_option_id) &&
             m.payment_option_type?.toUpperCase() === 'CPO'
     );
+    // What this checkout enrols — leaves the site-wide cart once it succeeds.
+    const cpoSessionIds = cpoMapping?.package_session_id ? [cpoMapping.package_session_id] : [];
 
     // Same resolver the submit calls use — a label search for "name" also
     // matches "School Name", and the first MATCH is not necessarily the first
@@ -212,6 +219,7 @@ export const CpoInstallmentsCheckoutStep = ({
                 name: userName,
                 razorpayPaymentData: razorpayData,
             });
+            void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
             onSuccess();
         } catch (err) {
             setPaymentError(err instanceof Error ? err.message : t('cpoInstallments.paymentConfirmationFailed'));
@@ -238,8 +246,27 @@ export const CpoInstallmentsCheckoutStep = ({
                 });
 
                 if (result?.payment_url) {
+                    // order_id is the payment log the gateway settles.
+                    await notePendingSiteCartPurchase({
+                        paymentLogId: result?.order_id,
+                        instituteIds: [pageData.institute_id],
+                        packageSessionIds: cpoSessionIds,
+                    });
                     window.location.href = result.payment_url;
                 } else {
+                    // Only a confirmed payment clears the site cart. Anything
+                    // else (a gateway still settling, or one whose payment page
+                    // this step does not open) is noted against its payment
+                    // log, so the course leaves the cart once it is paid.
+                    if (isPaidCpoPayment(result)) {
+                        void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
+                    } else {
+                        await notePendingSiteCartPurchase({
+                            paymentLogId: result?.order_id,
+                            instituteIds: [pageData.institute_id],
+                            packageSessionIds: cpoSessionIds,
+                        });
+                    }
                     onSuccess();
                 }
             });

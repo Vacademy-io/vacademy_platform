@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
-import { withArabicFallback } from "@/utils/branding";
+import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
+import { siteUsesDevanagari } from "../../-utils/catalogue-site-language";
+import { collectConfigFontFamilies, ensureFontsLoaded } from "../../-utils/catalogue-fonts";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate, useRouter } from "@tanstack/react-router";
@@ -765,10 +767,17 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   // Apply font from JSON if fonts.enabled is true
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;
+    // A site offering हिन्दी / मराठी also gets a Devanagari face after the
+    // brand font, as on the other catalogue pages. Other sites keep exactly
+    // the stacks below.
+    const devanagari = siteUsesDevanagari(catalogueData?.globalSettings?.i18n);
+    if (devanagari) {
+      ensureFontsLoaded([...collectConfigFontFamilies(catalogueData), DEVANAGARI_FALLBACK_FAMILY]);
+    }
 
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily =
-        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      const defaultStack = "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.body.style.fontFamily = devanagari ? withDevanagariFallback(defaultStack) : defaultStack;
       return;
     }
 
@@ -789,7 +798,9 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
 
     // Apply font exactly as specified in JSON, plus the Arabic fallback the
     // stack would otherwise drop (withArabicFallback preserves Latin order).
-    const resolvedFontFamily = withArabicFallback(fontFamily);
+    const resolvedFontFamily = devanagari
+      ? withDevanagariFallback(withArabicFallback(fontFamily))
+      : withArabicFallback(fontFamily);
     document.body.style.fontFamily = resolvedFontFamily;
     document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
   }, [catalogueData]);

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "@tanstack/react-router";
 import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
@@ -79,7 +79,12 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
-import { LearningPathComponent } from "./components/LearningPathComponent";
+
+// Opt-in section: loaded only by pages that have a learningPath, so every
+// other page (and the logged-in app, which bundles this renderer) skips it.
+const LearningPathComponent = lazy(() =>
+  import("./components/LearningPathComponent").then((m) => ({ default: m.LearningPathComponent })),
+);
 
 interface JsonRendererProps {
   page: Page;
@@ -262,7 +267,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "MediaShowcaseComponent":
         return <MediaShowcaseComponent key={id} {...props} />;
       case "statsHighlights":
-        return <StatsHighlightsComponent key={id} {...props} />;
+        // baseProps: each stat's icon is picked from its authored label, so
+        // the icons stay the same in every language.
+        return <StatsHighlightsComponent key={id} {...props} baseProps={baseProps} />;
       case "courseShowcase":
         // Curated strip (new / on sale / one tag / hand-picked). Unlike
         // productCourseGrid this shows a LIMITED, chosen set — no filters.
@@ -294,7 +301,17 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "pricingTable":
         return <PricingTableRenderer key={id} {...props} />;
       case "contactForm":
-        return <ContactFormRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
+        // baseFields: answers are submitted under the authored field names
+        // and labels, whatever language the visitor reads the form in.
+        return (
+          <ContactFormRenderer
+            key={id}
+            {...props}
+            baseFields={baseProps?.fields}
+            instituteId={instituteId}
+            tagName={tagName}
+          />
+        );
       case "teamSection":
         return <TeamSectionRenderer key={id} {...props} />;
       case "announcementFeed":
@@ -328,8 +345,11 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <FeatureGridRenderer key={id} {...props} />;
       case "detailBlocks":
         // Dense per-item spec blocks (programmes/services/plans). isPreviewMode
-        // so an unconfigured section guides the admin instead of vanishing.
-        return <DetailBlocksComponent key={id} {...props} isPreviewMode={isPreviewMode} />;
+        // so an unconfigured section guides the admin instead of vanishing;
+        // baseProps so anchor ids (deep links) come from the authored titles.
+        return (
+          <DetailBlocksComponent key={id} {...props} isPreviewMode={isPreviewMode} baseProps={baseProps} />
+        );
 
       case "marquee":
         return <MarqueeRenderer key={id} {...props} />;
@@ -413,16 +433,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
       case "learningPath":
         // Ordered product pages as numbered steps, or a stream's paths as
-        // cards — read live, like productPageOffer.
+        // cards — read live, like productPageOffer. Its own boundary: while
+        // the section's code loads, only this section is empty.
         return (
-          <LearningPathComponent
-            key={id}
-            {...props}
-            instituteId={instituteId}
-            tagName={tagName}
-            globalSettings={globalSettings}
-            isPreviewMode={isPreviewMode}
-          />
+          <Suspense key={id} fallback={null}>
+            <LearningPathComponent
+              {...props}
+              instituteId={instituteId}
+              tagName={tagName}
+              globalSettings={globalSettings}
+              isPreviewMode={isPreviewMode}
+            />
+          </Suspense>
         );
 
       case "htmlPage":
@@ -847,8 +869,15 @@ const extractLeadIdentity = (fields: any[], formData: Record<string, string>) =>
   return { email, phone, fullName, rest };
 };
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], baseFields, submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
   const { t } = useTranslation("coursePlayerA");
+  // The authored fields, index-paired with the shown ones (a translation
+  // keeps the list's order). Answers are keyed, and the visitor's email /
+  // phone / name found, by the authored names and labels, so a हिन्दी visitor's
+  // lead lands in the same campaign fields as an English one. The shown
+  // (translated) label is for display only.
+  const submitFields: any[] =
+    Array.isArray(baseFields) && Array.isArray(fields) && baseFields.length === fields.length ? baseFields : fields;
   // HISTORY: this form used to fake success with no network call — every
   // submission on every institute site was silently discarded. It now submits
   // through the hardened catalogue-lead pipeline; audienceId (optional, set in
@@ -871,7 +900,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
     f?.type === 'tel' || /phone|mobile|contact|whatsapp/i.test(`${f?.name || ''} ${f?.label || ''}`);
   // Start on the institute's configured country (or the visitor's, on
   // GEO_FIRST), and stop moving once a number has been typed.
-  const hasTypedPhone = (fields as any[]).some(
+  const hasTypedPhone = submitFields.some(
     (f) => isPhoneField(f) && phoneFieldHasInput(formData[f.name]),
   );
   const { defaultCountry, preferredCountries } = usePreferredPhoneCountries({ freeze: hasTypedPhone });
@@ -883,12 +912,12 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
     // Drop dial-code-only values before they become a lead's phone number.
     const submitData = { ...formData };
-    for (const f of fields as any[]) {
+    for (const f of submitFields) {
       if (!isPhoneField(f)) continue;
       const digits = (submitData[f.name] || '').replace(/\D/g, '');
       if (!digits || digits === (phoneDials[f.name] || '')) submitData[f.name] = '';
     }
-    const { email, phone, fullName, rest } = extractLeadIdentity(fields, submitData);
+    const { email, phone, fullName, rest } = extractLeadIdentity(submitFields, submitData);
     if (!email) { setError(t("jsonRenderer.includeEmailAddress")); return; }
     if (!instituteId) { setError(t("jsonRenderer.formNotConnected")); return; }
     setSubmitting(true);
@@ -922,42 +951,47 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border border-catalogue-border bg-catalogue-bg p-8 shadow-sm">
-            {fields.map((field: any) => (
-              <div key={field.name}>
-                <label className="mb-1 block text-sm font-medium text-catalogue-text-secondary">{field.label}{field.required && <span className="ms-1 text-red-500">*</span>}</label>
-                {field.type === 'textarea' ? (
-                  <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
-                ) : isPhoneField(field) ? (
-                  // Country picker + dial code. Stored as +<digits> so the lead
-                  // reaches the CRM in E.164 — a bare 10-digit number is what
-                  // makes outbound calling drop the connection.
-                  <PhoneInput
-                    country={defaultCountry}
-                    preferredCountries={preferredCountries}
-                    enableSearch
-                    countryCodeEditable={false}
-                    enableAreaCodes={false}
-                    value={formData[field.name] || ''}
-                    onChange={(value, data: any) => {
-                      const digits = (value || '').replace(/\D/g, '');
-                      setPhoneDials((prev) => ({ ...prev, [field.name]: data?.dialCode || '' }));
-                      setFormData((prev) => ({ ...prev, [field.name]: digits ? `+${digits}` : '' }));
-                    }}
-                    inputProps={{ required: field.required }}
-                    placeholder={t("leadCollectionModal.phonePlaceholder")}
-                    containerClass="!w-full"
-                    inputClass="!w-full !h-11 !rounded-lg !border-catalogue-border !bg-catalogue-bg !text-catalogue-text-primary !text-sm"
-                    // No buttonClass: the flag button is absolutely positioned OVER the
-                    // input's left edge, so giving it an opaque background paints out the
-                    // input's border and rounded corner — the control then reads as two
-                    // detached boxes. The app's own .react-tel-input theming already gives
-                    // it the divider and radius.
-                  />
-                ) : (
-                  <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
-                )}
-              </div>
-            ))}
+            {fields.map((shown: any, i: number) => {
+              // The authored field keys the value and decides the input
+              // (phone or not); only the label shown is the translated one.
+              const field = submitFields[i] ?? shown;
+              return (
+                <div key={field.name}>
+                  <label className="mb-1 block text-sm font-medium text-catalogue-text-secondary">{shown?.label}{field.required && <span className="ms-1 text-red-500">*</span>}</label>
+                  {field.type === 'textarea' ? (
+                    <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
+                  ) : isPhoneField(field) ? (
+                    // Country picker + dial code. Stored as +<digits> so the lead
+                    // reaches the CRM in E.164 — a bare 10-digit number is what
+                    // makes outbound calling drop the connection.
+                    <PhoneInput
+                      country={defaultCountry}
+                      preferredCountries={preferredCountries}
+                      enableSearch
+                      countryCodeEditable={false}
+                      enableAreaCodes={false}
+                      value={formData[field.name] || ''}
+                      onChange={(value, data: any) => {
+                        const digits = (value || '').replace(/\D/g, '');
+                        setPhoneDials((prev) => ({ ...prev, [field.name]: data?.dialCode || '' }));
+                        setFormData((prev) => ({ ...prev, [field.name]: digits ? `+${digits}` : '' }));
+                      }}
+                      inputProps={{ required: field.required }}
+                      placeholder={t("leadCollectionModal.phonePlaceholder")}
+                      containerClass="!w-full"
+                      inputClass="!w-full !h-11 !rounded-lg !border-catalogue-border !bg-catalogue-bg !text-catalogue-text-primary !text-sm"
+                      // No buttonClass: the flag button is absolutely positioned OVER the
+                      // input's left edge, so giving it an opaque background paints out the
+                      // input's border and rounded corner — the control then reads as two
+                      // detached boxes. The app's own .react-tel-input theming already gives
+                      // it the divider and radius.
+                    />
+                  ) : (
+                    <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
+                  )}
+                </div>
+              );
+            })}
             {/* Honeypot — hidden from humans, filled by bots. */}
             <div className="sr-only" aria-hidden="true">
               <label>{t("jsonRenderer.companyWebsite")}<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>

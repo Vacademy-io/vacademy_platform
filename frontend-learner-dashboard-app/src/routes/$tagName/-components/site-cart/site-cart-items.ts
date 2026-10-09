@@ -8,10 +8,10 @@ import {
   languageOfLevel,
   type CourseLanguageOption,
 } from "../../-utils/course-variants";
-import { upsertCartItems, type SiteCartItem, type SiteCartSource } from "../../-utils/site-cart";
+import { SITE_CART_MAX_ITEMS, upsertCartItems, type SiteCartItem, type SiteCartSource } from "../../-utils/site-cart";
 
-/** One order through the store checkout holds at most this many courses. */
-export const SITE_CART_MAX_ITEMS = 40;
+/** One order through the store checkout holds at most this many courses (defined with the cart model). */
+export { SITE_CART_MAX_ITEMS };
 
 /** `?source=` on the store checkout when the site cart sent the visitor there. */
 export const SITE_CART_CHECKOUT_SOURCE = "siteCart";

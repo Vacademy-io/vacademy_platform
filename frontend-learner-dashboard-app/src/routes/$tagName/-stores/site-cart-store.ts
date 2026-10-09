@@ -3,17 +3,21 @@ import { preferencesGet, preferencesSet } from "../../../utils/preferences-stora
 import {
   removeCartItems,
   siteCartStorageKey,
-  upsertCartItem,
-  upsertCartItems,
+  upsertCartItemsCapped,
   type SiteCartItem,
 } from "../-utils/site-cart";
 
 /**
  * The site-wide course cart (see -utils/site-cart.ts for the model). One cart
  * per institute, persisted through preferences storage (localStorage on the
- * web, Capacitor Preferences in the app — same as the book cart). Every
- * mutation writes through; `hydrate` must run once per institute before the
- * cart is read (SiteCartProvider / the first consumer does it).
+ * web, Capacitor Preferences in the app — same as the book cart).
+ *
+ * Loading is the delicate part: `hydrate` reads storage asynchronously, and a
+ * visitor can add or remove a course before it lands. So nothing is WRITTEN
+ * until the stored cart has been read — changes made meanwhile live in memory,
+ * and the load merges them in (adds win over the stored version of the same
+ * course; removals and a clear made during the load are honoured). Writing
+ * earlier would replace the stored cart with just the new item.
  */
 
 interface SiteCartState {
@@ -51,49 +55,76 @@ const parse = (raw: string | null): SiteCartItem[] => {
   }
 };
 
+/** The load in flight, shared by concurrent hydrate() calls for the same institute. */
+let inflight: { instituteId: string; promise: Promise<void> } | null = null;
+/** Changes made while the stored cart is still being read (applied when it lands). */
+const pendingRemovals = new Set<string>();
+let clearedWhileLoading = false;
+
 export const useSiteCartStore = create<SiteCartState>((set, get) => ({
   instituteId: null,
   items: [],
   hydrated: false,
   lastAddedAt: 0,
 
-  hydrate: async (instituteId) => {
-    if (!instituteId) return;
-    if (get().instituteId === instituteId && get().hydrated) return;
-    set({ instituteId, hydrated: false });
-    const stored = await preferencesGet(siteCartStorageKey(instituteId)).catch(() => ({ value: null }));
-    // A different institute may have been hydrated while we waited.
-    if (get().instituteId !== instituteId) return;
-    set({ items: parse(stored.value), hydrated: true });
+  hydrate: (instituteId) => {
+    if (!instituteId) return Promise.resolve();
+    const state = get();
+    if (state.instituteId === instituteId && state.hydrated) return Promise.resolve();
+    if (inflight && inflight.instituteId === instituteId) return inflight.promise;
+    if (state.instituteId !== instituteId) {
+      // Another institute's cart never leaks into this one.
+      pendingRemovals.clear();
+      clearedWhileLoading = false;
+      set({ instituteId, items: [], hydrated: false });
+    }
+    const promise = (async () => {
+      const stored = await preferencesGet(siteCartStorageKey(instituteId)).catch(() => ({ value: null }));
+      // A different institute may have been hydrated while we waited.
+      if (get().instituteId !== instituteId) return;
+      const storedItems = clearedWhileLoading
+        ? []
+        : parse(stored.value).filter((i) => !pendingRemovals.has(i.packageSessionId));
+      const merged = upsertCartItemsCapped(storedItems, get().items);
+      const changed = clearedWhileLoading || pendingRemovals.size > 0 || get().items.length > 0;
+      pendingRemovals.clear();
+      clearedWhileLoading = false;
+      set({ items: merged, hydrated: true });
+      if (changed) persist(instituteId, merged);
+    })();
+    inflight = { instituteId, promise };
+    void promise.finally(() => {
+      if (inflight?.promise === promise) inflight = null;
+    });
+    return promise;
   },
 
-  add: (item) => {
-    const next = upsertCartItem(get().items, { ...item, addedAt: Date.now() });
-    if (next === get().items) return;
-    set({ items: next, lastAddedAt: Date.now() });
-    persist(get().instituteId, next);
-  },
+  add: (item) => get().addMany([item]),
 
   addMany: (items) => {
     const stamped = items.map((i, n) => ({ ...i, addedAt: Date.now() + n }));
-    const next = upsertCartItems(get().items, stamped);
+    const next = upsertCartItemsCapped(get().items, stamped);
     if (next === get().items) return;
+    stamped.forEach((i) => pendingRemovals.delete(i.packageSessionId));
     set({ items: next, lastAddedAt: Date.now() });
-    persist(get().instituteId, next);
+    if (get().hydrated) persist(get().instituteId, next);
   },
 
   remove: (packageSessionId) => get().removeMany([packageSessionId]),
 
   removeMany: (packageSessionIds) => {
-    const next = removeCartItems(get().items, packageSessionIds);
-    if (next.length === get().items.length) return;
+    if (!get().hydrated) packageSessionIds.forEach((id) => pendingRemovals.add(id));
+    const before = get().items;
+    const next = removeCartItems(before, packageSessionIds);
+    if (next.length === before.length) return;
     set({ items: next });
-    persist(get().instituteId, next);
+    if (get().hydrated) persist(get().instituteId, next);
   },
 
   clear: () => {
+    if (!get().hydrated) clearedWhileLoading = true;
     set({ items: [] });
-    persist(get().instituteId, []);
+    if (get().hydrated) persist(get().instituteId, []);
   },
 
   has: (packageSessionId) => get().items.some((i) => i.packageSessionId === packageSessionId),
@@ -110,8 +141,9 @@ export const removePurchasedFromSiteCart = async (instituteId: string | null | u
   try {
     const state = useSiteCartStore.getState();
     if (state.instituteId === instituteId) {
+      // Loaded: removes and saves. Still loading: remembered and applied when it lands.
       state.removeMany(packageSessionIds);
-      return;
+      if (state.hydrated) return;
     }
     const key = siteCartStorageKey(instituteId);
     const stored = await preferencesGet(key);

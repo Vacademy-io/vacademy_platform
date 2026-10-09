@@ -62,6 +62,25 @@ export const upsertCartItem = (items: SiteCartItem[], item: SiteCartItem): SiteC
 export const upsertCartItems = (items: SiteCartItem[], incoming: SiteCartItem[]): SiteCartItem[] =>
   incoming.reduce((acc, item) => upsertCartItem(acc, item), items);
 
+/** One order through the store checkout holds at most this many courses. */
+export const SITE_CART_MAX_ITEMS = 40;
+
+/**
+ * upsertCartItems that never grows the cart past `max` courses. Swapping a
+ * course to another language version does not grow it, so that is always
+ * accepted. The store applies this to every add, so no caller can overfill it.
+ */
+export const upsertCartItemsCapped = (
+  items: SiteCartItem[],
+  incoming: SiteCartItem[],
+  max: number = SITE_CART_MAX_ITEMS,
+): SiteCartItem[] =>
+  incoming.reduce((acc, item) => {
+    const grows = !acc.some((i) => i.courseId === item.courseId);
+    if (grows && acc.length >= max) return acc;
+    return upsertCartItem(acc, item);
+  }, items);
+
 export const removeCartItems = (items: SiteCartItem[], packageSessionIds: string[]): SiteCartItem[] => {
   const drop = new Set(packageSessionIds);
   return items.filter((i) => !drop.has(i.packageSessionId));

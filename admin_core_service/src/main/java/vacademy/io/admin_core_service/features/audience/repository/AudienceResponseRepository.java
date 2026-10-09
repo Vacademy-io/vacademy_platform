@@ -2738,6 +2738,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 OR (CAST(:email AS text) IS NOT NULL
                                     AND ar.parent_email IS NOT NULL
                                     AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(CAST(:email AS text))))
+                                OR (CAST(:name AS text) IS NOT NULL
+                                    AND ar.parent_name IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
                               )
                             ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
                             LIMIT 1
@@ -2746,6 +2749,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10,
                         @Param("email") String email,
+                        @Param("name") String name,
                         @Param("courseFieldId") String courseFieldId);
 
         /**

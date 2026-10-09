@@ -56,10 +56,18 @@ public class LeadLookupSettingService {
         }
     }
 
-    public record LookupSettings(boolean enabled, Fields fields, String courseFieldId) {
+    /**
+     * @param searchByName lets a counsellor look someone up by their full name.
+     *        OFF by default and deliberately so: phone and email are things the
+     *        caller already has in front of them, a name is something they can
+     *        guess. Even switched on the match is exact, never a prefix, so it
+     *        cannot be walked one letter at a time.
+     */
+    public record LookupSettings(boolean enabled, Fields fields, String courseFieldId,
+                                 boolean searchByName) {
     }
 
-    private static final LookupSettings DEFAULTS = new LookupSettings(false, Fields.NONE, null);
+    private static final LookupSettings DEFAULTS = new LookupSettings(false, Fields.NONE, null, false);
 
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
@@ -100,7 +108,8 @@ public class LeadLookupSettingService {
             String courseFieldId = lookup.path("courseFieldId").asText(null);
             if (courseFieldId != null && courseFieldId.isBlank()) courseFieldId = null;
 
-            return new LookupSettings(lookup.path("enabled").asBoolean(false), parsed, courseFieldId);
+            return new LookupSettings(lookup.path("enabled").asBoolean(false), parsed, courseFieldId,
+                    lookup.path("searchByName").asBoolean(false));
         } catch (Exception e) {
             log.warn("Failed to read lead lookup settings for institute {} — using defaults: {}",
                     instituteId, e.getMessage());

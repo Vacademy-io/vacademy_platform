@@ -38,6 +38,8 @@ interface Question {
     content?: string;
   };
   auto_evaluation_json?: string;
+  marks?: number | null;
+  negative_marking?: number | null;
 }
 
 interface QuizReviewProps {
@@ -50,6 +52,9 @@ interface QuizReviewProps {
   passPercentage?: number | null;
   /** Quiz awards a share of the marks for a subset of a multiple-correct key. */
   partialMarking?: boolean;
+  /** Quiz defaults, for per-question marks when no attempt has been recorded yet. */
+  marksPerQuestion?: number;
+  defaultNegativeMarking?: number;
   attemptNumber?: number;
   maxAttempts?: number | null;
   canReattempt?: boolean;
@@ -192,7 +197,13 @@ const isAnswerMatch = (
     : correct.includes(ans);
 };
 
-export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, partialMarking = false, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
+// Up to two decimals, no trailing zeros: 1, 0.5, 0.33.
+const formatMarks = (value: number): string => String(Math.round(value * 100) / 100);
+// "+1", "+0.5", "0", "-0.25" so a learner can add the badges up to the score card.
+const formatSignedMarks = (value: number): string =>
+  value > 0 ? `+${formatMarks(value)}` : value < 0 ? `-${formatMarks(-value)}` : "0";
+
+export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, partialMarking = false, marksPerQuestion = 1, defaultNegativeMarking = 0, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
   const { t } = useTranslation("libraryCommonA");
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const [showPastAttempts, setShowPastAttempts] = useState(false);
@@ -357,13 +368,15 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   // after the attempt. Only answers flagged isPartial count as partial: a recorded
   // answer without the flag keeps its old correct/wrong rendering.
   const recordedMarksByQuestionId = useMemo(() => {
-    const map = new Map<string, { partialShare: number }>();
+    const map = new Map<string, { marks: number; maxMarks: number; partialShare: number }>();
     activeAttempt?.quiz_sides?.forEach((qs) => {
       if (!qs.question_id || !qs.response_json) return;
       try {
         const parsed = JSON.parse(qs.response_json);
         if (typeof parsed.marks === 'number' && typeof parsed.maxMarks === 'number') {
           map.set(qs.question_id, {
+            marks: parsed.marks,
+            maxMarks: parsed.maxMarks,
             partialShare:
               parsed.isPartial === true && parsed.marks > 0 && parsed.maxMarks > 0
                 ? parsed.marks / parsed.maxMarks
@@ -402,6 +415,25 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   const activeAttemptScore = scoreByAttemptId.get(activeAttempt?.id ?? '') ?? null;
   const activeAttemptHasData =
     (activeAttempt?.quiz_sides?.length ?? 0) > 0 && (activeAttemptScore?.total ?? 0) > 0;
+  // Marks one question earned, for the per-question badge. Recorded marks win so the
+  // badges add up to the score card; legacy attempts without per-question marks score
+  // 1 per correct answer, exactly as scoreByAttemptId does; a fresh, not-yet-recorded
+  // submission is scored with the quiz's own marks.
+  const questionMarksFor = (
+    q: Question,
+    status: 'correct' | 'partial' | 'wrong' | 'skipped',
+    partialShare: number,
+  ): { earned: number; max: number } => {
+    const recorded = recordedMarksByQuestionId.get(q.id);
+    if (recorded) return { earned: recorded.marks, max: recorded.maxMarks };
+    if (activeAttemptHasData) return { earned: status === 'correct' ? 1 : 0, max: 1 };
+    const max = q.marks ?? marksPerQuestion;
+    const negative = q.negative_marking ?? defaultNegativeMarking;
+    const earned =
+      status === 'correct' ? max : status === 'partial' ? max * partialShare : status === 'wrong' ? -negative : 0;
+    return { earned, max };
+  };
+
   const effectiveScoreCard = activeAttemptHasData
     ? {
         earned: activeAttemptScore!.earned,
@@ -760,6 +792,16 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               : partialShare > 0
                 ? 'partial'
                 : 'wrong';
+          const questionMarks = questionMarksFor(q, answerStatus, partialShare);
+          // Coloured by the marks shown, so the badge never reads "+1" in red.
+          const marksBadgeClass =
+            questionMarks.earned < 0 || (questionMarks.earned === 0 && answerStatus === 'wrong')
+              ? 'border-danger-200 bg-danger-50 text-danger-700'
+              : questionMarks.earned > 0 && questionMarks.earned >= questionMarks.max
+                ? 'border-success-200 bg-success-50 text-success-700'
+                : questionMarks.earned > 0
+                  ? 'border-warning-200 bg-warning-50 text-warning-700'
+                  : 'border-neutral-200 bg-neutral-50 text-neutral-600';
           const yourAnswerStyles = {
             correct: {
               label: 'text-green-800',
@@ -785,7 +827,12 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
 
           return (
             <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
-              <div className="mb-2 text-xs text-gray-500 font-medium">{t("quizReview.questionNumber", { number: idx + 1 })}</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500 font-medium">{t("quizReview.questionNumber", { number: idx + 1 })}</span>
+                <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${marksBadgeClass}`}>
+                  {t("quizReview.questionMarks", { earned: formatSignedMarks(questionMarks.earned), max: formatMarks(questionMarks.max) })}
+                </span>
+              </div>
               {passage && (
                 <div className="mb-4 p-4 bg-gray-100 rounded border border-gray-200">
                   <div className="text-xs font-semibold text-gray-700 mb-1">{t("quizReview.passageLabel")}</div>

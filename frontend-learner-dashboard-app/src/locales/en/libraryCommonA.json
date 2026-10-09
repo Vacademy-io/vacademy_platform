@@ -64,6 +64,7 @@
         "noRecordedResponses": "This attempt has no recorded responses — all questions are shown as Skipped.",
         "backToLatest": "Back to latest",
         "questionNumber": "Question {{number}}",
+        "questionMarks": "Marks: {{earned}} / {{max}}",
         "passageLabel": "Passage:",
         "showLess": "Show less",
         "showMore": "Show more",

@@ -68,6 +68,7 @@
         "noRecordedResponses": "لا توجد استجابات مسجلة لهذه المحاولة — تُعرض جميع الأسئلة على أنها متخطاة.",
         "backToLatest": "العودة إلى الأحدث",
         "questionNumber": "السؤال {{number}}",
+        "questionMarks": "الدرجة: {{earned}} / {{max}}",
         "passageLabel": "المقطع:",
         "showLess": "عرض أقل",
         "showMore": "عرض المزيد",

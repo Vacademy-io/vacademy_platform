@@ -38,6 +38,8 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -388,6 +390,60 @@ class ProductPageByCodeResponseTest {
                 json.writeValueAsString(now));
         assertTrue(now.getMappings().isEmpty());
         verify(readRepository, never()).findCustomFieldsWithDetailsForTypeIds(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("every column of a form-field row reaches the DTO exactly as InstituteCustomFiledService maps it")
+    void fieldDtoMatchesTheServiceForEveryColumn() throws Exception {
+        // Every field of both entities set to a distinct value, so a column the
+        // service starts mapping (and the batched copy does not) shows up here
+        // even though no fixture above fills it.
+        InstituteCustomField icf = new InstituteCustomField();
+        CustomFields cf = new CustomFields();
+        fillEveryField(icf, 1);
+        fillEveryField(cf, 100);
+        icf.setInstituteId(INSTITUTE);
+        icf.setType(ENROLL_INVITE);
+        icf.setTypeId("inv-full");
+        icf.setStatus("ACTIVE"); // the service keeps ACTIVE rows only
+        Object[] row = {icf, cf};
+        List<Object[]> rows = new ArrayList<>();
+        rows.add(row);
+        when(instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(INSTITUTE, ENROLL_INVITE, "inv-full"))
+                .thenReturn(rows);
+        InstituteCustomFiledService realFieldService = new InstituteCustomFiledService();
+        ReflectionTestUtils.setField(realFieldService, "instituteCustomFieldRepository", instituteCustomFieldRepository);
+
+        List<InstituteCustomFieldDTO> expected =
+                realFieldService.findCustomFieldsAsJson(INSTITUTE, ENROLL_INVITE, "inv-full");
+
+        assertEquals(1, expected.size());
+        assertEquals(json.writeValueAsString(expected),
+                json.writeValueAsString(List.of(ProductPageCustomFieldLoader.toDto(row))));
+    }
+
+    /** Sets every instance field to a distinct non-null value; fails on a field type it cannot fill. */
+    private static void fillEveryField(Object target, int seed) throws IllegalAccessException {
+        int n = seed;
+        for (Field f : target.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            f.setAccessible(true);
+            Class<?> type = f.getType();
+            long millis = 1_700_000_000_000L + n * 60_000L;
+            Object value;
+            if (type == String.class) value = f.getName() + "-" + n;
+            else if (type == Integer.class || type == int.class) value = n;
+            else if (type == Long.class || type == long.class) value = (long) n;
+            else if (type == Double.class || type == double.class) value = (double) n;
+            else if (type == Boolean.class || type == boolean.class) value = Boolean.TRUE;
+            else if (type == java.sql.Timestamp.class) value = new java.sql.Timestamp(millis);
+            else if (type == java.sql.Date.class) value = new java.sql.Date(millis);
+            else if (type == Date.class) value = new Date(millis);
+            else throw new AssertionError("Cannot fill " + target.getClass().getSimpleName() + "." + f.getName()
+                        + " (" + type.getName() + "): teach fillEveryField this type");
+            f.set(target, value);
+            n++;
+        }
     }
 
     /**

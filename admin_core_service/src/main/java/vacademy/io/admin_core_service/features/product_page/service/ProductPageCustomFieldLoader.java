@@ -26,8 +26,9 @@ import java.util.Map;
  * InstituteCustomFiledService.findCustomFieldsAsJson builds for it (same
  * rows, same order, same DTO), so the page's aggregated form is unchanged.
  * The DTO mapping is a copy of that service's private converter; the
- * by-code comparison test runs the real service beside this one to keep the
- * two from drifting apart.
+ * by-code comparison test runs the real service beside this one, on page
+ * fixtures and on a row with every entity column filled, to keep the two
+ * from drifting apart.
  */
 @Component
 public class ProductPageCustomFieldLoader {

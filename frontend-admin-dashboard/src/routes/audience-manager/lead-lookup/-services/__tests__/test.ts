@@ -1,47 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-    splitLookupTerm,
-    isLookupTermComplete,
     isTermCompleteFor,
     lookupParamsFor,
     guessLookupMode,
 } from '@/routes/audience-manager/lead-lookup/-services/lead-lookup';
-
-describe('splitLookupTerm', () => {
-    it('treats anything with an @ as an email', () => {
-        expect(splitLookupTerm('ram@example.com')).toEqual({ email: 'ram@example.com' });
-        expect(splitLookupTerm('9876543210')).toEqual({ phone: '9876543210' });
-    });
-
-    it('ignores surrounding whitespace', () => {
-        expect(splitLookupTerm('  9876543210 ')).toEqual({ phone: '9876543210' });
-        expect(splitLookupTerm('   ')).toEqual({});
-    });
-});
-
-describe('isLookupTermComplete', () => {
-    it('rejects a partial number — it would match whoever shares the suffix', () => {
-        expect(isLookupTermComplete('98765')).toBe(false);
-        expect(isLookupTermComplete('987654321')).toBe(false);
-        expect(isLookupTermComplete('9876543210')).toBe(true);
-    });
-
-    it('accepts a number written with a country code or separators', () => {
-        expect(isLookupTermComplete('+91 98765-43210')).toBe(true);
-        expect(isLookupTermComplete('919876543210')).toBe(true);
-    });
-
-    it('needs a whole email, not a fragment', () => {
-        expect(isLookupTermComplete('ram@')).toBe(false);
-        expect(isLookupTermComplete('ram@example')).toBe(false);
-        expect(isLookupTermComplete('ram@example.com')).toBe(true);
-    });
-
-    it('rejects an empty box', () => {
-        expect(isLookupTermComplete('')).toBe(false);
-        expect(isLookupTermComplete('   ')).toBe(false);
-    });
-});
 
 /**
  * The three search modes. Phone and email keep the rules they always had; name
@@ -121,5 +83,34 @@ describe('guessLookupMode', () => {
 
     it('has no opinion on an empty box', () => {
         expect(guessLookupMode('  ')).toBeNull();
+    });
+});
+
+/**
+ * Pasting the right thing into the wrong mode. The picker is explicit, but a
+ * counsellor copying an address out of WhatsApp should not have to notice the
+ * mode first — the paste switches to the mode the value plainly belongs to.
+ */
+describe('paste into the wrong mode', () => {
+    it('an address pasted while the mode says name belongs to email', () => {
+        expect(guessLookupMode('ram@example.com')).toBe('email');
+    });
+
+    it('a number pasted while the mode says email belongs to phone', () => {
+        expect(guessLookupMode('+91 98765-43210')).toBe('phone');
+    });
+
+    // The guess must agree with the completeness check, or the mode flips and
+    // the Check button stays dead with no explanation.
+    it('a value it routes to phone is one the phone check also accepts', () => {
+        const term = '919876543210';
+        expect(guessLookupMode(term)).toBe('phone');
+        expect(isTermCompleteFor('phone', term)).toBe(true);
+    });
+
+    it('a value it routes to email is one the email check also accepts', () => {
+        const term = 'ram@example.com';
+        expect(guessLookupMode(term)).toBe('email');
+        expect(isTermCompleteFor('email', term)).toBe(true);
     });
 });

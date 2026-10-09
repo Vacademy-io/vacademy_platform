@@ -108,21 +108,3 @@ export function guessLookupMode(term: string): LookupMode | null {
     if (trimmed.includes('@')) return 'email';
     return /^[0-9+()\-\s]+$/.test(trimmed) ? 'phone' : 'name';
 }
-
-/** Treat anything with an @ as an email; otherwise it's a number. */
-export function splitLookupTerm(term: string): { phone?: string; email?: string } {
-    const trimmed = term.trim();
-    if (!trimmed) return {};
-    return trimmed.includes('@') ? { email: trimmed } : { phone: trimmed };
-}
-
-/**
- * The backend needs a full number — a partial one would match whoever happens to
- * share the suffix. Saying so up front beats a round trip that returns an error.
- */
-export function isLookupTermComplete(term: string): boolean {
-    const { phone, email } = splitLookupTerm(term);
-    if (email) return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
-    if (phone) return phone.replace(/[^0-9]/g, '').length >= 10;
-    return false;
-}

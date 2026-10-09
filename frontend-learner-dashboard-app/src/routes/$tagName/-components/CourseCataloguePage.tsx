@@ -41,6 +41,7 @@ import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
+import { headerOffsetClass } from "./header/header-chrome";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -672,7 +673,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           {catalogueData.pages
             .filter(matchesActivePage)
             .map((page) => (
-              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : headerOffsetClass((catalogueData.globalSettings as any).layout?.header?.props)} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}

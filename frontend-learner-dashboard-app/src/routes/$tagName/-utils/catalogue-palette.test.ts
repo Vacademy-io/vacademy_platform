@@ -45,7 +45,7 @@ describe("buildPaletteVars", () => {
     );
     expect(vars["--palette-text"]).toBe(hexToHslChannels(BV.text));
     expect(paletteVarName("muted2")).toBe("--palette-muted2");
-    expect(PALETTE_KEYS).toHaveLength(13);
+    expect(PALETTE_KEYS).toHaveLength(16); // 13 foundation + 3 chrome (accentOnDark, bodyOnDark, outline)
   });
   it("re-points the shared catalogue tokens only with applyToTokens, and never in dark mode", () => {
     expect(buildPaletteVars(BV)["--catalogue-text-primary"]).toBeUndefined();

@@ -28,6 +28,7 @@ import {
 } from "./header-search";
 import { openNotifyForm, retryUnlessMissingLibrary, useHeaderLinkNavigation } from "./header-hooks";
 import { ComingSoonTag } from "./MegaMenuParts";
+import { EDITORIAL_SEARCH_BUTTON, EDITORIAL_SEARCH_ICON } from "./header-chrome";
 
 /**
  * Header search: an icon that opens a search dialog over courses (the open
@@ -50,6 +51,8 @@ export interface HeaderSearchProps {
   /** Group heading for streams — the mega menu's own nav label when there is one. */
   streamsLabel?: string;
   className?: string;
+  /** "editorial" = the design's 18px line icon in the palette olive (header navStyle "editorial"). Absent = original. */
+  variant?: "default" | "editorial";
 }
 
 const fetchSearchCourses = async (instituteId: string): Promise<CourseSearchRow[]> => {
@@ -96,6 +99,7 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
   megaConfigs,
   streamsLabel,
   className,
+  variant,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
@@ -445,11 +449,17 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
         aria-haspopup="dialog"
         aria-expanded={open}
         className={cn(
-          "p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200",
+          variant === "editorial"
+            ? `${EDITORIAL_SEARCH_BUTTON} transition-colors duration-200`
+            : "p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200",
           className,
         )}
       >
-        <MagnifyingGlass className="w-5 h-5" />
+        {variant === "editorial" ? (
+          <MagnifyingGlass aria-hidden="true" weight="bold" className={EDITORIAL_SEARCH_ICON} />
+        ) : (
+          <MagnifyingGlass className="w-5 h-5" />
+        )}
       </button>
       {open && portalTarget && createPortal(dialog, portalTarget)}
     </>

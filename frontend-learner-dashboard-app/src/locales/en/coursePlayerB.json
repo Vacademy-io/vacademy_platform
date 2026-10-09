@@ -64,6 +64,13 @@
         "_owner": "Feature 'cards' adds its keys above this line (specs/CONTRACT.md)"
     },
     "siteChrome": {
+        "newsletterEmailLabel": "Email address",
+        "newsletterPlaceholder": "Your email address",
+        "newsletterSubscribe": "Subscribe",
+        "newsletterSuccess": "Thank you. You're subscribed.",
+        "newsletterHoneypot": "Company website",
+        "socialLinks": "Social media",
+        "footerNav": "Footer",
         "_owner": "Feature 'chrome' adds its keys above this line (specs/CONTRACT.md)"
     },
     "learningPaths": {

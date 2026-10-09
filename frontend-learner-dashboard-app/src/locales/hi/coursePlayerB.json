@@ -64,6 +64,13 @@
         "_owner": "Feature 'cards' adds its keys above this line (specs/CONTRACT.md)"
     },
     "siteChrome": {
+        "newsletterEmailLabel": "ईमेल पता",
+        "newsletterPlaceholder": "आपका ईमेल पता",
+        "newsletterSubscribe": "सदस्यता लें",
+        "newsletterSuccess": "धन्यवाद। आपकी सदस्यता हो गई है।",
+        "newsletterHoneypot": "कंपनी वेबसाइट",
+        "socialLinks": "सोशल मीडिया",
+        "footerNav": "फ़ुटर",
         "_owner": "Feature 'chrome' adds its keys above this line (specs/CONTRACT.md)"
     },
     "learningPaths": {

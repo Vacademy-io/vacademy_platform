@@ -4,6 +4,9 @@ import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { RouteMatcher } from "../../-services/route-matcher";
+import type { GlobalSettings } from "../../-types/course-catalogue-types";
+import type { FooterBrandProps } from "../../-types/site-chrome-types";
+import { FooterBrand } from "./footer/FooterBrand";
 
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
@@ -13,7 +16,11 @@ export const FooterComponent: React.FC<FooterProps & {
    *  pickers appeared to do nothing. */
   backgroundColor?: string;
   textColor?: string;
-}> = ({
+  /** Used by the opt-in "brand" variant only (newsletter, language switch). */
+  instituteId?: string;
+  globalSettings?: GlobalSettings;
+} & Omit<FooterBrandProps, "leftSection">> = (allProps) => {
+  const {
   layout,
   backgroundColor,
   textColor,
@@ -27,7 +34,7 @@ export const FooterComponent: React.FC<FooterProps & {
   bottomNote,
   catalogueData,
   tagName = "home"
-}) => {
+  } = allProps;
   const navigate = useNavigate();
   const siteNavigate = useSiteNavigate();
   
@@ -118,6 +125,12 @@ export const FooterComponent: React.FC<FooterProps & {
         );
     }
   };
+
+  // Opt-in "brand" footer (logo + newsletter + four columns + bottom bar).
+  // Every other footer renders the original markup below.
+  if (allProps.variant === "brand") {
+    return <FooterBrand {...allProps} tagName={tagName} />;
+  }
 
   // Determine grid columns based on layout
   const getGridCols = () => {

@@ -100,6 +100,7 @@ import {
 } from "../-utils/course-version-selection";
 import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
 import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
+import { headerOffsetClass } from "../../-components/header/header-chrome";
 import {
   BookOpen,
   CaretDown,
@@ -1882,7 +1883,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               (catalogueData.globalSettings as any).layout?.header &&
               (catalogueData.globalSettings as any).layout?.header?.enabled !==
                 false
-                ? "pt-16 md:pt-20"
+                ? headerOffsetClass((catalogueData.globalSettings as any).layout?.header?.props)
                 : ""
             }
           >

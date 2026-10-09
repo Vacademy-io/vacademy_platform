@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.DeleteResponse;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.LibraryRequest;
@@ -78,6 +79,8 @@ public class CatalogueFolderService {
     private static final int MAX_TAGLINE_CHARS = 255;
     private static final int MAX_CTA_LABEL_CHARS = 120;
     private static final int MAX_AUDIENCE_ID_CHARS = 255;
+    /** The one campaign status lead capture accepts sign-ups for (exact, as AudienceService compares it). */
+    private static final String AUDIENCE_ACTIVE = "ACTIVE";
     private static final Pattern SLUG = Pattern.compile("[a-z0-9-]{1," + MAX_SLUG_CHARS + "}");
     private static final Pattern HEX_COLOR =
             Pattern.compile("#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})");
@@ -732,13 +735,24 @@ public class CatalogueFolderService {
     /**
      * The audience (lead campaign) that collects "notify me" sign-ups. Only a
      * CHANGED id is checked, as with product pages: re-sending the stored id
-     * must not fail because that audience was deleted since.
+     * must not fail because that audience was deleted or paused since.
+     *
+     * A newly chosen audience must be ACTIVE: lead capture accepts sign-ups
+     * only for an ACTIVE campaign (a paused, completed or archived one refuses
+     * them, or they land in the default catalogue list), so any other status
+     * would quietly lose the folder's sign-ups.
      */
     private String audienceIdOrNull(String raw, String current, String instituteId) {
         if (blank(raw)) return null;
         String id = cap(raw.trim(), MAX_AUDIENCE_ID_CHARS, "Audience");
-        if (!id.equals(current) && audienceRepository.findByIdAndInstituteId(id, instituteId).isEmpty()) {
-            throw new VacademyException("Audience not found");
+        if (!id.equals(current)) {
+            Audience audience = audienceRepository.findByIdAndInstituteId(id, instituteId)
+                    .orElseThrow(() -> new VacademyException("Audience not found"));
+            if (!AUDIENCE_ACTIVE.equals(audience.getStatus())) {
+                throw new VacademyException("Audience campaign is not active (" + (blank(audience.getStatus())
+                        ? "no status" : audience.getStatus().trim()) + "): choose an active campaign to collect "
+                        + "notify-me sign-ups");
+            }
         }
         return id;
     }

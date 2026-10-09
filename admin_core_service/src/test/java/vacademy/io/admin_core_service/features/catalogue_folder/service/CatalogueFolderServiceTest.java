@@ -309,7 +309,7 @@ class CatalogueFolderServiceTest {
     @DisplayName("a stream folder saves every knowledge-stream field and the admin tree returns them")
     void streamFieldsRoundTrip() {
         when(audienceRepository.findByIdAndInstituteId("aud-1", INSTITUTE))
-                .thenReturn(Optional.of(Audience.builder().id("aud-1").instituteId(INSTITUTE).build()));
+                .thenReturn(Optional.of(Audience.builder().id("aud-1").instituteId(INSTITUTE).status("ACTIVE").build()));
         NodeRequest req = folder("शिक्षा");
         req.setSlug("  Shiksha ");
         req.setCourseTag(" education ");
@@ -474,6 +474,36 @@ class CatalogueFolderServiceTest {
         clear.setAudienceId("");
         service.updateNode(user, INSTITUTE, "s", clear);
         assertNull(table.get("s").getAudienceId());
+    }
+
+    @Test
+    @DisplayName("a newly chosen notify-me audience must be an ACTIVE campaign; the stored one is never re-checked")
+    void audienceMustBeActiveWhenChosen() {
+        for (String status : new String[]{"PAUSED", "COMPLETED", "ARCHIVED", "DELETED", "active", null}) {
+            String id = "aud-" + status;
+            when(audienceRepository.findByIdAndInstituteId(id, INSTITUTE)).thenReturn(Optional.of(
+                    Audience.builder().id(id).instituteId(INSTITUTE).status(status).build()));
+            NodeRequest req = folder("Coming soon " + status);
+            req.setAudienceId(id);
+            VacademyException e = assertThrows(VacademyException.class,
+                    () -> service.createNode(user, INSTITUTE, LIBRARY, req), String.valueOf(status));
+            assertTrue(e.getMessage().startsWith("Audience campaign is not active"), e.getMessage());
+        }
+
+        when(audienceRepository.findByIdAndInstituteId("aud-live", INSTITUTE)).thenReturn(Optional.of(
+                Audience.builder().id("aud-live").instituteId(INSTITUTE).status("ACTIVE").build()));
+        NodeRequest live = folder("Live");
+        live.setAudienceId(" aud-live ");
+        assertEquals("aud-live", onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, live), "Live").getAudienceId());
+
+        // Paused since it was chosen: re-sending it with an unrelated edit still saves.
+        node("s", null, "FOLDER", 0).setAudienceId("aud-PAUSED");
+        NodeRequest rename = edit();
+        rename.setTitle("Renamed");
+        rename.setAudienceId("aud-PAUSED");
+        service.updateNode(user, INSTITUTE, "s", rename);
+        assertEquals("Renamed", table.get("s").getTitle());
+        assertEquals("aud-PAUSED", table.get("s").getAudienceId());
     }
 
     @Test

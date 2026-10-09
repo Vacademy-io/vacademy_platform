@@ -268,7 +268,7 @@ export interface Component {
     anchorId?: string;
     /**
      * Show the section only when every rule holds for the page's query string,
-     * e.g. [{ param: 'stream', op: 'empty' }] = only on the unfiltered view.
+     * e.g. [{ param: 'stream', op: 'empty' }] = only on the All courses tab (no ?stream).
      * Absent = always shown.
      */
     visibleWhen?: VisibleWhenRule[];

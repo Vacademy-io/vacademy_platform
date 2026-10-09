@@ -1,8 +1,9 @@
 /**
  * Is this product page a site's STORE page (globalSettings.siteCart in a
- * website's published catalogue JSON)? A store page sells every catalogue
- * course, so anything that fans out per mapped invite — custom fields, above
- * all — reaches the default invite of every course in the institute.
+ * website's published catalogue JSON)? The catalogue sync fills a store page
+ * with the catalogue's courses, each through its default invite link, so
+ * anything that fans out per mapped invite — custom fields, above all —
+ * reaches the invite links of most courses in the institute.
  */
 
 export interface StoreSiteRef {

@@ -112,7 +112,7 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
                             </p>
                         )}
                         <p className="mt-1 text-caption text-neutral-400">
-                            Use a page made for this: every catalogue course gets added to it.
+                            Use a page made for this: the catalogue sync adds your catalogue courses to it, each through its default invite link.
                         </p>
                     </div>
 

@@ -107,13 +107,13 @@ describe('Global Settings → Course languages and Site cart', () => {
 });
 
 describe('Section settings → Show on (visibleWhen)', () => {
-    it('is always shown by default and applies the unfiltered-view preset as a top-level field', () => {
+    it('is always shown by default and applies the All courses tab preset as a top-level field', () => {
         components = [learningPath()];
         selectedComponentId = 'lp-1';
         render(<PropertyPanel />);
         expect(screen.getByText('Always shown')).toBeInTheDocument();
         fireEvent.click(screen.getByText('Show on'));
-        fireEvent.click(screen.getByText('Only on the unfiltered view'));
+        fireEvent.click(screen.getByText('Only on the All courses tab'));
         expect(updateComponent).toHaveBeenCalledWith('home', 'lp-1', {
             visibleWhen: [{ param: 'stream', op: 'empty' }],
         });

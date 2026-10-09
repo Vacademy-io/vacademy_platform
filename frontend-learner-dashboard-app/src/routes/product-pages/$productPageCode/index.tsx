@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { retainSiteLanguage } from '@/routes/$tagName/-utils/catalogue-route-search';
-import { z } from 'zod';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ProductPageShell } from './-components/ProductPageShell';
@@ -11,36 +10,7 @@ import { Warning } from "@phosphor-icons/react";
 import { resolveDomainRouting, getCurrentDomainInfo } from '@/services/domain-routing';
 import type { PaymentVendor } from '@/components/common/enroll-by-invite/-utils/payment-vendor-helper';
 import { SITE_CART_CHECKOUT_SOURCE } from '@/routes/$tagName/-components/site-cart/site-cart-items';
-
-const productPageSearchSchema = z.object({
-    instituteId: z.string().optional(),
-    courseIds: z.string().optional(),
-    defaultTab: z.enum(['CATALOG', 'CART', 'PAYMENT']).optional(),
-    // Catalogue slug the visitor arrived from. Lets the page wear that
-    // catalogue's header, footer and theme instead of rendering bare.
-    tagName: z.string().optional(),
-    // Comma-separated level names the browse step is restricted to. Carries a
-    // Course Finder pick across from the catalogue so the visitor who just
-    // chose "Class 6" does not land back on every level. Unlike courseIds this
-    // only narrows what is VISIBLE — it selects nothing into the cart.
-    levels: z.string().optional(),
-    // The site language (?lang=hi) the visitor was reading the catalogue in.
-    // Declared so it survives this route's own search handling and goes back
-    // out with the visitor (see backFromCart in ProductPageShell).
-    lang: z.string().optional(),
-    // "siteCart" when the site cart's Checkout sent the visitor here: Back
-    // from the cart then returns to the page the cart was opened on. Any other
-    // value is ignored — and never fails validation (an unrelated ?source= on
-    // an existing link must not break the page).
-    source: z.string().optional().catch(undefined),
-    utm_source: z.string().optional(),
-    utm_medium: z.string().optional(),
-    utm_campaign: z.string().optional(),
-    utm_content: z.string().optional(),
-    utm_term: z.string().optional(),
-});
-
-type ProductPageSearch = z.infer<typeof productPageSearchSchema>;
+import { productPageSearchSchema, type ProductPageSearch } from './-utils/product-page-search';
 
 // fullscreen=true uses fixed inset-0 — immune to parent container height constraints
 function Spinner() {

@@ -79,7 +79,8 @@ DESIGN_LANGUAGES = (
     "editorial-serif", "swiss-minimal", "bold-modern", "dark-tech",
     "warm-community", "corporate-trust", "directory-reference",
 )
-PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact")
+PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact", "catalog")
+DESIGN_SOURCE_KINDS = ("figma", "screenshot", "url", "other")
 IMAGE_KINDS = ("logo", "photo", "banner", "inspiration")
 BORDER_RADII = ("sharp", "rounded", "pill")
 HEADING_SCALES = ("compact", "default", "large", "display")
@@ -193,6 +194,21 @@ _PAGE_SCHEMA: Dict[str, Any] = {
     "required": ["route", "components"],
 }
 
+_DESIGN_SOURCE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "create_page / create_site: the design this page reproduces (a Figma frame, a screenshot, a site). "
+        "Stored in the page's meta: review then runs in FIDELITY mode — the design wins over the generic "
+        "quality rules. Never put an access token here."
+    ),
+    "properties": {
+        "kind": {"type": "string", "enum": list(DESIGN_SOURCE_KINDS)},
+        "url": {"type": "string", "description": "https link to the design, e.g. a figma.com/design/<file>/…?node-id=1-2 URL."},
+        "node_id": {"type": "string", "description": "Figma frame/node id, e.g. '1:247'."},
+        "frame": {"type": "string", "description": "Frame or screen name in the design."},
+    },
+}
+
 _OP_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "description": (
@@ -217,9 +233,12 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "publishes in the dashboard — nothing goes live from here, and nothing here calls a model: "
             "YOU compose the content. Before composing, run website(action='brief_checklist') and "
             "website(action='schema'). Pick an `action`:\n"
-            "- create_page (tag_name OR new_site_name, page, page_type?, theme?): validate, audit and save "
-            "a page you composed. Returns issues to fix (resubmit with update_page) and the editor_url.\n"
-            "- create_site (new_site_name, pages, theme?, site_settings?, header?, footer?): a whole NEW draft site.\n"
+            "- create_page (tag_name OR new_site_name, page, page_type?, theme?, design_source?): validate, audit "
+            "and save a page you composed. Returns issues to fix (resubmit with update_page) and the editor_url. "
+            "Pass design_source when the page reproduces a design (Figma, screenshot): review then judges it in "
+            "fidelity mode.\n"
+            "- create_site (new_site_name, pages, theme?, site_settings?, header?, footer?, design_source?): a whole "
+            "NEW draft site.\n"
             "- add_html_page (tag_name OR new_site_name, route, html, css?, title?, seo?, hide_site_chrome?, "
             "replace_existing?): a STATIC page you write as HTML + CSS (a full document or just the body) — "
             "for pages the block types cannot express, or when the admin hands you HTML. Scripts are removed; "
@@ -234,8 +253,10 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "site-wide lead popup, site-level SEO (keywords, organization).\n"
             "- set_courses (tag_name, page_route, section_id, source: all|showcase|product_page, mode?, "
             "course_ids?, limit?, product_page_code?): which courses a course block shows.\n"
-            "- link_lead_form (tag_name, page_route, section_id, audience_id): send a form or popup button's "
-            "enquiries to a lead campaign. Ids ONLY from website(action='context') / audience_forms.\n"
+            "- link_lead_form (tag_name, page_route, section_id, audience_id, surface_path?): send a form or popup "
+            "button's enquiries to a lead campaign. Ids ONLY from website(action='context') / audience_forms. "
+            "section_id 'header' / 'footer' (no page_route) targets the site chrome, e.g. the footer newsletter. "
+            "surface_path (from website(lead_summary)) wires just that one form when a section has several.\n"
             "- set_seo (tag_name, page_route, meta_title?, meta_description?).\n"
             "- import_image (url, kind, caption?): copy a public https image into the media library so it "
             "can be placed. Images on pages must come from list_media or import_image — never invent URLs.\n"
@@ -253,6 +274,8 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "page": _PAGE_SCHEMA,
                 "pages": {"type": "array", "items": _PAGE_SCHEMA, "description": "create_site: the pages, in navigation order."},
                 "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "create_page: which archetype the page follows (drives the audit)."},
+                "design_source": _DESIGN_SOURCE_SCHEMA,
+                "surface_path": {"type": "string", "description": "link_lead_form: one form's prop path from website(lead_summary), e.g. 'props.newsletter.audienceId'."},
                 "ops": {"type": "array", "items": _OP_SCHEMA},
                 "header": _COMPONENT_SCHEMA,
                 "footer": _COMPONENT_SCHEMA,
@@ -313,6 +336,66 @@ def _institute_name(ctx: ToolContext) -> Optional[str]:
         return row[0] if row and row[0] else None
     except Exception:  # noqa: BLE001
         return None
+
+
+_FIGMA_NODE_RE = re.compile(r"^\d+[:-]\d+$")
+_FIGMA_FILE_RE = re.compile(r"^/(?:design|file|proto|board|make)/([A-Za-z0-9]{10,64})(?:/|$)")
+
+
+def clean_design_source(raw: Any) -> Optional[Dict[str, Any]]:
+    """
+    ``design_source`` → what is kept in ``page.meta.designSource``: kind, an
+    https link with every query parameter except Figma's ``node-id`` dropped
+    (no credentials, share tokens or tracking survive), the Figma file key and
+    node, a frame name. Anything unusable → None (the page is reviewed as before).
+    """
+    from urllib.parse import parse_qs, urlsplit, urlunsplit
+    if isinstance(raw, str):
+        raw = {"url": raw}
+    if not isinstance(raw, dict):
+        return None
+    out: Dict[str, Any] = {}
+    url = str(raw.get("url") or "").strip()
+    figma = False
+    node = str(raw.get("node_id") or raw.get("nodeId") or "").strip()
+    if url and len(url) <= 2000:
+        try:
+            parts = urlsplit(url)
+            host = (parts.hostname or "").lower()
+            port = f":{parts.port}" if parts.port and parts.port != 443 else ""
+        except ValueError:
+            parts, host, port = None, "", ""
+        if parts is not None and parts.scheme == "https" and host:
+            figma = host == "figma.com" or host.endswith(".figma.com")
+            query = ""
+            if figma:
+                node_q = (parse_qs(parts.query).get("node-id") or [""])[0]
+                node = node or node_q
+                query = f"node-id={node_q}" if _FIGMA_NODE_RE.match(node_q) else ""
+                m = _FIGMA_FILE_RE.match(parts.path or "")
+                if m:
+                    out["fileKey"] = m.group(1)
+            out["url"] = urlunsplit(("https", host + port, parts.path, query, ""))
+    kind = str(raw.get("kind") or "").strip().lower()
+    out["kind"] = kind if kind in DESIGN_SOURCE_KINDS else ("figma" if figma else ("url" if out.get("url") else "other"))
+    if _FIGMA_NODE_RE.match(node):
+        out["nodeId"] = node.replace("-", ":")
+    frame = strip_html(raw.get("frame"), 120)
+    if frame:
+        out["frame"] = frame
+    if not (out.get("url") or out.get("nodeId") or out.get("frame") or kind in DESIGN_SOURCE_KINDS):
+        return None
+    return out
+
+
+def _with_design_meta(page: Dict[str, Any], design_source: Optional[Dict[str, Any]], page_type: Optional[str],
+                      default_type: str) -> None:
+    """Record the design and the page type it was built as, so review keeps judging it in that mode."""
+    if not design_source:
+        return
+    from .page_quality import content_page_type
+    pt = page_type if page_type in PAGE_TYPES else (content_page_type(page) or default_type)
+    page["meta"] = {"designSource": design_source, "pageType": pt}
 
 
 def _course_snapshot(courses: List[Dict[str, Any]], only_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -599,10 +682,14 @@ def _result(ctx: ToolContext, site: Dict[str, Any], config: Dict[str, Any], revi
         issues = [i for i in issues if not i.get("page_route") or str(i["page_route"]).lstrip("/").lower() == route]
         target = find_page(config, page_route)
         if target is not None and not any(c.get("type") == "htmlPage" for c in target.get("components") or []):
-            from .page_quality import review_page
-            r = review_page(target, config.get("globalSettings"), extra.pop("page_type", None) or "homepage")
+            from .page_quality import review_mode, review_page
+            # The mode the page was created in (meta.designSource → fidelity).
+            page_type, fidelity = review_mode(target, extra.pop("page_type", None))
+            r = review_page(target, config.get("globalSettings"), page_type or "homepage", fidelity=fidelity)
             quality = {"score": r["score"], "bar": r["bar"], "passes": r["passes"],
                        "top_issues": [{k: v for k, v in i.items() if k != "weight"} for i in r["issues"][:6]]}
+            if fidelity:
+                quality["mode"] = "fidelity"
     live_url = site_url(ctx, site["tag_name"])
     out: Dict[str, Any] = {
         "tag_name": site["tag_name"],
@@ -819,7 +906,8 @@ def finish_hero(page: Dict[str, Any], media: Optional[List[Dict[str, Any]]] = No
     return notes
 
 
-def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_settings: Optional[Dict[str, Any]]):
+def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_settings: Optional[Dict[str, Any]],
+                            fidelity: bool = False):
     """
     Run a caller-composed page through the builder's sanitiser and audit.
 
@@ -882,7 +970,7 @@ def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_setting
     clean["seo"] = {k: str(seo[k])[:170] for k in ("metaTitle", "metaDescription", "ogImage") if seo.get(k)}
     issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
                "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
-              for i in audit_page(clean, global_settings, page_type=page_type or "homepage")]
+              for i in audit_page(clean, global_settings, page_type=page_type or "homepage", fidelity=fidelity)]
     return clean, [i for i in issues if i["message"]], warnings
 
 
@@ -1123,9 +1211,11 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, theme_to_global_patch(theme))
     if site and site_settings:
         config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, site_settings_to_global_patch(site_settings))
-    clean, issues, warnings = _sanitize_authored_page(page, page_type, config.get("globalSettings"))
+    design_source = clean_design_source(args.get("design_source"))
+    clean, issues, warnings = _sanitize_authored_page(page, page_type, config.get("globalSettings"), fidelity=bool(design_source))
     if clean is None:
         return _err("invalid_page", issues=issues, warnings=warnings[:12])
+    _with_design_meta(clean, design_source, args.get("page_type"), page_type)
     from .assistant_tools_website import _load_media
     try:
         media = await _load_media(ctx, "any", 12)
@@ -1153,8 +1243,10 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     return _result(ctx, site, config, revision,
                    (f"Created site '{site['tag_name']}' with " if created else "Added ") +
                    f"page '{clean['route']}' ({len(clean['components'])} sections).",
-                   clean["route"], created_site=created, page=summarize_page(clean), page_type=page_type,
+                   clean["route"], created_site=created, page=summarize_page(clean),
+                   page_type=(clean.get("meta") or {}).get("pageType") or page_type,
                    design_issues=issues[:20], warnings=warnings[:12],
+                   **({"review_mode": "fidelity", "design_source": design_source} if design_source else {}),
                    next="Fix the issues with update_page (ops), wire forms/courses with link_lead_form / set_courses, then ask the admin to review at editor_url.")
 
 
@@ -1166,14 +1258,17 @@ async def _action_create_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         return _err("missing_argument", action="create_site", needs=["pages"])
     theme = args.get("theme") if isinstance(args.get("theme"), dict) else None
     config = _new_site_config(theme, args.get("site_settings") if isinstance(args.get("site_settings"), dict) else None)
+    design_source = clean_design_source(args.get("design_source"))
     all_issues: Dict[str, Any] = {}
     all_warnings: List[str] = []
     for p in pages_in:
-        clean, issues, warnings = _sanitize_authored_page(p, "homepage" if not config["pages"] else "about", config["globalSettings"])
+        page_type = "homepage" if not config["pages"] else "about"
+        clean, issues, warnings = _sanitize_authored_page(p, page_type, config["globalSettings"], fidelity=bool(design_source))
         all_warnings.extend(warnings)
         if clean is None:
             all_issues[str(p.get("route") or "?")] = issues
             continue
+        _with_design_meta(clean, design_source, None, page_type)
         clean["id"] = clean.get("id") or _new_id("page")
         clean["route"] = _unique_route(config, clean["route"])
         config["pages"].append(clean)
@@ -1204,7 +1299,8 @@ async def _action_create_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
                    f"Created site '{tag}' with {len(config['pages'])} pages: " + ", ".join(p["route"] for p in config["pages"]) + ".",
                    None, created_site=True,
                    pages=[{"route": p["route"], "sections": len(p["components"])} for p in config["pages"]],
-                   design_issues=all_issues, warnings=(all_warnings + warnings)[:16])
+                   design_issues=all_issues, warnings=(all_warnings + warnings)[:16],
+                   **({"review_mode": "fidelity", "design_source": design_source} if design_source else {}))
 
 
 async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1223,9 +1319,11 @@ async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     config = apply_ops(site["config"], page.get("id"), clean_ops)
     new_page = find_page(config, page.get("route")) or page
     from ..services.page_audit import audit_page
+    from .page_quality import review_mode
+    page_type, fidelity = review_mode(new_page)
     issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
                "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
-              for i in audit_page(new_page, config.get("globalSettings"))]
+              for i in audit_page(new_page, config.get("globalSettings"), page_type=page_type or "homepage", fidelity=fidelity)]
     revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
@@ -1459,13 +1557,32 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
     if err:
         return err
     config = copy.deepcopy(site["config"])
-    page = find_page(config, args.get("page_route"))
-    if page is None:
-        return _err("unknown_page", available=[p.get("route") for p in config.get("pages") or []])
-    comp = find_component(page, str(args["section_id"]))
+    section_id = str(args["section_id"]).strip()
+    chrome = section_id in ("header", "footer")
+    page = comp = None
+    if args.get("page_route") or not chrome:
+        page = find_page(config, args.get("page_route"))
+        if page is None and not chrome:
+            return _err("unknown_page", available=[p.get("route") for p in config.get("pages") or []])
+        comp = find_component(page, section_id) if page is not None else None
+    if comp is None and chrome:
+        # Site chrome lives in globalSettings.layout, not on a page.
+        layout = (config.get("globalSettings") or {}).get("layout")
+        comp = layout.get(section_id) if isinstance(layout, dict) else None
+        page = None
+        if not isinstance(comp, dict):
+            return _err("unknown_section", message=f"This site has no {section_id} in its layout.")
     if comp is None:
         return _err("unknown_section", message="No section with that id on this page.")
-    surfaces = capture_surfaces(comp)
+    # Surfaces wired in the data (a folder library's categories) have no page prop to set.
+    surfaces = [s for s in capture_surfaces(comp) if s.get("path")]
+    surface_path = str(args.get("surface_path") or "").strip()
+    if surface_path and comp.get("type") != "htmlPage":
+        surfaces = [s for s in surfaces if s["path"] == surface_path]
+        if not surfaces:
+            return _err("unknown_surface", message="No form at that surface_path in this section.",
+                        available=[s["path"] for s in capture_surfaces(comp) if s.get("path")],
+                        hint="Take surface_path from website(action='lead_summary').")
     name = str(campaign.get("campaign_name") or "")
     props = comp.setdefault("props", {})
     if comp.get("type") == "htmlPage":
@@ -1479,7 +1596,7 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
         # Not a capture block: make its primary button open the campaign's form,
         # the same choice the editor offers on hero / CTA buttons.
         button = props.get("button") if isinstance(props.get("button"), dict) else None
-        if button is not None:
+        if button is not None and page is not None:
             button.update({"action": "openForm", "audienceId": audience_id})
             wired = f"its button '{button.get('text') or ''}'"
         else:
@@ -1488,13 +1605,19 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
         wired_labels = []
         for s in surfaces:
             _set_path(comp, s["path"], audience_id)
-            if s["kind"] == "form_section":
+            if s.get("name_path"):
+                _set_path(comp, s["name_path"], name)
+            elif s["kind"] == "form_section":
                 props["audienceName"] = name
             wired_labels.append(s["label"])
         wired = ", ".join(wired_labels)
     revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
+    if page is None:
+        return _result(ctx, site, config, revision,
+                       f"Site {section_id}: {wired} now sends enquiries to campaign '{name}'.",
+                       None, None, campaign={"id": audience_id, "name": name}, section=summarize_component(comp))
     return _result(ctx, site, config, revision,
                    f"{component_label(comp.get('type'))} on '{page.get('route')}': {wired} now sends enquiries to campaign '{name}'.",
                    page.get("route"), comp["id"], campaign={"id": audience_id, "name": name})

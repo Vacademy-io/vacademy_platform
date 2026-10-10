@@ -9,13 +9,24 @@ until the score clears the bar.
 
 Pure functions over the page JSON. Every rule states the fix in the words an
 ``update_page`` op needs, because the reader is a model that will act on it.
+
+Two modes:
+
+* **standard** — the landing-page doctrine above, for pages composed from an
+  interview;
+* **fidelity** — the page reproduces a design (its meta carries
+  ``designSource``, or the caller asks for it). The design wins: the taste
+  rules (how many sections, a separate hero, proof, closing CTA, bands, styles)
+  are dropped, and only what a visitor would see as BROKEN still counts —
+  blank bands, unbound data, empty CTAs, contrast, placeholder copy, forms.
 """
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .catalogue_summary import CAPTURE_TYPES, heading_of, strip_html, walk_components
+from .page_audit import text_values
 
 #: Sections that count as "proof" / "conversion" on a landing page.
 PROOF_TYPES = frozenset({"statsHighlights", "testimonialSection", "logoCloud", "trustChip"})
@@ -27,9 +38,91 @@ BAND_TYPES = frozenset({"heroSection", "ctaBanner", "statsHighlights", "logoClou
 _PLACEHOLDER_RE = re.compile(
     r"lorem ipsum|\byour (?:institute|company|school) name\b|\bplaceholder\b|\bexample\.com\b|\bcoming soon\b|"
     r"\bwelcome to our platform\b|\bmy platform\b|\bdescription here\b|\bwrite your content here\b|\bnew program\b", re.I)
+# Fidelity mode: real copy in a design says "Coming soon" (a launch shelf, a
+# notify-me row), so that phrase is not placeholder copy there.
+_FIDELITY_PLACEHOLDER_RE = re.compile(
+    r"lorem ipsum|\byour (?:institute|company|school) name\b|\bplaceholder\b|\bexample\.com\b|"
+    r"\bwelcome to our platform\b|\bmy platform\b|\bdescription here\b|\bwrite your content here\b|\bnew program\b", re.I)
 _HEX_RE = re.compile(r"^#([0-9a-fA-F]{6})$")
 
 SCORE_BAR = 85
+
+#: Page types the review knows. ``catalog`` = a page a course catalogue owns
+#: (its own hero, streams, sidebar): a directory, not a landing page.
+REVIEW_PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact", "catalog")
+
+#: Taste rules a faithful design may break (fidelity mode drops them): the
+#: number of sections, a separate hero / proof / closing CTA, band rhythm,
+#: styling, hero copy length and decoration.
+FIDELITY_SKIPPED_CODES = frozenset({
+    "too-few-sections", "too-many-sections", "too-short", "too-long", "no-hero", "hero-not-first", "no-proof",
+    "weak-ending", "adjacent-twins", "same-band", "flat-page", "all-bands", "unstyled", "hero-headline-long",
+    "hero-sub-long", "hero-too-many-ctas", "hero-no-image", "hero-no-eyebrow", "no-heading", "grid-count",
+    "wall-of-text", "too-many-colours", "hero-against-reference",
+})
+#: Still worth telling the admin in fidelity mode, never a reason to change the design.
+FIDELITY_ADVISORY_CODES = frozenset({"no-conversion", "hero-no-cta"})
+
+# How the new widgets count in the review. Hardcoded until the design-pattern
+# registry's `reviewAs` (frontend …/-ai/design-patterns.ts) is exported here.
+
+
+def _catalog_hero(comp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """courseCatalog.hero when switched on: the catalogue owns the fold."""
+    if comp.get("type") != "courseCatalog":
+        return None
+    hero = (comp.get("props") or {}).get("hero")
+    return hero if isinstance(hero, dict) and hero.get("enabled") is True else None
+
+
+def _reviews_as_hero(comp: Dict[str, Any]) -> bool:
+    # heroSection in every variant (editorial included); a catalogue with its hero on.
+    return comp.get("type") == "heroSection" or _catalog_hero(comp) is not None
+
+
+def _reviews_as_proof(comp: Dict[str, Any]) -> bool:
+    """A proof section, or a catalogue hero showing live stats (course and stream counts)."""
+    if comp.get("type") in PROOF_TYPES:
+        return True
+    hero = _catalog_hero(comp)
+    return bool(hero and isinstance(hero.get("stats"), list) and hero["stats"])
+
+
+def design_source_of(page: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """``page.meta.designSource`` — set by website_edit create_page / create_site(design_source=…)."""
+    meta = page.get("meta") if isinstance(page, dict) else None
+    ds = meta.get("designSource") if isinstance(meta, dict) else None
+    return ds if isinstance(ds, dict) and ds else None
+
+
+def content_page_type(page: Dict[str, Any]) -> Optional[str]:
+    """
+    The page type the CONTENT says, or None to keep the caller's guess. Only
+    the new widgets decide anything here, so pages without them are reviewed
+    exactly as before: a page whose first section is a course catalogue with
+    its own hero is a ``catalog``.
+    """
+    top = [c for c in (page.get("components") or []) if isinstance(c, dict) and c.get("enabled", True) is not False]
+    if top and _catalog_hero(top[0]) is not None:
+        return "catalog"
+    return None
+
+
+def review_mode(page: Dict[str, Any], page_type: Optional[str] = None,
+                fidelity: Optional[bool] = None) -> Tuple[Optional[str], bool]:
+    """
+    ``(page_type, fidelity)`` for a page: explicit arguments win; then the
+    mode the page was created in (meta.designSource / meta.pageType); then
+    what the content says. ``page_type`` None = keep the caller's default.
+    """
+    ds = design_source_of(page)
+    meta = page.get("meta") if isinstance(page.get("meta"), dict) else {}
+    if page_type not in REVIEW_PAGE_TYPES:
+        page_type = None
+        if ds and meta.get("pageType") in REVIEW_PAGE_TYPES:
+            page_type = meta["pageType"]
+        page_type = page_type or content_page_type(page)
+    return page_type, (bool(ds) if fidelity is None else bool(fidelity))
 
 
 def _issue(code: str, kind: str, message: str, fix: str, component_id: Optional[str] = None, weight: int = 5) -> Dict[str, Any]:
@@ -57,7 +150,7 @@ def _words(text: Any) -> int:
 
 
 def _hero_of(components: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    return next((c for c in components if c.get("type") == "heroSection"), None)
+    return next((c for c in components if _reviews_as_hero(c)), None)
 
 
 def _bg_of(comp: Dict[str, Any]) -> str:
@@ -93,11 +186,29 @@ def _is_neutral(hexv: str) -> bool:
 
 
 def review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]] = None,
-                page_type: str = "homepage") -> Dict[str, Any]:
+                page_type: str = "homepage", fidelity: bool = False) -> Dict[str, Any]:
     """
     ``{score, bar, issues, summary}`` for one page. Score starts at 100 and
     loses each issue's weight; ``fix`` items weigh more than ``warn`` items.
+    ``fidelity``: the page reproduces a design — see the module docstring.
     """
+    out = _review_page(page, global_settings, page_type, fidelity)
+    return _fidelity_filter(out) if fidelity else out
+
+
+def _fidelity_filter(out: Dict[str, Any]) -> Dict[str, Any]:
+    issues = []
+    for i in out["issues"]:
+        if i["code"] in FIDELITY_SKIPPED_CODES:
+            continue
+        if i["code"] in FIDELITY_ADVISORY_CODES and i["kind"] == "fix":
+            i = {**i, "kind": "warn", "severity": "warning", "weight": min(i["weight"], 4)}
+        issues.append(i)
+    return {**_finish(issues, out["summary"]), "mode": "fidelity"}
+
+
+def _review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]],
+                 page_type: str, fidelity: bool) -> Dict[str, Any]:
     comps = [c for c in walk_components(page.get("components"))]
     top = [c for c in (page.get("components") or []) if isinstance(c, dict)]
     types = [c.get("type") for c in comps]
@@ -127,7 +238,7 @@ def review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]] 
     if hero is not None and top and top[0] is not hero and top[0].get("type") not in ("sectionHeading",):
         issues.append(_issue("hero-not-first", "warn", "The hero is not the first section.", "Move the heroSection to the top (op move, afterId null).", hero.get("id"), 6))
 
-    if landing and not any(t in PROOF_TYPES for t in types):
+    if landing and not any(_reviews_as_proof(c) for c in comps):
         issues.append(_issue("no-proof", "fix", "No proof section (stats, testimonials, logos).", "Insert a statsHighlights with 3–4 real numbers, or a testimonialSection, after the hero.", weight=10))
     if landing and not any(t in CONVERSION_TYPES for t in types):
         issues.append(_issue("no-conversion", "fix", "Nothing for the visitor to do — no CTA, form or course list.", "Insert a ctaBanner near the end and a leadForm, or a course block.", weight=12))
@@ -152,7 +263,10 @@ def review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]] 
                              "Set style.layout.width and paddings on key sections; add an ornament or divider to the hero or CTA (see style_schema).", weight=8))
 
     # ── hero quality ─────────────────────────────────────────────────────
-    if hero is not None:
+    catalog_hero = _catalog_hero(hero) if hero is not None else None
+    if catalog_hero is not None and not str(catalog_hero.get("title") or "").strip():
+        issues.append(_issue("hero-no-headline", "fix", "The catalogue hero has no headline.", "Set props.hero.title.", hero.get("id"), 10))
+    if hero is not None and catalog_hero is None:
         p = hero.get("props") or {}
         left = p.get("left") if isinstance(p.get("left"), dict) else {}
         title = left.get("title") or p.get("title") or ""
@@ -195,8 +309,8 @@ def review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]] 
                     if weak:
                         issues.append(_issue("stats-no-numbers", "fix", "A stats strip without numbers is decoration.", "Use real figures from the interview (years, selections, learners).", c.get("id"), 6))
         blob: List[str] = []
-        _strings_of(p, blob)
-        if _PLACEHOLDER_RE.search(" ".join(blob)):
+        (text_values if fidelity else _strings_of)(p, blob)
+        if (_FIDELITY_PLACEHOLDER_RE if fidelity else _PLACEHOLDER_RE).search(" ".join(blob)):
             issues.append(_issue("placeholder-copy", "fix", "Template or placeholder copy is still on the page.", "Replace it with the institute's own words.", c.get("id"), 8))
         if t == "textBlock" and _words(p.get("content")) > 220:
             issues.append(_issue("wall-of-text", "warn", "A very long text block.", "Split into a sectionHeading + featureGrid/detailBlocks, or cut it.", c.get("id"), 4))
@@ -225,13 +339,14 @@ def _finish(issues: List[Dict[str, Any]], summary: str) -> Dict[str, Any]:
     }
 
 
-def review_with_audit(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]], page_type: str) -> Dict[str, Any]:
+def review_with_audit(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]], page_type: str,
+                      fidelity: bool = False) -> Dict[str, Any]:
     """Beauty review merged with the builder's defect audit (deduplicated by code)."""
-    out = review_page(page, global_settings, page_type)
+    out = _review_page(page, global_settings, page_type, fidelity)
     try:
         from .page_audit import audit_page
         seen = {i["code"] for i in out["issues"]}
-        for i in audit_page(page, global_settings, page_type=page_type or "homepage"):
+        for i in audit_page(page, global_settings, page_type=page_type or "homepage", fidelity=fidelity):
             code = str(i.get("code") or "")
             if code in seen:
                 continue
@@ -239,7 +354,10 @@ def review_with_audit(page: Dict[str, Any], global_settings: Optional[Dict[str, 
             out["issues"].append(_issue(code, kind, str(i.get("message") or ""), str(i.get("hint") or ""), i.get("component_id"), 8 if kind == "fix" else 4))
     except Exception:  # noqa: BLE001 — the beauty review stands on its own
         pass
+    if fidelity:
+        return _fidelity_filter(out)
     return _finish(out["issues"], out["summary"])
 
 
-__all__ = ["review_page", "review_with_audit", "SCORE_BAR"]
+__all__ = ["review_page", "review_with_audit", "review_mode", "content_page_type", "design_source_of",
+           "SCORE_BAR", "REVIEW_PAGE_TYPES", "FIDELITY_SKIPPED_CODES"]

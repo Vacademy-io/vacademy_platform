@@ -237,6 +237,103 @@ def capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
             "audience_id": str(p.get("audienceId") or "").strip(),
             "audience_name": "", "required": True,
         })
+    out.extend(_widget_capture_surfaces(comp))
+    return out
+
+
+def _band_secondary_button(comp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """ctaBanner variant 'band' draws props.secondaryButton when it is enabled and has text."""
+    p = comp.get("props") or {}
+    b = p.get("secondaryButton")
+    if comp.get("type") != "ctaBanner" or p.get("variant") != "band" or not isinstance(b, dict):
+        return None
+    return b if b.get("enabled", True) is not False and str(b.get("text") or "").strip() else None
+
+
+def _widget_capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Forms inside the opt-in widgets: a band's second button, the brand
+    footer's newsletter, a learning path's coming-soon steps and the catalogue's
+    in-grid sections (spotlight button / steps, coming-soon shelf). A component
+    that sets none of these props yields nothing, so older sites are unchanged.
+    """
+    p = comp.get("props") or {}
+    ctype = comp.get("type")
+    out: List[Dict[str, Any]] = []
+
+    second = _band_secondary_button(comp)
+    if second and second.get("action") == "openForm":
+        out.append({
+            "kind": "button", "path": "props.secondaryButton.audienceId",
+            "label": str(second.get("text") or "Second button"),
+            "audience_id": str(second.get("audienceId") or "").strip(),
+            "audience_name": "", "required": True,
+        })
+
+    # Brand footer newsletter (renders when present and not enabled:false);
+    # without a campaign it falls back to the auto list, like newsletterSignup.
+    news = p.get("newsletter") if isinstance(p.get("newsletter"), dict) else None
+    if ctype == "footer" and p.get("variant") == "brand" and news and news.get("enabled") is not False:
+        out.append({
+            "kind": "form_section", "path": "props.newsletter.audienceId", "name_path": "props.newsletter.audienceName",
+            "label": "Footer newsletter",
+            "audience_id": str(news.get("audienceId") or "").strip(),
+            "audience_name": str(news.get("audienceName") or "").strip(), "required": False,
+        })
+
+    # learningPath: a coming-soon step's "Notify me" (inert without a campaign).
+    if ctype == "learningPath":
+        for i, extra in enumerate(p.get("pathExtras") or []):
+            if not isinstance(extra, dict):
+                continue
+            for j, step in enumerate(extra.get("comingSoon") or []):
+                if isinstance(step, dict) and str(step.get("title") or "").strip():
+                    out.append({
+                        "kind": "notify_step", "path": f"props.pathExtras[{i}].comingSoon[{j}].audienceId",
+                        "label": f"Coming soon: {str(step['title']).strip()[:60]}",
+                        "audience_id": str(step.get("audienceId") or "").strip(),
+                        "audience_name": "", "required": False,
+                    })
+
+    # courseCatalog in-grid sections.
+    if ctype == "courseCatalog":
+        for i, section in enumerate(p.get("columnSections") or []):
+            if not isinstance(section, dict):
+                continue
+            if section.get("kind") == "spotlight":
+                for j, slide in enumerate(section.get("slides") or []):
+                    if not isinstance(slide, dict):
+                        continue
+                    cta = slide.get("cta") if isinstance(slide.get("cta"), dict) else None
+                    # An 'open-form' button with no campaign is not drawn at all.
+                    if cta and cta.get("action") == "open-form":
+                        out.append({
+                            "kind": "button", "path": f"props.columnSections[{i}].slides[{j}].cta.audienceId",
+                            "label": str(cta.get("label") or slide.get("title") or "Spotlight button"),
+                            "audience_id": str(cta.get("audienceId") or "").strip(),
+                            "audience_name": "", "required": True,
+                        })
+                    for k, step in enumerate(slide.get("steps") or []):
+                        # A step is a form button only once it has a campaign; otherwise a link or text.
+                        if isinstance(step, dict) and str(step.get("audienceId") or "").strip():
+                            out.append({
+                                "kind": "button", "path": f"props.columnSections[{i}].slides[{j}].steps[{k}].audienceId",
+                                "label": str(step.get("title") or "Spotlight step"),
+                                "audience_id": str(step["audienceId"]).strip(),
+                                "audience_name": "", "required": False,
+                            })
+            elif section.get("kind") == "coming-soon":
+                # Each card's "Notify me" uses ITS category's campaign in the
+                # folder library, so there is no page prop to wire here.
+                out.append({
+                    "kind": "folder_notify", "path": "",
+                    "label": str(section.get("title") or "Coming soon") + " (Notify me)",
+                    "audience_id": "", "audience_name": "", "required": False,
+                    "bound_in": "folder library: each coming-soon category's own campaign",
+                })
+    for s in out:
+        if s["path"]:
+            s["surface_path"] = s["path"]
     return out
 
 
@@ -560,6 +657,17 @@ def find_text(config: Dict[str, Any], query: str, page_route: Optional[str] = No
 def collect_capture_surfaces(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Every lead-capture surface across the site, with its page and section."""
     out: List[Dict[str, Any]] = []
+    # Site chrome (globalSettings.layout): the brand footer's newsletter. Its
+    # section_id is the slot link_lead_form takes ('footer'), and it shows on
+    # every page.
+    layout = (config.get("globalSettings") or {}).get("layout")
+    footer = layout.get("footer") if isinstance(layout, dict) else None
+    if isinstance(footer, dict) and footer.get("enabled", True) is not False:
+        for s in _widget_capture_surfaces(footer):
+            out.append({
+                "page_route": None, "page_title": "Every page (site footer)", "section_id": "footer",
+                "section_type": "footer", "section_label": component_label("footer"), **s,
+            })
     for page in config.get("pages") or []:
         if not isinstance(page, dict):
             continue
@@ -624,8 +732,16 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
             form_buttons: List[Dict[str, Any]] = [{"action": p.get("action"), "audienceId": p.get("audienceId")}]
             if isinstance(p.get("button"), dict):
                 form_buttons.append(p["button"])
+            if _band_secondary_button(c):
+                form_buttons.append(p["secondaryButton"])
             left = p.get("left") if isinstance(p.get("left"), dict) else {}
             form_buttons.extend(b for b in (left.get("buttons") or []) if isinstance(b, dict))
+            # A catalogue spotlight 'open-form' button without a campaign is not drawn.
+            for section in (p.get("columnSections") or []) if c.get("type") == "courseCatalog" else []:
+                for slide in (section.get("slides") or []) if isinstance(section, dict) and section.get("kind") == "spotlight" else []:
+                    cta = slide.get("cta") if isinstance(slide, dict) and isinstance(slide.get("cta"), dict) else {}
+                    if cta.get("action") == "open-form":
+                        form_buttons.append({"action": "openForm", "audienceId": cta.get("audienceId")})
             if any(b.get("action") == "openForm" and not str(b.get("audienceId") or "").strip() for b in form_buttons):
                 issues.append({
                     "severity": "error",

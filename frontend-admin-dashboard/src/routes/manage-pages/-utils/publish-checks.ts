@@ -65,6 +65,34 @@ const collectStrings = (node: any, out: string[], depth = 0) => {
     }
 };
 
+/** ctaBanner variant "band" draws its secondaryButton only when enabled and labelled. */
+const bandSecondaryButton = (c: any): boolean => {
+    const b = c?.props?.secondaryButton;
+    return (
+        c?.type === 'ctaBanner' &&
+        c?.props?.variant === 'band' &&
+        !!b &&
+        typeof b === 'object' &&
+        b.enabled !== false &&
+        !!String(b.text || '').trim()
+    );
+};
+
+/** Catalogue spotlight buttons that open a form ('open-form'): not drawn at all without a campaign. */
+const spotlightFormButtons = (c: any): Array<{ action: string; audienceId?: string }> => {
+    if (c?.type !== 'courseCatalog' || !Array.isArray(c?.props?.columnSections)) return [];
+    const out: Array<{ action: string; audienceId?: string }> = [];
+    for (const section of c.props.columnSections) {
+        if (section?.kind !== 'spotlight' || !Array.isArray(section.slides)) continue;
+        for (const slide of section.slides) {
+            if (slide?.cta?.action === 'open-form') {
+                out.push({ action: 'openForm', audienceId: slide.cta.audienceId });
+            }
+        }
+    }
+    return out;
+};
+
 export const runPublishChecks = (config: any): PublishIssue[] => {
     const issues: PublishIssue[] = [];
     const pages: any[] = config?.pages || [];
@@ -95,7 +123,9 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
             const formButtons: Array<{ action?: string; audienceId?: string }> = [
                 { action: p.action, audienceId: p.audienceId },
                 ...(p.button ? [p.button] : []),
+                ...(bandSecondaryButton(c) ? [p.secondaryButton] : []),
                 ...(p.left?.buttons || []),
+                ...spotlightFormButtons(c),
             ];
             const unwiredButton = formButtons.some(
                 (b) => b?.action === 'openForm' && !String(b?.audienceId || '').trim(),

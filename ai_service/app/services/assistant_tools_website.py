@@ -78,7 +78,16 @@ DESIGN_LANGUAGES = (
     "editorial-serif", "swiss-minimal", "bold-modern", "dark-tech",
     "warm-community", "corporate-trust", "directory-reference",
 )
-PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact")
+PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact", "catalog")
+# Archetypes the composer (page_builder._ARCHETYPE_RULES) has no entry for.
+_LOCAL_ARCHETYPE_RULES = {
+    "catalog": (
+        "CATALOGUE. A course catalogue owns the page: courseCatalog first, with its own hero (props.hero: "
+        "breadcrumb, title, live stats, search), stream tabs, the filter sidebar and in-grid sections; then at "
+        "most a closing ctaBanner. No separate heroSection, testimonials or stats strip — the catalogue's live "
+        "counts are the proof."
+    ),
+}
 FONT_CHOICES = (
     "Inter", "Roboto", "Open Sans", "Poppins", "Lato", "Montserrat", "Mulish", "Figtree",
     "Outfit", "Nunito", "Space Grotesk", "Rubik", "Quicksand", "Baloo 2",
@@ -128,9 +137,12 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "data comes from. Use it to match what an admin points at in a screenshot to a section id.\n"
             "- find_section (tag_name, query, page_route?): where a piece of text appears — section id, "
             "position and the exact prop path to patch ('the button that says Book a demo').\n"
-            "- review (tag_name, page_route?): design-quality score (0–100, bar 85) with ranked issues and "
-            "concrete fixes. Iterate with website_edit(update_page) until it passes; do it before telling "
-            "the admin a page is ready.\n"
+            "- review (tag_name, page_route?, page_type?, fidelity?): design-quality score (0–100, bar 85) with "
+            "ranked issues and concrete fixes. Iterate with website_edit(update_page) until it passes in the mode "
+            "the page was created in; do it before telling the admin a page is ready. A page saved with "
+            "design_source (built from a Figma / design) is reviewed in FIDELITY mode: the design wins, so taste "
+            "rules (section count, separate hero, proof, closing CTA, bands) are skipped and only defects a visitor "
+            "would see count. fidelity=true asks for that mode explicitly.\n"
             "- preview (tag_name, page_route?, section_id?, viewport?): a screenshot of the DRAFT as the "
             "learner site renders it. Look at it before and after edits.\n"
             "- context (tag_name?): what may be linked on a site — real courses, product pages, lead "
@@ -156,7 +168,8 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "action": {"type": "string", "enum": list(WEBSITE_ACTIONS)},
                 "tag_name": {"type": "string", "description": "Site name (from `list`). Optional when there is a single/default site."},
                 "page_route": {"type": "string", "description": "Page route within the site, e.g. 'home', 'about', 'admissions'. Defaults to the first page."},
-                "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "schema: which page archetype's rules to include."},
+                "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "schema: which page archetype's rules to include. review: judge the page as this type (default: the type it was created as, else what its content says, else by position/route)."},
+                "fidelity": {"type": "boolean", "description": "review: true = the page reproduces a design (taste rules skipped); default: on for pages saved with design_source."},
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
@@ -297,11 +310,18 @@ async def _action_lead_summary(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
     stats_cache: Dict[str, Dict[str, Any]] = {}
     wired: List[Dict[str, Any]] = []
     unwired: List[Dict[str, Any]] = []
+    in_data: List[Dict[str, Any]] = []
     for s in surfaces:
         entry = {
             "page_route": s["page_route"], "section_id": s["section_id"], "section": s["section_label"],
             "surface": s["kind"], "label": s["label"],
         }
+        if s.get("surface_path"):
+            entry["surface_path"] = s["surface_path"]   # link_lead_form(surface_path=…) wires just this one
+        if s.get("bound_in"):
+            # Wired in the data (a folder library's categories), not on the page.
+            in_data.append({**entry, "campaigns_from": s["bound_in"]})
+            continue
         aid = s["audience_id"]
         if aid:
             if aid not in stats_cache:
@@ -315,9 +335,13 @@ async def _action_lead_summary(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
             entry["problem"] = (
                 "renders nothing until a campaign is chosen" if s["section_type"] == "leadForm"
                 else "does nothing when tapped" if s["kind"] == "button"
+                else "shows no 'Notify me' button" if s["kind"] == "notify_step"
                 else "falls back to the auto 'Course Catalogue Leads' list"
             )
             entry["fix"] = "website_edit(action='link_lead_form') with a campaign id from website(action='context')"
+            if s.get("surface_path"):
+                entry["fix"] += (f", section_id='{s['section_id']}' and surface_path='{s['surface_path']}'"
+                                 + (" (no page_route: it is the site footer)" if s["section_id"] == "footer" and not s["page_route"] else ""))
             unwired.append(entry)
     gs = site["config"].get("globalSettings") or {}
     lead = gs.get("leadCollection") or {}
@@ -326,6 +350,7 @@ async def _action_lead_summary(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
         "days": days,
         "forms": wired,
         "forms_without_campaign": unwired,
+        **({"forms_wired_in_data": in_data} if in_data else {}),
         "site_wide_popup": {"enabled": bool(lead.get("enabled")), "mandatory": bool(lead.get("mandatory"))},
         "editor_url": site_editor_url(site["tag_name"], ctx=ctx),
         **stale_note(site),
@@ -348,7 +373,7 @@ async def _action_find_section(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
 
 
 async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from .page_quality import review_with_audit
+    from .page_quality import review_mode, review_with_audit
     site, err = await load_site(ctx, args.get("tag_name"))
     if err:
         return err
@@ -362,17 +387,29 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
         pages = [page]
     out: Dict[str, Any] = {"tag_name": site["tag_name"], "reviewed": "draft" if site["from_draft"] else "published",
                            "pages": {}, **stale_note(site)}
+    fidelity_arg = args.get("fidelity") if isinstance(args.get("fidelity"), bool) else None
+    any_fidelity = False
     for i, page in enumerate(pages):
-        page_type = "homepage" if i == 0 and not route else ("course-landing" if "course" in str(page.get("route") or "") else "about")
-        r = review_with_audit(page, gs, page_type)
-        out["pages"][str(page.get("route"))] = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
-                                                 "issues": [{k: v for k, v in i_.items() if k != "weight"} for i_ in r["issues"][:16]]}
+        # Explicit page_type/fidelity, else the mode the page was created in,
+        # else what its content says, else the position/route guess.
+        page_type, fidelity = review_mode(page, args.get("page_type"), fidelity_arg)
+        page_type = page_type or ("homepage" if i == 0 and not route else ("course-landing" if "course" in str(page.get("route") or "") else "about"))
+        r = review_with_audit(page, gs, page_type, fidelity=fidelity)
+        entry = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
+                 "issues": [{k: v for k, v in i_.items() if k != "weight"} for i_ in r["issues"][:16]]}
+        if fidelity:
+            entry.update({"mode": "fidelity", "page_type": page_type})
+            any_fidelity = True
+        out["pages"][str(page.get("route"))] = entry
     scores = [v["score"] for v in out["pages"].values()]
     out["score"] = min(scores) if scores else 0
     out["bar"] = 85
     out["passes"] = all(v["passes"] for v in out["pages"].values())
     out["next"] = ("Fix `fix` items first, then the highest-weight warnings, with update_page ops; re-run review. "
                    "Tell the admin a page is ready only when it passes.")
+    if any_fidelity:
+        out["next"] += (" Pages in fidelity mode follow a design: fix only what is broken — never add sections, "
+                        "heroes, stats or testimonials the design does not have.")
     return out
 
 
@@ -521,7 +558,7 @@ def _load_schema(page_type: Optional[str], section_types: List[str]) -> Dict[str
         ),
     }
     if page_type:
-        out["archetype"] = {"page_type": page_type, "rules": _ARCHETYPE_RULES.get(page_type)}
+        out["archetype"] = {"page_type": page_type, "rules": _ARCHETYPE_RULES.get(page_type) or _LOCAL_ARCHETYPE_RULES.get(page_type)}
     if not wanted:
         out["hint"] = "Pass section_types=[…] to get full example props for the blocks you will use."
     return out

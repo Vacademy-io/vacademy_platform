@@ -62,4 +62,27 @@ describe('publish checks — Knowledge Streams additions', () => {
         expect(issues).toHaveLength(1);
         expect(issues[0]).toMatchObject({ severity: 'warning', componentId: 'b' });
     });
+
+    it('flags an unwired band second button and spotlight form button, and nothing else', () => {
+        const band = (secondaryButton: Record<string, unknown>, variant = 'band') => ({
+            id: 'band',
+            type: 'ctaBanner',
+            props: { variant, heading: 'Hi', button: { text: 'Go', action: 'navigate' }, secondaryButton },
+        });
+        const spotlight = (cta: Record<string, unknown>) => ({
+            id: 'cat',
+            type: 'courseCatalog',
+            props: { columnSections: [{ id: 's', kind: 'spotlight', slides: [{ id: 'a', title: 'F', cta }] }] },
+        });
+        const unwired = 'A button opens a form but no campaign is selected';
+        expect(titles(site([band({ text: 'Talk to us', action: 'openForm' })]))).toEqual([unwired]);
+        expect(titles(site([spotlight({ label: 'Ask', action: 'open-form' })]))).toEqual([unwired]);
+        // Wired, switched off, unlabelled, or not the band variant: nothing to report.
+        expect(titles(site([band({ text: 'Talk', action: 'openForm', audienceId: 'c1' })]))).toEqual([]);
+        expect(titles(site([band({ text: 'Talk', action: 'openForm', enabled: false })]))).toEqual([]);
+        expect(titles(site([band({ text: '', action: 'openForm' })]))).toEqual([]);
+        expect(titles(site([band({ text: 'Talk', action: 'openForm' }, 'classic')]))).toEqual([]);
+        expect(titles(site([spotlight({ label: 'Ask', action: 'open-form', audienceId: 'c1' })]))).toEqual([]);
+        expect(titles(site([spotlight({ label: 'Enrol', action: 'course', courseId: 'x' })]))).toEqual([]);
+    });
 });

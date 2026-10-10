@@ -955,8 +955,18 @@ public class InvoiceService {
                 BigDecimal lineSubtotal = paymentAmount.divide(
                         BigDecimal.ONE.add(rateFraction), 2, RoundingMode.HALF_UP);
                 componentSubtotalSum = componentSubtotalSum.add(lineSubtotal);
-                componentTaxSum = componentTaxSum.add(paymentAmount.subtract(lineSubtotal));
-                for (Map<String, Object> comp : comps) {
+                BigDecimal lineTax = paymentAmount.subtract(lineSubtotal);
+                componentTaxSum = componentTaxSum.add(lineTax);
+                // Split THIS line's tax across its components so they add back to it exactly.
+                // Computing each component off the subtotal independently rounds each one up:
+                // 4,571.43 x 2.5% = 114.2857 -> 114.29 for CGST and again for SGST, which is
+                // 228.58 against a tax line of 228.57. A GST invoice whose components do not
+                // sum to the tax charged is wrong on its face. The last component takes the
+                // remainder, which is also what a manually prepared invoice does.
+                BigDecimal allocatedLineTax = BigDecimal.ZERO;
+                int lastIndex = comps.size() - 1;
+                for (int ci = 0; ci < comps.size(); ci++) {
+                    Map<String, Object> comp = comps.get(ci);
                     String label = comp.get("label") != null ? comp.get("label").toString() : "";
                     if (label.isEmpty()) {
                         continue;
@@ -967,8 +977,11 @@ public class InvoiceService {
                     } catch (NumberFormatException e) {
                         rate = BigDecimal.ZERO;
                     }
-                    BigDecimal amt = lineSubtotal.multiply(rate)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    BigDecimal amt = (ci == lastIndex)
+                            ? lineTax.subtract(allocatedLineTax)
+                            : lineSubtotal.multiply(rate)
+                                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    allocatedLineTax = allocatedLineTax.add(amt);
                     final BigDecimal compRate = rate;
                     BigDecimal[] acc = componentAccumulator.computeIfAbsent(label,
                             k -> new BigDecimal[] { compRate, BigDecimal.ZERO });

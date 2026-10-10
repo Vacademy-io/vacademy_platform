@@ -121,6 +121,8 @@ def test_playbook_names_only_actions_that_exist(source):
     assert named <= set(DESIGN_IMPORT_ACTIONS), named - set(DESIGN_IMPORT_ACTIONS)
     if source == "figma":
         assert "design_import(plan) when enabled" in text
+    # request_publish (G1) only reads: the playbook names it for the hand-over and still says nothing publishes.
+    assert "request_publish" in edit and "It never publishes." in text
 
 
 def test_playbook_is_honest_about_what_is_not_here():

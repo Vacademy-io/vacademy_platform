@@ -154,6 +154,21 @@ async def get_draft(ctx: ToolContext, catalogue_id: str) -> Optional[Dict[str, A
     return data if isinstance(data, dict) and data.get("id") else None
 
 
+async def get_draft_checked(ctx: ToolContext, catalogue_id: str) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """
+    ``(draft or None, read_ok)``: like ``get_draft`` but tells "no draft" (the
+    endpoint's 204, or an empty 200) apart from a failed read (timeout, 5xx,
+    401) — ``read_ok`` False means nobody knows whether a draft exists.
+    """
+    data = await _admin_core_json(
+        ctx, "GET", "/admin-core-service/v1/course-catalogue/revision/draft",
+        params={"catalogueId": catalogue_id}, timeout=30.0,
+    )
+    if _is_error(data):
+        return None, data.get("status") == 204
+    return (data if isinstance(data, dict) and data.get("id") else None), True
+
+
 async def get_history(ctx: ToolContext, catalogue_id: str) -> List[Dict[str, Any]]:
     data = await _admin_core_json(
         ctx, "GET", "/admin-core-service/v1/course-catalogue/revision/history",
@@ -188,7 +203,8 @@ def stale_note(site: Dict[str, Any]) -> Dict[str, Any]:
     return {"stale_draft": site["stale_draft"]} if site.get("stale_draft") else {}
 
 
-async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+async def load_site(ctx: ToolContext, tag_name: Optional[str], *,
+                    with_live: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     ``(site, None)`` or ``(None, error)``. ``site`` carries the catalogue row, the
     parsed config the EDITOR would show (draft if one exists, else published),
@@ -198,6 +214,13 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
     ``live_changed_since_draft``) is never shown or built on: ``config`` is the
     published site and ``stale_draft`` describes the draft, so reads can say so
     and edits can refuse.
+
+    ``with_live`` (request_publish) also returns both sides of a publish:
+    ``live_config`` (the published JSON; None when unreadable), ``draft_config``
+    (the open draft's JSON, stale or not; None without one) and ``revisions``
+    (the draft's and the live site's revision numbers, as admin-core reports them),
+    and ``draft_read_ok`` (False when the draft fetch failed rather than
+    answering "no draft").
     """
     tag, err = await resolve_tag(ctx, tag_name)
     if err:
@@ -209,7 +232,13 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
     if _is_error(row) or not isinstance(row, dict):
         return None, _err("fetch_failed", message=f"Could not load website '{tag}'.")
     catalogue_id = str(row.get("id") or "")
-    draft = await get_draft(ctx, catalogue_id) if catalogue_id else None
+    draft_read_ok = True
+    if not catalogue_id:
+        draft = None
+    elif with_live:
+        draft, draft_read_ok = await get_draft_checked(ctx, catalogue_id)
+    else:
+        draft = await get_draft(ctx, catalogue_id)
     stale = bool(draft and draft.get("live_changed_since_draft"))
     raw = draft.get("catalogue_json") if draft and not stale else row.get("catalogue_json")
     config = _parse_config(raw)
@@ -228,6 +257,20 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
         "from_draft": draft is not None and not stale,
         "draft": {k: draft.get(k) for k in ("id", "revision_no", "source", "updated_at")} if draft else None,
     }
+    if with_live:
+        site["live_config"] = _parse_config(row.get("catalogue_json"))
+        site["draft_config"] = (config if not stale else _parse_config(draft.get("catalogue_json"))) if draft else None
+        # False: the draft could not be read (not "there is none") — the caller must not say "nothing to publish".
+        site["draft_read_ok"] = draft_read_ok
+        site["revisions"] = {
+            "draft_revision_no": (draft or {}).get("revision_no"),
+            "draft_started_at": (draft or {}).get("created_at"),
+            "draft_updated_at": (draft or {}).get("updated_at"),
+            "live_revision_no": (draft or {}).get("live_revision_no"),
+            "live_updated_at": (draft or {}).get("live_updated_at"),
+            # None: admin-core did not say (an older server) — the caller cannot rule a stale draft out.
+            "live_changed_since_draft": (draft or {}).get("live_changed_since_draft"),
+        }
     if stale:
         site["stale_draft"] = {
             "draft_revision_no": draft.get("revision_no"),
@@ -895,7 +938,7 @@ async def campaign_lead_stats(ctx: ToolContext, audience_id: str, days: Optional
 __all__ = [
     "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
-    "get_draft", "get_history", "load_site", "load_courses", "load_courses_detail", "load_course_inventory", "load_product_pages",
+    "get_draft", "get_draft_checked", "get_history", "load_site", "load_courses", "load_courses_detail", "load_course_inventory", "load_product_pages",
     "product_page_steps", "load_folder_libraries", "list_folder_libraries", "load_library_folders", "load_data_inventory",
     "invites_by_ids",
     "load_campaigns", "campaign_lead_stats", "get_campaign", "campaign_name_map",

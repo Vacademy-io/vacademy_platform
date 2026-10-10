@@ -183,8 +183,10 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "and website(action='data_audit') must show no errors you can fix.",
             "Give the admin the editor_url, a score card (per-section similarity from compare, the deviations and gap "
             "list, the open data items) and the DECISIONS you took. The admin publishes; say the site is a draft.",
+            "website_edit(request_publish) runs those checks in one call and gives the hand-over verdict, the diff "
+            "against the live site and the editor link. It never publishes.",
         ],
-        "tools": ["website(review)", "website(audit)", "website(data_audit)"],
+        "tools": ["website(review)", "website(audit)", "website(data_audit)", "website_edit(request_publish)"],
     },
 ]
 

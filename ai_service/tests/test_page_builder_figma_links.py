@@ -60,10 +60,35 @@ def test_a_figma_link_is_found_in_chat_text():
     assert find_figma_url("no links here") is None
 
 
+@pytest.mark.parametrize("text", [
+    "our designer uses figma.com for everything",  # a bare mention, no scheme and no file path
+    "we tried Figma.com once",
+    "https://example.com/?u=figma.com",  # inside another URL's query string
+    "https://example.com/?next=https://www.figma.com/design/AbC/x",
+    "https://example.com/r#figma.com/design/AbC",
+])
+def test_prose_mentions_and_embedded_links_are_not_shared_designs(text):
+    assert find_figma_url(text) is None
+
+
+def test_a_scheme_or_a_file_path_makes_it_a_shared_design():
+    assert find_figma_url("see https://figma.com") == "https://figma.com"
+    assert find_figma_url("see figma.com/design/AbC/x") == "figma.com/design/AbC/x"
+    assert find_figma_url("see figma.com/proto/AbC") == "figma.com/proto/AbC"
+
+
 def test_guidance_names_both_routes_that_work():
     assert FIGMA_LINK_GUIDANCE.startswith("Figma links can't be opened here.")
     assert "upload screenshots of your frames" in FIGMA_LINK_GUIDANCE
     assert "Claude with the Figma connector and the Vacademy MCP" in FIGMA_LINK_GUIDANCE
+
+
+def test_the_ai_facing_guidance_is_white_label_and_says_mcp_is_opt_in():
+    # An MCP client relays this to the admin; the institute may be white-label.
+    text = figma_links.FIGMA_LINK_GUIDANCE_FOR_AI
+    assert text.startswith("Figma links can't be opened here.") and "upload screenshots of your frames" in text
+    assert "Vacademy" not in text and "this institute's MCP connection" in text
+    assert "Settings → MCP Server" in text
 
 
 # ── reference_url: never screenshotted ───────────────────────────────────────
@@ -156,6 +181,36 @@ def test_compose_skips_figma_source_and_reference_and_warns_once(monkeypatch):
     assert held.count(FIGMA_LINK_GUIDANCE) == 1
 
 
+def test_whole_site_build_explains_a_figma_link_once(monkeypatch):
+    """The shared reference AND the homepage's source_url are both Figma: the
+    admin sees the guidance once, and no page imports or captures anything."""
+    calls = {"import": 0, "capture": 0, "compose": []}
+
+    async def capture(url, warnings):
+        calls["capture"] += 1
+        return []
+
+    async def compose(sub, catalog, db, institute_id, actor_user_id, fixed_global=None, inspiration=None):
+        calls["compose"].append(sub.source_url)
+        w = ["Image search skipped"]
+        if sub.source_url and pb.is_figma_url(sub.source_url):  # what _compose_one_page does
+            w.append(FIGMA_LINK_GUIDANCE)
+        return {"route": "home", "components": []}, {"theme": {}}, w, "m", None
+
+    monkeypatch.setattr(pb, "preflight_tool_credits", lambda *a, **k: {"estimated_credits": 1, "current_balance": 99})
+    monkeypatch.setattr(pb, "_load_catalog", lambda: {})
+    monkeypatch.setattr(pb, "_capture_reference_screenshots", capture)
+    monkeypatch.setattr(pb, "_compose_one_page", compose)
+
+    body = pb.GenerateSiteRequest(brief="A school site", source_url=FIGMA, reference_url="figma.com/design/AbC/x")
+    user = SimpleNamespace(institute_id="inst-1", user_id="user-1")
+    out = asyncio.run(pb.generate_site(body, db=None, current_user=user))
+    assert out.warnings.count(FIGMA_LINK_GUIDANCE) == 1
+    assert calls["capture"] == 0
+    assert calls["compose"] == [FIGMA, None, None], "only the homepage gets source_url"
+    assert len(out.pages) == 3
+
+
 # ── intake chat ──────────────────────────────────────────────────────────────
 
 def _turns(*pairs):
@@ -175,9 +230,26 @@ def test_only_the_latest_admin_message_counts():
 
 def test_guard_prepends_the_guidance_once_and_opens_the_screenshot_uploader():
     reply, upload = pb._apply_figma_link_guard("Lovely! What is the site for?", None)
-    assert reply.startswith(FIGMA_LINK_GUIDANCE) and reply.endswith("What is the site for?") and upload == "inspiration"
-    already = f"{FIGMA_LINK_GUIDANCE} Can you share screenshots?"
-    assert pb._apply_figma_link_guard(already, "logo") == (already, "logo")
+    assert reply == f"{FIGMA_LINK_GUIDANCE}\n\nLovely! What is the site for?" and upload == "inspiration"
+    reply, upload = pb._apply_figma_link_guard(f"{FIGMA_LINK_GUIDANCE} Can you share screenshots?", "logo")
+    assert reply == f"{FIGMA_LINK_GUIDANCE}\n\nCan you share screenshots?" and upload == "logo"
+    assert reply.count(FIGMA_LINK_GUIDANCE) == 1
+
+
+def test_guard_drops_a_model_claim_to_have_seen_the_figma_design():
+    reply, _ = pb._apply_figma_link_guard(
+        "I've looked at your Figma design. The hero is lovely! Who is the site for?", None
+    )
+    assert reply == f"{FIGMA_LINK_GUIDANCE}\n\nThe hero is lovely! Who is the site for?"
+    # Nothing left once the Figma talk is gone → ask for the screenshots.
+    reply, _ = pb._apply_figma_link_guard("I reviewed the figma file.", None)
+    assert reply == f"{FIGMA_LINK_GUIDANCE}\n\n{pb._FIGMA_SCREENSHOT_ASK}"
+
+
+def test_figma_sentences_are_dropped_and_line_breaks_kept():
+    brief = "Sanskrit school in Varanasi. Match the Figma file exactly.\nTone: warm. Use the Figma palette."
+    assert pb._drop_figma_sentences(brief) == "Sanskrit school in Varanasi.\nTone: warm."
+    assert pb._drop_figma_sentences("") == ""
 
 
 def _fake_llm(monkeypatch, reply_json: str, seen: list):
@@ -211,6 +283,24 @@ def test_intake_turn_with_a_figma_link_always_answers_with_the_guidance(monkeypa
     assert "Figma file. It cannot be opened here" in seen[0][-1]["content"]
 
 
+def test_intake_turn_with_a_figma_link_is_never_ready_and_keeps_figma_out_of_the_brief(monkeypatch):
+    seen: list = []
+    _fake_llm(
+        monkeypatch,
+        '{"reply": "I have reviewed your Figma design. Ready to build!", "ready": true, '
+        '"brief": "A Sanskrit school site. Match the Figma file frame by frame. Warm saffron tone.", '
+        '"chips": [], "request_upload": null}',
+        seen,
+    )
+    user = SimpleNamespace(institute_id="inst-1", user_id="user-1")
+    body = pb.IntakeRequest(history=_turns(("user", f"Build exactly this: {FIGMA}")))
+    out = asyncio.run(pb.intake_turn(body, db=None, current_user=user))
+    assert out.ready is False
+    assert out.brief == "A Sanskrit school site. Warm saffron tone."
+    assert out.reply == f"{FIGMA_LINK_GUIDANCE}\n\nReady to build!"
+    assert "reviewed" not in out.reply
+
+
 def test_intake_turn_without_a_figma_link_is_unchanged(monkeypatch):
     seen: list = []
     _fake_llm(monkeypatch, '{"reply": "Who is it for?", "chips": ["Parents"], "request_upload": null}', seen)
@@ -222,4 +312,6 @@ def test_intake_turn_without_a_figma_link_is_unchanged(monkeypatch):
 
 
 def test_module_exports_are_stable():
-    assert set(figma_links.__all__) == {"FIGMA_LINK_GUIDANCE", "find_figma_url", "is_figma_url"}
+    assert set(figma_links.__all__) == {
+        "FIGMA_LINK_GUIDANCE", "FIGMA_LINK_GUIDANCE_FOR_AI", "find_figma_url", "is_figma_url",
+    }

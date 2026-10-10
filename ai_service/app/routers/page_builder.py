@@ -4464,12 +4464,28 @@ def _latest_user_figma_link(history: List[IntakeTurn]) -> Optional[str]:
     return None
 
 
+_FIGMA_SCREENSHOT_ASK = "Could you upload screenshots of the frames you want the page to follow?"
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _drop_figma_sentences(text: str) -> str:
+    """``text`` without any sentence that mentions Figma — a model that ignored
+    the FIGMA LINKS rule ("I've looked at your Figma design…", "match the Figma
+    file") must not reach the admin or the composer. Line breaks are kept."""
+    lines = []
+    for line in (text or "").splitlines():
+        kept = [s for s in _SENTENCE_SPLIT_RE.split(line) if "figma" not in s.lower()]
+        lines.append(" ".join(kept).rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def _apply_figma_link_guard(reply: str, request_upload: Optional[str]) -> tuple[str, Optional[str]]:
-    """The admin just pasted a Figma link: the reply MUST carry the guidance
-    (whatever the model wrote) and the screenshot uploader opens."""
-    if FIGMA_LINK_GUIDANCE not in reply:
-        reply = f"{FIGMA_LINK_GUIDANCE}\n\n{reply}".strip()
-    return reply, request_upload or "inspiration"
+    """The admin just pasted a Figma link: the reply opens with the guidance,
+    keeps only the model's sentences that don't talk about Figma (it cannot
+    have seen the design), asks for screenshots when nothing else is left, and
+    the screenshot uploader opens."""
+    rest = _drop_figma_sentences(reply.replace(FIGMA_LINK_GUIDANCE, ""))
+    return f"{FIGMA_LINK_GUIDANCE}\n\n{rest or _FIGMA_SCREENSHOT_ASK}", request_upload or "inspiration"
 
 
 def _parse_intake_json(raw: str) -> Dict[str, Any]:
@@ -4627,8 +4643,14 @@ async def intake_turn(
     if page_type not in _PAGE_TYPE_LABELS:
         page_type = "homepage"
     reply = _clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!"
+    ready = bool(data.get("ready"))
+    brief = _clean_string(str(data.get("brief"))) if data.get("brief") else None
     if figma_link:
         reply, req_upload = _apply_figma_link_guard(reply, req_upload)
+        # Nothing has been seen yet: wait for the screenshots, and keep "match
+        # the Figma file" out of the brief the composer reads.
+        ready = False
+        brief = _drop_figma_sentences(brief or "") or None
 
     try:
         record_tool_billing(
@@ -4652,8 +4674,8 @@ async def intake_turn(
         chips=chips,
         request_upload=req_upload,
         received_image_kind=recv_kind,
-        ready=bool(data.get("ready")),
-        brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
+        ready=ready,
+        brief=brief,
         page_type=page_type,
         whole_site=bool(data.get("whole_site")),
         run_id=run_id,

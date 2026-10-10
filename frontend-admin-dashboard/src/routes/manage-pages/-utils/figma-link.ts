@@ -29,10 +29,17 @@ export const isFigmaUrl = (raw: string | null | undefined): boolean => {
     return host === 'figma.com' || host.endsWith('.figma.com');
 };
 
+// Either with a scheme, or scheme-less with a Figma file path
+// (figma.com/design/…): a bare "figma.com" in prose is not a shared design.
 // The host must not continue into a longer domain (figma.com.evil.io), and the
-// link must not sit inside another URL path or an email address.
-const FIGMA_IN_TEXT =
-    /(?<![\w./@-])(?:https?:\/\/)?(?:[a-z0-9-]+\.)*figma\.com(?![a-z0-9-]|\.[a-z0-9])(?::\d+)?(?:[/?#][^\s<>"')\]]*)?/gi;
+// link must not sit inside another URL (path or query string) or an email.
+const FIGMA_HOST = String.raw`(?:[a-z0-9-]+\.)*figma\.com(?![a-z0-9-]|\.[a-z0-9])(?::\d+)?`;
+const URL_TAIL = String.raw`[^\s<>"')\]]*`;
+const FIGMA_IN_TEXT = new RegExp(
+    String.raw`(?<![\w./@=&?%#+-])(?:https?://${FIGMA_HOST}(?:[/?#]${URL_TAIL})?` +
+        String.raw`|${FIGMA_HOST}/(?:design|file|proto|board|make|slides)/${URL_TAIL})`,
+    'gi'
+);
 
 /** The first figma.com link in free text (a chat message), or null. */
 export const findFigmaUrl = (text: string | null | undefined): string | null => {

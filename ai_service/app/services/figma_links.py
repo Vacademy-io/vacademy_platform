@@ -26,11 +26,27 @@ FIGMA_LINK_GUIDANCE = (
     "connector and the Vacademy MCP (it follows our design playbook)."
 )
 
-#: A figma.com link anywhere in free text (chat turns). Scheme optional; the
-#: host must be figma.com or a subdomain of it (www., embed. …).
+#: The same message for an AI client connected over MCP to relay to the admin.
+#: The institute may be white-label, so it names the connection, not the
+#: platform, and says MCP access may need turning on (it is opt-in per institute).
+FIGMA_LINK_GUIDANCE_FOR_AI = (
+    "Figma links can't be opened here. Either upload screenshots of your frames, or use an AI app that has both "
+    "the Figma connector and this institute's MCP connection (an admin can turn MCP on in Settings → MCP Server)."
+)
+
+_FIGMA_HOST = r"(?:[a-z0-9-]+\.)*figma\.com(?![a-z0-9-]|\.[a-z0-9])(?::\d+)?"
+_URL_TAIL = r"[^\s<>\"')\]]*"
+
+#: A figma.com link in free text (chat turns): either with a scheme, or
+#: scheme-less with a Figma file path (figma.com/design/…). A bare "figma.com"
+#: in prose ("our designer uses figma.com") is not a shared design. The host
+#: must be figma.com or a subdomain of it (www., embed. …), and the link must
+#: not sit inside another URL (path or query string) or an email address.
 _FIGMA_IN_TEXT_RE = re.compile(
-    r"(?<![\w./@-])(?:https?://)?(?:[a-z0-9-]+\.)*figma\.com(?![a-z0-9-]|\.[a-z0-9])(?::\d+)?"
-    r"(?:[/?#][^\s<>\"')\]]*)?",
+    r"(?<![\w./@=&?%#+-])(?:"
+    r"https?://" + _FIGMA_HOST + r"(?:[/?#]" + _URL_TAIL + r")?"
+    r"|" + _FIGMA_HOST + r"/(?:design|file|proto|board|make|slides)/" + _URL_TAIL
+    + r")",
     re.IGNORECASE,
 )
 
@@ -66,4 +82,4 @@ def find_figma_url(text: Any) -> Optional[str]:
     return None
 
 
-__all__ = ["FIGMA_LINK_GUIDANCE", "find_figma_url", "is_figma_url"]
+__all__ = ["FIGMA_LINK_GUIDANCE", "FIGMA_LINK_GUIDANCE_FOR_AI", "find_figma_url", "is_figma_url"]

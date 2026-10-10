@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { findFigmaUrl, isFigmaUrl } from '../-utils/figma-link';
 
@@ -13,6 +13,12 @@ import { findFigmaUrl, isFigmaUrl } from '../-utils/figma-link';
 
 const generateAiPage = vi.fn<[Record<string, unknown>], Promise<unknown>>(async () => ({
     page: { id: 'p', route: 'home', title: 'Home', components: [] },
+    global_settings: null,
+    warnings: [],
+    model: 'm',
+}));
+const generateAiSite = vi.fn<[Record<string, unknown>], Promise<unknown>>(async () => ({
+    pages: [],
     global_settings: null,
     warnings: [],
     model: 'm',
@@ -54,7 +60,7 @@ vi.mock('./ImageUploadField', () => ({ ImageUploadField: () => null }));
 vi.mock('./ComponentPreviews', () => ({ renderComponentPreview: () => null }));
 vi.mock('../-services/ai-page-service', () => ({
     generateAiPage: (p: Record<string, unknown>) => generateAiPage(p),
-    generateAiSite: vi.fn(),
+    generateAiSite: (p: Record<string, unknown>) => generateAiSite(p),
     generateAiImage: vi.fn(),
     estimateAiPageCredits: vi.fn(async () => ({ sufficient: true })),
     intakeAiTurn: vi.fn(),
@@ -72,13 +78,17 @@ const withQuery = (ui: React.ReactElement) => {
     return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 };
 
-/** chat → quick brief → assets */
-const openAssetsStep = () => {
+/** chat → quick brief (optionally "whole site") → assets */
+const openAssetsStep = ({ wholeSite = false } = {}) => {
     withQuery(<AiPageWizard open onOpenChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'footer.preferForm' }));
     fireEvent.change(screen.getByPlaceholderText('brief.briefPlaceholder'), {
         target: { value: 'A Sanskrit learning site' },
     });
+    if (wholeSite) {
+        const row = screen.getByText('brief.wholeSiteLabel').parentElement?.parentElement as HTMLElement;
+        fireEvent.click(within(row).getByRole('switch'));
+    }
     fireEvent.click(screen.getByRole('button', { name: 'footer.nextImages' }));
 };
 
@@ -97,12 +107,35 @@ describe('figma link detection', () => {
         expect(findFigmaUrl(`Our design: ${FIGMA} — follow it`)).toBe(FIGMA);
         expect(findFigmaUrl('mail design@figma.com or https://example.edu/figma.com')).toBeNull();
         expect(findFigmaUrl('a coaching institute in Jaipur')).toBeNull();
+        // Scheme-less needs a Figma file path; a bare mention or a query value is not a shared design.
+        expect(findFigmaUrl('see www.figma.com/file/AbC/x')).toBe('www.figma.com/file/AbC/x');
+        expect(findFigmaUrl('our designer uses figma.com daily')).toBeNull();
+        expect(findFigmaUrl('https://example.com/?u=figma.com')).toBeNull();
+        expect(findFigmaUrl('https://example.com/?u=https://www.figma.com/design/AbC')).toBeNull();
     });
 });
 
 describe('AiPageWizard with a Figma link', () => {
     beforeEach(() => {
         generateAiPage.mockClear();
+        generateAiSite.mockClear();
+    });
+
+    it('keeps Figma links out of a whole-site build too', async () => {
+        openAssetsStep({ wholeSite: true });
+        fireEvent.change(screen.getByLabelText('assets.rebuildHeading'), { target: { value: FIGMA } });
+        fireEvent.change(screen.getByLabelText('assets.referenceHeading'), {
+            target: { value: 'figma.com/design/AbC/x' },
+        });
+        expect(screen.getAllByText(NOTICE)).toHaveLength(2);
+
+        fireEvent.click(screen.getByRole('button', { name: 'footer.nextGenerate' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'footer.generateSite' }));
+        await waitFor(() => expect(generateAiSite).toHaveBeenCalledTimes(1));
+        expect(generateAiPage).not.toHaveBeenCalled();
+        const payload = generateAiSite.mock.calls[0]?.[0];
+        expect(payload?.source_url).toBeUndefined();
+        expect(payload?.reference_url).toBeUndefined();
     });
 
     it('explains a Figma reference link and never sends it', async () => {

@@ -133,8 +133,8 @@ def test_playbook_is_honest_about_what_is_not_here():
 
 @pytest.mark.parametrize("source", ["figma", "url"])
 def test_playbook_says_what_to_tell_an_admin_when_figma_cannot_be_read(source):
-    # Same sentence as the in-product wizard and design_import(source='figma_url').
-    from app.services.figma_links import FIGMA_LINK_GUIDANCE
+    # Same sentence design_import(source='figma_url') returns as tell_admin.
+    from app.services.figma_links import FIGMA_LINK_GUIDANCE_FOR_AI as FIGMA_LINK_GUIDANCE
     text = website_playbook.playbook_markdown(source, CATALOG)
     assert FIGMA_LINK_GUIDANCE in text
     if source == "figma":

@@ -72,8 +72,8 @@ async def test_figma_url_is_not_supported_and_says_what_to_do(db):
     out = await call(db, {"action": "plan", "source": "figma_url", "url": "https://www.figma.com/design/AbCdEfGhIjKl/x"})
     assert out["error"] == "figma_url_not_supported"
     assert "get_metadata" in out["message"] and "source='client'" in out["message"]
-    # The same sentence the in-product wizard shows, for the AI to relay when it has no Figma tools.
-    from app.services.figma_links import FIGMA_LINK_GUIDANCE
+    # The white-label sentence for the AI to relay when it has no Figma tools (playbook carries it too).
+    from app.services.figma_links import FIGMA_LINK_GUIDANCE_FOR_AI as FIGMA_LINK_GUIDANCE
     assert out["tell_admin"] == FIGMA_LINK_GUIDANCE and FIGMA_LINK_GUIDANCE in out["message"]
     assert "source='screenshot'" in out["message"]
     assert db.query(AiTask).count() == 0

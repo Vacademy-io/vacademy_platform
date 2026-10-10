@@ -105,7 +105,54 @@ export interface LearningPathFeaturedOptions {
   dividerColor?: string;
   trackColor?: string;
   freeColor?: string;
+  /**
+   * Opt-in: the id of another learningPath section on the page to read the
+   * goals, featured path and path extras from (see withSharedPathOptions), so
+   * a page split over two sections keeps one copy.
+   */
+  sharedWith?: string;
 }
+
+/** What a section with `sharedWith` reads from the section it names. */
+export const SHARED_PATH_OPTION_KEYS = ["goals", "allGoalsLabel", "goalParam", "featured", "pathExtras"] as const;
+
+type SectionLike = { id?: unknown; type?: unknown; props?: unknown };
+
+const findSection = (sections: unknown, id: string): SectionLike | null => {
+  if (!Array.isArray(sections)) return null;
+  for (const section of sections as SectionLike[]) {
+    if (!section || typeof section !== "object") continue;
+    if (section.id === id) return section;
+    const slots = (section.props as { slots?: unknown } | null | undefined)?.slots;
+    for (const slot of Array.isArray(slots) ? slots : []) {
+      const hit = findSection(slot, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+};
+
+/**
+ * `sharedWith: "<section id>"`: the shared options come from that learningPath
+ * section on the page (its values win; a key it lacks stays the section's
+ * own). Without `sharedWith`, or when it names no learningPath section, the
+ * props are returned unchanged. `localize` puts the source's text in the
+ * visitor's language, as the renderer does for every section.
+ */
+export const withSharedPathOptions = <P extends LearningPathFeaturedOptions>(
+  own: P,
+  sections: unknown,
+  localize: (props: Record<string, unknown>) => Record<string, unknown> = (props) => props,
+): P => {
+  const id = typeof own.sharedWith === "string" ? own.sharedWith.trim() : "";
+  if (!id) return own;
+  const source = findSection(sections, id);
+  if (!source || source.type !== "learningPath" || !source.props || typeof source.props !== "object") return own;
+  const from = localize(source.props as Record<string, unknown>);
+  const shared: Record<string, unknown> = {};
+  for (const key of SHARED_PATH_OPTION_KEYS) if (from[key] !== undefined) shared[key] = from[key];
+  return { ...own, ...shared };
+};
 
 interface LearningPathFeaturedProps extends LearningPathFeaturedOptions {
   entries: PathEntry[];

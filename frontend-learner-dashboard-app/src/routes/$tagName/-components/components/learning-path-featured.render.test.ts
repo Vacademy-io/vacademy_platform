@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { LearningPathFeaturedOptions } from "./LearningPathFeatured";
 
 // ─── environment stubs (node, no router / browser) ──────────────────────────
 vi.mock("@/constants/urls", () => ({
@@ -59,7 +60,7 @@ vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promi
 const { LearningPathComponent } = await import("./LearningPathComponent");
 const { CatalogueLocaleProvider } = await import("../../-utils/catalogue-locale");
 const { localizeComponentProps } = await import("../../-utils/catalogue-site-language");
-const { LearningPathFeaturedSkeleton } = await import("./LearningPathFeatured");
+const { LearningPathFeaturedSkeleton, withSharedPathOptions } = await import("./LearningPathFeatured");
 
 // ─── fixtures (shaped like the knowledge-streams library) ───────────────────
 const INSTITUTE = "inst-1";
@@ -499,5 +500,62 @@ describe("learningPath list layout 'featured'", () => {
     expect(html).toContain('class="catalogue-section bg-catalogue-bg"');
     expect(html).toContain('aria-label="Open path — India of temples"');
     expect(html).not.toContain("All paths");
+  });
+});
+
+describe("learningPath sharedWith (opt-in: one copy of goals and the featured path)", () => {
+  // The Brahm Varchas split: goal chips + featured path above, the grid below.
+  const TOP = { ...FEATURED_PROPS, showGrid: false };
+  const GRID_OWN = { ...FEATURED_PROPS, showGoals: false, showFeatured: false };
+  const { goals: _g, featured: _f, pathExtras: _x, allGoalsLabel: _a, ...gridBase } = GRID_OWN;
+  const sections = (top: Record<string, unknown>) => [
+    { id: "paths", type: "learningPath", props: top },
+    { id: "band", type: "ctaBanner", props: { heading: "Institutions" } },
+    { id: "paths-more", type: "learningPath", props: { ...gridBase, sharedWith: "paths" } },
+  ];
+
+  it("a featured-path change keeps it out of the More learning paths grid (own copies kept equal)", () => {
+    const featured = { code: "92ogt2", badge: "Most popular path" };
+    const grid = text(render({ ...GRID_OWN, featured }));
+    expect(grid).toContain("More learning paths");
+    expect(grid).not.toContain("India of temples");
+    expect(grid).toContain("A woman&#x27;s life stages");
+  });
+
+  it("reads goals, featured path and path extras from the section it names", () => {
+    const top = { ...TOP, featured: { code: "92ogt2" } };
+    const html = render({ ...gridBase, sharedWith: "paths", pageSections: sections(top) });
+    const lines = text(html);
+    // The featured path of 'paths' is left out of this grid; the old one is back in it.
+    expect(lines).not.toContain("India of temples");
+    expect(lines).toContain("A woman&#x27;s life stages");
+    // pathExtras come along (the coming-soon step of Gurukul Education).
+    expect(text(cardOf(html, "Gurukul Education"))).toContain("Sanskrit Language teaching");
+    // ?goal= follows the shared goals (without them an unknown goal shows every path).
+    const temples = text(render({ ...gridBase, sharedWith: "paths", pageSections: sections(TOP) }, { search: "?goal=temples" }));
+    expect(temples).toContain("India of temples");
+    expect(temples).not.toContain("First steps in Scriptures");
+    expect(text(render(gridBase, { search: "?goal=temples" }))).toContain("First steps in Scriptures");
+  });
+
+  it("is honoured only when set, and only for a learningPath section", () => {
+    const own = { ...GRID_OWN, featured: { code: "u5rgwb" } } as LearningPathFeaturedOptions;
+    expect(withSharedPathOptions(own, sections(TOP))).toBe(own);
+    const toBand = { ...own, sharedWith: "band" };
+    expect(withSharedPathOptions(toBand, sections(TOP))).toBe(toBand);
+    const missing = { ...own, sharedWith: "gone" };
+    expect(withSharedPathOptions(missing, sections(TOP))).toBe(missing);
+    // The source's values win; what it lacks stays the section's own.
+    const merged = withSharedPathOptions<LearningPathFeaturedOptions>({ ...own, sharedWith: "paths", moreTitle: "Mine" }, [
+      { id: "paths", type: "learningPath", props: { featured: { code: "forbvy" } } },
+    ]);
+    expect(merged).toMatchObject({ featured: { code: "forbvy" }, goals: own.goals, moreTitle: "Mine" });
+  });
+
+  it("finds the source inside a column and shows its text in the visitor's language", () => {
+    const nested = [{ id: "cols", type: "columnLayout", props: { slots: [[{ id: "paths", type: "learningPath", props: TOP }]] } }];
+    const hi = { "Raise my child": "अपने बच्चे का पालन-पोषण" };
+    const out = withSharedPathOptions<LearningPathFeaturedOptions>({ sharedWith: "paths" }, nested, (p) => localizeComponentProps(p, hi));
+    expect(out.goals?.[0]?.label).toBe("अपने बच्चे का पालन-पोषण");
   });
 });

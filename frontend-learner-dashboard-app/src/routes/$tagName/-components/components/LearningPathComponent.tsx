@@ -24,6 +24,7 @@ import {
 } from "../../-utils/course-variants";
 import { isSiteCartEnabled } from "../../-utils/site-cart";
 import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
+import { localizeComponentProps } from "../../-utils/catalogue-site-language";
 import { URL_PARAMS, useCatalogueSearchParams } from "../../-utils/catalogue-url-state";
 import { useCourseTerms } from "../../-utils/catalogue-naming";
 import { fetchPublicFolderTree, nodeTitle, type PublicFolderNode } from "../../-services/folder-library-service";
@@ -52,6 +53,7 @@ import {
 import {
   LearningPathFeatured,
   LearningPathFeaturedSkeleton,
+  withSharedPathOptions,
   type LearningPathFeaturedOptions,
 } from "./LearningPathFeatured";
 
@@ -97,6 +99,8 @@ export interface LearningPathProps extends LearningPathFeaturedOptions {
   tagName?: string;
   globalSettings?: Partial<GlobalSettings>;
   isPreviewMode?: boolean;
+  /** The page's sections, passed by the renderer only when `sharedWith` is set. */
+  pageSections?: unknown;
 }
 
 interface Shell {
@@ -890,7 +894,9 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
 
 // ─── the section ────────────────────────────────────────────────────────────
 
-export const LearningPathComponent: React.FC<LearningPathProps> = (props) => {
+export const LearningPathComponent: React.FC<LearningPathProps> = ({ pageSections, ...ownProps }) => {
+  const { dict } = useCatalogueLocale();
+  const props = withSharedPathOptions(ownProps, pageSections, (p) => localizeComponentProps(p, dict));
   const {
     mode = "single",
     productPageCode,

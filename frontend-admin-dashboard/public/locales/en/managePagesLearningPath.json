@@ -1,0 +1,41 @@
+{
+    "heading": {
+        "goalsTitle": "Heading above the goal chips"
+    },
+    "featured": {
+        "title": "Featured layout",
+        "hint": "Goal chips, one featured path and the other paths as cards. Turn parts off to split them over two sections.",
+        "showGoals": "Goal chips",
+        "showFeatured": "Featured path",
+        "showGrid": "More learning paths",
+        "showGridHint": "Every other path, as cards.",
+        "sharedFrom": "Goals and the featured path come from the section “{{id}}” on this page. Edit them there.",
+        "syncNote": "Goals and the featured path are also copied to the other learning-path sections on this page that list this library ({{count}}).",
+        "path": "Featured path",
+        "pathFirst": "The first path (default)",
+        "pathLoading": "Loading product pages…",
+        "pathOutside": "{{value}} (not in this library)",
+        "pathOutsideWarning": "This product page is not in the library, so the site features the first path instead. Pick another.",
+        "badge": "Badge on the featured path",
+        "badgePlaceholder": "Most popular path"
+    },
+    "goals": {
+        "title": "Goal chips",
+        "hint": "Each chip shows the paths in the streams you pick.",
+        "allLabel": "First chip",
+        "allPlaceholder": "All paths",
+        "label": "Chip text",
+        "key": "Link key",
+        "keyHint": "Used in the address as ?goal=… — change it only if no link uses it yet.",
+        "streams": "Streams",
+        "customTag": "Custom: {{value}}",
+        "noStreams": "The library has no stream folders to pick from yet.",
+        "remove": "Remove goal",
+        "add": "Add a goal"
+    },
+    "more": {
+        "title": "Heading of the other paths",
+        "titlePlaceholder": "More learning paths",
+        "note": "Note beside the heading"
+    }
+}

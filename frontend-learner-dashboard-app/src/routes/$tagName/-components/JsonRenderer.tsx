@@ -449,6 +449,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           <Suspense key={id} fallback={null}>
             <LearningPathComponent
               {...props}
+              // Opt-in sharedWith: it reads goals / featured path from a section on this page.
+              pageSections={props?.sharedWith ? page.components : undefined}
               instituteId={instituteId}
               tagName={tagName}
               globalSettings={globalSettings}

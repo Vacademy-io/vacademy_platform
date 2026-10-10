@@ -473,10 +473,24 @@ async def _action_data_inventory(args: Dict[str, Any], ctx: ToolContext) -> Dict
     result["note"] = (
         "Read-only. Course facts follow the learner site's rules with this site's settings. `sources` says which "
         "reads answered: a list from a 'failed' read is unknown, not empty. courses_truncated = more courses exist "
-        "than are listed (the site's own courses always are). Changing this data (tags, folders, product pages, "
-        "gateways) is an admin task in the dashboard — website(action='data_audit') lists what to change, with links."
+        "than are listed (the site's own courses always are). " + _data_change_advice(ctx)
     )
     return result
+
+
+def _data_change_advice(ctx: ToolContext) -> str:
+    """Who changes the catalogue data: catalog_data_edit when this caller has it, else the admin in the dashboard."""
+    if ctx.may_use("catalog_data_edit"):
+        return (
+            "Missing folders, course tags and product pages can be added with catalog_data_edit (enabled for this "
+            "connection; additive only, a dry run first — show the admin the plan, then dry_run=false). Payment "
+            "gateways, showing hidden folders and activating product pages stay admin tasks in the dashboard — "
+            "website(action='data_audit') lists what to change, with links."
+        )
+    return (
+        "Changing this data (tags, folders, product pages, gateways) is an admin task in the dashboard — "
+        "website(action='data_audit') lists what to change, with links."
+    )
 
 
 async def site_data_audit(ctx: ToolContext, config: Optional[Dict[str, Any]],
@@ -509,8 +523,13 @@ async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
         "checked": ("draft" if site["from_draft"] else "published") if site else "institute data only (no site yet)",
         **result,
         "editor_url": site_editor_url(site["tag_name"], ctx=ctx) if site else None,
-        "note": ("These checks read live course, folder and product-page data; the MCP does not change that "
-                 "data. Hand the admin the errors and warnings with their links, then re-run data_audit."),
+        "note": (("These checks read live course, folder and product-page data. catalog_data_edit (enabled for "
+                  "this connection) can fix the missing folders, course tags and product pages additively — dry run "
+                  "first, then dry_run=false once the admin agrees; hand the admin the rest (gateways, hiding, "
+                  "activation) with their links, then re-run data_audit.")
+                 if ctx.may_use("catalog_data_edit") else
+                 ("These checks read live course, folder and product-page data; this connection does not change "
+                  "that data. Hand the admin the errors and warnings with their links, then re-run data_audit.")),
         **(stale_note(site) if site else {}),
     }
     return {k: v for k, v in out.items() if v is not None}

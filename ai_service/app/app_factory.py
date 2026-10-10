@@ -158,6 +158,9 @@ async def _lifespan(app: FastAPI):
             # design_import's 24 h upload store (also created lazily on first use).
             from .models.design_import import ensure_design_import_schema
             ensure_design_import_schema(db)
+            # catalog_data_edit's record of the libraries it created (also lazy).
+            from .models.catalog_data_edit import ensure_catalog_data_schema
+            ensure_catalog_data_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
 

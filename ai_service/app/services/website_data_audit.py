@@ -10,7 +10,8 @@ A faithful page over wrong data still looks broken: a course with no stream tag
 sits in no tab, a category nobody tagged is an empty tab, a paid invite on an
 unconfigured gateway cannot be bought. These checks found by hand on the
 Brahm Varchas build are what this reports, with a fix and a dashboard link for
-each — the MCP never writes this data itself.
+each. Nothing here writes; the opt-in ``catalog_data_edit`` tool (when an
+admin enables it) can add the missing folders, tags and product pages.
 
 Severities: ``error`` = visibly broken or cannot be bought; ``warning`` = a
 widget shows less than the design expects; ``info`` = worth knowing.

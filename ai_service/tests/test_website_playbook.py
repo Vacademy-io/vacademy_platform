@@ -112,8 +112,14 @@ def test_playbook_names_only_actions_that_exist(source):
     assert site and edit
     assert site <= set(website_mod.WEBSITE_ACTIONS), site - set(website_mod.WEBSITE_ACTIONS)
     assert edit <= set(WEBSITE_EDIT_ACTIONS), edit - set(WEBSITE_EDIT_ACTIONS)
-    for missing in ("catalog_data_edit",):
-        assert missing not in text
+    # catalog_data_edit (D2) is opt-in per connection too: named only as "when enabled", with real actions,
+    # and never with an activate / delete action.
+    from app.services.assistant_tools_catalog_data_edit import CATALOG_DATA_EDIT_ACTIONS
+
+    data_actions = {a for group in re.findall(r"\bcatalog_data_edit\(([a-z_ |]+)\)", text) for a in group.split(" | ")}
+    assert data_actions == set(CATALOG_DATA_EDIT_ACTIONS), data_actions
+    assert "if the catalog_data_edit tool is enabled" in text and "catalog_data_edit when enabled" in text
+    assert "activate_product_page" not in text and "dry run first" in text
     # design_import is opt-in per connection: the playbook may only point at it as "when enabled".
     from app.services.assistant_tools_design_import import DESIGN_IMPORT_ACTIONS
 

@@ -236,6 +236,70 @@ async def test_discard_draft(backend, monkeypatch):
     assert backend.discarded == 1 and "back to its published" in out["summary_of_change"]
 
 
+def _with_stale_draft(monkeypatch):
+    """A draft started before the live site last changed (admin-core flags it)."""
+    draft = sample_config()
+    draft["pages"][0]["title"] = "Old draft home"
+    async def _draft(ctx_, catalogue_id):
+        return {"id": "rev-d", "revision_no": 7, "source": "MANUAL", "catalogue_json": json.dumps(draft),
+                "created_at": "2026-09-01T00:00:00", "live_changed_since_draft": True,
+                "live_revision_no": 9, "live_updated_at": "2026-10-08T12:00:00"}
+    monkeypatch.setattr(website_data, "get_draft", _draft)
+
+
+@pytest.mark.asyncio
+async def test_edits_on_a_stale_draft_are_refused(backend, monkeypatch):
+    _with_stale_draft(monkeypatch)
+    for args in (
+        {"action": "set_theme", "tag_name": "main-site", "theme": {"preset": "rose"}},
+        {"action": "update_page", "tag_name": "main-site", "page_route": "home",
+         "ops": [{"op": "update", "id": "c-hero", "propsPatch": {"left": {"title": "x"}}}]},
+        {"action": "create_page", "tag_name": "main-site",
+         "page": {"route": "new", "components": [{"type": "faqSection", "props": {}}]}},
+        {"action": "add_html_page", "route": "promo", "html": "<h1>Hi</h1>"},
+    ):
+        out = await run(args)
+        assert out["error"] == "stale_draft", args["action"]
+        assert out["action"] == args["action"]
+        assert "manage-pages/editor/main-site" in out["editor_url"]
+        assert out["draft_revision_no"] == 7 and out["live_revision_no"] == 9
+        assert "Nothing was changed" in out["message"]
+    assert backend.saved == [] and backend.created == []
+
+    # Discarding is the way out, so it is allowed.
+    out = await run({"action": "discard_draft", "tag_name": "main-site"})
+    assert backend.discarded == 1 and "back to its published" in out["summary_of_change"]
+
+
+@pytest.mark.asyncio
+async def test_reads_on_a_stale_draft_show_the_published_site(backend, monkeypatch):
+    from app.services import assistant_tools_website as website_mod
+    _with_stale_draft(monkeypatch)
+    out = json.loads(await website_mod.execute_website({"action": "get_page", "tag_name": "main-site"}, ctx()))
+    assert out["showing"] == "published"
+    assert out["page"]["title"] == "Home"                       # not the draft's "Old draft home"
+    assert out["stale_draft"]["live_revision_no"] == 9
+    assert "PUBLISHED" in out["stale_draft"]["note"]
+    assert "manage-pages/editor/main-site" in out["stale_draft"]["editor_url"]
+
+    site, err = await website_data.load_site(ctx(), "main-site")
+    assert err is None and site["from_draft"] is False
+    assert site["config"]["pages"][0]["title"] == "Home"
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_draft_is_still_edited_and_saved_compactly(backend, monkeypatch):
+    cfg = sample_config()
+    cfg["pages"][0]["title"] = "Draft home"
+    _with_draft(monkeypatch, cfg)
+    out = await run({"action": "set_theme", "tag_name": "main-site", "theme": {"preset": "rose"}})
+    assert out["saved_as"] == "draft"
+    saved = backend.saved[-1]
+    assert saved["config"]["pages"][0]["title"] == "Draft home"
+    # Compact JSON, so the editor's JSON.stringify comparison sees no phantom change.
+    assert saved["catalogue_json"] == json.dumps(saved["config"], ensure_ascii=False, separators=(",", ":"))
+
+
 @pytest.mark.asyncio
 async def test_import_image_refuses_non_https_and_non_images(backend, monkeypatch):
     out = await run({"action": "import_image", "url": "http://example.com/a.png"})

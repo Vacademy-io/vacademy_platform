@@ -171,11 +171,28 @@ def _parse_config(raw: Any) -> Optional[Dict[str, Any]]:
     return parsed if isinstance(parsed, dict) else None
 
 
+STALE_DRAFT_NOTE = (
+    "This site has an unpublished draft that was started before the live site last changed, so this "
+    "shows the PUBLISHED site. Publishing that draft would undo the newer live changes. The admin "
+    "should open editor_url and either discard the draft (use the live site) or review it before publishing."
+)
+
+
+def stale_note(site: Dict[str, Any]) -> Dict[str, Any]:
+    """``{"stale_draft": …}`` for a read result when the site's draft is older than live, else ``{}``."""
+    return {"stale_draft": site["stale_draft"]} if site.get("stale_draft") else {}
+
+
 async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     ``(site, None)`` or ``(None, error)``. ``site`` carries the catalogue row, the
     parsed config the EDITOR would show (draft if one exists, else published),
     and ``from_draft``.
+
+    A draft the live site has moved past (admin-core's
+    ``live_changed_since_draft``) is never shown or built on: ``config`` is the
+    published site and ``stale_draft`` describes the draft, so reads can say so
+    and edits can refuse.
     """
     tag, err = await resolve_tag(ctx, tag_name)
     if err:
@@ -188,7 +205,8 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
         return None, _err("fetch_failed", message=f"Could not load website '{tag}'.")
     catalogue_id = str(row.get("id") or "")
     draft = await get_draft(ctx, catalogue_id) if catalogue_id else None
-    raw = draft.get("catalogue_json") if draft else row.get("catalogue_json")
+    stale = bool(draft and draft.get("live_changed_since_draft"))
+    raw = draft.get("catalogue_json") if draft and not stale else row.get("catalogue_json")
     config = _parse_config(raw)
     if config is None:
         return None, _err(
@@ -196,15 +214,25 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
             message=f"Website '{tag}' is too large or malformed to summarise here; open it in the dashboard.",
             editor_url=site_editor_url(tag, ctx=ctx),
         )
-    return {
+    site: Dict[str, Any] = {
         "tag_name": tag,
         "catalogue_id": catalogue_id,
         "status": row.get("status"),
         "is_default": bool(row.get("is_default")),
         "config": config,
-        "from_draft": draft is not None,
+        "from_draft": draft is not None and not stale,
         "draft": {k: draft.get(k) for k in ("id", "revision_no", "source", "updated_at")} if draft else None,
-    }, None
+    }
+    if stale:
+        site["stale_draft"] = {
+            "draft_revision_no": draft.get("revision_no"),
+            "draft_started_at": draft.get("created_at"),
+            "live_revision_no": draft.get("live_revision_no"),
+            "live_updated_at": draft.get("live_updated_at"),
+            "editor_url": site_editor_url(tag, ctx=ctx),
+            "note": STALE_DRAFT_NOTE,
+        }
+    return site, None
 
 
 # ── context loaders ──────────────────────────────────────────────────────
@@ -353,7 +381,7 @@ async def campaign_lead_stats(ctx: ToolContext, audience_id: str, days: Optional
 
 
 __all__ = [
-    "NO_PORTAL_DOMAIN_NOTE",
+    "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
     "get_draft", "get_history", "load_site", "load_courses", "load_product_pages",
     "load_campaigns", "campaign_lead_stats", "get_campaign", "campaign_name_map",

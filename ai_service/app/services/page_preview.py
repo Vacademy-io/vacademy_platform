@@ -19,7 +19,7 @@ import base64
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
@@ -383,25 +383,43 @@ async def _render_fidelity(async_playwright: Any, base_url: str, tag_name: str, 
         finally:
             await browser.close()
 
-    image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if image is None:
+    truncated = (int(box["height"]) > shot_height) if box else page_height > shot_height
+    if full_image:
+        # compare decodes the capture itself, in its worker thread: no decode or tiles here.
+        out: Dict[str, Any] = {"png_base64": "", "tiles": [], "width": int(clip["width"]),
+                               "height": int(clip["height"]), "page_height": page_height, "truncated": truncated,
+                               "full_jpeg": data}
+        if boxes is not None:
+            out["sections"] = boxes
+        if clicked is not None:
+            out["clicked"] = clicked
+            out["click_changed"] = bool(click_changed)
+        return out
+
+    def _decode_and_tile() -> Optional[Tuple[List[Dict[str, Any]], int, int]]:
+        image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            return None
+        return _tiles(image, cv2), int(image.shape[1]), int(image.shape[0])
+
+    # Off the event loop: a 1920x16000 decode + JPEG tiles would stall every other request.
+    decoded = await asyncio.to_thread(_decode_and_tile)
+    if decoded is None:
         return {"error": "preview_failed", "message": "The screenshot could not be read."}
-    tiles = _tiles(image, cv2)
-    out: Dict[str, Any] = {
+    tiles, img_w, img_h = decoded
+    out = {
         "png_base64": tiles[0]["png_base64"] if tiles else "",
         "tiles": tiles,
-        "width": int(image.shape[1]),
-        "height": int(image.shape[0]),
+        "width": img_w,
+        "height": img_h,
         "page_height": page_height,
-        "truncated": (int(box["height"]) > shot_height) if box else page_height > shot_height,
+        "truncated": truncated,
     }
     if boxes is not None:
         out["sections"] = boxes
     if clicked is not None:
         out["clicked"] = clicked
         out["click_changed"] = bool(click_changed)
-    if full_image:
-        out["full_jpeg"] = data
     return out
 
 

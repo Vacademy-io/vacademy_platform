@@ -155,17 +155,26 @@ async def _lifespan(app: FastAPI):
         with db_session() as db:
             from .mcp.schema import ensure_mcp_schema
             ensure_mcp_schema(db)
-            # design_import's 24 h upload store (also created lazily on first use).
-            from .models.design_import import ensure_design_import_schema
-            ensure_design_import_schema(db)
-            # catalog_data_edit's record of the libraries it created (also lazy).
-            from .models.catalog_data_edit import ensure_catalog_data_schema
-            ensure_catalog_data_schema(db)
-            # website_publish's single-use confirm tokens (also created lazily on first use).
-            from .models.publish_confirm import ensure_publish_confirm_schema
-            ensure_publish_confirm_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
+    # Tables only admin_core Flyway creates (V561, V562): no DDL here, only a check
+    # that logs an error naming the migration when one is missing. Never raises.
+    try:
+        with db_session() as db:
+            from .models.catalog_data_edit import check_catalog_data_schema
+            from .models.design_import import check_design_import_schema
+            from .models.publish_confirm import check_publish_confirm_schema
+            check_design_import_schema(db)
+            check_catalog_data_schema(db)
+            check_publish_confirm_schema(db)
+    except Exception as exc:  # noqa: BLE001
+        _logger.error("mcp table check skipped: %s", exc)
+    # design_import keeps uploads 24 h: drop expired ones hourly, uploads or not.
+    try:
+        from .services.assistant_tools_design_import import start_design_import_purger
+        start_design_import_purger()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("design_import purger startup skipped: %s", exc)
 
     async with mcp_server.session_manager.run():
         yield

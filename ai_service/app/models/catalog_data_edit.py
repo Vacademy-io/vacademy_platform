@@ -8,17 +8,17 @@ one no live site uses. A library's ``created_by`` is the admin's own user id
 this table can. One row per created record, filtered by the caller's pinned
 institute on every read. Rows are never updated or deleted by the tool.
 
-Created at startup (idempotent) and again lazily on first use, like the other
-ai_service-owned tables (mcp_design_import_part, tutor_demo_grant, ...).
+The admin_core Flyway migration
+V562__mcp_catalog_data_record_and_publish_confirm.sql creates the table; keep
+this model identical to it (test_mcp_tables_migration_parity). ai_service runs
+no DDL for it: it only checks the table exists.
 """
 from __future__ import annotations
-
-import logging
 
 from sqlalchemy import Column, DateTime, Index, String
 from sqlalchemy.orm import Session, declarative_base
 
-logger = logging.getLogger(__name__)
+from .flyway_owned import table_present
 
 Base = declarative_base()
 
@@ -39,14 +39,10 @@ class CatalogDataRecord(Base):
     )
 
 
-def ensure_catalog_data_schema(db: Session) -> bool:
-    """Create the table + index if missing. Idempotent; logs instead of raising."""
-    try:
-        CatalogDataRecord.__table__.create(bind=db.get_bind(), checkfirst=True)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("ensure_catalog_data_schema failed: %s", exc)
-        return False
+def check_catalog_data_schema(db: Session) -> bool:
+    """True when mcp_catalog_data_record exists. NO DDL: admin_core Flyway V562 creates it.
+    Logs an error and returns False when it is missing; never raises."""
+    return table_present(db, CatalogDataRecord.__tablename__, "V562__mcp_catalog_data_record_and_publish_confirm.sql")
 
 
-__all__ = ["CatalogDataRecord", "ensure_catalog_data_schema"]
+__all__ = ["CatalogDataRecord", "check_catalog_data_schema"]

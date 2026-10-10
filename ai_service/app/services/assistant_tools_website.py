@@ -734,9 +734,12 @@ def _check_lang(config: Dict[str, Any], lang: Any) -> Tuple[Optional[str], Optio
         return None, None
     available = _site_locales(config)
     if code not in available:
-        extra = {"fix": "Add the language in the editor's site languages first."} if not available else {}
-        return None, _err("unknown_language", message=f"This site has no '{code}' version.", available=available,
-                          **extra)
+        shown = code if re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?", code) else "<code>"
+        # The MCP can add the language to the draft itself; the editor is the admin's way.
+        fix = (f"Enable it in the draft with website_edit(action='set_translations', locale='{shown}', enable=true), "
+               "then preview / compare again; or add it in the editor's site languages.")
+        return None, _err("unknown_language", message=f"This site has no '{shown}' version.", available=available,
+                          fix=fix)
     return code, None
 
 
@@ -911,12 +914,21 @@ async def _action_compare(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         await asyncio.wait_for(slots.acquire(), _COMPARE_SLOT_WAIT_S)
     except asyncio.TimeoutError:
         return _err("compare_busy", message="Another comparison is running; try again in a minute.")
+    # The slot is freed when the WORKER THREAD ends, not when this request does: a cancelled
+    # request cannot stop the thread, and freeing early would let a retry run a second
+    # few-hundred-MB compare beside it.
+    job = asyncio.ensure_future(asyncio.to_thread(work))
+
+    def _free(done: "asyncio.Future") -> None:
+        slots.release()
+        if not done.cancelled():
+            done.exception()          # retrieved here too, so a cancelled caller logs no noise
+
+    job.add_done_callback(_free)
     try:
-        report = await asyncio.to_thread(work)
+        report = await asyncio.shield(job)
     except vc.CompareError as exc:
         return _err(exc.code, message=exc.message)
-    finally:
-        slots.release()
     picture = report.pop("side_by_side_jpeg", None)
     issues = audit_reference_fidelity(page, site["config"].get("globalSettings"), {}, compare=report)
     out: Dict[str, Any] = {
@@ -1025,6 +1037,18 @@ def _platform_object(url: str) -> Optional[Tuple[str, str]]:
     return found[0], key
 
 
+def _publicly_served(url: str, bucket: str) -> bool:
+    """True when ``url`` is world-readable already: an object of the PUBLIC bucket, or a url on
+    the public CDN host. Never the private bucket by its S3 address."""
+    from urllib.parse import urlparse
+    st = _settings()
+    public = getattr(st, "aws_s3_public_bucket", None)
+    if public and bucket == str(public):
+        return True
+    cdn_host = (urlparse(st.cdn_public_base_url or "").hostname or "").lower()
+    return bool(cdn_host) and (urlparse(url).hostname or "").lower() == cdn_host
+
+
 def _media_host_allowed(url: str) -> bool:
     """A media-library url we may download over https: this platform's CDN / media hosts, or a
     plain S3 endpoint (never another *.amazonaws.com service, never another CloudFront)."""
@@ -1070,8 +1094,12 @@ async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any],
             obj = _platform_object(url)
             if site_urls is None:
                 site_urls = _config_strings(config, set())
+            # Never "any key this service can read that the caller wrote into its own draft": that
+            # would let one institute read another's objects (or the private bucket) by URL. An
+            # image already on this site counts only when anyone can read it anyway (the PUBLIC
+            # bucket, or the public CDN); everything else must be this institute's import or media.
             allowed = bool(obj and institute and obj[1].startswith(f"{_IMPORT_PREFIX}{institute}/")) or (
-                bool(obj) and url in site_urls)
+                bool(obj) and _publicly_served(url, obj[0]) and url in site_urls)
             from_library = False
             if not allowed and (obj or _media_host_allowed(url)):
                 if media is None:

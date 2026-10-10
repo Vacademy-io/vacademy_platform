@@ -196,6 +196,22 @@ export const patternVariantsFor = (componentType: string): PatternVariant[] =>
         }))
         .filter((v) => Object.keys(v.props).length > 0);
 
+/**
+ * A look as it applies to THIS block: a header with no logo of its own never takes
+ * `logoOnly: true` (it would hide the site name and leave an empty bar), the same
+ * guard the TemplateLibrary chrome recipe applies.
+ */
+export const lookForBlock = (
+    componentType: string,
+    currentProps: Record<string, any> | undefined,
+    look: Record<string, any>
+): Record<string, any> => {
+    if (componentType === 'header' && look.logoOnly === true && !currentProps?.logo) {
+        return { ...look, logoOnly: currentProps?.logoOnly ?? false };
+    }
+    return look;
+};
+
 /* ── TemplateLibrary recipes ──────────────────────────────────────────── */
 
 const makeSection = (t: TFunction, type: string, ids: string[], extra?: JsonObject): Component => {

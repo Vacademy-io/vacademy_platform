@@ -71,17 +71,25 @@ def _placement(key: str) -> Dict[str, Any]:
             "opt_in": key in MCP_OPT_IN_GROUPS}
 
 
-def tool_catalog() -> List[Dict[str, Any]]:
+def tool_catalog(include_opt_in: bool = True) -> List[Dict[str, Any]]:
     """
     The catalogue the settings UI renders toggles from.
 
     Served from the backend so the dashboard never carries a second copy of the
     tool list that can drift from the registry.
+
+    ``include_opt_in=False`` leaves out the opt-in groups (MCP_OPT_IN_GROUPS). The
+    settings page asks for them explicitly (``?opt_in=1``) because it never turns
+    them on with a preset; an older dashboard bundle does not know the flag, so it
+    never sees them and its "everything" / Edit-level presets cannot switch on
+    live publishing or live data edits.
     """
     catalog: List[Dict[str, Any]] = []
     for spec in exposed_specs():
         fn = spec.schema.get("function", {})
         key = spec.key()
+        if not include_opt_in and key in MCP_OPT_IN_GROUPS:
+            continue
         description = fn.get("description", "")
         # Action-style tools carry their verbs in an `action` enum; surface them
         # so an admin can see what a toggle actually allows.

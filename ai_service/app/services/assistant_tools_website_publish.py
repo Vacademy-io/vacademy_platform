@@ -142,10 +142,14 @@ def _token_hash(token: str) -> str:
 
 
 def _ensure_schema(ctx: ToolContext) -> None:
+    """Raise TableMissing when Flyway V562 has not created the table (ai_service runs no DDL)."""
     global _schema_ready
     if not _schema_ready:
-        from ..models.publish_confirm import ensure_publish_confirm_schema
-        _schema_ready = ensure_publish_confirm_schema(ctx.db)
+        from ..models.flyway_owned import TableMissing
+        from ..models.publish_confirm import check_publish_confirm_schema
+        _schema_ready = check_publish_confirm_schema(ctx.db)
+        if not _schema_ready:
+            raise TableMissing("mcp_publish_confirm is missing (admin_core Flyway V562)")
 
 
 def _issue_token(ctx: ToolContext, action: str, site: Dict[str, Any], **fields: Any) -> Tuple[str, datetime]:
@@ -200,7 +204,13 @@ def _load_token(ctx: ToolContext, token: Any, action: str):
         return None, _token_refusal("invalid_confirm_token", (
             f"confirm_token is missing or not one this server issued. {again} to get one, show the admin what "
             "changes, and call again after they say yes."))
-    _ensure_schema(ctx)
+    from ..models.flyway_owned import TableMissing
+    try:
+        _ensure_schema(ctx)
+    except TableMissing:
+        return None, _token_refusal("publish_unavailable", (
+            "Publishing over MCP is not available on this server yet (its confirm-token store is missing). "
+            "Nothing was changed: the admin can publish from the editor."))
     # populate_existing: a row this session already holds may predate a revoke / spend made in bulk.
     row = (ctx.db.query(PublishConfirm).populate_existing()
            .filter(PublishConfirm.id == _token_hash(token.strip()),

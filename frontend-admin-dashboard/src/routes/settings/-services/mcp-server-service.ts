@@ -51,6 +51,9 @@ export async function fetchMcpConnectionInfo(): Promise<McpConnectionInfo> {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: MCP_CONNECTION_INFO,
+        // This page keeps opt-in groups (publishing, live data edits) out of its presets,
+        // so it may see them; older bundles never ask and never get them.
+        params: { opt_in: 1 },
     });
     return response.data as McpConnectionInfo;
 }

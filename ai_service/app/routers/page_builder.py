@@ -4479,11 +4479,25 @@ def _drop_figma_sentences(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def _apply_figma_link_guard(reply: str, request_upload: Optional[str]) -> tuple[str, Optional[str]]:
+def _latest_user_has_images(history: List[IntakeTurn]) -> bool:
+    """The admin's LATEST message came with uploaded images (e.g. the frames' screenshots)."""
+    for turn in reversed(history):
+        if turn.role != "assistant":
+            # Only https uploads are sent to the model (see intake_turn's attachments).
+            return any(isinstance(u, str) and u.startswith("https://") for u in turn.image_urls or [])
+    return False
+
+
+def _apply_figma_link_guard(reply: str, request_upload: Optional[str],
+                            screenshots_attached: bool = False) -> tuple[str, Optional[str]]:
     """The admin just pasted a Figma link: the reply opens with the guidance,
     keeps only the model's sentences that don't talk about Figma (it cannot
     have seen the design), asks for screenshots when nothing else is left, and
-    the screenshot uploader opens."""
+    the screenshot uploader opens. When the same message already carries
+    screenshots, the model HAS seen the frames: only the guidance is added."""
+    if screenshots_attached:
+        rest = reply.replace(FIGMA_LINK_GUIDANCE, "").strip()
+        return (f"{FIGMA_LINK_GUIDANCE}\n\n{rest}" if rest else FIGMA_LINK_GUIDANCE), request_upload
     rest = _drop_figma_sentences(reply.replace(FIGMA_LINK_GUIDANCE, ""))
     return f"{FIGMA_LINK_GUIDANCE}\n\n{rest or _FIGMA_SCREENSHOT_ASK}", request_upload or "inspiration"
 
@@ -4561,10 +4575,12 @@ async def intake_turn(
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
     figma_link = _latest_user_figma_link(body.history)
+    figma_shots = bool(figma_link) and _latest_user_has_images(body.history)
     if figma_link:
         messages[-1]["content"] = (
             str(messages[-1].get("content") or "")
-            + "\n\n(The link above is a Figma file. It cannot be opened here — follow the FIGMA LINKS rule.)"
+            + "\n\n(The link above is a Figma file. It cannot be opened here — follow the FIGMA LINKS rule."
+            + (" The admin attached screenshots with this message: use those.)" if figma_shots else ")")
         )
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
     # the contract inside the final user message so every turn stays JSON.
@@ -4646,11 +4662,12 @@ async def intake_turn(
     ready = bool(data.get("ready"))
     brief = _clean_string(str(data.get("brief"))) if data.get("brief") else None
     if figma_link:
-        reply, req_upload = _apply_figma_link_guard(reply, req_upload)
-        # Nothing has been seen yet: wait for the screenshots, and keep "match
-        # the Figma file" out of the brief the composer reads.
-        ready = False
-        brief = _drop_figma_sentences(brief or "") or None
+        reply, req_upload = _apply_figma_link_guard(reply, req_upload, screenshots_attached=figma_shots)
+        if not figma_shots:
+            # Nothing has been seen yet: wait for the screenshots, and keep "match
+            # the Figma file" out of the brief the composer reads.
+            ready = False
+            brief = _drop_figma_sentences(brief or "") or None
 
     try:
         record_tool_billing(

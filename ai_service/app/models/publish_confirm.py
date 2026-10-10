@@ -12,18 +12,18 @@ revision and a hash of its JSON, or the target revision — plus the live
 revision then. It expires 10 minutes after it is issued and is spent by the
 first call that uses it (``used_at``), whatever that call's outcome.
 
-Its own table, created at startup (idempotent) and again lazily on first use,
-like ``mcp_design_import_part``. Only ``assistant_tools_website_publish``
-reads or writes it, always filtered by the caller's pinned institute.
+Its own table, created by the admin_core Flyway migration
+V562__mcp_catalog_data_record_and_publish_confirm.sql (keep this model identical
+to it; test_mcp_tables_migration_parity). ai_service runs no DDL for it. Only
+``assistant_tools_website_publish`` reads or writes it, always filtered by the
+caller's pinned institute.
 """
 from __future__ import annotations
-
-import logging
 
 from sqlalchemy import Column, DateTime, Index, Integer, String
 from sqlalchemy.orm import Session, declarative_base
 
-logger = logging.getLogger(__name__)
+from .flyway_owned import table_present
 
 Base = declarative_base()
 
@@ -60,14 +60,10 @@ class PublishConfirm(Base):
     )
 
 
-def ensure_publish_confirm_schema(db: Session) -> bool:
-    """Create the table + indexes if missing. Idempotent; logs instead of raising."""
-    try:
-        PublishConfirm.__table__.create(bind=db.get_bind(), checkfirst=True)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("ensure_publish_confirm_schema failed: %s", exc)
-        return False
+def check_publish_confirm_schema(db: Session) -> bool:
+    """True when mcp_publish_confirm exists. NO DDL: admin_core Flyway V562 creates it.
+    Logs an error and returns False when it is missing; never raises."""
+    return table_present(db, PublishConfirm.__tablename__, "V562__mcp_catalog_data_record_and_publish_confirm.sql")
 
 
-__all__ = ["PublishConfirm", "ensure_publish_confirm_schema"]
+__all__ = ["PublishConfirm", "check_publish_confirm_schema"]

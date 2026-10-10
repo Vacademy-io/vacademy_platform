@@ -301,6 +301,31 @@ def test_intake_turn_with_a_figma_link_is_never_ready_and_keeps_figma_out_of_the
     assert "reviewed" not in out.reply
 
 
+def test_intake_turn_with_a_figma_link_and_screenshots_attached_does_not_ask_again(monkeypatch):
+    """F5: screenshots on the same message: no second upload ask, ready is kept, the brief keeps what they show."""
+    seen: list = []
+    _fake_llm(
+        monkeypatch,
+        '{"reply": "Thanks — the Figma frames you attached use saffron and cream. Ready to build!", "ready": true, '
+        '"brief": "A Sanskrit school site. Colours from the Figma frames: saffron #E07A1F and cream.", '
+        '"chips": [], "request_upload": null}',
+        seen,
+    )
+    user = SimpleNamespace(institute_id="inst-1", user_id="user-1")
+    turn = pb.IntakeTurn(role="user", content=f"Here is our design {FIGMA} — screenshots attached",
+                         image_urls=["https://cdn.example.net/a.png"])
+
+    async def _inline(url):
+        return "data:image/png;base64,AAAA", None
+    monkeypatch.setattr(pb, "_inline_image_data_url", _inline)
+    body = pb.IntakeRequest(history=[turn])
+    out = asyncio.run(pb.intake_turn(body, db=None, current_user=user))
+    assert out.ready is True and out.request_upload is None
+    assert out.reply.startswith(FIGMA_LINK_GUIDANCE) and "saffron and cream" in out.reply
+    assert out.brief == "A Sanskrit school site. Colours from the Figma frames: saffron #E07A1F and cream."
+    assert "attached screenshots" in seen[0][-1]["content"]
+
+
 def test_intake_turn_without_a_figma_link_is_unchanged(monkeypatch):
     seen: list = []
     _fake_llm(monkeypatch, '{"reply": "Who is it for?", "chips": ["Parents"], "request_upload": null}', seen)

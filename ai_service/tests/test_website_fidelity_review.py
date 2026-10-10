@@ -602,6 +602,29 @@ async def test_update_page_sets_and_clears_a_design_source(bv_backend, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_update_page_treats_a_null_design_source_as_not_given(bv_backend, monkeypatch):
+    """F4: clients that send every optional parameter as null must not clear the design or save a no-op."""
+    await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                "design_source": {"url": FIGMA_URL, "frame": "Paths"}})
+    designed = bv_backend.saved[-1]
+
+    async def _draft(ctx_, catalogue_id):
+        return {"id": "rev-d", "revision_no": 7, "source": "AI_COPILOT", "catalogue_json": json.dumps(designed)}
+    monkeypatch.setattr(website_data, "get_draft", _draft)
+    saves = len(bv_backend.saved)
+    for empty in (None, ""):
+        out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                          "design_source": empty})
+        assert out["error"] == "missing_argument"
+    assert len(bv_backend.saved) == saves                        # no no-op draft
+    op = {"op": "update", "id": designed["pages"][2]["components"][0]["id"], "propsPatch": {"title": "Paths"}}
+    out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                      "ops": [op], "design_source": None})
+    assert "error" not in out and "design source cleared" not in json.dumps(out)
+    assert bv_backend.saved[-1]["pages"][2]["meta"]["designSource"]["nodeId"] == "1:247"
+
+
+@pytest.mark.asyncio
 async def test_review_accepts_fidelity_sent_as_a_string(bv_backend):
     out = await website({"action": "review", "tag_name": "main-site", "fidelity": "true"})
     assert all(p.get("mode") == "fidelity" for p in out["pages"].values()) and out["passes"] is True

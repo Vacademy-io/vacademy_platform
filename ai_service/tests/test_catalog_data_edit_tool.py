@@ -594,7 +594,9 @@ def test_slugify_matches_the_learner_folder_rule():
 def test_created_records_are_per_institute(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from app.models.catalog_data_edit import CatalogDataRecord
     db = sessionmaker(bind=create_engine("sqlite://"))()
+    CatalogDataRecord.__table__.create(db.get_bind())      # Flyway V562 creates it in production
     monkeypatch.setattr(tool, "_schema_ready", False)
     mine = ToolContext(db=db, principal=principal(), keys=(), bearer_token="jwt")
     other = ToolContext(db=db, principal=PinnedPrincipal(user_id="u-2", institute_id="inst-2", roles=["ADMIN"],

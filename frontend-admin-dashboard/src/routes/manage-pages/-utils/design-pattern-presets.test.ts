@@ -4,6 +4,7 @@ import generated from './generated/design-patterns.json';
 import {
     buildDesignRecipeTemplates,
     isLookKey,
+    lookForBlock,
     mergeChromeOnto,
     mergeOnto,
     patternVariantsFor,
@@ -184,6 +185,14 @@ describe('registry looks in the variant switcher', () => {
         expect(header.navigation).toBeUndefined();
         expect(header.logo).toBeUndefined();
         expect(patternVariantsFor('footer')[0]!.props).toEqual({ variant: 'brand', layout: 'four-column' });
+    });
+
+    it('a header look never hides the site name on a header with no logo', () => {
+        const look = patternVariantsFor('header')[0]!.props;
+        expect(lookForBlock('header', { title: 'Acme' }, look).logoOnly).toBe(false);
+        expect(lookForBlock('header', { title: 'Acme', logoOnly: true }, look).logoOnly).toBe(true);
+        expect(lookForBlock('header', { logo: 'https://cdn/logo.png' }, look).logoOnly).toBe(true);
+        expect(lookForBlock('footer', {}, { logoOnly: true }).logoOnly).toBe(true);
     });
 
     it('a look never carries the pattern text, even at the top level', () => {

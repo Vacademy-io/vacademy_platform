@@ -5,6 +5,7 @@ come from structure and text, the way most Figma files are named. (The client's
 real design is scored separately by evals/figma_bv, never committed.)
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -167,6 +168,38 @@ def test_a_large_file_plans_in_seconds():
     out = fdi.plan_design(metadata_xml=[xml], design_code=[], variables=None, frame_ids=None,
                           patterns=PATTERNS, font_stacks=FONT_STACKS)
     assert out["stats"]["nodes"] > 9_000 and time.monotonic() - started < 10
+
+
+def _frame_code(frame_id, art_file, tile_id):
+    return f"""const assetPathPrefix = "https://www.figma.com/api/mcp/asset/abc";
+const imgArtwork = `${{assetPathPrefix}}/{art_file}`;
+export default function Page() {{
+  return (
+    <div data-node-id="{frame_id}">
+      <div data-node-id="{tile_id}"><img alt="" src={{imgArtwork}} /></div>
+    </div>
+  );
+}}
+"""
+
+
+def test_asset_names_are_scoped_to_their_own_frame():
+    """F1: two frames both define imgArtwork for DIFFERENT files: each node keeps its own image."""
+    idx = fdi.parse_design_code([
+        {"node_id": "1:36", "code": _frame_code("1:36", "c51b5.png", "I1:112;213:4")},
+        {"node_id": "73:324", "code": _frame_code("73:324", "3e49e.png", "73:400")},
+    ])
+    by_url = {url: idx.asset_nodes[ref] for ref, url in idx.assets.items()}
+    assert by_url == {"https://www.figma.com/api/mcp/asset/abc/c51b5.png": ["I1:112;213:4"],
+                      "https://www.figma.com/api/mcp/asset/abc/3e49e.png": ["73:400"]}
+    assert set(idx.assets) == {"imgArtwork", "imgArtwork@73:324"}
+    # The same file under the same name in two frames is ONE asset used by both.
+    same = fdi.parse_design_code([
+        {"node_id": "1:36", "code": _frame_code("1:36", "c51b5.png", "1:50")},
+        {"node_id": "73:324", "code": _frame_code("73:324", "c51b5.png", "73:400")},
+    ])
+    assert same.assets == {"imgArtwork": "https://www.figma.com/api/mcp/asset/abc/c51b5.png"}
+    assert same.asset_nodes["imgArtwork"] == ["1:50", "73:400"]
 
 
 def test_unparseable_xml_is_a_clear_error():
@@ -364,3 +397,56 @@ export default function Page() {
     idx = fdi.parse_design_code([{"node_id": "9:1", "code": code}])
     assert idx.styles["9:900"]["bg"] == "#123456" and idx.styles["9:1"]["bg"] == "#FFFDF8"
     assert idx.texts["9:202"] == ["Hello"] and idx.truncated == []
+
+
+def test_bound_and_todo_paths_follow_the_filled_header_not_the_registry():
+    """F4: the registry's minimal header has the mega menu at navigation[1]; the filled header put it at [0]."""
+    filled = {"logo": "", "navigation": [
+        {"label": "Knowledge Streams", "route": "", "type": "megaMenu", "megaMenu": {"libraryId": "", "eyebrow": "Streams"}},
+        {"label": "Courses", "route": "/courses"}]}
+    bound, todo = fdi._final_bound_and_todo(
+        filled, ["navigation[1].megaMenu.libraryId"],
+        ["navigation[1].label: menu label", "navigation[1].megaMenu.eyebrow: eyebrow", "logo: image url"])
+    assert bound == ["navigation[0].megaMenu.libraryId"]
+    assert todo == ["logo: image url"]
+
+
+def test_every_empty_id_in_the_filled_props_is_reported():
+    """F4: a slide the fill added (slides[1]) has its own empty productPageCode; featured / pathExtras codes count."""
+    props = {"columnSections": [{}, {"slides": [{"cta": {"productPageCode": ""}}, {"cta": {"productPageCode": ""}}]}],
+             "featured": {"code": ""}, "pathExtras": [{"code": ""}], "other": {"code": ""}, "libraryId": "lib-1"}
+    bound, _ = fdi._final_bound_and_todo(props, ["columnSections[1].slides[0].cta.productPageCode"], [])
+    assert bound == ["columnSections[1].slides[0].cta.productPageCode", "columnSections[1].slides[1].cta.productPageCode",
+                     "featured.code", "pathExtras[0].code"]
+
+
+def test_design_prices_never_reach_step_meta():
+    """F9: a step price that is not the slide's own price is left empty with a todo, never copied."""
+    assert fdi._price_digits("Enrol for ₹2,551 →") == "2551" and fdi._price_digits("Free") == ""
+    props = {"columnSections": [{"slides": [{"steps": [{"title": "A", "meta": "", fdi._DESIGN_PRICE_KEY: "₹551"}]}]}]}
+    todo: list = []
+    fdi._pop_design_prices(props, "", todo)
+    assert fdi._DESIGN_PRICE_KEY not in json.dumps(props)
+    assert todo and todo[0].startswith("columnSections[0].slides[0].steps[0].meta: the design shows ₹551")
+
+
+@pytest.mark.skipif(not os.environ.get("FIGMA_BV_INPUTS"), reason="set FIGMA_BV_INPUTS to the private BV Figma inputs")
+def test_bv_plan_header_spotlight_and_prices():
+    from evals.figma_bv import run as bv
+    from app.services.assistant_tools_website_edit import FONT_STACKS
+    inputs = Path(os.environ["FIGMA_BV_INPUTS"])
+    spec = bv.load_spec()
+    catalog = json.loads((Path(__file__).resolve().parents[1] / "app/data/catalogue_schema_catalog.json").read_text())
+    plan = fdi.plan_design(metadata_xml=[(inputs / spec["metadata"]).read_text()],
+                           design_code=[{"node_id": k, "code": (inputs / v).read_text()} for k, v in spec["design_code"].items()],
+                           variables=None, frame_ids=None, patterns=catalog["patterns"], font_stacks=FONT_STACKS)
+    header = plan["chrome"]["header"]
+    assert header["bound_paths_left_empty"] == ["navigation[0].megaMenu.libraryId"] and header["mega_menu_nav_index"] == 0
+    assert not any(t.startswith("navigation[1].") and "route" not in t for t in header["todo"])
+    cat = next(s for s in plan["sections"] if s["id"] == "courses-course-catalog")
+    assert "columnSections[1].slides[1].cta.productPageCode" in cat["bound_paths_left_empty"]
+    assert "₹" not in json.dumps([st.get("meta") for sec in cat["props_draft"]["columnSections"]
+                                  for sl in sec.get("slides") or [] for st in sl.get("steps") or []], ensure_ascii=False)
+    for a in plan["assets"]:                              # each frame's nodes keep their own frame's image
+        frames = {n.split(";")[0].lstrip("I").split(":")[0] for n in a["used_by"]}
+        assert len(frames) <= 1, a

@@ -1,4 +1,5 @@
 import { getComponentVariants } from '../-utils/component-variants';
+import { lookForBlock } from '../-utils/design-pattern-presets';
 
 interface VariantSwitcherProps {
     componentType: string;
@@ -49,11 +50,12 @@ export const VariantSwitcher = ({ componentType, currentProps, onApply }: Varian
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Layout Preset</p>
             <div className="flex flex-wrap gap-2">
                 {variants.map((variant) => {
-                    const active = isActive(variant.props);
+                    const look = lookForBlock(componentType, currentProps, variant.props);
+                    const active = isActive(look);
                     return (
                         <button
                             key={variant.id}
-                            onClick={() => onApply(deepMerge(currentProps, variant.props))}
+                            onClick={() => onApply(deepMerge(currentProps, look))}
                             title={variant.description}
                             className={`flex flex-col items-center rounded border px-3 py-2 text-xs transition-colors ${
                                 active

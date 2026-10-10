@@ -156,6 +156,8 @@ def test_a_language_the_site_does_not_have_is_refused(bv, monkeypatch):
     monkeypatch.setattr(page_preview, "render_preview", render)
     out = call({"action": "preview", "lang": "ta"})
     assert out["error"] == "unknown_language" and out["available"] == ["en", "hi"]
+    # F10: the fix names the MCP's own way to add the language, not only the editor.
+    assert "website_edit(action='set_translations'" in out["fix"] and "enable=true" in out["fix"]
 
 
 # ── compare ──────────────────────────────────────────────────────────────
@@ -251,6 +253,53 @@ def test_compare_never_fetches_an_address_it_was_handed(bv, monkeypatch):
         assert out["error"] == "reference_not_allowed", url
     out = call({"action": "compare", "reference": {"url": "https://www.figma.com/design/abc"}})
     assert out["error"] == "bad_request" and "never fetched" in out["message"]
+
+
+def _serve(config, monkeypatch):
+    row = json.dumps(config)
+
+    async def admin_core(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/revision/draft"):
+            return {"error": "fetch_failed", "status": 204}
+        if path.endswith("/revision/history"):
+            return []
+        return [{"id": "c", "tag_name": "bv", "status": "ACTIVE", "is_default": True, "catalogue_json": row}] \
+            if path.endswith("get-all") else {"id": "c", "tag_name": "bv", "status": "ACTIVE", "catalogue_json": row}
+    monkeypatch.setattr(website_data, "_admin_core_json", admin_core)
+
+
+def test_compare_never_reads_an_unscoped_object_written_into_the_callers_own_draft(bv, monkeypatch):
+    """SEC-1: a bucket URL the caller put into its own site config is not 'an image of this institute'."""
+    reads = []
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda b, k, c: reads.append((b, k)) or b"x")
+
+    async def media(ctx_, kind, limit):
+        return []
+    monkeypatch.setattr(website_mod, "_load_media", media)
+    stolen = f"https://{BUCKET}.s3.amazonaws.com/inst-2/proctoring/snap.jpg"
+    bv["pages"][0].setdefault("components", []).insert(0, {
+        "id": "x-1", "type": "text", "props": {"content": stolen, "image": stolen}})
+    _serve(bv, monkeypatch)
+    out = call({"action": "compare", "reference": {"asset_url": stolen}})
+    assert out["error"] == "reference_not_allowed" and reads == []
+
+
+def test_compare_accepts_a_site_image_from_the_public_bucket(bv, monkeypatch):
+    design, _ = _design_and_render()
+    reads = []
+
+    def read_s3(bucket, key, cap):
+        reads.append((bucket, key))
+        return cv2.imencode(".png", design)[1].tobytes()
+    monkeypatch.setattr(website_mod, "_read_s3_object", read_s3)
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(design, {}))
+    base = website_data._settings()
+    monkeypatch.setattr(website_mod, "_settings", lambda: SimpleNamespace(**{**vars(base), "aws_s3_public_bucket": BUCKET}))
+    url = f"https://{BUCKET}.s3.amazonaws.com/site/hero.png"
+    bv["pages"][0].setdefault("components", []).insert(0, {"id": "x-1", "type": "hero", "props": {"image": url}})
+    _serve(bv, monkeypatch)
+    out = call({"action": "compare", "page_route": "courses", "reference": {"asset_url": url}})
+    assert "error" not in out and reads == [(BUCKET, "site/hero.png")]
 
 
 def test_compare_asset_ids_must_be_the_callers_own_uploads(bv, monkeypatch):
@@ -460,3 +509,41 @@ def test_mcp_result_sends_every_tile_as_an_image(monkeypatch):
     assert kinds == ["image", "image", "image", "text"]
     assert [c.data for c in res.content[:3]] == ["AAA", "BBB", "CCC"]
     assert "images_base64" not in res.content[3].text and "image_png_base64" not in res.content[3].text
+
+
+def test_a_cancelled_compare_keeps_its_slot_until_the_worker_thread_ends(bv, monkeypatch):
+    """RES-2: cancelling the request must not let a second compare start beside the running thread."""
+    import threading
+    from app.services import visual_compare as vc
+
+    design, rendered = _design_and_render()
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda b, k, c: cv2.imencode(".png", design)[1].tobytes())
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, {}))
+    started, release = threading.Event(), threading.Event()
+    real = vc.decode_reference
+
+    def slow(blobs, width):
+        started.set()
+        release.wait(10)
+        return real(blobs, width)
+    monkeypatch.setattr(vc, "decode_reference", slow)
+    slots = asyncio.Semaphore(1)
+    monkeypatch.setattr(vc, "COMPARE_SLOTS", slots)
+    args = {"action": "compare", "page_route": "courses",
+            "reference": {"asset_url": f"{CDN}/page-builder/imports/inst-1/p.png"}}
+
+    async def scenario():
+        task = asyncio.ensure_future(website_mod.execute_website(args, ctx()))
+        while not started.is_set():
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert slots.locked()                 # the thread still runs: the slot stays taken
+        release.set()
+        for _ in range(500):
+            if not slots.locked():
+                break
+            await asyncio.sleep(0.01)
+        assert not slots.locked()             # freed when the thread finished
+    asyncio.run(scenario())

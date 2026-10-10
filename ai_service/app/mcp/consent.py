@@ -24,7 +24,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode, urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -312,6 +312,8 @@ async def connection_info(
     principal: PinnedPrincipal = Depends(get_pinned_principal),
     db: Session = Depends(db_dependency),
     settings: Settings = Depends(get_settings),
+    # Only a settings page that keeps opt-in groups out of its presets asks for them.
+    opt_in: bool = Query(False),
 ) -> ConnectionInfoResponse:
     _require_institute_admin(principal)
     repo = _repo(db, settings)
@@ -324,7 +326,7 @@ async def connection_info(
         admin_portal_url=admin_portal_base(db, principal.institute_id, settings.admin_dashboard_url),
         issuer=settings.mcp_issuer_url,
         scope=MCP_SCOPE_READ,
-        tools=tool_catalog(),
+        tools=tool_catalog(include_opt_in=opt_in),
         # Primary client first, then custom ones newest-first (the repository order).
         manual_clients=sorted(
             (_client_response(c) for c in repo.list_manual_clients(principal.institute_id)),

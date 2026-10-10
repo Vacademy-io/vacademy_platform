@@ -15,19 +15,16 @@ import carries the import's ``expires_at`` (copied from its first part), so a
 bulk ``DELETE ... WHERE expires_at <= now()`` drops whole imports, never half
 of one.
 
-The admin_core Flyway migration V561__mcp_design_import_part.sql is the source
-of truth for the schema; keep this model identical to it. ai_service also
-creates the table at startup (idempotent) and again lazily on first use, so it
-runs standalone in local development.
+The admin_core Flyway migration V561__mcp_design_import_part.sql creates the
+table; keep this model identical to it (test_design_import_migration_parity).
+ai_service runs no DDL for it: it only checks the table exists.
 """
 from __future__ import annotations
-
-import logging
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Session, declarative_base
 
-logger = logging.getLogger(__name__)
+from .flyway_owned import table_present
 
 Base = declarative_base()
 
@@ -51,14 +48,10 @@ class DesignImportPart(Base):
     )
 
 
-def ensure_design_import_schema(db: Session) -> bool:
-    """Create the table + indexes if missing. Idempotent; logs instead of raising."""
-    try:
-        DesignImportPart.__table__.create(bind=db.get_bind(), checkfirst=True)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("ensure_design_import_schema failed: %s", exc)
-        return False
+def check_design_import_schema(db: Session) -> bool:
+    """True when mcp_design_import_part exists. NO DDL: admin_core Flyway V561 creates it.
+    Logs an error and returns False when it is missing; never raises."""
+    return table_present(db, DesignImportPart.__tablename__, "V561__mcp_design_import_part.sql")
 
 
-__all__ = ["DesignImportPart", "ensure_design_import_schema"]
+__all__ = ["DesignImportPart", "check_design_import_schema"]

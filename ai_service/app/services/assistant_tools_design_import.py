@@ -11,9 +11,9 @@ Actions:
                 tokens (palette, fonts, content width), the frames cut into
                 sections matched to the design-pattern registry, what data the
                 design needs, its image assets, and a site JSON draft.
-                Big payloads arrive in several calls under one ``import_id``
-                (at most 2 MB per call, kept 24 h, readable only by this
-                institute). source='figma_url' is not supported: this server
+                The results arrive ONE document per call under one
+                ``import_id`` (upload_only=true until the last; kept 24 h,
+                readable only by this institute). source='figma_url' is not supported: this server
                 holds no Figma credentials.
     save_draft  the plan (or the caller's corrected JSON) saved through
                 website_edit's own create_site / create_page with
@@ -28,6 +28,7 @@ there. Identity is pinned by ``execute_tool``.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import re
@@ -38,6 +39,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .assistant_tool_registry import ToolContext, ToolSpec
 from .figma_design_import import DesignImportError, FIGMA_ASSET_TTL_DAYS, plan_design
 from .figma_links import FIGMA_LINK_GUIDANCE_FOR_AI
+from .website_playbook import FIGMA_SEND_STEPS as SEND_STEPS
 from .website_data import _err
 
 logger = logging.getLogger(__name__)
@@ -81,7 +83,8 @@ PLAN_RULES = (
     "photos. (2) Import the assets you keep with website_edit(import_image) in this session (Figma asset URLs "
     "expire). (3) Correct site_json_draft where the plan was unsure (sections with `check`, `todo`), then "
     "design_import(action='save_draft', import_id, new_site_name | tag_name, site_json?). (4) Wire ids with "
-    "website_edit(bind_data / link_lead_form) — bound paths are left EMPTY on purpose. (5) Run settings_calls, then "
+    "website_edit(bind_data / link_lead_form) — bound paths are left EMPTY on purpose. (5) Run the settings_calls save_draft returns (they carry the saved "
+    "site's tag_name; never drop it — without it the institute's default, live site changes), then "
     "website(action='review') — fidelity mode — and website(action='compare') against the frames."
 )
 
@@ -108,9 +111,8 @@ DESIGN_IMPORT_SCHEMA: Dict[str, Any] = {
             "upload_only?): Figma calls are scarce (Starter/View seats get about 6 a month), so spend them like this: "
             "ONE get_metadata on the page, ONE get_design_context per top-level frame (if a frame's code comes back "
             "cut off, call get_design_context on its child frames after the cut), get_variable_defs only if the file "
-            "has variables — then send the raw results here at once. At most 2 MB per call: send the rest in more "
-            "calls with the returned import_id (upload_only=true skips the plan until the last part). The upload is "
-            "kept 24 h for this institute only.\n"
+            "has variables. Metadata alone has no colours or fonts: send the design code too. "
+            + SEND_STEPS + " The upload is kept 24 h for this institute only.\n"
             "- save_draft (import_id, new_site_name | tag_name, pages?, site_json?, url?, apply_theme?): save the plan "
             "— or your corrected site_json ({theme?, pages?, header?, footer?}) — as a DRAFT through website_edit's "
             "create_site / create_page, each page marked with its Figma frame (review then runs in fidelity mode). "
@@ -171,18 +173,59 @@ def _payload_bytes(payload: Dict[str, Any]) -> int:
 
 
 def _ensure_schema(ctx: ToolContext) -> None:
+    """Raise TableMissing when Flyway V561 has not created the table (ai_service runs no DDL)."""
     global _schema_ready
     if not _schema_ready:
-        from ..models.design_import import ensure_design_import_schema
-        _schema_ready = ensure_design_import_schema(ctx.db)
+        from ..models.design_import import check_design_import_schema
+        from ..models.flyway_owned import TableMissing
+        _schema_ready = check_design_import_schema(ctx.db)
+        if not _schema_ready:
+            raise TableMissing("mcp_design_import_part is missing (admin_core Flyway V561)")
 
 
 def _purge_expired(ctx: ToolContext) -> None:
-    """Drop EVERY institute's expired imports (one indexed bulk DELETE), so the
-    24 h promise holds without a scheduler and without anyone re-reading them."""
+    """Drop EVERY institute's expired imports (one indexed bulk DELETE). Also run
+    hourly by start_design_import_purger, so the 24 h promise holds when nobody
+    uploads."""
     from ..models.design_import import DesignImportPart
     (ctx.db.query(DesignImportPart).filter(DesignImportPart.expires_at <= _now())
      .delete(synchronize_session=False))
+
+
+#: How often the background purge drops expired imports (retention is 24 h + at most this).
+PURGE_INTERVAL_SECONDS = 60 * 60
+
+
+def purge_expired_imports(session_factory=None) -> int:
+    """Delete every expired import part; the number deleted. Idempotent and safe on
+    several replicas at once (a plain bulk DELETE). Never raises; does nothing when
+    Flyway V561 has not created the table (ai_service runs no DDL)."""
+    from sqlalchemy import inspect
+
+    from ..models.design_import import DesignImportPart
+    try:
+        if session_factory is None:
+            from ..db import db_session as session_factory
+        with session_factory() as db:
+            if not inspect(db.get_bind()).has_table(DesignImportPart.__tablename__):
+                return 0
+            n = (db.query(DesignImportPart).filter(DesignImportPart.expires_at <= _now())
+                 .delete(synchronize_session=False))
+            db.commit()
+            return int(n or 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("design_import: purging expired uploads failed: %r", exc)
+        return 0
+
+
+def start_design_import_purger() -> None:
+    """Purge expired uploads now (off the event loop), then every PURGE_INTERVAL_SECONDS."""
+    async def _loop() -> None:
+        while True:
+            await asyncio.to_thread(purge_expired_imports)
+            await asyncio.sleep(PURGE_INTERVAL_SECONDS)
+
+    asyncio.get_event_loop().create_task(_loop())
     ctx.db.commit()
 
 
@@ -311,8 +354,7 @@ def _clean_chunk(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Option
     size = _payload_bytes({k: chunk[k] for k in ("metadata_xml", "design_code", "variables")})
     if size > MAX_CALL_BYTES:
         return None, _err("too_large", message=(
-            f"This call carries {size:,} bytes; send at most {MAX_CALL_BYTES // (1024 * 1024)} MB per call — split "
-            "design_code over several calls with the import_id the first call returns."))
+            f"This call carries {size:,} bytes (the limit is {MAX_CALL_BYTES // (1024 * 1024)} MB). " + SEND_STEPS))
     return chunk, None
 
 
@@ -559,10 +601,20 @@ async def _action_save_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
     if failed:
         out["error"] = failed
         return out
-    out["settings_calls"] = plan.get("settings_calls") or []
+    # Every settings call targets the site just saved: without tag_name website_edit would
+    # change the institute's DEFAULT site (usually the live one), not this draft.
+    saved_tag = (out["saved"].get("tag_name") if isinstance(out["saved"], dict) else None) if new_site else tag_name
+    calls = []
+    for c in plan.get("settings_calls") or []:
+        c = copy.deepcopy(c)
+        if saved_tag:
+            c.setdefault("args", {})["tag_name"] = saved_tag
+        calls.append(c)
+    out["settings_calls"] = calls
     out["data_needs"] = [{k: n.get(k) for k in ("kind", "what", "check") if n.get(k)} for n in plan.get("data_needs") or []]
     out["next"] = (
-        "Run settings_calls (format taxonomy, languages, translations), wire the empty bound ids with "
+        "Run settings_calls exactly as given — each carries the saved site's tag_name (format taxonomy, languages, "
+        "translations) — wire the empty bound ids with "
         "website_edit(bind_data / link_lead_form), import the assets you keep with website_edit(import_image) and set "
         "them, then website(action='review') and website(action='compare') against the frames. Give the admin the "
         "editor_url to review and publish."

@@ -166,7 +166,8 @@ def db(tmp_path, monkeypatch):
         conn.execute(text("CREATE TABLE institutes (id TEXT, learner_portal_base_url TEXT, admin_portal_base_url TEXT)"))
         conn.execute(text("CREATE TABLE institute_domain_routing (institute_id TEXT, domain TEXT, subdomain TEXT, role TEXT)"))
         conn.execute(text("INSERT INTO institutes VALUES ('inst-1', 'learn.acme.example', NULL)"))
-    monkeypatch.setattr(pub, "_schema_ready", False)      # the tool creates its own table on first use
+    PublishConfirm.__table__.create(engine)                # Flyway V562 creates it in production
+    monkeypatch.setattr(pub, "_schema_ready", False)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     yield session
     session.close()
@@ -210,7 +211,6 @@ def edited(live, title="New home"):
 
 
 def tokens(db):
-    PublishConfirm.__table__.create(bind=db.get_bind(), checkfirst=True)
     return db.query(PublishConfirm).all()
 
 
@@ -311,6 +311,19 @@ async def test_missing_or_malformed_tokens_are_refused(db, monkeypatch, token):
     out = await publish(db, token)
     assert out["error"] == "invalid_confirm_token" and out["published"] is False
     assert "request_publish" in out["message"] and be.publishes() == []
+
+
+@pytest.mark.asyncio
+async def test_missing_flyway_table_is_a_clear_refusal_and_never_ddl(db, monkeypatch):
+    """ai_service runs no DDL: without Flyway V562's table, publish refuses cleanly and creates nothing."""
+    from sqlalchemy import inspect
+    live = sample_config()
+    be = AdminCore(monkeypatch, live, edited(live))
+    PublishConfirm.__table__.drop(db.get_bind())
+    out = await publish(db, "vpc_" + "A" * 43)
+    assert out["error"] == "publish_unavailable" and out["published"] is False
+    assert be.publishes() == []
+    assert not inspect(db.get_bind()).has_table("mcp_publish_confirm")
 
 
 @pytest.mark.asyncio

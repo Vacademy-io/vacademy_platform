@@ -228,8 +228,12 @@ class CodeIndex:
         self.texts: Dict[str, List[str]] = defaultdict(list)       # node id → text runs inside it
         self.runs: List[Dict[str, Any]] = []                        # every text run with its effective style
         self.sizes: Dict[str, float] = {}                           # node id → font size of its first run
-        self.assets: Dict[str, str] = {}                            # const name → url
-        self.asset_nodes: Dict[str, List[str]] = defaultdict(list)  # const name → node ids that show it
+        # Figma reuses const names (imgArtwork, imgArtwork1…) in EVERY frame's code for
+        # different files, so an asset's ref is its const name, scoped to its entry
+        # ("imgArtwork@73:324") when another entry already used that name for another URL.
+        self.assets: Dict[str, str] = {}                            # asset ref → url
+        self.asset_nodes: Dict[str, List[str]] = defaultdict(list)  # asset ref → node ids that show it
+        self.asset_ref_by_url: Dict[str, str] = {}
         self.bg = Counter()
         self.bg_area: Counter = Counter()
         self.border = Counter()
@@ -291,19 +295,37 @@ def parse_design_code(entries: Sequence[Dict[str, Any]], index: Optional[CodeInd
             continue
         label = str(entry.get("node_id") or entry.get("name") or f"entry {len(idx.truncated) + 1}")
         prefixes = {m.group(1): m.group(2) for m in _ASSET_PREFIX_RE.finditer(code)}
+        consts: Dict[str, str] = {}             # THIS entry's const name → url
         for m in _ASSET_TEMPLATE_RE.finditer(code):
             base = prefixes.get(m.group(2))
-            if base and len(idx.assets) < MAX_ASSETS:
-                idx.assets[m.group(1)] = f"{base.rstrip('/')}/{m.group(3)}"
+            if base:
+                consts[m.group(1)] = f"{base.rstrip('/')}/{m.group(3)}"
         for name, url in prefixes.items():
-            if name.startswith("img") and len(idx.assets) < MAX_ASSETS:
-                idx.assets.setdefault(name, url)
-        if _scan_jsx(code, idx):
+            if name.startswith("img"):
+                consts.setdefault(name, url)
+        local = {name: ref for name, url in consts.items() if (ref := _asset_ref(idx, name, url, label))}
+        if _scan_jsx(code, idx, local):
             idx.truncated.append(label)
     return idx
 
 
-def _scan_jsx(code: str, idx: CodeIndex) -> bool:
+def _asset_ref(idx: CodeIndex, name: str, url: str, label: str) -> Optional[str]:
+    """The ref this entry's ``name`` → ``url`` is listed under: one ref per URL (merged
+    across entries); the bare name unless another URL already holds it."""
+    if url in idx.asset_ref_by_url:
+        return idx.asset_ref_by_url[url]
+    if len(idx.assets) >= MAX_ASSETS:
+        return None
+    ref = name if name not in idx.assets else f"{name}@{label}"
+    n = 2
+    while ref in idx.assets:
+        ref, n = f"{name}@{label}#{n}", n + 1
+    idx.assets[ref] = url
+    idx.asset_ref_by_url[url] = ref
+    return ref
+
+
+def _scan_jsx(code: str, idx: CodeIndex, local_assets: Optional[Dict[str, str]] = None) -> bool:
     """
     Walk the JSX once — every component in the file (Figma emits helper
     components before the page). Returns True when the code ends mid-tree
@@ -355,14 +377,15 @@ def _scan_jsx(code: str, idx: CodeIndex) -> bool:
         attrs_text = code[start.end(): j]
         tag = start.group(1)
         self_closing = attrs_text.rstrip().endswith("/") or tag.lower() in _SELF_CLOSING_HTML
-        rec = _element(tag, attrs_text, stack, idx)
+        rec = _element(tag, attrs_text, stack, idx, local_assets or {})
         if not self_closing:
             stack.append(rec)
         i = j + 1
     return not code.rstrip().endswith(("}", ");", ")"))
 
 
-def _element(tag: str, attrs_text: str, stack: List[Dict[str, Any]], idx: CodeIndex) -> Dict[str, Any]:
+def _element(tag: str, attrs_text: str, stack: List[Dict[str, Any]], idx: CodeIndex,
+             local_assets: Dict[str, str]) -> Dict[str, Any]:
     attrs: Dict[str, str] = {}
     for m in _ATTR_RE.finditer(attrs_text):
         attrs[m.group(1)] = next(g for g in m.groups()[1:] if g is not None).strip().strip("`\"'")
@@ -382,11 +405,12 @@ def _element(tag: str, attrs_text: str, stack: List[Dict[str, Any]], idx: CodeIn
         idx.radii.append(st["radius"])
     if "px" in st and "w-full" in classes:
         idx.side_padding[st["px"]] += 1
-    src = attrs.get("src")
-    if src and src.strip() in idx.assets:
+    src = (attrs.get("src") or "").strip()
+    ref = local_assets.get(src)                 # resolved against THIS entry's own consts
+    if ref:
         owner = node_id or next((r["id"] for r in reversed(stack) if r.get("id")), None)
         if owner:
-            idx.asset_nodes[src.strip()].append(owner)
+            idx.asset_nodes[ref].append(owner)
     return rec
 
 
@@ -1885,6 +1909,31 @@ def _fill_catalog(props: Dict[str, Any], b: Band, pid: str, facts: Dict[str, Any
                 sec["title"] = _clip(facts["title"], 120)
 
 
+#: Marks a step whose design price was left out (popped into a todo by _section_props).
+_DESIGN_PRICE_KEY = "_designPrice"
+
+
+def _price_digits(text: str) -> str:
+    m = _PRICE_RE.search(text or "")
+    if not m:
+        return ""
+    digits = re.match(r"[\d,]+", text[m.end() - 1:])
+    return digits.group(0).replace(",", "") if digits else ""
+
+
+def _pop_design_prices(node: Any, path: str, todo: List[str]) -> None:
+    if isinstance(node, dict):
+        price = node.pop(_DESIGN_PRICE_KEY, None)
+        if price:
+            todo.append(f"{path}.meta: the design shows {price} — never copy a price; write {{price}} only "
+                        "when it is this slide's product page price, else leave it empty")
+        for k, v in node.items():
+            _pop_design_prices(v, f"{path}.{k}" if path else k, todo)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            _pop_design_prices(v, f"{path}[{i}]", todo)
+
+
 def _spotlight_slide(b: Band, panel: Dict[str, Any], i: int) -> Dict[str, Any]:
     node = panel["panel"]
     in_steps = {id(x) for st in panel["steps"] for x in st.walk()}
@@ -1906,6 +1955,7 @@ def _spotlight_slide(b: Band, panel: Dict[str, Any], i: int) -> Dict[str, Any]:
         slide["description"] = desc
     btn = next((lbl for lbl in panel.get("buttons") or []), None)
     cta: Dict[str, Any] = {"action": "product-page", "productPageCode": ""}
+    cta_price = _price_digits(btn or "")
     if btn:
         label = _ARROW_RE.sub("", btn).strip()
         cta["label"] = _clip(_PRICE_RE.sub("{price}", label) if _PRICE_RE.search(label) else label, 60)
@@ -1918,7 +1968,16 @@ def _spotlight_slide(b: Band, panel: Dict[str, Any], i: int) -> Dict[str, Any]:
         title = next((t for t in ts if t != meta), "")
         step = {"title": _clip(title, 80)}
         rest = [t for t in ts if t not in (title, meta)]
-        if meta or rest:
+        if meta and _PRICE_RE.search(meta) and not _FREE_RE.match(meta):
+            # Never copy a design price: it would stay on the live site after the real price
+            # changes. The slide's own price → {price}; any other price is left for the AI.
+            if cta_price and _price_digits(meta) == cta_price:
+                step["meta"] = _PRICE_RE.sub("{price}", meta, count=1)
+                step["meta"] = _clip(re.sub(r"\{price\}[\d,.]*", "{price}", step["meta"]), 40)
+            else:
+                step["meta"] = ""
+                step[_DESIGN_PRICE_KEY] = _clip(meta, 40)
+        elif meta or rest:
             step["meta"] = _clip(meta or rest[0], 40)
         if meta and _FREE_RE.match(meta):
             step["tone"] = "accent"
@@ -2411,9 +2470,8 @@ def _section_props(component: str, matches: List[Dict[str, Any]], bands: List[Ba
             _fill_catalog(props, b, pid, facts)
         elif component == "learningPath":
             _fill_learning_path(props, b, pid, facts)
-    todo = [t for t in todo if _get_path(props, t.split(":")[0], missing=False) is None
-            and _get_path(props, t.split(":")[0], missing=True) is not _GONE]
-    bound = [b for b in bound if _get_path(props, b, missing=True) is not _GONE]
+    bound, todo = _final_bound_and_todo(props, bound, todo)
+    _pop_design_prices(props, "", todo)
     if component == "learningPath" and props.get("goals"):
         todo.append("goals[].tags: the stream folder slugs each goal shows")
     todo.extend(f"{p}: where it links (a page route or URL)" for p in _empty_links(props, ""))
@@ -2437,6 +2495,35 @@ def _empty_links(node: Any, path: str) -> List[str]:
 
 
 _GONE = object()
+
+#: Props that hold an id the admin wires (bind_data / link_lead_form), never the design.
+_BOUND_ID_KEYS = frozenset({"libraryId", "productPageCode", "storeProductPageCode", "audienceId"})
+_LP_CODE_PARENT_RE = re.compile(r"(?:^|\.)(featured|pathExtras\[\d+\])$")
+
+
+def _empty_bound_paths(node: Any, path: str = "") -> List[str]:
+    """Every id path left EMPTY in the FINAL props (after the fills rebuilt lists), in order."""
+    out: List[str] = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            here = f"{path}.{k}" if path else k
+            if v == "" and (k in _BOUND_ID_KEYS or (k == "code" and _LP_CODE_PARENT_RE.search(path or ""))):
+                out.append(here)
+            else:
+                out.extend(_empty_bound_paths(v, here))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            out.extend(_empty_bound_paths(v, f"{path}[{i}]"))
+    return out
+
+
+def _final_bound_and_todo(props: Dict[str, Any], bound: List[str], todo: List[str]) -> Tuple[List[str], List[str]]:
+    """The registry's bound / todo paths still TRUE of the filled props (a fill may rebuild a list, so
+    'navigation[1]' can be another item now), plus every other empty id path the filled props have."""
+    todo = [t for t in todo if _get_path(props, t.split(":")[0], missing=False) is None
+            and _get_path(props, t.split(":")[0], missing=True) is not _GONE]
+    still = [b for b in bound if _get_path(props, b, missing=True) == ""]
+    return list(dict.fromkeys(still + _empty_bound_paths(props))), todo
 
 
 def _get_path(d: Any, path: str, missing: bool = False) -> Any:
@@ -2613,11 +2700,15 @@ def plan_design(*, metadata_xml: Sequence[str], design_code: Sequence[Dict[str, 
         props = _strip_placeholders(props, "", todo, bound)
         props["navigation"] = []
         _fill_header(props, b, routes, menu)
+        # _fill_header rebuilt navigation: report the paths of the FINAL menu, not the registry's.
+        bound, todo = _final_bound_and_todo(props, bound, todo)
+        mega = [i for i, n in enumerate(props.get("navigation") or []) if isinstance(n, dict) and n.get("type") == "megaMenu"]
         logo = (m.get("_facts") or {}).get("logo")
         header = {"id": "site-header", "type": "header", "enabled": True, "props": props}
         chrome["header"] = {"frame": b.frame.id, "node": b.node.id, "bbox": b.node.bbox(), "props_draft": props,
                             "bound_paths_left_empty": bound, "todo": (todo + [f"{p}: where it links" for p in
                                                                              _empty_links(props, "")])[:20],
+                            **({"mega_menu_nav_index": mega[0]} if mega else {}),
                             **({"logo_node": logo.id} if logo is not None else {})}
     if footer_band is not None:
         b, matches = footer_band
@@ -2631,6 +2722,7 @@ def plan_design(*, metadata_xml: Sequence[str], design_code: Sequence[Dict[str, 
         for k in [k for k in props if k.startswith("rightSection")]:
             props.pop(k)
         _fill_footer(props, b)
+        bound, todo = _final_bound_and_todo(props, bound, todo)
         footer = {"id": "site-footer", "type": "footer", "enabled": True, "props": props}
         chrome["footer"] = {"frame": b.frame.id, "node": b.node.id, "bbox": b.node.bbox(), "props_draft": props,
                             "bound_paths_left_empty": bound, "todo": (todo + [f"{p}: where it links" for p in
@@ -2709,6 +2801,12 @@ def _site_patterns(tokens: Dict[str, Any], all_bands: List[Tuple[Band, List[Dict
     return out
 
 
+#: settings_calls target the site the draft was saved to. plan cannot know it yet:
+#: save_draft fills it in; anyone running a plan's calls by hand replaces it. Never
+#: left out — a call without tag_name would change the institute's DEFAULT (live) site.
+SETTINGS_TAG_PLACEHOLDER = "<tag_name of the site you saved the draft to>"
+
+
 def _settings_calls(data_needs: List[Dict[str, Any]], tokens: Dict[str, Any]) -> List[Dict[str, Any]]:
     """website_edit calls that apply the site settings the design implies (after the draft exists)."""
     calls: List[Dict[str, Any]] = []
@@ -2727,11 +2825,13 @@ def _settings_calls(data_needs: List[Dict[str, Any]], tokens: Dict[str, Any]) ->
                 langs.append({"code": code, "label": _clip(lab, 40), "chip": chip, "match": [lab.lower(), code]})
             cs["course_languages"] = {"enabled": True, "languages": langs}
     if cs:
-        calls.append({"tool": "website_edit", "action": "set_catalog_settings", "args": {"catalog_settings": cs},
+        calls.append({"tool": "website_edit", "action": "set_catalog_settings",
+                      "args": {"tag_name": SETTINGS_TAG_PLACEHOLDER, "catalog_settings": cs},
                       "why": "the design's format taxonomy and language versions",
                       "note": "Add `levels` / `tags` to each format so courses get their pill."})
     if "hi" in (tokens.get("languages") or []):
-        calls.append({"tool": "website_edit", "action": "set_translations", "args": {"locale": "hi", "enable": True},
+        calls.append({"tool": "website_edit", "action": "set_translations",
+                      "args": {"tag_name": SETTINGS_TAG_PLACEHOLDER, "locale": "hi", "enable": True},
                       "why": "the design is bilingual (Devanagari beside English)",
                       "note": "Then website(action='strings', locale='hi') lists the exact page texts to translate; "
                               "translation_candidates holds the design's own side-by-side labels as a glossary "
@@ -2740,7 +2840,7 @@ def _settings_calls(data_needs: List[Dict[str, Any]], tokens: Dict[str, Any]) ->
 
 
 __all__ = [
-    "BAND_DETECTORS", "FRAME_PATTERNS", "SITE_PATTERNS", "PALETTE_ROLES", "DesignImportError",
+    "SETTINGS_TAG_PLACEHOLDER", "BAND_DETECTORS", "FRAME_PATTERNS", "SITE_PATTERNS", "PALETTE_ROLES", "DesignImportError",
     "Node", "CodeIndex", "parse_metadata_xml", "parse_design_code", "parse_variables", "attach_styles",
     "extract_tokens", "theme_argument", "classify_frame", "bands_of", "plan_design", "delta_e", "hex6",
     "deep_merge",

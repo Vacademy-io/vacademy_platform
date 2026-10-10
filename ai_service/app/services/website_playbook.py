@@ -37,6 +37,14 @@ _GLOBAL_WRITERS = {
     "global.i18n": "website_edit(set_translations, enable=true)",
 }
 
+#: How to send a page's Figma results: one document per call (design_import's description, its errors and this playbook).
+FIGMA_SEND_STEPS = (
+    "Send ONE Figma result per call — you re-type every argument, and a page's results (~100k characters each) do "
+    "not fit one reply: first metadata_xml alone with upload_only=true (it returns an import_id), then each frame's "
+    "design_code in its own call with that import_id and upload_only=true, and the LAST frame's call without "
+    "upload_only to get the plan."
+)
+
 GROUND_RULES = (
     "The design wins on LOOKS; live data wins on FACTS. Never copy counts, prices or course names from the design: "
     "the widgets compute them live (the Figma said '24 courses', the live site showed 22).",
@@ -45,7 +53,10 @@ GROUND_RULES = (
     "never claim parity you did not reach.",
     "Never invent ids or URLs: courses, product pages, folder libraries and campaigns come from website(action='context' "
     "| 'data_inventory') and audience_forms; images only from website_edit(import_image) or website(action='list_media').",
-    "Every write is a DRAFT. Nothing goes live from here: the admin reviews and publishes from the editor_url.",
+    "Every website_edit write is a DRAFT: the admin reviews it at the editor_url. Only website_publish (when enabled) "
+    "makes a site live — after website_edit(request_publish), the admin's clear yes, and its confirm token. "
+    "catalog_data_edit (when enabled) writes LIVE catalogue records: tags added to live courses show at once, so "
+    "dry-run it and show the admin first.",
     "Ask the admin only what the design cannot answer (the data questions in brief_checklist with design_source). "
     "Pick sensible defaults for the rest, list them as DECISIONS and tell the admin — do not block on them.",
     "Build in the base language (English) only. Other languages go into the site dictionary with set_translations, "
@@ -56,9 +67,11 @@ _FIGMA_BUDGET = {
     "why": "Figma Starter / View seats allow about 6 Figma MCP calls a month; one full read of a file can use them all.",
     "plan": [
         "1 × get_metadata on the page (the layer tree with x/y/w/h for every node); save it — it can exceed 100k characters.",
-        "1 × get_screenshot per top-level frame you rebuild.",
-        "get_design_context only on an ambiguous CHILD section node (a whole frame is cut off at ~100k characters), "
-        "with the screenshot excluded.",
+        "design_import ENABLED: 1 × get_design_context per top-level page frame, with the screenshot excluded — it "
+        "is where the colours and fonts come from (metadata alone gives none). Skip get_screenshot; take one for a "
+        "frame you compare only if calls are left.",
+        "design_import NOT enabled: 1 × get_screenshot per top-level frame you rebuild, and get_design_context only "
+        "on an ambiguous CHILD section node (a whole frame is cut off at ~100k characters), screenshot excluded.",
         "get_variable_defs once if the file defines variables (cheaper than reading colours from code).",
     ],
     "stop": "Out of budget: continue from the screenshots / exports you have and say which sections were matched by eye.",
@@ -88,9 +101,10 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "Download every asset the frames use in this session (Figma asset URLs expire after 7 days) and import only "
             "the ones the pages need with website_edit(import_image) — up to 16 URLs per call; large PNGs are "
             "downscaled for you. Keep the returned urls: they are the ONLY image urls a page may use.",
-            "If the design_import tool is enabled for this connection, send the raw get_metadata XML (and any "
-            "get_design_context code you read) to design_import(action='plan'): it drafts the tokens, map_sections "
-            "and data steps below for you. Check its output against those steps instead of redoing them by hand.",
+            "If the design_import tool is enabled for this connection, send the raw get_metadata XML AND each page "
+            "frame's get_design_context code to design_import(action='plan') — metadata alone gives no colours or "
+            "fonts. " + FIGMA_SEND_STEPS + " It drafts the tokens, map_sections and data steps below for you. Check "
+            "its output against those steps instead of redoing them by hand.",
         ],
         "tools": ["Figma get_metadata / get_screenshot / get_design_context (your own Figma MCP)", "website_edit(import_image)",
                   "design_import(plan) when enabled"],
@@ -193,7 +207,8 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "website(action='review') must pass in fidelity mode (score ≥ 85, no `fix` items), website(action='audit') "
             "and website(action='data_audit') must show no errors you can fix.",
             "Give the admin the editor_url, a score card (per-section similarity from compare, the deviations and gap "
-            "list, the open data items) and the DECISIONS you took. The admin publishes; say the site is a draft.",
+            "list, the open data items) and the DECISIONS you took. The site is a draft until it is published: the admin "
+            "publishes from the editor, or — only when website_publish is enabled — you do, after their clear yes.",
             "website_edit(request_publish) runs those checks in one call and gives the hand-over verdict, the diff "
             "against the live site and the editor link. It never publishes.",
         ],
@@ -281,7 +296,8 @@ _TITLES = {
 NOT_AVAILABLE = (
     "No server-side Figma reads: read the file with your own Figma MCP. Without one, tell the admin: "
     + FIGMA_LINK_GUIDANCE_FOR_AI,
-    "No publishing: the admin publishes the draft from the editor_url.",
+    "No publishing unless website_publish is enabled for this connection: otherwise the admin publishes the draft "
+    "from the editor_url.",
     "No deleting, renaming, hiding or activating the institute's catalogue data (folder libraries, course tags, "
     "product pages) and no invite or payment-gateway changes: those stay admin clicks. Without catalog_data_edit "
     "enabled there are no catalogue data writes at all — website(action='data_audit') gives the admin the list with "
@@ -390,6 +406,7 @@ def playbook_markdown(source: str, catalog: Dict[str, Any], figma_url: str = "")
 
 __all__ = [
     "DESIGN_DATA_CHECKLIST",
+    "FIGMA_SEND_STEPS",
     "DESIGN_INTERVIEW_RULES",
     "GROUND_RULES",
     "NOT_AVAILABLE",

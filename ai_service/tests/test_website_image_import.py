@@ -218,3 +218,13 @@ def test_banded_shrink_matches_a_whole_image_resize():
     ref = Image.open(io.BytesIO(raw)).convert("RGB").resize(got.size, Image.LANCZOS)
     assert got.size == (2400, 1248)
     assert max(hi for _, hi in ImageChops.difference(got, ref).getextrema()) <= 1  # no seams
+
+
+def test_deeply_nested_svg_is_refused_cleanly_not_a_recursion_error():
+    """RES-4: 5000 nested <g> (35 KB) must be an ImageImportError, never RecursionError."""
+    deep = (b'<svg xmlns="http://www.w3.org/2000/svg">' + b"<g>" * 5000 + b"</g>" * 5000 + b"</svg>")
+    with pytest.raises(ImageImportError) as exc:
+        prepare_image(deep, "image/svg+xml")
+    assert exc.value.code == "not_an_image"
+    ok = (b'<svg xmlns="http://www.w3.org/2000/svg">' + b"<g>" * 100 + b"<rect/>" + b"</g>" * 100 + b"</svg>")
+    assert b"<rect" in sanitize_svg_document(ok)

@@ -275,7 +275,8 @@ def test_a_section_is_shot_from_its_own_box():
     rec = {}
     out = run_fidelity(rec, section_id="footer-1", full_image=True)
     assert rec["screenshot"]["clip"] == {"x": 0, "y": 3064, "width": 1440, "height": 700}
-    assert out["height"] == 700 and len(out["tiles"]) == 1 and out["truncated"] is False
+    # compare (full_image) decodes the capture itself: no tiles are built for it (RES-3).
+    assert out["height"] == 700 and out["tiles"] == [] and out["truncated"] is False
     crop = cv2.imdecode(np.frombuffer(out["full_jpeg"], np.uint8), cv2.IMREAD_COLOR)
     assert crop.shape[:2] == (700, 1440) and crop.mean() < 40          # the dark footer
     assert run_fidelity({}, section_id="nope")["error"] == "section_not_rendered"
@@ -371,3 +372,18 @@ def test_the_header_wrapper_of_no_height_is_measured_by_its_bar_in_a_real_browse
     assert [(s["id"], s["top"], s["height"]) for s in sections] == [
         ("header-1", 0, 64), ("courses-catalog", 64, 900), ("courses-not-sure", 964, 240), ("footer-1", 1204, 300)]
     assert "Knowledge Streams" in sections[0]["text"] and header_box == {"top": 0, "height": 64}
+
+
+def test_tiles_are_built_off_the_event_loop(monkeypatch):
+    """RES-3: decoding the capture and encoding tiles runs in a worker thread, never on the loop."""
+    import threading
+    loop_thread = threading.get_ident()
+    seen = []
+    real = page_preview._tiles
+
+    def tiles(image, cv2_):
+        seen.append(threading.get_ident())
+        return real(image, cv2_)
+    monkeypatch.setattr(page_preview, "_tiles", tiles)
+    out = run_fidelity({})
+    assert out["tiles"] and seen and seen[0] != loop_thread

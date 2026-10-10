@@ -442,8 +442,8 @@ _schema_ready = False
 def _ensure_schema(ctx: ToolContext) -> bool:
     global _schema_ready
     if not _schema_ready:
-        from ..models.catalog_data_edit import ensure_catalog_data_schema
-        _schema_ready = ensure_catalog_data_schema(ctx.db)
+        from ..models.catalog_data_edit import check_catalog_data_schema
+        _schema_ready = check_catalog_data_schema(ctx.db)   # no DDL: Flyway V562 creates it
     return _schema_ready
 
 

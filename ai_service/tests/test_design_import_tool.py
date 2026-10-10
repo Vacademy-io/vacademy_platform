@@ -37,7 +37,8 @@ EDIT = {"enabled_tools": ["design_import", "website_builder", "website_builder_e
 def db(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'ai.db'}", connect_args={"check_same_thread": False})
     AiTask.metadata.create_all(engine, tables=[AiTask.__table__])
-    monkeypatch.setattr(di, "_schema_ready", False)      # the tool creates its own table on first use
+    DesignImportPart.__table__.create(engine)              # Flyway V561 creates it in production
+    monkeypatch.setattr(di, "_schema_ready", False)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     yield session
     session.close()
@@ -178,6 +179,36 @@ async def test_expired_imports_of_every_institute_are_purged_by_any_new_upload(d
 
 
 @pytest.mark.asyncio
+async def test_expired_imports_are_purged_with_no_upload_at_all(db):
+    """DB-2: the background purge drops expired parts even when nobody uploads again."""
+    from contextlib import contextmanager
+    old = await call(db, payload(), institute="inst-quiet")
+    live = await call(db, payload(upload_only=True), institute="inst-1")
+    for row in parts(db, old["import_id"]):
+        row.expires_at = row.expires_at - timedelta(hours=25)
+    db.commit()
+
+    @contextmanager
+    def session():
+        yield db
+
+    assert di.purge_expired_imports(session) >= 1
+    assert stored(db) == {live["import_id"]}
+    assert di.purge_expired_imports(session) == 0          # idempotent
+
+
+def test_purge_is_a_no_op_without_the_flyway_table():
+    from contextlib import contextmanager
+    empty = sessionmaker(bind=create_engine("sqlite://"))()
+
+    @contextmanager
+    def session():
+        yield empty
+
+    assert di.purge_expired_imports(session) == 0
+
+
+@pytest.mark.asyncio
 async def test_each_institute_keeps_a_bounded_number_of_imports(db, monkeypatch):
     monkeypatch.setattr(di, "MAX_IMPORTS_PER_INSTITUTE", 3)
     ids = [(await call(db, payload(upload_only=True)))["import_id"] for _ in range(5)]
@@ -261,6 +292,43 @@ async def test_save_draft_creates_a_new_draft_site_with_the_design_source(db, wr
     assert site["header"]["type"] == "header" and site["footer"]["type"] == "footer"
     assert saved["settings_calls"] is not None and saved["data_needs"]
     assert "<" not in json.dumps(site, ensure_ascii=False).replace("<p>", "").replace("</p>", "")
+
+
+@pytest.mark.asyncio
+async def test_settings_calls_target_the_saved_site_never_the_default(db, writes, monkeypatch):
+    """F3: set_catalog_settings / set_translations without tag_name would change the DEFAULT (live) site."""
+    from app.services import figma_design_import as fdi
+    calls = [{"tool": "website_edit", "action": "set_catalog_settings",
+              "args": {"tag_name": fdi.SETTINGS_TAG_PLACEHOLDER, "catalog_settings": {"course_format_order": ["a"]}}},
+             {"tool": "website_edit", "action": "set_translations",
+              "args": {"tag_name": fdi.SETTINGS_TAG_PLACEHOLDER, "locale": "hi", "enable": True}}]
+    real = di._run_plan
+
+    def plan_with_calls(payload_):
+        out = real(payload_)
+        out["settings_calls"] = calls
+        return out
+    monkeypatch.setattr(di, "_run_plan", plan_with_calls)
+
+    async def _site(args, ctx):
+        writes["sites"].append(args)
+        return {"editor_url": "https://dash/x", "created_site": True, "tag_name": "bv-new"}
+    monkeypatch.setattr(edit_mod, "_action_create_site", _site)
+    out = await call(db, payload())
+    saved = await call(db, {"action": "save_draft", "import_id": out["import_id"], "new_site_name": "bv-new"},
+                       setting=EDIT)
+    assert [c["args"]["tag_name"] for c in saved["settings_calls"]] == ["bv-new", "bv-new"]
+    saved = await call(db, {"action": "save_draft", "import_id": out["import_id"], "tag_name": "main-site"},
+                       setting=EDIT)
+    assert [c["args"]["tag_name"] for c in saved["settings_calls"]] == ["main-site", "main-site"]
+    assert calls[0]["args"]["tag_name"] == fdi.SETTINGS_TAG_PLACEHOLDER      # the plan itself is untouched
+
+
+def test_plan_settings_calls_never_omit_tag_name():
+    from app.services import figma_design_import as fdi
+    needs = [{"kind": "courseFormats", "design": {"formats": [{"key": "ebook", "label": "eBook"}]}}]
+    for c in fdi._settings_calls(needs, {"languages": ["en", "hi"]}):
+        assert c["args"]["tag_name"] == fdi.SETTINGS_TAG_PLACEHOLDER
 
 
 @pytest.mark.asyncio

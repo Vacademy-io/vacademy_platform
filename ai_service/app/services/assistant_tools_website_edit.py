@@ -414,7 +414,7 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "data_kind": {"type": "string", "enum": ["folderLibrary", "folder", "productPage"], "description": "bind_data: what to bind."},
                 "data_id": {"type": "string", "description": "bind_data: the library id, folder id or product page CODE (from website(action='context'))."},
                 "nav_index": {"type": "integer", "description": "bind_data on the header: which navigation item (0-based) becomes the mega menu."},
-                "path": {"type": "string", "description": "bind_data: an explicit prop path for the id inside an object the section already has, e.g. columnSections[1].productPageCode."},
+                "path": {"type": "string", "description": "bind_data: an explicit prop path for the id inside an object the section already has, e.g. columnSections[1].productPageCode; on a featured learning path, featured.code or pathExtras[i].code (data_kind='productPage')."},
                 "library_id": {"type": "string", "description": "bind_data data_kind=folder: the folder's library when the section has none yet. request_publish: the library the data audit checks folders in."},
             },
             "required": ["action"],
@@ -1574,20 +1574,22 @@ async def _action_create_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
                        "design_sources": page_sources, "design_source_note": DESIGN_SOURCE_NOTE} if page_sources else {}))
 
 
-_CLEAR_DESIGN_SOURCE = (None, False, "", "none", "clear")
+#: Explicit "clear" values only. None / "" mean "not given": clients that send every optional
+#: parameter as null must not silently drop a page's design source.
+_CLEAR_DESIGN_SOURCE = (False, "none", "clear")
 
 
 def _set_page_design_source(config: Dict[str, Any], page: Dict[str, Any], raw: Any,
                             page_type: Optional[str]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
     """
     update_page(design_source=…) on an existing page: set it (the page is then
-    reviewed in fidelity mode) or clear it (null / false / '' / 'none'). Returns
+    reviewed in fidelity mode) or clear it ({clear: true} / false / 'none'). Returns
     (what changed, the cleaned design source) or (None, None) when unusable.
     """
     target = find_page(config, page.get("route"))
     if target is None:
         return None, None
-    if (isinstance(raw, str) and raw.strip().lower() in _CLEAR_DESIGN_SOURCE) or raw in _CLEAR_DESIGN_SOURCE \
+    if (isinstance(raw, str) and raw.strip().lower() in _CLEAR_DESIGN_SOURCE) or raw is False \
             or (isinstance(raw, dict) and raw.get("clear") is True):
         meta = target.get("meta") if isinstance(target.get("meta"), dict) else {}
         meta = {k: v for k, v in meta.items() if k not in ("designSource", "pageType")}
@@ -1612,7 +1614,8 @@ def _set_page_design_source(config: Dict[str, Any], page: Dict[str, Any], raw: A
 async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     ops = args.get("ops")
     has_ops = isinstance(ops, list) and bool(ops)
-    set_design = "design_source" in args
+    # null / "" / {} = not given (some clients send every optional parameter as null).
+    set_design = args.get("design_source") not in (None, "", {})
     if not has_ops and not set_design:
         return _err("missing_argument", action="update_page", needs=["ops"],
                     hint="Or pass design_source to set or clear the design this page reproduces.")
@@ -1637,7 +1640,7 @@ async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         if design_change is None:
             return _err("invalid_design_source",
                         message="design_source must be an https design link / {kind, url?, node_id?, frame?}, "
-                                "or null / 'none' to clear it.")
+                                "or {clear: true} / 'none' to clear it.")
     new_page = find_page(config, page.get("route")) or page
     from ..services.page_audit import audit_page
     from .page_quality import review_mode
@@ -1856,7 +1859,12 @@ async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
 
         async def _one(u: str) -> Dict[str, Any]:
             async with gate:
-                res = await _import_one_image({**args, "url": u, "data_base64": None}, ctx)
+                try:
+                    res = await _import_one_image({**args, "url": u, "data_base64": None}, ctx)
+                except Exception as exc:  # noqa: BLE001 — one bad file never loses the rest of the batch
+                    logger.warning("import_image: %s failed: %r", u[:200], exc)
+                    return {"error": "import_failed", "source": u,
+                            "message": "This image could not be imported; the others were not affected."}
                 return res if not res.get("error") else {**res, "source": u}
 
         results = await asyncio.gather(*[_one(u) for u in urls])
@@ -2640,6 +2648,13 @@ async def _action_set_translations(args: Dict[str, Any], ctx: ToolContext) -> Di
 # ── bind live data (folder libraries, folders, product pages) ────────────
 _BIND_KINDS = ("folderLibrary", "folder", "productPage")
 _BIND_KEY = {"folderLibrary": "libraryId", "folder": ("rootFolderId", "folderId"), "productPage": "productPageCode"}
+#: A learning path in list mode names its featured path and per-path extras by product page code.
+_LP_CODE_PATH_RE = re.compile(r"^(featured|pathExtras\[\d+\])\.code$")
+
+
+def _is_lp_code_path(comp: Dict[str, Any], kind: str, path: Optional[str]) -> bool:
+    return bool(path) and kind == "productPage" and comp.get("type") == "learningPath" \
+        and bool(_LP_CODE_PATH_RE.match(path))
 _BIND_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[\d{1,3}\]|\.[A-Za-z_][A-Za-z0-9_]*){0,7}$")
 
 
@@ -2650,9 +2665,15 @@ def _bind_target(comp: Dict[str, Any], kind: str, path: Optional[str], nav_index
     keys = _BIND_KEY[kind] if isinstance(_BIND_KEY[kind], tuple) else (_BIND_KEY[kind],)
     if path:
         p = path[len("props."):] if path.startswith("props.") else path
+        if _is_lp_code_path(comp, kind, p):
+            return p, None                          # featured.code / pathExtras[i].code (list mode stays)
         if not _BIND_PATH_RE.match(p) or p.rsplit(".", 1)[-1] not in keys:
-            return None, f"path must be a prop path ending in {' or '.join(keys)} (e.g. columnSections[1].productPageCode)."
+            return None, (f"path must be a prop path ending in {' or '.join(keys)} (e.g. columnSections[1].productPageCode)"
+                          + (", or featured.code / pathExtras[i].code on a learning path." if kind == "productPage" else "."))
         return p, None
+    if kind == "productPage" and ctype == "learningPath" and props.get("listLayout") == "featured":
+        return None, ("This learning path lists its paths (featured layout): pass path='featured.code' for the "
+                      "featured path or path='pathExtras[i].code' for a path's extras. Its layout is kept.")
     if ctype == "header":
         if kind != "folderLibrary":
             return None, "The header binds a folder library to a mega-menu item (data_kind='folderLibrary')."
@@ -2829,8 +2850,11 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     changes: List[str] = []
     ctype = comp.get("type")
     container_path = target.rsplit(".", 1)[0] if "." in target else ""
+    lp_code = _is_lp_code_path(comp, kind, target)
+    if lp_code:
+        name_key = None                     # featured / pathExtras items hold only the code
     before = _get_path(props, target)
-    if not _set_existing_path(props, target, data_id, create=not path):
+    if not _set_existing_path(props, target, data_id, create=not path or lp_code):
         return _err("no_target", message=(f"props.{target} cannot be reached on this section: "
                                           + ("the object or list item it belongs to does not exist." if path
                                              else "a list item is missing.")))
@@ -2853,7 +2877,8 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     elif ctype == "learningPath" and kind in ("folderLibrary", "folder") and props.get("mode") != "list":
         props["mode"] = "list"
         changes.append("switched the learning path to list mode (paths from the library)")
-    elif ctype == "learningPath" and kind == "productPage" and props.get("mode") == "list":
+    elif ctype == "learningPath" and kind == "productPage" and props.get("mode") == "list" and not lp_code \
+            and props.get("listLayout") != "featured":
         props["mode"] = "single"
         changes.append("switched the learning path to a single path")
     if kind == "folderLibrary" and before not in (None, "", data_id) and isinstance(container, dict):

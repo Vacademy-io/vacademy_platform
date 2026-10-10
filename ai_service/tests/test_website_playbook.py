@@ -444,3 +444,26 @@ def test_composed_editorial_catalogue_keeps_its_opt_ins():
     assert props["render"]["cardStyle"] == "editorial" and props["streams"]["variant"] == "icons"
     assert props["hero"]["stats"] == [{"kind": "courses", "label": "courses"}]
     assert "<" not in json.dumps(props)
+
+
+def test_one_figma_budget_matches_the_server_instructions_and_design_import():
+    """F5/F6: with design_import the playbook asks for get_design_context per frame and one result per call."""
+    from app.mcp.server import SERVER_INSTRUCTIONS
+    from app.services.assistant_tools_design_import import DESIGN_IMPORT_SCHEMA
+    pb = website_playbook.build_playbook("figma", CATALOG)
+    plan = " ".join(pb["budget"]["plan"])
+    assert "design_import ENABLED: 1 × get_design_context per top-level page frame" in plan
+    read = " ".join(next(s for s in pb["steps"] if s["step"] == "read_design")["do"])
+    assert "AND each page frame's get_design_context code" in read and website_playbook.FIGMA_SEND_STEPS in read
+    desc = DESIGN_IMPORT_SCHEMA["function"]["description"]
+    assert website_playbook.FIGMA_SEND_STEPS in desc and "at once" not in desc and "2 MB per call" not in desc
+    assert "one get_design_context per top-level frame" in SERVER_INSTRUCTIONS and "ONE result per call" in SERVER_INSTRUCTIONS
+
+
+def test_playbook_does_not_promise_nothing_goes_live_when_publish_tools_exist():
+    """F8: website_publish and catalog_data_edit can make live changes; the rules say when."""
+    pb = website_playbook.build_playbook("figma", CATALOG)
+    rules = " ".join(pb["ground_rules"])
+    assert "Nothing goes live from here" not in rules
+    assert "website_publish (when enabled)" in rules and "catalog_data_edit (when enabled) writes LIVE" in rules
+    assert any("unless website_publish is enabled" in x for x in pb["not_available"])

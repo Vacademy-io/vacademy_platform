@@ -523,6 +523,38 @@ async def test_bind_folder_product_page_and_learning_path_modes(site_backend):
     assert any("list mode" in s for s in out["side_effects"])
 
 
+@pytest.mark.asyncio
+async def test_bind_featured_learning_path_codes_keeps_the_featured_list(site_backend):
+    """F2: featured.code / pathExtras[i].code bind in place; the featured layout is never switched to single."""
+    cfg = _bindable_site()
+    cfg["pages"][1]["components"][2]["props"] = {
+        "mode": "list", "listLayout": "featured", "libraryId": LIB, "featured": {"code": "", "badge": "Popular"},
+        "pathExtras": [{"code": "", "steps": ["a"]}]}
+    site_backend.config = cfg
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "about", "section_id": "paths",
+                     "data_kind": "productPage", "data_id": "PATH01"})
+    assert out["error"] == "no_target" and "featured.code" in out["message"]
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "about", "section_id": "paths",
+                     "data_kind": "productPage", "data_id": "PATH01", "path": "featured.code"})
+    assert out["binding"]["prop"] == "props.featured.code"
+    props = site_backend.saved[-1]["pages"][1]["components"][2]["props"]
+    assert props["mode"] == "list" and props["listLayout"] == "featured"
+    assert props["featured"] == {"code": "path01", "badge": "Popular"} and "productPageCode" not in props
+    site_backend.config = site_backend.saved[-1]
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "about", "section_id": "paths",
+                     "data_kind": "productPage", "data_id": "PATH01", "path": "pathExtras[0].code"})
+    props = site_backend.saved[-1]["pages"][1]["components"][2]["props"]
+    assert props["pathExtras"] == [{"code": "path01", "steps": ["a"]}] and props["mode"] == "list"
+    assert "side_effects" not in out
+    # Unknown codes are still refused, and the code path is only for learning paths.
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "about", "section_id": "paths",
+                     "data_kind": "productPage", "data_id": "NOT-OURS", "path": "featured.code"})
+    assert out["error"] == "unknown_product_page"
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "about", "section_id": "c-catalog",
+                     "data_kind": "productPage", "data_id": "PATH01", "path": "featured.code"})
+    assert out["error"] == "no_target"
+
+
 def test_audit_says_bind_to_an_editor_and_remove_to_the_composer():
     comp = {"id": "paths", "type": "learningPath", "props": {"mode": "list"}}
     composer = audit_component(comp)

@@ -159,6 +159,10 @@ def _href_ok(value: str) -> bool:
     return v.startswith("#") or bool(_SAFE_DATA_IMAGE_RE.match(v))
 
 
+#: Deepest element nesting accepted in an SVG (real exports stay well under 50).
+MAX_SVG_DEPTH = 256
+
+
 def sanitize_svg_document(raw: bytes) -> bytes:
     """A safe, standalone SVG document, or ImageImportError.
 
@@ -189,6 +193,14 @@ def sanitize_svg_document(raw: bytes) -> bytes:
         raise ImageImportError("not_an_image", "The SVG could not be parsed.") from None
     if _local(root.tag) != "svg" or _ns(root.tag) not in ("", _SVG_NS):
         raise ImageImportError("not_an_image", "The file is not an SVG image.")
+    # Scrubbing and serialising recurse once per level: refuse absurd nesting up
+    # front (measured iteratively) instead of hitting RecursionError mid-batch.
+    stack = [(root, 1)]
+    while stack:
+        el, depth = stack.pop()
+        if depth > MAX_SVG_DEPTH:
+            raise ImageImportError("not_an_image", "The SVG is nested too deeply.")
+        stack.extend((child, depth + 1) for child in el)
     # Children must share the root's namespace: SVG, or none on an SVG with no
     # xmlns (it gets the SVG namespace below).
     svg_ns = _ns(root.tag)

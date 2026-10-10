@@ -209,3 +209,17 @@ async def test_list_media_applies_kind_to_imported_images_too(monkeypatch):
     assert [i["kind"] for i in photos["imported"]] == ["photo"]
     everything = await site_mod._action_list_media({}, ctx())
     assert len(everything["imported"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_one_unexpected_failure_never_loses_the_rest_of_the_batch(monkeypatch, stores):
+    """RES-4: an exception in one image is reported for that url; the others stay in 'imported'."""
+    async def one(args, ctx_):
+        if args["url"].endswith("/bad.svg"):
+            raise RecursionError("maximum recursion depth exceeded")
+        return {"url": "https://cdn/" + args["url"].rsplit("/", 1)[-1]}
+    monkeypatch.setattr(edit_mod, "_import_one_image", one)
+    out = await run({"action": "import_image", "urls": ["https://a.com/1.png", "https://a.com/bad.svg", "https://a.com/2.png"]})
+    assert [r["url"] for r in out["imported"]] == ["https://cdn/1.png", "https://cdn/2.png"]
+    assert out["failed"] == [{"error": "import_failed", "source": "https://a.com/bad.svg",
+                              "message": "This image could not be imported; the others were not affected."}]

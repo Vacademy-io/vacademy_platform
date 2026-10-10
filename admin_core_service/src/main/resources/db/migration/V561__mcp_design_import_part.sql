@@ -22,16 +22,16 @@
 -- bulk DELETE ... WHERE expires_at <= now() drops whole imports, never half of
 -- one.
 --
--- ai_service also ensures this schema at startup (app/models/design_import.py,
--- ensure_design_import_schema) so it runs standalone in local development. That
--- model and this migration must stay identical; this file is the source of
--- truth. Every statement is idempotent, so the two can safely both run.
+-- This migration is the ONLY place the table is created: ai_service runs no DDL
+-- for it and only checks at startup that it exists (app/models/design_import.py,
+-- check_design_import_schema). The SQLAlchemy model there must stay identical
+-- to this file (ai_service/tests/test_design_import_migration_parity.py).
 --
--- If ai_service created the table first, it is owned by ai_service's database
--- role, and index or comment DDL from this role would fail with 42501. Those
--- statements are performance and documentation aids only, so an ownership
--- failure is skipped with a NOTICE instead of blocking the deploy (same
--- approach as V524).
+-- Every statement is idempotent. Should the table already exist under another
+-- database role, index or comment DDL from this role would fail with 42501.
+-- Those statements are performance and documentation aids only, so an
+-- ownership failure is skipped with a NOTICE instead of blocking the deploy
+-- (same approach as V524).
 -- ================================================================================
 
 CREATE TABLE IF NOT EXISTS mcp_design_import_part (

@@ -257,3 +257,21 @@ def test_website_publish_is_never_offered_to_the_in_product_assistant():
     from app.services.assistant_tool_registry import build_offered_tools
     offered = build_offered_tools(principal(), {"enabled_tools": ["website_publish", "website_builder_edits"]})
     assert "website_publish" not in [s["function"]["name"] for s in offered]
+
+
+def test_opt_in_groups_are_served_only_to_a_settings_page_that_asks_for_them():
+    """F1: an older dashboard bundle (no ?opt_in=1) never sees publish / live data edits, so its
+    'Turn everything on' and Edit-level presets cannot switch them on."""
+    from app.mcp.constants import MCP_OPT_IN_GROUPS
+    full = {c["key"] for c in adapter.tool_catalog(include_opt_in=True)}
+    legacy = {c["key"] for c in adapter.tool_catalog(include_opt_in=False)}
+    assert MCP_OPT_IN_GROUPS <= full
+    assert not (MCP_OPT_IN_GROUPS & legacy)
+    assert full - legacy == set(MCP_OPT_IN_GROUPS)
+
+
+def test_connection_info_defaults_to_the_legacy_catalogue():
+    import inspect as _inspect
+    from app.mcp import consent
+    param = _inspect.signature(consent.connection_info).parameters["opt_in"]
+    assert param.default.default is False

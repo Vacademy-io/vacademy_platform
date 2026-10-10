@@ -71,7 +71,7 @@
       "backToTopButton": "Back to Top Button",
       "mode": "Mode",
       "compactness": "Compactness",
-      "ownPaletteNote": "This site uses its own palette, so these presets change nothing on it."
+      "ownPaletteNote": "This site's own palette overrides most preset colours in light mode."
     },
     "fonts": {
       "heading": "Typography",
@@ -444,7 +444,9 @@
     "bottomNote": "Bottom Note",
     "bottomNotePlaceholder": "© 2025 Your Company. All rights reserved.",
     "column5": "Column 5",
-    "brandDesignNote": "This footer uses its own design: it always shows four link columns, and the layout and presets do not apply."
+    "brandDesignNote": "This footer uses its own design: it always shows four link columns, and the layout and presets do not apply.",
+    "useStandard": "Use a standard footer instead",
+    "useStandardConfirm": "Switch to a standard footer? Your links and text are kept; the layout and presets apply again. Undo brings the brand design back."
   },
   "hero": {
     "heading": "Hero Section Settings",
@@ -997,6 +999,7 @@
   },
   "sectionVersion": {
     "keptTitle": "New version applied",
-    "keptSettings": "Kept settings this version did not include: {{keys}}. Use Undo to go back."
+    "keptSettings": "{{count}} settings this version did not include were kept. Use Undo to go back, or open “Edit as JSON” to see them.",
+    "keepsNote": "Also keeps {{count}} settings this version leaves out: {{names}}"
   }
 }

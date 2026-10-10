@@ -143,3 +143,18 @@ export const mergeSectionVersion = <Style>(
     const { props, kept } = keepUnmentionedProps(current.props, next.props);
     return { patch: { type: next.type, props, style: next.style }, kept };
 };
+
+/**
+ * Kept-setting paths ("hero", "render.cardStyle") as names a content editor
+ * can read: the last part of each path, in words ("card style"), once each.
+ */
+export const describeKeptSettings = (kept: readonly string[]): string[] => [
+    ...new Set(
+        kept.map((path) =>
+            (path.split('.').pop() ?? path)
+                .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                .replace(/[_-]+/g, ' ')
+                .toLowerCase()
+        )
+    ),
+];

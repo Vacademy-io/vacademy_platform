@@ -13,7 +13,7 @@ export interface CatalogDesignGroupsProps {
     patch: (next: Props) => void;
     /** Merges `next` into the object at props[key] (e.g. 'hero'), keeping its other keys. */
     setNested: (key: string, next: Props) => void;
-    /** The whole site being edited (read-only): globalSettings, pages. */
+    /** The whole site in the language being edited (read-only): globalSettings, pages. */
     catalogue: CatalogueConfig | null;
 }
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { keepUnmentionedProps, mergeSectionVersion, parseSectionJson } from './section-edits';
+import {
+    describeKeptSettings,
+    keepUnmentionedProps,
+    mergeSectionVersion,
+    parseSectionJson,
+} from './section-edits';
 
 describe('parseSectionJson', () => {
     it('accepts an object', () => {
@@ -95,5 +100,20 @@ describe('mergeSectionVersion', () => {
         );
         expect(patch).toEqual({ type: 'ctaBanner', props: { heading: 'y' }, style: undefined });
         expect(kept).toEqual([]);
+    });
+});
+
+describe('describeKeptSettings', () => {
+    it('names each kept setting by its last part, in words, once', () => {
+        expect(
+            describeKeptSettings([
+                'hero',
+                'filterSidebar',
+                'render.cardStyle',
+                'card.cardStyle',
+                'x_y',
+            ])
+        ).toEqual(['hero', 'filter sidebar', 'card style', 'x y']);
+        expect(describeKeptSettings([])).toEqual([]);
     });
 });

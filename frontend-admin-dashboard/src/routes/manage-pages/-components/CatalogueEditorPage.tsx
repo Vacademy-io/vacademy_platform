@@ -303,6 +303,10 @@ export const CatalogueEditorPage = () => {
     // Keyboard shortcuts: Undo/Redo + Ctrl+S to save
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Inside a dialog (e.g. "Edit as JSON") Undo/Redo belong to what is
+            // being typed there, not to the site behind it.
+            const inDialog = e.target instanceof Element && !!e.target.closest('[role="dialog"]');
+            if (inDialog && (e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key)) return;
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 if (canUndo()) undo();

@@ -112,20 +112,21 @@ const pageKeyOf = (route: string | null | undefined): string => {
     return key === '' || key === 'homepage' ? 'homepage' : key;
 };
 
-/** A plain site page route ("courses"), not a URL, anchor or filtered link ("/courses?stream=x"). */
+/** A plain, non-empty site route ("courses"), not a URL, anchor or filtered link ("/courses?stream=x"). */
 const isPlainPageRoute = (route: string | null | undefined): boolean => {
     const v = (route || '').trim();
-    return !EXTERNAL.test(v) && !/[?#]/.test(v);
+    return v !== '' && !EXTERNAL.test(v) && !/[?#]/.test(v);
 };
 
 /**
  * "Sync pages": the nav lists every published page, in page order. It only
- * adds, removes and orders PAGE links — anything else the admin set up stays:
+ * adds, removes and orders PAGE links (a plain route naming one of the site's
+ * pages) — anything else the admin set up stays where it is:
  * - a link that already points at a page keeps its own label, hidden flag and
  *   options (the same object);
- * - mega menus, external URLs and filtered or anchor links ("/courses?stream=x")
- *   keep their place;
- * - only a link to a page that no longer exists (or is unpublished) is dropped.
+ * - mega menus, external URLs, filtered or anchor links ("/courses?stream=x"),
+ *   empty routes and routes that are not a page ("/blog/my-post") are kept;
+ * - a visible link to an unpublished page is dropped; a hidden one is kept.
  * Pages fill the slots their links held before; new pages follow the last one.
  */
 export const syncNavWithPages = <T extends HeaderNavItemValue>(
@@ -135,18 +136,25 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
     const items = Array.isArray(current) ? current : [];
     const published = pages.filter((p) => p.published !== false);
     const keyOfPage = (p: SyncablePage) => (isHomePage(p) ? 'homepage' : pageKeyOf(p.route));
-    const pageKeys = new Set(published.map(keyOfPage));
+    const allPageKeys = new Set(pages.map(keyOfPage));
+    const publishedKeys = new Set(published.map(keyOfPage));
     // Home is also reachable as its own route ("home").
-    const homeAliases = new Set(published.filter(isHomePage).map((p) => pageKeyOf(p.route)));
+    const homeAliases = new Set(pages.filter(isHomePage).map((p) => pageKeyOf(p.route)));
     const itemKey = (item: T) => {
         const key = pageKeyOf(item.route);
         return homeAliases.has(key) ? 'homepage' : key;
     };
-    const isPageLink = (item: T) => item?.type !== 'megaMenu' && isPlainPageRoute(item?.route);
+    const isPageLink = (item: T) =>
+        item?.type !== 'megaMenu' &&
+        isPlainPageRoute(item?.route) &&
+        allPageKeys.has(itemKey(item));
+    // A hidden link to an unpublished page is the admin's, kept for later.
+    const isKeptAsIs = (item: T) =>
+        !isPageLink(item) || (item.enabled === false && !publishedKeys.has(itemKey(item)));
 
     const existing = new Map<string, T>();
     for (const item of items) {
-        if (isPageLink(item) && pageKeys.has(itemKey(item)) && !existing.has(itemKey(item))) {
+        if (isPageLink(item) && publishedKeys.has(itemKey(item)) && !existing.has(itemKey(item))) {
             existing.set(itemKey(item), item);
         }
     }
@@ -163,9 +171,9 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
     const out: T[] = [];
     let next = 0;
     for (const item of items) {
-        if (!isPageLink(item)) out.push(item);
+        if (isKeptAsIs(item)) out.push(item);
         else if (next < pageItems.length) out.push(pageItems[next++]!);
-        // else: a page link with no page left for its slot — dropped.
+        // else: a page link with no published page left for its slot — dropped.
     }
     const lastPageSlot = out.reduce(
         (last, item, i) => (pageItems.includes(item) ? i : last),

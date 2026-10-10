@@ -147,12 +147,40 @@ describe('syncNavWithPages', () => {
         expect(synced[1]).toEqual({ label: 'Home', route: 'homepage', openInSameTab: true });
     });
 
-    it('drops a link to a page that no longer exists, and matches home by any of its routes', () => {
+    it('drops a visible link to an unpublished page, and matches home by any of its routes', () => {
         const home: HeaderNavItemValue = { label: 'Start', route: '/' };
-        const gone: HeaderNavItemValue = { label: 'Old', route: 'old-page' };
-        const synced = syncNavWithPages([home, gone, resources], pages.slice(0, 2));
+        const draft: HeaderNavItemValue = { label: 'Draft', route: 'learning-paths' };
+        const synced = syncNavWithPages(
+            [home, draft, resources],
+            [...pages.slice(0, 2), { ...pages[2]!, published: false }]
+        );
         expect(synced.map((i) => i.label)).toEqual(['Start', 'Courses', 'Resources']);
         expect(synced[0]).toBe(home);
+    });
+
+    it('keeps a link with an empty route where it is and still adds Home', () => {
+        const contact: HeaderNavItemValue = { label: 'Contact', route: '' };
+        const synced = syncNavWithPages([contact, courses], pages.slice(0, 2));
+        expect(synced.map((i) => i.label)).toEqual(['Contact', 'Home', 'All courses']);
+        expect(synced[0]).toBe(contact);
+    });
+
+    it('keeps internal links that are not pages (a blog post, a course)', () => {
+        const post: HeaderNavItemValue = { label: 'Post', route: '/blog/my-post' };
+        const course: HeaderNavItemValue = { label: 'NCLEX', route: 'course/abc' };
+        const synced = syncNavWithPages([post, course, courses], pages.slice(0, 2));
+        expect(synced.map((i) => i.label)).toEqual(['Post', 'NCLEX', 'Home', 'All courses']);
+        expect(synced[0]).toBe(post);
+        expect(synced[1]).toBe(course);
+    });
+
+    it('keeps a hidden link to an unpublished page as it is', () => {
+        const synced = syncNavWithPages(
+            [courses, paths],
+            [...pages.slice(0, 2), { ...pages[2]!, published: false }]
+        );
+        expect(synced.map((i) => i.label)).toEqual(['Home', 'All courses', 'Paths']);
+        expect(synced[2]).toBe(paths);
     });
 
     it('builds the plain page list for an empty nav and leaves unpublished pages out', () => {

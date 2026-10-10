@@ -71,7 +71,7 @@
       "backToTopButton": "Bouton retour en haut",
       "mode": "Mode",
       "compactness": "Compacité",
-      "ownPaletteNote": "Ce site utilise sa propre palette : ces préréglages n’y changent rien."
+      "ownPaletteNote": "En mode clair, la palette propre à ce site remplace la plupart des couleurs des préréglages."
     },
     "fonts": {
       "heading": "Typographie",
@@ -441,7 +441,9 @@
     "bottomNote": "Note de bas de page",
     "bottomNotePlaceholder": "© 2025 Votre entreprise. Tous droits réservés.",
     "column5": "Colonne 5",
-    "brandDesignNote": "Ce pied de page a son propre design : il affiche toujours quatre colonnes de liens, et la mise en page et les préréglages ne s’appliquent pas."
+    "brandDesignNote": "Ce pied de page a son propre design : il affiche toujours quatre colonnes de liens, et la mise en page et les préréglages ne s’appliquent pas.",
+    "useStandard": "Utiliser plutôt un pied de page standard",
+    "useStandardConfirm": "Passer à un pied de page standard ? Vos liens et textes sont conservés ; la mise en page et les préréglages s’appliquent de nouveau. Annuler rétablit le design de marque."
   },
   "hero": {
     "heading": "Paramètres de la section héros",
@@ -1000,6 +1002,7 @@
   },
   "sectionVersion": {
     "keptTitle": "Nouvelle version appliquée",
-    "keptSettings": "Paramètres conservés que cette version n'incluait pas : {{keys}}. Annulez pour revenir en arrière."
+    "keptSettings": "{{count}} paramètres absents de cette version ont été conservés. Annulez pour revenir en arrière, ou utilisez « Modifier en JSON » pour les voir.",
+    "keepsNote": "Conserve aussi {{count}} paramètres absents de cette version : {{names}}"
   }
 }

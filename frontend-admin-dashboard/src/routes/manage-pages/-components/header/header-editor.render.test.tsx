@@ -122,13 +122,14 @@ describe('Global header → nav item type and mega menu', () => {
         const nav = headerProps().navigation;
         expect(nav.map((i: { label: string }) => i.label)).toEqual([
             'Knowledge Streams',
+            'Courses',
             'Home',
             'Find your path',
         ]);
         expect(nav[0]).toEqual(before);
         expect(nav[0]).toMatchObject({ type: 'megaMenu', megaMenu: { libraryId: 'lib-1' } });
-        // "Courses" was not a page: a plain item is still replaced as before.
-        expect(nav.some((i: { label: string }) => i.label === 'Courses')).toBe(false);
+        // "Courses" is not one of this site's pages: it is the admin's own link and stays.
+        expect(nav[1]).toMatchObject({ label: 'Courses', route: 'courses' });
     });
 
     it('switches back to a plain link, keeping the menu settings for later', () => {

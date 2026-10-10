@@ -79,7 +79,7 @@ import { CourseFormatsCard } from './settings/CourseFormatsCard';
 import { SitePaletteCard } from './settings/SitePaletteCard';
 import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
 import { SectionJsonDialog } from './SectionJsonDialog';
-import { mergeSectionVersion } from '../-utils/section-edits';
+import { describeKeptSettings, mergeSectionVersion } from '../-utils/section-edits';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -304,6 +304,10 @@ export const PropertyPanel = () => {
                     component={component}
                     page={{ id: pageId, components: pageComponents }}
                     globalSettings={config.globalSettings as Record<string, any>}
+                    previewOf={(next) => {
+                        const { patch, kept } = mergeSectionVersion(component!, next);
+                        return { component: { ...component!, ...patch }, kept };
+                    }}
                     onApply={(next) => {
                         // The new version replaces what it sets; settings it
                         // leaves out (a page hero, sidebar, card design… it has
@@ -316,7 +320,7 @@ export const PropertyPanel = () => {
                             toast({
                                 title: t('sectionVersion.keptTitle'),
                                 description: t('sectionVersion.keptSettings', {
-                                    keys: kept.slice(0, 8).join(', ') + (kept.length > 8 ? ', …' : ''),
+                                    count: describeKeptSettings(kept).length,
                                 }),
                             });
                         }
@@ -386,6 +390,7 @@ export const PropertyPanel = () => {
                     component={component}
                     pageId={pageId}
                     updateComponent={updateComponent}
+                    siteConfig={config}
                 />
 
                 {/* Universal style editor — spacing, background, border, typography, animation */}
@@ -1026,10 +1031,13 @@ const GlobalSettingsEditor = ({
     const { t } = useTranslation('managePagesPropertyPanel');
     const gs = config.globalSettings || {};
     // A site with its own palette (theme.palette) colours its editorial parts
-    // from it, not from the preset: presets are greyed out, and the primary
-    // colour is written to the palette as well so both stay in step.
+    // from it: the primary colour is written to the palette as well so both
+    // stay in step. Only a palette that re-points the shared tokens
+    // (applyToTokens) overrides the presets' colours (in light mode), so only
+    // then are the presets greyed out.
     const palette = gs.theme?.palette;
     const hasPalette = !!palette && typeof palette === 'object' && !Array.isArray(palette);
+    const paletteOwnsTokens = hasPalette && palette.applyToTokens === true;
     const setPrimaryColor = (color: string) =>
         updateGlobalSettings({
             theme: {
@@ -1097,10 +1105,12 @@ const GlobalSettingsEditor = ({
                 {/* Color Presets */}
                 <div className="space-y-2">
                     <Label className="text-xs text-gray-500">{t('global.theme.colorPreset')}</Label>
-                    {hasPalette && (
+                    {paletteOwnsTokens && (
                         <p className="text-caption text-neutral-500">{t('global.theme.ownPaletteNote')}</p>
                     )}
-                    <div className={`grid grid-cols-3 gap-2 ${hasPalette ? 'opacity-50' : ''}`}>
+                    <div
+                        className={`grid grid-cols-3 gap-2 ${paletteOwnsTokens ? 'opacity-50' : ''}`}
+                    >
                         {(
                             [
                                 { key: 'default', color: '#3B82F6' }, // design-lint-ignore: color-editor swatch/seed value
@@ -1121,7 +1131,7 @@ const GlobalSettingsEditor = ({
                                     key={key}
                                     type="button"
                                     title={label}
-                                    disabled={hasPalette}
+                                    disabled={paletteOwnsTokens}
                                     onClick={() => updateField('theme.preset', key)}
                                     className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 text-caption font-medium transition-all ${
                                         isActive
@@ -2006,7 +2016,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Component-specific editor
-const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
+const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any) => {
     const { type } = component;
 
     switch (type) {
@@ -2054,6 +2064,7 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
                     component={component}
                     pageId={pageId}
                     updateComponent={updateComponent}
+                    siteConfig={siteConfig}
                 />
             );
 
@@ -2467,7 +2478,7 @@ const buildCourseCatalogSortLabels = (t: TFunction): Record<string, string> => (
     Popular: t('bookCatalogue.sort.popular', { defaultValue: 'Popular (most enrolled)' }),
 });
 
-const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
+const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     // Whole-store read on purpose (no selector): render tests mock the store as a plain function.
     const { config } = useEditorStore();
@@ -2654,7 +2665,8 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                     updateComponent={updateComponent}
                     patch={patchProps}
                     setNested={setNested}
-                    catalogue={config}
+                    // The site in the language being edited (Hindi text in Hindi mode).
+                    catalogue={siteConfig ?? config}
                 />
             )}
         </div>
@@ -3226,9 +3238,21 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
             <h4 className="text-sm font-medium">{t('footer.heading')}</h4>
 
             {isBrand ? (
-                <p className="rounded border bg-gray-50 p-3 text-xs text-neutral-600">
-                    {t('footer.brandDesignNote')}
-                </p>
+                <div className="space-y-2 rounded border bg-gray-50 p-3">
+                    <p className="text-xs text-neutral-600">{t('footer.brandDesignNote')}</p>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs"
+                        onClick={() => {
+                            if (window.confirm(t('footer.useStandardConfirm'))) {
+                                patchProps({ variant: undefined });
+                            }
+                        }}
+                    >
+                        {t('footer.useStandard')}
+                    </Button>
+                </div>
             ) : (
                 <>
                     <VariantSwitcher
@@ -3507,14 +3531,19 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 <Input
                     placeholder={t('hero.eyebrowPlaceholder')}
                     value={props.eyebrow?.text || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                        // Clearing the text keeps the eyebrow's other settings
+                        // (e.g. style 'rule'), so retyping does not turn it into a badge.
+                        const keepsSettings = Object.keys(props.eyebrow || {}).some(
+                            (k) => k !== 'text'
+                        );
                         updateProp(
                             'eyebrow',
-                            e.target.value
+                            e.target.value || keepsSettings
                                 ? { ...(props.eyebrow || {}), text: e.target.value }
-                                : undefined,
-                        )
-                    }
+                                : undefined
+                        );
+                    }}
                 />
                 {props.eyebrow?.text && (
                     <select
@@ -5945,7 +5974,8 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                             const prevId = ids[i];
                             if (next === prevId) return;
                             ids[i] = next;
-                            if (!prevId || !badges[prevId]) {
+                            // '' is a real key here: clearing the field moves the ribbon to ''.
+                            if (prevId === undefined || badges[prevId] === undefined) {
                                 updateProp('courseIds', ids);
                                 return;
                             }

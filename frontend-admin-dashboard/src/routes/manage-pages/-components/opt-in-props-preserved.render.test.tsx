@@ -302,6 +302,8 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
 
         fireEvent.click(screen.getByTitle('actions.tryAnotherVersion'));
         fireEvent.click(await screen.findByRole('button', { name: /show me options/i }));
+        // Before Apply, the option says it keeps the settings it leaves out.
+        expect(await screen.findByText('sectionVersion.keepsNote')).toBeInTheDocument();
         fireEvent.click(await screen.findByRole('button', { name: /use this version/i }));
 
         const props = live('courses', 'courses-catalog').props;
@@ -336,6 +338,23 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
 
         const props = live('learning-paths', 'lp-hero').props;
         expect(props).toEqual({ ...before.props, eyebrow: { text: 'Paths', style: 'rule' } });
+    });
+
+    it('hero eyebrow: clearing the text and retyping keeps the "rule" style', () => {
+        useEditorStore.getState().selectComponent('lp-hero');
+        render(<PropertyPanel />);
+        const input = screen.getByDisplayValue('Learning paths');
+
+        fireEvent.change(input, { target: { value: '' } });
+        expect(live('learning-paths', 'lp-hero').props.eyebrow).toEqual({
+            text: '',
+            style: 'rule',
+        });
+        fireEvent.change(input, { target: { value: 'Paths' } });
+        expect(live('learning-paths', 'lp-hero').props.eyebrow).toEqual({
+            text: 'Paths',
+            style: 'rule',
+        });
     });
 
     it('steps "cards": shown as the active variant, and editing the heading keeps it', () => {
@@ -375,6 +394,23 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
         expect(props).not.toHaveProperty('courseBadges');
     });
 
+    it('course strip: a ribbon follows the id when the field is cleared and retyped', () => {
+        const firstId = START_FREE.props.courseIds[0];
+        const ribbon = { label: 'Free' };
+        useEditorStore.getState().updateComponent('courses', 'home-start-free', {
+            props: { ...START_FREE.props, courseBadges: { [firstId]: ribbon } },
+        });
+        useEditorStore.getState().selectComponent('home-start-free');
+        render(<PropertyPanel />);
+        const input = screen.getByDisplayValue(firstId);
+
+        fireEvent.change(input, { target: { value: '' } });
+        fireEvent.change(input, { target: { value: 'course-new' } });
+        expect(live('courses', 'home-start-free').props.courseBadges).toEqual({
+            'course-new': ribbon,
+        });
+    });
+
     it('JSON dialog: a value with no field is edited, the rest is unchanged, and Undo restores it', async () => {
         const before = clone(live('courses', 'courses-catalog'));
         useEditorStore.getState().selectComponent('courses-catalog');
@@ -405,6 +441,52 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
         expect(live('courses', 'courses-catalog')).toEqual(before);
     });
 
+    it('JSON dialog: off while editing another language, so Hindi text cannot overwrite English', () => {
+        useEditorStore.getState().setEditingLocale('hi');
+        try {
+            useEditorStore.getState().selectComponent('courses-catalog');
+            const { unmount } = render(<PropertyPanel />);
+            expect(screen.getByRole('button', { name: /sectionJson.button/ })).toBeDisabled();
+            unmount();
+
+            useEditorStore.getState().selectGlobalLayout('header');
+            render(<PropertyPanel />);
+            expect(screen.getByRole('button', { name: /sectionJson.button/ })).toBeDisabled();
+        } finally {
+            useEditorStore.getState().setEditingLocale(null);
+        }
+    });
+
+    it('header and footer JSON dialog: Apply replaces only that block, and Undo restores it', async () => {
+        for (const block of ['header', 'footer'] as const) {
+            const before = clone(gsNow());
+            useEditorStore.getState().selectGlobalLayout(block);
+            const { unmount } = render(<PropertyPanel />);
+
+            fireEvent.click(screen.getByRole('button', { name: /sectionJson.button/ }));
+            const textarea = (await screen.findByRole('textbox', {
+                name: 'sectionJson.title',
+            })) as HTMLTextAreaElement;
+            expect(JSON.parse(textarea.value)).toEqual(before.layout[block].props);
+            const edited = { ...before.layout[block].props, noFieldYet: { on: true } };
+            fireEvent.change(textarea, { target: { value: JSON.stringify(edited) } });
+            fireEvent.click(screen.getByRole('button', { name: 'sectionJson.apply' }));
+            await waitFor(() =>
+                expect(screen.queryByRole('textbox', { name: 'sectionJson.title' })).toBeNull()
+            );
+
+            const after = clone(gsNow());
+            expect(after.layout[block].props).toEqual(edited);
+            expect({ ...after, layout: { ...after.layout, [block]: undefined } }).toEqual({
+                ...before,
+                layout: { ...before.layout, [block]: undefined },
+            });
+            useEditorStore.getState().undo();
+            expect(gsNow()).toEqual(before);
+            unmount();
+        }
+    });
+
     it('courses page: Title is relabelled, the legacy filters are tucked away and the coming-soon note is gone', () => {
         useEditorStore.getState().selectComponent('courses-catalog');
         render(<PropertyPanel />);
@@ -432,6 +514,34 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
             ...before,
             rightSection4: { ...before.rightSection4, title: 'Help' },
         });
+    });
+
+    it('brand footer: "Use a standard footer" asks first, then drops only the variant', () => {
+        const before = clone(gsNow().layout.footer.props);
+        useEditorStore.getState().selectGlobalLayout('footer');
+        render(<PropertyPanel />);
+        const confirm = vi.spyOn(window, 'confirm');
+
+        confirm.mockReturnValueOnce(false);
+        fireEvent.click(screen.getByRole('button', { name: 'footer.useStandard' }));
+        expect(gsNow().layout.footer.props).toEqual(before);
+
+        confirm.mockReturnValueOnce(true);
+        fireEvent.click(screen.getByRole('button', { name: 'footer.useStandard' }));
+        expect(clone(gsNow().layout.footer.props)).toEqual({ ...before, variant: undefined });
+        expect(screen.getByText('footer.layout')).toBeInTheDocument();
+        confirm.mockRestore();
+    });
+
+    it('site palette without applyToTokens: presets stay usable', () => {
+        const site = clone(BV);
+        delete site.globalSettings.theme.palette.applyToTokens;
+        useEditorStore.getState().setConfig(site as never);
+        useEditorStore.getState().selectGlobalSettings();
+        render(<PropertyPanel />);
+
+        expect(screen.queryByText('global.theme.ownPaletteNote')).toBeNull();
+        expect(screen.getByTitle('options.ocean')).not.toBeDisabled();
     });
 
     it('site palette: presets are greyed out and the primary colour also updates palette.primary', () => {

@@ -103,7 +103,8 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     ),
     "website_builder_edits": (
         "Let the connected AI app build and change websites — compose pages, edit sections, set "
-        "colours and fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing "
+        "colours and fonts, course formats and languages, translations, wire forms to lead campaigns "
+        "and sections to folder libraries or product pages. Every change is saved as a draft; nothing "
         "goes live until you publish it in Manage Pages. Uses no AI credits."
     ),
     "audience_forms": (

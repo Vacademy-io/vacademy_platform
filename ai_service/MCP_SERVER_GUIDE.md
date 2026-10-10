@@ -17,8 +17,8 @@ settings tab has one toggle per feature to manage per role:
 | :--- | :--- | :--- | :--- |
 | `whoami` | READ | `identity` — **always on**, not a toggle | the caller's name, username, email, mobile, roles + the institute's name, logo, theme, portals, terminology |
 | `get_institute_overview` | READ | `institute_overview` | sections: `profile` (name, logo, theme, contact, terminology), outstanding fees, classes live now, active learners |
-| `website` | READ | `website_builder` | `list`, `get_page`, `find_section`, `context`, `analytics`, `lead_summary`, `audit`, `review`, `brief_checklist`, `schema`, `list_media`, `preview` |
-| `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `add_html_page`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
+| `website` | READ | `website_builder` | `list`, `get_page`, `find_section`, `context`, `analytics`, `lead_summary`, `audit`, `review`, `brief_checklist`, `schema`, `list_media`, `preview`, `strings` |
+| `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `add_html_page`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft`, `set_catalog_settings`, `set_translations`, `bind_data` |
 | `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
 | `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
 | `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference), `template` (one email or WhatsApp template in full) |

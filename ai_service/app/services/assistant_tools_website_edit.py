@@ -18,7 +18,10 @@ Actions
     update_page       insert / update / remove / move ops on an existing page
     set_layout        the site's header and footer
     add_section       one block with default content (no composition needed)
-    set_theme         colours, fonts, radius, atmosphere, motion
+    set_theme         colours, fonts, radius, atmosphere, motion, palette, content width
+    set_catalog_settings  course formats, course languages + version groups, naming, site cart
+    set_translations  another language's dictionary (globalSettings.i18n.strings)
+    bind_data         point a section / the header mega menu at a folder library, folder or product page
     set_courses       which courses a course block shows
     link_lead_form    point a form / popup button at a lead campaign
     set_seo           meta title / description of a page
@@ -72,6 +75,7 @@ WEBSITE_EDIT_GROUP_KEY = "website_builder_edits"
 WEBSITE_EDIT_ACTIONS = (
     "create_page", "create_site", "add_html_page", "update_page", "set_layout", "add_section", "set_theme",
     "set_site_settings", "set_courses", "link_lead_form", "set_seo", "import_image", "discard_draft",
+    "set_catalog_settings", "set_translations", "bind_data",
 )
 
 THEME_PRESETS = ("default", "ocean", "forest", "sunset", "midnight", "rose", "violet", "amber", "slate")
@@ -102,7 +106,19 @@ FONT_STACKS: Dict[str, str] = {
     "Tiro Devanagari Hindi": '"Tiro Devanagari Hindi", serif',
 }
 
+#: globalSettings.theme.palette — the named colours of a design-led site (mirror
+#: of learner -utils/catalogue-palette.ts PALETTE_KEYS). Opt-in: a site without
+#: a palette renders exactly as before.
+PALETTE_KEYS = (
+    "text", "body", "muted", "muted2", "primary", "gold", "accent", "olive", "cream", "canvas",
+    "sand", "border", "borderStrong", "accentOnDark", "bodyOnDark", "outline",
+)
+#: globalSettings.theme.contentMaxWidth — content column in px, gutters excluded
+#: (resolveContentMaxWidth: an integer 320–2400, anything else is ignored).
+CONTENT_WIDTH_MIN, CONTENT_WIDTH_MAX = 320, 2400
+
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_HEX3_RE = re.compile(r"^#[0-9a-fA-F]{3}$")
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 _MAX_OPS = 40
 _MAX_IMPORT_BYTES = 6_000_000
@@ -146,6 +162,23 @@ _THEME_SCHEMA: Dict[str, Any] = {
         "atmosphere": {"type": "string", "enum": list(ATMOSPHERES)},
         "atmosphere_intensity": {"type": "string", "enum": ["subtle", "medium", "bold"]},
         "motion": {"type": "string", "enum": list(MOTIONS)},
+        "palette": {
+            "type": "object",
+            "description": (
+                "Exact named colours from a design (e.g. a Figma file), each #rrggbb; null removes one. "
+                "Merged into the site's palette key by key. Add apply_to_tokens: true to also re-colour the "
+                "shared text/background/border tokens (light mode). Keys: " + ", ".join(PALETTE_KEYS) + "."
+            ),
+            "properties": {
+                **{k: {"type": ["string", "null"]} for k in PALETTE_KEYS},
+                "apply_to_tokens": {"type": "boolean"},
+            },
+        },
+        "content_max_width": {
+            "type": ["integer", "null"],
+            "description": f"Content column width in px, gutters excluded ({CONTENT_WIDTH_MIN}–{CONTENT_WIDTH_MAX}), "
+                           "e.g. 1152 for a 1440 frame with 144 px margins. null returns to the default width.",
+        },
     },
 }
 
@@ -168,6 +201,37 @@ _SITE_SETTINGS_SCHEMA: Dict[str, Any] = {
                 "telephone": {"type": "string"}, "address": {"type": "string"}, "logo": {"type": "string"},
                 "same_as": {"type": "array", "items": {"type": "string"}}}},
         }},
+    },
+}
+
+_CATALOG_SETTINGS_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Catalogue-wide settings (globalSettings). Maps merge key by key (null removes a key); lists replace. "
+        "Course ids and product page codes ONLY from website(action='context')."
+    ),
+    "properties": {
+        "course_formats": {"type": "object", "description": (
+            "{slug key: {label, levels?: [level names], tags?: [course tags]} | null} — at most 20. A course "
+            "shows a format when it has the tag 'format-<key>', one of `tags`, or its level is one of `levels`."),
+            "additionalProperties": {"type": ["object", "null"], "properties": {
+                "label": {"type": "string"}, "levels": {"type": "array", "items": {"type": "string"}},
+                "tags": {"type": "array", "items": {"type": "string"}}}}},
+        "course_format_order": {"type": "array", "items": {"type": "string"}, "description": "Format keys in display order."},
+        "course_languages": {"type": "object", "properties": {
+            "enabled": {"type": "boolean", "description": "Fold a course's language versions into one card with language chips."},
+            "languages": {"type": "array", "items": {"type": "object", "properties": {
+                "code": {"type": "string"}, "label": {"type": "string"}, "chip": {"type": "string"},
+                "match": {"type": "array", "items": {"type": "string"}}}, "required": ["code", "label"]}},
+            "version_groups": {"type": "array", "items": {"type": "array", "items": {"type": "string"}},
+                               "description": "[[course id, course id], …] — separate courses that are the same course in different languages (max 100 groups). [] clears."},
+        }},
+        "naming": {"type": "object", "description": "The catalogue's own words, e.g. {level: 'Format'}.", "properties": {
+            k: {"type": ["string", "null"]} for k in ("level", "level_plural", "course", "course_plural", "session", "session_plural")}},
+        "site_cart": {"type": "object", "properties": {
+            "enabled": {"type": "boolean"},
+            "store_product_page_code": {"type": "string", "description": "The product page whose checkout takes the whole cart."}},
+            "required": ["enabled"]},
     },
 }
 
@@ -229,7 +293,21 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "- set_layout (tag_name, header?, footer?): the site's header and footer components.\n"
             "- add_section (tag_name, page_route, section_type, after_section_id?, props?): insert one block "
             "with default content.\n"
-            "- set_theme (tag_name, theme): colours, fonts, radius, atmosphere, motion.\n"
+            "- set_theme (tag_name, theme): colours, fonts, radius, atmosphere, motion, and for a design "
+            "(Figma) the exact named palette and the content width.\n"
+            "- set_catalog_settings (tag_name, catalog_settings): course formats (label + the level names / "
+            "tags that mean each), their order, course languages + version groups (the same course in "
+            "two languages as ONE card; course ids from website(action='context')), naming (e.g. the Level "
+            "filter called 'Format'), and the site-wide cart's store product page.\n"
+            "- set_translations (tag_name, locale, strings, enable?, locale_label?): merge translations into "
+            "the site's dictionary for `locale` — {exact source text from website(action='strings'): "
+            "translation}; null removes one; a translation equal to its source keeps the text as is. "
+            "enable=true offers the language on the site.\n"
+            "- bind_data (tag_name, section_id | 'header', data_kind, data_id, page_route?, path?, nav_index?, "
+            "library_id?): bind live data instead of removing a section the audit flags as unbound — a "
+            "folder library (folderBrowser, learningPath list, courseCatalog stream tabs, header mega menu), "
+            "a folder (folderBrowser start folder, learningPath folder) or a product page code "
+            "(learningPath, productPageOffer). Ids are checked against the institute's own data.\n"
             "- set_site_settings (tag_name, site_settings): sticky header, back-to-top, density, audience, "
             "site-wide lead popup, site-level SEO (keywords, organization).\n"
             "- set_courses (tag_name, page_route, section_id, source: all|showcase|product_page, mode?, "
@@ -280,6 +358,17 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "audience_id": {"type": "string"},
                 "meta_title": {"type": "string"},
                 "meta_description": {"type": "string"},
+                "catalog_settings": _CATALOG_SETTINGS_SCHEMA,
+                "locale": {"type": "string", "description": "set_translations: the language, e.g. 'hi'."},
+                "strings": {"type": "object", "additionalProperties": {"type": ["string", "null"]},
+                            "description": "set_translations: {exact source text: translation | null}."},
+                "enable": {"type": "boolean", "description": "set_translations: true offers the language on the site (switcher on); false turns the switcher off."},
+                "locale_label": {"type": "string", "description": "set_translations: what the language switcher shows, e.g. 'हिन्दी'."},
+                "data_kind": {"type": "string", "enum": ["folderLibrary", "folder", "productPage"], "description": "bind_data: what to bind."},
+                "data_id": {"type": "string", "description": "bind_data: the library id, folder id or product page CODE."},
+                "nav_index": {"type": "integer", "description": "bind_data on the header: which navigation item (0-based) becomes the mega menu."},
+                "path": {"type": "string", "description": "bind_data: an explicit prop path for the id, e.g. columnSections[1].productPageCode."},
+                "library_id": {"type": "string", "description": "bind_data data_kind=folder: the folder's library when the section has none yet."},
             },
             "required": ["action"],
         },
@@ -370,6 +459,14 @@ def theme_to_global_patch(theme: Dict[str, Any]) -> Dict[str, Any]:
         t["atmosphere"] = {"canvas": atmosphere, "intensity": intensity or "medium"}
     elif isinstance(atmosphere, dict) and atmosphere.get("canvas") in ATMOSPHERES:
         t["atmosphere"] = {"canvas": atmosphere["canvas"], "intensity": intensity or atmosphere.get("intensity") or "medium"}
+    palette = _palette_patch(theme.get("palette"))
+    if palette:
+        t["palette"] = palette
+    width_in = _first_present(theme, "content_max_width", "contentMaxWidth")
+    if width_in is not _MISSING:
+        width = _content_width(width_in)
+        if width is not None or width_in is None:
+            t["contentMaxWidth"] = width     # None clears it (merge_global_settings drops the key)
     if t:
         patch["theme"] = t
     if theme.get("mode") in ("light", "dark"):
@@ -397,6 +494,101 @@ def _font_stack(label: Any) -> Optional[str]:
         if k.lower() == name.lower() or v == name:
             return v
     return None
+
+
+_MISSING = object()
+
+
+def _first_present(d: Dict[str, Any], *keys: str) -> Any:
+    """The value of the first key present in ``d`` (None counts), else ``_MISSING``."""
+    for k in keys:
+        if k in d:
+            return d[k]
+    return _MISSING
+
+
+def _hex6(value: Any) -> Optional[str]:
+    """#rgb / #rrggbb → #RRGGBB (the case set_theme stores primaryColor in); None for anything else."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if _HEX3_RE.match(v):
+        v = "#" + "".join(c * 2 for c in v[1:])
+    return v.upper() if _HEX_RE.match(v) else None
+
+
+def _content_width(value: Any) -> Optional[int]:
+    """An integer content width inside the renderer's range, else None (never clamped: a wrong width is refused)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != int(value):
+        return None
+    px = int(value)
+    return px if CONTENT_WIDTH_MIN <= px <= CONTENT_WIDTH_MAX else None
+
+
+def _palette_patch(raw: Any) -> Dict[str, Any]:
+    """
+    A ``palette`` argument → the ``theme.palette`` patch: known keys with a hex
+    value (None removes that colour), plus ``applyToTokens``. Anything else is
+    dropped here; ``theme_problems`` names it for the caller.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in PALETTE_KEYS:
+        if key not in raw:
+            continue
+        if raw[key] is None:
+            out[key] = None
+        elif (hex_ := _hex6(raw[key])) is not None:
+            out[key] = hex_
+    apply = _first_present(raw, "apply_to_tokens", "applyToTokens")
+    if isinstance(apply, bool):
+        out["applyToTokens"] = apply
+    elif apply is None:
+        out["applyToTokens"] = None
+    return out
+
+
+def theme_problems(theme: Any) -> List[str]:
+    """
+    What in a ``theme`` argument's palette / content width cannot be stored — so
+    a design's exact colours are never silently half-applied. Empty when fine.
+    """
+    if not isinstance(theme, dict):
+        return []
+    problems: List[str] = []
+    palette = theme.get("palette")
+    if palette is not None and not isinstance(palette, dict):
+        problems.append("palette must be an object of named #rrggbb colours.")
+    elif isinstance(palette, dict):
+        allowed = set(PALETTE_KEYS) | {"apply_to_tokens", "applyToTokens"}
+        unknown = sorted(k for k in palette if k not in allowed)
+        if unknown:
+            problems.append(f"Unknown palette key(s) {unknown}; the palette has exactly: {list(PALETTE_KEYS)} "
+                            "(+ apply_to_tokens).")
+        bad = sorted(k for k in PALETTE_KEYS if k in palette and palette[k] is not None and _hex6(palette[k]) is None)
+        if bad:
+            problems.append(f"palette {bad} must be hex colours like #883000.")
+        apply = _first_present(palette, "apply_to_tokens", "applyToTokens")
+        if apply is not _MISSING and apply is not None and not isinstance(apply, bool):
+            problems.append("palette.apply_to_tokens must be true or false.")
+    width = _first_present(theme, "content_max_width", "contentMaxWidth")
+    if width is not _MISSING and width is not None and _content_width(width) is None:
+        problems.append(f"content_max_width must be a whole number of px from {CONTENT_WIDTH_MIN} to {CONTENT_WIDTH_MAX}.")
+    return problems
+
+
+def _merge_theme(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    """theme patch over theme, with ``palette`` merged key by key (None removes a colour)."""
+    merged = {**base, **patch}
+    if isinstance(patch.get("palette"), dict):
+        old = base.get("palette") if isinstance(base.get("palette"), dict) else {}
+        palette = {k: v for k, v in {**old, **patch["palette"]}.items() if v is not None}
+        if any(k in palette for k in PALETTE_KEYS):
+            merged["palette"] = palette
+        else:
+            merged.pop("palette", None)   # no colour left: applyToTokens alone means nothing
+    return merged
 
 
 _SEO_ORG_KEYS = {"name": "name", "legal_name": "legalName", "description": "description", "founder": "founder",
@@ -443,11 +635,15 @@ def site_settings_to_global_patch(settings_in: Dict[str, Any]) -> Dict[str, Any]
 
 
 def merge_global_settings(gs: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
-    """One level of object merge (theme/fonts/motion), like the editor's updateGlobalSettings + applyOps."""
+    """
+    One level of object merge (theme/fonts/motion), like the editor's
+    updateGlobalSettings + applyOps — except ``theme.palette``, which merges
+    one level deeper so setting one colour never drops the other fifteen.
+    """
     out = copy.deepcopy(gs) if isinstance(gs, dict) else {}
     for k, v in patch.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
-            merged = {**out[k], **v}
+            merged = _merge_theme(out[k], v) if k == "theme" else {**out[k], **v}
             out[k] = {kk: vv for kk, vv in merged.items() if vv is not None}
         elif v is None:
             out.pop(k, None)
@@ -537,7 +733,10 @@ def apply_ops(config: Dict[str, Any], page_id: str, ops: List[Dict[str, Any]]) -
         elif kind == "updateGlobalSettings" and isinstance(op.get("patch"), dict):
             gs = clone.setdefault("globalSettings", {})
             for k, v in op["patch"].items():
-                gs[k] = {**(gs.get(k) or {}), **v} if isinstance(v, dict) and isinstance(gs.get(k), dict) else v
+                if isinstance(v, dict) and isinstance(gs.get(k), dict):
+                    gs[k] = _merge_theme(gs[k], v) if k == "theme" else {**gs[k], **v}
+                else:
+                    gs[k] = v
         page["components"] = comps
     page["components"] = comps
     return clone
@@ -882,7 +1081,7 @@ def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_setting
     clean["seo"] = {k: str(seo[k])[:170] for k in ("metaTitle", "metaDescription", "ogImage") if seo.get(k)}
     issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
                "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
-              for i in audit_page(clean, global_settings, page_type=page_type or "homepage")]
+              for i in audit_page(clean, global_settings, page_type=page_type or "homepage", can_bind=True)]
     return clean, [i for i in issues if i["message"]], warnings
 
 
@@ -1126,6 +1325,7 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     clean, issues, warnings = _sanitize_authored_page(page, page_type, config.get("globalSettings"))
     if clean is None:
         return _err("invalid_page", issues=issues, warnings=warnings[:12])
+    warnings.extend(f"theme: {p} (left out)" for p in theme_problems(theme))
     from .assistant_tools_website import _load_media
     try:
         media = await _load_media(ctx, "any", 12)
@@ -1167,7 +1367,7 @@ async def _action_create_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     theme = args.get("theme") if isinstance(args.get("theme"), dict) else None
     config = _new_site_config(theme, args.get("site_settings") if isinstance(args.get("site_settings"), dict) else None)
     all_issues: Dict[str, Any] = {}
-    all_warnings: List[str] = []
+    all_warnings: List[str] = [f"theme: {p} (left out)" for p in theme_problems(theme)]
     for p in pages_in:
         clean, issues, warnings = _sanitize_authored_page(p, "homepage" if not config["pages"] else "about", config["globalSettings"])
         all_warnings.extend(warnings)
@@ -1225,7 +1425,7 @@ async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     from ..services.page_audit import audit_page
     issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
                "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
-              for i in audit_page(new_page, config.get("globalSettings"))]
+              for i in audit_page(new_page, config.get("globalSettings"), can_bind=True)]
     revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
@@ -1300,12 +1500,17 @@ async def _action_add_section(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
 async def _action_set_theme(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     if err := _require(args, "set_theme", "theme"):
         return err
+    accepted = {"preset": THEME_PRESETS, "primary_color": "#rrggbb", "mode": ["light", "dark"],
+                "fonts": list(FONT_STACKS), "border_radius": BORDER_RADII,
+                "heading_scale": HEADING_SCALES, "atmosphere": ATMOSPHERES, "motion": MOTIONS,
+                "palette": list(PALETTE_KEYS) + ["apply_to_tokens"],
+                "content_max_width": f"{CONTENT_WIDTH_MIN}-{CONTENT_WIDTH_MAX}"}
+    if problems := theme_problems(args["theme"]):
+        return _err("bad_request", message="Nothing was changed: " + " ".join(problems), problems=problems,
+                    accepted=accepted)
     patch = theme_to_global_patch(args["theme"])
     if not patch:
-        return _err("bad_request", message="Nothing in `theme` was a recognised setting.",
-                    accepted={"preset": THEME_PRESETS, "primary_color": "#rrggbb", "mode": ["light", "dark"],
-                              "fonts": list(FONT_STACKS), "border_radius": BORDER_RADII,
-                              "heading_scale": HEADING_SCALES, "atmosphere": ATMOSPHERES, "motion": MOTIONS})
+        return _err("bad_request", message="Nothing in `theme` was a recognised setting.", accepted=accepted)
     site, err = await _target_site(ctx, args, "set_theme")
     if err:
         return err
@@ -1314,8 +1519,24 @@ async def _action_set_theme(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
+    extra: Dict[str, Any] = {}
+    if notes := _font_notes(config["globalSettings"]):
+        extra["warnings"] = notes
     return _result(ctx, site, config, revision, "Updated the site's theme.",
-                   settings=summarize_global_settings(config["globalSettings"]))
+                   settings=summarize_global_settings(config["globalSettings"]), **extra)
+
+
+def _font_notes(gs: Dict[str, Any]) -> List[str]:
+    """A separate heading font on a Devanagari site replaces the heading stack WITHOUT its Devanagari fallback."""
+    i18n = gs.get("i18n") if isinstance(gs.get("i18n"), dict) else {}
+    codes = {str(l.get("code") or "").lower() for l in i18n.get("locales") or [] if isinstance(l, dict)}
+    codes.add(str(i18n.get("defaultLocale") or "").lower())
+    heading = str((gs.get("fonts") or {}).get("headingFamily") or "")
+    if codes & {"hi", "mr", "ne", "sa"} and heading and "devanagari" not in heading.lower():
+        return [f"This site has a Devanagari language, and fonts.headingFamily ({heading}) has no Devanagari "
+                "fallback — Hindi headings will fall back to a system face. Set only the body font "
+                "(headings inherit it, with Noto Sans Devanagari added automatically)."]
+    return []
 
 
 async def _action_set_site_settings(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1568,6 +1789,618 @@ async def _action_discard_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[
             "editor_url": site_editor_url(site["tag_name"], ctx=ctx)}
 
 
+# ── catalogue settings (formats, languages, naming, site cart) ───────────
+_FORMAT_KEY_RE = re.compile(r"^[a-z0-9-]{1,32}$")
+_LANG_CODE_RE = re.compile(r"^[a-z0-9-]{1,12}$")
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_ANY_TAG_RE = re.compile(r"<[^>]*>")
+_MAX_FORMATS = 20
+_MAX_LANGUAGES = 8
+_MAX_VERSION_GROUPS = 100
+_MAX_GROUP_SIZE = 6
+_NAMING_KEYS = {"level": "level", "level_plural": "levelPlural", "course": "course", "course_plural": "coursePlural",
+                "session": "session", "session_plural": "sessionPlural"}
+_CATALOG_SETTING_KEYS = ("course_formats", "course_format_order", "course_languages", "naming", "site_cart")
+
+
+def _plain_text(value: Any, cap: int) -> Optional[str]:
+    """One line of visitor text: markup and control characters removed, whitespace collapsed; None when empty."""
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", _CONTROL_RE.sub("", _ANY_TAG_RE.sub("", value))).strip()
+    return text[:cap] if text else None
+
+
+def _word_list(raw: Any, cap_items: int, cap_chars: int, no_commas: bool = False) -> Optional[List[str]]:
+    """A list of short words (level names, tags, match words) or None when it is not one."""
+    if not isinstance(raw, list) or len(raw) > cap_items:
+        return None
+    out: List[str] = []
+    for item in raw:
+        word = _plain_text(item, cap_chars)
+        if word is None or (no_commas and "," in word):
+            return None
+        if word not in out:
+            out.append(word)
+    return out
+
+
+def catalog_settings_patch(si: Any, gs: Dict[str, Any], course_ids: Optional[set],
+                           product_pages: Optional[List[Dict[str, Any]]]) -> Tuple[Dict[str, Any], List[str], List[str]]:
+    """
+    ``catalog_settings`` argument → ``(globalSettings patch, problems, notes)``.
+
+    Pure. Any problem refuses the whole change (nothing half-applied). Maps
+    merge key by key and a null removes a key; lists replace. ``course_ids``
+    (the institute's course ids) is needed only for version groups and
+    ``product_pages`` only for the site cart — the caller loads them when asked.
+    """
+    si = si if isinstance(si, dict) else {}
+    patch: Dict[str, Any] = {}
+    problems: List[str] = [f"Unknown setting '{k}'." for k in si if k not in _CATALOG_SETTING_KEYS]
+    notes: List[str] = []
+
+    # course formats: key → {label, levels?, tags?} | null
+    current_formats = gs.get("courseFormats") if isinstance(gs.get("courseFormats"), dict) else {}
+    formats_after = {str(k).lower(): v for k, v in current_formats.items()}
+    if "course_formats" in si:
+        raw = si["course_formats"]
+        if not isinstance(raw, dict) or not raw:
+            problems.append("course_formats must be an object: {key: {label, levels?, tags?} | null}.")
+        else:
+            out: Dict[str, Any] = {}
+            for key_in, fmt in raw.items():
+                key = str(key_in).strip().lower()
+                if not _FORMAT_KEY_RE.match(key):
+                    problems.append(f"Format key '{key_in}' must be a slug (a-z, 0-9, -; at most 32).")
+                    continue
+                if fmt is None:
+                    out[key] = None
+                    formats_after.pop(key, None)
+                    continue
+                label = _plain_text(fmt.get("label"), 60) if isinstance(fmt, dict) else None
+                if label is None:
+                    problems.append(f"Format '{key}' needs a label (the text visitors see, at most 60 characters).")
+                    continue
+                entry: Dict[str, Any] = {"label": label}
+                for part, cap in (("levels", 60), ("tags", 191)):
+                    if part not in fmt:
+                        continue
+                    words = _word_list(fmt[part], 20, cap, no_commas=(part == "tags"))
+                    if words is None:
+                        problems.append(f"Format '{key}'.{part} must be a list of at most 20 short texts"
+                                        + (" without commas." if part == "tags" else "."))
+                    elif words:
+                        entry[part] = words
+                out[key] = entry
+                formats_after[key] = entry
+            if len(formats_after) > _MAX_FORMATS:
+                problems.append(f"A site has at most {_MAX_FORMATS} course formats ({len(formats_after)} after this change).")
+            if out:
+                patch["courseFormats"] = out
+    if "course_format_order" in si:
+        order = si["course_format_order"]
+        if not isinstance(order, list) or len(order) > _MAX_FORMATS:
+            problems.append(f"course_format_order must be a list of at most {_MAX_FORMATS} format keys.")
+        else:
+            keys = []
+            for k in order:
+                key = str(k).strip().lower()
+                if key not in formats_after:
+                    problems.append(f"course_format_order names '{k}', which is not one of the site's formats "
+                                    f"({sorted(formats_after)}).")
+                elif key not in keys:
+                    keys.append(key)
+            patch["courseFormatOrder"] = keys
+
+    # course languages: {enabled?, languages?, version_groups?}
+    if "course_languages" in si:
+        raw = si["course_languages"]
+        if not isinstance(raw, dict) or not raw:
+            problems.append("course_languages must be an object: {enabled?, languages?, version_groups?}.")
+        else:
+            out = {}
+            if "enabled" in raw:
+                if isinstance(raw["enabled"], bool):
+                    out["enabled"] = raw["enabled"]
+                else:
+                    problems.append("course_languages.enabled must be true or false.")
+            if "languages" in raw:
+                langs = raw["languages"]
+                if not isinstance(langs, list) or not langs or len(langs) > _MAX_LANGUAGES:
+                    problems.append(f"course_languages.languages must list 1–{_MAX_LANGUAGES} languages.")
+                else:
+                    clean_langs: List[Dict[str, Any]] = []
+                    for i, lang in enumerate(langs):
+                        lang = lang if isinstance(lang, dict) else {}
+                        code = str(lang.get("code") or "").strip().lower()
+                        label = _plain_text(lang.get("label"), 40)
+                        if not _LANG_CODE_RE.match(code) or label is None:
+                            problems.append(f"Language {i + 1} needs a code (a-z, 0-9, -, e.g. 'hi') and a label (e.g. 'Hindi').")
+                            continue
+                        if any(c["code"] == code for c in clean_langs):
+                            problems.append(f"The language code '{code}' is used twice.")
+                            continue
+                        item: Dict[str, Any] = {"code": code, "label": label}
+                        chip = _plain_text(lang.get("chip"), 8)
+                        if chip:
+                            item["chip"] = chip
+                        if "match" in lang:
+                            words = _word_list(lang["match"], 12, 40)
+                            if words is None:
+                                problems.append(f"Language '{code}'.match must be a list of at most 12 words.")
+                            elif words:
+                                item["match"] = words
+                        clean_langs.append(item)
+                    out["languages"] = clean_langs
+            if "version_groups" in raw:
+                groups = raw["version_groups"]
+                if groups is None or groups == []:
+                    out["versionGroups"] = None
+                elif not isinstance(groups, list) or len(groups) > _MAX_VERSION_GROUPS:
+                    problems.append(f"version_groups must be a list of at most {_MAX_VERSION_GROUPS} groups.")
+                else:
+                    seen: Dict[str, int] = {}
+                    clean_groups: List[List[str]] = []
+                    unknown: List[str] = []
+                    for gi, group in enumerate(groups):
+                        ids = [str(x).strip() for x in group] if isinstance(group, list) else []
+                        if len(ids) < 2 or len(ids) > _MAX_GROUP_SIZE or len(set(ids)) != len(ids) or not all(ids):
+                            problems.append(f"version_groups[{gi}] must list 2–{_MAX_GROUP_SIZE} different course ids "
+                                            "(the same course in different languages).")
+                            continue
+                        for cid in ids:
+                            if cid in seen:
+                                problems.append(f"Course {cid} is in version_groups[{seen[cid]}] and [{gi}]; a course "
+                                                "belongs to one group.")
+                            seen[cid] = gi
+                            if course_ids is not None and cid not in course_ids:
+                                unknown.append(cid)
+                        clean_groups.append(ids)
+                    if unknown:
+                        problems.append(f"These course ids are not this institute's: {unknown[:10]}. Take ids from "
+                                        "website(action='context').")
+                    out["versionGroups"] = clean_groups
+                    current = gs.get("courseLanguages") if isinstance(gs.get("courseLanguages"), dict) else {}
+                    if not out.get("enabled", current.get("enabled")):
+                        notes.append("version_groups fold into one card only while course_languages.enabled is true.")
+            if out:
+                patch["courseLanguages"] = out
+
+    # naming: the catalogue's own words ({level: 'Format'})
+    if "naming" in si:
+        raw = si["naming"]
+        if not isinstance(raw, dict) or not raw:
+            problems.append(f"naming must be an object with any of {sorted(_NAMING_KEYS)}.")
+        else:
+            out = {}
+            for k, v in raw.items():
+                key = _NAMING_KEYS.get(k) or (k if k in _NAMING_KEYS.values() else None)
+                if key is None:
+                    problems.append(f"Unknown naming key '{k}' (use {sorted(_NAMING_KEYS)}).")
+                elif v is None:
+                    out[key] = None
+                elif (word := _plain_text(v, 40)) is None:
+                    problems.append(f"naming.{k} must be a short text.")
+                else:
+                    out[key] = word
+            if out:
+                patch["naming"] = out
+
+    # site cart: one cart for the whole site, checked out through a STORE product page
+    if "site_cart" in si:
+        raw = si["site_cart"]
+        current = gs.get("siteCart") if isinstance(gs.get("siteCart"), dict) else {}
+        if not isinstance(raw, dict) or not isinstance(raw.get("enabled"), bool):
+            problems.append("site_cart must be {enabled: true|false, store_product_page_code?}.")
+        elif raw["enabled"] is False:
+            patch["siteCart"] = {"enabled": False}
+        else:
+            code = str(raw.get("store_product_page_code") or current.get("storeProductPageCode") or "").strip()
+            match = next((p for p in product_pages or [] if str(p.get("code") or "").lower() == code.lower()), None) if code else None
+            if not code:
+                problems.append("site_cart needs store_product_page_code: the product page whose checkout takes the cart.")
+            elif match is None:
+                problems.append(f"No product page with code '{code}' for this institute. Take codes from website(action='context').")
+            else:
+                patch["siteCart"] = {"enabled": True, "storeProductPageCode": match["code"],
+                                     "storeProductPageName": match.get("name") or ""}
+                if str(match.get("status") or "ACTIVE").upper() != "ACTIVE":
+                    notes.append(f"Product page '{match.get('name') or match['code']}' is {match.get('status')}: the cart's "
+                                 "checkout works once an admin activates it.")
+    if not si:
+        problems.append("catalog_settings is empty.")
+    return patch, problems, notes
+
+
+async def _action_set_catalog_settings(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if err := _require(args, "set_catalog_settings", "catalog_settings"):
+        return err
+    si = args["catalog_settings"]
+    if not isinstance(si, dict):
+        return _err("bad_request", message="catalog_settings must be an object.")
+    site, err = await _target_site(ctx, args, "set_catalog_settings")
+    if err:
+        return err
+    config = copy.deepcopy(site["config"])
+    gs = config.get("globalSettings") or {}
+    course_ids: Optional[set] = None
+    if isinstance(si.get("course_languages"), dict) and si["course_languages"].get("version_groups"):
+        course_ids = {str(c.get("id")) for c in await load_courses(ctx, limit=500) if c.get("id")}
+    pages = await load_product_pages(ctx) if isinstance(si.get("site_cart"), dict) and si["site_cart"].get("enabled") else None
+    patch, problems, notes = catalog_settings_patch(si, gs, course_ids, pages)
+    if problems:
+        return _err("bad_request", message="Nothing was changed: " + " ".join(problems[:8]), problems=problems[:20])
+    if not patch:
+        return _err("bad_request", message="Nothing in `catalog_settings` was a recognised setting.")
+    config["globalSettings"] = merge_global_settings(gs, patch)
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
+    if err:
+        return err
+    extra: Dict[str, Any] = {"notes": notes} if notes else {}
+    return _result(ctx, site, config, revision, "Updated catalogue settings: " + ", ".join(patch.keys()) + ".",
+                   settings=summarize_global_settings(config["globalSettings"]), **extra)
+
+
+# ── translations (globalSettings.i18n.strings[locale]) ───────────────────
+_MAX_TRANSLATIONS = 3000
+_MAX_TRANSLATION_BYTES = 120_000
+_MAX_CHANGES_PER_CALL = 1500
+_MAX_SOURCE_CHARS = 5000
+_MAX_TRANSLATION_CHARS = 5000
+#: What the language switcher shows by default (admin i18n/locales.ts LOCALE_LABELS).
+LOCALE_LABELS = {
+    "en": "English", "ar": "العربية", "hi": "हिन्दी", "ta": "தமிழ்", "te": "తెలుగు", "bn": "বাংলা", "mr": "मराठी",
+    "gu": "ગુજરાતી", "kn": "ಕನ್ನಡ", "ml": "മലയാളം", "pa": "ਪੰਜਾਬੀ", "or": "ଓଡ଼ିଆ", "as": "অসমীয়া", "es": "Español",
+    "fr": "Français",
+}
+
+
+def _clean_translation(source: str, value: str) -> str:
+    """A translation is text: markup is stripped unless the source itself is rich text (then nh3-sanitised)."""
+    from ..routers.page_builder import _RICH_TEXT_RE, _sanitize_html
+    value = _CONTROL_RE.sub("", value)
+    if _RICH_TEXT_RE.search(source):
+        return _sanitize_html(value)
+    return _ANY_TAG_RE.sub("", value)
+
+
+def merge_translations(current: Any, changes: Dict[Any, Any]) -> Tuple[Dict[str, str], Dict[str, Any]]:
+    """
+    Pure: ``changes`` (source → translation | null) merged into one locale's
+    dictionary. null or "" removes an entry; a translation equal to its source
+    keeps the text as is in that language (stored, so it stops counting as
+    missing — the panel's "Same as base"). Nothing else is ever removed.
+    """
+    out: Dict[str, str] = {str(k): v for k, v in (current or {}).items() if isinstance(v, str)} if isinstance(current, dict) else {}
+    report: Dict[str, Any] = {"added": 0, "updated": 0, "removed": 0, "kept_as_base": 0, "unchanged": 0, "skipped": []}
+    for source, value in changes.items():
+        if not isinstance(source, str) or not source.strip() or len(source) > _MAX_SOURCE_CHARS:
+            report["skipped"].append({"source": str(source)[:80], "reason": "not a site text (empty or too long)"})
+            continue
+        if value is None or value == "":
+            if source in out:
+                del out[source]
+                report["removed"] += 1
+            continue
+        if not isinstance(value, str):
+            report["skipped"].append({"source": source[:80], "reason": "translation must be text"})
+            continue
+        clean = _clean_translation(source, value)
+        if not clean.strip():
+            report["skipped"].append({"source": source[:80], "reason": "nothing left after removing markup"})
+            continue
+        if len(clean) > _MAX_TRANSLATION_CHARS:
+            report["skipped"].append({"source": source[:80], "reason": f"longer than {_MAX_TRANSLATION_CHARS} characters"})
+            continue
+        if out.get(source) == clean:
+            report["unchanged"] += 1
+            continue
+        report["kept_as_base" if clean == source else ("updated" if source in out else "added")] += 1
+        out[source] = clean
+    return out, report
+
+
+async def _action_set_translations(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .site_strings import base_locale_of, collect_site_strings, missing_translations
+    if err := _require(args, "set_translations", "locale"):
+        return err
+    locale = str(args["locale"]).strip().lower()
+    if not _LANG_CODE_RE.match(locale):
+        return _err("bad_request", message="locale must be a language code such as 'hi' (a-z, 0-9, -).")
+    changes = args.get("strings")
+    if changes is None and args.get("enable") is None:
+        return _err("missing_argument", action="set_translations", needs=["strings or enable"])
+    changes = changes if changes is not None else {}
+    if not isinstance(changes, dict):
+        return _err("bad_request", message="strings must be an object: {exact source text: translation | null}.")
+    if len(changes) > _MAX_CHANGES_PER_CALL:
+        return _err("bad_request", message=f"Send at most {_MAX_CHANGES_PER_CALL} translations per call.")
+    site, err = await _target_site(ctx, args, "set_translations")
+    if err:
+        return err
+    config = copy.deepcopy(site["config"])
+    gs = config.setdefault("globalSettings", {})
+    i18n = copy.deepcopy(gs.get("i18n")) if isinstance(gs.get("i18n"), dict) else {}
+    base = base_locale_of(i18n)
+    if locale == base:
+        return _err("base_locale", message=f"'{locale}' is this site's base language: its texts are edited on the pages.")
+    strings_all = i18n.get("strings") if isinstance(i18n.get("strings"), dict) else {}
+    merged, report = merge_translations(strings_all.get(locale), changes)
+    size = len(json.dumps(merged, ensure_ascii=False).encode("utf-8"))
+    if len(merged) > _MAX_TRANSLATIONS or size > _MAX_TRANSLATION_BYTES:
+        return _err("too_large", message=(f"Nothing was changed: the '{locale}' dictionary would hold {len(merged)} texts "
+                                          f"({size // 1000} KB); the limit is {_MAX_TRANSLATIONS} texts and "
+                                          f"{_MAX_TRANSLATION_BYTES // 1000} KB."))
+    i18n["strings"] = {**strings_all, locale: merged}
+    enable = args.get("enable")
+    if enable is True:
+        i18n["enabled"] = True
+        i18n.setdefault("defaultLocale", base)
+        locales = [l for l in i18n.get("locales") or [] if isinstance(l, dict) and l.get("code")]
+        codes = {str(l["code"]).lower() for l in locales}
+        if base not in codes:
+            locales.insert(0, {"code": base, "label": base.upper()})
+        if locale not in codes:
+            label = _plain_text(args.get("locale_label"), 20) or LOCALE_LABELS.get(locale) or locale.upper()
+            locales.append({"code": locale, "label": label})
+        i18n["locales"] = locales
+    elif enable is False:
+        i18n["enabled"] = False
+    gs["i18n"] = i18n
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
+    if err:
+        return err
+    sources = collect_site_strings(config)
+    missing = missing_translations(sources, merged)
+    on_site = set(sources)
+    off_site = [s for s in changes if isinstance(s, str) and changes[s] and s not in on_site]
+    offered = {str(l.get("code") or "").lower() for l in i18n.get("locales") or [] if isinstance(l, dict)}
+    out_extra: Dict[str, Any] = {
+        "changes": {k: v for k, v in report.items() if k != "skipped"},
+        "coverage": {"locale": locale, "total_texts": len(sources), "untranslated": len(missing)},
+    }
+    if report["skipped"]:
+        out_extra["skipped"] = report["skipped"][:20]
+    if off_site:
+        out_extra["not_in_page_texts"] = {
+            "count": len(off_site), "examples": [s[:80] for s in off_site[:5]],
+            "note": "Kept: the dictionary also translates live data (course names, folder titles). Check the "
+                    "source spelling if these were meant to be page texts.",
+        }
+    if not i18n.get("enabled") or locale not in offered:
+        out_extra["enable_hint"] = "Visitors cannot pick this language yet: call again with enable=true."
+    return _result(ctx, site, config, revision,
+                   f"Saved {report['added'] + report['updated'] + report['kept_as_base']} '{locale}' translation(s), "
+                   f"removed {report['removed']}; {len(missing)} text(s) still untranslated.", **out_extra)
+
+
+# ── bind live data (folder libraries, folders, product pages) ────────────
+_BIND_KINDS = ("folderLibrary", "folder", "productPage")
+_BIND_KEY = {"folderLibrary": "libraryId", "folder": ("rootFolderId", "folderId"), "productPage": "productPageCode"}
+_BIND_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[\d{1,3}\]|\.[A-Za-z_][A-Za-z0-9_]*){0,7}$")
+
+
+async def load_folder_libraries(ctx: ToolContext) -> List[Dict[str, Any]]:
+    """The institute's folder libraries (id, name, node count) — the admin's own read."""
+    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/libraries",
+                                  params={"instituteId": ctx.principal.institute_id})
+    out = []
+    for lib in data if isinstance(data, list) else []:
+        if not isinstance(lib, dict) or not lib.get("id"):
+            continue
+        if str(lib.get("institute_id") or ctx.principal.institute_id) != ctx.principal.institute_id:
+            continue
+        out.append({"id": str(lib["id"]), "name": lib.get("name") or "", "node_count": lib.get("node_count")})
+    return out
+
+
+async def _library_folders(ctx: ToolContext, library_id: str) -> Optional[List[Dict[str, Any]]]:
+    """Every FOLDER node of one library (flattened, with depth), or None when the tree cannot be read."""
+    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/tree",
+                                  params={"instituteId": ctx.principal.institute_id, "libraryId": library_id})
+    if not isinstance(data, dict) or _is_error(data):
+        return None
+    out: List[Dict[str, Any]] = []
+
+    def walk(nodes: Any, depth: int) -> None:
+        for n in nodes if isinstance(nodes, list) else []:
+            if not isinstance(n, dict) or depth > 8:
+                continue
+            if str(n.get("node_type") or "FOLDER").upper() == "FOLDER" and n.get("id"):
+                out.append({"id": str(n["id"]), "title": n.get("title") or "", "slug": n.get("slug"),
+                            "depth": depth, "status": n.get("status")})
+            walk(n.get("children"), depth + 1)
+    walk(data.get("roots"), 0)
+    return out
+
+
+def _bind_target(comp: Dict[str, Any], kind: str, path: Optional[str], nav_index: Optional[int]) -> Tuple[Optional[str], Optional[str]]:
+    """``(props path to the id, None)`` for a component and kind, or ``(None, reason)``."""
+    ctype = comp.get("type")
+    props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
+    keys = _BIND_KEY[kind] if isinstance(_BIND_KEY[kind], tuple) else (_BIND_KEY[kind],)
+    if path:
+        p = path[len("props."):] if path.startswith("props.") else path
+        if not _BIND_PATH_RE.match(p) or p.rsplit(".", 1)[-1] not in keys:
+            return None, f"path must be a prop path ending in {' or '.join(keys)} (e.g. columnSections[1].productPageCode)."
+        return p, None
+    if ctype == "header":
+        if kind != "folderLibrary":
+            return None, "The header binds a folder library to a mega-menu item (data_kind='folderLibrary')."
+        nav = props.get("navigation") if isinstance(props.get("navigation"), list) else []
+        if nav_index is None:
+            mega = [i for i, n in enumerate(nav) if isinstance(n, dict) and n.get("type") == "megaMenu"]
+            if len(mega) != 1:
+                return None, ("Pass nav_index: which navigation item becomes the mega menu ("
+                              + ", ".join(f"{i}: {n.get('label')}" for i, n in enumerate(nav) if isinstance(n, dict)) + ").")
+            nav_index = mega[0]
+        if not (0 <= nav_index < len(nav)) or not isinstance(nav[nav_index], dict):
+            return None, f"nav_index {nav_index} is not one of the header's {len(nav)} navigation items."
+        return f"navigation[{nav_index}].megaMenu.libraryId", None
+    targets = {
+        ("folderLibrary", "folderBrowser"): "libraryId",
+        ("folderLibrary", "learningPath"): "libraryId",
+        ("folderLibrary", "courseCatalog"): "streams.libraryId",
+        ("folder", "folderBrowser"): "rootFolderId",
+        ("folder", "learningPath"): "folderId",
+        ("productPage", "learningPath"): "productPageCode",
+        ("productPage", "productPageOffer"): "productPageCode",
+    }
+    target = targets.get((kind, str(ctype)))
+    if target is None:
+        return None, (f"A {component_label(ctype)} section has no default place for a {kind}; pass `path` "
+                      f"(a prop path ending in {' or '.join(keys)}).")
+    return target, None
+
+
+def _get_path(props: Dict[str, Any], path: str) -> Any:
+    node: Any = props
+    for k, i in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]", path):
+        if k:
+            node = node.get(k) if isinstance(node, dict) else None
+        else:
+            node = node[int(i)] if isinstance(node, list) and int(i) < len(node) else None
+    return node
+
+
+def _set_existing_path(props: Dict[str, Any], path: str, value: Any) -> bool:
+    """Set a props path; objects are created on the way, list items must exist. False when it cannot be reached."""
+    parts = [k or int(i) for k, i in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]", path)]
+    node: Any = props
+    for step, nxt in zip(parts[:-1], parts[1:]):
+        if isinstance(step, int):
+            if not isinstance(node, list) or step >= len(node) or not isinstance(node[step], (dict, list)):
+                return False
+            node = node[step]
+        else:
+            if not isinstance(node, dict):
+                return False
+            if not isinstance(node.get(step), (dict, list)):
+                if isinstance(nxt, int):
+                    return False
+                node[step] = {}
+            node = node[step]
+    last = parts[-1]
+    if isinstance(last, int) or not isinstance(node, dict):
+        return False
+    node[last] = value
+    return True
+
+
+async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if err := _require(args, "bind_data", "section_id", "data_kind", "data_id"):
+        return err
+    kind = str(args["data_kind"])
+    if kind not in _BIND_KINDS:
+        return _err("bad_request", message=f"data_kind must be one of {list(_BIND_KINDS)}.")
+    data_id = str(args["data_id"]).strip()
+    nav_index = args.get("nav_index") if isinstance(args.get("nav_index"), int) and not isinstance(args.get("nav_index"), bool) else None
+    path = str(args.get("path") or "").strip() or None
+    site, err = await _target_site(ctx, args, "bind_data")
+    if err:
+        return err
+    config = copy.deepcopy(site["config"])
+    section_id = str(args["section_id"]).strip()
+    page = None
+    if section_id in ("header", "footer"):
+        comp = ((config.get("globalSettings") or {}).get("layout") or {}).get(section_id)
+        if not isinstance(comp, dict):
+            return _err("unknown_section", message=f"This site has no {section_id}; create it with set_layout first.")
+    else:
+        page = find_page(config, args.get("page_route"))
+        if page is None:
+            return _err("unknown_page", available=[p.get("route") for p in config.get("pages") or []])
+        comp = find_component(page, section_id)
+        if comp is None:
+            return _err("unknown_section", message="No section with that id on this page.")
+    props = comp.setdefault("props", {})
+    target, reason = _bind_target(comp, kind, path, nav_index)
+    if target is None:
+        return _err("no_target", message=reason)
+
+    # Every id is checked against the institute's own data before anything is written.
+    name_key = None
+    name = ""
+    library_id = None
+    if kind == "folderLibrary":
+        libraries = await load_folder_libraries(ctx)
+        lib = next((l for l in libraries if l["id"] == data_id), None)
+        if lib is None:
+            return _err("unknown_library", message="No folder library with that id for this institute.",
+                        available=[{"id": l["id"], "name": l["name"]} for l in libraries][:20])
+        name, name_key, library_id = lib["name"], "libraryName", lib["id"]
+    elif kind == "folder":
+        library_id = str(args.get("library_id") or "").strip() or None
+        if library_id is None:
+            holder = _get_path(props, target.rsplit(".", 1)[0]) if "." in target else props
+            library_id = str(holder.get("libraryId") or "").strip() or None if isinstance(holder, dict) else None
+        if not library_id:
+            return _err("missing_argument", needs=["library_id"],
+                        message="This section is not bound to a folder library yet: pass library_id (or bind the library first).")
+        lib = next((l for l in await load_folder_libraries(ctx) if l["id"] == library_id), None)
+        if lib is None:
+            return _err("unknown_library", message="No folder library with that id for this institute.")
+        folders = await _library_folders(ctx, library_id)
+        if folders is None:
+            return _err("fetch_failed", message="The folder library could not be read.")
+        folder = next((f for f in folders if f["id"] == data_id), None)
+        if folder is None:
+            return _err("unknown_folder", message="No folder with that id in this library.",
+                        available=[{"id": f["id"], "title": f["title"], "depth": f["depth"]} for f in folders][:40])
+        name = folder["title"]
+    else:
+        pages_ = await load_product_pages(ctx)
+        match = next((p for p in pages_ if str(p.get("code") or "").lower() == data_id.lower()), None)
+        if match is None:
+            return _err("unknown_product_page", message="No product page with that code for this institute.",
+                        available=[{"code": p.get("code"), "name": p.get("name")} for p in pages_][:20])
+        data_id, name, name_key = match["code"], match.get("name") or "", "productPageName"
+
+    changes: List[str] = []
+    ctype = comp.get("type")
+    container_path = target.rsplit(".", 1)[0] if "." in target else ""
+    before = _get_path(props, target)
+    if not _set_existing_path(props, target, data_id):
+        return _err("no_target", message=f"props.{target} cannot be reached on this section (a list item is missing).")
+    container = _get_path(props, container_path) if container_path else props
+    if name_key and isinstance(container, dict):
+        container[name_key] = name
+    if kind == "folder" and isinstance(container, dict) and container.get("libraryId") != library_id:
+        container["libraryId"] = library_id          # the folder's own library
+        container["libraryName"] = lib["name"]
+        changes.append(f"bound the section to library '{lib['name']}' too")
+    # The settings that make the binding take effect, and the stale ones it replaces.
+    if ctype == "header" and isinstance(container, dict):
+        nav_item = _get_path(props, container_path.rsplit(".", 1)[0])
+        if isinstance(nav_item, dict) and nav_item.get("type") != "megaMenu":
+            nav_item["type"] = "megaMenu"
+            changes.append("turned the navigation item into a mega menu")
+    elif ctype == "courseCatalog" and target == "streams.libraryId" and isinstance(container, dict):
+        container["source"] = "folderLibrary"
+        container.setdefault("enabled", True)
+    elif ctype == "learningPath" and kind in ("folderLibrary", "folder") and props.get("mode") != "list":
+        props["mode"] = "list"
+        changes.append("switched the learning path to list mode (paths from the library)")
+    elif ctype == "learningPath" and kind == "productPage" and props.get("mode") == "list":
+        props["mode"] = "single"
+        changes.append("switched the learning path to a single path")
+    if kind == "folderLibrary" and before not in (None, "", data_id) and isinstance(container, dict):
+        for stale in ("rootFolderId", "folderId"):
+            if container.get(stale):
+                container[stale] = ""
+                changes.append(f"cleared {stale} (it belonged to the previous library)")
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
+    if err:
+        return err
+    where = f"the {section_id}" if page is None else f"{component_label(ctype)} '{comp.get('id')}' on '{page.get('route')}'"
+    return _result(ctx, site, config, revision,
+                   f"Bound {kind} '{name or data_id}' to {where} (props.{target}).",
+                   page.get("route") if page else None, comp.get("id") if page else None,
+                   binding={"kind": kind, "id": data_id, "name": name or None, "prop": f"props.{target}"},
+                   section=summarize_component(comp), **({"side_effects": changes} if changes else {}))
+
+
 _ACTIONS = {
     "create_page": _action_create_page,
     "create_site": _action_create_site,
@@ -1582,6 +2415,9 @@ _ACTIONS = {
     "set_seo": _action_set_seo,
     "import_image": _action_import_image,
     "discard_draft": _action_discard_draft,
+    "set_catalog_settings": _action_set_catalog_settings,
+    "set_translations": _action_set_translations,
+    "bind_data": _action_bind_data,
 }
 
 

@@ -3650,6 +3650,38 @@ def _theme_value_reference() -> str:
     )
 
 
+#: globalSettings.theme.palette keys (learner -utils/catalogue-palette.ts PALETTE_KEYS).
+_PATCH_PALETTE_KEYS = (
+    "text", "body", "muted", "muted2", "primary", "gold", "accent", "olive", "cream", "canvas",
+    "sand", "border", "borderStrong", "accentOnDark", "bodyOnDark", "outline",
+)
+#: globalSettings.theme.contentMaxWidth range (resolveContentMaxWidth).
+_PATCH_WIDTH_MIN, _PATCH_WIDTH_MAX = 320, 2400
+
+
+def _validate_palette_patch(raw: Any, warnings: List[str]) -> Dict[str, Any]:
+    """A theme.palette PATCH: known keys with a hex value (None removes one) and applyToTokens."""
+    if not isinstance(raw, dict):
+        warnings.append("Ignored theme.palette — not an object of named colours")
+        return {}
+    out: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if key == "applyToTokens":
+            if isinstance(value, bool) or value is None:
+                out[key] = value
+            else:
+                warnings.append("Ignored theme.palette.applyToTokens — not true/false")
+        elif key not in _PATCH_PALETTE_KEYS:
+            warnings.append(f"Ignored unknown theme.palette key '{key}'")
+        elif value is None:
+            out[key] = None
+        elif coerce_hex_color(value):
+            out[key] = coerce_hex_color(value)
+        else:
+            warnings.append(f"Ignored theme.palette.{key} — not a hex colour")
+    return out
+
+
 def _validate_global_patch(patch: Dict[str, Any], warnings: List[str]) -> Dict[str, Any]:
     """Drop invalid values out of a conversational globalSettings PATCH.
 
@@ -3688,6 +3720,24 @@ def _validate_global_patch(patch: Dict[str, Any], warnings: List[str]) -> Dict[s
             }
             if atm_out:
                 theme_out["atmosphere"] = atm_out
+        # Opt-in design tokens (learner -utils/catalogue-palette.ts): the named
+        # palette and the content column width. Kept only when valid; the
+        # merge (applyOps / website_edit) folds a palette in key by key.
+        if "palette" in theme_in:
+            palette_out = _validate_palette_patch(theme_in.get("palette"), warnings)
+            if palette_out:
+                theme_out["palette"] = palette_out
+        if "contentMaxWidth" in theme_in:
+            width = theme_in.get("contentMaxWidth")
+            if width is None:
+                theme_out["contentMaxWidth"] = None  # explicit reset to the default width
+            elif (not isinstance(width, bool) and isinstance(width, (int, float)) and width == int(width)
+                  and _PATCH_WIDTH_MIN <= int(width) <= _PATCH_WIDTH_MAX):
+                theme_out["contentMaxWidth"] = int(width)
+            else:
+                warnings.append(
+                    f"Ignored theme.contentMaxWidth — not a whole px value from {_PATCH_WIDTH_MIN} to {_PATCH_WIDTH_MAX}"
+                )
         if theme_out:
             out["theme"] = theme_out
 

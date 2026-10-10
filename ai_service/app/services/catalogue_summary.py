@@ -481,7 +481,58 @@ def summarize_global_settings(gs: Dict[str, Any]) -> Dict[str, Any]:
     }
     if isinstance(gs.get("brandProfile"), dict):
         out["brand_profile"] = gs["brandProfile"]
+    out.update(_design_settings_summary(gs, theme))
     return {k: v for k, v in out.items() if v not in (None, {}, "")}
+
+
+def _design_settings_summary(gs: Dict[str, Any], theme: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The opt-in settings a design-led site carries (palette, content width,
+    course formats / languages, naming, site cart, languages) — only the ones
+    the site actually has, so a site without them summarises exactly as before.
+    """
+    out: Dict[str, Any] = {}
+    palette = theme.get("palette") if isinstance(theme, dict) else None
+    if isinstance(palette, dict) and palette:
+        out["palette"] = palette
+    if isinstance(theme, dict) and theme.get("contentMaxWidth"):
+        out["content_max_width"] = theme["contentMaxWidth"]
+    formats = gs.get("courseFormats")
+    if isinstance(formats, dict) and formats:
+        order = [str(k).lower() for k in gs.get("courseFormatOrder") or [] if isinstance(k, str)]
+        keys = sorted(formats, key=lambda k: order.index(str(k).lower()) if str(k).lower() in order else len(order))
+        out["course_formats"] = [{k2: v2 for k2, v2 in {
+            "key": k, "label": (formats[k] or {}).get("label") if isinstance(formats[k], dict) else None,
+            "levels": (formats[k] or {}).get("levels") if isinstance(formats[k], dict) else None,
+            "tags": (formats[k] or {}).get("tags") if isinstance(formats[k], dict) else None,
+        }.items() if v2} for k in keys][:20]
+    langs = gs.get("courseLanguages")
+    if isinstance(langs, dict) and langs:
+        out["course_languages"] = {k: v for k, v in {
+            "enabled": bool(langs.get("enabled")),
+            "languages": [str(l.get("code")) for l in langs.get("languages") or [] if isinstance(l, dict)] or None,
+            "version_groups": len(langs.get("versionGroups") or []) or None,
+        }.items() if v is not None}
+    naming = gs.get("naming")
+    if isinstance(naming, dict) and naming:
+        out["naming"] = {k: v for k, v in naming.items() if isinstance(v, str) and v}
+    cart = gs.get("siteCart")
+    if isinstance(cart, dict) and cart:
+        out["site_cart"] = {k: v for k, v in {
+            "enabled": bool(cart.get("enabled")),
+            "store_product_page_code": cart.get("storeProductPageCode"),
+            "store_product_page_name": cart.get("storeProductPageName"),
+        }.items() if v not in (None, "")}
+    i18n = gs.get("i18n")
+    if isinstance(i18n, dict) and i18n:
+        strings = i18n.get("strings") if isinstance(i18n.get("strings"), dict) else {}
+        out["languages"] = {
+            "enabled": bool(i18n.get("enabled")),
+            "base": str(i18n.get("defaultLocale") or "en"),
+            "offered": [str(l.get("code")) for l in i18n.get("locales") or [] if isinstance(l, dict) and l.get("code")],
+            "translations": {k: len(v) for k, v in strings.items() if isinstance(v, dict)},
+        }
+    return out
 
 
 def find_page(config: Dict[str, Any], route_or_id: Optional[str]) -> Optional[Dict[str, Any]]:

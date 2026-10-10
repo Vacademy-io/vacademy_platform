@@ -100,7 +100,6 @@ import {
 } from "../-utils/course-version-selection";
 import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
 import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
-import { EbookDetailsView } from "./EbookDetailsView";
 import { headerOffsetClass } from "../../-components/header/header-chrome";
 import {
   BookOpen,
@@ -1236,13 +1235,17 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   // (and so does a promo link, once the versions show it: see siteCartMode).
   const siteCartActive =
     isSiteCartEnabled(catalogueData?.globalSettings?.siteCart) && !productPageCode;
-  // Single-file product page, chosen per site (globalSettings.courseDetails.layout)
-  // or per institute (Student Display Settings -> courseDetails.layout). It also
-  // needs the course's own offer: a bare /<tag>/<courseId> link has no invite in
-  // the URL, and course-init carries no price.
-  const ebookLayout =
+  // A site that authors its own course details page (route "course-details")
+  // can let that page replace the built-in course view:
+  // globalSettings.courseDetails.layout = "template". The page's {{course.*}}
+  // tokens then need the course's own offer, which a bare /<tag>/<courseId>
+  // link does not carry (no invite in the URL, no price in course-init).
+  const detailsTemplateOnly =
     (catalogueData?.globalSettings as { courseDetails?: { layout?: string } } | undefined)
-      ?.courseDetails?.layout === "ebook" || learnerCourseDetails?.layout === "ebook";
+      ?.courseDetails?.layout === "template" &&
+    !!catalogueData?.pages?.some(
+      (page) => page.id === "details" || page.route === "course-details",
+    );
   const configuredLanguages = useMemo(
     () => courseLanguagesOf(courseLanguageSettings),
     [courseLanguageSettings],
@@ -1252,7 +1255,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     [courseLanguagesEnabled, configuredLanguages],
   );
   const courseVersions = useCourseVersions({
-    enabled: courseLanguagesEnabled || siteCartActive || ebookLayout,
+    enabled: courseLanguagesEnabled || siteCartActive || detailsTemplateOnly,
     instituteId,
     courseId,
     productPageCode,
@@ -1923,60 +1926,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         </>
       )}
 
-      {/* Single-file product layout: same purchase actions and dialogs. */}
-      {ebookLayout &&
-        (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
-          true && (
-          <EbookDetailsView
-            title={siteT(courseData.title)}
-            coverFileId={courseData.previewImage || courseData.thumbnail || courseData.bannerImage}
-            aboutHtml={courseData.aboutCourse}
-            learnHtml={courseData.whyLearn ? siteT(courseData.whyLearn) : ""}
-            audienceHtml={courseData.whoShouldLearn ? siteT(courseData.whoShouldLearn) : ""}
-            tags={courseData.tags}
-            price={courseData.price}
-            elevatedPrice={courseData.elevatedPrice}
-            currency={courseData.currency}
-            pricePending={pricePending}
-            showPrice={catalogueData?.globalSettings?.payment?.enabled !== false}
-            instituteId={instituteId}
-            tagName={tagName}
-            globalSettings={catalogueData?.globalSettings}
-            actions={
-              showCartActions ? (
-                <CourseCartActions
-                  inCart={inSiteCart}
-                  ready={cartActionsReady}
-                  onAdd={handleAddToCart}
-                  onBuyNow={handleBuyNow}
-                  onViewCart={() => openSiteCart("view")}
-                  note={cartNote}
-                />
-              ) : storeCheckPending ? (
-                <CourseCartPending />
-              ) : (
-                <button
-                  onClick={handleEnrollClick}
-                  disabled={enrolPending}
-                  aria-busy={enrolPending || undefined}
-                  className={enrolButtonClass(
-                    "w-full rounded-catalogue-md bg-primary-500 px-4 py-3.5 text-base font-semibold text-white shadow-md transition-all duration-200 hover:opacity-90 active:scale-[0.98]",
-                  )}
-                >
-                  {comingSoonCta ??
-                    (catalogueData?.globalSettings?.payment?.enabled !== false
-                      ? courseData.price === 0 && !pricePending
-                        ? t("courseDetails.ebook.getFree", "Get it free")
-                        : t("courseDetails.ebook.buyNow", "Buy now")
-                      : t("courseDetails.getStarted"))}
-                </button>
-              )
-            }
-          />
-        )}
-
       {/* Course Content */}
-      {!ebookLayout &&
+      {!detailsTemplateOnly &&
         (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
         <div className="pt-4 pb-24 sm:pt-6 bg-catalogue-bg-subtle w-full">
@@ -2550,8 +2501,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       )}
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page.
-          The ebook layout puts Buy now in the first screen instead. */}
-      {!ebookLayout &&
+          A site's own details template carries its own enrol action. */}
+      {!detailsTemplateOnly &&
         (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
         <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg-elevated border-t border-catalogue-border p-4">

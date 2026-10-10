@@ -46,9 +46,12 @@ jobs:
         run: npm install -g pnpm@9
 
       # The exporter bundles the admin templates with the admin app's own esbuild (via vite).
+      # Not --frozen-lockfile: the admin lockfile's patchedDependencies/overrides are out of
+      # step with package.json (a pre-existing repo issue), and this check only needs the
+      # bundler, not an exact install. Scripts are skipped: nothing here needs them.
       - name: Install admin deps
         working-directory: ./frontend-admin-dashboard
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Check the generated catalog is fresh
         run: node scripts/export-catalogue-schema-catalog.mjs --check

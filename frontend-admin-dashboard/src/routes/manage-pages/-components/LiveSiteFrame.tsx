@@ -10,9 +10,10 @@
  *
  * Protocol (learner `CourseCataloguePage` preview mode, -utils/preview-bridge.ts):
  *   learner → editor  PREVIEW_READY, COMPONENT_SELECTED {componentId, pageId, parentId?},
- *                     PREVIEW_NAVIGATE {route}
+ *                     PREVIEW_NAVIGATE {route: string | null, href?}
  *   editor → learner  CATALOGUE_CONFIG_UPDATE {payload, previewPath},
- *                     HIGHLIGHT_COMPONENT {componentId}, PREVIEW_INTERACT {on}
+ *                     HIGHLIGHT_COMPONENT {componentId}, PREVIEW_INTERACT {on},
+ *                     PREVIEW_HELLO (answered with PREVIEW_READY)
  * A learner build without the newer messages simply ignores them.
  *
  * The learner only renders the root page from posted config, so the selected
@@ -37,8 +38,37 @@ const CONFIG_PUSH_DEBOUNCE_MS = 150;
  *  older learner build, no page) — say so instead of spinning forever. */
 const READY_TIMEOUT_MS = 15_000;
 
+/** After the frame loads a new document, how long the preview has to answer
+ *  before the editor says a link took the frame off the preview. */
+const LEFT_PREVIEW_TIMEOUT_MS = 3_000;
+
+/** How long a "that is not a page here" note stays up. */
+const NOTICE_MS = 5_000;
+
 /** Real layout widths, in CSS px. Desktop offers a common laptop width too. */
 const DESKTOP_WIDTHS = [1440, 1280] as const;
+
+/** Toolbar choices, remembered per browser like the canvas view. Storage can
+ *  be unavailable (private mode, blocked site data): the default then. */
+const PREF_KEYS = {
+    browse: 'catalogue-editor-website-browse',
+    fit: 'catalogue-editor-website-fit',
+    desktopWidth: 'catalogue-editor-website-desktop-width',
+} as const;
+const readPref = (key: string): string | null => {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+};
+const writePref = (key: string, value: string) => {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        /* not remembered; the choice still applies */
+    }
+};
 const DEVICE_WIDTHS = { tablet: 768, mobile: 375 } as const;
 
 const HOME_ROUTES = ['', '/', 'homepage', 'home'];
@@ -103,27 +133,36 @@ export const pageForRoute = (pages: Page[], route: string): Page | undefined => 
     return byRoute(wanted) ?? byRoute(wanted.split('/')[0] ?? '');
 };
 
-const containsComponent = (components: Component[], id: string): boolean =>
+/** Blocks nested in `c`: its columns (`slots`), and, with `withTabs`, its
+ *  tabs' and accordion items' slots too. */
+const nestedLists = (c: Component, withTabs: boolean): Component[][] => {
+    const lists: unknown[] = Array.isArray(c.props?.slots) ? [...(c.props.slots as unknown[])] : [];
+    if (withTabs && Array.isArray(c.props?.items)) {
+        for (const item of c.props.items as Array<{ slot?: unknown } | null>) lists.push(item?.slot);
+    }
+    return lists.filter((list): list is Component[] => Array.isArray(list));
+};
+
+/** True when `id` is in `components`; columns always count, tab slots only
+ *  with `withTabs` (the property panel reaches blocks in columns, not tabs). */
+const containsComponent = (components: Component[], id: string, withTabs = false): boolean =>
     components.some(
-        (c) =>
-            c.id === id ||
-            (Array.isArray(c.props?.slots) &&
-                (c.props.slots as unknown[]).some(
-                    (slot) => Array.isArray(slot) && containsComponent(slot as Component[], id)
-                ))
+        (c) => c.id === id || nestedLists(c, withTabs).some((list) => containsComponent(list, id, withTabs))
     );
 
 /** The block to open for a click in the frame: the block itself when the
- *  editor reaches it (top level, or inside a column), else the block holding
- *  it (a block inside a tab is edited through its tabs block). */
+ *  editor reaches it (top level, or inside a column), else its parent when
+ *  that is reachable (a block inside a tab is edited through its tabs block),
+ *  else the top-level block holding it (a column inside a tab). */
 export const selectableId = (
     components: Component[],
     componentId: string,
     parentId?: string
-): string =>
-    !parentId || containsComponent(components, componentId) || !containsComponent(components, parentId)
-        ? componentId
-        : parentId;
+): string => {
+    if (containsComponent(components, componentId)) return componentId;
+    if (parentId && containsComponent(components, parentId)) return parentId;
+    return components.find((c) => containsComponent([c], componentId, true))?.id ?? componentId;
+};
 
 /** Scale that fits `logicalWidth` into `containerWidth` (Fit), never above
  *  real size; 100% shows the page at real size and scrolls sideways. */
@@ -132,6 +171,9 @@ export const frameScale = (containerWidth: number, logicalWidth: number, fit: bo
 
 interface LiveSiteFrameProps {
     siteUrl: string;
+    /** The published site's JSON, for the Draft | Live switch. Without it
+     *  (or when it does not parse) only the draft is shown. */
+    liveConfigJson?: string | null;
     /** True when the institute has no learner domain of its own: the site
      *  host then cannot tell which institute this is, so the URL names it. */
     nameInstitute: boolean;
@@ -142,6 +184,7 @@ interface LiveSiteFrameProps {
 
 export const LiveSiteFrame = ({
     siteUrl,
+    liveConfigJson,
     nameInstitute,
     dropRef,
     isDropOver,
@@ -159,13 +202,48 @@ export const LiveSiteFrame = ({
         previewViewport,
     } = useEditorStore();
     const iframeRef = useRef<HTMLIFrameElement>(null);
-    const [isReady, setIsReady] = useState(false);
+    // Counts the frame's READYs: every one (a reload included) gets the
+    // draft, the mode and the highlight again. 0 = not (or no longer) ready.
+    const [readyCount, setReadyCount] = useState(0);
+    const isReady = readyCount > 0;
     const [timedOut, setTimedOut] = useState(false);
+    // A link took the frame off the preview (to /login, another site…).
+    const [leftPreview, setLeftPreview] = useState(false);
+    // Bumped by "Back to the page": a fresh frame on the same URL.
+    const [frameKey, setFrameKey] = useState(0);
+    const [notice, setNotice] = useState<string | null>(null);
     // Browse: the site is clickable (menus, filters, tabs) instead of
     // click-to-select. Select stays the default.
-    const [browse, setBrowse] = useState(false);
-    const [fit, setFit] = useState(true);
-    const [desktopWidth, setDesktopWidth] = useState<number>(DESKTOP_WIDTHS[0]);
+    const [browse, setBrowseState] = useState(() => readPref(PREF_KEYS.browse) === 'true');
+    const [fit, setFitState] = useState(() => readPref(PREF_KEYS.fit) !== 'false');
+    const [desktopWidth, setDesktopWidthState] = useState<number>(() => {
+        const saved = Number(readPref(PREF_KEYS.desktopWidth));
+        return (DESKTOP_WIDTHS as readonly number[]).includes(saved) ? saved : DESKTOP_WIDTHS[0];
+    });
+    const setBrowse = (on: boolean) => {
+        setBrowseState(on);
+        writePref(PREF_KEYS.browse, String(on));
+    };
+    const setFit = (on: boolean) => {
+        setFitState(on);
+        writePref(PREF_KEYS.fit, String(on));
+    };
+    const setDesktopWidth = (width: number) => {
+        setDesktopWidthState(width);
+        writePref(PREF_KEYS.desktopWidth, String(width));
+    };
+    // Draft (your unsaved changes) or the published site, side by side.
+    const liveConfig = useMemo((): CatalogueConfig | null => {
+        if (!liveConfigJson) return null;
+        try {
+            const parsed = JSON.parse(liveConfigJson) as CatalogueConfig;
+            return Array.isArray(parsed?.pages) ? parsed : null;
+        } catch {
+            return null;
+        }
+    }, [liveConfigJson]);
+    const [showLive, setShowLive] = useState(false);
+    const showingLive = showLive && !!liveConfig;
 
     // Library drags still land on the page: the iframe swallows pointer events,
     // so while a drag is active a transparent overlay takes them instead.
@@ -201,9 +279,14 @@ export const LiveSiteFrame = ({
             return null;
         }
     }, [siteUrl, nameInstitute]);
-    // The origin that answered READY (a custom domain may redirect), so the
-    // unsaved draft is only ever posted to the document we actually loaded.
+    // The origin that answered the first READY (a custom domain may
+    // redirect), so the unsaved draft is only ever posted to the document we
+    // loaded. Kept for the life of this frame: a page the frame is later
+    // taken to cannot claim it.
     const frameOrigin = useRef<string | null>(null);
+    // Loads after the first READY are new documents (a link, a reload): the
+    // preview has to answer HELLO, or the frame has left it.
+    const leftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     const post = useCallback((message: Record<string, unknown>) => {
         if (frameOrigin.current)
@@ -212,23 +295,46 @@ export const LiveSiteFrame = ({
 
     const locale = activeEditingLocale(config?.globalSettings?.i18n, editingLocale);
     const shownPage = shownPageOf(config, selectedPageId);
+    const framedConfig = showingLive ? liveConfig : config;
     const pushConfig = useCallback(() => {
-        if (!config) return;
+        if (!framedConfig) return;
         post({
             type: 'CATALOGUE_CONFIG_UPDATE',
-            payload: framePayload(config, selectedPageId, locale),
-            previewPath: previewPathOf(shownPage),
+            payload: framePayload(framedConfig, selectedPageId, locale),
+            previewPath: previewPathOf(shownPageOf(framedConfig, selectedPageId)),
         });
-    }, [config, selectedPageId, locale, shownPage, post]);
+    }, [framedConfig, selectedPageId, locale, post]);
 
-    // A new URL (language switch) is a new document: wait for its READY again.
+    const showNotice = useCallback((text: string) => setNotice(text), []);
     useEffect(() => {
-        setIsReady(false);
+        if (!notice) return;
+        const timer = setTimeout(() => setNotice(null), NOTICE_MS);
+        return () => clearTimeout(timer);
+    }, [notice]);
+
+    // A new URL (language switch) or a fresh frame is a new document: wait
+    // for its READY again.
+    useEffect(() => {
+        setReadyCount(0);
         setTimedOut(false);
+        setLeftPreview(false);
         frameOrigin.current = null;
         const timer = setTimeout(() => setTimedOut(true), READY_TIMEOUT_MS);
-        return () => clearTimeout(timer);
-    }, [frameUrl]);
+        return () => {
+            clearTimeout(timer);
+            clearTimeout(leftTimer.current);
+        };
+    }, [frameUrl, frameKey]);
+
+    const onFrameLoad = () => {
+        if (!frameOrigin.current) return; // the first load: READY is on its way
+        iframeRef.current?.contentWindow?.postMessage({ type: 'PREVIEW_HELLO' }, frameOrigin.current);
+        clearTimeout(leftTimer.current);
+        leftTimer.current = setTimeout(() => {
+            setReadyCount(0);
+            setLeftPreview(true);
+        }, LEFT_PREVIEW_TIMEOUT_MS);
+    };
 
     useEffect(() => {
         const onMessage = (event: MessageEvent) => {
@@ -238,13 +344,19 @@ export const LiveSiteFrame = ({
                 componentId?: string;
                 parentId?: string;
                 pageId?: string;
-                route?: string;
+                route?: string | null;
+                href?: string;
             } | null;
             if (data?.type === 'PREVIEW_READY') {
+                if (frameOrigin.current && event.origin !== frameOrigin.current) return;
                 frameOrigin.current = event.origin;
-                setIsReady(true);
+                clearTimeout(leftTimer.current);
+                setLeftPreview(false);
+                setReadyCount((count) => count + 1);
                 pushConfig();
             } else if (data?.type === 'COMPONENT_SELECTED' && data.componentId) {
+                // The published site is for looking; blocks are picked in the draft.
+                if (showingLive) return;
                 if (data.pageId === 'header' || data.pageId === 'footer') {
                     selectGlobalLayout(data.pageId);
                     return;
@@ -254,33 +366,40 @@ export const LiveSiteFrame = ({
                 // block selection, hence before selectComponent).
                 if (shownPage && shownPage.id !== selectedPageId) selectPage(shownPage.id);
                 selectComponent(selectableId(shownPage?.components ?? [], data.componentId, data.parentId));
-            } else if (data?.type === 'PREVIEW_NAVIGATE' && typeof data.route === 'string') {
-                // Browse mode: a link to another page opens that page's tab.
-                const page = pageForRoute(config?.pages ?? [], data.route);
-                if (page && page.id !== selectedPageId) selectPage(page.id);
+            } else if (data?.type === 'PREVIEW_NAVIGATE') {
+                // Browse mode: a link to another page opens that page's tab;
+                // anything else (sign-up, a course, another site) is not a
+                // page here, so say where it goes instead of doing nothing.
+                const route = typeof data.route === 'string' ? data.route : null;
+                const page = route === null ? undefined : pageForRoute(config?.pages ?? [], route);
+                if (page) {
+                    if (page.id !== selectedPageId) selectPage(page.id);
+                } else {
+                    showNotice(t('notAPage', { target: data.href || `/${route ?? ''}` }));
+                }
             }
         };
         window.addEventListener('message', onMessage);
         return () => window.removeEventListener('message', onMessage);
-    }, [pushConfig, config, shownPage, selectedPageId, selectPage, selectComponent, selectGlobalLayout]);
+    }, [pushConfig, config, shownPage, selectedPageId, selectPage, selectComponent, selectGlobalLayout, showingLive, showNotice, t]);
 
     useEffect(() => {
-        if (!isReady) return;
+        if (!readyCount) return;
         const timer = setTimeout(pushConfig, CONFIG_PUSH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [isReady, pushConfig]);
+    }, [readyCount, pushConfig]);
 
     const highlightId = selectedGlobalLayout
         ? config?.globalSettings?.layout?.[selectedGlobalLayout]?.id ?? null
         : selectedComponentId;
     useEffect(() => {
-        if (isReady) post({ type: 'HIGHLIGHT_COMPONENT', componentId: highlightId });
-    }, [isReady, highlightId, post]);
+        if (readyCount) post({ type: 'HIGHLIGHT_COMPONENT', componentId: highlightId });
+    }, [readyCount, highlightId, post]);
 
     // Re-sent on every READY: a reloaded frame starts in Select.
     useEffect(() => {
-        if (isReady) post({ type: 'PREVIEW_INTERACT', on: browse });
-    }, [isReady, browse, post]);
+        if (readyCount) post({ type: 'PREVIEW_INTERACT', on: browse });
+    }, [readyCount, browse, post]);
 
     return (
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -309,6 +428,30 @@ export const LiveSiteFrame = ({
                         {t('toolbar.browse')}
                     </Button>
                 </div>
+                {liveConfig && (
+                    <div className="flex rounded-lg border bg-catalogue-bg-elevated p-0.5">
+                        <Button
+                            variant={showingLive ? 'ghost' : 'default'}
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setShowLive(false)}
+                            title={t('toolbar.draftHint')}
+                            aria-pressed={!showingLive}
+                        >
+                            {t('toolbar.draft')}
+                        </Button>
+                        <Button
+                            variant={showingLive ? 'default' : 'ghost'}
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setShowLive(true)}
+                            title={t('toolbar.liveHint')}
+                            aria-pressed={showingLive}
+                        >
+                            {t('toolbar.live')}
+                        </Button>
+                    </div>
+                )}
                 {previewViewport === 'desktop' && (
                     <div className="flex rounded-lg border bg-catalogue-bg-elevated p-0.5" title={t('toolbar.desktopWidthHint')}>
                         {DESKTOP_WIDTHS.map((width) => (
@@ -353,6 +496,11 @@ export const LiveSiteFrame = ({
                     </span>
                 )}
             </div>
+            {notice && (
+                <div role="status" className="mx-4 mt-2 shrink-0 rounded-md border bg-catalogue-bg-elevated px-3 py-1.5 text-center text-xs text-catalogue-text-muted">
+                    {notice}
+                </div>
+            )}
             <div
                 ref={areaRef}
                 data-testid="live-site-area"
@@ -370,8 +518,9 @@ export const LiveSiteFrame = ({
                     {frameUrl && (
                         <iframe
                             ref={iframeRef}
-                            key={frameUrl}
+                            key={`${frameUrl}#${frameKey}`}
                             src={frameUrl}
+                            onLoad={onFrameLoad}
                             title={t('frameTitle')}
                             className="block border-0"
                             // Laid out at the device width, then scaled to the box.
@@ -385,7 +534,14 @@ export const LiveSiteFrame = ({
                     )}
                     {!isReady && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/90 px-6 text-center text-sm text-catalogue-text-muted">
-                            {timedOut || !frameUrl ? (
+                            {leftPreview ? (
+                                <>
+                                    <span>{t('leftPreview.title')}</span>
+                                    <Button size="sm" variant="outline" onClick={() => setFrameKey((key) => key + 1)}>
+                                        {t('leftPreview.back')}
+                                    </Button>
+                                </>
+                            ) : timedOut || !frameUrl ? (
                                 <>
                                     <span>{t('failed.title')}</span>
                                     <span>

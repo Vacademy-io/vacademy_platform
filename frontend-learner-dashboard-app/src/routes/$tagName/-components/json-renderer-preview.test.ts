@@ -133,6 +133,17 @@ describe("picking blocks in Select mode", () => {
     expect((frame.firstElementChild as HTMLElement).className).toContain("pointer-events-none");
   });
 
+  it("a sticky rail in a column still sticks: the frame takes its place", async () => {
+    const rail = heading("rail", "Enroll", { style: { sticky: { enabled: true, top: 120 } } });
+    const host = await mount(
+      [{ id: "cols2", type: "columnLayout", enabled: true, props: { slots: [[heading("body", "Body")], [rail]] } }],
+      { isPreviewMode: true },
+    );
+    expect(block(host, "rail").style.position).toBe("sticky");
+    expect(block(host, "rail").style.top).toBe("120px");
+    expect(block(host, "body").style.position).toBe("");
+  });
+
   it("outside the preview a nested block renders exactly as before", () => {
     const html = renderToString(h(JsonRenderer, rendererProps([columns])));
     expect(html).not.toContain('data-cid="inner"');

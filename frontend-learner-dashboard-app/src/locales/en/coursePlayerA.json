@@ -49,6 +49,7 @@
     "seoDescriptionWithInstitute": "Explore our {{courses}} and enroll online at {{institute}}.",
     "skipToMainContent": "Skip to main content",
     "previewRibbon": "Preview",
+    "previewFormNotSent": "Forms don't send in the preview",
     "backToTop": "Back to top"
   },
   "courseStructureDetails": {

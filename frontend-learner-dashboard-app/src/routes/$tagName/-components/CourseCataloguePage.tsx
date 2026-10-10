@@ -42,7 +42,16 @@ import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
-import { isEditorMessage, isFramed, isSamePath, previewRouteFromHref, readyTargets } from "../-utils/preview-bridge";
+import {
+  isEditorMessage,
+  isFramed,
+  isSamePath,
+  isShownRoute,
+  leavesDocument,
+  previewRouteFromHref,
+  readyTargets,
+  scrubPreviewConfig,
+} from "../-utils/preview-bridge";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -127,8 +136,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
   // The editor's origin, learned from its first message.
   const editorOrigin = useRef<string | null>(null);
-  const postToEditor = (message: Record<string, unknown>) =>
-    window.parent.postMessage(message, editorOrigin.current ?? "*");
+  // Not framed (the headless preview) there is no editor to tell.
+  const postToEditor = (message: Record<string, unknown>) => {
+    if (isFramed()) window.parent.postMessage(message, editorOrigin.current ?? "*");
+  };
+  // A short note over the preview ("Forms don't send in the preview").
+  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
   // Once the editor has posted its draft, the slower published fetch must not
   // land on top of it and show the old site.
   const previewConfigReceived = useRef(false);
@@ -212,19 +225,24 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   }, [instituteId, tagName]);
 
   // Preview mode: receive live config updates and highlight signals from admin editor.
-  // Only from the frame that embeds this page (see preview-bridge.ts).
+  // Only from the frame that embeds this page, or (headless preview, not
+  // framed) from the page itself — see preview-bridge.ts.
   useEffect(() => {
-    if (!isPreviewMode || !isFramed()) return;
+    if (!isPreviewMode) return;
 
     // Signal readiness to the admin editor
-    for (const target of readyTargets()) window.parent.postMessage({ type: 'PREVIEW_READY' }, target);
+    if (isFramed()) {
+      for (const target of readyTargets()) window.parent.postMessage({ type: 'PREVIEW_READY' }, target);
+    }
 
     const handler = (event: MessageEvent) => {
       if (!isEditorMessage(event)) return;
-      editorOrigin.current = event.origin;
+      if (isFramed()) editorOrigin.current = event.origin;
+      // The editor's frame loaded again (or it is checking): still here.
+      if (event.data?.type === 'PREVIEW_HELLO') postToEditor({ type: 'PREVIEW_READY' });
       if (event.data?.type === 'CATALOGUE_CONFIG_UPDATE' && event.data.payload) {
         previewConfigReceived.current = true;
-        setCatalogueData(event.data.payload);
+        setCatalogueData(scrubPreviewConfig(event.data.payload));
         setPreviewPath(typeof event.data.previewPath === 'string' ? event.data.previewPath : undefined);
         setIsLoading(false);
         setError(null);
@@ -259,8 +277,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   };
 
   // Browse mode: a link to another page asks the editor to open that page
-  // instead of navigating the frame away from the preview. Same-page jumps
-  // (#anchor) and new-tab external links behave as on the live site.
+  // instead of navigating the frame away from the preview (the editor says
+  // so when it is not a page of the site). Same-page jumps (#anchor, or a
+  // link to the shown page) and new-tab external links behave as on the
+  // live site.
   useEffect(() => {
     if (!previewInteractive) return;
     const onClick = (event: MouseEvent) => {
@@ -269,11 +289,68 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       const route = previewRouteFromHref(anchor.href, { origin: window.location.origin, tagName });
       if (route === null && anchor.target === "_blank") return;
       event.preventDefault();
-      if (route !== null) postToEditor({ type: "PREVIEW_NAVIGATE", route });
+      if (route !== null && isShownRoute(route, previewPath)) {
+        const hash = new URL(anchor.href).hash.slice(1);
+        let id = hash;
+        try {
+          id = decodeURIComponent(hash);
+        } catch {
+          /* a malformed escape: look the id up as written */
+        }
+        const target = id ? document.getElementById(id) : null;
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        else if (!hash) window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      postToEditor({ type: "PREVIEW_NAVIGATE", route, href: anchor.href });
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [previewInteractive, tagName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [previewInteractive, tagName, previewPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...and navigation that replaces the document from code (Login buttons,
+  // the logo, same-tab external links all set window.location): held where
+  // the browser can hold it (Navigation API), so the editor's frame never
+  // leaves the preview. The editor also notices if one gets through.
+  useEffect(() => {
+    if (!isPreviewMode || !isFramed()) return;
+    const navigation = (window as unknown as { navigation?: EventTarget }).navigation;
+    if (!navigation) return;
+    const onNavigate = (event: Event) => {
+      const nav = event as Event & Parameters<typeof leavesDocument>[0];
+      if (!leavesDocument(nav)) return;
+      event.preventDefault();
+      const href = nav.destination?.url ?? "";
+      postToEditor({
+        type: "PREVIEW_NAVIGATE",
+        route: previewRouteFromHref(href, { origin: window.location.origin, tagName }),
+        href,
+      });
+    };
+    navigation.addEventListener("navigate", onNavigate);
+    return () => navigation.removeEventListener("navigate", onNavigate);
+  }, [tagName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // No form sends from the preview: an editor trying the contact form must
+  // not create a real lead (or the emails and calls that follow one). Site
+  // search forms stay usable.
+  useEffect(() => {
+    if (!isPreviewMode) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSubmit = (event: Event) => {
+      if ((event.target as Element | null)?.closest?.('[role="search"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviewNotice(t("courseCataloguePage.previewFormNotSent"));
+      clearTimeout(timer);
+      timer = setTimeout(() => setPreviewNotice(null), 4000);
+    };
+    document.addEventListener("submit", onSubmit, true);
+    return () => {
+      document.removeEventListener("submit", onSubmit, true);
+      clearTimeout(timer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ...and the same for navigation from code (header items, cards). A change
   // of query string only (filters, tabs) stays on this page.
@@ -283,7 +360,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     shouldBlockFn: ({ current, next }) => {
       if (isSamePath(next.pathname, current.pathname)) return false;
       const route = previewRouteFromHref(next.pathname, { origin: window.location.origin, tagName });
-      if (route !== null) postToEditor({ type: "PREVIEW_NAVIGATE", route });
+      postToEditor({ type: "PREVIEW_NAVIGATE", route, href: next.pathname });
       return true;
     },
   });
@@ -792,6 +869,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           unlockUrl={audienceForm.unlockUrl}
           unlockLabel={audienceForm.unlockLabel}
           unlockTitle={audienceForm.unlockTitle}
+          isPreviewMode={isPreviewMode}
         />
       )}
       {showLeadCollection && !isPreviewMode && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (
@@ -850,7 +928,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {catalogueData?.globalSettings?.backToTop && !isPreviewMode && (
         <BackToTopButton />
       )}
-      {isPreviewMode && <PreviewRibbon />}
+      {/* The headless preview (not framed) shoots the page as visitors see it. */}
+      {isPreviewMode && isFramed() && <PreviewRibbon notice={previewNotice} />}
     </div>
     </CatalogueNamingProvider>
     </CatalogueLocaleProvider>
@@ -859,11 +938,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
 /** Always on in preview: an editor preview is never mistaken for the live
  *  site, and a framed copy of it is no use for passing off as one. */
-const PreviewRibbon = () => {
+const PreviewRibbon = ({ notice }: { notice: string | null }) => {
   const { t } = useTranslation("coursePlayerA");
   return (
-    <div className="pointer-events-none fixed bottom-2 start-2 z-50 rounded-full bg-warning-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm">
-      {t("courseCataloguePage.previewRibbon")}
+    <div className="pointer-events-none fixed bottom-2 start-2 z-50 flex items-center gap-2">
+      <span className="rounded-full bg-warning-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm">
+        {t("courseCataloguePage.previewRibbon")}
+      </span>
+      {notice && (
+        <span role="status" className="rounded-full bg-catalogue-text-primary px-3 py-0.5 text-xs text-catalogue-bg shadow-sm">
+          {notice}
+        </span>
+      )}
     </div>
   );
 };

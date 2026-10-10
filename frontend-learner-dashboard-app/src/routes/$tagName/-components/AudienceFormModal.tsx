@@ -38,6 +38,8 @@ export interface AudienceFormModalProps {
   unlockLabel?: string;
   /** The card's title — what the admin sees in the lead's download list. */
   unlockTitle?: string;
+  /** Editor preview: the form shows but never submits. */
+  isPreviewMode?: boolean;
 }
 
 export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
@@ -49,6 +51,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
   unlockUrl,
   unlockLabel,
   unlockTitle,
+  isPreviewMode = false,
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const [unlocked, setUnlocked] = useState(false);
@@ -121,6 +124,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
           instituteId={instituteId}
           variant="embedded"
           layout="bare"
+          isPreviewMode={isPreviewMode}
           onSubmitted={
             unlockUrl
               ? (identity) => {

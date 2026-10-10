@@ -3,12 +3,17 @@
  * drives it over postMessage (CourseCataloguePage). These helpers keep that
  * channel to the real parent frame, so a page that merely opens the site in a
  * window of its own cannot paint a made-up site onto the institute's domain.
+ * The one other sender is the page itself: ai_service's headless preview
+ * (page_preview.py) opens `?preview=true` on its own and posts the draft to
+ * the page from inside it.
  *
  *   editor → site  CATALOGUE_CONFIG_UPDATE {payload, previewPath?},
- *                  HIGHLIGHT_COMPONENT {componentId}, PREVIEW_INTERACT {on}
+ *                  HIGHLIGHT_COMPONENT {componentId}, PREVIEW_INTERACT {on},
+ *                  PREVIEW_HELLO (answered with PREVIEW_READY)
  *   site → editor  PREVIEW_READY, COMPONENT_SELECTED {componentId, pageId, parentId?},
- *                  PREVIEW_NAVIGATE {route}
+ *                  PREVIEW_NAVIGATE {route: string | null, href}
  */
+import DOMPurify from "dompurify";
 import { RouteMatcher } from "../-services/route-matcher";
 
 /** Admin dashboard origins allowed to drive the preview, comma separated.
@@ -24,22 +29,27 @@ export const parseAdminOrigins = (raw: unknown): string[] =>
 
 export const PREVIEW_ADMIN_ORIGINS = parseAdminOrigins(import.meta.env.VITE_PREVIEW_ADMIN_ORIGINS);
 
-type FrameWindow = Pick<Window, "parent">;
+type FrameWindow = Pick<Window, "parent"> & { location?: Pick<Location, "origin"> };
 
 /** True when this document is inside another one (the editor's iframe). */
 export const isFramed = (win: FrameWindow = window): boolean => win.parent !== win;
 
-/** A message the site should obey: sent by the frame that embeds it, from an
- *  allowed admin origin. Anything else (another window, a sibling frame, an
- *  unlisted origin) is ignored. */
+/** A message the site should obey: framed, one from the frame that embeds it
+ *  and from an allowed admin origin; not framed (the headless preview), one
+ *  the page posted to itself. Anything else (another window, a sibling frame,
+ *  an unlisted origin) is ignored. */
 export const isEditorMessage = (
   event: Pick<MessageEvent, "source" | "origin">,
   win: FrameWindow = window,
   allowedOrigins: string[] = PREVIEW_ADMIN_ORIGINS,
-): boolean =>
-  isFramed(win) &&
-  event.source === win.parent &&
-  (allowedOrigins.length === 0 || allowedOrigins.includes(event.origin));
+): boolean => {
+  if (!isFramed(win)) {
+    // Only script running in this page (or one of its own origin) can send
+    // this; another site that opens the page in a window cannot.
+    return event.source === (win as unknown) && !!win.location && event.origin === win.location.origin;
+  }
+  return event.source === win.parent && (allowedOrigins.length === 0 || allowedOrigins.includes(event.origin));
+};
 
 /** Where PREVIEW_READY may go before the editor has spoken: each listed
  *  origin (postMessage drops the ones that do not match), or any. */
@@ -68,6 +78,53 @@ export const previewRouteFromHref = (
       }
     })
     .join("/");
+};
+
+/** True when `route` is the page the preview shows (`previewPath`, undefined
+ *  or "" = home): a link to it only jumps within the page. */
+export const isShownRoute = (route: string, previewPath: string | undefined): boolean => {
+  const norm = (r: string) => RouteMatcher.normalizeRoute(r.split(/[?#]/)[0] ?? "") || "home";
+  return norm(route) === norm(previewPath ?? "");
+};
+
+/** A navigation that would replace this document (location.href = …, a
+ *  same-tab external link): the editor's frame would leave the preview. */
+export const leavesDocument = (event: {
+  cancelable: boolean;
+  navigationType?: string;
+  destination?: { sameDocument?: boolean; url?: string };
+}): boolean =>
+  event.cancelable && event.navigationType !== "reload" && event.destination?.sameDocument === false;
+
+// Keys whose HTML its renderer already sanitizes with its own, wider rules
+// (htmlBlock, HTML pages): a second pass here would change what they show.
+const SELF_SANITIZED_KEYS = new Set(["html", "css"]);
+const PREVIEW_HTML_OPTIONS = {
+  ADD_TAGS: ["iframe"],
+  ADD_ATTR: ["target", "allow", "allowfullscreen", "frameborder"],
+};
+
+/**
+ * The posted draft, with script stripped from every text that carries HTML.
+ * Several sections render their text as HTML (text blocks, tab panels, hero
+ * descriptions), so a page able to post here could otherwise run script on
+ * the institute's domain. A text DOMPurify leaves whole is kept exactly as
+ * written, so the preview still matches the live site.
+ */
+export const scrubPreviewConfig = <T>(value: T): T => {
+  const walk = (node: unknown, key?: string): unknown => {
+    if (typeof node === "string") {
+      if (!node.includes("<") || (key && SELF_SANITIZED_KEYS.has(key)) || !DOMPurify.isSupported) return node;
+      const clean = DOMPurify.sanitize(node, PREVIEW_HTML_OPTIONS);
+      return DOMPurify.removed.length ? clean : node;
+    }
+    if (Array.isArray(node)) return node.map((item) => walk(item));
+    if (node && typeof node === "object") {
+      return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, walk(v, k)]));
+    }
+    return node;
+  };
+  return walk(value) as T;
 };
 
 /** Same page, whatever the trailing slash ("/acme" and "/acme/"). */

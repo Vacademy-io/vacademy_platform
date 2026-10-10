@@ -170,7 +170,8 @@ const CANVAS_VIEW_KEY = 'catalogue-editor-canvas-view';
 const readCanvasView = (): CanvasView =>
     localStorage.getItem(CANVAS_VIEW_KEY) === 'editor' ? 'editor' : 'website';
 
-export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
+/** liveConfigJson: the published site, for the Website view's Draft | Live switch. */
+export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; liveConfigJson?: string | null }) => {
     const {
         config: storeConfig,
         editingLocale,
@@ -322,6 +323,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
             {canvasView === 'website' ? (
                 <LiveSiteFrame
                     siteUrl={siteRootUrl}
+                    liveConfigJson={liveConfigJson}
                     nameInstitute={!instituteDetails?.learner_portal_base_url}
                     dropRef={setNodeRef}
                     isDropOver={isOver}

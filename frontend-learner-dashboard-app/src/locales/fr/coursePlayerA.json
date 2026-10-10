@@ -49,6 +49,7 @@
     "seoDescriptionWithInstitute": "Découvrez nos {{courses}} et inscrivez-vous en ligne chez {{institute}}.",
     "skipToMainContent": "Passer au contenu principal",
     "previewRibbon": "Aperçu",
+    "previewFormNotSent": "Les formulaires ne sont pas envoyés dans l'aperçu",
     "backToTop": "Retour en haut"
   },
   "courseStructureDetails": {

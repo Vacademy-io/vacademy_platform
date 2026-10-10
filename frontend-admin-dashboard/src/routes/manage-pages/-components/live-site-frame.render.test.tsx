@@ -69,27 +69,50 @@ class FakeResizeObserver {
 }
 
 const SITE = 'https://learn.acme.in/acme';
-const renderFrame = () => render(<LiveSiteFrame siteUrl={SITE} nameInstitute={false} dropRef={() => {}} isDropOver={false} />);
+const renderFrame = (liveConfigJson?: string) =>
+    render(
+        <LiveSiteFrame
+            siteUrl={SITE}
+            liveConfigJson={liveConfigJson}
+            nameInstitute={false}
+            dropRef={() => {}}
+            isDropOver={false}
+        />
+    );
 const iframe = () => screen.getByTitle('frameTitle') as HTMLIFrameElement;
-const fromFrame = (data: unknown) =>
+const fromFrame = (data: unknown, origin = 'https://learn.acme.in') =>
     act(() => {
-        window.dispatchEvent(
-            new MessageEvent('message', { data, source: iframe().contentWindow as Window, origin: 'https://learn.acme.in' })
-        );
+        window.dispatchEvent(new MessageEvent('message', { data, source: iframe().contentWindow as Window, origin }));
     });
-/** Mount, answer READY like the site does, and collect what the frame is
- *  sent. The test DOM loads no site, so the frame's window is a stand-in. */
-const readyFrame = () => {
-    renderFrame();
+/** The test DOM loads no site, so the frame's window is a stand-in. */
+const standInWindow = () => {
     const sent = vi.fn();
     Object.defineProperty(iframe(), 'contentWindow', { configurable: true, value: { postMessage: sent } });
+    return sent;
+};
+/** Mount, answer READY like the site does, and collect what the frame is sent. */
+const readyFrame = (liveConfigJson?: string) => {
+    renderFrame(liveConfigJson);
+    const sent = standInWindow();
     fromFrame({ type: 'PREVIEW_READY' });
     return sent;
 };
 const sentOfType = (sent: ReturnType<typeof vi.fn>, type: string) =>
     sent.mock.calls.map((call) => call[0] as Record<string, unknown>).filter((m) => m.type === type);
 
+/** Per-browser storage for the toolbar choices (fresh for every test). */
+const memoryStorage = () => {
+    const items = new Map<string, string>();
+    return {
+        getItem: (key: string) => items.get(key) ?? null,
+        setItem: (key: string, value: string) => void items.set(key, value),
+        removeItem: (key: string) => void items.delete(key),
+        clear: () => items.clear(),
+    };
+};
+
 beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage());
     areaSize = { width: 1152, height: 720 };
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
     useEditorStore.getState().setConfig(site());
@@ -98,6 +121,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
 });
 
@@ -171,6 +195,44 @@ describe('what the frame is sent', () => {
         expect(framePayload(config, 'home', 'hi').globalSettings.i18n?.enabled).toBe(true);
     });
 
+    it('a reloaded frame (READY again) gets the draft, the mode and the highlight again', () => {
+        useEditorStore.getState().selectComponent('cols');
+        const sent = readyFrame();
+        fireEvent.click(screen.getByText('toolbar.browse'));
+        sent.mockClear();
+        fromFrame({ type: 'PREVIEW_READY' });
+        expect(sentOfType(sent, 'CATALOGUE_CONFIG_UPDATE').length).toBeGreaterThan(0);
+        expect(sentOfType(sent, 'PREVIEW_INTERACT')).toEqual([{ type: 'PREVIEW_INTERACT', on: true }]);
+        expect(sentOfType(sent, 'HIGHLIGHT_COMPONENT')).toEqual([{ type: 'HIGHLIGHT_COMPONENT', componentId: 'cols' }]);
+    });
+
+    it('keeps posting to the origin that first answered, whatever claims READY later', () => {
+        const sent = readyFrame();
+        fromFrame({ type: 'PREVIEW_READY' }, 'https://evil.example');
+        useEditorStore.getState().selectPage('home');
+        act(() => {
+            useEditorStore.getState().selectComponent('hero');
+        });
+        expect(sent.mock.calls.every((call) => call[1] === 'https://learn.acme.in')).toBe(true);
+    });
+
+    it('Draft | Live shows the published site, and only when it is known', async () => {
+        const live = { ...site(), pages: [{ id: 'courses', route: 'courses', title: 'Published courses', components: [] }] };
+        const sent = readyFrame(JSON.stringify(live));
+        fireEvent.click(screen.getByText('toolbar.live'));
+        await act(() => new Promise((resolve) => setTimeout(resolve, 200))); // the push debounce
+        const updates = sentOfType(sent, 'CATALOGUE_CONFIG_UPDATE');
+        expect((updates.at(-1)?.payload as CatalogueConfig).pages[0]?.title).toBe('Published courses');
+        // Blocks are picked in the draft, not on the published site.
+        fromFrame({ type: 'COMPONENT_SELECTED', componentId: 'in-column', pageId: 'courses' });
+        expect(useEditorStore.getState().selectedComponentId).toBeNull();
+    });
+
+    it('without the published site there is no Draft | Live switch', () => {
+        renderFrame();
+        expect(screen.queryByText('toolbar.live')).toBeNull();
+    });
+
     it('Select | Browse posts PREVIEW_INTERACT, Select first', () => {
         const sent = readyFrame();
         expect(sentOfType(sent, 'PREVIEW_INTERACT')).toEqual([{ type: 'PREVIEW_INTERACT', on: false }]);
@@ -210,6 +272,13 @@ describe('clicks in the frame', () => {
         expect(useEditorStore.getState().selectedPageId).toBe('home');
     });
 
+    it('a link that is not a page of the site says where it goes', () => {
+        readyFrame();
+        fromFrame({ type: 'PREVIEW_NAVIGATE', route: 'login', href: 'https://learn.acme.in/login' });
+        expect(useEditorStore.getState().selectedPageId).toBe('courses');
+        expect(screen.getByRole('status').textContent).toBe('notAPage');
+    });
+
     it('ignores messages from any other window', () => {
         readyFrame();
         act(() => {
@@ -218,6 +287,58 @@ describe('clicks in the frame', () => {
             );
         });
         expect(useEditorStore.getState().selectedPageId).toBe('courses');
+    });
+});
+
+describe('when a link takes the frame off the preview', () => {
+    it('asks the reloaded frame, and offers the way back when the preview does not answer', () => {
+        vi.useFakeTimers();
+        const sent = readyFrame();
+        fireEvent.load(iframe());
+        expect(sentOfType(sent, 'PREVIEW_HELLO')).toHaveLength(1);
+        act(() => {
+            vi.advanceTimersByTime(3_000);
+        });
+        expect(screen.getByText('leftPreview.title')).toBeTruthy();
+        const before = iframe();
+        fireEvent.click(screen.getByText('leftPreview.back'));
+        expect(iframe()).not.toBe(before); // a fresh frame on the same URL
+        expect(screen.queryByText('leftPreview.title')).toBeNull();
+    });
+
+    it('a frame that answers is still the preview', () => {
+        vi.useFakeTimers();
+        readyFrame();
+        fireEvent.load(iframe());
+        fromFrame({ type: 'PREVIEW_READY' });
+        act(() => {
+            vi.advanceTimersByTime(3_000);
+        });
+        expect(screen.queryByText('leftPreview.title')).toBeNull();
+    });
+
+    it('the first load is not a departure', () => {
+        vi.useFakeTimers();
+        renderFrame();
+        fireEvent.load(iframe());
+        act(() => {
+            vi.advanceTimersByTime(3_000);
+        });
+        expect(screen.queryByText('leftPreview.title')).toBeNull();
+    });
+});
+
+describe('toolbar choices', () => {
+    it('are remembered for the next visit', () => {
+        const { unmount } = renderFrame();
+        fireEvent.click(screen.getByText('toolbar.browse'));
+        fireEvent.click(screen.getAllByText('toolbar.widthPx')[1]!);
+        fireEvent.click(screen.getByText('toolbar.actualSize'));
+        unmount();
+        renderFrame();
+        expect(screen.getByText('toolbar.browse').closest('button')?.getAttribute('aria-pressed')).toBe('true');
+        expect(iframe().style.width).toBe('1280px');
+        expect(iframe().style.transform).toBe('');
     });
 });
 
@@ -234,6 +355,16 @@ describe('helpers', () => {
     it('previewPathOf gives "" for any home route', () => {
         expect(previewPathOf({ id: 'x', route: 'homepage', components: [] })).toBe('');
         expect(previewPathOf({ id: 'x', route: '/about/', components: [] })).toBe('about');
+    });
+
+    it('selectableId opens the tabs block for a column inside a tab', () => {
+        const nested: Component = {
+            id: 'tabs2',
+            type: 'tabsAccordion',
+            enabled: true,
+            props: { items: [{ title: 'One', slot: [{ ...columns, id: 'cols-in-tab' }] }] },
+        };
+        expect(selectableId([nested], 'in-column', 'cols-in-tab')).toBe('tabs2');
     });
 
     it('selectableId keeps an unknown block as it was', () => {

@@ -16,6 +16,15 @@
         "fitHint": "Shrink the page to fit the canvas",
         "actualSize": "100%",
         "actualSizeHint": "Show the page at its real size and scroll sideways",
-        "scaledTo": "Shown at {{percent}}%"
+        "scaledTo": "Shown at {{percent}}%",
+        "draft": "Your changes",
+        "draftHint": "The site with your unsaved changes",
+        "live": "Live site",
+        "liveHint": "The site as visitors see it now, without your changes"
+    },
+    "notAPage": "That link opens {{target}}, which isn't a page of this site. Use View live to follow it.",
+    "leftPreview": {
+        "title": "That link left the preview, so your edits no longer show here.",
+        "back": "Back to the page"
     }
 }

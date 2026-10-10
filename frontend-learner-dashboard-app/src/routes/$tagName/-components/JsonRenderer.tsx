@@ -144,10 +144,11 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     );
 
   /** Builder preview only: a block that can be picked on its own. */
-  const previewFrame = (component: { id: string }, element: React.ReactNode, parentId?: string) => (
+  const previewFrame = (component: { id: string; style?: any }, element: React.ReactNode, parentId?: string) => (
     <PreviewBlockFrame
       key={component.id}
       id={component.id}
+      sticky={component.style?.sticky}
       selected={component.id === selectedComponentId}
       interactive={previewInteractive}
       onSelect={() => onComponentClick?.(component.id, page.id, parentId)}
@@ -353,6 +354,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             baseFields={baseProps?.fields}
             instituteId={instituteId}
             tagName={tagName}
+            isPreviewMode={isPreviewMode}
           />
         );
       case "teamSection":
@@ -428,7 +430,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "buttonBlock":
         return <ButtonBlockRenderer key={id} {...props} />;
       case "newsletterSignup":
-        return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
+        return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} isPreviewMode={isPreviewMode} />;
       case "stepsProcess":
         // variant "cards" (opt-in): one row of numbered cards.
         return props?.variant === "cards" ? <StepsCards key={id} {...props} /> : <StepsProcessRenderer key={id} {...props} />;
@@ -682,13 +684,17 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
  */
 const PreviewBlockFrame: React.FC<{
   id: string;
+  /** The block's sticky rail: the frame sticks in its place (the block's own
+   *  sticky has no room to move inside a frame its own height). */
+  sticky?: { enabled?: boolean; top?: number };
   selected: boolean;
   interactive: boolean;
   onSelect: () => void;
   children: React.ReactNode;
-}> = ({ id, selected, interactive, onSelect, children }) => (
+}> = ({ id, sticky, selected, interactive, onSelect, children }) => (
   <div
     data-cid={id}
+    style={sticky?.enabled ? { position: 'sticky', top: `${sticky.top ?? 88}px` } : undefined}
     onClick={
       interactive
         ? undefined
@@ -972,7 +978,7 @@ const extractLeadIdentity = (fields: any[], formData: Record<string, string>) =>
   return { email, phone, fullName, rest };
 };
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], baseFields, submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], baseFields, submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName, isPreviewMode }) => {
   const { t } = useTranslation("coursePlayerA");
   // The authored fields, index-paired with the shown ones (a translation
   // keeps the list's order). Answers are keyed, and the visitor's email /
@@ -1010,6 +1016,8 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The editor preview never creates a lead (the page shell says so too).
+    if (isPreviewMode) return;
     setError('');
     // Spam verdicts show the success state — never tell a bot it was caught.
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
@@ -2159,7 +2167,7 @@ const ButtonBlockRenderer: React.FC<any> = ({ text, url = '#', target = '_self',
 
 /* ─── Newsletter Signup ────────────────────────────────────────────────── */
 
-const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder, buttonText, layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName }) => {
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder, buttonText, layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName, isPreviewMode }) => {
   const { t } = useTranslation("coursePlayerA");
   // HISTORY: previously set the success flag with no network call — every
   // subscription was silently discarded. Now submits through the catalogue-lead
@@ -2177,7 +2185,11 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
         {submitted ? (
           <p className="text-lg font-medium text-green-600">{successMessage || t("jsonRenderer.newsletterSuccessDefault")}</p>
         ) : (
-          <form onSubmit={handleSubmit} className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}>
+          <form
+            // The editor preview never creates a lead.
+            onSubmit={isPreviewMode ? (e) => e.preventDefault() : handleSubmit}
+            className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}
+          >
             <input
               type="email"
               required

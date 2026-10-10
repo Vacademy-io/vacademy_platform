@@ -49,6 +49,7 @@
     "seoDescriptionWithInstitute": "استكشف {{courses}} لدينا وسجّل عبر الإنترنت في {{institute}}.",
     "skipToMainContent": "تخطَّ إلى المحتوى الرئيسي",
     "previewRibbon": "معاينة",
+    "previewFormNotSent": "لا تُرسَل النماذج في المعاينة",
     "backToTop": "العودة إلى الأعلى"
   },
   "courseStructureDetails": {

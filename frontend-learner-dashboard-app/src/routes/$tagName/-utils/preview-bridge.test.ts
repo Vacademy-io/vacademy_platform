@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/services/domain-routing", () => ({ getCachedRootCatalogueTag: () => null }));
@@ -6,16 +7,19 @@ import {
   blockTypeLabel,
   isEditorMessage,
   isFramed,
+  isShownRoute,
+  leavesDocument,
   parseAdminOrigins,
   previewRouteFromHref,
   readyTargets,
+  scrubPreviewConfig,
 } from "./preview-bridge";
 
 /** The editor preview obeys only the frame that embeds it. */
 
 const editor = { postMessage: () => {} } as unknown as Window;
 const framed = { parent: editor } as unknown as Window;
-const topLevel = {} as { parent: unknown };
+const topLevel = { location: { origin: "https://learn.acme.in" } } as { parent: unknown; location: { origin: string } };
 topLevel.parent = topLevel;
 
 describe("isEditorMessage", () => {
@@ -29,9 +33,19 @@ describe("isEditorMessage", () => {
     expect(isEditorMessage({ source: null, origin: "https://admin.acme.in" }, framed, [])).toBe(false);
   });
 
-  it("ignores everything when the page is not framed (a window opened by another site)", () => {
+  it("accepts the page's own same-origin post when not framed (the headless AI preview)", () => {
     const win = topLevel as unknown as Window;
     expect(isFramed(win)).toBe(false);
+    expect(isEditorMessage({ source: win, origin: "https://learn.acme.in" }, win, [])).toBe(true);
+    // Whatever origins are listed for the editor.
+    expect(isEditorMessage({ source: win, origin: "https://learn.acme.in" }, win, ["https://dash.vacademy.io"])).toBe(true);
+  });
+
+  it("not framed, ignores another window (a site that opened this page) and other origins", () => {
+    const win = topLevel as unknown as Window;
+    const opener = { postMessage: () => {} } as unknown as Window;
+    expect(isEditorMessage({ source: opener, origin: "https://evil.example" }, win, [])).toBe(false);
+    expect(isEditorMessage({ source: opener, origin: "https://learn.acme.in" }, win, [])).toBe(false);
     expect(isEditorMessage({ source: win, origin: "https://evil.example" }, win, [])).toBe(false);
   });
 
@@ -78,5 +92,60 @@ describe("blockTypeLabel", () => {
     expect(blockTypeLabel("heroSection")).toBe("Hero section");
     expect(blockTypeLabel("ctaBanner")).toBe("Cta banner");
     expect(blockTypeLabel(undefined)).toBe("");
+  });
+});
+
+describe("isShownRoute", () => {
+  it("matches the page shown, home by any of its names, ignoring query and hash", () => {
+    expect(isShownRoute("", undefined)).toBe(true);
+    expect(isShownRoute("homepage", "")).toBe(true);
+    expect(isShownRoute("courses", "courses")).toBe(true);
+    expect(isShownRoute("courses/", "courses")).toBe(true);
+    expect(isShownRoute("courses", "")).toBe(false);
+    expect(isShownRoute("", "courses")).toBe(false);
+  });
+});
+
+describe("leavesDocument", () => {
+  const nav = (over: Record<string, unknown>) => ({
+    cancelable: true,
+    navigationType: "push",
+    destination: { sameDocument: false, url: "https://learn.acme.in/login" },
+    ...over,
+  });
+
+  it("is true for a navigation that replaces the page", () => {
+    expect(leavesDocument(nav({}))).toBe(true);
+  });
+
+  it("is false for router (same-document) moves, reloads and what cannot be held", () => {
+    expect(leavesDocument(nav({ destination: { sameDocument: true } }))).toBe(false);
+    expect(leavesDocument(nav({ navigationType: "reload" }))).toBe(false);
+    expect(leavesDocument(nav({ cancelable: false }))).toBe(false);
+  });
+});
+
+describe("scrubPreviewConfig", () => {
+  it("strips script from HTML text anywhere in the posted draft", () => {
+    const out = scrubPreviewConfig({
+      pages: [{ components: [{ type: "textBlock", props: { content: '<p>Hi<img src="x" onerror="alert(1)"></p>' } }] }],
+      items: ["<b>ok</b><script>alert(1)</script>"],
+    });
+    const content = out.pages[0]!.components[0]!.props.content;
+    expect(content).toContain("<p>Hi");
+    expect(content).not.toContain("onerror");
+    expect(out.items[0]).toBe("<b>ok</b>");
+  });
+
+  it("keeps safe text exactly as written, and leaves self-sanitized html/css alone", () => {
+    const config = {
+      title: "Fees < ₹500 & more",
+      content: '<p>Hello <a href="/acme/courses" target="_blank">courses</a></p>',
+      embed: '<iframe src="https://www.youtube.com/embed/x" allowfullscreen></iframe>',
+      html: "<div onclick=\"go()\">kept for htmlBlock's own sanitizer</div>",
+      count: 3,
+      on: true,
+    };
+    expect(scrubPreviewConfig(config)).toEqual(config);
   });
 });

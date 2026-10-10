@@ -264,15 +264,27 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         // Batch filter from URL. The label is the batch's own name where it has
         // one — labelling it with the course name gave every batch of a course an
         // identical chip, so the chip never said which batch was being shown.
-        if (searchParams.batch) {
-            const batches = Array.isArray(searchParams.batch) ? searchParams.batch : [searchParams.batch];
+        // ?batchName= selects every batch carrying that name, across all courses,
+        // so a sidebar tab like "Flexi Student" keeps up with batches created
+        // later instead of freezing a list of ids. Those batches all share the
+        // name, so their chips are labelled by course.
+        const toList = (v: unknown): string[] =>
+            v ? (Array.isArray(v) ? v : [v]).map((x) => String(x)) : [];
+        const batchIds = toList(searchParams.batch);
+        const batchNames = toList(searchParams.batchName).map((n) => n.trim().toLowerCase());
+        if (batchIds.length > 0 || batchNames.length > 0) {
             const batchOptions =
                 instituteDetails.batches_for_sessions
-                    ?.filter((batch) => batches.includes(batch.id))
+                    ?.filter(
+                        (batch) =>
+                            batchIds.includes(batch.id) ||
+                            batchNames.includes((batch.name ?? '').trim().toLowerCase())
+                    )
                     .map((batch) => ({
                         id: batch.id,
-                        label:
-                            getBatchOwnName(batch) || batch.package_dto?.package_name || batch.id,
+                        label: batchIds.includes(batch.id)
+                            ? getBatchOwnName(batch) || batch.package_dto?.package_name || batch.id
+                            : batch.package_dto?.package_name || getBatchOwnName(batch) || batch.id,
                     })) || [];
             if (batchOptions.length > 0) {
                 initialFilters.push({ id: 'batch', value: batchOptions });
@@ -572,6 +584,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 const currentParams = new URLSearchParams(window.location.search);
                 currentParams.delete('session');
                 currentParams.delete('batch');
+                currentParams.delete('batchName');
                 const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
                 window.history.replaceState({}, '', newUrl);
                 return;
@@ -604,6 +617,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 const currentParams = new URLSearchParams(window.location.search);
                 currentParams.set('session', session.id);
                 currentParams.delete('batch'); // Clear batch from URL
+                currentParams.delete('batchName');
                 const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
                 window.history.replaceState({}, '', newUrl);
             }
@@ -790,6 +804,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         currentParams.delete('gender');
         currentParams.delete('status');
         currentParams.delete('batch');
+        currentParams.delete('batchName');
         currentParams.delete('sessionExpiry');
         currentParams.delete('learnerType');
         currentParams.delete('paymentStatus');
@@ -927,6 +942,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         currentParams.delete('gender');
         currentParams.delete('status');
         currentParams.delete('batch');
+        currentParams.delete('batchName');
         currentParams.delete('sessionExpiry');
         currentParams.delete('paymentStatus');
         currentParams.delete('approvalStatus');

@@ -269,6 +269,10 @@
     "resource": "مورد",
     "customValue": "مخصص: {{value}}"
   },
+  "chromeLook": {
+    "useSiteColour": "استخدام لون الموقع",
+    "siteColourNote": "غير محدد: يُستخدم لون الموقع نفسه."
+  },
   "componentTypes": {
     "heroSection": "القسم الرئيسي",
     "courseCatalog": "كتالوج الدورات",
@@ -423,6 +427,27 @@
     "showLink": "إظهار هذا الرابط",
     "hiddenBadge": "مخفي"
   },
+  "headerLook": {
+    "heading": "المظهر",
+    "standard": "قياسي",
+    "editorial": "تحريري",
+    "navStyle": "نمط القائمة",
+    "navStyleHint": "تحريري: روابط نصية بسيطة، والصفحة الحالية بخط عريض.",
+    "barSize": "ارتفاع الشريط",
+    "barCompact": "مضغوط",
+    "contentWidth": "عرض المحتوى",
+    "widthFull": "العرض الكامل",
+    "widthContained": "عرض الصفحة",
+    "logoOnly": "الشعار فقط",
+    "logoOnlyHint": "إخفاء اسم الموقع بجانب الشعار.",
+    "languageSwitcherStyle": "نمط مبدّل اللغة",
+    "switchPill": "حبة",
+    "switchSegmented": "من جزأين (हिन्दी | EN)",
+    "cartDisplay": "أيقونة السلة",
+    "cartAlways": "دائمًا",
+    "cartWhenNotEmpty": "فقط عند وجود عناصر",
+    "megaMenuStyle": "نمط القائمة الكبيرة"
+  },
   "footer": {
     "column2": "العمود 2",
     "column3": "العمود 3",
@@ -445,6 +470,29 @@
     "bottomNotePlaceholder": "© 2025 شركتك. جميع الحقوق محفوظة.",
     "column5": "العمود 5",
     "brandDesignNote": "يستخدم هذا التذييل تصميمه الخاص: يعرض دائمًا أربعة أعمدة روابط، ولا تنطبق عليه إعدادات التخطيط المسبقة."
+  },
+  "footerBrand": {
+    "brandHeading": "شعار العلامة وسطرها التعريفي",
+    "logo": "الشعار",
+    "tagline": "السطر التعريفي",
+    "taglinePlaceholder": "مثال: تعلّم • انمُ",
+    "newsletterHeading": "النشرة البريدية",
+    "newsletterShow": "إظهار النشرة البريدية",
+    "newsletterList": "إرسال الاشتراكات إلى",
+    "newsletter": {
+      "heading": "العنوان",
+      "subheading": "النص أسفل العنوان",
+      "placeholder": "نص تلميح حقل البريد",
+      "buttonText": "نص الزر",
+      "note": "نص صغير أسفل النموذج",
+      "successMessage": "رسالة الشكر"
+    },
+    "bottomBarHeading": "الشريط السفلي",
+    "bottomTagline": "السطر التعريفي على اليمين",
+    "bottomTaglinePlaceholder": "مثال: صُنع في الهند",
+    "languageSwitch": "مبدّل اللغة",
+    "languageSwitchHint": "يظهر عندما يحتوي الموقع على أكثر من لغة.",
+    "backgroundColor": "لون الخلفية"
   },
   "hero": {
     "heading": "إعدادات القسم الرئيسي",
@@ -493,6 +541,23 @@
     "carouselImagesHint": "أضف صورتين أو أكثر لتحويل وسائط القسم الرئيسي إلى عرض دوّار تلقائي. بصورة واحدة تبقى صورة مفردة؛ وبدون أي صورة تُستخدم الصورة اليمنى أعلاه.",
     "slideN": "الشريحة {{n}}",
     "eyebrowStyleRule": "خط (خط قبل النص)"
+  },
+  "heroEditorial": {
+    "style": "التصميم",
+    "styleHint": "تحريري: مسار تنقل وعنوان بلونين ونقاط تحقق وصورة دون إطار.",
+    "styleClassic": "كلاسيكي",
+    "styleEditorial": "تحريري",
+    "heading": "التفاصيل التحريرية",
+    "titleAccent": "السطر الثاني من العنوان (لون مميز)",
+    "titleAccentPlaceholder": "مثال: اتبع مسارًا.",
+    "checklist": "نقاط التحقق",
+    "breadcrumb": "مسار التنقل",
+    "breadcrumbHint": "العناصر التي لها رابط قابلة للنقر؛ والأخير هو هذه الصفحة.",
+    "crumbLabel": "النص",
+    "crumbRoute": "الرابط (اختياري)",
+    "mediaWidth": "عرض الصورة (px)",
+    "mediaWidthHint": "من 200 إلى 800 على الشاشات العريضة؛ فارغ = 500.",
+    "outlineColor": "حدود زر الإطار"
   },
   "bookDetails": {
     "heading": "إعدادات تفاصيل الكتاب",
@@ -577,6 +642,34 @@
     "layout": "التخطيط",
     "layoutSplit": "مقسّم (النص يسارًا، الزر يمينًا)",
     "showButton": "إظهار الزر"
+  },
+  "ctaBand": {
+    "style": "التصميم",
+    "styleHint": "شريط: شريط بعرض كامل مع عنوان صغير وزرين وصورة هاتف اختيارية.",
+    "styleClassic": "كلاسيكي",
+    "styleBand": "شريط",
+    "textHeading": "نص الشريط",
+    "eyebrow": "تسمية صغيرة فوق العنوان",
+    "eyebrowPlaceholder": "مثال: للمدارس والمؤسسات",
+    "eyebrowColor": "لون التسمية",
+    "subheadingColor": "لون العنوان الفرعي",
+    "bandSize": "حجم الشريط",
+    "sizeStandard": "قياسي",
+    "sizeLarge": "كبير",
+    "firstButtonLook": "الزر الأول: المظهر",
+    "secondButton": "الزر الثاني",
+    "buttonStyle": "نمط الزر",
+    "stylePrimary": "لون العلامة",
+    "styleOlive": "زيتوني",
+    "styleOutlineLight": "إطار (على خلفية داكنة)",
+    "styleOutlineDark": "إطار (على خلفية فاتحة)",
+    "arrow": "سهم بعد النص",
+    "formTitle": "عنوان النموذج",
+    "formTitlePlaceholder": "فارغ = نص الزر",
+    "phoneHeading": "صورة الهاتف",
+    "phoneShow": "إظهار هاتف",
+    "phoneHint": "هاتف تظهر صورتك على شاشته بجانب النص.",
+    "phoneImage": "الصورة على الشاشة"
   },
   "pricingTable": {
     "defaults": {

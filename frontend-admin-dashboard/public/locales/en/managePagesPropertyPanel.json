@@ -269,6 +269,10 @@
     "resource": "Resource",
     "customValue": "Custom: {{value}}"
   },
+  "chromeLook": {
+    "useSiteColour": "Use the site's colour",
+    "siteColourNote": "Not set: the site's own colour is used."
+  },
   "componentTypes": {
     "heroSection": "Hero Section",
     "courseCatalog": "Course Catalog",
@@ -423,6 +427,27 @@
     "hiddenBadge": "Hidden",
     "megaMenuBadge": "Mega menu"
   },
+  "headerLook": {
+    "heading": "Look",
+    "standard": "Standard",
+    "editorial": "Editorial",
+    "navStyle": "Menu style",
+    "navStyleHint": "Editorial: plain text links, the current page in bold.",
+    "barSize": "Bar height",
+    "barCompact": "Compact",
+    "contentWidth": "Content width",
+    "widthFull": "Full width",
+    "widthContained": "Page width",
+    "logoOnly": "Logo only",
+    "logoOnlyHint": "Hide the site name next to the logo.",
+    "languageSwitcherStyle": "Language switch style",
+    "switchPill": "Pill",
+    "switchSegmented": "Two-part (हिन्दी | EN)",
+    "cartDisplay": "Cart icon",
+    "cartAlways": "Always",
+    "cartWhenNotEmpty": "Only when it has items",
+    "megaMenuStyle": "Mega menu style"
+  },
   "footer": {
     "column2": "Column 2",
     "column3": "Column 3",
@@ -445,6 +470,29 @@
     "bottomNotePlaceholder": "© 2025 Your Company. All rights reserved.",
     "column5": "Column 5",
     "brandDesignNote": "This footer uses its own design: it always shows four link columns, and the layout and presets do not apply."
+  },
+  "footerBrand": {
+    "brandHeading": "Brand logo and tagline",
+    "logo": "Logo",
+    "tagline": "Tagline",
+    "taglinePlaceholder": "e.g. Learn • Grow",
+    "newsletterHeading": "Newsletter",
+    "newsletterShow": "Show the newsletter",
+    "newsletterList": "Send sign-ups to",
+    "newsletter": {
+      "heading": "Heading",
+      "subheading": "Text under the heading",
+      "placeholder": "Email box placeholder",
+      "buttonText": "Button text",
+      "note": "Small print under the form",
+      "successMessage": "Thank-you message"
+    },
+    "bottomBarHeading": "Bottom bar",
+    "bottomTagline": "Tagline on the right",
+    "bottomTaglinePlaceholder": "e.g. Made in India",
+    "languageSwitch": "Language switch",
+    "languageSwitchHint": "Shows once the site has more than one language.",
+    "backgroundColor": "Background colour"
   },
   "hero": {
     "heading": "Hero Section Settings",
@@ -493,6 +541,23 @@
     "carouselImagesHint": "Add 2 or more images to turn the hero media into an auto-playing carousel. With one image it stays a single image; with none it uses the Right Image above.",
     "slideN": "Slide {{n}}",
     "eyebrowStyleRule": "Rule (line before the text)"
+  },
+  "heroEditorial": {
+    "style": "Design",
+    "styleHint": "Editorial: breadcrumb, a two-colour title, check bullets and an unframed picture.",
+    "styleClassic": "Classic",
+    "styleEditorial": "Editorial",
+    "heading": "Editorial details",
+    "titleAccent": "Second title line (accent colour)",
+    "titleAccentPlaceholder": "e.g. Follow a path.",
+    "checklist": "Check bullets",
+    "breadcrumb": "Breadcrumb",
+    "breadcrumbHint": "Items with a link are clickable; the last one is this page.",
+    "crumbLabel": "Text",
+    "crumbRoute": "Link (optional)",
+    "mediaWidth": "Picture width (px)",
+    "mediaWidthHint": "200 to 800 on wide screens; empty = 500.",
+    "outlineColor": "Outline button border"
   },
   "bookDetails": {
     "heading": "Book Details Settings",
@@ -577,6 +642,34 @@
     "layout": "Layout",
     "layoutSplit": "Split (text left, button right)",
     "showButton": "Show Button"
+  },
+  "ctaBand": {
+    "style": "Design",
+    "styleHint": "Band: a full-width strip with an eyebrow, two buttons and an optional phone picture.",
+    "styleClassic": "Classic",
+    "styleBand": "Band",
+    "textHeading": "Band text",
+    "eyebrow": "Small label above the heading",
+    "eyebrowPlaceholder": "e.g. For schools & institutions",
+    "eyebrowColor": "Label colour",
+    "subheadingColor": "Subheading colour",
+    "bandSize": "Band size",
+    "sizeStandard": "Standard",
+    "sizeLarge": "Large",
+    "firstButtonLook": "First button: look",
+    "secondButton": "Second button",
+    "buttonStyle": "Button style",
+    "stylePrimary": "Brand colour",
+    "styleOlive": "Olive",
+    "styleOutlineLight": "Outline (on dark)",
+    "styleOutlineDark": "Outline (on light)",
+    "arrow": "Arrow after the text",
+    "formTitle": "Form title",
+    "formTitlePlaceholder": "Empty = the button text",
+    "phoneHeading": "Phone picture",
+    "phoneShow": "Show a phone",
+    "phoneHint": "A phone with your picture on its screen, beside the text.",
+    "phoneImage": "Picture on the screen"
   },
   "pricingTable": {
     "defaults": {

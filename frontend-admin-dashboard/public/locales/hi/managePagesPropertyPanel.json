@@ -269,6 +269,10 @@
     "resource": "रिसोर्स",
     "customValue": "कस्टम: {{value}}"
   },
+  "chromeLook": {
+    "useSiteColour": "साइट का रंग इस्तेमाल करें",
+    "siteColourNote": "सेट नहीं है: साइट का अपना रंग इस्तेमाल होता है।"
+  },
   "componentTypes": {
     "heroSection": "हीरो सेक्शन",
     "courseCatalog": "कोर्स कैटलॉग",
@@ -419,6 +423,27 @@
     "showLink": "यह लिंक दिखाएँ",
     "hiddenBadge": "छिपा हुआ"
   },
+  "headerLook": {
+    "heading": "रूप",
+    "standard": "सामान्य",
+    "editorial": "एडिटोरियल",
+    "navStyle": "मेन्यू की शैली",
+    "navStyleHint": "एडिटोरियल: सादे टेक्स्ट लिंक, मौजूदा पेज बोल्ड में।",
+    "barSize": "बार की ऊँचाई",
+    "barCompact": "छोटा",
+    "contentWidth": "सामग्री की चौड़ाई",
+    "widthFull": "पूरी चौड़ाई",
+    "widthContained": "पेज की चौड़ाई",
+    "logoOnly": "केवल लोगो",
+    "logoOnlyHint": "लोगो के पास साइट का नाम छिपाएँ।",
+    "languageSwitcherStyle": "भाषा बदलने की शैली",
+    "switchPill": "पिल",
+    "switchSegmented": "दो भाग (हिन्दी | EN)",
+    "cartDisplay": "कार्ट आइकन",
+    "cartAlways": "हमेशा",
+    "cartWhenNotEmpty": "केवल जब उसमें कुछ हो",
+    "megaMenuStyle": "मेगा मेन्यू की शैली"
+  },
   "footer": {
     "column2": "कॉलम 2",
     "column3": "कॉलम 3",
@@ -441,6 +466,29 @@
     "bottomNotePlaceholder": "© 2025 आपकी कंपनी। सर्वाधिकार सुरक्षित।",
     "column5": "कॉलम 5",
     "brandDesignNote": "यह फ़ुटर अपना खुद का डिज़ाइन इस्तेमाल करता है: इसमें हमेशा चार लिंक कॉलम दिखते हैं, और लेआउट व प्रीसेट लागू नहीं होते।"
+  },
+  "footerBrand": {
+    "brandHeading": "ब्रांड लोगो और टैगलाइन",
+    "logo": "लोगो",
+    "tagline": "टैगलाइन",
+    "taglinePlaceholder": "जैसे सीखें • बढ़ें",
+    "newsletterHeading": "न्यूज़लेटर",
+    "newsletterShow": "न्यूज़लेटर दिखाएँ",
+    "newsletterList": "साइन-अप यहाँ भेजें",
+    "newsletter": {
+      "heading": "शीर्षक",
+      "subheading": "शीर्षक के नीचे का टेक्स्ट",
+      "placeholder": "ईमेल बॉक्स का प्लेसहोल्डर",
+      "buttonText": "बटन का टेक्स्ट",
+      "note": "फ़ॉर्म के नीचे छोटा टेक्स्ट",
+      "successMessage": "धन्यवाद संदेश"
+    },
+    "bottomBarHeading": "नीचे की पट्टी",
+    "bottomTagline": "दाईं ओर की टैगलाइन",
+    "bottomTaglinePlaceholder": "जैसे भारत में बना",
+    "languageSwitch": "भाषा बदलने का बटन",
+    "languageSwitchHint": "साइट में एक से ज़्यादा भाषाएँ होने पर दिखता है।",
+    "backgroundColor": "पृष्ठभूमि का रंग"
   },
   "hero": {
     "heading": "हीरो सेक्शन सेटिंग्स",
@@ -489,6 +537,23 @@
     "carouselImagesHint": "हीरो मीडिया को ऑटो-प्लेइंग कैरोसेल बनाने के लिए 2 या ज़्यादा इमेजेस जोड़ें। एक इमेज होने पर यह सिंगल इमेज रहती है; कोई न होने पर ऊपर वाली Right Image इस्तेमाल होती है।",
     "slideN": "स्लाइड {{n}}",
     "eyebrowStyleRule": "रूल (टेक्स्ट से पहले एक लाइन)"
+  },
+  "heroEditorial": {
+    "style": "डिज़ाइन",
+    "styleHint": "एडिटोरियल: ब्रेडक्रंब, दो रंगों वाला शीर्षक, चेक बुलेट और बिना फ़्रेम की तस्वीर।",
+    "styleClassic": "क्लासिक",
+    "styleEditorial": "एडिटोरियल",
+    "heading": "एडिटोरियल विवरण",
+    "titleAccent": "शीर्षक की दूसरी पंक्ति (एक्सेंट रंग)",
+    "titleAccentPlaceholder": "जैसे एक पथ अपनाएँ।",
+    "checklist": "चेक बुलेट",
+    "breadcrumb": "ब्रेडक्रंब",
+    "breadcrumbHint": "जिन पर लिंक है वे क्लिक होते हैं; आख़िरी यही पेज है।",
+    "crumbLabel": "टेक्स्ट",
+    "crumbRoute": "लिंक (वैकल्पिक)",
+    "mediaWidth": "तस्वीर की चौड़ाई (px)",
+    "mediaWidthHint": "चौड़ी स्क्रीन पर 200 से 800; खाली = 500।",
+    "outlineColor": "आउटलाइन बटन की किनारी"
   },
   "bookDetails": {
     "heading": "बुक डिटेल्स सेटिंग्स",
@@ -573,6 +638,34 @@
     "layout": "लेआउट",
     "layoutSplit": "स्प्लिट (टेक्स्ट बाएं, बटन दाएं)",
     "showButton": "बटन दिखाएं"
+  },
+  "ctaBand": {
+    "style": "डिज़ाइन",
+    "styleHint": "बैंड: पूरी चौड़ाई की पट्टी, ऊपर छोटा लेबल, दो बटन और चाहें तो फ़ोन की तस्वीर।",
+    "styleClassic": "क्लासिक",
+    "styleBand": "बैंड",
+    "textHeading": "बैंड का टेक्स्ट",
+    "eyebrow": "शीर्षक के ऊपर छोटा लेबल",
+    "eyebrowPlaceholder": "जैसे स्कूलों और संस्थानों के लिए",
+    "eyebrowColor": "लेबल का रंग",
+    "subheadingColor": "उपशीर्षक का रंग",
+    "bandSize": "बैंड का आकार",
+    "sizeStandard": "सामान्य",
+    "sizeLarge": "बड़ा",
+    "firstButtonLook": "पहला बटन: रूप",
+    "secondButton": "दूसरा बटन",
+    "buttonStyle": "बटन की शैली",
+    "stylePrimary": "ब्रांड रंग",
+    "styleOlive": "ऑलिव",
+    "styleOutlineLight": "आउटलाइन (गहरे पर)",
+    "styleOutlineDark": "आउटलाइन (हल्के पर)",
+    "arrow": "टेक्स्ट के बाद तीर",
+    "formTitle": "फ़ॉर्म का शीर्षक",
+    "formTitlePlaceholder": "खाली = बटन का टेक्स्ट",
+    "phoneHeading": "फ़ोन की तस्वीर",
+    "phoneShow": "फ़ोन दिखाएँ",
+    "phoneHint": "टेक्स्ट के बगल में फ़ोन, जिसकी स्क्रीन पर आपकी तस्वीर हो।",
+    "phoneImage": "स्क्रीन पर तस्वीर"
   },
   "pricingTable": {
     "defaults": {

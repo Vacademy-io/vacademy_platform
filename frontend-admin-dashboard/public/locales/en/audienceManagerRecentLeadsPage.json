@@ -69,7 +69,8 @@
         "deletedLeadsButton": "Deleted leads",
         "viewingDeletedButton": "Viewing deleted",
         "exporting": "Exporting…",
-        "export": "Export"
+        "export": "Export",
+        "addLead": "Add New Lead"
     },
     "chips": {
         "search": "Search: {{query}}",

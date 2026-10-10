@@ -70,7 +70,8 @@
         "deletedLeadsButton": "Prospects supprimés",
         "viewingDeletedButton": "Prospects supprimés affichés",
         "exporting": "Exportation…",
-        "export": "Exporter"
+        "export": "Exporter",
+        "addLead": "Ajouter un prospect"
     },
     "chips": {
         "search": "Recherche : {{query}}",

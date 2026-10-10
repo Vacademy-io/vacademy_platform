@@ -38,7 +38,11 @@
         "noStreams": "La bibliothèque n’a encore aucun dossier de filière à choisir.",
         "remove": "Supprimer l’objectif",
         "add": "Ajouter un objectif",
-        "hiddenUntilFilled": "Masqué sur le site tant qu’il n’a pas de texte de puce et de clé de lien."
+        "hiddenUntilFilled": "Masqué sur le site tant qu’il n’a pas de texte de puce et de clé de lien.",
+        "foldersLoading": "Chargement des filières de la bibliothèque…",
+        "foldersFailed": "Les filières de la bibliothèque n’ont pas pu être chargées.",
+        "retry": "Réessayer",
+        "noLibrary": "Choisissez une bibliothèque ci-dessus pour en choisir les filières."
     },
     "more": {
         "title": "Titre des autres parcours",

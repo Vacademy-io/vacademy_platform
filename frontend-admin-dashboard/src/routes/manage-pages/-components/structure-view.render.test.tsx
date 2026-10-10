@@ -25,6 +25,9 @@ vi.mock('react-i18next', async () => {
         managePagesComponentPreviews: (
             await import('../../../../public/locales/en/managePagesComponentPreviews.json')
         ).default,
+        managePagesLiveSiteFrame: (
+            await import('../../../../public/locales/en/managePagesLiveSiteFrame.json')
+        ).default,
     };
     const lookup = (ns: string, key: string): string | undefined => {
         const value = key
@@ -45,11 +48,20 @@ vi.mock('react-i18next', async () => {
             `MISSING:${ns}:${key}`;
         return raw.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(opts?.[name] ?? ''));
     };
-    return { useTranslation: (ns: string) => ({ t: makeT(ns) }) };
+    return {
+        useTranslation: (ns: string) => ({ t: makeT(ns) }),
+        Trans: ({ i18nKey, t }: { i18nKey: string; t: (key: string) => string }) => (
+            <span>{t(i18nKey).replace(/<\/?b>/g, '')}</span>
+        ),
+    };
 });
+// The institute the editor runs for; a test may take its learner site away.
+const institute = vi.hoisted(() => ({
+    details: { learner_portal_base_url: 'learn.example.org' } as { learner_portal_base_url?: string },
+}));
 vi.mock('@/stores/students/students-list/useInstituteDetailsStore', () => ({
     useInstituteDetailsStore: () => ({
-        instituteDetails: { learner_portal_base_url: 'learn.example.org' },
+        instituteDetails: institute.details,
         setInstituteDetails: vi.fn(),
     }),
 }));
@@ -99,7 +111,9 @@ const renderCanvas = () =>
 const rows = () => screen.getAllByRole('listitem');
 
 beforeEach(() => {
+    stored.clear();
     localStorage.setItem(VIEW_KEY, 'editor');
+    institute.details = { learner_portal_base_url: 'learn.example.org' };
     useEditorStore.getState().setEditingLocale(null);
 });
 
@@ -421,5 +435,145 @@ describe('block-summary helpers', () => {
         expect(moveItem(['a', 'b'], 0, 0)).toBeNull();
         expect(moveItem(['a', 'b'], 0, 2)).toBeNull();
         expect(moveItem(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b']);
+    });
+});
+
+describe('Show previews: no institute is left without a visual canvas', () => {
+    const PREVIEWS_KEY = 'catalogue-editor-structure-previews';
+    const previews = () => screen.queryAllByTestId('block-preview');
+    const toggle = () => screen.getByRole('switch', { name: 'Show previews' });
+
+    it('is off by default; on, every block, the header and the footer get a picture', () => {
+        loadSite(site(), 'courses');
+        renderCanvas();
+        expect(previews()).toHaveLength(0);
+        expect(toggle().getAttribute('aria-checked')).toBe('false');
+
+        fireEvent.click(toggle());
+        const blocks = pageBlocks('courses');
+        expect(previews()).toHaveLength(blocks.length + 2);
+        // Each row carries its own block's picture.
+        const cta = rows().find((row) => row.getAttribute('data-block-id') === 'courses-not-sure')!;
+        expect(within(cta).getAllByTestId('block-preview')).toHaveLength(1);
+        expect(within(cta).getAllByText('Not sure which course is right for you?').length).toBeGreaterThan(1);
+        // Clicking a picture still opens its block.
+        fireEvent.click(within(cta).getByTestId('block-preview'));
+        expect(useEditorStore.getState().selectedComponentId).toBe('courses-not-sure');
+        expect(localStorage.getItem(PREVIEWS_KEY)).toBe('true');
+    });
+
+    it('is remembered per browser', () => {
+        localStorage.setItem(PREVIEWS_KEY, 'true');
+        loadSite(site(), 'courses');
+        const { unmount } = renderCanvas();
+        expect(previews().length).toBeGreaterThan(0);
+        fireEvent.click(toggle());
+        expect(previews()).toHaveLength(0);
+        unmount();
+        renderCanvas();
+        expect(previews()).toHaveLength(0);
+    });
+
+    it('the site theme reaches the previews (preset, radius, brand colour)', () => {
+        const config = site();
+        config.globalSettings.theme = { ...config.globalSettings.theme, preset: 'ocean', borderRadius: 'sharp' };
+        loadSite(config, 'courses');
+        localStorage.setItem(PREVIEWS_KEY, 'true');
+        renderCanvas();
+        const surface = previews()[0]!.closest('[data-catalogue-theme]')!;
+        expect(surface.getAttribute('data-catalogue-theme')).toBe('ocean');
+        expect(surface.getAttribute('data-catalogue-radius')).toBe('sharp');
+    });
+
+    it('a column layout previews the blocks in its columns', () => {
+        const config = site();
+        config.pages
+            .find((p) => p.id === 'courses')!
+            .components.push({
+                id: 'cols-1',
+                type: 'columnLayout',
+                enabled: true,
+                props: {
+                    slots: [
+                        [{ id: 'txt-1', type: 'textBlock', enabled: true, props: { content: '<p>Hello there</p>' } }],
+                        [],
+                    ],
+                },
+            });
+        loadSite(config, 'courses');
+        localStorage.setItem(PREVIEWS_KEY, 'true');
+        renderCanvas();
+        const layoutRow = rows().find((row) => row.getAttribute('data-block-id') === 'cols-1')!;
+        expect(within(layoutRow).getAllByTestId('block-preview')).toHaveLength(1);
+        expect(within(layoutRow).getAllByText('Hello there').length).toBeGreaterThan(1);
+    });
+
+    it('an institute with no learner site gets previews by itself, and can still turn them off', () => {
+        institute.details = {};
+        loadSite(site(), 'courses');
+        renderCanvas();
+        expect(previews().length).toBeGreaterThan(0);
+        // Its Website view may well load (the shared host): no failure is claimed.
+        expect(screen.queryByText(/The Website view can’t load/)).toBeNull();
+        fireEvent.click(toggle());
+        expect(previews()).toHaveLength(0);
+    });
+
+    it('when the Website view never loads, previews come on and the failed screen leads to them', () => {
+        (window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true;
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(VIEW_KEY, 'website');
+            loadSite(site(), 'courses');
+            renderCanvas();
+            expect(document.querySelector('iframe')).not.toBeNull();
+            act(() => {
+                vi.advanceTimersByTime(15_000);
+            });
+            expect(screen.getByText(/Use Structure above to keep editing/)).toBeInTheDocument();
+            expect(screen.queryByText(/Editor/)).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Show block previews' }));
+            expect(document.querySelector('iframe')).toBeNull();
+            expect(previews().length).toBeGreaterThan(0);
+            expect(screen.getByText(/The Website view can’t load for this site here/)).toBeInTheDocument();
+            // For this visit only: the stored choice is unchanged.
+            expect(localStorage.getItem(PREVIEWS_KEY)).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('a Website view that never loads', () => {
+    it('turns the Structure previews on by itself', () => {
+        (window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true;
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(VIEW_KEY, 'website');
+            loadSite(site(), 'courses');
+            renderCanvas();
+            act(() => {
+                vi.advanceTimersByTime(15_000);
+            });
+            fireEvent.click(screen.getByRole('button', { name: /Structure/ }));
+            expect(screen.queryAllByTestId('block-preview').length).toBeGreaterThan(0);
+            expect(screen.getByRole('switch', { name: 'Show previews' }).getAttribute('aria-checked')).toBe('true');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('the failed-preview hint names the real view button in every language', () => {
+    const LOCALES = ['en', 'hi', 'ar', 'fr'] as const;
+    it.each(LOCALES)('%s', async (locale) => {
+        const frame = (await import(`../../../../public/locales/${locale}/managePagesLiveSiteFrame.json`))
+            .default as { failed: { hint: string }; notAPage: string };
+        const canvas = (await import(`../../../../public/locales/${locale}/managePagesPageCanvas.json`))
+            .default as { view: { structure: string }; toolbar: { viewLive: string } };
+        expect(frame.failed.hint).toContain(`<b>${canvas.view.structure}</b>`);
+        expect(frame.failed.hint).toContain(`<b>${canvas.toolbar.viewLive}</b>`);
+        expect(frame.failed.hint).not.toContain('Editor');
+        expect(frame.notAPage).toContain(canvas.toolbar.viewLive);
     });
 });

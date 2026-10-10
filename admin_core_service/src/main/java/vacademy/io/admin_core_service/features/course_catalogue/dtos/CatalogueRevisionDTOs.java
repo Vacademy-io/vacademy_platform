@@ -21,6 +21,17 @@ public class CatalogueRevisionDTOs {
         /** MANUAL | AI_WIZARD | AI_COPILOT (defaults to MANUAL). */
         private String source;
         private String aiRunId;
+        /**
+         * "Keep my draft": the editor saw that the live site changed after this
+         * draft began and keeps the draft anyway. A stale draft is then
+         * re-based on the current live site, so it stops being reported stale
+         * (and the AI tools stop refusing it) until the live site moves again.
+         */
+        private Boolean acknowledgeLive;
+
+        public SaveDraftRequest(String catalogueJson, String source, String aiRunId) {
+            this(catalogueJson, source, aiRunId, null);
+        }
     }
 
     @Data

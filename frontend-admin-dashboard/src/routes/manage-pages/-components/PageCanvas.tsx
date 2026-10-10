@@ -11,6 +11,8 @@
  *   Native drag events, so it never mixes with the library's dnd-kit drags.
  * - Drag a block from the library onto the outline to add it at the end, or
  *   onto a column of a column layout to add it there (same drop ids as before).
+ * - "Show previews" draws each block's look-alike picture (BlockPreview) in its
+ *   row: the visual canvas for an institute whose Website view cannot load.
  */
 import {
     useEffect,
@@ -23,18 +25,35 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { DotsSixVertical, EyeSlash } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { Switch } from '@/components/ui/switch';
 import { useEditorStore } from '../-stores/editor-store';
 import { useLocalizedView } from '../-hooks/use-localized-editing';
-import type { Component } from '../-types/editor-types';
+import type { CatalogueConfig, Component } from '../-types/editor-types';
 import { componentLabel } from '../-utils/component-labels';
 import { firstHeading, moveItem } from '../-utils/block-summary';
+import { collectConfigFontFamilies, ensureFontsLoaded } from '../-utils/catalogue-fonts';
 import { describeCatalogFeatures } from './ComponentPreviews';
+import { BlockPreview, PreviewSurface } from './BlockPreview';
 
 interface PageCanvasProps {
     /** The canvas's own 'canvas-drop-zone' droppable — owned by CanvasRenderer. */
     dropRef: (node: HTMLElement | null) => void;
     isDropOver: boolean;
+    /** Draw each block's look-alike preview in its row. */
+    showPreviews?: boolean;
+    onShowPreviewsChange?: (on: boolean) => void;
+    /** The Website view failed to load for this institute: say why previews are on. */
+    websiteUnavailable?: boolean;
 }
+
+/** A block's preview inside a row, in the site's theme. */
+const RowPreview = ({ config, component }: { config: CatalogueConfig | null; component: Component }) => (
+    <div className="mt-2 overflow-hidden rounded-md border border-neutral-200">
+        <PreviewSurface config={config}>
+            <BlockPreview component={component} />
+        </PreviewSurface>
+    </div>
+);
 
 /** Column layouts show their columns side by side, up to four across. */
 const COLUMN_GRID: Record<number, string> = {
@@ -84,10 +103,13 @@ const ColumnSlot = ({
     layoutId,
     index,
     blocks,
+    previewConfig,
 }: {
     layoutId: string;
     index: number;
     blocks: Component[];
+    /** Set when previews are on: the site whose theme they are drawn in. */
+    previewConfig?: CatalogueConfig | null;
 }) => {
     const { t } = useTranslation('managePagesPageCanvas');
     const { selectedComponentId, selectComponent } = useEditorStore();
@@ -108,21 +130,34 @@ const ColumnSlot = ({
             )}
             <div className="flex flex-col gap-1">
                 {blocks.map((child) => (
-                    <button
+                    // The preview sits beside the button, never inside it: it
+                    // draws the block's own buttons and links.
+                    <div
                         key={child.id}
-                        type="button"
                         onClick={(e) => {
                             e.stopPropagation();
                             selectComponent(child.id);
                         }}
-                        className={`flex w-full rounded border bg-white px-2 py-1 text-start ${
+                        className={`cursor-pointer rounded border bg-white px-2 py-1 ${
                             child.id === selectedComponentId
                                 ? 'border-primary-500 ring-1 ring-primary-200'
                                 : 'border-neutral-200 hover:border-primary-300'
                         }`}
                     >
-                        <BlockText component={child} />
-                    </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                selectComponent(child.id);
+                            }}
+                            className="flex w-full rounded text-start"
+                        >
+                            <BlockText component={child} />
+                        </button>
+                        {previewConfig !== undefined && (
+                            <RowPreview config={previewConfig} component={child} />
+                        )}
+                    </div>
                 ))}
             </div>
         </div>
@@ -133,26 +168,28 @@ const ColumnSlot = ({
 const ChromeRow = ({
     section,
     component,
+    previewConfig,
 }: {
     section: 'header' | 'footer';
     component: Component;
+    previewConfig?: CatalogueConfig | null;
 }) => {
     const { t } = useTranslation('managePagesPageCanvas');
     const { selectedGlobalLayout, selectGlobalLayout } = useEditorStore();
+    const select = (e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        selectGlobalLayout(section);
+    };
     return (
-        <button
-            type="button"
-            onClick={(e) => {
-                e.stopPropagation();
-                selectGlobalLayout(section);
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg border border-dashed bg-white px-3 py-2 text-start ${
+        <div
+            onClick={select}
+            className={`cursor-pointer rounded-lg border border-dashed bg-white px-3 py-2 ${
                 selectedGlobalLayout === section
                     ? 'border-primary-500 ring-2 ring-primary-200'
                     : 'border-neutral-300 hover:border-primary-300'
             }`}
         >
-            <div className="min-w-0 flex-1">
+            <button type="button" onClick={select} className="flex w-full min-w-0 flex-col rounded text-start">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-neutral-800">
                         {t(section === 'header' ? 'structure.header' : 'structure.footer')}
@@ -163,12 +200,19 @@ const ChromeRow = ({
                     {component.enabled === false && <HiddenBadge />}
                 </div>
                 <div className="truncate text-xs text-neutral-600">{firstHeading(component)}</div>
-            </div>
-        </button>
+            </button>
+            {previewConfig !== undefined && <RowPreview config={previewConfig} component={component} />}
+        </div>
     );
 };
 
-export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
+export const PageCanvas = ({
+    dropRef,
+    isDropOver,
+    showPreviews = false,
+    onShowPreviewsChange,
+    websiteUnavailable = false,
+}: PageCanvasProps) => {
     const { t } = useTranslation('managePagesPageCanvas');
     const { t: tPreviews } = useTranslation('managePagesComponentPreviews');
     const {
@@ -184,6 +228,13 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
     const config = useLocalizedView(storeConfig, editingLocale);
     const page = config?.pages.find((p) => p.id === selectedPageId);
     const layout = config?.globalSettings?.layout;
+    // undefined = previews off; otherwise the site they are drawn in.
+    const previewConfig = showPreviews ? (config ?? null) : undefined;
+
+    // Previews show the site's real typography: load the fonts it uses.
+    useEffect(() => {
+        if (showPreviews && config) ensureFontsLoaded(collectConfigFontFamilies(config));
+    }, [showPreviews, config]);
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -337,6 +388,10 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                                     <BlockText component={block} summary={summary} />
                                 </button>
                             </div>
+                            {/* A column layout previews each column's blocks instead. */}
+                            {previewConfig !== undefined && !slots && (
+                                <RowPreview config={previewConfig} component={block} />
+                            )}
                             {slots && (
                                 <div
                                     className={`mt-2 grid gap-2 ps-14 ${COLUMN_GRID[Math.min(slots.length, 4)] ?? ''}`}
@@ -347,6 +402,7 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                                             layoutId={block.id}
                                             index={slotIndex}
                                             blocks={Array.isArray(slotBlocks) ? slotBlocks : []}
+                                            previewConfig={previewConfig}
                                         />
                                     ))}
                                 </div>
@@ -364,10 +420,35 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
             className={`flex flex-1 justify-center overflow-auto p-6 transition-colors ${isDropOver ? 'bg-primary-50' : ''}`}
             onClick={() => selectComponent(null)}
         >
-            <div className="flex w-full max-w-3xl flex-col gap-2">
-                <p className="text-xs text-neutral-500">{t('structure.intro')}</p>
+            <div className={`flex w-full flex-col gap-2 ${showPreviews ? 'max-w-6xl' : 'max-w-3xl'}`}>
+                <div className="flex items-start justify-between gap-4">
+                    <p className="text-xs text-neutral-500">{t('structure.intro')}</p>
+                    {onShowPreviewsChange && (
+                        <label
+                            className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium text-neutral-700"
+                            title={t('structure.showPreviewsTitle')}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <Switch
+                                checked={showPreviews}
+                                onCheckedChange={onShowPreviewsChange}
+                                aria-label={t('structure.showPreviews')}
+                            />
+                            {t('structure.showPreviews')}
+                        </label>
+                    )}
+                </div>
+                {websiteUnavailable && showPreviews && (
+                    <p role="status" className="rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
+                        {t('structure.previewsAuto')}
+                    </p>
+                )}
                 {layout?.header && (
-                    <ChromeRow section="header" component={layout.header as Component} />
+                    <ChromeRow
+                        section="header"
+                        component={layout.header as Component}
+                        previewConfig={layout.header.enabled === false ? undefined : previewConfig}
+                    />
                 )}
                 {body}
                 {isDropOver && (
@@ -376,7 +457,11 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                     </div>
                 )}
                 {layout?.footer && (
-                    <ChromeRow section="footer" component={layout.footer as Component} />
+                    <ChromeRow
+                        section="footer"
+                        component={layout.footer as Component}
+                        previewConfig={layout.footer.enabled === false ? undefined : previewConfig}
+                    />
                 )}
             </div>
         </div>

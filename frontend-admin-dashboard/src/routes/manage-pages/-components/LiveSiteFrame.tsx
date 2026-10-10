@@ -180,6 +180,12 @@ interface LiveSiteFrameProps {
     /** The canvas's own 'canvas-drop-zone' droppable — one id, one owner. */
     dropRef: (node: HTMLElement | null) => void;
     isDropOver: boolean;
+    /** Told whether the preview can load here: false once it never answered
+     *  (or the URL is unusable), true again when it does answer. */
+    onAvailabilityChange?: (available: boolean) => void;
+    /** "Show block previews" on the failed screen: the Structure view's
+     *  look-alike previews, which need no learner site. */
+    onShowPreviews?: () => void;
 }
 
 export const LiveSiteFrame = ({
@@ -188,6 +194,8 @@ export const LiveSiteFrame = ({
     nameInstitute,
     dropRef,
     isDropOver,
+    onAvailabilityChange,
+    onShowPreviews,
 }: LiveSiteFrameProps) => {
     const { t } = useTranslation('managePagesLiveSiteFrame');
     const {
@@ -244,6 +252,10 @@ export const LiveSiteFrame = ({
     }, [liveConfigJson]);
     const [showLive, setShowLive] = useState(false);
     const showingLive = showLive && !!liveConfig;
+    // A page that is not published yet (new, or its id changed) has no live
+    // version: the frame then shows the live site's first page — say so.
+    const liveLacksPage =
+        showLive && !!liveConfig && !!selectedPageId && !liveConfig.pages.some((p) => p.id === selectedPageId);
 
     // Library drags still land on the page: the iframe swallows pointer events,
     // so while a drag is active a transparent overlay takes them instead.
@@ -287,6 +299,10 @@ export const LiveSiteFrame = ({
     // Loads after the first READY are new documents (a link, a reload): the
     // preview has to answer HELLO, or the frame has left it.
     const leftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    // Load events of this frame. The first belongs to the first document,
+    // whether READY came before it or after (it can: load waits for fonts
+    // and images); only later loads are new documents.
+    const loads = useRef(0);
 
     const post = useCallback((message: Record<string, unknown>) => {
         if (frameOrigin.current)
@@ -319,6 +335,7 @@ export const LiveSiteFrame = ({
         setTimedOut(false);
         setLeftPreview(false);
         frameOrigin.current = null;
+        loads.current = 0;
         const timer = setTimeout(() => setTimedOut(true), READY_TIMEOUT_MS);
         return () => {
             clearTimeout(timer);
@@ -327,7 +344,9 @@ export const LiveSiteFrame = ({
     }, [frameUrl, frameKey]);
 
     const onFrameLoad = () => {
-        if (!frameOrigin.current) return; // the first load: READY is on its way
+        loads.current += 1;
+        // The first document's own load, or READY is still on its way.
+        if (loads.current === 1 || !frameOrigin.current) return;
         iframeRef.current?.contentWindow?.postMessage({ type: 'PREVIEW_HELLO' }, frameOrigin.current);
         clearTimeout(leftTimer.current);
         leftTimer.current = setTimeout(() => {
@@ -347,6 +366,12 @@ export const LiveSiteFrame = ({
                 route?: string | null;
                 href?: string;
             } | null;
+            // Only the first READY may name the origin; everything after it
+            // must come from that origin, never from a page the frame was
+            // taken to (a link in Browse can open another site in the frame).
+            if (data?.type !== 'PREVIEW_READY' && (!frameOrigin.current || event.origin !== frameOrigin.current)) {
+                return;
+            }
             if (data?.type === 'PREVIEW_READY') {
                 if (frameOrigin.current && event.origin !== frameOrigin.current) return;
                 frameOrigin.current = event.origin;
@@ -356,7 +381,10 @@ export const LiveSiteFrame = ({
                 pushConfig();
             } else if (data?.type === 'COMPONENT_SELECTED' && data.componentId) {
                 // The published site is for looking; blocks are picked in the draft.
-                if (showingLive) return;
+                if (showingLive) {
+                    showNotice(t('liveClick'));
+                    return;
+                }
                 if (data.pageId === 'header' || data.pageId === 'footer') {
                     selectGlobalLayout(data.pageId);
                     return;
@@ -382,6 +410,16 @@ export const LiveSiteFrame = ({
         window.addEventListener('message', onMessage);
         return () => window.removeEventListener('message', onMessage);
     }, [pushConfig, config, shownPage, selectedPageId, selectPage, selectComponent, selectGlobalLayout, showingLive, showNotice, t]);
+
+    // Tell the canvas whether this institute has a working preview, so it
+    // can offer the look-alike previews instead.
+    const failed = !frameUrl || (timedOut && !isReady && !leftPreview);
+    const availabilityRef = useRef(onAvailabilityChange);
+    availabilityRef.current = onAvailabilityChange;
+    useEffect(() => {
+        if (failed) availabilityRef.current?.(false);
+        else if (isReady) availabilityRef.current?.(true);
+    }, [failed, isReady]);
 
     useEffect(() => {
         if (!readyCount) return;
@@ -496,6 +534,11 @@ export const LiveSiteFrame = ({
                     </span>
                 )}
             </div>
+            {liveLacksPage && (
+                <div role="status" className="mx-4 mt-2 shrink-0 rounded-md border border-warning-200 bg-warning-50 px-3 py-1.5 text-center text-xs text-warning-700">
+                    {t('livePageMissing')}
+                </div>
+            )}
             {notice && (
                 <div role="status" className="mx-4 mt-2 shrink-0 rounded-md border bg-catalogue-bg-elevated px-3 py-1.5 text-center text-xs text-catalogue-text-muted">
                     {notice}
@@ -547,6 +590,11 @@ export const LiveSiteFrame = ({
                                     <span>
                                         <Trans t={t} i18nKey="failed.hint" components={{ b: <b /> }} />
                                     </span>
+                                    {onShowPreviews && (
+                                        <Button size="sm" variant="outline" onClick={onShowPreviews}>
+                                            {t('failed.showPreviews')}
+                                        </Button>
+                                    )}
                                 </>
                             ) : (
                                 <span className="flex items-center gap-2">

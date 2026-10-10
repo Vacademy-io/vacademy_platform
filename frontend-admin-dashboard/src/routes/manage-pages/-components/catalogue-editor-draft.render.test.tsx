@@ -127,8 +127,9 @@ const HISTORY: service.CatalogueRevision[] = [
 ];
 
 let client: QueryClient;
-const renderEditor = () => {
-    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** keepClient: open the editor again in the same app session (same cache). */
+const renderEditor = (keepClient = false) => {
+    if (!keepClient || !client) client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return render(
         <QueryClientProvider client={client}>
             <CatalogueEditorPage />
@@ -178,7 +179,10 @@ describe('opening the editor', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         renderEditor();
         await loaded();
-        // The store's config can render a moment before the saved snapshot does.
+        // The store's config can render a moment before the saved snapshot does:
+        // wait until the editor has opened the site and settled.
+        await waitFor(() => expect(useEditorStore.getState().config).toEqual(LIVE));
+        await act(async () => {});
         expect(await screen.findByText('Live')).toBeInTheDocument();
         expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
         await act(async () => {
@@ -219,6 +223,11 @@ describe('a draft older than the live site', () => {
         fireEvent.click(
             screen.getByRole('button', { name: 'Use the live site (discard this draft)' })
         );
+        // A saved draft is lost for good: the banner asks first, like the toolbar.
+        const dialog = await screen.findByRole('alertdialog');
+        expect(dialog).toHaveTextContent('Discard this draft?');
+        expect(api.discardDraftRevision).not.toHaveBeenCalled();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
         await waitFor(() => expect(api.discardDraftRevision).toHaveBeenCalledWith('cat-1'));
         await waitFor(() => expect(useEditorStore.getState().config).toEqual(LIVE));
         expect(banner()).not.toBeInTheDocument();
@@ -255,6 +264,12 @@ describe('a draft older than the live site', () => {
         await waitFor(() => expect(banner()).toBeInTheDocument());
         fireEvent.click(screen.getByRole('button', { name: 'Keep my draft' }));
         expect(banner()).not.toBeInTheDocument();
+        // The server is told, so the draft stops being stale for the AI tools.
+        await waitFor(() =>
+            expect(api.saveDraftRevision).toHaveBeenCalledWith('cat-1', OLD, null, undefined, {
+                acknowledgeLive: true,
+            })
+        );
 
         fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
         const dialog = await screen.findByRole('alertdialog');
@@ -433,6 +448,9 @@ describe('discard and saves do not overlap', () => {
             () => new Promise<void>((resolve) => (finishDiscard = resolve))
         );
         fireEvent.click(useLive());
+        fireEvent.click(
+            within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Discard draft' })
+        );
         await waitFor(() => expect(api.discardDraftRevision).toHaveBeenCalled());
         fireEvent.keyDown(window, { key: 's', ctrlKey: true });
         expect(api.saveDraftRevision).toHaveBeenCalledTimes(1);
@@ -459,5 +477,73 @@ describe('discard and saves do not overlap', () => {
         expect(toast).not.toHaveBeenCalledWith(
             expect.objectContaining({ title: 'Could not discard the draft' })
         );
+    });
+
+    it('a Discard confirmed while a save is on its way waits for it, so the draft stays gone', async () => {
+        api.getDraftRevision.mockResolvedValue(draft({ created_at: '2026-10-10T00:00:00Z' }));
+        const order: string[] = [];
+        let finishSave: (r: service.CatalogueRevision) => void = () => {};
+        api.saveDraftRevision.mockImplementationOnce(() => {
+            order.push('save sent');
+            return new Promise((resolve) => (finishSave = resolve));
+        });
+        api.discardDraftRevision.mockImplementation(async () => void order.push('discard sent'));
+        renderEditor();
+        await loaded();
+        edit('Home 2');
+
+        // The confirmation is open, and Ctrl+S still saves underneath it.
+        fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+        const dialog = await screen.findByRole('alertdialog');
+        fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+        await waitFor(() => expect(order).toEqual(['save sent']));
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+        await act(async () => {});
+        // Sent after the save would have let the save re-create the draft.
+        expect(order).toEqual(['save sent']);
+
+        await act(async () => finishSave(draft()));
+        await waitFor(() => expect(order).toEqual(['save sent', 'discard sent']));
+        await waitFor(() => expect(useEditorStore.getState().config).toEqual(LIVE));
+        // The late save's answer did not bring the draft back into the editor.
+        expect(await screen.findByText('Live')).toBeInTheDocument();
+    });
+
+    it('no autosave goes out while the Discard confirmation is open', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        api.getDraftRevision.mockResolvedValue(draft({ created_at: '2026-10-10T00:00:00Z' }));
+        renderEditor();
+        await loaded();
+        edit('Home 2');
+        await act(async () => {
+            vi.advanceTimersByTime(30_000);
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+        await screen.findByRole('alertdialog');
+        await act(async () => {
+            vi.advanceTimersByTime(60_000);
+        });
+        expect(api.saveDraftRevision).not.toHaveBeenCalled();
+    });
+});
+
+describe('opening the editor again in the same session', () => {
+    it('loads the server draft as it is now, not the one cached from the last visit', async () => {
+        api.getDraftRevision.mockResolvedValue(null);
+        const first = renderEditor();
+        await loaded();
+        expect(useEditorStore.getState().config).toEqual(LIVE);
+        first.unmount();
+
+        // Meanwhile the AI tools saved a draft.
+        const AI_DRAFT = { ...LIVE, pages: [{ ...LIVE.pages[0]!, title: 'AI home' }, LIVE.pages[1]!] };
+        api.getDraftRevision.mockResolvedValue(
+            draft({ created_at: '2026-10-10T00:00:00Z', catalogue_json: JSON.stringify(AI_DRAFT) })
+        );
+        useEditorStore.setState({ config: null, history: [], historyIndex: -1 });
+        renderEditor(true);
+        await loaded();
+        await waitFor(() => expect(useEditorStore.getState().config).toEqual(AI_DRAFT));
+        expect(screen.getByText('Draft — not published')).toBeInTheDocument();
     });
 });

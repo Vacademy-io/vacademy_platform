@@ -1,4 +1,4 @@
-import { useId, type FC } from 'react';
+import { useId, useState, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -82,7 +82,7 @@ const BreadcrumbField = ({
                             variant="ghost"
                             className="size-7 shrink-0 p-0 text-red-500"
                             title={t('actions.delete')}
-                            aria-label={t('actions.delete')}
+                            aria-label={`${t('actions.delete')}: ${str(item.label) || i + 1}`}
                             onClick={() => onChange(list.filter((_, j) => j !== i))}
                         >
                             <Trash2 className="size-3" />
@@ -101,6 +101,11 @@ const BreadcrumbField = ({
         </div>
     );
 };
+
+/** The learner's resolveMediaWidth: 200–800, anything else reads as 500. */
+const MEDIA_WIDTH_MIN = 200;
+const MEDIA_WIDTH_MAX = 800;
+const MEDIA_WIDTH_DEFAULT = 500;
 
 /**
  * Fields of the "editorial" hero (accent line, checklist, breadcrumb, media
@@ -122,6 +127,21 @@ export const HeroEditorialFields: FC<HeroEditorialFieldsProps> = ({
         typeof props.mediaWidth === 'number' || typeof props.mediaWidth === 'string'
             ? String(props.mediaWidth)
             : '';
+    const hintId = useId();
+    // The site uses 500 for anything outside 200–800, so "150" would make the
+    // picture bigger: such a value is pulled into range when the field is left.
+    const widthNumber = width === '' ? null : Number(width);
+    const widthOutOfRange =
+        widthNumber !== null && (!Number.isFinite(widthNumber) || widthNumber < MEDIA_WIDTH_MIN || widthNumber > MEDIA_WIDTH_MAX);
+    const [clampedTo, setClampedTo] = useState<number | null>(null);
+    const clampWidth = () => {
+        if (!widthOutOfRange || widthNumber === null) return;
+        const next = Number.isFinite(widthNumber)
+            ? Math.min(MEDIA_WIDTH_MAX, Math.max(MEDIA_WIDTH_MIN, Math.round(widthNumber)))
+            : MEDIA_WIDTH_DEFAULT;
+        updateProp('mediaWidth', next);
+        setClampedTo(next);
+    };
 
     return (
         <div className="space-y-4">
@@ -169,15 +189,25 @@ export const HeroEditorialFields: FC<HeroEditorialFieldsProps> = ({
                             className="h-8 text-xs"
                             placeholder="500"
                             value={width}
-                            onChange={(e) =>
+                            aria-invalid={widthOutOfRange || undefined}
+                            aria-describedby={hintId}
+                            onChange={(e) => {
+                                setClampedTo(null);
                                 updateProp(
                                     'mediaWidth',
                                     e.target.value === '' ? undefined : Number(e.target.value)
-                                )
-                            }
+                                );
+                            }}
+                            onBlur={clampWidth}
                         />
-                        <p className="text-caption text-neutral-500">
-                            {t('heroEditorial.mediaWidthHint')}
+                        <p
+                            id={hintId}
+                            role={clampedTo !== null ? 'status' : undefined}
+                            className={`text-caption ${widthOutOfRange ? 'text-danger-600' : 'text-neutral-500'}`}
+                        >
+                            {clampedTo !== null
+                                ? t('heroEditorial.mediaWidthClamped', { value: clampedTo })
+                                : t('heroEditorial.mediaWidthHint')}
                         </p>
                     </div>
                     <OptionalColorField

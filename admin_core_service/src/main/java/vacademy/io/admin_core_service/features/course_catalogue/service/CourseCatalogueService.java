@@ -185,6 +185,18 @@ public class CourseCatalogueService {
                                 .build();
         }
 
+        /**
+         * The site for the editor: as the public by-tag response, plus when the
+         * live site was last published (the live revision; null when there is
+         * none on record, so the editor falls back to the revision history).
+         */
+        @Transactional(readOnly = true)
+        public CourseCatalogueResponse getCatalogueByInstituteAndTagForEditor(String instituteId, String tagName) {
+                CourseCatalogueResponse response = getCatalogueByInstituteAndTag(instituteId, tagName);
+                response.setUpdatedAt(catalogueRevisionService.liveUpdatedAt(response.getId()));
+                return response;
+        }
+
         @Transactional(readOnly = true)
         public CourseCatalogueResponse getCatalogueByInstituteAndTag(String instituteId, String tagName) {
                 Optional<CatalogueInstituteMapping> mappingOpt = catalogueInstituteMappingRepository
@@ -202,7 +214,6 @@ public class CourseCatalogueService {
                                 .source(mapping.getSource())
                                 .sourceId(mapping.getSourceId())
                                 .instituteId(mapping.getInstitute().getId())
-                                .updatedAt(mapping.getCourseCatalogue().getUpdatedAt())
                                 .build();
         }
 }

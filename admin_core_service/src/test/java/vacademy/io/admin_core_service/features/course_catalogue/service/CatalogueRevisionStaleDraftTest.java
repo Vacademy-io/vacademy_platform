@@ -270,4 +270,55 @@ class CatalogueRevisionStaleDraftTest {
         assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, 1).getStatus());
         assertEquals(DRAFT, catalogue.getCatalogueJson());
     }
+
+    /** "Keep my draft": the draft is re-based on the live site the editor has seen. */
+    @Test
+    void keepMyDraftClearsTheStaleFlagUntilLiveMovesAgain() {
+        saveDraft(DRAFT);
+        legacyUpdate(NEWER_LIVE);
+        assertTrue(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
+
+        String kept = "{\"pages\":[{\"route\":\"home\",\"title\":\"Draft edit, kept\"}]}";
+        revisions.saveDraft(CATALOGUE, new SaveDraftRequest(kept, null, null, true), "editor");
+        RevisionResponse draft = revisions.getDraft(CATALOGUE).orElseThrow();
+        assertFalse(draft.getLiveChangedSinceDraft());
+        assertEquals(kept, draft.getCatalogueJson());
+        assertEquals("MANUAL", draft.getSource());
+        // One open draft; the retired row is not in the history.
+        assertEquals(1, rows.stream().filter(r -> "DRAFT".equals(r.getStatus())).count());
+        assertTrue(revisions.getHistory(CATALOGUE).stream().noneMatch(r -> "DISCARDED".equals(r.getStatus())));
+        // Ordinary saves keep it current; the guard lets it publish.
+        saveDraft(kept);
+        assertFalse(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
+
+        // A newer live change makes it stale again.
+        legacyUpdate("{\"pages\":[{\"route\":\"home\",\"title\":\"Even newer\"}]}");
+        assertTrue(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
+    }
+
+    @Test
+    void acknowledgingACurrentDraftIsAnOrdinarySave() {
+        saveDraft(DRAFT);
+        String id = revisions.getDraft(CATALOGUE).orElseThrow().getId();
+        revisions.saveDraft(CATALOGUE, new SaveDraftRequest(DRAFT, null, null, true), "editor");
+        assertEquals(id, revisions.getDraft(CATALOGUE).orElseThrow().getId());
+    }
+
+    /** The editor is told when the live site was last PUBLISHED, not when the site was created. */
+    @Test
+    void editorByTagGivesTheLiveRevisionTime() {
+        Optional<CatalogueInstituteMapping> mapping = mappingRepository.findByCourseCatalogueId(CATALOGUE);
+        when(mappingRepository.findByInstituteIdAndTagName(eq("inst-1"), eq("site"), any())).thenReturn(mapping);
+        catalogue.setUpdatedAt(new Date(1L));
+        legacyUpdate(NEWER_LIVE);
+        CatalogueRevision live = rows.get(rows.size() - 1);
+
+        assertEquals(live.getUpdatedAt(),
+                catalogues.getCatalogueByInstituteAndTagForEditor("inst-1", "site").getUpdatedAt());
+        // The public by-tag response carries no timestamp.
+        assertNull(catalogues.getCatalogueByInstituteAndTag("inst-1", "site").getUpdatedAt());
+
+        rows.clear();
+        assertNull(catalogues.getCatalogueByInstituteAndTagForEditor("inst-1", "site").getUpdatedAt());
+    }
 }

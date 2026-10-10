@@ -180,6 +180,8 @@ describe("who may drive the preview", () => {
     expect(posted("PREVIEW_READY")).toHaveLength(1);
     fromEditor({ type: "CATALOGUE_CONFIG_UPDATE", payload: site("Draft home") });
     expect(host.querySelector('[data-page="home"]')?.textContent).toContain("Draft home");
+    // The editor's frame gets the editor's marks.
+    expect(lastRender().previewChrome).toBe(true);
   });
 
   it("ignores a draft posted by any other window", async () => {
@@ -200,8 +202,10 @@ describe("who may drive the preview", () => {
     expect(host.textContent).toContain("Published home");
     fromEditor({ type: "CATALOGUE_CONFIG_UPDATE", payload: site("Draft home") }, window, window.location.origin);
     expect(host.querySelector('[data-page="home"]')?.textContent).toContain("Draft home");
-    // Shot as visitors see it: no ribbon.
+    // Shot as visitors see it: no ribbon, no hidden-block strips or block frames.
     expect(host.textContent).not.toContain("courseCataloguePage.previewRibbon");
+    expect(lastRender().previewChrome).toBe(false);
+    expect(lastRender().isPreviewMode).toBe(true);
   });
 
   it("answers the editor's HELLO with READY (its frame reloaded)", async () => {
@@ -313,6 +317,44 @@ describe("Browse mode", () => {
     expect(posted("PREVIEW_NAVIGATE")).toEqual([
       [{ type: "PREVIEW_NAVIGATE", route: "about", href: "/site/about" }, "https://dash.vacademy.io"],
     ]);
+  });
+
+  it("the header's Home or logo (same page, no ?preview) opens the home page and stays a preview", async () => {
+    const { router } = await mount();
+    fromEditor({ type: "PREVIEW_INTERACT", on: true });
+    fromEditor({ type: "CATALOGUE_CONFIG_UPDATE", payload: site("Courses"), previewPath: "courses" });
+    act(() => {
+      void router.navigate({ to: "/site" } as never);
+    });
+    await settle();
+    expect(window.location.search).toContain("preview=true");
+    expect(posted("PREVIEW_NAVIGATE")).toEqual([
+      [{ type: "PREVIEW_NAVIGATE", route: "", href: "/site" }, "https://dash.vacademy.io"],
+    ]);
+    expect(lastRender().isPreviewMode).toBe(true);
+    expect(lastRender().onComponentClick).toBeTypeOf("function");
+  });
+
+  it("a query change that keeps ?preview (a tab, a filter) stays on the page", async () => {
+    const { router } = await mount();
+    fromEditor({ type: "PREVIEW_INTERACT", on: true });
+    await act(async () => {
+      await router.navigate({ to: "/site", search: { preview: true, tab: 2 } } as never);
+    });
+    await settle();
+    expect(window.location.search).toContain("tab=2");
+    expect(posted("PREVIEW_NAVIGATE")).toHaveLength(0);
+  });
+
+  it("stays a preview even if the address loses ?preview (it is the document's, read once)", async () => {
+    const { router } = await mount();
+    await act(async () => {
+      await router.navigate({ to: "/site", search: { tab: 1 } } as never);
+    });
+    await settle();
+    expect(window.location.search).not.toContain("preview");
+    fromEditor({ type: "CATALOGUE_CONFIG_UPDATE", payload: site("Draft home") });
+    expect(lastRender().isPreviewMode).toBe(true);
   });
 
   it("a navigation that would replace the page (window.location from code) is held and handed over", async () => {

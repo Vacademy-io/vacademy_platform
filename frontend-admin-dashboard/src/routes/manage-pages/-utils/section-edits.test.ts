@@ -93,6 +93,33 @@ describe('mergeSectionVersion', () => {
         expect(kept).toEqual(['hero']);
     });
 
+    it('a version without a picture or colours drops them (the light design applies)', () => {
+        const WHITE = '#fff'; // design-lint-ignore: fixture colour
+        const DARK = '#111'; // design-lint-ignore: fixture colour
+        const BLUE = '#06c'; // design-lint-ignore: fixture colour
+        const { patch, kept } = mergeSectionVersion(
+            {
+                type: 'ctaBanner',
+                props: {
+                    heading: 'Join',
+                    backgroundImage: 'https://cdn.example/dark.jpg',
+                    textColor: WHITE,
+                    backgroundColor: DARK,
+                    left: { title: 'x', imageUrl: 'https://cdn.example/a.png', badge: 'New' },
+                    statChip: { label: '10k learners' },
+                },
+            },
+            { type: 'ctaBanner', props: { heading: 'Start today', buttonColor: BLUE, left: { title: 'y' } } }
+        );
+        expect(patch.props).toEqual({
+            heading: 'Start today',
+            buttonColor: BLUE,
+            left: { title: 'y', badge: 'New' },
+            statChip: { label: '10k learners' },
+        });
+        expect(kept).toEqual(['left.badge', 'statChip']);
+    });
+
     it('replaces a section that changes type', () => {
         const { patch, kept } = mergeSectionVersion(
             { type: 'heroSection', props: { left: { title: 'x' } } },

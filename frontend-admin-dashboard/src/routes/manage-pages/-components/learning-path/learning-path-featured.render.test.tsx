@@ -55,13 +55,20 @@ const queryData: Record<string, unknown> = {
         ],
     },
 };
+/** A query a test holds in another state ('loading' | 'error'), by key. */
+const queryState: Record<string, 'loading' | 'error'> = {};
+const refetch = vi.fn();
 vi.mock('@tanstack/react-query', async (orig) => ({
     ...(await orig<Record<string, unknown>>()),
-    useQuery: ({ queryKey, enabled }: { queryKey: unknown[]; enabled?: boolean }) => ({
-        data: enabled === false ? undefined : queryData[String(queryKey[0])],
-        isLoading: false,
-        isError: false,
-    }),
+    useQuery: ({ queryKey, enabled }: { queryKey: unknown[]; enabled?: boolean }) => {
+        const state = queryState[String(queryKey[0])];
+        return {
+            data: enabled === false || state ? undefined : queryData[String(queryKey[0])],
+            isLoading: state === 'loading',
+            isError: state === 'error',
+            refetch,
+        };
+    },
 }));
 
 const fixture = () => JSON.parse(JSON.stringify(brahmVarchasSite)) as CatalogueConfig;
@@ -106,6 +113,7 @@ const withProps = (id: string, change: (props: LearningPathProps) => LearningPat
 const hiStrings = () => useEditorStore.getState().config!.globalSettings.i18n?.strings?.hi || {};
 
 beforeEach(() => {
+    for (const key of Object.keys(queryState)) delete queryState[key];
     useEditorStore.getState().setConfig(fixture());
     useEditorStore.getState().setEditingLocale(null);
 });
@@ -359,5 +367,23 @@ describe('syncSharedPathProps', () => {
     it('returns the same config when the copies already match', () => {
         const config = page([lp('a', { ...base, goals: [] }), lp('b', { ...base, goals: [] })]);
         expect(syncSharedPathProps(config, 'p', 'a', ['goals'])).toBe(config);
+    });
+});
+
+describe('goal streams while the library is not known', () => {
+    it('says the streams are loading, and does not call saved tags "Custom"', () => {
+        queryState.FOLDER_LIBRARY_TREE = 'loading';
+        renderSection('paths');
+        expect(screen.getAllByText('goals.foldersLoading').length).toBeGreaterThan(0);
+        expect(screen.queryByText('goals.noStreams')).not.toBeInTheDocument();
+        expect(screen.queryByText('goals.customTag')).not.toBeInTheDocument();
+    });
+
+    it('says a failed load failed, with a way to try again', () => {
+        queryState.FOLDER_LIBRARY_TREE = 'error';
+        renderSection('paths');
+        expect(screen.queryByText('goals.noStreams')).not.toBeInTheDocument();
+        fireEvent.click(screen.getAllByRole('button', { name: 'goals.retry' })[0]!);
+        expect(refetch).toHaveBeenCalled();
     });
 });

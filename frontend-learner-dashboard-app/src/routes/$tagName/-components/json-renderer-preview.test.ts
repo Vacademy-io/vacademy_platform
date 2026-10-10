@@ -165,6 +165,20 @@ describe("blocks switched off in the editor", () => {
     expect(onComponentClick).toHaveBeenCalledWith("off", "courses", "cols");
   });
 
+  it("the headless AI preview (previewChrome off) shoots the page as visitors see it", async () => {
+    const host = await mount([heading("hero-off", "Gone", { enabled: false, type: "heroSection" }), columns], {
+      isPreviewMode: true,
+      previewChrome: false,
+    });
+    expect(host.textContent).not.toContain("jsonRenderer.hiddenBlock");
+    expect(block(host, "hero-off")).toBeNull();
+    expect(block(host, "off")).toBeNull();
+    // No per-block frames inside columns; the section itself can still be found.
+    expect(block(host, "inner")).toBeNull();
+    expect(block(host, "cols")).not.toBeNull();
+    expect(host.textContent).toContain("Inside a column");
+  });
+
   it("render nothing for visitors", () => {
     const html = renderToString(
       h(JsonRenderer, rendererProps([heading("hero-off", "Gone", { enabled: false }), columns])),

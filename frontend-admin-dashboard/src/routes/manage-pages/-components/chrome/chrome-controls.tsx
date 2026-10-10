@@ -182,7 +182,8 @@ export const StringListField = ({
                         variant="ghost"
                         className="size-7 shrink-0 p-0 text-red-500"
                         title={t('actions.delete')}
-                        aria-label={t('actions.delete')}
+                        // Names the row: every row has a Delete button.
+                        aria-label={`${t('actions.delete')}: ${label} ${i + 1}`}
                         onClick={() => onChange(list.filter((_, j) => j !== i))}
                     >
                         <Trash2 className="size-3" />

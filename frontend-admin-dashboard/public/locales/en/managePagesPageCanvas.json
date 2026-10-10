@@ -32,6 +32,9 @@
         "columns_other": "{{count}} columns",
         "column": "Column {{index}}",
         "emptyColumn": "Empty — drag a block here",
-        "dropHere": "Drop here to add the block at the end of the page"
+        "dropHere": "Drop here to add the block at the end of the page",
+        "showPreviews": "Show previews",
+        "showPreviewsTitle": "Draw a simple picture of each block in its row. The Website view shows the real page.",
+        "previewsAuto": "The Website view can’t load for this site here, so each block shows a simple preview. It is close to, but not exactly, what visitors see."
     }
 }

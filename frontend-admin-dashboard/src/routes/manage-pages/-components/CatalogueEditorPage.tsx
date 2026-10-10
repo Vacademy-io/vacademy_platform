@@ -164,17 +164,34 @@ export const CatalogueEditorPage = () => {
     // Bumped by a discard: a save that resolves after it must not bring the
     // draft back into the editor's state.
     const draftGenerationRef = useRef(0);
+    // Every draft save still on its way to the server (autosave, Save draft).
+    // A discard waits for them, or a save landing after it would bring the
+    // discarded draft back on the server.
+    const pendingSavesRef = useRef(new Set<Promise<unknown>>());
+    const trackSave = <T,>(save: Promise<T>): Promise<T> => {
+        const pending = pendingSavesRef.current;
+        pending.add(save);
+        const done = () => void pending.delete(save);
+        save.then(done, done);
+        return save;
+    };
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
     const [showStalePublishConfirm, setShowStalePublishConfirm] = useState(false);
     const [publishOverridesStale, setPublishOverridesStale] = useState(false);
 
     // Draft/publish model: the editor works on a DRAFT revision; learners keep
     // seeing the last PUBLISHED config until the admin hits Publish.
-    const { data: meta, isLoading: metaLoading } = useQuery({
+    // Opening the editor always reads the server afresh: a cached draft or
+    // live site from an earlier visit (up to 5 min old) could be older than
+    // what the AI tools or a colleague saved since, and autosave would then
+    // overwrite their draft.
+    const metaQuery = useQuery({
         queryKey: ['catalogueMeta', instituteId, tagName],
         queryFn: () => getCatalogueMeta(instituteId!, tagName),
         enabled: !!instituteId && !!tagName,
+        refetchOnMount: 'always',
     });
+    const { data: meta, isLoading: metaLoading } = metaQuery;
     const catalogueId = meta?.id;
     const metaKey = ['catalogueMeta', instituteId, tagName];
 
@@ -182,9 +199,12 @@ export const CatalogueEditorPage = () => {
         queryKey: ['catalogueDraft', catalogueId],
         queryFn: () => getDraftRevision(catalogueId!),
         enabled: !!catalogueId,
+        refetchOnMount: 'always',
     });
+    // Both answered since this editor opened (not just from the cache).
+    const freshForHydration = metaQuery.isFetchedAfterMount && draftQuery.isFetchedAfterMount;
 
-    const isLoading = metaLoading || (!!catalogueId && !draftQuery.isFetched);
+    const isLoading = metaLoading || (!!catalogueId && !freshForHydration);
 
     // The history tells which version is live when the draft does not (no
     // draft, older servers), and older servers' stale check needs to know when
@@ -243,7 +263,8 @@ export const CatalogueEditorPage = () => {
         );
 
     const saveMutation = useMutation({
-        mutationFn: (newConfig: CatalogueConfig) => saveDraftRevision(catalogueId!, newConfig),
+        mutationFn: (newConfig: CatalogueConfig) =>
+            trackSave(saveDraftRevision(catalogueId!, newConfig)),
         onMutate: () => draftGenerationRef.current,
         onSuccess: (savedRevision, savedConfig, generation) => {
             if (generation !== draftGenerationRef.current) return;
@@ -283,6 +304,7 @@ export const CatalogueEditorPage = () => {
                 setLiveAtOpen({ json: publishedJSON, revisionNo: revision.revision_no ?? null });
             }
             setHasDraft(false);
+            setDismissedStaleKey(null);
             // The draft was promoted — clear its cache or the stale entry flips
             // the badge back to "Draft" on the next refetch.
             queryClient.setQueryData(['catalogueDraft', catalogueId], null);
@@ -309,6 +331,9 @@ export const CatalogueEditorPage = () => {
             draftGenerationRef.current += 1;
         },
         mutationFn: async () => {
+            // A save already sent must reach the server first, so the
+            // discard removes it rather than it bringing the draft back.
+            await Promise.allSettled([...pendingSavesRef.current]);
             await discardDraftRevision(catalogueId!);
             // Gone on the server, whatever happens next.
             setHasDraft(false);
@@ -383,7 +408,7 @@ export const CatalogueEditorPage = () => {
     // history/selection and would clobber unsaved edits.
     const loadedForRef = useRef<string | null>(null);
     useEffect(() => {
-        if (!meta || !draftQuery.isFetched) return;
+        if (!meta || !freshForHydration) return;
         if (loadedForRef.current === meta.id) return;
         const json = draftQuery.data?.catalogue_json || meta.catalogue_json;
         if (!json) return;
@@ -415,7 +440,7 @@ export const CatalogueEditorPage = () => {
             console.error('Failed to parse catalogue JSON', e);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [meta, draftQuery.isFetched, draftQuery.data, setConfig]);
+    }, [meta, freshForHydration, draftQuery.data, setConfig]);
 
     // Warn before leaving with unsaved changes
     useEffect(() => {
@@ -437,13 +462,15 @@ export const CatalogueEditorPage = () => {
         if (!isDirty || !catalogueId || !canWrite || jsonError) return;
         if (saveMutation.isPending || publishMutation.isPending || discardMutation.isPending)
             return;
+        // Not while the admin is deciding whether to discard this draft.
+        if (showDiscardConfirm) return;
         const t = window.setTimeout(async () => {
             try {
                 setAutosaving(true);
                 const snapshot = config!;
                 const generation = draftGenerationRef.current;
                 // null source: an AI-made draft stays an AI draft when autosaved.
-                const savedRevision = await saveDraftRevision(catalogueId, snapshot, null);
+                const savedRevision = await trackSave(saveDraftRevision(catalogueId, snapshot, null));
                 if (generation !== draftGenerationRef.current) return;
                 setSavedConfigJSON(JSON.stringify(snapshot));
                 setHasDraft(true);
@@ -468,6 +495,7 @@ export const CatalogueEditorPage = () => {
         saveMutation.isPending,
         publishMutation.isPending,
         discardMutation.isPending,
+        showDiscardConfirm,
     ]);
 
     // Sync JSON text when switching to JSON mode
@@ -702,7 +730,9 @@ export const CatalogueEditorPage = () => {
                     <Button
                         size="sm"
                         onClick={() => {
-                            if (staleness.stale) {
+                            // A draft kept over a newer live site ("Keep my
+                            // draft") still asks before it replaces that site.
+                            if (staleness.stale || dismissedStaleKey) {
                                 setShowStalePublishConfirm(true);
                                 return;
                             }
@@ -739,11 +769,32 @@ export const CatalogueEditorPage = () => {
                         saveMutation.isPending ||
                         autosaving
                     }
-                    // Unsaved edits are lost too: ask first.
+                    // A saved draft or unsaved edits are lost for good: ask first,
+                    // exactly as the toolbar's Discard does.
                     onUseLive={() =>
-                        isDirty ? setShowDiscardConfirm(true) : discardMutation.mutate()
+                        hasDraft || isDirty ? setShowDiscardConfirm(true) : discardMutation.mutate()
                     }
-                    onKeepDraft={() => setDismissedStaleKey(staleKey)}
+                    onKeepDraft={() => {
+                        setDismissedStaleKey(staleKey);
+                        // Tell the server too, so the draft stops being reported
+                        // stale (the AI tools would otherwise keep refusing it and
+                        // reading the live site instead) until live moves again.
+                        if (hasDraft && config && catalogueId && canWrite && !jsonError) {
+                            const generation = draftGenerationRef.current;
+                            const snapshot = config;
+                            trackSave(
+                                saveDraftRevision(catalogueId, snapshot, null, undefined, {
+                                    acknowledgeLive: true,
+                                })
+                            )
+                                .then((saved) => {
+                                    if (generation !== draftGenerationRef.current) return;
+                                    setSavedConfigJSON(JSON.stringify(snapshot));
+                                    cacheSavedDraft({ ...saved, live_changed_since_draft: false }, snapshot);
+                                })
+                                .catch((e) => console.error('[keep draft] failed', e));
+                        }
+                    }}
                 />
             )}
             <DiscardDraftDialog

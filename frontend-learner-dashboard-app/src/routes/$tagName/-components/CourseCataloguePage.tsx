@@ -85,9 +85,17 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string; unlockTitle?: string } | null>(null);
 
-  // Preview mode: bidirectional communication with admin editor iframe
-  const isPreviewMode = typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('preview') === 'true';
+  // Preview mode: bidirectional communication with admin editor iframe.
+  // A property of the document the editor loaded, read once: a navigation in
+  // Browse mode that drops ?preview=true (TanStack drops every parameter it
+  // is not given) must not turn the editor's frame into a visitor's page —
+  // with the institute's pixels, popups and page-view counts.
+  const [isPreviewMode] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === 'true',
+  );
+  // The editor's marks (hidden-block strips, per-block frames) belong in the
+  // editor's frame; the headless AI preview shoots the page as visitors see it.
+  const previewChrome = isPreviewMode && isFramed();
 
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution. Never from the editor's
@@ -358,7 +366,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     disabled: !previewInteractive,
     enableBeforeUnload: false,
     shouldBlockFn: ({ current, next }) => {
-      if (isSamePath(next.pathname, current.pathname)) return false;
+      // Same page, preview kept (a tab or filter in the query string): stay.
+      // Same page WITHOUT ?preview=true (the header's Home or logo — every
+      // shown page is posted as the root page): that is "open the home page".
+      const keepsPreview = String((next.search as Record<string, unknown> | undefined)?.preview) === "true";
+      if (isSamePath(next.pathname, current.pathname) && keepsPreview) return false;
       const route = previewRouteFromHref(next.pathname, { origin: window.location.origin, tagName });
       postToEditor({ type: "PREVIEW_NAVIGATE", route, href: next.pathname });
       return true;
@@ -808,6 +820,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                 tagName={tagName}
                 catalogueData={catalogueData}
                 isPreviewMode={isPreviewMode}
+                previewChrome={previewChrome}
                 previewInteractive={previewInteractive}
                 previewPath={previewPath}
                 selectedComponentId={selectedComponentId}
@@ -828,6 +841,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   instituteId={instituteId}
                   tagName={tagName}
                   isPreviewMode={isPreviewMode}
+                  previewChrome={previewChrome}
                   previewInteractive={previewInteractive}
                   previewPath={previewPath}
                   selectedComponentId={selectedComponentId}
@@ -850,6 +864,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               tagName={tagName}
               catalogueData={catalogueData}
               isPreviewMode={isPreviewMode}
+              previewChrome={previewChrome}
               previewInteractive={previewInteractive}
               selectedComponentId={selectedComponentId}
               onComponentClick={handlePreviewComponentClick}

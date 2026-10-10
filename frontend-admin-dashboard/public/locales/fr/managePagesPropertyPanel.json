@@ -1,6 +1,7 @@
 {
   "columnLayoutTitle": "Mise en page à {{count}} colonnes",
   "actions": {
+    "pickColor": "Choisir une couleur",
     "tryAnotherVersion": "Essayer une autre version de cette section (IA)",
     "cannotReorderNested": "Impossible de réorganiser les composants imbriqués",
     "moveUp": "Monter",
@@ -203,7 +204,8 @@
       "applyToTokensHint": "Recolore aussi les couleurs standard du texte, des fonds et des lignes du site (mode clair).",
       "contentWidth": "Largeur du contenu",
       "contentWidthDefault": "Par défaut",
-      "contentWidthHint": "Largeur du contenu de la page en pixels, de {{min}} à {{max}}. Laissez vide pour la valeur par défaut."
+      "contentWidthHint": "Largeur du contenu de la page en pixels, de {{min}} à {{max}}. Laissez vide pour la valeur par défaut.",
+      "contentWidthNotSaved": "Non enregistré : saisissez un nombre entier de {{min}} à {{max}}."
     },
     "courseFormats": {
       "heading": "Formats de cours",
@@ -213,8 +215,8 @@
       "name": "Nom",
       "id": "ID",
       "namePlaceholder": "Livre audio",
-      "moveUp": "Monter",
-      "moveDown": "Descendre",
+      "moveUp": "Monter {{name}}",
+      "moveDown": "Descendre {{name}}",
       "remove": "Supprimer {{name}}",
       "confirmRemove": "Supprimer « {{name}} » ? Les cours avec le tag {{tag}} n’afficheront plus ce format, et ses réglages de correspondance seront perdus.",
       "noNameWarning": "Un format sans nom est masqué sur le site.",
@@ -809,6 +811,7 @@
     "crumbRoute": "Lien (facultatif)",
     "mediaWidth": "Largeur de l'image (px)",
     "mediaWidthHint": "De 200 à 800 sur grand écran ; vide = 500.",
+    "mediaWidthClamped": "La largeur de l’image doit être comprise entre 200 et 800 ; elle a été réglée sur {{value}}.",
     "outlineColor": "Bordure du bouton à contour"
   },
   "bookDetails": {

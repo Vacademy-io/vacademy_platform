@@ -490,6 +490,22 @@ describe('Editorial hero fields', () => {
         });
     });
 
+    it('a picture width outside 200–800 is pulled into range when the field is left', () => {
+        const before = clone(live('learning-paths', 'lp-hero'));
+        render(<PropertyPanel />);
+        const field = input('heroEditorial.mediaWidth');
+
+        fireEvent.change(field, { target: { value: '150' } });
+        expect(field).toHaveAttribute('aria-invalid', 'true');
+        fireEvent.blur(field);
+        expect(live('learning-paths', 'lp-hero').props).toEqual({ ...before.props, mediaWidth: 200 });
+        expect(screen.getByRole('status')).toHaveTextContent('heroEditorial.mediaWidthClamped');
+
+        fireEvent.change(input('heroEditorial.mediaWidth'), { target: { value: '900' } });
+        fireEvent.blur(input('heroEditorial.mediaWidth'));
+        expect(live('learning-paths', 'lp-hero').props.mediaWidth).toBe(800);
+    });
+
     it('a site without a palette shows no design choice on a classic hero', () => {
         load((site) => {
             noPalette(site);

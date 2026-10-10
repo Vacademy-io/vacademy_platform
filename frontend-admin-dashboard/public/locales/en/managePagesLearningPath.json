@@ -38,7 +38,11 @@
         "noStreams": "The library has no stream folders to pick from yet.",
         "remove": "Remove goal",
         "add": "Add a goal",
-        "hiddenUntilFilled": "Hidden on the site until it has chip text and a link key."
+        "hiddenUntilFilled": "Hidden on the site until it has chip text and a link key.",
+        "foldersLoading": "Loading the library’s streams…",
+        "foldersFailed": "The library’s streams could not be loaded.",
+        "retry": "Try again",
+        "noLibrary": "Choose a library above to pick its streams."
     },
     "more": {
         "title": "Heading of the other paths",

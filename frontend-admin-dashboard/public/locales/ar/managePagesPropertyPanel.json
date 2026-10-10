@@ -1,6 +1,7 @@
 {
   "columnLayoutTitle": "تخطيط بعدد {{count}} أعمدة",
   "actions": {
+    "pickColor": "اختر لونًا",
     "tryAnotherVersion": "جرّب نسخة أخرى من هذا القسم (بالذكاء الاصطناعي)",
     "cannotReorderNested": "لا يمكن إعادة ترتيب المكوّنات المتداخلة",
     "moveUp": "تحريك لأعلى",
@@ -203,7 +204,8 @@
       "applyToTokensHint": "يعيد أيضًا تلوين ألوان النص والخلفيات والخطوط القياسية في الموقع (الوضع الفاتح).",
       "contentWidth": "عرض المحتوى",
       "contentWidthDefault": "افتراضي",
-      "contentWidthHint": "عرض محتوى الصفحة بالبكسل، من {{min}} إلى {{max}}. اتركه فارغًا للقيمة الافتراضية."
+      "contentWidthHint": "عرض محتوى الصفحة بالبكسل، من {{min}} إلى {{max}}. اتركه فارغًا للقيمة الافتراضية.",
+      "contentWidthNotSaved": "لم يُحفظ: أدخل عددًا صحيحًا من {{min}} إلى {{max}}."
     },
     "courseFormats": {
       "heading": "صيغ الدورات",
@@ -213,8 +215,8 @@
       "name": "الاسم",
       "id": "المعرّف",
       "namePlaceholder": "كتاب صوتي",
-      "moveUp": "نقل للأعلى",
-      "moveDown": "نقل للأسفل",
+      "moveUp": "نقل {{name}} للأعلى",
+      "moveDown": "نقل {{name}} للأسفل",
       "remove": "إزالة {{name}}",
       "confirmRemove": "إزالة «{{name}}»؟ لن تعرض الدورات ذات الوسم {{tag}} هذه الصيغة، وستُفقد إعدادات المطابقة الخاصة بها.",
       "noNameWarning": "الصيغة بلا اسم لا تظهر على الموقع.",
@@ -812,6 +814,7 @@
     "crumbRoute": "الرابط (اختياري)",
     "mediaWidth": "عرض الصورة (px)",
     "mediaWidthHint": "من 200 إلى 800 على الشاشات العريضة؛ فارغ = 500.",
+    "mediaWidthClamped": "يجب أن يكون عرض الصورة من 200 إلى 800؛ تم ضبطه على {{value}}.",
     "outlineColor": "حدود زر الإطار"
   },
   "bookDetails": {

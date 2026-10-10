@@ -32,7 +32,7 @@ import {
     EyeSlash,
     BracketsCurly,
 } from '@phosphor-icons/react';
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
@@ -529,17 +529,27 @@ export const PropertyPanel = () => {
  */
 const SectionJsonButton = ({ disabled, onClick }: { disabled: boolean; onClick: () => void }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const reasonId = useId();
     return (
-        <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs"
-            onClick={onClick}
-            disabled={disabled}
-            title={disabled ? t('sectionJson.baseLanguageOnly') : t('sectionJson.buttonHint')}
-        >
-            <BracketsCurly className="me-1.5 size-3" /> {t('sectionJson.button')}
-        </Button>
+        <div className="flex flex-1 flex-col gap-1">
+            <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={onClick}
+                disabled={disabled}
+                title={disabled ? undefined : t('sectionJson.buttonHint')}
+                aria-describedby={disabled ? reasonId : undefined}
+            >
+                <BracketsCurly className="me-1.5 size-3" /> {t('sectionJson.button')}
+            </Button>
+            {/* A disabled button gets no hover, so its tooltip never shows: say why here. */}
+            {disabled && (
+                <p id={reasonId} className="text-caption text-neutral-500">
+                    {t('sectionJson.baseLanguageOnly')}
+                </p>
+            )}
+        </div>
     );
 };
 

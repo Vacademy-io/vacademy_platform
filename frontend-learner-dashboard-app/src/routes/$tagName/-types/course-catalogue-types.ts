@@ -688,6 +688,8 @@ export interface CartComponentProps {
     backgroundColor?: string;
   };
   onlyLogic?: boolean;
+  /** The page editor's preview: checkout and OTP never call the server. */
+  isPreviewMode?: boolean;
 }
 
 export interface CartSummaryProps {

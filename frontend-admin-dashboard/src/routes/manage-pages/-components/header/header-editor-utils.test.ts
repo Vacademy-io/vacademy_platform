@@ -192,6 +192,28 @@ describe('syncNavWithPages', () => {
         ).toEqual(['homepage', 'courses', 'learning-paths']);
     });
 
+    it('a renamed page: the old link (it would 404) gives way to the new route', () => {
+        const about: HeaderNavItemValue = { label: 'About', route: 'about' };
+        const synced = syncNavWithPages(
+            [{ label: 'Home', route: 'homepage' }, about],
+            [pages[0]!, { id: 'about', route: 'about-us', title: 'About' }]
+        );
+        expect(synced.map((i) => `${i.label}→${i.route}`)).toEqual(['Home→homepage', 'About→about-us']);
+    });
+
+    it('a deleted page: its link goes; app routes, hidden and deeper links stay', () => {
+        const events: HeaderNavItemValue = { label: 'Events', route: '/events' };
+        const login: HeaderNavItemValue = { label: 'Log in', route: '/login' };
+        const allCourses: HeaderNavItemValue = { label: 'Catalogue', route: 'courses' };
+        const hiddenOld: HeaderNavItemValue = { label: 'Old', route: 'old-page', enabled: false };
+        const post: HeaderNavItemValue = { label: 'Post', route: 'blog/first-post' };
+        const synced = syncNavWithPages(
+            [{ label: 'Home', route: 'home' }, events, login, allCourses, hiddenOld, post],
+            [pages[0]!]
+        );
+        expect(synced.map((i) => i.label)).toEqual(['Home', 'Log in', 'Catalogue', 'Old', 'Post']);
+    });
+
     it('is unchanged when the nav already lists every page', () => {
         const nav = [mega, { label: 'Home', route: 'homepage' }, courses, paths, resources];
         expect(syncNavWithPages(nav, pages)).toEqual(nav);

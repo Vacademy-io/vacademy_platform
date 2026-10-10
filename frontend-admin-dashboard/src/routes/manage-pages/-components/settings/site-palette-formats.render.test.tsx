@@ -97,6 +97,26 @@ describe('SitePaletteCard', () => {
         expect(onThemeChange).not.toHaveBeenCalled();
     });
 
+    it('a width that cannot be saved says so and is marked invalid; "1100px" is saved as 1100', () => {
+        const theme = clone(GS.theme);
+        const onThemeChange = vi.fn();
+        render(<SitePaletteCard theme={theme} onThemeChange={onThemeChange} />);
+        const width = screen.getByLabelText('global.palette.contentWidth');
+
+        fireEvent.change(width, { target: { value: '5000' } });
+        expect(width).toHaveAttribute('aria-invalid', 'true');
+        fireEvent.blur(width);
+        expect(screen.getByRole('alert')).toHaveTextContent('global.palette.contentWidthNotSaved');
+        expect(onThemeChange).not.toHaveBeenCalled();
+
+        fireEvent.change(width, { target: { value: '1100px' } });
+        expect(width).not.toHaveAttribute('aria-invalid');
+        fireEvent.blur(width);
+        expect(onThemeChange).toHaveBeenLastCalledWith({ ...theme, contentMaxWidth: 1100 });
+        expect(width).toHaveValue('1100');
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
     it('a theme with a width but no palette shows only the width', () => {
         const onThemeChange = vi.fn();
         render(
@@ -196,7 +216,7 @@ describe('CourseFormatsCard', () => {
     it('moving a format writes only the order', () => {
         const onChange = vi.fn();
         render(<CourseFormatsCard formats={formats()} order={order()} onChange={onChange} />);
-        fireEvent.click(screen.getAllByLabelText('global.courseFormats.moveDown')[0]!);
+        fireEvent.click(screen.getAllByLabelText(/^global\.courseFormats\.moveDown /)[0]!);
         const [first, second, ...rest] = order();
         expect(onChange).toHaveBeenCalledWith({ courseFormatOrder: [second, first, ...rest] });
     });

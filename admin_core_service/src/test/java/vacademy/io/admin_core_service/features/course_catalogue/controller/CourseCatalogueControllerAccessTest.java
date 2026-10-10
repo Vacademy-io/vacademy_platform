@@ -76,6 +76,11 @@ class CourseCatalogueControllerAccessTest {
 
     /** A non-root admin signed in to the institute named by the clientId header. */
     private static CustomUserDetails adminOf(String instituteId) {
+        return userOf(instituteId, false, "ADMIN");
+    }
+
+    /** A user signed in to the institute named by the clientId header. */
+    private static CustomUserDetails userOf(String instituteId, boolean rootUser, String... authorities) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("clientId", instituteId);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
@@ -83,8 +88,8 @@ class CourseCatalogueControllerAccessTest {
         dto.setUserId("u-1");
         dto.setUsername("u-1");
         dto.setFullName("User");
-        dto.setRootUser(false);
-        dto.setAuthorities(List.of("ADMIN"));
+        dto.setRootUser(rootUser);
+        dto.setAuthorities(List.of(authorities));
         return new CustomUserDetails(dto);
     }
 
@@ -119,6 +124,42 @@ class CourseCatalogueControllerAccessTest {
             call.execute();
         }
         verify(revisionService).publish(CATALOGUE, "u-1", true, null);
+        verify(revisionService).discardDraft(CATALOGUE);
+    }
+
+    /**
+     * Learners (and invited staff) are created as root users. A learner of
+     * another institute, who can read any site's catalogue id from the public
+     * by-tag endpoint, must not get through on the root flag.
+     */
+    @Test
+    void rootFlaggedLearnerOfAnotherInstituteIsRefused() {
+        for (Executable call : everyCatalogueEndpoint(userOf(OTHER, true, "STUDENT"))) {
+            assertThrows(ForbiddenException.class, call);
+        }
+        // Even one naming the owner institute as clientId, with no role there.
+        for (Executable call : everyCatalogueEndpoint(userOf(OWNER, true))) {
+            assertThrows(ForbiddenException.class, call);
+        }
+        verifyNoInteractions(catalogueManager);
+        verify(revisionService, never()).publish(any(), any(), anyBoolean(), any());
+        verify(revisionService, never()).discardDraft(any());
+    }
+
+    @Test
+    void learnerOfTheOwningInstituteIsRefused() {
+        for (Executable call : everyCatalogueEndpoint(userOf(OWNER, true, "STUDENT"))) {
+            assertThrows(ForbiddenException.class, call);
+        }
+        verifyNoInteractions(catalogueManager);
+    }
+
+    @Test
+    void rootFlaggedStaffOfTheOwningInstituteIsServed() throws Throwable {
+        when(revisionService.getDraft(CATALOGUE)).thenReturn(Optional.empty());
+        for (Executable call : everyCatalogueEndpoint(userOf(OWNER, true, "TEACHER"))) {
+            call.execute();
+        }
         verify(revisionService).discardDraft(CATALOGUE);
     }
 

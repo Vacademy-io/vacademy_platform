@@ -2,8 +2,12 @@
  * CanvasRenderer — the editor's centre column: a toolbar over one of two views.
  *   • Website   — the real learner site with unsaved edits (LiveSiteFrame).
  *   • Structure — an outline of the page's blocks for ordering and picking
- *                 them (PageCanvas).
+ *                 them (PageCanvas), with optional look-alike previews.
  * Both accept blocks dragged from the library ('canvas-drop-zone').
+ *
+ * No institute is left without a visual canvas: when the Website view cannot
+ * load here (no learner site of its own, or the frame never answered), the
+ * Structure view's previews switch on by themselves.
  */
 import { useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
@@ -31,6 +35,16 @@ const readCanvasView = (): CanvasView => {
     }
 };
 
+/** "Show previews" in the Structure view, remembered per browser. */
+export const SHOW_PREVIEWS_KEY = 'catalogue-editor-structure-previews';
+const readShowPreviews = (): boolean => {
+    try {
+        return localStorage.getItem(SHOW_PREVIEWS_KEY) === 'true';
+    } catch {
+        return false;
+    }
+};
+
 /** liveConfigJson: the published site, for the Website view's Draft | Live switch. */
 export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; liveConfigJson?: string | null }) => {
     const { t } = useTranslation('managePagesPageCanvas');
@@ -53,15 +67,38 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
 
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
     const { setNodeRef, isOver } = useDroppable({ id: 'canvas-drop-zone' });
+    const [detailsFailed, setDetailsFailed] = useState(false);
 
     // Fetch institute details once (needed for learner portal base URL)
     useEffect(() => {
         if (!instituteDetails) {
             fetchBothInstituteAPIs()
                 .then(setInstituteDetails)
-                .catch(() => {/* fallback to CATALOGUE_EDITOR_CONFIG.LEARNER_APP_URL */});
+                .catch(() => setDetailsFailed(true)); // falls back to CATALOGUE_EDITOR_CONFIG.LEARNER_APP_URL
         }
     }, [instituteDetails, setInstituteDetails]);
+
+    // The Website view cannot load here: the institute has no learner site of
+    // its own (known once its details are in, or they failed), or the frame
+    // reported it never answered. Kept here so it outlives the frame.
+    const [frameFailed, setFrameFailed] = useState(false);
+    const noLearnerSite = (!!instituteDetails || detailsFailed) && !instituteDetails?.learner_portal_base_url;
+    const websiteUnavailable = noLearnerSite || frameFailed;
+
+    // Previews: the stored choice, switched on by themselves when the Website
+    // view cannot load (a choice made in this visit still wins).
+    const [storedPreviews, setStoredPreviews] = useState(readShowPreviews);
+    const [previewsChoice, setPreviewsChoice] = useState<boolean | null>(null);
+    const showPreviews = previewsChoice ?? (storedPreviews || websiteUnavailable);
+    const changeShowPreviews = (on: boolean) => {
+        setPreviewsChoice(on);
+        setStoredPreviews(on);
+        try {
+            localStorage.setItem(SHOW_PREVIEWS_KEY, String(on));
+        } catch {
+            /* storage blocked: the choice lasts for this visit only */
+        }
+    };
 
     // Build the published preview URL (for "Open in browser" button)
     const baseUrl = instituteDetails?.learner_portal_base_url || CATALOGUE_EDITOR_CONFIG.LEARNER_APP_URL;
@@ -90,6 +127,8 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                     {canvasView === 'website' && (
                         <div className="flex rounded-lg border bg-catalogue-bg-muted p-1">
                             <Button
+                                aria-pressed={previewViewport === 'desktop'}
+                                aria-label={t('toolbar.desktop')}
                                 variant={previewViewport === 'desktop' ? 'default' : 'ghost'}
                                 size="sm"
                                 className="size-8 p-0"
@@ -99,6 +138,8 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                                 <Monitor className="size-4" />
                             </Button>
                             <Button
+                                aria-pressed={previewViewport === 'tablet'}
+                                aria-label={t('toolbar.tablet')}
                                 variant={previewViewport === 'tablet' ? 'default' : 'ghost'}
                                 size="sm"
                                 className="size-8 p-0"
@@ -108,6 +149,8 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                                 <DeviceTablet className="size-4" />
                             </Button>
                             <Button
+                                aria-pressed={previewViewport === 'mobile'}
+                                aria-label={t('toolbar.mobile')}
                                 variant={previewViewport === 'mobile' ? 'default' : 'ghost'}
                                 size="sm"
                                 className="size-8 p-0"
@@ -122,6 +165,7 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                     {/* Website (real render) vs Structure (outline) */}
                     <div className="flex rounded-lg border bg-catalogue-bg-muted p-1">
                         <Button
+                            aria-pressed={canvasView === 'website'}
                             variant={canvasView === 'website' ? 'default' : 'ghost'}
                             size="sm"
                             className="h-8 gap-1 px-2"
@@ -132,6 +176,7 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                             {t('view.website')}
                         </Button>
                         <Button
+                            aria-pressed={canvasView === 'editor'}
                             variant={canvasView === 'editor' ? 'default' : 'ghost'}
                             size="sm"
                             className="h-8 gap-1 px-2"
@@ -173,9 +218,23 @@ export const CanvasRenderer = ({ tagName, liveConfigJson }: { tagName: string; l
                     nameInstitute={!instituteDetails?.learner_portal_base_url}
                     dropRef={setNodeRef}
                     isDropOver={isOver}
+                    onAvailabilityChange={(available) => setFrameFailed(!available)}
+                    onShowPreviews={() => {
+                        // For this visit only: the frame may load next time.
+                        setPreviewsChoice(true);
+                        changeCanvasView('editor');
+                    }}
                 />
             ) : (
-                <PageCanvas dropRef={setNodeRef} isDropOver={isOver} />
+                <PageCanvas
+                    dropRef={setNodeRef}
+                    isDropOver={isOver}
+                    showPreviews={showPreviews}
+                    onShowPreviewsChange={changeShowPreviews}
+                    // Said only when the frame really failed: a site without a
+                    // domain of its own often previews fine on the shared host.
+                    websiteUnavailable={frameFailed}
+                />
             )}
         </div>
     );

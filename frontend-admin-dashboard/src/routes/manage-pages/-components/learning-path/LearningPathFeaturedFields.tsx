@@ -22,6 +22,9 @@ interface LearningPathFeaturedFieldsProps {
     props: LearningPathProps;
     /** The library's folders (top-level ones are the streams goals pick from). */
     folders: { node: FolderNode; depth: number }[];
+    /** Whether `folders` is the library's real list: none chosen, loading or failed say so instead. */
+    foldersState?: 'ready' | 'noLibrary' | 'loading' | 'error';
+    onRetryFolders?: () => void;
     /** Product page codes in the library, or null while its tree loads. */
     libraryCodes: Set<string> | null;
     pages: Pick<ProductPageResponse, 'id' | 'code' | 'name' | 'status'>[];
@@ -50,6 +53,8 @@ const newGoalKey = (goals: LearningPathGoal[]) => {
 export const LearningPathFeaturedFields = ({
     props,
     folders,
+    foldersState = 'ready',
+    onRetryFolders,
     libraryCodes,
     pages,
     pagesLoading,
@@ -219,17 +224,38 @@ export const LearningPathFeaturedFields = ({
                                                     onClick={() => toggleTag(index, tag)}
                                                     className="rounded bg-primary-100 px-2 py-0.5 text-caption text-primary-500"
                                                 >
-                                                    {t('goals.customTag', { value: tag })}
+                                                    {/* "Custom" only once the library's streams are known. */}
+                                                    {foldersState === 'ready' ? t('goals.customTag', { value: tag }) : tag}
                                                 </button>
                                             ))}
                                         </div>
-                                        {!streams.length && (
+                                        {foldersState === 'loading' && (
+                                            <p role="status" className="mt-1 text-caption text-neutral-500">
+                                                {t('goals.foldersLoading')}
+                                            </p>
+                                        )}
+                                        {foldersState === 'error' && (
+                                            <p role="alert" className="mt-1 text-caption text-danger-600">
+                                                {t('goals.foldersFailed')}{' '}
+                                                {onRetryFolders && (
+                                                    <button type="button" className="underline" onClick={onRetryFolders}>
+                                                        {t('goals.retry')}
+                                                    </button>
+                                                )}
+                                            </p>
+                                        )}
+                                        {foldersState === 'noLibrary' && (
+                                            <p className="mt-1 text-caption text-neutral-500">{t('goals.noLibrary')}</p>
+                                        )}
+                                        {foldersState === 'ready' && !streams.length && (
                                             <p className="mt-1 text-caption text-neutral-500">{t('goals.noStreams')}</p>
                                         )}
                                     </div>
                                     <MyButton
                                         buttonType="text"
                                         scale="small"
+                                        // Names the goal: every goal has a Remove button.
+                                        aria-label={`${t('goals.remove')}: ${(goal.label || '').trim() || index + 1}`}
                                         onClick={() => patchShared({ goals: goals.filter((_, i) => i !== index) })}
                                     >
                                         <Trash className="size-4" /> {t('goals.remove')}

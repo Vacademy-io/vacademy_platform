@@ -118,6 +118,18 @@ const isPlainPageRoute = (route: string | null | undefined): boolean => {
     return v !== '' && !EXTERNAL.test(v) && !/[?#]/.test(v);
 };
 
+/** Learner-app routes a nav link may name that are not pages of the site
+ *  (the app's own top-level routes, and "courses", which the header always
+ *  resolves). A one-word route outside this list and the site's pages is a
+ *  link to a page that was deleted or renamed. */
+const APP_ROUTES = new Set([
+    'admission', 'assessment', 'booking-manage', 'change-password', 'chat', 'courses',
+    'dashboard', 'downloads', 'enquiry-response', 'go', 'homework', 'institute-selection',
+    'learning-centre', 'login', 'logout', 'my-files', 'my-reports', 'pay', 'payment-result',
+    'privacy-policy', 'product-pages', 'profile', 'referral', 'register', 'reports', 'signup',
+    'study-library', 'subscriptions', 'terms-and-conditions', 'try', 'user-profile',
+]);
+
 /**
  * "Sync pages": the nav lists every published page, in page order. It only
  * adds, removes and orders PAGE links (a plain route naming one of the site's
@@ -126,7 +138,9 @@ const isPlainPageRoute = (route: string | null | undefined): boolean => {
  *   options (the same object);
  * - mega menus, external URLs, filtered or anchor links ("/courses?stream=x"),
  *   empty routes and routes that are not a page ("/blog/my-post") are kept;
- * - a visible link to an unpublished page is dropped; a hidden one is kept.
+ * - a visible link to an unpublished page is dropped; a hidden one is kept;
+ * - a visible one-word link that names no page and no app route (the page was
+ *   deleted or renamed: it would 404) is dropped.
  * Pages fill the slots their links held before; new pages follow the last one.
  */
 export const syncNavWithPages = <T extends HeaderNavItemValue>(
@@ -142,12 +156,21 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
     const homeAliases = new Set(pages.filter(isHomePage).map((p) => pageKeyOf(p.route)));
     const itemKey = (item: T) => {
         const key = pageKeyOf(item.route);
-        return homeAliases.has(key) ? 'homepage' : key;
+        // The site's header always reads "home" as the home page.
+        return homeAliases.has(key) || key.toLowerCase() === 'home' ? 'homepage' : key;
     };
     const isPageLink = (item: T) =>
         item?.type !== 'megaMenu' &&
         isPlainPageRoute(item?.route) &&
         allPageKeys.has(itemKey(item));
+    // A visible link to a page that no longer exists.
+    const isStalePageLink = (item: T) => {
+        if (item?.type === 'megaMenu' || item?.enabled === false || !isPlainPageRoute(item?.route)) {
+            return false;
+        }
+        const key = itemKey(item);
+        return !allPageKeys.has(key) && !key.includes('/') && !APP_ROUTES.has(key.toLowerCase());
+    };
     // A hidden link to an unpublished page is the admin's, kept for later.
     const isKeptAsIs = (item: T) =>
         !isPageLink(item) || (item.enabled === false && !publishedKeys.has(itemKey(item)));
@@ -171,6 +194,7 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
     const out: T[] = [];
     let next = 0;
     for (const item of items) {
+        if (isStalePageLink(item)) continue;
         if (isKeptAsIs(item)) out.push(item);
         else if (next < pageItems.length) out.push(pageItems[next++]!);
         // else: a page link with no published page left for its slot — dropped.

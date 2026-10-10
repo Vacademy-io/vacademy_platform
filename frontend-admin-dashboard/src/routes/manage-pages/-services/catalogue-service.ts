@@ -128,7 +128,12 @@ export const saveDraftRevision = async (
     config: CatalogueConfig,
     /** null = keep the draft's current source (the server defaults a new draft to MANUAL). */
     source: DraftSource | null = 'MANUAL',
-    aiRunId?: string
+    aiRunId?: string,
+    /** "Keep my draft": the live site changed after the draft began and the
+     *  admin keeps the draft — the server re-bases it, so it is no longer
+     *  reported stale (nor refused by the AI tools) until live moves again.
+     *  An older server ignores the field. */
+    options?: { acknowledgeLive?: boolean }
 ): Promise<CatalogueRevision> => {
     const response = await authenticatedAxiosInstance.post<CatalogueRevision>(
         CATALOGUE_REVISION_SAVE_DRAFT(catalogueId),
@@ -136,6 +141,7 @@ export const saveDraftRevision = async (
             catalogue_json: JSON.stringify(config),
             ...(source ? { source } : {}),
             ai_run_id: aiRunId,
+            ...(options?.acknowledgeLive ? { acknowledge_live: true } : {}),
         }
     );
     return response.data;

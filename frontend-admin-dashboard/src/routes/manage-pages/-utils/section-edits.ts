@@ -95,13 +95,16 @@ export const parseSectionJson = (text: string): SectionJsonResult => {
 };
 
 /**
- * Lays `next` over `current`, keeping every setting `next` does not mention.
- * Nested objects merge the same way; arrays and plain values come from `next`.
- * Returns the merged props and the dotted paths that were kept from `current`.
+ * Lays `next` over `current`, keeping every setting `next` does not mention
+ * (except keys `dropUnmentioned` names: those follow `next`, so leaving them
+ * out removes them). Nested objects merge the same way; arrays and plain
+ * values come from `next`. Returns the merged props and the dotted paths that
+ * were kept from `current`.
  */
 export const keepUnmentionedProps = (
     current: Props | null | undefined,
-    next: Props | null | undefined
+    next: Props | null | undefined,
+    dropUnmentioned: (key: string) => boolean = () => false
 ): { props: Props; kept: string[] } => {
     const kept: string[] = [];
     const merge = (a: Props, b: Props, path: string): Props => {
@@ -109,7 +112,7 @@ export const keepUnmentionedProps = (
         for (const [key, value] of Object.entries(a)) {
             const at = path ? `${path}.${key}` : key;
             if (!(key in b)) {
-                if (value === undefined) continue;
+                if (value === undefined || dropUnmentioned(key)) continue;
                 out[key] = value;
                 kept.push(at);
             } else if (isPlainObject(value) && isPlainObject(b[key])) {
@@ -128,10 +131,20 @@ interface SectionShape<Style> {
 }
 
 /**
+ * The look of a section: colours, pictures and backgrounds. A new version
+ * that leaves one out means "none" (a light, image-free design), so the old
+ * value must not be carried under it.
+ */
+const isLookProp = (key: string): boolean =>
+    /colou?r|image|background|gradient|overlay|^bg[A-Z]|^bg$/i.test(key);
+
+/**
  * "Try another version": the new version replaces what it sets, and the
  * settings it leaves out (a page hero, sidebar, extra rows, card design… that
- * the AI never saw a field for) stay. A version of a different section type
- * replaces the section outright — the old settings mean nothing to it.
+ * the AI never saw a field for) stay — except its look: a colour, picture or
+ * background the version leaves out is removed, so the design applies as the
+ * AI made it. A version of a different section type replaces the section
+ * outright — the old settings mean nothing to it.
  */
 export const mergeSectionVersion = <Style>(
     current: SectionShape<Style>,
@@ -140,7 +153,7 @@ export const mergeSectionVersion = <Style>(
     if (next.type !== current.type) {
         return { patch: { type: next.type, props: next.props ?? {}, style: next.style }, kept: [] };
     }
-    const { props, kept } = keepUnmentionedProps(current.props, next.props);
+    const { props, kept } = keepUnmentionedProps(current.props, next.props, isLookProp);
     return { patch: { type: next.type, props, style: next.style }, kept };
 };
 

@@ -99,6 +99,10 @@ interface JsonRendererProps {
   courseData?: any; // Course data for dynamic content
   catalogueData?: CourseCatalogueData; // Full catalogue data for route matching
   isPreviewMode?: boolean; // When true, shows component selection UI for admin editor
+  /** The editor's own marks — hidden-block strips and per-block frames inside
+   *  columns and tabs. Defaults to isPreviewMode; the headless AI preview
+   *  (not framed) turns them off, as it shoots the page as visitors see it. */
+  previewChrome?: boolean;
   /** Preview "Browse" mode: the page is clickable as on the live site and
    *  clicking no longer selects blocks. */
   previewInteractive?: boolean;
@@ -118,6 +122,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   courseData,
   catalogueData,
   isPreviewMode = false,
+  previewChrome = isPreviewMode,
   previewInteractive = false,
   previewPath,
   selectedComponentId = null,
@@ -165,12 +170,12 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   const renderChild = (child: any, parentId?: string): React.ReactNode => {
     const rendered = renderComponent(child);
     if (!rendered) {
-      return isPreviewMode && child?.enabled === false
+      return previewChrome && child?.enabled === false
         ? previewFrame(child, <HiddenBlockStrip type={child.type} />, parentId)
         : null;
     }
     const styled = renderStyledChild(child, rendered);
-    return withVisibleWhen(child, isPreviewMode ? previewFrame(child, styled, parentId) : styled);
+    return withVisibleWhen(child, previewChrome ? previewFrame(child, styled, parentId) : styled);
   };
 
   const renderStyledChild = (child: any, rendered: React.ReactNode): React.ReactNode => {
@@ -327,7 +332,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
-        return <CartComponent key={id} {...props} instituteId={instituteId} globalSettings={globalSettings} />;
+        return <CartComponent key={id} {...props} instituteId={instituteId} globalSettings={globalSettings} isPreviewMode={isPreviewMode} />;
       case "buyRentSection":
         return <BuyRentSectionComponent key={id} {...props} tagName={tagName} />;
       case "policyRenderer":
@@ -598,7 +603,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     const rendered = renderComponent(component);
     if (!rendered) {
       // Switched off in the editor: visitors see nothing, the preview a strip.
-      return isPreviewMode && component.enabled === false
+      return previewChrome && component.enabled === false
         ? previewFrame(component, <HiddenBlockStrip type={component.type} />)
         : null;
     }

@@ -35,9 +35,15 @@ public class CourseCatalogueController {
     private InstituteAccessValidator instituteAccessValidator;
 
     /**
-     * The caller must belong to the institute that owns the catalogue — these
+     * The caller must be STAFF of the institute that owns the catalogue — these
      * endpoints take only a catalogue id, so without this any logged-in user
      * could read, overwrite, publish or discard another institute's site.
+     *
+     * <p>No root-user bypass: learners and invited staff are created as root
+     * users, and every site's catalogue id is public (the by-tag endpoint
+     * returns it), so the bypass in validateUserAccess would let any learner
+     * of any institute publish over another institute's site. The admin
+     * dashboard and ai_service both send clientId = the institute.
      */
     void requireCatalogueAccess(CustomUserDetails user, String catalogueId) {
         String instituteId = catalogueInstituteMappingRepository.findByCourseCatalogueId(catalogueId)
@@ -45,7 +51,9 @@ public class CourseCatalogueController {
                 .map(Institute::getId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Catalogue not found"));
         try {
-            instituteAccessValidator.validateUserAccess(user, instituteId);
+            instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (VacademyException e) {
             throw new ForbiddenException(e.getMessage());
         }

@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.course_catalogue.repository.Catal
 import vacademy.io.admin_core_service.features.course_catalogue.repository.CourseCatalogueRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -62,6 +63,12 @@ public class CatalogueRevisionService {
         });
     }
 
+    /** When the live site was last published (null: no published revision on record). */
+    @Transactional(readOnly = true)
+    public Date liveUpdatedAt(String catalogueId) {
+        return findLive(catalogueId).map(CatalogueRevision::getUpdatedAt).orElse(null);
+    }
+
     /** Revision number of the open DRAFT, or null when there is none. */
     @Transactional(readOnly = true)
     public Integer openDraftRevisionNo(String catalogueId) {
@@ -74,17 +81,35 @@ public class CatalogueRevisionService {
      */
     @Transactional
     public RevisionResponse saveDraft(String catalogueId, SaveDraftRequest request, String userId) {
-        requireCatalogue(catalogueId);
+        CourseCatalogue catalogue = requireCatalogue(catalogueId);
 
-        CatalogueRevision draft = revisionRepository
+        Optional<CatalogueRevision> open = revisionRepository
                 .findFirstByCatalogueIdAndStatusOrderByRevisionNoDescIdDesc(catalogueId,
-                        CatalogueRevisionStatusEnum.DRAFT.name())
+                        CatalogueRevisionStatusEnum.DRAFT.name());
+        // "Keep my draft" on a stale draft: start it again from now, so its
+        // staleness is measured against the live site the editor has seen.
+        // The old row is retired; its content goes on in the new one.
+        String carriedSource = null;
+        String carriedAiRunId = null;
+        if (Boolean.TRUE.equals(request.getAcknowledgeLive()) && open.isPresent()
+                && isStale(open.get(), findLive(catalogueId).orElse(null), catalogue.getCatalogueJson())) {
+            CatalogueRevision retired = open.get();
+            carriedSource = retired.getSource();
+            carriedAiRunId = retired.getAiRunId();
+            retired.setStatus(CatalogueRevisionStatusEnum.DISCARDED.name());
+            revisionRepository.save(retired);
+            open = Optional.empty();
+        }
+
+        CatalogueRevision draft = open
                 .orElseGet(() -> CatalogueRevision.builder()
                         .catalogueId(catalogueId)
                         .revisionNo(nextRevisionNo(catalogueId))
                         .status(CatalogueRevisionStatusEnum.DRAFT.name())
                         .createdByUserId(userId)
                         .build());
+        if (draft.getSource() == null) draft.setSource(carriedSource);
+        if (draft.getAiRunId() == null) draft.setAiRunId(carriedAiRunId);
 
         draft.setCatalogueJson(request.getCatalogueJson());
         if (request.getSource() != null) draft.setSource(request.getSource());

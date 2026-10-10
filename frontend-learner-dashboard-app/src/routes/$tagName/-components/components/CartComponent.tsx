@@ -363,6 +363,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   instituteId, // Accept instituteId prop
   globalSettings,
   onlyLogic = false,
+  isPreviewMode = false,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const resolvedEmptyStateMessage = emptyStateMessage || t("cart.emptyDefault");
@@ -827,6 +828,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           totalAmount={getTotal()}
           items={items}
           membershipPlan={membershipPlan}
+          isPreviewMode={isPreviewMode}
           isRentMode={true}
         />
       </>
@@ -898,6 +900,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         totalAmount={buyModeGrandTotal}
         items={items}
         membershipPlan={membershipPlan}
+        isPreviewMode={isPreviewMode}
         isRentMode={false}
         additionalCharges={resolvedAdditionalCharges}
       />

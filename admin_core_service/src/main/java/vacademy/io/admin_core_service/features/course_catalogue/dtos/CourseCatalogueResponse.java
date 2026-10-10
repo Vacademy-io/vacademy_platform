@@ -30,7 +30,8 @@ public class CourseCatalogueResponse {
     /** /update only: an editor draft is still open (it was not discarded). */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Integer openDraftRevisionNo;
-    /** get/by-tag only: when the live config was last written. */
+    /** Authenticated get/by-tag only: when the live site was last published
+     *  (its live revision); absent when no published revision is on record. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Date updatedAt;
 }

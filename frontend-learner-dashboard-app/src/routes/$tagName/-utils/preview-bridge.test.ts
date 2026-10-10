@@ -137,6 +137,27 @@ describe("scrubPreviewConfig", () => {
     expect(out.items[0]).toBe("<b>ok</b>");
   });
 
+  it("a text the scrub changed still finds its Hindi translation", async () => {
+    const { translateText } = await import("./catalogue-i18n");
+    const source = '<p>Pay <a href="javascript:alert(1)">here</a></p>';
+    const out = scrubPreviewConfig({
+      globalSettings: { i18n: { enabled: true, strings: { hi: { [source]: "<p>यहाँ भुगतान करें</p>" } } } },
+      pages: [{ components: [{ type: "textBlock", props: { content: source } }] }],
+    });
+    const shown = out.pages[0]!.components[0]!.props.content;
+    expect(shown).not.toContain("javascript:");
+    expect(translateText(shown, out.globalSettings.i18n.strings.hi)).toBe("<p>यहाँ भुगतान करें</p>");
+  });
+
+  it("leaves YouTube's embed code and UPI / WhatsApp links whole", () => {
+    const config = {
+      embed:
+        '<iframe src="https://www.youtube.com/embed/x" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>',
+      pay: '<a href="upi://pay?pa=acme@upi">Pay by UPI</a> or <a href="whatsapp://send?phone=91">chat</a>',
+    };
+    expect(scrubPreviewConfig(config)).toEqual(config);
+  });
+
   it("keeps safe text exactly as written, and leaves self-sanitized html/css alone", () => {
     const config = {
       title: "Fees < ₹500 & more",

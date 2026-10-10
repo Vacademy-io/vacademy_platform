@@ -1,4 +1,4 @@
-import { useEffect, useState, type FC } from 'react';
+import { useEffect, useId, useState, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,10 +58,10 @@ export const storedContentWidth = (raw: unknown): string => {
     return typeof n === 'number' && Number.isFinite(n) ? String(Math.round(n)) : '';
 };
 
-/** "1152" → 1152; null when not a whole number in range. '' → undefined (use the default width). */
+/** "1152" (or "1152px") → 1152; null when not a whole number in range. '' → undefined (use the default width). */
 export const parseContentWidth = (text: string): number | undefined | null => {
-    const trimmed = text.trim();
-    if (!trimmed) return undefined;
+    const trimmed = text.trim().replace(/\s*px$/i, '');
+    if (!trimmed) return text.trim() ? null : undefined;
     if (!/^\d+$/.test(trimmed)) return null;
     const n = Number(trimmed);
     return n >= CONTENT_WIDTH_MIN && n <= CONTENT_WIDTH_MAX ? n : null;
@@ -81,6 +81,9 @@ export const SitePaletteCard: FC<SitePaletteCardProps> = ({ theme, onThemeChange
     const [widthText, setWidthText] = useState(storedWidth);
     useEffect(() => setWidthText(storedWidth), [storedWidth]);
     const widthInvalid = parseContentWidth(widthText) === null;
+    // Left with a value that cannot be saved: say so (the old width stays).
+    const [notSaved, setNotSaved] = useState(false);
+    const widthHintId = useId();
 
     const setColor = (key: string, color: string) =>
         onThemeChange({
@@ -91,7 +94,11 @@ export const SitePaletteCard: FC<SitePaletteCardProps> = ({ theme, onThemeChange
 
     const commitWidth = () => {
         const next = parseContentWidth(widthText);
-        if (next === null || String(next ?? '') === storedWidth) return;
+        setNotSaved(next === null);
+        if (next === null) return;
+        // "1100px" is saved as 1100: show it the way it is stored.
+        setWidthText(String(next ?? ''));
+        if (String(next ?? '') === storedWidth) return;
         const nextTheme = { ...theme };
         if (next === undefined) delete nextTheme.contentMaxWidth;
         else nextTheme.contentMaxWidth = next;
@@ -156,17 +163,24 @@ export const SitePaletteCard: FC<SitePaletteCardProps> = ({ theme, onThemeChange
                         inputMode="numeric"
                         value={widthText}
                         placeholder={t('global.palette.contentWidthDefault')}
-                        onChange={(e) => setWidthText(e.target.value)}
+                        onChange={(e) => {
+                            setWidthText(e.target.value);
+                            setNotSaved(false);
+                        }}
                         onBlur={commitWidth}
+                        aria-invalid={widthInvalid || undefined}
+                        aria-describedby={widthHintId}
                         onKeyDown={(e) => e.key === 'Enter' && commitWidth()}
                         className="w-32"
                     />
                     <span className="text-caption text-neutral-500">px</span>
                 </div>
                 <p
+                    id={widthHintId}
+                    role={notSaved ? 'alert' : undefined}
                     className={`text-caption ${widthInvalid ? 'text-danger-600' : 'text-neutral-500'}`}
                 >
-                    {t('global.palette.contentWidthHint', {
+                    {t(notSaved ? 'global.palette.contentWidthNotSaved' : 'global.palette.contentWidthHint', {
                         min: CONTENT_WIDTH_MIN,
                         max: CONTENT_WIDTH_MAX,
                     })}

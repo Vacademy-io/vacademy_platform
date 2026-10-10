@@ -1,6 +1,7 @@
 {
   "columnLayoutTitle": "{{count}} Column Layout",
   "actions": {
+    "pickColor": "Pick a colour",
     "tryAnotherVersion": "Try another version of this section (AI)",
     "cannotReorderNested": "Cannot reorder nested components",
     "moveUp": "Move up",
@@ -203,7 +204,8 @@
       "applyToTokensHint": "Also recolours the standard text, background and line colours of the site (light mode).",
       "contentWidth": "Content width",
       "contentWidthDefault": "Default",
-      "contentWidthHint": "Width of the page content in pixels, from {{min}} to {{max}}. Leave empty for the default."
+      "contentWidthHint": "Width of the page content in pixels, from {{min}} to {{max}}. Leave empty for the default.",
+      "contentWidthNotSaved": "Not saved: enter a whole number from {{min}} to {{max}}."
     },
     "courseFormats": {
       "heading": "Course formats",
@@ -213,8 +215,8 @@
       "name": "Name",
       "id": "ID",
       "namePlaceholder": "Audio book",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
       "remove": "Remove {{name}}",
       "confirmRemove": "Remove “{{name}}”? Courses tagged {{tag}} will no longer show this format, and its matching settings are lost.",
       "noNameWarning": "A format with no name is hidden on the site.",
@@ -812,6 +814,7 @@
     "crumbRoute": "Link (optional)",
     "mediaWidth": "Picture width (px)",
     "mediaWidthHint": "200 to 800 on wide screens; empty = 500.",
+    "mediaWidthClamped": "Picture width must be 200 to 800; it was set to {{value}}.",
     "outlineColor": "Outline button border"
   },
   "bookDetails": {

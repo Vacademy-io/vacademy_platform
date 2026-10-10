@@ -228,6 +228,18 @@ describe('what the frame is sent', () => {
         expect(useEditorStore.getState().selectedComponentId).toBeNull();
     });
 
+    it('Live: a page not published yet says so, and a click says how to pick blocks', () => {
+        const live = { ...site(), pages: [{ id: 'home', route: 'home', title: 'Home', components: [heading('hero')] }] };
+        readyFrame(JSON.stringify(live));
+        fireEvent.click(screen.getByText('toolbar.live'));
+        expect(screen.getByText('livePageMissing')).toBeTruthy();
+        fromFrame({ type: 'COMPONENT_SELECTED', componentId: 'hero', pageId: 'home' });
+        expect(screen.getByText('liveClick')).toBeTruthy();
+        expect(useEditorStore.getState().selectedComponentId).toBeNull();
+        fireEvent.click(screen.getByText('toolbar.draft'));
+        expect(screen.queryByText('livePageMissing')).toBeNull();
+    });
+
     it('without the published site there is no Draft | Live switch', () => {
         renderFrame();
         expect(screen.queryByText('toolbar.live')).toBeNull();
@@ -279,6 +291,22 @@ describe('clicks in the frame', () => {
         expect(screen.getByRole('status').textContent).toBe('notAPage');
     });
 
+    it('after READY, only the origin that answered can select blocks or change pages', () => {
+        readyFrame();
+        fromFrame({ type: 'COMPONENT_SELECTED', componentId: 'in-column', pageId: 'courses' }, 'https://other.example');
+        fromFrame({ type: 'PREVIEW_NAVIGATE', route: 'learning-paths' }, 'https://other.example');
+        expect(useEditorStore.getState().selectedComponentId).toBeNull();
+        expect(useEditorStore.getState().selectedPageId).toBe('courses');
+        expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('nothing but READY is accepted before the frame has answered', () => {
+        renderFrame();
+        standInWindow();
+        fromFrame({ type: 'PREVIEW_NAVIGATE', route: 'learning-paths' });
+        expect(useEditorStore.getState().selectedPageId).toBe('courses');
+    });
+
     it('ignores messages from any other window', () => {
         readyFrame();
         act(() => {
@@ -294,7 +322,9 @@ describe('when a link takes the frame off the preview', () => {
     it('asks the reloaded frame, and offers the way back when the preview does not answer', () => {
         vi.useFakeTimers();
         const sent = readyFrame();
-        fireEvent.load(iframe());
+        fireEvent.load(iframe()); // the first document's own load
+        expect(sentOfType(sent, 'PREVIEW_HELLO')).toHaveLength(0);
+        fireEvent.load(iframe()); // a link took the frame to a new document
         expect(sentOfType(sent, 'PREVIEW_HELLO')).toHaveLength(1);
         act(() => {
             vi.advanceTimersByTime(3_000);
@@ -310,10 +340,23 @@ describe('when a link takes the frame off the preview', () => {
         vi.useFakeTimers();
         readyFrame();
         fireEvent.load(iframe());
+        fireEvent.load(iframe());
         fromFrame({ type: 'PREVIEW_READY' });
         act(() => {
             vi.advanceTimersByTime(3_000);
         });
+        expect(screen.queryByText('leftPreview.title')).toBeNull();
+    });
+
+    it('READY before the first document has finished loading: its load is not a departure', () => {
+        // An older learner build never answers HELLO; it must not be covered.
+        vi.useFakeTimers();
+        const sent = readyFrame();
+        fireEvent.load(iframe());
+        act(() => {
+            vi.advanceTimersByTime(3_000);
+        });
+        expect(sentOfType(sent, 'PREVIEW_HELLO')).toHaveLength(0);
         expect(screen.queryByText('leftPreview.title')).toBeNull();
     });
 
@@ -370,5 +413,48 @@ describe('helpers', () => {
     it('selectableId keeps an unknown block as it was', () => {
         expect(selectableId([columns], 'zzz', 'yyy')).toBe('zzz');
         expect(selectableId([columns], 'cols')).toBe('cols');
+    });
+});
+
+describe('when the preview cannot load here', () => {
+    it('tells the canvas, offers the block previews, and takes it back when READY comes late', () => {
+        vi.useFakeTimers();
+        const availability = vi.fn();
+        const showPreviews = vi.fn();
+        render(
+            <LiveSiteFrame
+                siteUrl={SITE}
+                nameInstitute={false}
+                dropRef={() => {}}
+                isDropOver={false}
+                onAvailabilityChange={availability}
+                onShowPreviews={showPreviews}
+            />
+        );
+        standInWindow();
+        expect(availability).not.toHaveBeenCalledWith(false);
+        act(() => {
+            vi.advanceTimersByTime(15_000);
+        });
+        expect(availability).toHaveBeenLastCalledWith(false);
+        fireEvent.click(screen.getByText('failed.showPreviews'));
+        expect(showPreviews).toHaveBeenCalledTimes(1);
+        fromFrame({ type: 'PREVIEW_READY' });
+        expect(availability).toHaveBeenLastCalledWith(true);
+    });
+
+    it('an unusable site URL is unavailable at once', () => {
+        const availability = vi.fn();
+        render(
+            <LiveSiteFrame
+                siteUrl="not a url"
+                nameInstitute={false}
+                dropRef={() => {}}
+                isDropOver={false}
+                onAvailabilityChange={availability}
+            />
+        );
+        expect(availability).toHaveBeenLastCalledWith(false);
+        expect(screen.getByText('failed.title')).toBeTruthy();
     });
 });

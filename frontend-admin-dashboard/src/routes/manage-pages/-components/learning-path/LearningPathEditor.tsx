@@ -105,11 +105,24 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
     const libraryList = Array.isArray(libraries) ? libraries : [];
     const libraryId: string = props.libraryId || '';
     const selectedLibrary = libraryList.find((l) => l.id === libraryId);
-    const { data: tree } = useQuery({
+    const {
+        data: tree,
+        isLoading: treeLoading,
+        isError: treeError,
+        refetch: refetchTree,
+    } = useQuery({
         queryKey: folderTreeQueryKey(instituteId, libraryId),
         queryFn: () => getFolderTree(instituteId!, libraryId),
         enabled: mode === 'list' && !!instituteId && !!libraryId,
     });
+    // Why there are no folders yet: no library, still loading, or the load failed.
+    const foldersState: 'ready' | 'noLibrary' | 'loading' | 'error' = !libraryId
+        ? 'noLibrary'
+        : treeLoading
+          ? 'loading'
+          : treeError
+            ? 'error'
+            : 'ready';
     // Guard the shape: an unexpected body must not take the whole property panel down.
     const roots = tree && Array.isArray(tree.roots) ? tree.roots : null;
     const folders = roots ? flattenFolders(roots) : [];
@@ -321,6 +334,8 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
                         <LearningPathFeaturedFields
                             props={props}
                             folders={folders}
+                            foldersState={foldersState}
+                            onRetryFolders={() => void refetchTree()}
                             libraryCodes={libraryCodes}
                             pages={pageList}
                             pagesLoading={pagesLoading}

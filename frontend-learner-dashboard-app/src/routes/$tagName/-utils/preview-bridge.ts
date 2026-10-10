@@ -101,7 +101,20 @@ export const leavesDocument = (event: {
 const SELF_SANITIZED_KEYS = new Set(["html", "css"]);
 const PREVIEW_HTML_OPTIONS = {
   ADD_TAGS: ["iframe"],
-  ADD_ATTR: ["target", "allow", "allowfullscreen", "frameborder"],
+  // YouTube's standard embed code carries referrerpolicy and loading: left
+  // whole, so the text (and its translation lookup) is unchanged.
+  ADD_ATTR: ["target", "allow", "allowfullscreen", "frameborder", "referrerpolicy", "loading"],
+  // DOMPurify's own list plus the payment / chat / app links sites use
+  // (upi:, whatsapp:, intent:), which the live site keeps.
+  ALLOWED_URI_REGEXP:
+    /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|upi|whatsapp|intent):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+};
+
+/** One text through the scrub: unchanged unless DOMPurify removed something. */
+const scrubText = (text: string): string => {
+  if (!text.includes("<") || !DOMPurify.isSupported) return text;
+  const clean = DOMPurify.sanitize(text, PREVIEW_HTML_OPTIONS);
+  return DOMPurify.removed.length ? clean : text;
 };
 
 /**
@@ -110,13 +123,16 @@ const PREVIEW_HTML_OPTIONS = {
  * descriptions), so a page able to post here could otherwise run script on
  * the institute's domain. A text DOMPurify leaves whole is kept exactly as
  * written, so the preview still matches the live site.
+ *
+ * Translations (globalSettings.i18n.strings[locale]) are keyed by the base
+ * text itself, so a key is also entered under its scrubbed form: a text the
+ * scrub changed still finds its translation (the preview in हिन्दी matches
+ * the live site). Keys are only looked up, never shown.
  */
 export const scrubPreviewConfig = <T>(value: T): T => {
   const walk = (node: unknown, key?: string): unknown => {
     if (typeof node === "string") {
-      if (!node.includes("<") || (key && SELF_SANITIZED_KEYS.has(key)) || !DOMPurify.isSupported) return node;
-      const clean = DOMPurify.sanitize(node, PREVIEW_HTML_OPTIONS);
-      return DOMPurify.removed.length ? clean : node;
+      return key && SELF_SANITIZED_KEYS.has(key) ? node : scrubText(node);
     }
     if (Array.isArray(node)) return node.map((item) => walk(item));
     if (node && typeof node === "object") {
@@ -124,7 +140,22 @@ export const scrubPreviewConfig = <T>(value: T): T => {
     }
     return node;
   };
-  return walk(value) as T;
+  const out = walk(value) as T;
+  const strings = (out as { globalSettings?: { i18n?: { strings?: unknown } } } | null)?.globalSettings?.i18n
+    ?.strings;
+  if (strings && typeof strings === "object") {
+    for (const [locale, dict] of Object.entries(strings as Record<string, unknown>)) {
+      if (!dict || typeof dict !== "object" || Array.isArray(dict)) continue;
+      const entries = Object.entries(dict as Record<string, unknown>);
+      const rekeyed: Record<string, unknown> = Object.fromEntries(entries);
+      for (const [source, translation] of entries) {
+        const scrubbed = scrubText(source);
+        if (scrubbed !== source && !(scrubbed in rekeyed)) rekeyed[scrubbed] = translation;
+      }
+      (strings as Record<string, unknown>)[locale] = rekeyed;
+    }
+  }
+  return out;
 };
 
 /** Same page, whatever the trailing slash ("/acme" and "/acme/"). */

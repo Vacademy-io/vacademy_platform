@@ -142,7 +142,7 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({
                             <div className="flex items-center gap-0.5">
                                 <button
                                     type="button"
-                                    aria-label={t('global.courseFormats.moveUp')}
+                                    aria-label={t('global.courseFormats.moveUp', { name: label || formatId })}
                                     disabled={i === 0}
                                     onClick={() => move(formatId, -1)}
                                     className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30"
@@ -151,7 +151,7 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({
                                 </button>
                                 <button
                                     type="button"
-                                    aria-label={t('global.courseFormats.moveDown')}
+                                    aria-label={t('global.courseFormats.moveDown', { name: label || formatId })}
                                     disabled={i === ids.length - 1}
                                     onClick={() => move(formatId, 1)}
                                     className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30"

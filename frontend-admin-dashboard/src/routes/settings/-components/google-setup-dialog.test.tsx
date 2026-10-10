@@ -79,7 +79,10 @@ const ROUTES: CampaignRoutes = {
     ],
 };
 
-function mount(c: ConnectorListItem | null) {
+function mount(
+    c: ConnectorListItem | null,
+    audiences: Parameters<typeof GoogleSetupDialog>[0]['audiences'] = LISTS
+) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     return render(
         <I18nextProvider i18n={i18n}>
@@ -87,7 +90,7 @@ function mount(c: ConnectorListItem | null) {
                 <GoogleSetupDialog
                     connector={c}
                     audienceName="GoogleAds Leads form"
-                    audiences={LISTS}
+                    audiences={audiences}
                     open
                     onOpenChange={() => {}}
                 />
@@ -162,6 +165,38 @@ describe('GoogleSetupDialog', () => {
         expect(mapped!.value).toBe('aud-pune');
         // An inactive list is never offered as a target.
         expect(screen.queryByRole('option', { name: 'Closed list' })).toBeNull();
+    });
+
+    it("offers only lists of the main list's type, plus a list a campaign already feeds", async () => {
+        mount(connector(), [
+            {
+                id: 'aud-main',
+                name: 'GoogleAds Leads form',
+                status: 'ACTIVE',
+                campaignType: 'GoogleAds Leads form',
+            },
+            {
+                id: 'aud-mp',
+                name: 'MP-CG-PGDCC',
+                status: 'ACTIVE',
+                campaignType: 'GOOGLEADS LEADS FORM',
+            },
+            { id: 'aud-web', name: 'Gujrat-ADCT', status: 'ACTIVE', campaignType: 'WEBSITE' },
+            {
+                id: 'aud-fb',
+                name: 'ADCT Mumbai 21 Feb',
+                status: 'ACTIVE',
+                campaignType: 'Facebook',
+            },
+            { id: 'aud-pune', name: 'Pune MBBS 2027', status: 'ACTIVE', campaignType: 'WEBSITE' },
+        ]);
+        await screen.findByText('22173284076');
+        const names = Array.from(listSelects()[0]!.options).map((o) => o.textContent);
+        expect(names).toContain('MP-CG-PGDCC');
+        // Already routed there, so it stays even though it is a website list.
+        expect(names).toContain('Pune MBBS 2027');
+        expect(names).not.toContain('Gujrat-ADCT');
+        expect(names).not.toContain('ADCT Mumbai 21 Feb');
     });
 
     it('routes a campaign to an existing list and moves its existing leads', async () => {

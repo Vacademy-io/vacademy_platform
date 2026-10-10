@@ -1233,11 +1233,21 @@ function GoogleCampaignRoutes({
         queryKey: campaignRoutesQueryKey(connector.id),
         queryFn: () => fetchCampaignRoutes(connector.id),
     });
-    // Leads can only be routed to a live list.
-    const lists = audiences.filter((a) => !a.status || a.status === 'ACTIVE');
     const mainAudienceId = data?.main_audience_id ?? connector.audienceId;
     const mainName = audiences.find((a) => a.id === mainAudienceId)?.name ?? '';
+    const mainType = audiences.find((a) => a.id === mainAudienceId)?.campaignType?.trim();
     const routes = data?.routes ?? [];
+    // Leads can only be routed to a live list of the main list's type (Google lists
+    // only, not every website/Facebook list of the institute). A list a campaign is
+    // already routed to stays listed so the row still shows it.
+    const mappedIds = new Set(routes.map((r) => r.audience_id).filter(Boolean));
+    const activeLists = audiences.filter((a) => !a.status || a.status === 'ACTIVE');
+    const sameType = new Set(
+        filterByCampaignTypes(activeLists, mainType ? [mainType] : []).map((a) => a.id)
+    );
+    const lists = activeLists.filter(
+        (a) => sameType.has(a.id) || a.id === mainAudienceId || mappedIds.has(a.id)
+    );
 
     return (
         <div className="space-y-1.5">

@@ -14,6 +14,8 @@ and the model reads one schema. Actions:
     audit           the dashboard's pre-publish checks
     brief_checklist the interview an AI should run before generating a site
     list_media      images the caller has uploaded (for logos / photos)
+    preview         a screenshot of the draft as the learner site renders it
+    compare         that render against a design image, section by section
 
 Identity is pinned by ``execute_tool``; every ``tag_name`` is resolved against
 the pinned institute's own catalogues, never trusted from the model.
@@ -23,9 +25,11 @@ write tool and the lead-forms tool share it without importing this module.
 """
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
@@ -66,7 +70,7 @@ WEBSITE_GROUP_KEY = "website_builder"
 
 WEBSITE_ACTIONS = (
     "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
-    "brief_checklist", "schema", "list_media", "preview",
+    "brief_checklist", "schema", "list_media", "preview", "compare",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -132,7 +136,19 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "concrete fixes. Iterate with website_edit(update_page) until it passes; do it before telling "
             "the admin a page is ready.\n"
             "- preview (tag_name, page_route?, section_id?, viewport?): a screenshot of the DRAFT as the "
-            "learner site renders it. Look at it before and after edits.\n"
+            "learner site renders it. Look at it before and after edits. Matching a design: pass width "
+            "(320–1920; a Figma desktop frame is 1440), lang ('hi'), sections=true (each top-level section's "
+            "id and pixel box), click_text (open a menu or tab first, e.g. 'Knowledge Streams'), or "
+            "fidelity=true (1440 + sections); a tall page then comes back as several images, top to bottom.\n"
+            "- compare (tag_name, page_route?, reference, width?, lang?): render the DRAFT and compare it with "
+            "the design, section by section — similarity (SSIM), height ratio, background colour ΔE, design "
+            "text missing on the page, design sections with no counterpart, and hints naming the prop to "
+            "change — plus a side-by-side image. reference = {asset_url} (a url from "
+            "website_edit(import_image) or list_media) or {asset_id} (a list_media file_id), or {tiles:[…]} "
+            "for an export cut into pieces; add sections:[{name, top, height, texts?}] (the design's frame "
+            "children, in frame units) and frame_width to pair against the design's own sections. Only images "
+            "stored on this platform are read; no other address is ever fetched. Fix the top hints with "
+            "website_edit(update_page) and compare again (at most 3 rounds, then 390 wide and each language).\n"
             "- context (tag_name?): what may be linked on a site — real courses, product pages, lead "
             "campaigns (with leads received), the site's theme. Use these ids; never invent them.\n"
             "- analytics (tag_name?, days?): views, visitors, sessions, leads, top pages and sources.\n"
@@ -163,6 +179,24 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive)."},
                 "section_id": {"type": "string", "description": "preview: screenshot only this section."},
                 "viewport": {"type": "string", "enum": ["desktop", "mobile"], "description": "preview: default desktop (1280px); mobile is 390px."},
+                "width": {"type": "integer", "minimum": 320, "maximum": 1920, "description": "preview / compare: layout width in px (compare and fidelity default 1440)."},
+                "lang": {"type": "string", "description": "preview / compare: render in this site language (a code from the site's languages, e.g. 'hi')."},
+                "sections": {"type": "boolean", "description": "preview: also return each top-level section's id and box (top, height in px)."},
+                "click_text": {"type": "string", "description": "preview: click the element with this text first (opens a mega menu, a tab)."},
+                "fidelity": {"type": "boolean", "description": "preview: design-matching mode (1440 wide, sections, full height as tiles). On by default for pages created from a design."},
+                "max_height": {"type": "integer", "description": "preview: tallest capture in px (default and cap 16000)."},
+                "reference": {
+                    "type": "object",
+                    "description": "compare: the design image — {asset_url} or {asset_id}, or {tiles:[{asset_url|asset_id}, …]} top to bottom; optional sections, frame_width, texts.",
+                    "properties": {
+                        "asset_url": {"type": "string"},
+                        "asset_id": {"type": "string"},
+                        "tiles": {"type": "array", "items": {"type": "object"}},
+                        "frame_width": {"type": "number", "description": "Width of the design frame the section boxes are measured in (default: width)."},
+                        "sections": {"type": "array", "items": {"type": "object"}, "description": "[{name, id?, top, height, texts?}] in frame units, top to bottom."},
+                        "texts": {"type": "array", "items": {"type": "string"}, "description": "Text strings of the whole design, for a page-level text check."},
+                    },
+                },
                 "kind": {"type": "string", "description": "list_media: 'logo', 'photo' or 'any'."},
                 "limit": {"type": "integer", "description": "list_media: max items (default 24)."},
             },
@@ -376,8 +410,65 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
     return out
 
 
+#: preview / compare arguments that switch preview to design-matching (fidelity) mode.
+_FIDELITY_ARGS = ("width", "lang", "sections", "click_text", "max_height", "fidelity")
+_MAX_REFERENCE_TILES = 12
+_MAX_DESIGN_SECTIONS = 60
+_MAX_DESIGN_TEXTS = 300
+
+
+def _has_design_source(page: Dict[str, Any]) -> bool:
+    """A page created from a design (website_edit design_source → page meta) previews in fidelity mode."""
+    meta = page.get("meta") if isinstance(page.get("meta"), dict) else {}
+    return bool(page.get("designSource") or meta.get("designSource"))
+
+
+def _site_locales(config: Dict[str, Any]) -> List[str]:
+    i18n = (config.get("globalSettings") or {}).get("i18n")
+    i18n = i18n if isinstance(i18n, dict) else {}
+    codes = [str(loc.get("code") if isinstance(loc, dict) else loc or "").strip() for loc in i18n.get("locales") or []]
+    default = str(i18n.get("defaultLocale") or "").strip()
+    return [c for c in dict.fromkeys([default, *codes]) if c]
+
+
+def _check_lang(config: Dict[str, Any], lang: Any) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    code = str(lang or "").strip()
+    if not code:
+        return None, None
+    available = _site_locales(config)
+    if code not in available:
+        extra = {"fix": "Add the language in the editor's site languages first."} if not available else {}
+        return None, _err("unknown_language", message=f"This site has no '{code}' version.", available=available,
+                          **extra)
+    return code, None
+
+
+def _section_components(config: Dict[str, Any], page: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Section id → component: the page's blocks (nested ones too) and the site header / footer."""
+    from .catalogue_summary import walk_components
+    out: Dict[str, Dict[str, Any]] = {}
+    layout = (config.get("globalSettings") or {}).get("layout")
+    for key in ("header", "footer"):
+        comp = layout.get(key) if isinstance(layout, dict) else None
+        if isinstance(comp, dict) and comp.get("id"):
+            out[str(comp["id"])] = comp
+    for comp in walk_components(page.get("components") or []):
+        if isinstance(comp, dict) and comp.get("id"):
+            out.setdefault(str(comp["id"]), comp)
+    return out
+
+
+def _render_sections(boxes: List[Dict[str, Any]], comps: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for b in boxes or []:
+        comp = comps.get(str(b.get("id"))) or {}
+        out.append({k: v for k, v in {"id": b.get("id"), "type": comp.get("type"), "top": b.get("top"),
+                                      "height": b.get("height")}.items() if v is not None})
+    return out
+
+
 async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from .page_preview import render_preview
+    from . import page_preview
     site, err = await load_site(ctx, args.get("tag_name"))
     if err:
         return err
@@ -385,19 +476,228 @@ async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
     if page is None:
         return _err("unknown_page", available=[p.get("route") for p in site["config"].get("pages") or []])
     base = learner_portal_base(ctx) or _settings().learner_dashboard_url
-    result = await render_preview(
-        base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""),
-        config=site["config"], section_id=args.get("section_id"), viewport=str(args.get("viewport") or "desktop"),
+    if not (any(args.get(k) not in (None, "", False) for k in _FIDELITY_ARGS) or _has_design_source(page)):
+        result = await page_preview.render_preview(
+            base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""),
+            config=site["config"], section_id=args.get("section_id"), viewport=str(args.get("viewport") or "desktop"),
+        )
+        if result.get("error"):
+            return _err(result["error"], message=result.get("message"))
+        return {
+            "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
+            "image_png_base64": result["png_base64"], "width": result["width"], "height": result["height"],
+            "note": f"Rendered by the learner site from the {'current draft' if site['from_draft'] else 'published site'}. "
+                    "Live course data comes from the host's institute when the institute has no domain of its own.",
+            **stale_note(site),
+        }
+
+    lang, err = _check_lang(site["config"], args.get("lang"))
+    if err:
+        return err
+    width = args.get("width")
+    if width in (None, "") and str(args.get("viewport") or "") == "mobile":
+        width = page_preview.VIEWPORTS["mobile"]["width"]
+    want_sections = args.get("sections") is not False
+    result = await page_preview.render_preview(
+        base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""), config=site["config"],
+        section_id=args.get("section_id"), width=page_preview.FIDELITY_DEFAULT_WIDTH if width in (None, "") else width,
+        lang=lang,
+        sections=want_sections, click_text=args.get("click_text"), max_height=args.get("max_height"),
     )
     if result.get("error"):
         return _err(result["error"], message=result.get("message"))
-    return {
+    tiles = result.get("tiles") or []
+    out: Dict[str, Any] = {
         "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
-        "image_png_base64": result["png_base64"], "width": result["width"], "height": result["height"],
-        "note": f"Rendered by the learner site from the {'current draft' if site['from_draft'] else 'published site'}. "
-                "Live course data comes from the host's institute when the institute has no domain of its own.",
+        "mode": "fidelity", "width": result["width"], "height": result["height"],
+        "page_height": result.get("page_height"), "truncated": bool(result.get("truncated")),
+        "images": [{"top": t["top"], "height": t["height"]} for t in tiles],
+        "image_png_base64": tiles[0]["png_base64"] if tiles else result.get("png_base64"),
+        "images_base64": [t["png_base64"] for t in tiles[1:]],
+    }
+    if lang:
+        out["lang"] = lang
+    if want_sections and result.get("sections") is not None:
+        out["sections"] = _render_sections(result["sections"], _section_components(site["config"], page))
+    if result.get("clicked") is not None:
+        out["clicked"] = result["clicked"]
+        if not result["clicked"]:
+            out["click_note"] = f"Nothing visible says \"{args.get('click_text')}\"; the page is shown as loaded."
+    out["note"] = (
+        f"Rendered by the learner site from the {'current draft' if site['from_draft'] else 'published site'} as "
+        f"{len(tiles)} image(s), top to bottom; section boxes are in page pixels. Live course data comes from the "
+        "host's institute when the institute has no domain of its own."
+    )
+    return {**out, **stale_note(site)}
+
+
+async def _action_compare(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from . import page_preview
+    from . import visual_compare as vc
+    reference = args.get("reference")
+    if not isinstance(reference, dict) or not reference:
+        return _err("missing_argument", action="compare", needs=["reference"],
+                    message="reference = {asset_url} (from website_edit(import_image) or list_media), {asset_id} "
+                            "(a list_media file_id) or {tiles:[…]}.")
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err:
+        return err
+    page = find_page(site["config"], args.get("page_route"))
+    if page is None:
+        return _err("unknown_page", available=[p.get("route") for p in site["config"].get("pages") or []])
+    lang, err = _check_lang(site["config"], args.get("lang"))
+    if err:
+        return err
+    design_sections = reference.get("sections")
+    if design_sections is not None and (not isinstance(design_sections, list) or len(design_sections) > _MAX_DESIGN_SECTIONS):
+        return _err("bad_request", message=f"reference.sections is a list of at most {_MAX_DESIGN_SECTIONS} boxes.")
+    texts = reference.get("texts")
+    if texts is not None and not isinstance(texts, list):
+        return _err("bad_request", message="reference.texts is a list of strings.")
+    frame_width = reference.get("frame_width")
+    try:
+        frame_width = float(frame_width) if frame_width not in (None, "") else None
+    except (TypeError, ValueError):
+        return _err("bad_request", message="reference.frame_width is a number of pixels.")
+    if frame_width is not None and not 100 <= frame_width <= 10_000:
+        return _err("bad_request", message="reference.frame_width must be between 100 and 10000.")
+
+    blobs, err = await _load_reference_images(ctx, reference)
+    if err:
+        return err
+    try:
+        design = await asyncio.to_thread(lambda: vc.stitch_vertical([vc.decode_image(b) for b in blobs]))
+    except vc.CompareError as exc:
+        return _err(exc.code, message=f"The reference image: {exc.message}")
+
+    base = learner_portal_base(ctx) or _settings().learner_dashboard_url
+    width = args.get("width")
+    result = await page_preview.render_preview(
+        base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""), config=site["config"],
+        width=page_preview.FIDELITY_DEFAULT_WIDTH if width in (None, "") else width, lang=lang,
+        sections=True, section_text=True, full_image=True,
+    )
+    if result.get("error"):
+        return _err(result["error"], message=result.get("message"))
+    comps = _section_components(site["config"], page)
+    try:
+        rendered = vc.decode_image(result["full_jpeg"])
+        report = await asyncio.to_thread(
+            vc.compare_page, design, rendered,
+            page_sections=[{**b, "type": (comps.get(str(b.get("id"))) or {}).get("type")} for b in result.get("sections") or []],
+            design_sections=design_sections, design_width=frame_width,
+            design_texts=[str(t)[:300] for t in (texts or [])[:_MAX_DESIGN_TEXTS]], components=comps,
+        )
+    except vc.CompareError as exc:
+        return _err(exc.code, message=exc.message)
+    picture = report.pop("side_by_side_jpeg", None)
+    out: Dict[str, Any] = {
+        "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
+        "width": result["width"], **({"lang": lang} if lang else {}),
+        "page_height": result.get("page_height"), "truncated": bool(result.get("truncated")),
+        **report,
+        "note": "The image is the design (left) beside the page (right); boxes of one colour are a pair. Scores are "
+                "provisional. Live course lists, counts and real photos differ from a mock-up by design — judge those "
+                "sections by layout, not by text.",
+        "next": "Fix missing sections and `hints` with website_edit(update_page), then compare again (at most 3 rounds).",
         **stale_note(site),
     }
+    if picture:
+        out["image_png_base64"] = base64.b64encode(picture).decode()
+    return out
+
+
+async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any]) -> Tuple[List[bytes], Optional[Dict[str, Any]]]:
+    """The design image(s) for compare — only images this platform stores, never an arbitrary address."""
+    if reference.get("import_id") or reference.get("frame_id"):
+        return [], _err("reference_unavailable",
+                        message="Stored design-import renders are not available yet. Import the frame's image with "
+                                "website_edit(import_image) and pass its url as reference.asset_url.")
+    items = reference.get("tiles") if isinstance(reference.get("tiles"), list) else [reference]
+    if not items or len(items) > _MAX_REFERENCE_TILES:
+        return [], _err("bad_request", message=f"reference.tiles holds 1 to {_MAX_REFERENCE_TILES} images.")
+    media: Optional[List[Dict[str, Any]]] = None
+    blobs: List[bytes] = []
+    for item in items:
+        if not isinstance(item, dict):
+            return [], _err("bad_request", message="Each reference image is {asset_url} or {asset_id}.")
+        if item.get("asset_id"):
+            if media is None:
+                media = await _load_media(ctx, "any", 200)
+            match = next((m for m in media if str(m.get("file_id")) == str(item["asset_id"])), None)
+            if not match or not match.get("url"):
+                return [], _err("unknown_asset", message="That asset_id is not one of your uploaded images "
+                                                          "(website(action='list_media')).")
+            data, err = await _read_platform_image(str(match["url"]), from_media_library=True)
+        elif item.get("asset_url"):
+            data, err = await _read_platform_image(str(item["asset_url"]).strip(), from_media_library=False)
+        else:
+            return [], _err("bad_request", message="Each reference image is {asset_url} or {asset_id}; other "
+                                                   "addresses are never fetched — import the image first.")
+        if err:
+            return [], err
+        blobs.append(data)
+    return blobs, None
+
+
+async def _read_platform_image(url: str, *, from_media_library: bool) -> Tuple[bytes, Optional[Dict[str, Any]]]:
+    """Bytes of an image in OUR bucket (read through S3, no HTTP), or — only for a url the media
+    service itself returned for the caller's own file — a capped, redirect-free https download."""
+    from urllib.parse import urlparse
+    from .s3_url_utils import extract_s3_key
+    from .visual_compare import MAX_IMAGE_BYTES
+
+    st = _settings()
+    bucket = st.aws_bucket_name or getattr(st, "aws_s3_public_bucket", None)
+    key = extract_s3_key(url, str(bucket), st.cdn_public_base_url) if bucket else None
+    if key and ".." not in key:
+        try:
+            return await asyncio.to_thread(_read_s3_object, str(bucket), key, MAX_IMAGE_BYTES), None
+        except ValueError as exc:
+            return b"", _err("too_large", message=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("compare: reading %s from S3 failed: %r", key, exc)
+            return b"", _err("fetch_failed", message="The reference image could not be read.")
+    if not from_media_library:
+        return b"", _err("reference_not_allowed",
+                         message="reference.asset_url must be an image stored on this platform (a url returned by "
+                                 "website_edit(import_image) or website(list_media)). Other addresses are never fetched.")
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    own_hosts = {h for h in ((urlparse(st.cdn_public_base_url or "").hostname or ""),
+                             (urlparse(st.media_server_base_url or "").hostname or "")) if h}
+    if parsed.scheme != "https" or not (host in own_hosts or host.endswith(".amazonaws.com") or host.endswith(".cloudfront.net")):
+        return b"", _err("reference_not_allowed", message="That media file is not served from this platform's storage.")
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+            async with client.stream("GET", url, headers={"User-Agent": "VacademyCompare/1.0"}) as resp:
+                if resp.status_code != 200:
+                    return b"", _err("fetch_failed", message=f"The reference image could not be read (HTTP {resp.status_code}).")
+                chunks: List[bytes] = []
+                size = 0
+                async for chunk in resp.aiter_bytes():
+                    size += len(chunk)
+                    if size > MAX_IMAGE_BYTES:
+                        return b"", _err("too_large", message="The reference image is over 25 MB.")
+                    chunks.append(chunk)
+                return b"".join(chunks), None
+    except httpx.HTTPError as exc:
+        logger.warning("compare: media download failed: %r", exc)
+        return b"", _err("fetch_failed", message="The reference image could not be read.")
+
+
+def _read_s3_object(bucket: str, key: str, cap: int) -> bytes:
+    from .s3_service import S3Service
+    client = S3Service().s3_client
+    head = client.head_object(Bucket=bucket, Key=key)
+    if int(head.get("ContentLength") or 0) > cap:
+        raise ValueError(f"The reference image is over {cap // (1024 * 1024)} MB.")
+    body = client.get_object(Bucket=bucket, Key=key)["Body"]
+    data = body.read(cap + 1)
+    if len(data) > cap:
+        raise ValueError(f"The reference image is over {cap // (1024 * 1024)} MB.")
+    return data
 
 
 async def _action_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -598,6 +898,7 @@ _ACTIONS = {
     "find_section": _action_find_section,
     "review": _action_review,
     "preview": _action_preview,
+    "compare": _action_compare,
     "brief_checklist": _action_brief_checklist,
     "schema": _action_schema,
     "list_media": _action_list_media,

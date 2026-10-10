@@ -121,11 +121,17 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "patterns `require` (folder library, course tags, product pages, campaigns, languages) against what exists.",
             "Ask the admin ONLY the data questions (one at a time). The design already answers colours, fonts, look, "
             "logo and photos — do not ask for them.",
-            "Data the institute does not have yet (stream folders, course tags, learning-path product pages, campaigns) "
-            "is set up by the admin in the dashboard: hand over website(action='data_audit') — each item has a fix and "
-            "a dashboard link. audience_forms_edit(create) can create a missing lead campaign when the admin agrees.",
+            "Data the institute does not have yet (stream folders, course tags, learning-path product pages, campaigns): "
+            "if the catalog_data_edit tool is enabled for this connection, set it up with catalog_data_edit("
+            "create_folder_library | upsert_folder_nodes | add_course_tags | create_product_page | sync_store) once the "
+            "admin agrees — every action is a dry run first: show the admin the plan, then apply it with dry_run=false "
+            "and the plan_token the dry run returned. New folders start HIDDEN, tags are only appended, product pages are created DRAFT; showing folders and "
+            "activating product pages stay admin clicks. Otherwise the admin sets it up in the dashboard: hand over "
+            "website(action='data_audit') — each item has a fix and a dashboard link. audience_forms_edit(create) can "
+            "create a missing lead campaign when the admin agrees.",
         ],
-        "tools": ["website(data_inventory)", "website(brief_checklist, design_source)", "website(data_audit)", "audience_forms"],
+        "tools": ["website(data_inventory)", "website(brief_checklist, design_source)", "website(data_audit)", "audience_forms",
+                  "catalog_data_edit when enabled"],
     },
     {
         "step": "site_settings",
@@ -268,8 +274,10 @@ _TITLES = {
 NOT_AVAILABLE = (
     "No server-side Figma reads: read the file with your own Figma MCP.",
     "No publishing: the admin publishes the draft from the editor_url.",
-    "No writes to the institute's live catalogue data (folder libraries, course tags, product pages, invites): "
-    "website(action='data_audit') gives the admin the list with dashboard links.",
+    "No deleting, renaming, hiding or activating the institute's catalogue data (folder libraries, course tags, "
+    "product pages) and no invite or payment-gateway changes: those stay admin clicks. Without catalog_data_edit "
+    "enabled there are no catalogue data writes at all — website(action='data_audit') gives the admin the list with "
+    "dashboard links.",
 )
 
 #: The questions a design leaves open — what brief_checklist asks when a design is given.

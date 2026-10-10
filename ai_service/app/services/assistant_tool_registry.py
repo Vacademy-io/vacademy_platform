@@ -2347,9 +2347,14 @@ async def execute_tool(
     args: Optional[Dict[str, Any]],
     ctx: ToolContext,
     setting: Optional[Dict[str, Any]],
+    *,
+    in_product: bool = False,
 ) -> str:
     """
     Dispatch a tool call after re-checking the AND-gate and forcing identity.
+
+    ``in_product`` (the dashboard assistant) also refuses ``mcp_only`` tools:
+    they are never offered there, and a model naming one anyway must not run it.
 
     Returns a string tool-result in ALL cases (including denial/errors) — the
     agent loop feeds tool output back to the LLM as a string, so raising here
@@ -2373,6 +2378,14 @@ async def execute_tool(
         })
 
     spec = ASSISTANT_TOOLS[tool_name]
+    if in_product and spec.mcp_only:
+        logger.warning("Assistant denied MCP-only tool '%s' in product (institute=%s)",
+                       tool_name, ctx.principal.institute_id)
+        return json.dumps({
+            "error": "tool_not_permitted",
+            "tool": tool_name,
+            "message": "This tool is only available to AI apps connected over MCP. Do not retry.",
+        })
     ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
     # Identity is ALWAYS taken from the pinned principal, never from the model.
@@ -2408,6 +2421,7 @@ async def execute_tool(
 def _load_feature_tools() -> None:
     for module in (
         "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
+        "assistant_tools_catalog_data_edit",
         "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",

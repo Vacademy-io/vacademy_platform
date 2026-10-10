@@ -3238,7 +3238,11 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
             blockers.append({"code": "data_errors", "count": n_err,
                              "message": (f"{n_err} data problem(s) behind the site's widgets (courses, folders, "
                                          "product pages, gateways) — see checks.data_audit."),
-                             "fix": "The admin fixes these in the dashboard with the links given; the MCP does not change that data."})
+                             "fix": ("Add the missing folders, course tags and product pages with catalog_data_edit "
+                                     "(dry run first), and hand the admin the rest with the links given."
+                                     if ctx.may_use("catalog_data_edit") else
+                                     "The admin fixes these in the dashboard with the links given; this connection "
+                                     "does not change that data.")})
         if (audit.get("summary") or {}).get("warning"):
             warnings.append({"code": "data_warnings", "count": audit["summary"]["warning"],
                              "message": "Data warnings; website(action='data_audit') lists them with links."})

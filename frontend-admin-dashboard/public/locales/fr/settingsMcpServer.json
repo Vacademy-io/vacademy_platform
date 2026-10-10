@@ -55,6 +55,7 @@
             "drafts": "Brouillons uniquement",
             "additive": "Ajouts uniquement",
             "not_live": "Cours non publiés uniquement",
+            "live_additive": "Ajoute aux données en direct",
             "live": "Modifie en direct"
         },
         "preset": {

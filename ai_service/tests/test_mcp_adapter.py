@@ -45,7 +45,7 @@ def test_exposed_set_is_the_documented_one():
     # One tool per feature (with an `action` argument), so the settings tab has
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
-        "whoami", "get_institute_overview", "website", "website_edit", "design_import",
+        "whoami", "get_institute_overview", "website", "website_edit", "design_import", "catalog_data_edit",
         "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit",
@@ -134,7 +134,7 @@ def test_catalog_places_every_tool_in_an_area_with_one_view_and_risk_rated_edits
         # (edit turns view on), and a WRITE tool is never presented as a view.
         assert (c["level"] == "edit") == (c["mode"] == "WRITE"), c["key"]
         if c["level"] == "edit":
-            assert c["risk"] in ("drafts", "additive", "not_live", "live") and c["sub_label"]
+            assert c["risk"] in ("drafts", "additive", "not_live", "live_additive", "live") and c["sub_label"]
     for area in {c["area"] for c in catalog}:
         assert sum(1 for c in catalog if c["area"] == area and c["level"] == "view") == 1, area
     invites = next(c for c in catalog if c["key"] == "course_invite_edits")

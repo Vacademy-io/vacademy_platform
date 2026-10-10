@@ -60,6 +60,15 @@ export function areaLevel(area: McpToolArea, enabled: string[]): McpAccessLevel 
     return 'off';
 }
 
+/** Risks the Edit level never switches on by itself: the admin opts in to each one. */
+const OPT_IN_RISKS: ReadonlySet<McpToolRisk> = new Set<McpToolRisk>(['live_additive']);
+
+/** The edits the Edit level turns on: all but the opt-in ones (all of them when nothing else is left). */
+export function autoEditKeys(area: McpToolArea): string[] {
+    const auto = area.edits.filter((t) => !(t.risk && OPT_IN_RISKS.has(t.risk)));
+    return (auto.length ? auto : area.edits).map((t) => t.key);
+}
+
 export function withAreaLevel(
     area: McpToolArea,
     level: McpAccessLevel,
@@ -73,8 +82,9 @@ export function withAreaLevel(
     } else {
         if (area.view) next.add(area.view.key);
         if (level === 'view') editKeys.forEach((k) => next.delete(k));
-        // Moving up to Edit turns every edit on; the admin narrows it in the row's details.
-        else if (!editKeys.some((k) => enabled.includes(k))) editKeys.forEach((k) => next.add(k));
+        // Moving up to Edit turns the area's edits on; the admin narrows it in the row's details.
+        // Edits that write live data (live_additive) stay off until switched on one by one.
+        else if (!editKeys.some((k) => enabled.includes(k))) autoEditKeys(area).forEach((k) => next.add(k));
     }
     return Array.from(next);
 }
@@ -92,6 +102,7 @@ const RISK_STATUS: Record<McpToolRisk, 'INFO' | 'WARNING'> = {
     drafts: 'INFO',
     additive: 'INFO',
     not_live: 'INFO',
+    live_additive: 'WARNING',
     live: 'WARNING',
 };
 
@@ -145,7 +156,8 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
     const level = area.alwaysOn ? 'view' : areaLevel(area, enabled);
     const levels: McpAccessLevel[] = area.edits.length ? ['off', 'view', 'edit'] : ['off', 'view'];
     const liveEditOn = area.edits.some(
-        (tool) => tool.risk === 'live' && enabled.includes(tool.key)
+        (tool) =>
+            (tool.risk === 'live' || tool.risk === 'live_additive') && enabled.includes(tool.key)
     );
 
     const toggleEdit = (key: string, on: boolean) => {

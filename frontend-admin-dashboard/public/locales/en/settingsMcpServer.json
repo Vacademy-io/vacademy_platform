@@ -55,6 +55,7 @@
             "drafts": "Drafts only",
             "additive": "Adds only",
             "not_live": "Not-live courses only",
+            "live_additive": "Adds to live data",
             "live": "Changes live"
         },
         "preset": {

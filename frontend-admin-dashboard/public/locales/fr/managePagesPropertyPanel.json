@@ -70,7 +70,8 @@
       "motion": "Mouvement",
       "backToTopButton": "Bouton retour en haut",
       "mode": "Mode",
-      "compactness": "Compacité"
+      "compactness": "Compacité",
+      "ownPaletteNote": "Ce site utilise sa propre palette : ces préréglages n’y changent rien."
     },
     "fonts": {
       "heading": "Typographie",
@@ -265,7 +266,8 @@
     "minimal": "Minimal",
     "slow": "Lent",
     "warn": "Avertissement",
-    "resource": "Ressource"
+    "resource": "Ressource",
+    "customValue": "Personnalisé : {{value}}"
   },
   "componentTypes": {
     "heroSection": "Section héros",
@@ -371,7 +373,10 @@
     "imageFitHint": "Utilisez « Adapter l'image entière » lorsque les couvertures sont de larges bannières avec du texte près des bords.",
     "defaultSort": "Tri par défaut",
     "defaultSortHint": "Comment les cours sont triés à l'ouverture de la page. Les apprenants peuvent toujours le modifier. Choisissez « Prix : croissant » pour afficher d'abord les cours gratuits.",
-    "advancedComingSoon": "La configuration avancée des filtres et du panier arrive bientôt."
+    "titleWithHero": "Titre supplémentaire au-dessus des onglets (généralement vide)",
+    "titleWithHeroHint": "Le titre de page vu par les visiteurs vient de l'en-tête de page (hero) de cette section. Un texte ici ajoute un second titre.",
+    "legacyFiltersSummary": "Autres filtres issus des données des cours (non utilisés par ce design)",
+    "legacyFiltersHint": "La barre latérale de cette page a ses propres groupes de filtres. En cocher un ajoute un groupe supplémentaire après eux."
   },
   "buyRent": {
     "heading": "Paramètres Acheter/Louer",
@@ -398,7 +403,7 @@
     "backgroundColor": "Couleur de fond",
     "textColor": "Couleur du texte",
     "navigationLinks": "Liens de navigation",
-    "syncPagesTitle": "Générer automatiquement à partir des pages publiées",
+    "syncPagesTitle": "Ajoutez et ordonnez vos pages publiées. Les méga-menus, liens externes et liens masqués restent tels quels.",
     "syncPages": "Synchroniser les pages",
     "labelPlaceholder": "Libellé",
     "route": "Route",
@@ -434,7 +439,9 @@
     "sectionTitlePlaceholder": "ex. Liens rapides",
     "links": "Liens",
     "bottomNote": "Note de bas de page",
-    "bottomNotePlaceholder": "© 2025 Votre entreprise. Tous droits réservés."
+    "bottomNotePlaceholder": "© 2025 Votre entreprise. Tous droits réservés.",
+    "column5": "Colonne 5",
+    "brandDesignNote": "Ce pied de page a son propre design : il affiche toujours quatre colonnes de liens, et la mise en page et les préréglages ne s’appliquent pas."
   },
   "hero": {
     "heading": "Paramètres de la section héros",
@@ -481,7 +488,8 @@
     "posterField": "Affiche (vidéo téléversée uniquement)",
     "carouselImages": "Images du carrousel",
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
-    "slideN": "Diapositive {{n}}"
+    "slideN": "Diapositive {{n}}",
+    "eyebrowStyleRule": "Filet (trait avant le texte)"
   },
   "bookDetails": {
     "heading": "Paramètres des détails du livre",
@@ -922,7 +930,8 @@
     "numberLabelPlaceholder": "Numéro/libellé de l'étape",
     "metaPlaceholder": "Méta (ex. Semaines 1-4)",
     "chipsPlaceholder": "Puces (séparées par des virgules)",
-    "highlightThisStep": "Mettre en valeur cette étape"
+    "highlightThisStep": "Mettre en valeur cette étape",
+    "variantCards": "Cartes"
   },
   "documentViewer": {
     "heading": "Paramètres de la visionneuse de document",
@@ -977,5 +986,20 @@
     "gateHeading": "Demander les coordonnées avant la lecture",
     "gateTitlePlaceholder": "Titre du formulaire (ex. Lisez nos articles gratuits)",
     "gateHint": "Choisissez une liste : chaque article ne s'ouvre qu'après un premier remplissage du formulaire. Avec la même liste sur les cartes ressources, un seul formulaire débloque les deux."
+  },
+  "sectionJson": {
+    "button": "Modifier en JSON",
+    "buttonHint": "Modifier les paramètres de cette section en JSON, y compris les valeurs sans champ",
+    "title": "Modifier cette section en JSON",
+    "hint": "Uniquement les paramètres de cette section. Appliquer les remplace en une fois ; Annuler restaure les anciens.",
+    "apply": "Appliquer",
+    "notObject": "Les paramètres doivent être un objet JSON : { … }.",
+    "errorAt": "JSON invalide à la ligne {{line}}, colonne {{column}} : {{message}}",
+    "invalid": "JSON invalide : {{message}}",
+    "baseLanguageOnly": "Passez à la langue principale pour modifier le JSON"
+  },
+  "sectionVersion": {
+    "keptTitle": "Nouvelle version appliquée",
+    "keptSettings": "Paramètres conservés que cette version n'incluait pas : {{keys}}. Annulez pour revenir en arrière."
   }
 }

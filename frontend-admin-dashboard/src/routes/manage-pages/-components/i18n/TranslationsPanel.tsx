@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowCounterClockwise,
     CircleNotch,
@@ -24,11 +26,12 @@ import { baseLocaleOf, localesOf, type TranslationDictionary } from '../../-util
 import { languageName } from '../../-hooks/use-localized-editing';
 import {
     batchForTranslation,
-    collectSiteStrings,
+    collectSiteStringEntries,
     isKeptAsBase,
     keepAsBase,
     mergeAiTranslations,
     setTranslation,
+    type SiteStringLocation,
 } from './site-strings';
 import {
     dedupeLiveTexts,
@@ -38,12 +41,31 @@ import {
     type LiveTextGroup,
 } from './translation-sources';
 
-type Tab = 'site' | 'live';
+type Tab = 'site' | 'live' | 'other';
 
 interface Row {
     source: string;
     group?: LiveTextGroup;
+    /** Where a page text is shown (page › section › field). */
+    location?: SiteStringLocation;
 }
+
+/** 'Home › Course Catalog › render › card › ctaLabels › paid', in the builder's language. */
+const locationLabel = (location: SiteStringLocation, t: TFunction): string => {
+    const area = {
+        header: t('location.header', { defaultValue: 'Header' }),
+        footer: t('location.footer', { defaultValue: 'Footer' }),
+        pageTitle: t('location.pageTitle', { defaultValue: 'Page title' }),
+        seo: t('location.seo', { defaultValue: 'Search engines (SEO)' }),
+        settings: t('location.settings', { defaultValue: 'Site settings' }),
+        page: undefined,
+    }[location.area];
+    const parts =
+        location.area === 'header' || location.area === 'footer' || location.area === 'settings'
+            ? [area, location.field]
+            : [location.page, area, location.section, location.field];
+    return parts.filter(Boolean).join(' › ');
+};
 
 interface AiRun {
     running: boolean;
@@ -141,10 +163,13 @@ export const TranslationsPanel = ({
         []
     );
 
+    const { t } = useTranslation('managePagesTranslationsPanel');
     const dict = i18n?.strings?.[locale];
-    const siteStrings = useMemo(() => collectSiteStrings(config), [config]);
+    const siteEntries = useMemo(() => collectSiteStringEntries(config), [config]);
+    const siteStrings = useMemo(() => siteEntries.map((e) => e.text), [siteEntries]);
 
-    const liveEnabled = open && tab === 'live' && !!instituteId;
+    // "Other entries" needs the live texts too: it lists what neither tab has.
+    const liveEnabled = open && tab !== 'site' && !!instituteId;
     const courses = useQuery({
         queryKey: ['siteTranslations', 'courses', instituteId],
         queryFn: () => fetchCourseTexts(instituteId!),
@@ -164,7 +189,10 @@ export const TranslationsPanel = ({
         staleTime: 5 * 60 * 1000,
     });
 
-    const siteRows: Row[] = useMemo(() => siteStrings.map((source) => ({ source })), [siteStrings]);
+    const siteRows: Row[] = useMemo(
+        () => siteEntries.map((e) => ({ source: e.text, location: e.location })),
+        [siteEntries]
+    );
     const liveRows: Row[] = useMemo(() => {
         const inSite = new Set(siteStrings);
         return dedupeLiveTexts([
@@ -173,16 +201,26 @@ export const TranslationsPanel = ({
             ...(productPages.data || []),
         ]).filter((t) => !inSite.has(t.source));
     }, [siteStrings, courses.data, folders.data, productPages.data]);
+    // Dictionary entries no tab lists: text added by hand, or left behind
+    // after its page text changed. Kept editable, and Clear deletes them.
+    const otherRows: Row[] = useMemo(() => {
+        const listed = new Set([...siteStrings, ...liveRows.map((r) => r.source)]);
+        return Object.keys(dict || {})
+            .filter((source) => !listed.has(source))
+            .map((source) => ({ source }));
+    }, [dict, siteStrings, liveRows]);
     const liveLoading = courses.isLoading || folders.isLoading || productPages.isLoading;
     const liveErrors = [courses, folders, productPages].filter((q) => q.isError);
 
-    const rows = tab === 'site' ? siteRows : liveRows;
+    const rows = tab === 'site' ? siteRows : tab === 'live' ? liveRows : otherRows;
     const isMissing = (source: string) => !dict || !dict[source];
     const missingCount = rows.filter((r) => isMissing(r.source)).length;
+    // Every other entry is in the dictionary already: nothing to filter by.
+    const filterMissing = missingOnly && tab !== 'other';
     const query = search.trim().toLowerCase();
     const shown = rows.filter(
         (r) =>
-            (!missingOnly || isMissing(r.source)) &&
+            (!filterMissing || isMissing(r.source)) &&
             (!query ||
                 r.source.toLowerCase().includes(query) ||
                 (dict?.[r.source] || '').toLowerCase().includes(query))
@@ -353,18 +391,23 @@ export const TranslationsPanel = ({
                             <TabsList>
                                 <TabsTrigger value="site">Page texts</TabsTrigger>
                                 <TabsTrigger value="live">Courses, folders &amp; pages</TabsTrigger>
+                                <TabsTrigger value="other">
+                                    {t('tabs.other', { defaultValue: 'Other entries' })}
+                                </TabsTrigger>
                             </TabsList>
                         </Tabs>
-                        <div className="flex items-center gap-2">
-                            <Switch
-                                id="translations-missing-only"
-                                checked={missingOnly}
-                                onCheckedChange={setMissingOnly}
-                            />
-                            <Label htmlFor="translations-missing-only" className="text-sm">
-                                Missing only
-                            </Label>
-                        </div>
+                        {tab !== 'other' && (
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="translations-missing-only"
+                                    checked={missingOnly}
+                                    onCheckedChange={setMissingOnly}
+                                />
+                                <Label htmlFor="translations-missing-only" className="text-sm">
+                                    Missing only
+                                </Label>
+                            </div>
+                        )}
                         <div className="relative min-w-48 flex-1">
                             <MagnifyingGlass className="pointer-events-none absolute start-2 top-2.5 size-4 text-gray-400" />
                             <Input
@@ -383,6 +426,15 @@ export const TranslationsPanel = ({
                         {missingCount > 0 ? ` · ${missingCount} missing` : ''}
                     </p>
 
+                    {tab === 'other' && (
+                        <p className="text-caption text-gray-500">
+                            {t('other.hint', {
+                                defaultValue:
+                                    'Translations no page text or course uses any more, or added by hand. Edit them here, or Clear to delete them.',
+                            })}
+                        </p>
+                    )}
+
                     {run && !run.running && (
                         <RunSummary
                             run={run}
@@ -392,7 +444,7 @@ export const TranslationsPanel = ({
                         />
                     )}
 
-                    {tab === 'live' && liveLoading ? (
+                    {tab !== 'site' && liveLoading ? (
                         <p className="flex items-center gap-2 text-sm text-gray-500">
                             <CircleNotch className="size-4 animate-spin" /> Loading courses, folders
                             and product pages…
@@ -416,8 +468,13 @@ export const TranslationsPanel = ({
                                     {rows.length === 0
                                         ? tab === 'site'
                                             ? 'No page texts yet.'
-                                            : 'No courses, folders or product pages found.'
-                                        : missingOnly && !query
+                                            : tab === 'live'
+                                              ? 'No courses, folders or product pages found.'
+                                              : t('other.empty', {
+                                                    defaultValue:
+                                                        'Every translation belongs to a page text, course, folder or page.',
+                                                })
+                                        : filterMissing && !query
                                           ? 'Everything here is translated.'
                                           : 'No texts match.'}
                                 </p>
@@ -427,6 +484,11 @@ export const TranslationsPanel = ({
                                         <TranslationRow
                                             key={`${locale}:${row.source}`}
                                             row={row}
+                                            location={
+                                                row.location
+                                                    ? locationLabel(row.location, t)
+                                                    : undefined
+                                            }
                                             locale={locale}
                                             baseLocale={base}
                                             baseName={baseName}
@@ -519,6 +581,7 @@ const RunSummary = ({
 
 const TranslationRow = ({
     row,
+    location,
     locale,
     baseLocale,
     baseName,
@@ -526,6 +589,7 @@ const TranslationRow = ({
     kept,
 }: {
     row: Row;
+    location?: string;
     locale: string;
     baseLocale: string;
     baseName: string;
@@ -594,6 +658,11 @@ const TranslationRow = ({
                     <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm text-gray-800">
                         {row.source}
                     </p>
+                    {location && (
+                        <p className="line-clamp-1 break-all text-caption text-gray-400">
+                            {location}
+                        </p>
+                    )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                     {kept ? (

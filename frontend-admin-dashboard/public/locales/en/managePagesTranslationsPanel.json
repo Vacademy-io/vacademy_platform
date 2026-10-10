@@ -1,0 +1,16 @@
+{
+    "tabs": {
+        "other": "Other entries"
+    },
+    "other": {
+        "hint": "Translations no page text or course uses any more, or added by hand. Edit them here, or Clear to delete them.",
+        "empty": "Every translation belongs to a page text, course, folder or page."
+    },
+    "location": {
+        "header": "Header",
+        "footer": "Footer",
+        "pageTitle": "Page title",
+        "seo": "Search engines (SEO)",
+        "settings": "Site settings"
+    }
+}

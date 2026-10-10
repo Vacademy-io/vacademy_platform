@@ -1224,3 +1224,115 @@ describe('refused edits rebuild the property panel', () => {
         expect(useLocalizedEditNotice.getState().refusals).toBe(1);
     });
 });
+
+/* ── a course grid's card texts and format labels in हिन्दी ─────────── */
+
+describe('decideLocalizedEdit — card texts under render and format-keyed labels', () => {
+    const HI_CARDS = {
+        ...HI,
+        'View course': 'पाठ्यक्रम देखें',
+        'Load more': 'और देखें',
+        Video: 'वीडियो',
+        Animation: 'एनिमेशन',
+    };
+    const catalogConfig = () => {
+        const config = makeConfig();
+        config.globalSettings.i18n!.strings = { hi: { ...HI_CARDS } };
+        config.pages[0]!.components.push({
+            id: 'cat',
+            type: 'courseCatalog',
+            enabled: true,
+            props: {
+                title: 'Courses',
+                render: {
+                    layout: 'grid',
+                    cardStyle: 'editorial',
+                    card: {
+                        ctaLabels: { paid: 'View course' },
+                        freeCtaByFormat: { video: 'watch' },
+                        descriptions: { 'pkg-1': 'The Vedic science of conception.' },
+                    },
+                    pagination: { mode: 'loadMore', pageSize: 9, loadMoreLabel: 'Load more' },
+                },
+            },
+        } as never);
+        config.pages[0]!.components.push({
+            id: 'path',
+            type: 'learningPath',
+            enabled: true,
+            props: { formatLabels: { video: 'Video', animation: 'Animation' } },
+        } as never);
+        return config;
+    };
+    const setup = (index: number) => {
+        const config = catalogConfig();
+        return {
+            base: config.pages[0]!.components[index]!.props,
+            view: buildLocalizedView(config, 'hi')!.pages[0]!.components[index]!.props,
+            reverse: reverseDictionary(HI_CARDS),
+        };
+    };
+
+    it('the हिन्दी view shows the card texts in हिन्दी and leaves the settings alone', () => {
+        const { base, view } = setup(2);
+        expect(view.render.card.ctaLabels.paid).toBe('पाठ्यक्रम देखें');
+        expect(view.render.pagination.loadMoreLabel).toBe('और देखें');
+        expect(view.render.card.freeCtaByFormat).toBe(base.render.card.freeCtaByFormat);
+        expect(base.render.card.ctaLabels.paid).toBe('View course');
+    });
+
+    it('a card text typed in हिन्दी is saved as its translation; the English base is unchanged', () => {
+        const { base, view, reverse } = setup(2);
+        const render = {
+            ...view.render,
+            card: { ...view.render.card, ctaLabels: { paid: 'कोर्स देखें' } },
+        };
+        const d = decideLocalizedEdit(base, view, { ...view, render }, reverse);
+        expect(d).toEqual({
+            kind: 'commit',
+            base,
+            translations: { 'View course': 'कोर्स देखें' },
+        });
+    });
+
+    it('a card setting changed in हिन्दी is shared, and the English card texts stay', () => {
+        const { base, view, reverse } = setup(2);
+        const render = { ...view.render, pagination: { ...view.render.pagination, pageSize: 12 } };
+        const d = decideLocalizedEdit(base, view, { ...view, render }, reverse);
+        if (d.kind !== 'commit') throw new Error(d.kind);
+        expect(d.translations).toEqual({});
+        expect(d.base.render.pagination).toEqual({
+            mode: 'loadMore',
+            pageSize: 12,
+            loadMoreLabel: 'Load more',
+        });
+        expect(d.base.render.card.ctaLabels.paid).toBe('View course');
+    });
+
+    it('a card description typed in हिन्दी where English has none is refused', () => {
+        const { base, view, reverse } = setup(2);
+        const card = {
+            ...view.render.card,
+            descriptions: { ...view.render.card.descriptions, 'pkg-2': 'नया विवरण' },
+        };
+        const d = decideLocalizedEdit(
+            base,
+            view,
+            { ...view, render: { ...view.render, card } },
+            reverse
+        );
+        expect(d).toEqual({ kind: 'blocked', reason: 'emptySource' });
+    });
+
+    it("format labels keyed 'video' and 'animation' are translated like any text", () => {
+        const { base, view, reverse } = setup(3);
+        expect(view.formatLabels).toEqual({ video: 'वीडियो', animation: 'एनिमेशन' });
+        const d = decideLocalizedEdit(
+            base,
+            view,
+            { ...view, formatLabels: { ...view.formatLabels, animation: 'लघु फ़िल्म' } },
+            reverse
+        );
+        expect(d).toEqual({ kind: 'commit', base, translations: { Animation: 'लघु फ़िल्म' } });
+    });
+});

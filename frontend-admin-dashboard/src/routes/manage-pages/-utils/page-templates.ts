@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { TFunction } from 'i18next';
 import { Page, Component } from '../-types/editor-types';
 import { buildComponentTemplates } from './component-templates';
+import { buildDesignRecipeTemplates } from './design-pattern-presets';
 
 // Helper to create a component from a template with a fresh ID
 const makeComponent = (t: TFunction, type: string, overrides?: Partial<Component>): Component => {
@@ -25,6 +26,11 @@ export interface PageTemplate {
     description: string;
     category: 'page' | 'section';
     getComponents: (t: TFunction) => Component[];
+    /**
+     * Site-chrome templates: the globalSettings.layout (header / footer) they produce
+     * from the current one. The page's own components are left alone.
+     */
+    applyLayout?: (layout: Record<string, any> | undefined, t: TFunction) => Record<string, any>;
 }
 
 export const PAGE_TEMPLATES: PageTemplate[] = [
@@ -347,6 +353,10 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
             makeComponent(t, 'statsHighlights'),
         ],
     },
+    // ── Design recipes (generated from the learner's design-pattern registry) ──
+    // "Editorial catalogue", "Learning paths", "Brand chrome": the opt-in looks the
+    // Brahm Varchas site was built from, with every id left for the admin to pick.
+    ...buildDesignRecipeTemplates(),
 ];
 
 /** Apply a template to a page: replaces all components */

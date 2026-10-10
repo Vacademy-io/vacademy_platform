@@ -211,7 +211,8 @@ async def test_patterns_without_filter_is_an_index():
     out = await run({"action": "patterns"})
     assert out["action"] == "patterns"
     assert out["count"] == len(out["patterns"]) >= 30
-    assert all(set(p) == {"id", "component", "looks_like"} for p in out["patterns"])
+    # The index stays compact: the registry's short label, no JSON.
+    assert all(set(p) == {"id", "label", "component", "looks_like"} for p in out["patterns"])
     assert {r["id"] for r in out["recipes"]} >= {"editorial-catalogue", "learning-paths", "brand-chrome"}
     assert "placeholder" in out["rules"]
 

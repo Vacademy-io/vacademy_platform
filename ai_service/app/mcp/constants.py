@@ -50,7 +50,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #: admin publishes from the dashboard, or it only ADDS records. Live edits that
 #: change or remove existing data (learner edits, announcements) stay off.
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
-    "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
+    "website_edit": (
+        "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
+        "(checks + diff vs live + editor link) — publishing is an admin click"
+    ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
         "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "

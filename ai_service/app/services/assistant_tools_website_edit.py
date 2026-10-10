@@ -27,6 +27,8 @@ Actions
     set_seo           meta title / description of a page
     import_image      bring a public https image into the media library
     discard_draft     drop the draft, back to what is published
+    request_publish   is the draft ready? publish checks + data audit + review + diff vs live +
+                      stale-draft verdict + editor link — READ-ONLY, it never publishes
 
 Validation is the AI website builder's own (``sanitize_component``,
 ``_sanitize_page``, ``_sanitize_ops``, ``page_audit``) — the deterministic half
@@ -78,7 +80,7 @@ WEBSITE_EDIT_GROUP_KEY = "website_builder_edits"
 WEBSITE_EDIT_ACTIONS = (
     "create_page", "create_site", "add_html_page", "update_page", "set_layout", "add_section", "set_theme",
     "set_site_settings", "set_courses", "link_lead_form", "set_seo", "import_image", "discard_draft",
-    "set_catalog_settings", "set_translations", "bind_data",
+    "set_catalog_settings", "set_translations", "bind_data", "request_publish",
 )
 
 THEME_PRESETS = ("default", "ocean", "forest", "sunset", "midnight", "rose", "violet", "amber", "slate")
@@ -352,6 +354,10 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "7 days — import them in the same session. SVGs are sanitised. Images on pages must come from "
             "list_media or import_image — never invent URLs.\n"
             "- discard_draft (tag_name): throw the draft away — the undo for everything above.\n"
+            "- request_publish (tag_name, library_id?): the hand-over check when you think the draft is done. "
+            "Runs the pre-publish checks, the data audit and the review (fidelity mode for pages from a design) "
+            "and returns ready + blockers, what publishing would change on the live site (diff_vs_live), a "
+            "stale-draft verdict and editor_url. It NEVER publishes: the admin presses Publish in the editor.\n"
             "Every result carries editor_url: tell the admin to review and publish there."
         ),
         "parameters": {
@@ -406,7 +412,7 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "data_id": {"type": "string", "description": "bind_data: the library id, folder id or product page CODE (from website(action='context'))."},
                 "nav_index": {"type": "integer", "description": "bind_data on the header: which navigation item (0-based) becomes the mega menu."},
                 "path": {"type": "string", "description": "bind_data: an explicit prop path for the id inside an object the section already has, e.g. columnSections[1].productPageCode."},
-                "library_id": {"type": "string", "description": "bind_data data_kind=folder: the folder's library when the section has none yet."},
+                "library_id": {"type": "string", "description": "bind_data data_kind=folder: the folder's library when the section has none yet. request_publish: the library the data audit checks folders in."},
             },
             "required": ["action"],
         },
@@ -2863,6 +2869,326 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
                    section=summarize_component(comp), **({"side_effects": changes} if changes else {}))
 
 
+# ── request_publish (readiness only — never publishes) ───────────────────
+_DIFF_CAP = 20
+
+
+def _canon(value: Any) -> str:
+    """JSON tree identity (key order and formatting do not count), like admin-core's sameJson."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _section_key(comp: Dict[str, Any], index: int) -> str:
+    return str(comp.get("id") or "") or f"#{index}:{comp.get('type')}"
+
+
+def _section_ref(comp: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": comp.get("id"), "type": comp.get("type"), "label": component_label(comp.get("type"))}
+
+
+def _diff_sections(live: List[Any], draft: List[Any]) -> Dict[str, Any]:
+    lc = {_section_key(c, i): c for i, c in enumerate(live or []) if isinstance(c, dict)}
+    dc = {_section_key(c, i): c for i, c in enumerate(draft or []) if isinstance(c, dict)}
+    out: Dict[str, Any] = {
+        "added": [_section_ref(c) for k, c in dc.items() if k not in lc][:_DIFF_CAP],
+        "removed": [_section_ref(c) for k, c in lc.items() if k not in dc][:_DIFF_CAP],
+        "changed": [_section_ref(c) for k, c in dc.items() if k in lc and _canon(c) != _canon(lc[k])][:_DIFF_CAP],
+    }
+    common_live = [k for k in lc if k in dc]
+    common_draft = [k for k in dc if k in lc]
+    if common_live != common_draft:
+        out["reordered"] = True
+    return {k: v for k, v in out.items() if v}
+
+
+def _match_pages(live: List[Dict[str, Any]], draft: List[Dict[str, Any]]):
+    """Pairs (live, draft) by page id, then by route; unmatched ones are added / removed."""
+    pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    left = list(live)
+    unmatched: List[Dict[str, Any]] = []
+    for d in draft:
+        m = next((l for l in left if d.get("id") and l.get("id") == d.get("id")), None)
+        if m is None:
+            unmatched.append(d)
+        else:
+            left.remove(m)
+            pairs.append((m, d))
+    added: List[Dict[str, Any]] = []
+    for d in unmatched:
+        m = next((l for l in left if str(l.get("route") or "") == str(d.get("route") or "")), None)
+        if m is None:
+            added.append(d)
+        else:
+            left.remove(m)
+            pairs.append((m, d))
+    return pairs, added, left
+
+
+def _diff_global_settings(gl: Dict[str, Any], gd: Dict[str, Any]) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
+    settings: List[str] = []
+    for key in sorted(set(gl) | set(gd)):
+        if key in ("layout", "i18n") or _canon(gl.get(key)) == _canon(gd.get(key)):
+            continue
+        a, b = gl.get(key), gd.get(key)
+        if isinstance(a, dict) and isinstance(b, dict):
+            settings.extend(f"{key}.{k}" for k in sorted(set(a) | set(b)) if _canon(a.get(k)) != _canon(b.get(k)))
+        else:
+            settings.append(key)
+    layout: Dict[str, str] = {}
+    ll = gl.get("layout") if isinstance(gl.get("layout"), dict) else {}
+    ld = gd.get("layout") if isinstance(gd.get("layout"), dict) else {}
+    for key in sorted(set(ll) | set(ld)):
+        a, b = ll.get(key), ld.get(key)
+        if _canon(a) != _canon(b):
+            layout[key] = "added" if not a else ("removed" if not b else "changed")
+    translations: Dict[str, Any] = {}
+    il = gl.get("i18n") if isinstance(gl.get("i18n"), dict) else {}
+    idr = gd.get("i18n") if isinstance(gd.get("i18n"), dict) else {}
+    sl = il.get("strings") if isinstance(il.get("strings"), dict) else {}
+    sd = idr.get("strings") if isinstance(idr.get("strings"), dict) else {}
+    for loc in sorted(set(sl) | set(sd)):
+        a = sl.get(loc) if isinstance(sl.get(loc), dict) else {}
+        b = sd.get(loc) if isinstance(sd.get(loc), dict) else {}
+        counts = {"added": sum(1 for k in b if k not in a), "removed": sum(1 for k in a if k not in b),
+                  "changed": sum(1 for k in b if k in a and a[k] != b[k])}
+        if any(counts.values()):
+            translations[loc] = {k: v for k, v in counts.items() if v}
+    settings.extend(f"i18n.{k}" for k in sorted(set(il) | set(idr)) if k != "strings" and _canon(il.get(k)) != _canon(idr.get(k)))
+    return settings, layout, translations
+
+
+def diff_site_configs(live: Optional[Dict[str, Any]], draft: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    What publishing ``draft`` changes on the live site, by page / section id
+    and setting key — structure only, no copy. ``live`` None = nothing
+    readable is live, so the whole draft is new.
+    """
+    if live is None:
+        routes = [str(p.get("route") or "") for p in draft.get("pages") or [] if isinstance(p, dict)]
+        return {"changed": True, "live_unreadable": True, "pages": {"added": routes[:_DIFF_CAP]},
+                "summary": [f"The live version could not be read; the draft has {len(routes)} page(s)."]}
+    if _canon(live) == _canon(draft):
+        return {"changed": False, "summary": ["The draft is the same as the live site."]}
+    lp = [p for p in live.get("pages") or [] if isinstance(p, dict)]
+    dp = [p for p in draft.get("pages") or [] if isinstance(p, dict)]
+    pairs, added, removed = _match_pages(lp, dp)
+    summary: List[str] = []
+    changed_pages: List[Dict[str, Any]] = []
+    for lpage, dpage in pairs:
+        if _canon(lpage) == _canon(dpage):
+            continue
+        entry: Dict[str, Any] = {"route": dpage.get("route")}
+        if str(lpage.get("route") or "") != str(dpage.get("route") or ""):
+            entry["renamed_from"] = lpage.get("route")
+        fields = [k for k in sorted(set(lpage) | set(dpage)) if k not in ("components", "id", "route")
+                  and _canon(lpage.get(k)) != _canon(dpage.get(k))]
+        if fields:
+            entry["page_fields"] = fields
+        sections = _diff_sections(lpage.get("components") or [], dpage.get("components") or [])
+        if sections:
+            entry["sections"] = sections
+        changed_pages.append(entry)
+        parts = [f"{len(sections[k])} section(s) {k}" for k in ("added", "removed", "changed") if sections.get(k)]
+        parts += ["sections reordered"] if sections.get("reordered") else []
+        parts += [f"{', '.join(fields)} changed"] if fields else []
+        parts += [f"renamed from '{entry['renamed_from']}'"] if "renamed_from" in entry else []
+        summary.append(f"Page '{dpage.get('route')}': " + ("; ".join(parts) or "changed") + ".")
+    if added:
+        summary.append("New page(s): " + ", ".join(f"'{p.get('route')}'" for p in added[:_DIFF_CAP]) + ".")
+    if removed:
+        summary.append("Removed page(s): " + ", ".join(f"'{p.get('route')}'" for p in removed[:_DIFF_CAP]) + ".")
+    live_of = {id(d): l for l, d in pairs}
+    paired_live = {id(l) for l, _ in pairs}
+    reordered = [id(l) for l in lp if id(l) in paired_live] != [id(live_of[id(d)]) for d in dp if id(d) in live_of]
+    if reordered:
+        summary.append("Page order changed.")
+    gl = live.get("globalSettings") if isinstance(live.get("globalSettings"), dict) else {}
+    gd = draft.get("globalSettings") if isinstance(draft.get("globalSettings"), dict) else {}
+    settings, layout, translations = _diff_global_settings(gl, gd)
+    if settings:
+        summary.append("Site settings: " + ", ".join(settings[:_DIFF_CAP]) + ".")
+    for part, what in layout.items():
+        summary.append(f"Site {part} {what}.")
+    for loc, counts in translations.items():
+        summary.append(f"Translations ({loc}): " + ", ".join(f"{n} {k}" for k, n in counts.items()) + ".")
+    other = [k for k in sorted(set(live) | set(draft)) if k not in ("pages", "globalSettings")
+             and _canon(live.get(k)) != _canon(draft.get(k))]
+    if other:
+        summary.append("Other: " + ", ".join(other) + ".")
+    out: Dict[str, Any] = {
+        "changed": True,
+        "pages": {k: v for k, v in {
+            "added": [p.get("route") for p in added][:_DIFF_CAP],
+            "removed": [p.get("route") for p in removed][:_DIFF_CAP],
+            "changed": changed_pages[:_DIFF_CAP],
+            "reordered": reordered,
+        }.items() if v},
+        "settings": settings[:40], "layout": layout, "translations": translations, "other": other,
+        "summary": summary[:_DIFF_CAP + 8],
+    }
+    return {k: v for k, v in out.items() if v not in ([], {}, None)}
+
+
+#: What request_publish never does, said in every result so no caller reads "ready" as "live".
+REQUEST_PUBLISH_NOTE = ("request_publish only checks the draft; it never publishes. The admin publishes by opening "
+                        "editor_url and pressing Publish. Never tell the admin the site is live.")
+
+
+def _publish_check_summary(issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+    errors = [{k: v for k, v in i.items() if k != "page_id"} for i in issues if i.get("severity") == "error"]
+    return {"errors": errors[:10], "error_count": len(errors),
+            "warning_count": sum(1 for i in issues if i.get("severity") == "warning")}
+
+
+def _data_audit_summary(result: Dict[str, Any]) -> Dict[str, Any]:
+    issues = [i for i in result.get("issues") or [] if isinstance(i, dict)]
+    errors = [i for i in issues if i.get("severity") == "error"]
+    return {k: v for k, v in {
+        "summary": result.get("summary"),
+        "errors": errors[:10],
+        "warning_checks": sorted({str(i.get("check")) for i in issues if i.get("severity") == "warning"}),
+        "truncated": result.get("truncated"),
+    }.items() if v not in (None, [], {})}
+
+
+async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    """
+    Readiness of the site's draft for the admin to publish: the dashboard's
+    publish checks, the data audit, the review (each page in the mode it was
+    built in — fidelity for a page from a design), what publishing changes on
+    the live site, and the stale-draft verdict admin-core reports. Reads only:
+    nothing here saves, publishes or discards anything.
+    """
+    from .assistant_tools_website import review_pages, site_data_audit
+    site, err = await load_site(ctx, args.get("tag_name"), with_live=True)
+    if err:
+        return {**err, "action": "request_publish"}
+    tag = site["tag_name"]
+    editor = site_editor_url(tag, ctx=ctx)
+    revisions = {k: v for k, v in (site.get("revisions") or {}).items() if v is not None}
+    stale_flag = revisions.pop("live_changed_since_draft", None)
+    out: Dict[str, Any] = {"tag_name": tag, "ready": False, "editor_url": editor, "live_url": site_url(ctx, tag),
+                           "site_status": site.get("status"), **revisions}
+    if out["live_url"] is None:
+        out["live_url_note"] = NO_PORTAL_DOMAIN_NOTE
+    if str(site.get("status") or "").upper() not in ("", "ACTIVE"):
+        out["site_status_note"] = (f"The site's status is {site.get('status')}, not ACTIVE, so visitors may not see "
+                                   "it even after publishing; the admin can check it in Manage Pages.")
+
+    stale = site.get("stale_draft")
+    if stale:
+        out.update({
+            "verdict": "not_ready",
+            "blockers": [{
+                "code": "stale_draft",
+                "message": (f"The draft (v{stale.get('draft_revision_no')}, started {stale.get('draft_started_at')}) is "
+                            f"older than the live site (v{stale.get('live_revision_no')}, changed "
+                            f"{stale.get('live_updated_at')}). Publishing it would undo the live changes made since."),
+                "fix": ("The admin decides in the editor: discard the draft (website_edit(action='discard_draft') "
+                        "when they say so) and redo the change on the live version, or review it and publish "
+                        "deliberately."),
+            }],
+            "stale_draft": {k: v for k, v in stale.items() if k != "note"},
+        })
+        if site.get("draft_config") is not None:
+            out["diff_vs_live"] = {**diff_site_configs(site.get("live_config"), site["draft_config"]),
+                                   "note": ("Mixes the draft's own edits with the newer live changes publishing "
+                                            "it would undo.")}
+        out["checks"] = "skipped: the draft is older than the live site"
+        out["next"] = ("Tell the admin the draft is older than the live site and hand them editor_url; do not edit "
+                       "or call it ready until the draft is discarded or deliberately kept.")
+        out["note"] = REQUEST_PUBLISH_NOTE
+        return out
+
+    if not site["from_draft"]:
+        out.update({"verdict": "nothing_to_publish",
+                    "blockers": [{"code": "no_draft", "message": "There is no unpublished draft: the live site "
+                                  "already shows everything saved.", "fix": "Make the changes first (they save as a draft)."}],
+                    "next": "Nothing to hand over — there are no unpublished changes.", "note": REQUEST_PUBLISH_NOTE})
+        return out
+
+    config = site["config"]
+    diff = diff_site_configs(site.get("live_config"), config)
+    out["diff_vs_live"] = diff
+    if not diff.get("changed"):
+        out.update({"verdict": "nothing_to_publish",
+                    "blockers": [{"code": "no_changes", "message": "The draft is identical to the live site, so "
+                                  "publishing it changes nothing.", "fix": "Discard the draft, or make the changes first."}],
+                    "next": "Nothing to hand over — the draft equals the live site.", "note": REQUEST_PUBLISH_NOTE})
+        return out
+
+    blockers: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = []
+    out["live_changed_since_draft"] = stale_flag
+    if stale_flag is None:
+        warnings.append({"code": "stale_check_unavailable",
+                         "message": ("The server did not say whether the live site changed after this draft was "
+                                     "started; the admin should check the editor's warning before publishing.")})
+
+    publish = _publish_check_summary(run_publish_checks(config))
+    if publish["error_count"]:
+        blockers.append({"code": "publish_check_errors", "count": publish["error_count"],
+                         "message": f"{publish['error_count']} pre-publish check(s) fail (see checks.publish_checks).",
+                         "fix": "Fix them with update_page / link_lead_form / set_courses / bind_data, then re-run."})
+    if publish["warning_count"]:
+        warnings.append({"code": "publish_check_warnings", "count": publish["warning_count"],
+                         "message": "Pre-publish warnings; website(action='audit') lists them."})
+
+    pages = [p for p in config.get("pages") or [] if isinstance(p, dict)]
+    reviewed = review_pages(ctx, config.get("globalSettings") or {}, pages)
+    failing: Dict[str, Any] = {}
+    for route, entry in reviewed.items():
+        if entry["passes"]:
+            continue
+        failing[route] = {"score": entry["score"], **({"mode": entry["mode"]} if entry.get("mode") else {}),
+                          "fix_items": [i for i in entry["issues"] if i.get("kind") == "fix"][:4]}
+    review = {"pages": {r: {k: v for k, v in e.items() if k in ("score", "passes", "mode", "page_type")}
+                        for r, e in reviewed.items()},
+              "bar": 85, "failing": failing}
+    if failing:
+        blockers.append({"code": "review_failed", "pages": sorted(failing),
+                         "message": f"{len(failing)} page(s) do not pass review (see checks.review.failing).",
+                         "fix": ("Fix the fix items with update_page and re-run website(action='review'); a page in "
+                                 "fidelity mode follows its design — fix only what is broken.")})
+
+    data: Dict[str, Any]
+    try:
+        audit = await site_data_audit(ctx, config, str(args.get("library_id") or "").strip() or None)
+        data = _data_audit_summary(audit)
+        n_err = int((audit.get("summary") or {}).get("error") or 0)
+        if n_err:
+            blockers.append({"code": "data_errors", "count": n_err,
+                             "message": (f"{n_err} data problem(s) behind the site's widgets (courses, folders, "
+                                         "product pages, gateways) — see checks.data_audit."),
+                             "fix": "The admin fixes these in the dashboard with the links given; the MCP does not change that data."})
+        if (audit.get("summary") or {}).get("warning"):
+            warnings.append({"code": "data_warnings", "count": audit["summary"]["warning"],
+                             "message": "Data warnings; website(action='data_audit') lists them with links."})
+    except Exception:  # noqa: BLE001 — a failed read is reported, never mistaken for a clean audit
+        logger.exception("request_publish: data audit failed for %s", tag)
+        data = {"error": "unavailable"}
+        warnings.append({"code": "data_audit_unavailable",
+                         "message": "The data audit could not run, so the data behind the widgets is unchecked; "
+                                    "re-run website(action='data_audit')."})
+
+    ready = not blockers
+    out.update({
+        "ready": ready,
+        "verdict": "ready" if ready else "not_ready",
+        "blockers": blockers,
+        "warnings": warnings,
+        "checks": {"publish_checks": publish, "review": review, "data_audit": data},
+        "next": (("Ready: give the admin editor_url and diff_vs_live.summary, and ask them to review and press "
+                  "Publish there.") if ready else
+                 ("Not ready: fix the blockers you can (page edits) and re-run request_publish; hand the admin the "
+                  "ones only they can fix (data, a stale draft) with their links. The admin may still publish "
+                  "from editor_url.")),
+        "note": REQUEST_PUBLISH_NOTE,
+    })
+    return out
+
+
+
 _ACTIONS = {
     "create_page": _action_create_page,
     "create_site": _action_create_site,
@@ -2880,6 +3206,7 @@ _ACTIONS = {
     "set_catalog_settings": _action_set_catalog_settings,
     "set_translations": _action_set_translations,
     "bind_data": _action_bind_data,
+    "request_publish": _action_request_publish,
 }
 
 

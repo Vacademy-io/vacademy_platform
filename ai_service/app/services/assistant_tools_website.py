@@ -456,13 +456,11 @@ async def _action_data_inventory(args: Dict[str, Any], ctx: ToolContext) -> Dict
     return result
 
 
-async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+async def site_data_audit(ctx: ToolContext, config: Optional[Dict[str, Any]],
+                          library_id: Optional[str] = None) -> Dict[str, Any]:
+    """``audit_site_data`` over the institute's live data for ``config`` (None: no site yet)."""
     from .course_builder_data import admin_base
     from .website_data_audit import audit_site_data, site_course_ids, site_invite_ids
-    site, err = await load_site(ctx, args.get("tag_name"))
-    if err and err.get("error") not in ("no_sites",):
-        return err
-    config = (site or {}).get("config")
     gs = (config or {}).get("globalSettings") or {}
     inventory = await load_data_inventory(ctx, gs, include_course_ids=site_course_ids(config))
     invite_rows = invites_by_ids(ctx, site_invite_ids(config))
@@ -474,8 +472,15 @@ async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
             invites[key] = row
     inventory["invites_by_id"] = invites
     inventory.setdefault("sources", {})["invites"] = "ok" if invite_rows is not None else "failed"
+    return audit_site_data(config, inventory, admin_base=admin_base(ctx), library_id=library_id)
+
+
+async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err and err.get("error") not in ("no_sites",):
+        return err
     library_id = str(args.get("library_id") or "").strip() or None
-    result = audit_site_data(config, inventory, admin_base=admin_base(ctx), library_id=library_id)
+    result = await site_data_audit(ctx, (site or {}).get("config"), library_id)
     out: Dict[str, Any] = {
         "tag_name": (site or {}).get("tag_name"),
         "checked": ("draft" if site["from_draft"] else "published") if site else "institute data only (no site yet)",
@@ -594,7 +599,6 @@ def _bool_arg(value: Any) -> Optional[bool]:
 
 
 async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from .page_quality import review_mode, review_with_audit
     site, err = await load_site(ctx, args.get("tag_name"))
     if err:
         return err
@@ -608,23 +612,9 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
         pages = [page]
     out: Dict[str, Any] = {"tag_name": site["tag_name"], "reviewed": "draft" if site["from_draft"] else "published",
                            "pages": {}, **stale_note(site)}
-    fidelity_arg = _bool_arg(args.get("fidelity"))
-    any_fidelity = False
-    # Only a caller who can edit drafts is told to bind an unbound section; others keep the old wording.
-    can_bind = ctx.may_use("website_edit")
-    for i, page in enumerate(pages):
-        # Explicit page_type/fidelity, else the mode the page was created in,
-        # else what its content says, else the position/route guess.
-        page_type, fidelity = review_mode(page, args.get("page_type"), fidelity_arg)
-        page_type = page_type or ("homepage" if i == 0 and not route else ("course-landing" if "course" in str(page.get("route") or "") else "about"))
-        r = review_with_audit(page, gs, page_type, fidelity=fidelity)
-        entry = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
-                 "issues": [{k: v for k, v in (_bind_not_remove(i_, page) if can_bind else i_).items() if k != "weight"}
-                            for i_ in r["issues"][:16]]}
-        if fidelity:
-            entry.update({"mode": "fidelity", "page_type": page_type})
-            any_fidelity = True
-        out["pages"][str(page.get("route"))] = entry
+    out["pages"] = review_pages(ctx, gs, pages, args.get("page_type"), _bool_arg(args.get("fidelity")),
+                                guess_first_as_home=not route)
+    any_fidelity = any(v.get("mode") == "fidelity" for v in out["pages"].values())
     scores = [v["score"] for v in out["pages"].values()]
     out["score"] = min(scores) if scores else 0
     out["bar"] = 85
@@ -634,6 +624,29 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
     if any_fidelity:
         out["next"] += (" Pages in fidelity mode follow a design: fix only what is broken — never add sections, "
                         "heroes, stats or testimonials the design does not have.")
+    return out
+
+
+def review_pages(ctx: ToolContext, gs: Dict[str, Any], pages: List[Dict[str, Any]],
+                 page_type_arg: Any = None, fidelity_arg: Optional[bool] = None,
+                 guess_first_as_home: bool = True) -> Dict[str, Dict[str, Any]]:
+    """``{route: {score, passes, summary, issues, mode?, page_type?}}`` — the review of each page."""
+    from .page_quality import review_mode, review_with_audit
+    out: Dict[str, Dict[str, Any]] = {}
+    # Only a caller who can edit drafts is told to bind an unbound section; others keep the old wording.
+    can_bind = ctx.may_use("website_edit")
+    for i, page in enumerate(pages):
+        # Explicit page_type/fidelity, else the mode the page was created in,
+        # else what its content says, else the position/route guess.
+        page_type, fidelity = review_mode(page, page_type_arg, fidelity_arg)
+        page_type = page_type or ("homepage" if i == 0 and guess_first_as_home else ("course-landing" if "course" in str(page.get("route") or "") else "about"))
+        r = review_with_audit(page, gs, page_type, fidelity=fidelity)
+        entry = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
+                 "issues": [{k: v for k, v in (_bind_not_remove(i_, page) if can_bind else i_).items() if k != "weight"}
+                            for i_ in r["issues"][:16]]}
+        if fidelity:
+            entry.update({"mode": "fidelity", "page_type": page_type})
+        out[str(page.get("route"))] = entry
     return out
 
 

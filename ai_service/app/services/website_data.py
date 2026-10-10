@@ -188,7 +188,8 @@ def stale_note(site: Dict[str, Any]) -> Dict[str, Any]:
     return {"stale_draft": site["stale_draft"]} if site.get("stale_draft") else {}
 
 
-async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+async def load_site(ctx: ToolContext, tag_name: Optional[str], *,
+                    with_live: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     ``(site, None)`` or ``(None, error)``. ``site`` carries the catalogue row, the
     parsed config the EDITOR would show (draft if one exists, else published),
@@ -198,6 +199,11 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
     ``live_changed_since_draft``) is never shown or built on: ``config`` is the
     published site and ``stale_draft`` describes the draft, so reads can say so
     and edits can refuse.
+
+    ``with_live`` (request_publish) also returns both sides of a publish:
+    ``live_config`` (the published JSON; None when unreadable), ``draft_config``
+    (the open draft's JSON, stale or not; None without one) and ``revisions``
+    (the draft's and the live site's revision numbers, as admin-core reports them).
     """
     tag, err = await resolve_tag(ctx, tag_name)
     if err:
@@ -228,6 +234,18 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
         "from_draft": draft is not None and not stale,
         "draft": {k: draft.get(k) for k in ("id", "revision_no", "source", "updated_at")} if draft else None,
     }
+    if with_live:
+        site["live_config"] = _parse_config(row.get("catalogue_json"))
+        site["draft_config"] = (config if not stale else _parse_config(draft.get("catalogue_json"))) if draft else None
+        site["revisions"] = {
+            "draft_revision_no": (draft or {}).get("revision_no"),
+            "draft_started_at": (draft or {}).get("created_at"),
+            "draft_updated_at": (draft or {}).get("updated_at"),
+            "live_revision_no": (draft or {}).get("live_revision_no"),
+            "live_updated_at": (draft or {}).get("live_updated_at"),
+            # None: admin-core did not say (an older server) — the caller cannot rule a stale draft out.
+            "live_changed_since_draft": (draft or {}).get("live_changed_since_draft"),
+        }
     if stale:
         site["stale_draft"] = {
             "draft_revision_no": draft.get("revision_no"),

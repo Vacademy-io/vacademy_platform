@@ -139,5 +139,8 @@
     "whatsappTemplates": "WhatsApp Templates",
     "workflows": "Workflows",
     "dailyEngagement": "Daily Engagement",
-    "leadLookup": "Check Lead"
+    "leadLookup": "Check Lead",
+    "admission": "Admission",
+    "enrolledStudents": "Enrolled Students",
+    "flexiStudents": "Flexi Students"
 }

@@ -1,0 +1,27 @@
+{
+    "enrolled": {
+        "title": "Enrolled Students",
+        "description": "Learners admitted into a named batch.",
+        "emptyTitle": "No batches yet",
+        "emptyDescription": "Create a batch under a course and admitted learners will appear here."
+    },
+    "flexi": {
+        "title": "Flexi Students",
+        "description": "Learners admitted without a named batch, held in their course's Flexi Batch.",
+        "emptyTitle": "No flexi batches",
+        "emptyDescription": "A Flexi Batch is created only when an admission arrives without a batch name."
+    },
+    "columns": {
+        "regId": "Reg ID",
+        "name": "Name",
+        "batch": "Batch",
+        "mobile": "Mobile",
+        "email": "Email",
+        "enrolledOn": "Enrolled On",
+        "payment": "Payment"
+    },
+    "payment": {
+        "PAID": "Paid",
+        "PAYMENT_PENDING": "Pending"
+    }
+}

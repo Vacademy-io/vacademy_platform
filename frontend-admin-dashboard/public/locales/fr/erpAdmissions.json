@@ -1,0 +1,27 @@
+{
+    "enrolled": {
+        "title": "Étudiants inscrits",
+        "description": "Apprenants admis dans un groupe nommé.",
+        "emptyTitle": "Aucun groupe",
+        "emptyDescription": "Créez un groupe dans un cours et les apprenants admis apparaîtront ici."
+    },
+    "flexi": {
+        "title": "Étudiants Flexi",
+        "description": "Apprenants admis sans groupe nommé, placés dans le groupe Flexi de leur cours.",
+        "emptyTitle": "Aucun groupe Flexi",
+        "emptyDescription": "Un groupe Flexi n'est créé que lorsqu'une admission arrive sans nom de groupe."
+    },
+    "columns": {
+        "regId": "N° d'inscription",
+        "name": "Nom",
+        "batch": "Groupe",
+        "mobile": "Mobile",
+        "email": "E-mail",
+        "enrolledOn": "Inscrit le",
+        "payment": "Paiement"
+    },
+    "payment": {
+        "PAID": "Payé",
+        "PAYMENT_PENDING": "En attente"
+    }
+}

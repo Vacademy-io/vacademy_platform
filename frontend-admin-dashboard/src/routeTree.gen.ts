@@ -118,6 +118,7 @@ import { Route as ErpMyHrIndexRouteImport } from "./routes/erp/my-hr/index"
 import { Route as ErpLeaveIndexRouteImport } from "./routes/erp/leave/index"
 import { Route as ErpComplianceIndexRouteImport } from "./routes/erp/compliance/index"
 import { Route as ErpAttendanceIndexRouteImport } from "./routes/erp/attendance/index"
+import { Route as ErpAdmissionsIndexRouteImport } from "./routes/erp/admissions/index"
 import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
 import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
@@ -203,6 +204,7 @@ import { Route as ErpComplianceProvisionsIndexRouteImport } from "./routes/erp/c
 import { Route as ErpComplianceChallansIndexRouteImport } from "./routes/erp/compliance/challans/index"
 import { Route as ErpAttendanceSetupIndexRouteImport } from "./routes/erp/attendance/setup/index"
 import { Route as ErpAttendanceRegularizationsIndexRouteImport } from "./routes/erp/attendance/regularizations/index"
+import { Route as ErpAdmissionsFlexiIndexRouteImport } from "./routes/erp/admissions/flexi/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -1047,6 +1049,13 @@ const ErpAttendanceIndexRoute = ErpAttendanceIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/attendance/index.lazy").then((d) => d.Route),
 )
+const ErpAdmissionsIndexRoute = ErpAdmissionsIndexRouteImport.update({
+  id: "/erp/admissions/",
+  path: "/erp/admissions/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/admissions/index.lazy").then((d) => d.Route),
+)
 const EngagementEnginesInboxIndexRoute =
   EngagementEnginesInboxIndexRouteImport.update({
     id: "/engagement-engines/inbox/",
@@ -1720,6 +1729,13 @@ const ErpAttendanceRegularizationsIndexRoute =
       (d) => d.Route,
     ),
   )
+const ErpAdmissionsFlexiIndexRoute = ErpAdmissionsFlexiIndexRouteImport.update({
+  id: "/erp/admissions/flexi/",
+  path: "/erp/admissions/flexi/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/admissions/flexi/index.lazy").then((d) => d.Route),
+)
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
     id: "/audience-manager/list/campaign-users/",
@@ -2180,6 +2196,7 @@ export interface FileRoutesByFullPath {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/admissions/": typeof ErpAdmissionsIndexRoute
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/leave/": typeof ErpLeaveIndexRoute
@@ -2254,6 +2271,7 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admissions/flexi/": typeof ErpAdmissionsFlexiIndexRoute
   "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
@@ -2417,6 +2435,7 @@ export interface FileRoutesByTo {
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
+  "/erp/admissions": typeof ErpAdmissionsIndexRoute
   "/erp/attendance": typeof ErpAttendanceIndexRoute
   "/erp/compliance": typeof ErpComplianceIndexRoute
   "/erp/leave": typeof ErpLeaveIndexRoute
@@ -2491,6 +2510,7 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admissions/flexi": typeof ErpAdmissionsFlexiIndexRoute
   "/erp/attendance/regularizations": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans": typeof ErpComplianceChallansIndexRoute
@@ -2656,6 +2676,7 @@ export interface FileRoutesById {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/admissions/": typeof ErpAdmissionsIndexRoute
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/leave/": typeof ErpLeaveIndexRoute
@@ -2730,6 +2751,7 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admissions/flexi/": typeof ErpAdmissionsFlexiIndexRoute
   "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
@@ -2896,6 +2918,7 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/admissions/"
     | "/erp/attendance/"
     | "/erp/compliance/"
     | "/erp/leave/"
@@ -2970,6 +2993,7 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/admissions/flexi/"
     | "/erp/attendance/regularizations/"
     | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
@@ -3133,6 +3157,7 @@ export interface FileRouteTypes {
     | "/content/$contentId"
     | "/engagement-engines/create"
     | "/engagement-engines/inbox"
+    | "/erp/admissions"
     | "/erp/attendance"
     | "/erp/compliance"
     | "/erp/leave"
@@ -3207,6 +3232,7 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/admissions/flexi"
     | "/erp/attendance/regularizations"
     | "/erp/attendance/setup"
     | "/erp/compliance/challans"
@@ -3371,6 +3397,7 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/admissions/"
     | "/erp/attendance/"
     | "/erp/compliance/"
     | "/erp/leave/"
@@ -3445,6 +3472,7 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/admissions/flexi/"
     | "/erp/attendance/regularizations/"
     | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
@@ -3609,6 +3637,7 @@ export interface RootRouteChildren {
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
   EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
+  ErpAdmissionsIndexRoute: typeof ErpAdmissionsIndexRoute
   ErpAttendanceIndexRoute: typeof ErpAttendanceIndexRoute
   ErpComplianceIndexRoute: typeof ErpComplianceIndexRoute
   ErpLeaveIndexRoute: typeof ErpLeaveIndexRoute
@@ -3683,6 +3712,7 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpAdmissionsFlexiIndexRoute: typeof ErpAdmissionsFlexiIndexRoute
   ErpAttendanceRegularizationsIndexRoute: typeof ErpAttendanceRegularizationsIndexRoute
   ErpAttendanceSetupIndexRoute: typeof ErpAttendanceSetupIndexRoute
   ErpComplianceChallansIndexRoute: typeof ErpComplianceChallansIndexRoute
@@ -4518,6 +4548,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/admissions/": {
+      id: "/erp/admissions/"
+      path: "/erp/admissions"
+      fullPath: "/erp/admissions/"
+      preLoaderRoute: typeof ErpAdmissionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/engagement-engines/inbox/": {
       id: "/engagement-engines/inbox/"
       path: "/engagement-engines/inbox"
@@ -5113,6 +5150,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpAttendanceRegularizationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/admissions/flexi/": {
+      id: "/erp/admissions/flexi/"
+      path: "/erp/admissions/flexi"
+      fullPath: "/erp/admissions/flexi/"
+      preLoaderRoute: typeof ErpAdmissionsFlexiIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/campaign-users/": {
       id: "/audience-manager/list/campaign-users/"
       path: "/audience-manager/list/campaign-users"
@@ -5523,6 +5567,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
   EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
+  ErpAdmissionsIndexRoute: ErpAdmissionsIndexRoute,
   ErpAttendanceIndexRoute: ErpAttendanceIndexRoute,
   ErpComplianceIndexRoute: ErpComplianceIndexRoute,
   ErpLeaveIndexRoute: ErpLeaveIndexRoute,
@@ -5615,6 +5660,7 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpAdmissionsFlexiIndexRoute: ErpAdmissionsFlexiIndexRoute,
   ErpAttendanceRegularizationsIndexRoute:
     ErpAttendanceRegularizationsIndexRoute,
   ErpAttendanceSetupIndexRoute: ErpAttendanceSetupIndexRoute,

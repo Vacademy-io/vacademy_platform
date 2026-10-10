@@ -25,6 +25,7 @@ import {
     PhoneCall,
     ChatCircleDots,
     IdentificationBadge,
+    GraduationCap,
     AirplaneTakeoff,
     Money,
     ChartLineUp,
@@ -777,6 +778,27 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // Every module here is opt-in per institute (OPT_IN_TAB_IDS) and the ERP
     // rail category itself ships hidden, so nothing appears until an institute
     // turns it on in Settings → Display Settings.
+    {
+        icon: GraduationCap,
+        title: sidebarT('sidebar:admission'),
+        id: 'erp-admissions',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: sidebarT('sidebar:enrolledStudents'),
+                subItemLink: '/erp/admissions',
+                subItemId: 'erp-admissions-enrolled',
+            },
+            {
+                // Learners admitted without a batch name sit in their course's
+                // Flexi Batch; they are a separate list because they still need
+                // placing into a real batch.
+                subItem: sidebarT('sidebar:flexiStudents'),
+                subItemLink: '/erp/admissions/flexi',
+                subItemId: 'erp-admissions-flexi',
+            },
+        ],
+    },
     {
         icon: IdentificationBadge,
         title: sidebarT('sidebar:people'),

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.course_catalogue.dtos;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
@@ -38,5 +39,14 @@ public class CatalogueRevisionDTOs {
         private Date updatedAt;
         /** Full config JSON — only populated on single-revision fetches. */
         private String catalogueJson;
+
+        /* Draft fetch only: did the live site change after this draft was
+         * started? Publishing such a draft would undo those live changes. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Boolean liveChangedSinceDraft;
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Integer liveRevisionNo;
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Date liveUpdatedAt;
     }
 }

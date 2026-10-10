@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.course_catalogue.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,11 +16,17 @@ import vacademy.io.admin_core_service.features.course_catalogue.repository.Cours
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 public class CatalogueRevisionService {
+
+    /** Error code (message prefix) of the 409 a stale publish gets. */
+    public static final String DRAFT_OLDER_THAN_LIVE = "DRAFT_OLDER_THAN_LIVE";
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Autowired
     private CatalogueRevisionRepository revisionRepository;
@@ -26,13 +34,27 @@ public class CatalogueRevisionService {
     @Autowired
     private CourseCatalogueRepository courseCatalogueRepository;
 
-    /** Latest DRAFT for the catalogue, or empty when none exists. */
+    /**
+     * Latest DRAFT for the catalogue, or empty when none exists. Also says
+     * whether the live site changed after the draft was started, so the
+     * editor can warn before publishing it undoes that change.
+     */
     @Transactional(readOnly = true)
     public Optional<RevisionResponse> getDraft(String catalogueId) {
-        return revisionRepository
-                .findFirstByCatalogueIdAndStatusOrderByRevisionNoDescIdDesc(catalogueId,
-                        CatalogueRevisionStatusEnum.DRAFT.name())
-                .map(r -> toResponse(r, true));
+        return findDraft(catalogueId).map(draft -> {
+            CatalogueRevision live = findLive(catalogueId).orElse(null);
+            RevisionResponse response = toResponse(draft, true);
+            response.setLiveRevisionNo(live != null ? live.getRevisionNo() : null);
+            response.setLiveUpdatedAt(live != null ? live.getUpdatedAt() : null);
+            response.setLiveChangedSinceDraft(isStale(draft, live, liveJson(catalogueId)));
+            return response;
+        });
+    }
+
+    /** Revision number of the open DRAFT, or null when there is none. */
+    @Transactional(readOnly = true)
+    public Integer openDraftRevisionNo(String catalogueId) {
+        return findDraft(catalogueId).map(CatalogueRevision::getRevisionNo).orElse(null);
     }
 
     /**
@@ -64,16 +86,36 @@ public class CatalogueRevisionService {
     /**
      * Promotes the current DRAFT to PUBLISHED and copies its JSON into
      * course_catalogue.catalogue_json — the column the learner app reads.
+     *
+     * Refuses with 409 DRAFT_OLDER_THAN_LIVE when publishing would undo a live
+     * change: the live site was published after the draft was started, or
+     * after the editor loaded it (expectedLiveRevisionNo), and differs from
+     * the draft. overrideStale publishes anyway.
      */
     @Transactional
-    public RevisionResponse publish(String catalogueId, String userId) {
+    public RevisionResponse publish(String catalogueId, String userId, boolean overrideStale,
+                                    Integer expectedLiveRevisionNo) {
         CourseCatalogue catalogue = requireCatalogue(catalogueId);
 
-        CatalogueRevision draft = revisionRepository
-                .findFirstByCatalogueIdAndStatusOrderByRevisionNoDescIdDesc(catalogueId,
-                        CatalogueRevisionStatusEnum.DRAFT.name())
+        CatalogueRevision draft = findDraft(catalogueId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.BAD_REQUEST, "No draft to publish"));
 
+        if (!overrideStale) {
+            CatalogueRevision live = findLive(catalogueId).orElse(null);
+            Integer liveNo = live != null ? live.getRevisionNo() : null;
+            boolean liveMovedSinceLoad = expectedLiveRevisionNo != null
+                    && !expectedLiveRevisionNo.equals(liveNo)
+                    && !sameJson(draft.getCatalogueJson(), catalogue.getCatalogueJson());
+            if (liveMovedSinceLoad || isStale(draft, live, catalogue.getCatalogueJson())) {
+                throw new VacademyException(HttpStatus.CONFLICT, DRAFT_OLDER_THAN_LIVE
+                        + ": the live site changed after this draft was started (live v" + liveNo
+                        + "). Publishing it would undo those changes. Discard the draft, or publish with overrideStale=true.");
+            }
+        }
+
+        // The promoted row is the live version, so it gets the highest number
+        int next = nextRevisionNo(catalogueId);
+        if (draft.getRevisionNo() == null || draft.getRevisionNo() < next - 1) draft.setRevisionNo(next);
         draft.setStatus(CatalogueRevisionStatusEnum.PUBLISHED.name());
         revisionRepository.save(draft);
 
@@ -138,6 +180,48 @@ public class CatalogueRevisionService {
                 .createdByUserId(userId)
                 .build();
         revisionRepository.save(revision);
+    }
+
+    /**
+     * True when the live site was published after the draft was started AND
+     * still differs from it (compared as JSON trees, so formatting and key
+     * order do not count) — publishing the draft would undo that change.
+     * A re-publish of the very content that was live when the draft started
+     * (e.g. a settings-only PUT /update) does not count.
+     */
+    private boolean isStale(CatalogueRevision draft, CatalogueRevision live, String liveJson) {
+        if (live == null || live.getUpdatedAt() == null || draft.getCreatedAt() == null) return false;
+        if (!live.getUpdatedAt().after(draft.getCreatedAt())) return false;
+        if (sameJson(draft.getCatalogueJson(), liveJson)) return false;
+        return revisionRepository
+                .findFirstByCatalogueIdAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtDescIdDesc(
+                        draft.getCatalogueId(), CatalogueRevisionStatusEnum.PUBLISHED.name(), draft.getCreatedAt())
+                .map(base -> !sameJson(base.getCatalogueJson(), liveJson))
+                .orElse(true);
+    }
+
+    static boolean sameJson(String a, String b) {
+        if (Objects.equals(a, b)) return true;
+        if (a == null || b == null) return false;
+        try {
+            return JSON.readTree(a).equals(JSON.readTree(b));
+        } catch (JsonProcessingException e) {
+            return false;
+        }
+    }
+
+    private Optional<CatalogueRevision> findDraft(String catalogueId) {
+        return revisionRepository.findFirstByCatalogueIdAndStatusOrderByRevisionNoDescIdDesc(catalogueId,
+                CatalogueRevisionStatusEnum.DRAFT.name());
+    }
+
+    private Optional<CatalogueRevision> findLive(String catalogueId) {
+        return revisionRepository.findFirstByCatalogueIdAndStatusOrderByUpdatedAtDescIdDesc(catalogueId,
+                CatalogueRevisionStatusEnum.PUBLISHED.name());
+    }
+
+    private String liveJson(String catalogueId) {
+        return courseCatalogueRepository.findById(catalogueId).map(CourseCatalogue::getCatalogueJson).orElse(null);
     }
 
     private Integer nextRevisionNo(String catalogueId) {

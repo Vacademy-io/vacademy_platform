@@ -118,6 +118,9 @@ public class CourseCatalogueService {
                                 .sourceId(mapping.get().getSourceId())
                                 .instituteId(mapping.get().getInstitute().getId())
                                 .isDefault(mapping.get().getIsDefault())
+                                // An open editor draft is never discarded here (someone may be
+                                // mid-edit); report it so the caller knows it now lags the live site.
+                                .openDraftRevisionNo(catalogueRevisionService.openDraftRevisionNo(catalogueId))
                                 .build();
         }
 

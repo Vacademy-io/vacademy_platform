@@ -85,8 +85,12 @@ public class CourseCatalogueController {
 
     @PostMapping("/revision/publish")
     public ResponseEntity<RevisionResponse> publishDraft(@RequestAttribute("user") CustomUserDetails userDetails,
-                                                         @RequestParam("catalogueId") String catalogueId) {
-        return ResponseEntity.ok(revisionService.publish(catalogueId, userDetails.getUserId()));
+                                                         @RequestParam("catalogueId") String catalogueId,
+                                                         @RequestParam(value = "overrideStale", defaultValue = "false") boolean overrideStale,
+                                                         @RequestParam(value = "expectedLiveRevisionNo", required = false) Integer expectedLiveRevisionNo) {
+        // 409 DRAFT_OLDER_THAN_LIVE when the draft would undo a newer live change
+        return ResponseEntity.ok(revisionService.publish(catalogueId, userDetails.getUserId(),
+                overrideStale, expectedLiveRevisionNo));
     }
 
     @PostMapping("/revision/discard-draft")

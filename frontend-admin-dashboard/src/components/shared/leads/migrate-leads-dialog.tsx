@@ -79,6 +79,10 @@ export const MigrateLeadsDialog = ({
     // request reads the same as the dialog, but the backend implies it from the anchor anyway.
     const runDestinationAutomations = workflowAnchor === 'RESET_TO_TARGET';
     const [result, setResult] = useState<LeadMigrateResult | null>(null);
+    // How many leads were sent, captured at submit. The result line can't read
+    // responseIds.length: onSuccess clears the parent's selection, so by the time the dialog is
+    // held open to show skips the prop is [] and the line read "328 of 0 leads moved".
+    const [requestedCount, setRequestedCount] = useState(0);
 
     // One page of lists, newest first. An institute with more lists than this would not see the
     // oldest ones in the picker — acceptable while the endpoint has no search, but it is the
@@ -146,6 +150,7 @@ export const MigrateLeadsDialog = ({
             setTargetAudienceId('');
             setWorkflowAnchor('PRESERVE');
             setResult(null);
+            setRequestedCount(0);
         }
         onOpenChange(next);
     };
@@ -179,7 +184,10 @@ export const MigrateLeadsDialog = ({
                         <MyButton
                             buttonType="primary"
                             scale="medium"
-                            onClick={() => mutation.mutate()}
+                            onClick={() => {
+                                setRequestedCount(responseIds.length);
+                                mutation.mutate();
+                            }}
                             disable={mutation.isPending || !targetAudienceId}
                         >
                             {mutation.isPending
@@ -194,8 +202,8 @@ export const MigrateLeadsDialog = ({
                 {result ? (
                     <div className="flex flex-col gap-3">
                         <p className="text-subtitle font-semibold text-neutral-800">
-                            {result.migrated} of {responseIds.length} lead
-                            {responseIds.length === 1 ? '' : 's'} moved
+                            {result.migrated} of {requestedCount} lead
+                            {requestedCount === 1 ? '' : 's'} moved
                             {targetName ? ` to ${targetName}` : ''}.
                         </p>
                         {skipSummary.length > 0 && (

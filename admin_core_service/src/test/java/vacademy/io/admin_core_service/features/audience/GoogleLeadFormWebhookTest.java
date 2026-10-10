@@ -11,6 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.audience.controller.MetaOAuthController;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
+import vacademy.io.admin_core_service.features.audience.dto.ConnectorUpdateRequest;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.ProcessedFormDataDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
@@ -264,6 +265,34 @@ class GoogleLeadFormWebhookTest {
             verify(webhookService).saveConnector(saved.capture(), isNull());
             assertEquals(key, saved.getValue().getVendorId());
             assertEquals(key, saved.getValue().getPlatformFormId());
+            verify(validator).requireInstituteStaff(user, INSTITUTE);
+        }
+
+        @Test
+        void storesTheNameTheListShowsInsteadOfTheKey() {
+            AdConnectorSetupRequest r = request(null);
+            r.setPlatformFormName("  Admissions lead form  ");
+
+            controller.saveGoogleConnector(r, user);
+
+            ArgumentCaptor<FormWebhookConnector> saved = ArgumentCaptor.forClass(FormWebhookConnector.class);
+            verify(webhookService).saveConnector(saved.capture(), isNull());
+            assertEquals("Admissions lead form", saved.getValue().getPlatformFormName());
+        }
+
+        @Test
+        void renamingAConnectorLeavesItsDefaultsAlone() {
+            FormWebhookConnector ours = connector();
+            ours.setDefaultValuesJson("{\"center name\":\"Wakad\"}");
+            when(repo.findById("conn-1")).thenReturn(Optional.of(ours));
+            when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            ConnectorUpdateRequest rename = new ConnectorUpdateRequest();
+            rename.setPlatformFormName("Pune campaigns form");
+
+            controller.updateConnector("conn-1", rename, user);
+
+            assertEquals("Pune campaigns form", ours.getPlatformFormName());
+            assertEquals("{\"center name\":\"Wakad\"}", ours.getDefaultValuesJson());
             verify(validator).requireInstituteStaff(user, INSTITUTE);
         }
 

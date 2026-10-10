@@ -39,7 +39,8 @@
         "copyKey": "Copy Google key",
         "urlLabel": "URL",
         "keyLabel": "Key",
-        "googleSetup": "Setup & status"
+        "googleSetup": "Setup, status & campaign names",
+        "googleUnnamed": "Google lead form"
     },
     "vendor": {
         "meta": "Meta",
@@ -111,7 +112,21 @@
         "troubleshootHeading": "If Google's test fails",
         "troubleshoot404": "\"Not found\" (404): the webhook URL was copied incompletely, or this connector was deactivated. Copy the URL again.",
         "troubleshoot401": "\"Unauthorized\" (401): the Key in Google Ads does not match. Copy the key again; it is case-sensitive.",
-        "troubleshootNoLeads": "Test data is never saved as a lead. Real leads appear once the form runs on a live campaign."
+        "troubleshootNoLeads": "Test data is never saved as a lead. Real leads appear once the form runs on a live campaign.",
+        "connectorNameLabel": "Connector name",
+        "connectorNamePlaceholder": "e.g. Admissions lead form",
+        "nameSave": "Save name",
+        "nameSaved": "Connector renamed",
+        "nameSaveError": "Could not rename the connector",
+        "campaignsHeading": "Google campaigns",
+        "campaignsHint": "Google sends only the campaign ID. Name each campaign once; the leads table, campaign filter, lead profile and UTM report then show the name, including for older leads.",
+        "campaignsEmpty": "No leads yet. Each Google campaign that sends a lead appears here so you can name it.",
+        "campaignLeads": "Leads: {{count}}",
+        "campaignLastLead": "last {{time}}",
+        "campaignNamePlaceholder": "Campaign name, e.g. Pune MBBS Search",
+        "campaignsSave": "Save campaign names",
+        "campaignsSaved": "Campaign names saved",
+        "campaignsSaveError": "Could not save campaign names"
     },
     "meta": {
         "sessionExpiredReconnect": "Your Meta session expired. Please reconnect Meta.",

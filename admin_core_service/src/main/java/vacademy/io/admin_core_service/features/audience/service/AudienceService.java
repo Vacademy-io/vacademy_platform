@@ -5222,6 +5222,19 @@ public class AudienceService {
                     formProvider, audienceId, email);
         }
 
+        // Campaign the lead arrived on (Google Lead Forms send utm_* built from the campaign /
+        // ad group ids). Read up front because a REPEAT lead keeps it too: one lead form runs
+        // in several campaigns, and a person already in this audience who submits again via a
+        // second campaign must still show up under that campaign, even though no new lead row
+        // is created. record() never throws, no-ops when untagged, and skips the same
+        // campaign seen again within its dedupe window (e.g. a Google retry).
+        Map<String, String> webhookMetadata = processedData.getMetadata() != null
+                ? processedData.getMetadata() : Map.of();
+        Map<String, String> webhookUtm = new HashMap<>();
+        webhookMetadata.forEach((key, value) -> {
+            if (key.startsWith("utm_")) webhookUtm.put(key, value);
+        });
+
         // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked against the lead's
         // real (pre-synthesis) email/phone, before creating the auth user, so a REJECTed lead
         // never creates an orphan account. ALLOW_REASSIGN lets it through with repeat-lead settings.
@@ -5230,6 +5243,9 @@ public class AudienceService {
                 .checkDuplicate(instituteId, audienceId, processedData.getEmail(), processedData.getPhone());
         if (dupMatch.isPresent()) {
             if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                // No user id without creating an account; the touch is keyed on the typed
+                // email / phone, which is what the campaign filters match on as well.
+                recordWebhookCampaignTouch(webhookUtm, instituteId, null, processedData, audienceId);
                 return dupMatch.get().rejectionMessage();
             }
             repeatLeadSettings = dupMatch.get().repeatLeadSettings();
@@ -5262,6 +5278,7 @@ public class AudienceService {
             // the Meta/Zoho/Google form webhooks, so it's the most likely to re-deliver a lead
             // an admin has since deleted.
             reactivateSoftDeletedLeads(audienceId, userId);
+            recordWebhookCampaignTouch(webhookUtm, instituteId, userId, processedData, audienceId);
             return "You have already submitted your response for this campaign";
         }
 
@@ -5271,8 +5288,6 @@ public class AudienceService {
         // Ad-platform webhooks pass the campaign that produced the lead as source_id
         // (Google Lead Forms: campaign_id) — the column's documented purpose, and what
         // the leads list's sourceId filter matches. Everything else keeps the old marker.
-        Map<String, String> webhookMetadata = processedData.getMetadata() != null
-                ? processedData.getMetadata() : Map.of();
         String webhookSourceId = StringUtils.hasText(webhookMetadata.get("source_id"))
                 ? webhookMetadata.get("source_id")
                 : formProvider + "_WEBHOOK";
@@ -5292,16 +5307,7 @@ public class AudienceService {
         logger.info("Saved audience response: responseId={}, userId={}", savedResponse.getId(), userId);
         logLeadSubmitted(savedResponse);
 
-        // Campaign touch for leads that arrive tagged (Google Lead Forms send utm_* built
-        // from the campaign / ad group ids). record() never throws and no-ops untagged.
-        Map<String, String> webhookUtm = new HashMap<>();
-        webhookMetadata.forEach((key, value) -> {
-            if (key.startsWith("utm_")) webhookUtm.put(key, value);
-        });
-        if (!webhookUtm.isEmpty()) {
-            utmAttributionService.record(instituteId, userId, processedData.getEmail(),
-                    processedData.getPhone(), "AUDIENCE", audienceId, webhookUtm);
-        }
+        recordWebhookCampaignTouch(webhookUtm, instituteId, userId, processedData, audienceId);
 
         // 3. Map field_name to custom_field_id and save custom field values
         if (processedData.getFormFields() != null && !processedData.getFormFields().isEmpty()) {
@@ -5439,6 +5445,14 @@ public class AudienceService {
                 customFieldsForEmail, contextData);
 
         return savedResponse.getId();
+    }
+
+    /** utm_attribution touch for a tagged webhook lead (new or repeat); no-op when untagged. */
+    private void recordWebhookCampaignTouch(Map<String, String> webhookUtm, String instituteId, String userId,
+            ProcessedFormDataDTO processedData, String audienceId) {
+        if (webhookUtm.isEmpty()) return;
+        utmAttributionService.record(instituteId, userId, processedData.getEmail(),
+                processedData.getPhone(), "AUDIENCE", audienceId, webhookUtm);
     }
 
     private void saveCustomFieldValuesByFieldName(String responseId, Map<String, String> fieldNameValues,

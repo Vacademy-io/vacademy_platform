@@ -31,6 +31,7 @@ import { LeadAvatar } from './lead-avatar';
 import { LeadInlineSelect, useLeadTierOptions } from './lead-inline-select';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { useUtmCampaignLabels } from '@/hooks/use-utm-campaign-labels';
 import { orderColumnIds } from './use-lead-column-prefs';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
@@ -283,6 +284,8 @@ export function LeadTable({
     const tierCatalog = useLeadTiers();
     const tierOptions = useLeadTierOptions();
     const terminology = useLeadTerminology();
+    // Admin-given campaign names (an ad platform sends only the campaign id).
+    const { labelFor: campaignLabel } = useUtmCampaignLabels();
 
     // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
     // AND a response id (that's the selection key, and what delete targets). response_id is the
@@ -472,7 +475,10 @@ export function LeadTable({
             thClass: 'min-w-32',
             show: true,
             render: (vm) => (
-                <LeadSourcePill label={vm.utmCampaign} className="bg-neutral-50 text-neutral-500" />
+                <LeadSourcePill
+                    label={campaignLabel(vm.utmCampaign)}
+                    className="bg-neutral-50 text-neutral-500"
+                />
             ),
         },
         {

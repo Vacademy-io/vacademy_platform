@@ -5,11 +5,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmAttributionResponse;
+import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmCampaignRowResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmCampaignSummaryResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmDashboardResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmFilterOptionsResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
+import vacademy.io.admin_core_service.features.utm_attribution.service.UtmCampaignLabelService;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmDashboardService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
@@ -21,6 +24,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read side of campaign attribution — what the admin dashboard asks.
@@ -42,6 +46,9 @@ public class UtmAttributionController {
 
     @Autowired
     private UtmDashboardService dashboardService;
+
+    @Autowired
+    private UtmCampaignLabelService labelService;
 
     /**
      * Every recorded touch for one learner, oldest first.
@@ -139,5 +146,52 @@ public class UtmAttributionController {
         Instant from = to.minus(window, ChronoUnit.DAYS);
         return ResponseEntity.ok(
                 service.summarise(instituteId, Timestamp.from(from), Timestamp.from(to)));
+    }
+
+    // ── Campaign names ────────────────────────────────────────────────────────
+    // These three use requireInstituteStaff (no root bypass) rather than the
+    // requireStaffAccess above: learners are created as root users, and one of
+    // these WRITES institute settings.
+
+    /** Admin-given names for campaign values: {"labels": {"22173284076": "Pune MBBS Search"}}. */
+    @GetMapping("/campaign-labels")
+    public ResponseEntity<Map<String, Map<String, String>>> campaignLabels(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestParam String instituteId) {
+        accessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(Map.of("labels", labelService.labels(instituteId)));
+    }
+
+    /**
+     * Name, rename or un-name campaigns. Body {"labels": {campaign: name}} is merged
+     * into the stored names; a blank name removes that campaign's name.
+     */
+    @PutMapping("/campaign-labels")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'named ad campaigns'")
+    public ResponseEntity<Map<String, Map<String, String>>> saveCampaignLabels(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestParam String instituteId,
+            @RequestBody Map<String, Map<String, String>> body) {
+        accessValidator.requireInstituteStaff(user, instituteId);
+        Map<String, String> updates = body == null ? null : body.get("labels");
+        return ResponseEntity.ok(Map.of("labels", labelService.saveLabels(instituteId, updates)));
+    }
+
+    /**
+     * Campaigns one source/medium has sent leads from (Google lead forms:
+     * source=google, medium=lead_form), with people counts and names.
+     */
+    @GetMapping("/campaigns")
+    public ResponseEntity<List<UtmCampaignRowResponse>> campaigns(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestParam String instituteId,
+            @RequestParam String source,
+            @RequestParam String medium) {
+        accessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(labelService.campaigns(instituteId, source, medium));
     }
 }

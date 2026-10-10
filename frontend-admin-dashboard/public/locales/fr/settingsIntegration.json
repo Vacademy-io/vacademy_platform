@@ -39,7 +39,8 @@
         "copyKey": "Copier la clé Google",
         "urlLabel": "URL",
         "keyLabel": "Clé",
-        "googleSetup": "Configuration et statut"
+        "googleSetup": "Configuration, statut et noms des campagnes",
+        "googleUnnamed": "Formulaire Google"
     },
     "vendor": {
         "meta": "Meta",
@@ -111,7 +112,21 @@
         "troubleshootHeading": "Si le test de Google échoue",
         "troubleshoot404": "« Not found » (404) : l'URL du webhook est incomplète, ou ce connecteur a été désactivé. Copiez à nouveau l'URL.",
         "troubleshoot401": "« Unauthorized » (401) : la clé saisie dans Google Ads ne correspond pas. Copiez à nouveau la clé ; elle respecte la casse.",
-        "troubleshootNoLeads": "Les données de test ne sont jamais enregistrées comme prospects. Les vrais prospects arrivent quand le formulaire tourne sur une campagne active."
+        "troubleshootNoLeads": "Les données de test ne sont jamais enregistrées comme prospects. Les vrais prospects arrivent quand le formulaire tourne sur une campagne active.",
+        "connectorNameLabel": "Nom du connecteur",
+        "connectorNamePlaceholder": "ex. Formulaire admissions",
+        "nameSave": "Enregistrer le nom",
+        "nameSaved": "Connecteur renommé",
+        "nameSaveError": "Impossible de renommer le connecteur",
+        "campaignsHeading": "Campagnes Google",
+        "campaignsHint": "Google n'envoie que l'ID de la campagne. Nommez chaque campagne une fois ; le tableau des prospects, le filtre de campagne, la fiche prospect et le rapport UTM affichent ensuite ce nom, y compris pour les anciens prospects.",
+        "campaignsEmpty": "Aucun prospect pour l'instant. Chaque campagne Google qui envoie un prospect apparaît ici pour que vous puissiez la nommer.",
+        "campaignLeads": "Prospects : {{count}}",
+        "campaignLastLead": "dernier {{time}}",
+        "campaignNamePlaceholder": "Nom de la campagne, ex. Pune MBBS Search",
+        "campaignsSave": "Enregistrer les noms",
+        "campaignsSaved": "Noms des campagnes enregistrés",
+        "campaignsSaveError": "Impossible d'enregistrer les noms des campagnes"
     },
     "meta": {
         "sessionExpiredReconnect": "Votre session Meta a expiré. Veuillez reconnecter Meta.",

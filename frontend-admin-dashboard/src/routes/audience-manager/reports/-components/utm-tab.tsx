@@ -27,6 +27,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
+import { useUtmCampaignLabels } from '@/hooks/use-utm-campaign-labels';
 import {
     fetchUtmDashboard,
     utmDashboardQueryKey,
@@ -69,6 +70,8 @@ type SortKey = 'utm_campaign' | 'utm_source' | 'utm_medium' | 'people' | 'enroll
 export function UtmTab({ instituteId, fromDate, toDate }: ReportTabProps) {
     const { t } = useTranslation('audienceManagerUtmTab');
     const { t: tUtm } = useTranslation('utmListFilters');
+    // Admin-given campaign names; filters and drill-downs still use the raw value.
+    const { labelFor: campaignLabel } = useUtmCampaignLabels();
     const navigate = useNavigate();
     const utm = useUtmBuilderEnabled();
     const params = { instituteId, fromDate, toDate };
@@ -255,7 +258,7 @@ export function UtmTab({ instituteId, fromDate, toDate }: ReportTabProps) {
                 />
                 <KpiCard
                     label={t('kpis.topCampaign.label')}
-                    value={topCampaign?.key ?? '—'}
+                    value={topCampaign?.key ? campaignLabel(topCampaign.key) : '—'}
                     sub={
                         topCampaign
                             ? t('kpis.topCampaign.sub', { people: fmtNumber(topCampaign.people) })
@@ -309,7 +312,8 @@ export function UtmTab({ instituteId, fromDate, toDate }: ReportTabProps) {
                             tUtm('dimensions.campaign'),
                             <Tag size={16} />,
                             data?.by_campaign,
-                            'campaign'
+                            'campaign',
+                            (k) => (k ? campaignLabel(k) : null)
                         )}
                         {breakdown(
                             tUtm('dimensions.sourceType'),
@@ -356,7 +360,7 @@ export function UtmTab({ instituteId, fromDate, toDate }: ReportTabProps) {
                                         t('table.columns.lastSeen'),
                                     ],
                                     rows: rows.map((r) => [
-                                        r.utm_campaign ?? '',
+                                        campaignLabel(r.utm_campaign),
                                         r.utm_source ?? '',
                                         r.utm_medium ?? '',
                                         sourceTypeLabel(r.source_type) ?? '',
@@ -440,7 +444,9 @@ export function UtmTab({ instituteId, fromDate, toDate }: ReportTabProps) {
                                             >
                                                 <td className="py-2.5 pr-3">
                                                     <span className="flex items-center gap-1 font-medium text-neutral-900">
-                                                        {r.utm_campaign ?? (
+                                                        {r.utm_campaign ? (
+                                                            campaignLabel(r.utm_campaign)
+                                                        ) : (
                                                             <span className="italic text-neutral-400">
                                                                 {t('table.noValue')}
                                                             </span>

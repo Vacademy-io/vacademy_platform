@@ -57,6 +57,7 @@ import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { useUtmCampaignLabels } from '@/hooks/use-utm-campaign-labels';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import {
@@ -298,6 +299,7 @@ const RecentLeadsContent = ({
     // own names for "Tier" / "Lead status".
     const tierCatalog = useLeadTiers();
     const terminology = useLeadTerminology();
+    const { labelFor: campaignLabel } = useUtmCampaignLabels();
     const term = terminology.campaignType;
     const tierLabels: Record<string, string> = useMemo(
         () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
@@ -1319,7 +1321,8 @@ const RecentLeadsContent = ({
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
             if (selectedExportCols.has('campaign_type'))
                 row.push(csvSafe(lead.campaign_type ?? ''));
-            if (selectedExportCols.has('utm_campaign')) row.push(csvSafe(lead.utm_campaign ?? ''));
+            if (selectedExportCols.has('utm_campaign'))
+                row.push(csvSafe(campaignLabel(lead.utm_campaign)));
             cfFieldIds.forEach((fieldId) => row.push(csvSafe(lead.custom_field_values?.[fieldId])));
             if (showOps) {
                 const cName = userId

@@ -39,7 +39,8 @@
         "copyKey": "نسخ مفتاح Google",
         "urlLabel": "الرابط",
         "keyLabel": "المفتاح",
-        "googleSetup": "الإعداد والحالة"
+        "googleSetup": "الإعداد والحالة وأسماء الحملات",
+        "googleUnnamed": "نموذج Google"
     },
     "vendor": {
         "meta": "Meta",
@@ -111,7 +112,21 @@
         "troubleshootHeading": "إذا فشل اختبار Google",
         "troubleshoot404": "«Not found» (404): رابط الويب هوك منسوخ بشكل ناقص، أو تم إيقاف هذا الموصل. انسخ الرابط مرة أخرى.",
         "troubleshoot401": "«Unauthorized» (401): المفتاح في Google Ads غير مطابق. انسخ المفتاح مرة أخرى؛ فهو حساس لحالة الأحرف.",
-        "troubleshootNoLeads": "لا تُحفظ بيانات الاختبار كعملاء محتملين أبدًا. يظهر العملاء الحقيقيون عندما يعمل النموذج ضمن حملة نشطة."
+        "troubleshootNoLeads": "لا تُحفظ بيانات الاختبار كعملاء محتملين أبدًا. يظهر العملاء الحقيقيون عندما يعمل النموذج ضمن حملة نشطة.",
+        "connectorNameLabel": "اسم الموصل",
+        "connectorNamePlaceholder": "مثال: نموذج القبول",
+        "nameSave": "حفظ الاسم",
+        "nameSaved": "تمت إعادة تسمية الموصل",
+        "nameSaveError": "تعذرت إعادة تسمية الموصل",
+        "campaignsHeading": "حملات Google",
+        "campaignsHint": "يرسل Google معرّف الحملة فقط. سمِّ كل حملة مرة واحدة؛ بعدها يظهر الاسم في جدول العملاء المحتملين وفلتر الحملات وملف العميل وتقرير UTM، حتى للعملاء القدامى.",
+        "campaignsEmpty": "لا يوجد عملاء محتملون بعد. تظهر هنا كل حملة Google ترسل عميلاً محتملاً لتتمكن من تسميتها.",
+        "campaignLeads": "العملاء المحتملون: {{count}}",
+        "campaignLastLead": "آخرهم {{time}}",
+        "campaignNamePlaceholder": "اسم الحملة، مثال: Pune MBBS Search",
+        "campaignsSave": "حفظ أسماء الحملات",
+        "campaignsSaved": "تم حفظ أسماء الحملات",
+        "campaignsSaveError": "تعذر حفظ أسماء الحملات"
     },
     "meta": {
         "sessionExpiredReconnect": "انتهت صلاحية جلسة Meta الخاصة بك. يرجى إعادة الاتصال بـ Meta.",

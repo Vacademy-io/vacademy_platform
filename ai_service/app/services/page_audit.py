@@ -111,6 +111,36 @@ def _strings(node: Any, out: List[str], depth: int = 0) -> None:
             _strings(v, out, depth + 1)
 
 
+# Keys whose STRING values are data, not words a visitor reads: ids, links,
+# colours, enum tokens. The learner's i18n uses the same rule (catalogue-i18n.ts:
+# "keys ending in Color / Image / Mode … are never translated"). Only the plain
+# string under such a key is skipped: an object or list under it (a link's
+# label, an image's alt, a button under `secondaryAction`) is still read.
+_NON_TEXT_KEY_RE = re.compile(
+    r"^(?:id|ids|url|urls|route|target|href|link|src|image|images|icon|iconName|code|codes|slug|slugs|"
+    r"color|colour|param|mode|variant|style|layout|kind|action|placement|showWhen)$"
+    r"|[a-z0-9](?:Id|Ids|Url|Urls|Route|Target|Href|Link|Src|Image|Images|Icon|IconName|Code|Codes|Slug|Slugs|"
+    r"Color|Colour|Param|Mode|Variant|Style|Layout|Kind|Action|Placement)$"
+)
+
+
+def text_values(node: Any, out: List[str], depth: int = 0, data: bool = False) -> None:
+    """Like ``_strings`` but only the values a visitor reads (fidelity review).
+
+    ``data``: the strings directly under this node sit under a data key."""
+    if depth > 6 or node is None:
+        return
+    if isinstance(node, str):
+        if not data:
+            out.append(node)
+    elif isinstance(node, dict):
+        for k, v in node.items():
+            text_values(v, out, depth + 1, isinstance(k, str) and bool(_NON_TEXT_KEY_RE.search(k)))
+    elif isinstance(node, list):
+        for v in node:
+            text_values(v, out, depth + 1, data)
+
+
 def _heading_of(props: Dict[str, Any]) -> Optional[str]:
     for key in _HEADING_KEYS:
         val = props.get(key)
@@ -142,12 +172,15 @@ def _contrast_ratio(fg: str, bg: str) -> Optional[float]:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
+def audit_component(comp: Dict[str, Any], *, fidelity: bool = False) -> List[Dict[str, Any]]:
     """Defects decidable from ONE component, with no page context.
 
     Split out of audit_page so the section-variants endpoint can reject a bad
     alternative before the admin is asked to choose it — offering someone three
-    options one of which renders blank is worse than offering two."""
+    options one of which renders blank is worse than offering two.
+
+    ``fidelity`` (a page built from a design): placeholder copy is looked for
+    only in the text a visitor reads, not in ids, links or enum tokens."""
     issues: List[Dict[str, Any]] = []
     if not isinstance(comp, dict):
         return issues
@@ -287,7 +320,7 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # 8. Placeholder copy that was never replaced.
     found: List[str] = []
-    _strings(props, found)
+    (text_values if fidelity else _strings)(props, found)
     for text in found:
         if _PLACEHOLDER_RE.search(text):
             issues.append(_issue(
@@ -423,8 +456,16 @@ def audit_page(
     page_type: str = "homepage",
     info_only: bool = False,
     inspiration: Optional[Dict[str, Any]] = None,
+    fidelity: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Return the visible defects in a composed page, worst kind first."""
+    """Return the visible defects in a composed page, worst kind first.
+
+    ``fidelity``: the page reproduces a design (page meta ``designSource``),
+    so the length advice is dropped and a heading a design deliberately
+    repeats on learningPath sections (a featured path, then "more paths" —
+    adjacent or not; every section sharing the heading must be a learningPath)
+    is not a duplicate. Every defect a visitor would see still counts.
+    """
     issues: List[Dict[str, Any]] = []
     components = [c for c in _walk(page.get("components") or [])]
     if not components:
@@ -434,17 +475,20 @@ def audit_page(
     types = [c.get("type") for c in components]
     headings: Dict[str, List[str]] = {}
 
+    heading_types: Dict[str, set] = {}
     for comp in components:
-        issues.extend(audit_component(comp))
+        issues.extend(audit_component(comp, fidelity=fidelity))
         props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
         heading = _heading_of(props)
         if heading:
-            headings.setdefault(re.sub(r"\W+", " ", heading.lower()).strip(), []).append(
-                comp.get("id") or comp.get("type") or "?"
-            )
+            key = re.sub(r"\W+", " ", heading.lower()).strip()
+            headings.setdefault(key, []).append(comp.get("id") or comp.get("type") or "?")
+            heading_types.setdefault(key, set()).add(comp.get("type"))
 
     # 9. The same heading twice reads as a bug, not a design.
     for text, ids in headings.items():
+        if fidelity and heading_types.get(text) == {"learningPath"}:
+            continue
         if len(ids) > 1 and len(text) > 3:
             issues.append(_issue(
                 "duplicate-heading", "fix",
@@ -490,11 +534,12 @@ def audit_page(
             ))
 
     # 13. Length. Advisory only — the archetype governs the real target.
+    #     Not in fidelity mode: the design decides how long the page is.
     top_level = len(page.get("components") or [])
-    if top_level < 4:
+    if not fidelity and top_level < 4:
         issues.append(_issue("too-short", "warn", f"Only {top_level} sections — the page will feel thin.",
                              "Add sections the brief supports."))
-    elif top_level > 16:
+    elif not fidelity and top_level > 16:
         issues.append(_issue("too-long", "warn", f"{top_level} sections is more than a visitor will scroll.",
                              "Merge or drop the weakest sections."))
 

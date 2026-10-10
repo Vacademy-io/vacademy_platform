@@ -65,6 +65,33 @@ const collectStrings = (node: any, out: string[], depth = 0) => {
     }
 };
 
+/** ctaBanner variant "band" draws its secondaryButton only when enabled and labelled. */
+const bandSecondaryButton = (c: any): boolean => {
+    const b = c?.props?.secondaryButton;
+    return (
+        c?.type === 'ctaBanner' &&
+        c?.props?.variant === 'band' &&
+        !!b &&
+        typeof b === 'object' &&
+        b.enabled !== false &&
+        !!String(b.text || '').trim()
+    );
+};
+
+/** A catalogue spotlight button that opens a form ('open-form') with no campaign: not drawn at all. */
+const hasUnwiredSpotlightButton = (c: any): boolean => {
+    if (c?.type !== 'courseCatalog' || !Array.isArray(c?.props?.columnSections)) return false;
+    return c.props.columnSections.some(
+        (section: any) =>
+            section?.kind === 'spotlight' &&
+            Array.isArray(section.slides) &&
+            section.slides.some(
+                (slide: any) =>
+                    slide?.cta?.action === 'open-form' && !String(slide.cta.audienceId || '').trim(),
+            ),
+    );
+};
+
 export const runPublishChecks = (config: any): PublishIssue[] => {
     const issues: PublishIssue[] = [];
     const pages: any[] = config?.pages || [];
@@ -95,6 +122,7 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
             const formButtons: Array<{ action?: string; audienceId?: string }> = [
                 { action: p.action, audienceId: p.audienceId },
                 ...(p.button ? [p.button] : []),
+                ...(bandSecondaryButton(c) ? [p.secondaryButton] : []),
                 ...(p.left?.buttons || []),
             ];
             const unwiredButton = formButtons.some(
@@ -105,6 +133,14 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     severity: 'error',
                     title: 'A button opens a form but no campaign is selected',
                     fix: 'Pick a campaign for it, or change the button back to a link. Right now it does nothing when tapped.',
+                    ...cctx,
+                });
+            }
+            if (hasUnwiredSpotlightButton(c)) {
+                issues.push({
+                    severity: 'error',
+                    title: 'A spotlight button opens a form but no campaign is selected',
+                    fix: 'Pick a campaign for it, or change it to a link. Until then the button is hidden from visitors.',
                     ...cctx,
                 });
             }

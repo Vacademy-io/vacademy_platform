@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .assistant_tool_registry import ToolContext, ToolSpec
 from .figma_design_import import DesignImportError, FIGMA_ASSET_TTL_DAYS, plan_design
+from .figma_links import FIGMA_LINK_GUIDANCE_FOR_AI
 from .website_data import _err
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,9 @@ _SECRET_ARG_RE = re.compile(r"(token|secret|password|api[_-]?key|authorization|b
 FIGMA_URL_UNSUPPORTED = (
     "This server does not read Figma files itself: no Figma account is connected to it. Use an AI app that has "
     "the Figma MCP: call get_metadata on the page (one call) and get_design_context on each top-level frame, then "
-    "send those results here with source='client'. Without Figma access, upload screenshots of the frames with "
-    "website_edit(import_image) and compose the pages from website(action='patterns')."
+    "send those results here with source='client'. Without Figma tools of your own, tell the admin exactly "
+    "this (tell_admin): \"" + FIGMA_LINK_GUIDANCE_FOR_AI + "\" With screenshots, import them with "
+    "website_edit(import_image) and follow website(action='playbook', source='screenshot')."
 )
 
 PLAN_RULES = (
@@ -383,7 +385,7 @@ def _for_caller(plan: Dict[str, Any]) -> Dict[str, Any]:
 async def _action_plan(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     source = str(args.get("source") or "client").strip().lower()
     if source == "figma_url":
-        return _err("figma_url_not_supported", message=FIGMA_URL_UNSUPPORTED)
+        return _err("figma_url_not_supported", message=FIGMA_URL_UNSUPPORTED, tell_admin=FIGMA_LINK_GUIDANCE_FOR_AI)
     if source != "client":
         return _err("bad_request", message="source must be 'client' (you send the Figma results).")
     chunk, err = _clean_chunk(args)

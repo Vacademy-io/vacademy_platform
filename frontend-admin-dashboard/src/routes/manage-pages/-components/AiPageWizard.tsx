@@ -25,6 +25,8 @@ import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-compone
 import { useEditorStore } from '../-stores/editor-store';
 import { ImageUploadField } from './ImageUploadField';
 import { AiIntakeChat, IntakeResult } from './AiIntakeChat';
+import { FigmaLinkNotice } from './FigmaLinkNotice';
+import { isFigmaUrl } from '../-utils/figma-link';
 import { renderComponentPreview } from './ComponentPreviews';
 import {
     generateAiPage, estimateAiPageCredits, generateAiImage, generateAiSite,
@@ -96,6 +98,13 @@ export const AiPageWizard = ({
     const [inspiration, setInspiration] = useState<string[]>([]);
     const [sourceUrl, setSourceUrl] = useState('');
     const [referenceUrl, setReferenceUrl] = useState('');
+    // A figma.com link is Figma's sign-in page to our server: it is never sent
+    // (the server would screenshot / scrape a login form) and the field says
+    // what works instead.
+    const sourceIsFigma = isFigmaUrl(sourceUrl);
+    const referenceIsFigma = isFigmaUrl(referenceUrl);
+    const sourceUrlToSend = sourceIsFigma ? undefined : sourceUrl.trim() || undefined;
+    const referenceUrlToSend = referenceIsFigma ? undefined : referenceUrl.trim() || undefined;
     const [pendingInsp, setPendingInsp] = useState('');
     // The brief step was reached from the assistant rather than typed by hand,
     // so its fields are a proposal to review — chiefly the page type.
@@ -184,9 +193,9 @@ export const AiPageWizard = ({
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
                 inspiration_image_urls: inspiration,
-                reference_url: referenceUrl.trim() || undefined,
+                reference_url: referenceUrlToSend,
                 global_settings: keepTheme ? siteTheme : undefined,
-                source_url: sourceUrl.trim() || undefined,
+                source_url: sourceUrlToSend,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
                 direction,
@@ -227,12 +236,12 @@ export const AiPageWizard = ({
                 images,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
-                source_url: sourceUrl.trim() || undefined,
+                source_url: sourceUrlToSend,
                 // Same reference + theme contract as the single-page build: the
                 // site call silently dropped both before, so a whole-site run
                 // ignored the screenshots and always proposed a fresh theme.
                 inspiration_image_urls: inspiration,
-                reference_url: referenceUrl.trim() || undefined,
+                reference_url: referenceUrlToSend,
                 global_settings: keepTheme ? siteTheme : undefined,
                 auto_images: autoImages,
             }),
@@ -293,6 +302,7 @@ export const AiPageWizard = ({
         setImages([]);
         setInspiration([]);
         setSourceUrl('');
+        setReferenceUrl('');
         setPendingInsp('');
         setFromAssistant(false);
         setDirectionIdx(-1);
@@ -559,7 +569,9 @@ export const AiPageWizard = ({
                                 value={sourceUrl}
                                 onChange={(e) => setSourceUrl(e.target.value)}
                                 placeholder={t('assets.rebuildUrlPlaceholder')}
+                                aria-label={t('assets.rebuildHeading')}
                             />
+                            {sourceIsFigma && <FigmaLinkNotice />}
                         </div>
 
                         {/* Reference website — "make mine look like THAT": captured server-side */}
@@ -574,7 +586,9 @@ export const AiPageWizard = ({
                                 value={referenceUrl}
                                 onChange={(e) => setReferenceUrl(e.target.value)}
                                 placeholder={t('assets.referenceUrlPlaceholder')}
+                                aria-label={t('assets.referenceHeading')}
                             />
+                            {referenceIsFigma && <FigmaLinkNotice />}
                         </div>
 
                         {/* Inspiration screenshots — analysed for layout/mood only */}

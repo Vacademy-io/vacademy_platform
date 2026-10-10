@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from .figma_links import FIGMA_LINK_GUIDANCE_FOR_AI
+
 PLAYBOOK_SOURCES = ("figma", "screenshot", "url")
 
 #: Pattern components written with set_layout rather than as page sections.
@@ -68,6 +70,9 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
         "do": [
             "Run whoami (Vacademy) and website(action='list') to see the institute's sites, drafts and stale drafts.",
             "Parse the link: the file key is the segment after /design/ (or /file/), the node id is ?node-id=1-288 → '1:288'.",
+            "No Figma tools of your own (no get_metadata / get_screenshot)? Do not open the link in a browser or "
+            "screenshot it — it shows Figma's sign-in page. Tell the admin: \"" + FIGMA_LINK_GUIDANCE_FOR_AI + "\" "
+            "With their screenshots, follow website(action='playbook', source='screenshot').",
             "A 'you don't have edit access' error from Figma means a view-only file: ask the owner to share it as "
             "'can edit', or duplicate it to the connected account's drafts and use the copy's key.",
             "Decide with the admin: a NEW site (website_edit create_site) or new pages on an existing one. Never "
@@ -243,6 +248,8 @@ _URL_STEPS: List[Dict[str, Any]] = [
         "step": "collect",
         "do": [
             "Look at the site with your own browsing / screenshot tool — this server fetches nothing on your behalf.",
+            "A figma.com link is not a website (a browser shows Figma's sign-in page): use source='figma' with your "
+            "own Figma tools, or tell the admin: \"" + FIGMA_LINK_GUIDANCE_FOR_AI + "\"",
             "Copy text and images ONLY from the institute's own site. For another brand's site take the structure and "
             "look, never its words, logos or photos.",
             "Save a screenshot of each page you rebuild into the institute's media (website_edit(import_image) of an "
@@ -272,7 +279,8 @@ _TITLES = {
 
 #: What this server cannot do yet, so an AI never promises it.
 NOT_AVAILABLE = (
-    "No server-side Figma reads: read the file with your own Figma MCP.",
+    "No server-side Figma reads: read the file with your own Figma MCP. Without one, tell the admin: "
+    + FIGMA_LINK_GUIDANCE_FOR_AI,
     "No publishing: the admin publishes the draft from the editor_url.",
     "No deleting, renaming, hiding or activating the institute's catalogue data (folder libraries, course tags, "
     "product pages) and no invite or payment-gateway changes: those stay admin clicks. Without catalog_data_edit "

@@ -112,5 +112,8 @@
         "pageAddedTitle": "Page ajoutée",
         "pageAddedDescription": "Vérifiez-la sur le canevas, puis Enregistrer et Publier quand vous êtes prêt.",
         "pagesAddedTitle_many": "{{count}} pages ajoutées"
+    },
+    "figmaLink": {
+        "message": "Les liens Figma ne peuvent pas être ouverts ici. Importez des captures d'écran de vos frames, ou utilisez Claude avec le connecteur Figma et le MCP Vacademy (il suit notre guide de conception)."
     }
 }

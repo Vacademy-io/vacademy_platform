@@ -137,6 +137,16 @@ def test_playbook_is_honest_about_what_is_not_here():
     assert "Figma" in joined and "publish" in joined and "catalogue data" in joined
 
 
+@pytest.mark.parametrize("source", ["figma", "url"])
+def test_playbook_says_what_to_tell_an_admin_when_figma_cannot_be_read(source):
+    # Same sentence design_import(source='figma_url') returns as tell_admin.
+    from app.services.figma_links import FIGMA_LINK_GUIDANCE_FOR_AI as FIGMA_LINK_GUIDANCE
+    text = website_playbook.playbook_markdown(source, CATALOG)
+    assert FIGMA_LINK_GUIDANCE in text
+    if source == "figma":
+        assert "Do not open the link in a browser" in text
+
+
 # ── brief_checklist(design_source) ────────────────────────────────────────
 @pytest.fixture
 def quiet_checklist(monkeypatch):

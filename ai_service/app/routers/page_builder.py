@@ -39,6 +39,7 @@ from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.figma_links import FIGMA_LINK_GUIDANCE, find_figma_url, is_figma_url
 from ..services.llm_json import generate_json
 from ..services.model_selection import resolve_models
 from ..services.page_audit import audit_component, audit_page, audit_reference_fidelity
@@ -579,6 +580,12 @@ async def _capture_reference_screenshots(url: str, warnings: List[str]) -> List[
     target = (url or "").strip()
     if not target:
         return []
+    # A figma.com file opened without the owner's session is Figma's login
+    # wall: capturing it "designed" pages from a sign-in form. No server-side
+    # Figma (product decision 1) — say what works instead.
+    if is_figma_url(target):
+        warnings.append(FIGMA_LINK_GUIDANCE)
+        return []
     if not target.lower().startswith(("http://", "https://")):
         target = "https://" + target
     if not _is_public_http_host(target):
@@ -684,7 +691,10 @@ async def _resolve_inspiration_sources(body: "GeneratePageRequest", warnings: Li
     """Admin-uploaded screenshots first (they chose those deliberately), then
     the captured reference site, within the vision pass's image budget."""
     urls = [u for u in (body.inspiration_image_urls or []) if isinstance(u, str) and u]
-    if body.reference_url:
+    if body.reference_url and is_figma_url(body.reference_url):
+        # Checked before the budget so the admin learns why, not "budget full".
+        warnings.append(FIGMA_LINK_GUIDANCE)
+    elif body.reference_url:
         room = _MAX_INSPIRATION_IMAGES - len(urls)
         if room <= 0:
             warnings.append("Reference site skipped: the screenshot budget is already full")
@@ -700,6 +710,9 @@ async def _import_site(url: str) -> str:
     if not url or not url.strip():
         return ""
     target = url.strip()
+    # A Figma file link fetches Figma's login page, not anyone's copy.
+    if is_figma_url(target):
+        return ""
     if not target.startswith(("http://", "https://")):
         target = "https://" + target
     # SSRF guard: only public http(s) hosts — block localhost / link-local /
@@ -2960,7 +2973,10 @@ async def _compose_one_page(
             logger.warning("[page-builder] inspiration analysis skipped: %s", e)
 
     site_corpus = ""
-    if body.source_url:
+    if body.source_url and is_figma_url(body.source_url):
+        if FIGMA_LINK_GUIDANCE not in pre_warnings:
+            pre_warnings.append(FIGMA_LINK_GUIDANCE)
+    elif body.source_url:
         try:
             site_corpus = await _import_site(body.source_url)
         except Exception as e:  # noqa: BLE001
@@ -4322,7 +4338,9 @@ async def generate_site(
             shared_global = gs
         page["route"] = pt if pt != "homepage" else (page.get("route") or "home")
         pages.append(SitePageOut(page_type=pt, page=page))
-        warnings.extend(w)
+        # The Figma guidance can come from the shared reference AND the
+        # homepage's source_url — say it once.
+        warnings.extend(x for x in w if not (x == FIGMA_LINK_GUIDANCE and x in warnings))
 
     if not pages:
         raise HTTPException(status_code=502, detail="Site generation produced no pages — please retry.")
@@ -4404,7 +4422,10 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "color/style direction (including anything learned from uploaded logo/inspiration), and which "
         "uploaded photos exist. Be specific — the composer only knows what the brief says. Keep the "
         "brief under 350 words — dense, no filler.\n"
-        "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead)."
+        "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead).\n"
+        "FIGMA LINKS: nothing here can open a figma.com link (it shows Figma's sign-in page). If the admin "
+        f"shares one, say: \"{FIGMA_LINK_GUIDANCE}\" and ask for screenshots of the frames "
+        "(request_upload='inspiration'). Never claim to have seen a Figma design."
     )
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
@@ -4433,6 +4454,38 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "prices\"), say so explicitly in `brief` — the composer omits all commerce when it reads that."
     )
     return "\n\n".join(parts)
+
+
+def _latest_user_figma_link(history: List[IntakeTurn]) -> Optional[str]:
+    """The figma.com link in the admin's LATEST message, if any."""
+    for turn in reversed(history):
+        if turn.role != "assistant":
+            return find_figma_url(turn.content or "")
+    return None
+
+
+_FIGMA_SCREENSHOT_ASK = "Could you upload screenshots of the frames you want the page to follow?"
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _drop_figma_sentences(text: str) -> str:
+    """``text`` without any sentence that mentions Figma — a model that ignored
+    the FIGMA LINKS rule ("I've looked at your Figma design…", "match the Figma
+    file") must not reach the admin or the composer. Line breaks are kept."""
+    lines = []
+    for line in (text or "").splitlines():
+        kept = [s for s in _SENTENCE_SPLIT_RE.split(line) if "figma" not in s.lower()]
+        lines.append(" ".join(kept).rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def _apply_figma_link_guard(reply: str, request_upload: Optional[str]) -> tuple[str, Optional[str]]:
+    """The admin just pasted a Figma link: the reply opens with the guidance,
+    keeps only the model's sentences that don't talk about Figma (it cannot
+    have seen the design), asks for screenshots when nothing else is left, and
+    the screenshot uploader opens."""
+    rest = _drop_figma_sentences(reply.replace(FIGMA_LINK_GUIDANCE, ""))
+    return f"{FIGMA_LINK_GUIDANCE}\n\n{rest or _FIGMA_SCREENSHOT_ASK}", request_upload or "inspiration"
 
 
 def _parse_intake_json(raw: str) -> Dict[str, Any]:
@@ -4507,6 +4560,12 @@ async def intake_turn(
             msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(atts)} image(s)]").strip()
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
+    figma_link = _latest_user_figma_link(body.history)
+    if figma_link:
+        messages[-1]["content"] = (
+            str(messages[-1].get("content") or "")
+            + "\n\n(The link above is a Figma file. It cannot be opened here — follow the FIGMA LINKS rule.)"
+        )
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
     # the contract inside the final user message so every turn stays JSON.
     messages[-1]["content"] = (
@@ -4583,6 +4642,15 @@ async def intake_turn(
     page_type = data.get("page_type")
     if page_type not in _PAGE_TYPE_LABELS:
         page_type = "homepage"
+    reply = _clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!"
+    ready = bool(data.get("ready"))
+    brief = _clean_string(str(data.get("brief"))) if data.get("brief") else None
+    if figma_link:
+        reply, req_upload = _apply_figma_link_guard(reply, req_upload)
+        # Nothing has been seen yet: wait for the screenshots, and keep "match
+        # the Figma file" out of the brief the composer reads.
+        ready = False
+        brief = _drop_figma_sentences(brief or "") or None
 
     try:
         record_tool_billing(
@@ -4602,12 +4670,12 @@ async def intake_turn(
         logger.warning("[page-intake] billing skipped: %s", e)
 
     return IntakeResponse(
-        reply=_clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!",
+        reply=reply,
         chips=chips,
         request_upload=req_upload,
         received_image_kind=recv_kind,
-        ready=bool(data.get("ready")),
-        brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
+        ready=ready,
+        brief=brief,
         page_type=page_type,
         whole_site=bool(data.get("whole_site")),
         run_id=run_id,

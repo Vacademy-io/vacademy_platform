@@ -141,15 +141,24 @@ export const saveDraftRevision = async (
     return response.data;
 };
 
-/** `overrideStale` publishes a draft even though the live site changed after it was started. */
+/**
+ * `overrideStale` publishes a draft even though the live site changed after it
+ * was started. `expectedLiveRevisionNo` is the live version the editor loaded:
+ * the server refuses (409) when the live site has moved on since.
+ */
 export const publishDraftRevision = async (
     catalogueId: string,
-    { overrideStale = false }: { overrideStale?: boolean } = {}
+    {
+        overrideStale = false,
+        expectedLiveRevisionNo,
+    }: { overrideStale?: boolean; expectedLiveRevisionNo?: number | null } = {}
 ): Promise<CatalogueRevision> => {
-    const url = CATALOGUE_REVISION_PUBLISH(catalogueId);
-    const response = await authenticatedAxiosInstance.post<CatalogueRevision>(
-        overrideStale ? `${url}&overrideStale=true` : url
-    );
+    let url = CATALOGUE_REVISION_PUBLISH(catalogueId);
+    if (overrideStale) url += '&overrideStale=true';
+    if (typeof expectedLiveRevisionNo === 'number') {
+        url += `&expectedLiveRevisionNo=${expectedLiveRevisionNo}`;
+    }
+    const response = await authenticatedAxiosInstance.post<CatalogueRevision>(url);
     return response.data;
 };
 

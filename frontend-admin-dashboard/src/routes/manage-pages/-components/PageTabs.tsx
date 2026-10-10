@@ -131,7 +131,7 @@ export const PageTabs = () => {
                             {(labelCounts.get(pageLabel(page)) ?? 0) > 1 ? (
                                 <span className="flex flex-col items-start leading-tight">
                                     <span>{pageLabel(page)}</span>
-                                    <span className="font-mono text-caption text-gray-400">
+                                    <span className="font-mono text-2xs text-gray-400">
                                         /{(page.route ?? '').replace(/^\//, '')}
                                     </span>
                                 </span>

@@ -47,12 +47,22 @@ export const StaleDraftBanner = ({
         >
             <Warning className="size-5 shrink-0 text-red-600" weight="fill" />
             <p className="min-w-0 flex-1">
-                {staleness.draftStartedAt
-                    ? `${t('draft.staleStarted', { date: formatDateTime(staleness.draftStartedAt) })} `
-                    : ''}
-                {changed
-                    ? t('draft.staleLiveChangedAt', { when: changed })
-                    : t('draft.staleLiveChanged')}{' '}
+                {staleness.sinceOpened ? (
+                    changed ? (
+                        t('draft.staleSinceOpenedAt', { when: changed })
+                    ) : (
+                        t('draft.staleSinceOpened')
+                    )
+                ) : (
+                    <>
+                        {staleness.draftStartedAt
+                            ? `${t('draft.staleStarted', { date: formatDateTime(staleness.draftStartedAt) })} `
+                            : ''}
+                        {changed
+                            ? t('draft.staleLiveChangedAt', { when: changed })
+                            : t('draft.staleLiveChanged')}
+                    </>
+                )}{' '}
                 {t('draft.staleUndoWarning')}
             </p>
             <div className="flex shrink-0 gap-2">

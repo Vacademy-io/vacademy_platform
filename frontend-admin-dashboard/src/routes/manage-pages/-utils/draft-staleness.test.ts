@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     findLiveRevision,
     getDraftStaleness,
+    liveChangedSinceOpened,
     needsHistoryForStaleness,
     sameCatalogueJson,
 } from './draft-staleness';
@@ -105,5 +106,28 @@ describe('needsHistoryForStaleness', () => {
             needsHistoryForStaleness(draft(), meta({ updated_at: '2026-10-01T00:00:00Z' }))
         ).toBe(false);
         expect(needsHistoryForStaleness(draft({ catalogue_json: SAME_AS_JS }), meta())).toBe(false);
+    });
+});
+
+describe('liveChangedSinceOpened', () => {
+    const NEWER = '{"pages":[{"id":"home","title":"Newer"}],"globalSettings":{}}';
+
+    it('is stale when the live JSON moved on and the editor is not showing it', () => {
+        const result = liveChangedSinceOpened(LIVE, meta({ catalogue_json: NEWER }), OLD, [
+            published('r6', 6, '2026-10-10T09:00:00Z'),
+        ]);
+        expect(result).toMatchObject({ stale: true, sinceOpened: true, liveRevisionNo: 6 });
+    });
+
+    it('ignores formatting-only re-publishes and an editor already showing the new live', () => {
+        expect(liveChangedSinceOpened(LIVE, meta({ catalogue_json: SAME_AS_JS }), OLD).stale).toBe(
+            false
+        );
+        expect(liveChangedSinceOpened(LIVE, meta({ catalogue_json: NEWER }), NEWER).stale).toBe(
+            false
+        );
+        expect(liveChangedSinceOpened(undefined, meta({ catalogue_json: NEWER }), OLD).stale).toBe(
+            false
+        );
     });
 });

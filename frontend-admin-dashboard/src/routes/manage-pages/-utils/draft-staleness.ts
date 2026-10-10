@@ -8,13 +8,21 @@
  * Servers that compare the two send `live_changed_since_draft` with the draft;
  * that answer wins. Older servers do not, so the editor falls back to: the
  * draft differs from the live JSON AND it was started before the live site
- * last changed.
+ * last changed. That fallback can over-warn: unlike the server it cannot see
+ * that a later publish only re-sent the content that was already live (e.g.
+ * a settings-only PUT /update), so ship it with the server check.
+ *
+ * Separately, `liveChangedSinceOpened` catches the live site changing while
+ * the editor is open (a draft autosaved after that change looks current by
+ * date). It compares content, so an identical re-publish does not count.
  */
 import isEqual from 'lodash.isequal';
 import type { CatalogueMeta, CatalogueRevision } from '../-services/catalogue-service';
 
 export interface DraftStaleness {
     stale: boolean;
+    /** The live site changed after the editor was opened (not before the draft). */
+    sinceOpened?: boolean;
     draftStartedAt?: string;
     liveRevisionNo?: number;
     liveUpdatedAt?: string;
@@ -85,5 +93,28 @@ export const getDraftStaleness = (
         draftStartedAt,
         liveRevisionNo: live?.revision_no,
         liveUpdatedAt,
+    };
+};
+
+/**
+ * The live JSON now (`meta`, refetched on focus) differs from the live JSON
+ * the editor loaded, and the editor is not showing that newer live version:
+ * publishing would put the older content back.
+ */
+export const liveChangedSinceOpened = (
+    liveJsonAtOpen: string | null | undefined,
+    meta: CatalogueMeta | null | undefined,
+    editorJson: string | null | undefined,
+    revisions?: CatalogueRevision[] | null
+): DraftStaleness => {
+    if (!liveJsonAtOpen || !meta || !editorJson) return { stale: false };
+    if (sameCatalogueJson(liveJsonAtOpen, meta.catalogue_json)) return { stale: false };
+    if (sameCatalogueJson(meta.catalogue_json, editorJson)) return { stale: false };
+    const live = findLiveRevision(revisions);
+    return {
+        stale: true,
+        sinceOpened: true,
+        liveRevisionNo: live?.revision_no,
+        liveUpdatedAt: meta.updated_at ?? live?.updated_at ?? live?.created_at,
     };
 };

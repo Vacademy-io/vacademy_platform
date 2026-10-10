@@ -48,6 +48,7 @@
     "seoDescription": "استكشف {{courses}} لدينا وسجّل عبر الإنترنت.",
     "seoDescriptionWithInstitute": "استكشف {{courses}} لدينا وسجّل عبر الإنترنت في {{institute}}.",
     "skipToMainContent": "تخطَّ إلى المحتوى الرئيسي",
+    "previewRibbon": "معاينة",
     "backToTop": "العودة إلى الأعلى"
   },
   "courseStructureDetails": {
@@ -187,6 +188,7 @@
     "paymentFailedFallback": "فشل الدفع"
   },
   "jsonRenderer": {
+    "hiddenBlock": "مخفي: {{label}}",
     "video": "فيديو",
     "noVideoUrlConfigured": "لم يتم تكوين رابط فيديو",
     "play": "تشغيل",

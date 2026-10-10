@@ -48,6 +48,7 @@
     "seoDescription": "हमारे {{courses}} देखें और ऑनलाइन नामांकन करें।",
     "seoDescriptionWithInstitute": "हमारे {{courses}} देखें और {{institute}} में ऑनलाइन नामांकन करें।",
     "skipToMainContent": "मुख्य सामग्री पर जाएं",
+    "previewRibbon": "पूर्वावलोकन",
     "backToTop": "ऊपर जाएं"
   },
   "courseStructureDetails": {
@@ -183,6 +184,7 @@
     "paymentFailedFallback": "भुगतान विफल रहा"
   },
   "jsonRenderer": {
+    "hiddenBlock": "छिपा हुआ: {{label}}",
     "video": "वीडियो",
     "noVideoUrlConfigured": "कोई वीडियो URL कॉन्फ़िगर नहीं है",
     "play": "चलाएँ",

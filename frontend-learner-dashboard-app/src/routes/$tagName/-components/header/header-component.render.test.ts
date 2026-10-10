@@ -343,6 +343,29 @@ describe("button and active styles", () => {
     expect(about.className).toContain("underline");
     expect(about.className).not.toContain("bg-primary-50");
   });
+
+  it("in the editor preview, marks the page the preview really shows", async () => {
+    // The preview renders every page at the site root ("/new").
+    mocks.location = { pathname: "/new", searchStr: "", search: {}, href: "/new", hash: "" };
+    const navigation = [
+      { label: "Home", route: "homepage" },
+      { label: "Courses", route: "courses" },
+    ];
+    await render(header({ activeStyle: "underline", navigation, previewPath: "courses" }));
+    expect(byText("Courses")[0].className).toContain("underline");
+    expect(byText("Home")[0].className).not.toContain("underline");
+  });
+
+  it("in the editor preview of the home page, marks Home", async () => {
+    mocks.location = { pathname: "/new", searchStr: "", search: {}, href: "/new", hash: "" };
+    const navigation = [
+      { label: "Home", route: "homepage" },
+      { label: "Courses", route: "courses" },
+    ];
+    await render(header({ activeStyle: "underline", navigation, previewPath: "" }));
+    expect(byText("Home")[0].className).toContain("underline");
+    expect(byText("Courses")[0].className).not.toContain("underline");
+  });
 });
 
 describe("mega menu (desktop)", () => {

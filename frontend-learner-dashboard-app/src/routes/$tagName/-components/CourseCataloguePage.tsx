@@ -5,7 +5,7 @@ import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback 
 import { Capacitor } from "@capacitor/core";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { useNavigate } from "@tanstack/react-router";
+import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
@@ -42,6 +42,7 @@ import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
+import { isEditorMessage, isFramed, isSamePath, previewRouteFromHref, readyTargets } from "../-utils/preview-bridge";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -118,6 +119,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const reopenedFromCheckout = useRef(false);
 
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  // Editor's Browse mode: the site is clickable (menus, filters, tabs) and
+  // links to other pages switch the editor's page tab instead of leaving.
+  const [previewInteractive, setPreviewInteractive] = useState(false);
+  // The real route of the page the editor shows as this root page, so the
+  // header lights up the right nav item.
+  const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
+  // The editor's origin, learned from its first message.
+  const editorOrigin = useRef<string | null>(null);
+  const postToEditor = (message: Record<string, unknown>) =>
+    window.parent.postMessage(message, editorOrigin.current ?? "*");
   // Once the editor has posted its draft, the slower published fetch must not
   // land on top of it and show the old site.
   const previewConfigReceived = useRef(false);
@@ -200,19 +211,26 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     }
   }, [instituteId, tagName]);
 
-  // Preview mode: receive live config updates and highlight signals from admin editor
+  // Preview mode: receive live config updates and highlight signals from admin editor.
+  // Only from the frame that embeds this page (see preview-bridge.ts).
   useEffect(() => {
-    if (!isPreviewMode) return;
+    if (!isPreviewMode || !isFramed()) return;
 
     // Signal readiness to the admin editor
-    window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+    for (const target of readyTargets()) window.parent.postMessage({ type: 'PREVIEW_READY' }, target);
 
     const handler = (event: MessageEvent) => {
+      if (!isEditorMessage(event)) return;
+      editorOrigin.current = event.origin;
       if (event.data?.type === 'CATALOGUE_CONFIG_UPDATE' && event.data.payload) {
         previewConfigReceived.current = true;
         setCatalogueData(event.data.payload);
+        setPreviewPath(typeof event.data.previewPath === 'string' ? event.data.previewPath : undefined);
         setIsLoading(false);
         setError(null);
+      }
+      if (event.data?.type === 'PREVIEW_INTERACT') {
+        setPreviewInteractive(event.data.on === true);
       }
       if (event.data?.type === 'HIGHLIGHT_COMPONENT') {
         const componentId: string | null = event.data.componentId || null;
@@ -235,10 +253,40 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePreviewComponentClick = (componentId: string, pageId: string) => {
-    window.parent.postMessage({ type: 'COMPONENT_SELECTED', componentId, pageId }, '*');
+  const handlePreviewComponentClick = (componentId: string, pageId: string, parentId?: string) => {
+    postToEditor({ type: 'COMPONENT_SELECTED', componentId, pageId, ...(parentId ? { parentId } : {}) });
     setSelectedComponentId(componentId);
   };
+
+  // Browse mode: a link to another page asks the editor to open that page
+  // instead of navigating the frame away from the preview. Same-page jumps
+  // (#anchor) and new-tab external links behave as on the live site.
+  useEffect(() => {
+    if (!previewInteractive) return;
+    const onClick = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || (anchor.getAttribute("href") || "").startsWith("#")) return;
+      const route = previewRouteFromHref(anchor.href, { origin: window.location.origin, tagName });
+      if (route === null && anchor.target === "_blank") return;
+      event.preventDefault();
+      if (route !== null) postToEditor({ type: "PREVIEW_NAVIGATE", route });
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [previewInteractive, tagName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...and the same for navigation from code (header items, cards). A change
+  // of query string only (filters, tabs) stays on this page.
+  useBlocker({
+    disabled: !previewInteractive,
+    enableBeforeUnload: false,
+    shouldBlockFn: ({ current, next }) => {
+      if (isSamePath(next.pathname, current.pathname)) return false;
+      const route = previewRouteFromHref(next.pathname, { origin: window.location.origin, tagName });
+      if (route !== null) postToEditor({ type: "PREVIEW_NAVIGATE", route });
+      return true;
+    },
+  });
 
   useEffect(() => {
     // A site offering हिन्दी / मराठी also gets a Devanagari face after the
@@ -683,6 +731,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                 tagName={tagName}
                 catalogueData={catalogueData}
                 isPreviewMode={isPreviewMode}
+                previewInteractive={previewInteractive}
+                previewPath={previewPath}
                 selectedComponentId={selectedComponentId}
                 onComponentClick={handlePreviewComponentClick}
               />
@@ -701,6 +751,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   instituteId={instituteId}
                   tagName={tagName}
                   isPreviewMode={isPreviewMode}
+                  previewInteractive={previewInteractive}
+                  previewPath={previewPath}
                   selectedComponentId={selectedComponentId}
                   onComponentClick={handlePreviewComponentClick}
                 />
@@ -721,6 +773,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               tagName={tagName}
               catalogueData={catalogueData}
               isPreviewMode={isPreviewMode}
+              previewInteractive={previewInteractive}
               selectedComponentId={selectedComponentId}
               onComponentClick={handlePreviewComponentClick}
             />
@@ -797,9 +850,21 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {catalogueData?.globalSettings?.backToTop && !isPreviewMode && (
         <BackToTopButton />
       )}
+      {isPreviewMode && <PreviewRibbon />}
     </div>
     </CatalogueNamingProvider>
     </CatalogueLocaleProvider>
+  );
+};
+
+/** Always on in preview: an editor preview is never mistaken for the live
+ *  site, and a framed copy of it is no use for passing off as one. */
+const PreviewRibbon = () => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <div className="pointer-events-none fixed bottom-2 start-2 z-50 rounded-full bg-warning-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm">
+      {t("courseCataloguePage.previewRibbon")}
+    </div>
   );
 };
 

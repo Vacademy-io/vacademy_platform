@@ -48,6 +48,7 @@
     "seoDescription": "Explore our {{courses}} and enroll online.",
     "seoDescriptionWithInstitute": "Explore our {{courses}} and enroll online at {{institute}}.",
     "skipToMainContent": "Skip to main content",
+    "previewRibbon": "Preview",
     "backToTop": "Back to top"
   },
   "courseStructureDetails": {
@@ -183,6 +184,7 @@
     "paymentFailedFallback": "Payment failed"
   },
   "jsonRenderer": {
+    "hiddenBlock": "Hidden: {{label}}",
     "video": "Video",
     "noVideoUrlConfigured": "No video URL configured",
     "play": "Play",

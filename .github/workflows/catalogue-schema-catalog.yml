@@ -40,8 +40,10 @@ jobs:
         with:
           node-version: "20"
 
+      # Pinned like frontend-admin-dashboard/Dockerfile: newer pnpm ignores the
+      # "pnpm" overrides in package.json and refuses the frozen lockfile.
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@9
 
       # The exporter bundles the admin templates with the admin app's own esbuild (via vite).
       - name: Install admin deps

@@ -65,6 +65,7 @@ import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
 import { CtaBandFields } from './chrome/CtaBandFields';
+import { OptionalColorField, bandButtonShown } from './chrome/chrome-controls';
 import { FooterBrandFields } from './chrome/FooterBrandFields';
 import { HeroEditorialFields } from './chrome/HeroEditorialFields';
 import { NavItemEditor } from './header/NavItemEditor';
@@ -4454,6 +4455,11 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    // A band shows its button unless enabled is false and, with no colour set,
+    // uses the site palette; a classic banner needs enabled: true and has
+    // blue / white defaults.
+    const isBand = props.variant === 'band';
+    const buttonShown = isBand ? bandButtonShown(props.button) : !!props.button?.enabled;
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">{t('ctaBanner.heading')}</h4>
@@ -4472,15 +4478,24 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                     <option value="split">{t('ctaBanner.layoutSplit')}</option>
                 </select>
             </div>
-            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label={t('header.textColor')} value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+            {isBand ? (
+                <>
+                    <OptionalColorField label={t('faq.backgroundColor')} value={props.backgroundColor} onChange={(c) => updateProp('backgroundColor', c)} />
+                    <OptionalColorField label={t('header.textColor')} value={props.textColor} onChange={(c) => updateProp('textColor', c)} />
+                </>
+            ) : (
+                <>
+                    <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+                    <ColorPickerField label={t('header.textColor')} value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+                </>
+            )}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">{t('mediaShowcase.button')}</h5>
                 <div className="flex items-center justify-between">
                     <Label className="text-xs">{t('ctaBanner.showButton')}</Label>
-                    <Switch checked={props.button?.enabled || false} onCheckedChange={(c) => updateProp('button', { ...props.button, enabled: c })} />
+                    <Switch aria-label={t('ctaBanner.showButton')} checked={buttonShown} onCheckedChange={(c) => updateProp('button', { ...props.button, enabled: c })} />
                 </div>
-                {props.button?.enabled && (
+                {buttonShown && (
                     <>
                         <Input placeholder={t('mediaShowcase.buttonTextPlaceholder')} value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
                         <div>
@@ -4510,6 +4525,7 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                 )}
             </div>
             <CtaBandFields
+                key={component.id}
                 props={props}
                 updateProp={updateProp}
                 patchProps={(next) => updateComponent(pageId, component.id, { props: { ...props, ...next } })}

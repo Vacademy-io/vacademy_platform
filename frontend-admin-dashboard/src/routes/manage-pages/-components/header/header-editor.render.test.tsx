@@ -66,7 +66,7 @@ describe('Global header → nav item type and mega menu', () => {
     it('renders a header saved without the new keys and writes nothing on its own', () => {
         const before = JSON.stringify(useEditorStore.getState().config);
         render(<PropertyPanel />);
-        expect(screen.getByText('Header extras')).toBeInTheDocument();
+        expect(screen.getByText('headerExtras.heading')).toBeInTheDocument();
         expect(JSON.stringify(useEditorStore.getState().config)).toBe(before);
     });
 
@@ -177,11 +177,11 @@ describe('Global header → button look and extras', () => {
 
     it('writes the header extras', () => {
         render(<PropertyPanel />);
-        fireEvent.click(screen.getByRole('button', { name: 'Underline' }));
+        fireEvent.click(screen.getByRole('button', { name: 'headerExtras.underline' }));
         expect(headerProps().activeStyle).toBe('underline');
-        fireEvent.click(screen.getByRole('switch', { name: 'Search' }));
+        fireEvent.click(screen.getByRole('switch', { name: 'headerExtras.search' }));
         expect(headerProps().showSearch).toBe(true);
-        fireEvent.click(screen.getByRole('switch', { name: 'Language switch' }));
+        fireEvent.click(screen.getByRole('switch', { name: 'headerExtras.languageSwitch' }));
         expect(headerProps().showLanguageSwitcher).toBe(true);
     });
 });

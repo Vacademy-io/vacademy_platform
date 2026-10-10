@@ -269,6 +269,10 @@
     "resource": "Ressource",
     "customValue": "Personnalisé : {{value}}"
   },
+  "chromeLook": {
+    "useSiteColour": "Utiliser la couleur du site",
+    "siteColourNote": "Non défini : la couleur du site est utilisée."
+  },
   "componentTypes": {
     "heroSection": "Section héros",
     "courseCatalog": "Catalogue de cours",
@@ -611,6 +615,37 @@
     "showLink": "Afficher ce lien",
     "hiddenBadge": "Masqué"
   },
+  "headerLook": {
+    "heading": "Apparence",
+    "standard": "Standard",
+    "editorial": "Éditorial",
+    "navStyle": "Style du menu",
+    "navStyleHint": "Éditorial : liens en texte simple, la page actuelle en gras.",
+    "barSize": "Hauteur de la barre",
+    "barCompact": "Compacte",
+    "contentWidth": "Largeur du contenu",
+    "widthFull": "Pleine largeur",
+    "widthContained": "Largeur de la page",
+    "logoOnly": "Logo seul",
+    "logoOnlyHint": "Masquer le nom du site à côté du logo.",
+    "languageSwitcherStyle": "Style du sélecteur de langue",
+    "switchPill": "Pastille",
+    "switchSegmented": "En deux parties (हिन्दी | EN)",
+    "cartDisplay": "Icône du panier",
+    "cartAlways": "Toujours",
+    "cartWhenNotEmpty": "Seulement s'il contient des articles",
+    "megaMenuStyle": "Style du méga-menu"
+  },
+  "headerExtras": {
+    "heading": "Options de l'en-tête",
+    "currentPage": "Page actuelle",
+    "tintedPill": "Pastille teintée",
+    "underline": "Soulignement",
+    "search": "Recherche",
+    "searchHint": "Une icône de recherche qui trouve les cours, les pages et les filières du méga-menu.",
+    "languageSwitch": "Sélecteur de langue",
+    "languageSwitchHint": "हिन्दी | EN — les autres langues d'abord, la langue principale du site en dernier. Apparaît dès que le site a plus d'une langue (Paramètres globaux) ; sur téléphone, il se trouve dans le menu."
+  },
   "footer": {
     "column2": "Colonne 2",
     "column3": "Colonne 3",
@@ -635,6 +670,29 @@
     "brandDesignNote": "Ce pied de page a son propre design : il affiche toujours quatre colonnes de liens, et la mise en page et les préréglages ne s’appliquent pas.",
     "useStandard": "Utiliser plutôt un pied de page standard",
     "useStandardConfirm": "Passer à un pied de page standard ? Vos liens et textes sont conservés ; la mise en page et les préréglages s’appliquent de nouveau. Annuler rétablit le design de marque."
+  },
+  "footerBrand": {
+    "brandHeading": "Logo et slogan de la marque",
+    "logo": "Logo",
+    "tagline": "Slogan",
+    "taglinePlaceholder": "ex. Apprendre • Grandir",
+    "newsletterHeading": "Newsletter",
+    "newsletterShow": "Afficher la newsletter",
+    "newsletterList": "Envoyer les inscriptions à",
+    "newsletter": {
+      "heading": "Titre",
+      "subheading": "Texte sous le titre",
+      "placeholder": "Texte indicatif du champ e-mail",
+      "buttonText": "Texte du bouton",
+      "note": "Petit texte sous le formulaire",
+      "successMessage": "Message de remerciement"
+    },
+    "bottomBarHeading": "Barre du bas",
+    "bottomTagline": "Slogan à droite",
+    "bottomTaglinePlaceholder": "ex. Fait en Inde",
+    "languageSwitch": "Sélecteur de langue",
+    "languageSwitchHint": "S'affiche dès que le site a plus d'une langue.",
+    "backgroundColor": "Couleur de fond"
   },
   "hero": {
     "heading": "Paramètres de la section héros",
@@ -683,6 +741,23 @@
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
     "slideN": "Diapositive {{n}}",
     "eyebrowStyleRule": "Filet (trait avant le texte)"
+  },
+  "heroEditorial": {
+    "style": "Design",
+    "styleHint": "Éditorial : fil d'Ariane, titre en deux couleurs, puces cochées et image sans cadre.",
+    "styleClassic": "Classique",
+    "styleEditorial": "Éditorial",
+    "heading": "Détails éditoriaux",
+    "titleAccent": "Deuxième ligne du titre (couleur d'accent)",
+    "titleAccentPlaceholder": "ex. Suivez un parcours.",
+    "checklist": "Puces cochées",
+    "breadcrumb": "Fil d'Ariane",
+    "breadcrumbHint": "Les éléments avec un lien sont cliquables ; le dernier est cette page.",
+    "crumbLabel": "Texte",
+    "crumbRoute": "Lien (facultatif)",
+    "mediaWidth": "Largeur de l'image (px)",
+    "mediaWidthHint": "De 200 à 800 sur grand écran ; vide = 500.",
+    "outlineColor": "Bordure du bouton à contour"
   },
   "bookDetails": {
     "heading": "Paramètres des détails du livre",
@@ -767,6 +842,34 @@
     "layout": "Mise en page",
     "layoutSplit": "Divisé (texte à gauche, bouton à droite)",
     "showButton": "Afficher le bouton"
+  },
+  "ctaBand": {
+    "style": "Design",
+    "styleHint": "Bande : une bande pleine largeur avec un surtitre, deux boutons et une image de téléphone en option.",
+    "styleClassic": "Classique",
+    "styleBand": "Bande",
+    "textHeading": "Texte de la bande",
+    "eyebrow": "Petit libellé au-dessus du titre",
+    "eyebrowPlaceholder": "ex. Pour les écoles et institutions",
+    "eyebrowColor": "Couleur du libellé",
+    "subheadingColor": "Couleur du sous-titre",
+    "bandSize": "Taille de la bande",
+    "sizeStandard": "Standard",
+    "sizeLarge": "Grande",
+    "firstButtonLook": "Premier bouton : apparence",
+    "secondButton": "Deuxième bouton",
+    "buttonStyle": "Style du bouton",
+    "stylePrimary": "Couleur de la marque",
+    "styleOlive": "Olive",
+    "styleOutlineLight": "Contour (sur fond sombre)",
+    "styleOutlineDark": "Contour (sur fond clair)",
+    "arrow": "Flèche après le texte",
+    "formTitle": "Titre du formulaire",
+    "formTitlePlaceholder": "Vide = le texte du bouton",
+    "phoneHeading": "Image de téléphone",
+    "phoneShow": "Afficher un téléphone",
+    "phoneHint": "Un téléphone avec votre image à l'écran, à côté du texte.",
+    "phoneImage": "Image à l'écran"
   },
   "pricingTable": {
     "defaults": {

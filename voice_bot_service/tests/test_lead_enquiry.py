@@ -26,6 +26,8 @@ def test_genuine_date_is_named_with_source_and_age():
     assert day.strftime("%A %-d %B %Y") in line, line
     assert "13 days ago" in line or "12 days ago" in line or "14 days ago" in line
     assert "Shiksha Nation's ads on Facebook or Instagram" in line
+    # Which of the two apps is not on record; the probe heard "Facebook पर" alone.
+    assert "always name both: 'Facebook या Instagram'" in line
     assert "ONLY if they ask" in line
     assert "do not repeat it word for word" in line
 

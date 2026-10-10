@@ -4403,9 +4403,9 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
 # An unknown type falls back to a plain "enquiry form": a wrong channel is worse
 # than a vague one.
 _ENQUIRY_SOURCES = {
-    "META_LEAD_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
-    "FACEBOOK_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
-    "INSTAGRAM_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
+    "META_LEAD_ADS": "the form on one of {inst}'s ads on Facebook or Instagram (which of the two is not on record, so always name both: 'Facebook या Instagram')",
+    "FACEBOOK_ADS": "the form on one of {inst}'s ads on Facebook or Instagram (which of the two is not on record, so always name both: 'Facebook या Instagram')",
+    "INSTAGRAM_ADS": "the form on one of {inst}'s ads on Facebook or Instagram (which of the two is not on record, so always name both: 'Facebook या Instagram')",
     "GOOGLE_ADS": "the form on one of {inst}'s ads on Google",
     "LINKEDIN_ADS": "the form on one of {inst}'s ads on LinkedIn",
     "WEBSITE": "the enquiry form on {inst}'s website",

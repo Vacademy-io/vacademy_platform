@@ -569,7 +569,7 @@ async def save_draft(ctx: ToolContext, catalogue_id: str, config: Dict[str, Any]
     data = await _admin_core_json(
         ctx, "POST", "/admin-core-service/v1/course-catalogue/revision/save-draft",
         params={"catalogueId": catalogue_id},
-        body={"catalogue_json": json.dumps(config, ensure_ascii=False), "source": source, "ai_run_id": ai_run_id},
+        body={"catalogue_json": json.dumps(config, ensure_ascii=False, separators=(",", ":")), "source": source, "ai_run_id": ai_run_id},
         timeout=60.0,
     )
     if _is_error(data) or not isinstance(data, dict):
@@ -582,7 +582,7 @@ async def create_site(ctx: ToolContext, tag_name: str, config: Dict[str, Any]) -
         ctx, "POST", "/admin-core-service/v1/course-catalogue/create",
         params={"instituteId": ctx.principal.institute_id},
         body={"catalogues": [{
-            "catalogue_json": json.dumps(config, ensure_ascii=False),
+            "catalogue_json": json.dumps(config, ensure_ascii=False, separators=(",", ":")),
             "tag_name": tag_name, "status": "DRAFT", "source": "INTERNAL", "is_default": False,
         }]},
         timeout=60.0,
@@ -648,11 +648,35 @@ def _generated_page_to_page(gen: Dict[str, Any], config: Dict[str, Any], fallbac
     }
 
 
+def _stale_refusal(site: Optional[Dict[str, Any]], action: str) -> Optional[Dict[str, Any]]:
+    """
+    An edit on a site whose draft is older than live: building on the draft
+    would carry it forward, and editing the published copy would silently
+    overwrite the draft — so neither. The admin decides in the editor.
+    """
+    stale = (site or {}).get("stale_draft")
+    if not stale:
+        return None
+    return _err(
+        "stale_draft", action=action,
+        message=(f"Website '{site['tag_name']}' has an unpublished draft (v{stale.get('draft_revision_no')}) that is "
+                 f"older than the live site (v{stale.get('live_revision_no')}, changed {stale.get('live_updated_at')}). "
+                 "Nothing was changed. Ask the admin to open editor_url and either discard the draft (use the live "
+                 "site) or publish it deliberately; or, if the admin says the draft can go, call "
+                 "website_edit(action='discard_draft') and retry."),
+        editor_url=stale.get("editor_url"),
+        draft_revision_no=stale.get("draft_revision_no"),
+        live_revision_no=stale.get("live_revision_no"),
+    )
+
+
 async def _target_site(ctx: ToolContext, args: Dict[str, Any], action: str):
     """The site to change: an existing one, or None + error."""
     site, err = await load_site(ctx, args.get("tag_name"))
     if err:
         return None, {**err, "action": action}
+    if refusal := _stale_refusal(site, action):
+        return None, refusal
     return site, None
 
 
@@ -995,6 +1019,8 @@ async def _action_add_html_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         if site is None:
             return _err("missing_argument", action="add_html_page", needs=["tag_name or new_site_name"],
                         message=(err or {}).get("message"))
+    if refusal := _stale_refusal(site, "add_html_page"):
+        return refusal
     page, report = build_html_page(route, args["html"], args.get("css"), args.get("title"), args.get("seo"),
                                    args.get("hide_site_chrome", True) is not False)
     if page is None:
@@ -1088,6 +1114,8 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         if site is None:
             return _err("missing_argument", action="create_page", needs=["tag_name or new_site_name"],
                         message=(err or {}).get("message"))
+    if refusal := _stale_refusal(site, "create_page"):
+        return refusal
 
     site_settings = args.get("site_settings") if isinstance(args.get("site_settings"), dict) else None
     config = copy.deepcopy(site["config"]) if site else _new_site_config(theme, site_settings)
@@ -1524,10 +1552,11 @@ async def _action_set_seo(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
 
 
 async def _action_discard_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    site, err = await _target_site(ctx, args, "discard_draft")
+    # Not _target_site: discarding is the way out of a stale draft.
+    site, err = await load_site(ctx, args.get("tag_name"))
     if err:
-        return err
-    if not site["from_draft"]:
+        return {**err, "action": "discard_draft"}
+    if not site["from_draft"] and not site.get("stale_draft"):
         return {"tag_name": site["tag_name"], "summary_of_change": "There was no draft to discard.", "saved_as": None}
     data = await _admin_core_json(
         ctx, "POST", "/admin-core-service/v1/course-catalogue/revision/discard-draft",

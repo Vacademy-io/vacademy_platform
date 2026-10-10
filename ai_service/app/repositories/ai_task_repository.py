@@ -73,7 +73,8 @@ def ensure_ai_task_schema(db: Session) -> None:
 # result_json is a whole HTML page, and the history UI has no card for them.
 # Engagement plan drafts run as jobs too; like HTML docs they are not user-visible
 # AI tasks, so they stay out of the task list.
-_INTERNAL_TASK_TYPES = (AiTaskType.HTML_DOC_GENERATE.value, "ENGAGEMENT_PLAN_DRAFT")
+# Figma design uploads (design_import, 24 h) are storage, not tasks.
+_INTERNAL_TASK_TYPES = (AiTaskType.HTML_DOC_GENERATE.value, "ENGAGEMENT_PLAN_DRAFT", "DESIGN_IMPORT")
 
 
 def _not_internal():

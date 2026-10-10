@@ -41,9 +41,10 @@ def _dumps(value: Any) -> Optional[str]:
 
 
 #: Argument values never stored in the audit log, only their size + hash: a
-#: base64 image (website_edit import_image, up to ~13 MB of text) is client
-#: artwork and would bloat mcp_tool_call_log on the primary.
-_AUDIT_DIGEST_KEYS = frozenset({"data_base64"})
+#: base64 image (website_edit import_image, up to ~13 MB of text) or a Figma
+#: design payload (design_import) is client artwork and would bloat
+#: mcp_tool_call_log on the primary.
+_AUDIT_DIGEST_KEYS = frozenset({"data_base64", "metadata_xml", "design_code"})
 #: Largest args_json kept whole; bigger calls keep their small top-level values
 #: (action, ids, names) and a size + hash for the rest.
 _AUDIT_ARGS_MAX_CHARS = 64_000

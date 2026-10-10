@@ -2404,7 +2404,8 @@ async def execute_tool(
 # ──────────────────────────────────────────────────────────────────────────
 def _load_feature_tools() -> None:
     for module in (
-        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
+        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
+        "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
         "assistant_tools_course_invites",

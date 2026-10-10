@@ -32,6 +32,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "get_institute_overview",
     "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
+    "design_import",        # READ:  a Figma design the AI app read itself → site plan; save_draft goes through website_edit's gate
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
@@ -51,6 +52,13 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #: change or remove existing data (learner edits, announcements) stay off.
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
+    # In the "Website: view" group because `plan` only reads what the caller sends;
+    # listed here because `save_draft` writes — through website_edit's own
+    # create_site / create_page and only when the caller also holds website_edit.
+    "design_import": (
+        "plan is read-only (parses the Figma results the caller sends; stores them 24 h for this institute); "
+        "save_draft saves a DRAFT through website_edit create_site / create_page and needs website_edit's group"
+    ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
         "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "
@@ -99,7 +107,8 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "institute_overview": "The institute's profile (name, logo, theme, terminology), outstanding fees, classes live now and active learner counts.",
     "website_builder": (
         "See the institute's websites: pages and what each section shows, traffic, lead-capture "
-        "health, pre-publish checks, and the interview an AI runs before building a site."
+        "health, pre-publish checks, and the interview an AI runs before building a site. Also turns a "
+        "Figma design the AI app read itself into a site plan (colours, sections, the data it needs)."
     ),
     "website_builder_edits": (
         "Let the connected AI app build and change websites — compose pages, edit sections, set "

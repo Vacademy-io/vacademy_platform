@@ -35,6 +35,7 @@ from ..services.assistant_tool_registry import (
 )
 from .access import setting_for_tool_gate
 from .constants import (
+    MCP_ALLOWED_WRITE_TOOLS,
     MCP_EXPOSED_TOOLS,
     MCP_TOOL_AREAS,
     MCP_TOOL_GROUP_LABELS,
@@ -104,7 +105,8 @@ def tool_catalog() -> List[Dict[str, Any]]:
 def _to_mcp_tool(spec: ToolSpec) -> Tool:
     fn = spec.schema.get("function", {})
     parameters = fn.get("parameters") or {"type": "object", "properties": {}}
-    read_only = spec.mode == "READ"
+    # A READ-group tool with one draft-saving action (design_import) is not read-only.
+    read_only = spec.mode == "READ" and spec.name not in MCP_ALLOWED_WRITE_TOOLS
     return Tool(
         name=spec.name,
         description=fn.get("description", ""),

@@ -45,7 +45,8 @@ def test_exposed_set_is_the_documented_one():
     # One tool per feature (with an `action` argument), so the settings tab has
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
-        "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
+        "whoami", "get_institute_overview", "website", "website_edit", "design_import",
+        "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit",
     )
@@ -135,7 +136,8 @@ def test_catalog_places_every_tool_in_an_area_with_one_view_and_risk_rated_edits
         if c["level"] == "edit":
             assert c["risk"] in ("drafts", "additive", "not_live", "live") and c["sub_label"]
     for area in {c["area"] for c in catalog}:
-        assert sum(1 for c in catalog if c["area"] == area and c["level"] == "view") == 1, area
+        # One view TOGGLE per area: several view tools may share it (website + design_import).
+        assert len({c["key"] for c in catalog if c["area"] == area and c["level"] == "view"}) == 1, area
     invites = next(c for c in catalog if c["key"] == "course_invite_edits")
     assert invites["area"] == "courses" and invites["risk"] == "live"
 
@@ -213,3 +215,15 @@ async def test_disabled_tool_call_is_denied_by_the_registry_gate():
     )
     assert result.is_error is True
     assert "tool_not_permitted" in result.content[0].text
+
+
+def test_design_import_rides_the_website_view_toggle_and_is_not_read_only():
+    """design_import plans from what the caller sends (view), but save_draft writes a draft: never read-only."""
+    view = adapter.list_tools_for(principal(), setting(["website_builder"]))
+    tool = next(t for t in view if t.name == "design_import")
+    assert tool.annotations.read_only_hint is False and tool.annotations.destructive_hint is True
+    assert set(tool.input_schema["properties"]["action"]["enum"]) == {"plan", "save_draft"}
+    assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), setting(["website_builder_edits"]))]
+    assert "design_import" in MCP_ALLOWED_WRITE_TOOLS
+    # The website tool itself keeps its read-only hint.
+    assert next(t for t in view if t.name == "website").annotations.read_only_hint is True

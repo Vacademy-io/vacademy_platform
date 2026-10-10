@@ -202,13 +202,14 @@ export const OffersPage = () => {
                     Offer pricing is disabled
                 </h1>
                 <p className="max-w-md text-sm text-neutral-500">
-                    Enable offer pricing in Course Settings to let admins set an offer price
-                    below the MRP on individual {packageTermLower}.
+                    Enable offer pricing in{' '}
+                    {getTerminology(ContentTerms.Course, SystemTerms.Course)} Settings to let admins
+                    set an offer price below the MRP on individual {packageTermLower}.
                 </p>
                 <div className="mt-2 flex gap-2">
                     <Link to="/settings" search={{ selectedTab: 'course' }}>
                         <MyButton buttonType="primary" scale="small" layoutVariant="default">
-                            Open Course Settings
+                            Open {getTerminology(ContentTerms.Course, SystemTerms.Course)} Settings
                         </MyButton>
                     </Link>
                     <Link to="/admin-package-management">

@@ -113,7 +113,11 @@ export function ConversationList({
             <div className="shrink-0 border-b border-neutral-200 p-3">
                 <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-base font-semibold text-neutral-700">Messages</h2>
-                    <Button size="sm" onClick={onNewChat} className="bg-primary-500 hover:bg-primary-600">
+                    <Button
+                        size="sm"
+                        onClick={onNewChat}
+                        className="bg-primary-500 text-white hover:opacity-90"
+                    >
                         New message
                     </Button>
                 </div>

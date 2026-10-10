@@ -29,5 +29,10 @@ public class AdminAssessmentFilter {
     private List<String> assessmentStatuses = new ArrayList<>();
     private List<String> assessmentModes = new ArrayList<>();
     private List<String> accessStatuses = new ArrayList<>();
+    /**
+     * Optional "Source" filter of the assessment list (spec 12): {@code API} for exams
+     * created through the partner API, {@code DASHBOARD} for every other exam. Empty = all.
+     */
+    private List<String> sources = new ArrayList<>();
     private Map<String, String> sortColumns = new HashMap<>();
 }

@@ -44,7 +44,12 @@ import { AiAssistButton } from './ai-assist-button';
 // Step 1 Schema
 export const step1Schema = z.object({
     id: z.string().optional(),
-    course: z.string().min(1, { message: 'Course name is required' }),
+    course: z.string().refine(
+        (value) => value.length >= 1,
+        () => ({
+            message: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} name is required`,
+        })
+    ),
     description: z.string().optional(),
     learningOutcome: z.string().optional(),
     aboutCourse: z.string().optional(),
@@ -81,6 +86,7 @@ export const AddCourseStep1 = ({
     settingsLoading?: boolean;
 }) => {
     const { instituteDetails } = useInstituteDetailsStore();
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const data = getTokenDecodedData(accessToken);
     const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
@@ -542,7 +548,7 @@ export const AddCourseStep1 = ({
             <div className="flex h-[calc(100%-56px)] items-center justify-center">
                 <div className="text-center">
                     <div className="mb-4 inline-block size-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
-                    <p>Loading course settings...</p>
+                    <p>Loading {courseTerm.toLocaleLowerCase()} settings...</p>
                 </div>
             </div>
         );
@@ -578,7 +584,7 @@ export const AddCourseStep1 = ({
                                                         SystemTerms.Course
                                                     )}
                                                     inputType="text"
-                                                    inputPlaceholder="Enter course name"
+                                                    inputPlaceholder={`Enter ${courseTerm.toLocaleLowerCase()} name`}
                                                     className="w-full"
                                                     input={field.value}
                                                     onChangeFunction={(e) =>
@@ -737,7 +743,7 @@ export const AddCourseStep1 = ({
                                                             value={field.value || ''}
                                                             onBlur={field.onBlur}
                                                             minHeight={120}
-                                                            placeholder="Provide a detailed overview of the course. Include learning objectives, topics covered, format (video, quizzes, projects), and who this course is for."
+                                                            placeholder={`Provide a detailed overview of the ${courseTerm.toLocaleLowerCase()}. Include learning objectives, topics covered, format (video, quizzes, projects), and who this ${courseTerm.toLocaleLowerCase()} is for.`}
                                                         />
                                                     </FormControl>
                                                     <FormMessage />
@@ -781,7 +787,7 @@ export const AddCourseStep1 = ({
                                                             value={field.value || ''}
                                                             onBlur={field.onBlur}
                                                             minHeight={120}
-                                                            placeholder="Provide a detailed overview of the course. Include learning objectives, topics covered, format (video, quizzes, projects), and who this course is for."
+                                                            placeholder={`Provide a detailed overview of the ${courseTerm.toLocaleLowerCase()}. Include learning objectives, topics covered, format (video, quizzes, projects), and who this ${courseTerm.toLocaleLowerCase()} is for.`}
                                                         />
                                                     </FormControl>
                                                     <FormMessage />
@@ -816,7 +822,7 @@ export const AddCourseStep1 = ({
                                                             value={field.value || ''}
                                                             onBlur={field.onBlur}
                                                             minHeight={120}
-                                                            placeholder="Provide a detailed overview of the course. Include learning objectives, topics covered, format (video, quizzes, projects), and who this course is for."
+                                                            placeholder={`Provide a detailed overview of the ${courseTerm.toLocaleLowerCase()}. Include learning objectives, topics covered, format (video, quizzes, projects), and who this ${courseTerm.toLocaleLowerCase()} is for.`}
                                                         />
                                                     </FormControl>
                                                     <FormMessage />
@@ -856,8 +862,9 @@ export const AddCourseStep1 = ({
                                             />
                                         </div>
                                         <p className="text-sm text-neutral-500">
-                                            This is the thumbnail that appears on the course card.
-                                            Recommended size: 2:1 ratio
+                                            This is the thumbnail that appears on the{' '}
+                                            {courseTerm.toLocaleLowerCase()} card. Recommended size:
+                                            2:1 ratio
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.coursePreview ? (
@@ -881,7 +888,7 @@ export const AddCourseStep1 = ({
                                                 >
                                                     <img
                                                         src={form.watch('coursePreviewBlob')}
-                                                        alt="Course Preview"
+                                                        alt={`${courseTerm} Preview`}
                                                         className="size-full rounded-lg object-contain"
                                                     />
                                                     <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40">
@@ -973,8 +980,9 @@ export const AddCourseStep1 = ({
                                             />
                                         </div>
                                         <p className="text-sm text-neutral-500">
-                                            A wide background image displayed on top of the course
-                                            detail page. Recommended size: 2.64:1 ratio
+                                            A wide background image displayed on top of the{' '}
+                                            {courseTerm.toLocaleLowerCase()} detail page.
+                                            Recommended size: 2.64:1 ratio
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.courseBanner ? (
@@ -996,7 +1004,7 @@ export const AddCourseStep1 = ({
                                                 >
                                                     <img
                                                         src={form.watch('courseBannerBlob')}
-                                                        alt="Course Banner"
+                                                        alt={`${courseTerm} Banner`}
                                                         className="size-full rounded-lg object-contain"
                                                     />
                                                     <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40">
@@ -1083,9 +1091,10 @@ export const AddCourseStep1 = ({
                                             />
                                         </div>
                                         <p className="text-sm text-neutral-500">
-                                            A featured media block within the course page; this can
-                                            visually represent the content or offer a teaser. For
-                                            videos, recommended format: MP4
+                                            A featured media block within the{' '}
+                                            {courseTerm.toLocaleLowerCase()} page; this can visually
+                                            represent the content or offer a teaser. For videos,
+                                            recommended format: MP4
                                         </p>
                                         <div className="relative flex flex-col gap-2">
                                             {/* Preview logic remains unchanged */}
@@ -1116,7 +1125,7 @@ export const AddCourseStep1 = ({
                                                     <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
                                                         <img
                                                             src={form.watch('courseMediaBlob')}
-                                                            alt="Course Banner"
+                                                            alt={`${courseTerm} Banner`}
                                                             className="size-full rounded-lg object-contain"
                                                         />
                                                     </div>

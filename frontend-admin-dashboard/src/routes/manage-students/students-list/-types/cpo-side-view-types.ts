@@ -20,6 +20,8 @@ export interface CpoUserPlanSummary {
     payment_option_id: string | null;
     payment_option_name: string | null;
     status: string | null;
+    /** Currency the plan is billed in; absent on plans with no PaymentPlan behind them. */
+    currency?: string | null;
     gross_total: number;
     net_total: number;
     paid_total: number;
@@ -107,6 +109,17 @@ export interface ModifyInstallmentRequest {
 export interface ApplyCpoDiscountRequest {
     discount?: DiscountSpec | null;
     remove?: boolean;
+}
+
+/**
+ * Move part of an installment's UNPAID balance onto a new installment with its own dates. The
+ * plan total does not change — only when that part falls due.
+ */
+export interface SplitInstallmentRequest {
+    /** Net amount to move; at most the installment's outstanding balance. */
+    amount: number;
+    start_date?: string | null;
+    due_date: string;
 }
 
 export interface RecordOfflinePaymentRequest {

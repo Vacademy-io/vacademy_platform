@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Predicate;
 
 /**
  * Ad platform strategy for Meta Lead Ads (Facebook + Instagram).
@@ -55,6 +56,35 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     private static final String META_OAUTH_BASE = "https://www.facebook.com/v21.0/dialog/oauth";
     private static final String META_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
     private static final String HMAC_SHA256 = "HmacSHA256";
+
+    // Field-name candidates for the identity fields we lift out of a lead.
+    // ALIASES are matched whole (case-insensitively) and in order, so the canonical
+    // Meta key always wins when a form happens to carry both. TOKENS are the looser
+    // substring fallback for author-renamed questions ("Your Phone", "mobile no").
+    private static final List<String> PHONE_ALIASES = List.of(
+            "phone_number", "phone", "mobile_number", "mobile", "contact_number",
+            "whatsapp_number", "phone_no", "contact_no");
+    private static final List<String> PHONE_TOKENS = List.of("phone", "mobile", "whatsapp");
+
+    private static final List<String> EMAIL_ALIASES = List.of(
+            "email", "email_address", "e-mail", "mail_id", "email_id");
+    private static final List<String> EMAIL_TOKENS = List.of("email", "e-mail");
+
+    // Name is alias-only. Live forms ask "name_of_school_/_organisation?" and
+    // "school_/_organisation_name", so a substring match on "name" would file the
+    // school as the lead's own name. Building a name out of first/last is NOT done
+    // here either — LeadEnricher.composeFullName already owns that downstream, and
+    // a second implementation would suppress its write to the other name aliases.
+    private static final List<String> NAME_ALIASES = List.of(
+            "full_name", "full name", "name", "your_name");
+
+    // A TOKEN-matched key must also carry a value of the right shape, so a question
+    // like "do_you_have_a_whatsapp_number?" answered "Yes" can never be filed as the
+    // lead's phone. Aliases are exempt: an exact "phone_number" is trusted as-is,
+    // which keeps junk like Meta's own "<test lead: dummy data>" behaving as before.
+    private static final Predicate<String> PHONE_SHAPED =
+            v -> v.replaceAll("[^0-9]", "").length() >= 7;
+    private static final Predicate<String> EMAIL_SHAPED = v -> v.contains("@");
 
     // Permissions needed for Lead Ads. business_management + pages_manage_ads are
     // requested so the connecting account can be recognised as a full Page admin
@@ -243,18 +273,30 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         }
 
         // Extract email/phone/name from raw fields BEFORE mapping transforms the keys.
-        // Meta uses uppercase keys (EMAIL, FULL_NAME, PHONE_NUMBER) — do case-insensitive lookup.
-        String rawEmail = findValueCaseInsensitive(fields, "email");
-        String rawPhone = findValueCaseInsensitive(fields, "phone_number");
-        String rawName = findValueCaseInsensitive(fields, "full_name");
+        // Meta's canonical keys (EMAIL, FULL_NAME, PHONE_NUMBER) are only a
+        // convention — the form author renames them freely, and a form whose phone
+        // question is called "phone" used to resolve to null here, so the lead was
+        // created with no mobile number even though the answer still reached
+        // custom_field_values through the connector mapping. Resolve by alias, then
+        // by substring, the way GenericFormWebhookStrategy already does.
+        Map.Entry<String, String> emailField = findField(fields, EMAIL_ALIASES, EMAIL_TOKENS, EMAIL_SHAPED);
+        Map.Entry<String, String> phoneField = findField(fields, PHONE_ALIASES, PHONE_TOKENS, PHONE_SHAPED);
+        Map.Entry<String, String> nameField = findField(fields, NAME_ALIASES, null, null);
+
+        String rawEmail = emailField != null ? emailField.getValue() : null;
+        String rawPhone = phoneField != null ? phoneField.getValue() : null;
+        String rawName = nameField != null ? nameField.getValue() : null;
 
         // Normalize phone: Meta Graph API returns "+919876543210" — strip non-digits,
-        // prepend country code 91 for 10-digit Indian numbers.
+        // prepend country code 91 for 10-digit Indian numbers. Rewrite the key that
+        // actually matched, otherwise the raw "+91…" leaks through to the stored
+        // custom field value while the user record carries the normalized one.
         if (rawPhone != null && !rawPhone.isBlank()) {
             String cleaned = rawPhone.replaceAll("[^0-9]", "");
             String normalizedPhone = cleaned.length() == 10 ? "91" + cleaned : cleaned;
             rawPhone = normalizedPhone;
-            fields.replaceAll((k, v) -> k.equalsIgnoreCase("phone_number") ? normalizedPhone : v);
+            String phoneKey = phoneField.getKey();
+            fields.replaceAll((k, v) -> k.equalsIgnoreCase(phoneKey) ? normalizedPhone : v);
         }
 
         // Apply field mapping from connector (transforms keys for audience custom fields)
@@ -865,16 +907,39 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
 
     // ── Utilities ────────────────────────────────────────────────────────────
 
-    /** Case-insensitive lookup in a map (Meta sends EMAIL, FULL_NAME, etc.) */
-    private String findValueCaseInsensitive(Map<String, String> map, String key) {
-        // Try exact match first
-        String v = map.get(key);
-        if (v != null) return v;
-        // Try case-insensitive
-        for (Map.Entry<String, String> e : map.entrySet()) {
-            if (e.getKey().equalsIgnoreCase(key)) return e.getValue();
+    /**
+     * Resolve one logical field out of a Meta lead's answers. Tries each alias as a
+     * whole-key case-insensitive match in the order given, then — when {@code tokens}
+     * is non-null — falls back to a substring match on the key, accepting it only if
+     * {@code tokenValueShape} also passes. Blank answers never match, so an empty
+     * "phone" question cannot shadow a filled "mobile" one.
+     *
+     * Returns the entry rather than the value because the caller has to know which
+     * key matched in order to write the normalized value back onto it.
+     */
+    private Map.Entry<String, String> findField(Map<String, String> map, List<String> aliases,
+            List<String> tokens, Predicate<String> tokenValueShape) {
+        for (String alias : aliases) {
+            for (Map.Entry<String, String> e : map.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(alias) && hasText(e.getValue())) return e;
+            }
+        }
+        if (tokens != null) {
+            for (Map.Entry<String, String> e : map.entrySet()) {
+                String key = e.getKey().toLowerCase(Locale.ROOT);
+                for (String token : tokens) {
+                    if (key.contains(token) && hasText(e.getValue())
+                            && (tokenValueShape == null || tokenValueShape.test(e.getValue()))) {
+                        return e;
+                    }
+                }
+            }
         }
         return null;
+    }
+
+    private boolean hasText(String s) {
+        return s != null && !s.isBlank();
     }
 
     private String bytesToHex(byte[] bytes) {

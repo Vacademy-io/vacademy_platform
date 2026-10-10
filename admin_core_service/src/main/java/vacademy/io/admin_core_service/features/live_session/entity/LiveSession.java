@@ -120,7 +120,8 @@ public class LiveSession {
     private String feedbackConfigJson;
 
     /**
-     * Zoom provider-account id chosen for this session, and the meeting settings
+     * Provider-account id (Zoom or Google Meet, despite the column name) chosen for
+     * this session, and the meeting settings
      * JSON the admin configured. Persisted so the provisioning retry job can
      * re-create meetings for any occurrence whose up-front async provisioning was
      * interrupted (process restart / partial failure) without re-asking the UI.

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCPOFullDetails } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import type { CPOFeeType, CPOInstallment } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 import type {
@@ -93,6 +94,7 @@ const blank: CpoEnrollmentConfig = {
  * {@link AssignmentItem} and supersedes the legacy `cpo_payment_*` fields.
  */
 export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
+    const { t } = useTranslation('manageStudentsCpoEnrollmentConfigPanel');
     const { data, isLoading, isError } = useCPOFullDetails(cpoId, !!cpoId);
     const installments = useMemo(() => flattenInstallments(data?.fee_types), [data]);
 
@@ -211,36 +213,36 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
     return (
         <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50/40 p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                    Fee Configuration
+                <p className="text-2xs font-semibold uppercase tracking-wide text-orange-700">
+                    {t('header.title')}
                 </p>
-                <span className="text-[11px] text-neutral-600">
-                    Total: <span className="font-semibold text-neutral-800">{fmt(grossTotal)}</span>
+                <span className="text-2xs text-neutral-600">
+                    {t('header.totalLabel')} <span className="font-semibold text-neutral-800">{fmt(grossTotal)}</span>
                     {' · '}
-                    After discount: <span className="font-semibold text-orange-800">{fmt(totals.net)}</span>
+                    {t('header.afterDiscountLabel')} <span className="font-semibold text-orange-800">{fmt(totals.net)}</span>
                 </span>
             </div>
 
-            {isLoading && <p className="py-2 text-center text-[11px] text-neutral-500">Loading installments…</p>}
+            {isLoading && <p className="py-2 text-center text-2xs text-neutral-500">{t('loading')}</p>}
             {isError && (
-                <p className="py-2 text-center text-[11px] text-red-600">
-                    Could not load CPO details.
+                <p className="py-2 text-center text-2xs text-red-600">
+                    {t('loadError')}
                 </p>
             )}
 
             {/* Installments table with editable cells */}
             {installments.length > 0 && (
                 <div className="mb-3 max-h-64 overflow-y-auto rounded border border-orange-100 bg-white">
-                    <table className="w-full text-left text-[11px]">
-                        <thead className="sticky top-0 bg-orange-50 text-[10px] uppercase text-neutral-500">
+                    <table className="w-full text-start text-2xs">
+                        <thead className="sticky top-0 bg-orange-50 text-2xs uppercase text-neutral-500">
                             <tr>
-                                <th className="px-2 py-1 font-medium">#</th>
-                                <th className="px-2 py-1 font-medium">Fee Type</th>
-                                <th className="px-2 py-1 font-medium">Start Date</th>
-                                <th className="px-2 py-1 font-medium">Due Date</th>
-                                <th className="px-2 py-1 text-right font-medium">Default</th>
-                                <th className="px-2 py-1 text-right font-medium">Amount (₹)</th>
-                                <th className="px-2 py-1 font-medium">Discount</th>
+                                <th className="px-2 py-1 font-medium">{t('table.index')}</th>
+                                <th className="px-2 py-1 font-medium">{t('table.feeType')}</th>
+                                <th className="px-2 py-1 font-medium">{t('table.startDate')}</th>
+                                <th className="px-2 py-1 font-medium">{t('table.dueDate')}</th>
+                                <th className="px-2 py-1 text-end font-medium">{t('table.default')}</th>
+                                <th className="px-2 py-1 text-end font-medium">{t('table.amount')}</th>
+                                <th className="px-2 py-1 font-medium">{t('table.discount')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-orange-50">
@@ -269,7 +271,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                         start_date: e.target.value || null,
                                                     })
                                                 }
-                                                className="w-[120px] rounded border border-neutral-200 px-1 py-0.5 text-[11px] outline-none focus:border-primary-300"
+                                                className="w-28 rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none focus:border-primary-300"
                                             />
                                         </td>
                                         <td className="px-2 py-1 align-middle">
@@ -281,7 +283,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                         due_date: e.target.value || null,
                                                     })
                                                 }
-                                                className="w-[120px] rounded border border-neutral-200 px-1 py-0.5 text-[11px] outline-none focus:border-primary-300"
+                                                className="w-28 rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none focus:border-primary-300"
                                             />
                                         </td>
                                         <td className="px-2 py-1 text-right align-middle text-neutral-500">
@@ -295,8 +297,11 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                 placeholder={effective.toFixed(2)}
                                                 title={
                                                     ov?.amount != null
-                                                        ? 'Manual amount override'
-                                                        : `Effective: ${fmt(effective)} (template ${fmt(row.amount)} after discounts)`
+                                                        ? t('table.amountOverrideTitle')
+                                                        : t('table.effectiveTitle', {
+                                                              effective: fmt(effective),
+                                                              template: fmt(row.amount),
+                                                          })
                                                 }
                                                 // Render 0/falsy as empty so typing into a
                                                 // pre-zero field doesn't produce "0<digits>".
@@ -307,7 +312,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                         amount: v === '' ? null : Number(v),
                                                     });
                                                 }}
-                                                className={`w-[88px] rounded border px-1 py-0.5 text-right text-[11px] outline-none focus:border-primary-300 ${
+                                                className={`w-20 rounded border px-1 py-0.5 text-end text-2xs outline-none focus:border-primary-300 ${
                                                     ov?.amount != null
                                                         ? 'border-primary-300 font-medium'
                                                         : 'border-neutral-200'
@@ -319,24 +324,24 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                 <select
                                                     value={discType}
                                                     onChange={(e) => {
-                                                        const t = e.target.value as DiscountType | '';
-                                                        if (!t) {
+                                                        const nextType = e.target.value as DiscountType | '';
+                                                        if (!nextType) {
                                                             updateRow(row.id, { discount: null });
                                                         } else {
                                                             updateRow(row.id, {
                                                                 discount: {
-                                                                    type: t,
+                                                                    type: nextType,
                                                                     value: typeof discValue === 'number' ? discValue : 0,
                                                                     reason: ov?.discount?.reason ?? null,
                                                                 },
                                                             });
                                                         }
                                                     }}
-                                                    className="rounded border border-neutral-200 px-1 py-0.5 text-[10px] outline-none"
+                                                    className="rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none"
                                                 >
-                                                    <option value="">none</option>
-                                                    <option value="PERCENTAGE">%</option>
-                                                    <option value="FLAT">₹</option>
+                                                    <option value="">{t('table.discountOptions.none')}</option>
+                                                    <option value="PERCENTAGE">{t('table.discountOptions.percentage')}</option>
+                                                    <option value="FLAT">{t('table.discountOptions.flat')}</option>
                                                 </select>
                                                 <input
                                                     type="number"
@@ -361,7 +366,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                                                 : null,
                                                         });
                                                     }}
-                                                    className="w-[64px] rounded border border-neutral-200 px-1 py-0.5 text-right text-[11px] outline-none focus:border-primary-300 disabled:bg-neutral-50"
+                                                    className="w-16 rounded border border-neutral-200 px-1 py-0.5 text-end text-2xs outline-none focus:border-primary-300 disabled:bg-neutral-50"
                                                 />
                                             </div>
                                         </td>
@@ -375,33 +380,33 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
 
             {/* CPO-level discount */}
             <div className="mb-3 rounded-md border border-neutral-200 bg-white p-2.5">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Discount (optional)
+                <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {t('cpoDiscount.heading')}
                 </p>
                 <div className="flex flex-wrap items-end gap-2">
                     <div>
-                        <label className="block text-[10px] text-neutral-500">Type</label>
+                        <label className="block text-2xs text-neutral-500">{t('cpoDiscount.typeLabel')}</label>
                         <select
                             value={cfg.cpo_discount?.type ?? ''}
                             onChange={(e) => {
-                                const t = e.target.value as DiscountType | '';
-                                if (!t) setCpoDiscount(null);
+                                const nextType = e.target.value as DiscountType | '';
+                                if (!nextType) setCpoDiscount(null);
                                 else
                                     setCpoDiscount({
-                                        type: t,
+                                        type: nextType,
                                         value: cfg.cpo_discount?.value ?? 0,
                                         reason: cfg.cpo_discount?.reason ?? null,
                                     });
                             }}
-                            className="rounded border border-neutral-200 px-2 py-1 text-[11px]"
+                            className="rounded border border-neutral-200 px-2 py-1 text-2xs"
                         >
-                            <option value="">none</option>
-                            <option value="PERCENTAGE">% of total</option>
-                            <option value="FLAT">flat ₹ off</option>
+                            <option value="">{t('cpoDiscount.options.none')}</option>
+                            <option value="PERCENTAGE">{t('cpoDiscount.options.percentage')}</option>
+                            <option value="FLAT">{t('cpoDiscount.options.flat')}</option>
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[10px] text-neutral-500">Value</label>
+                        <label className="block text-2xs text-neutral-500">{t('cpoDiscount.valueLabel')}</label>
                         <input
                             type="number"
                             step="any"
@@ -420,15 +425,15 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                         : null,
                                 )
                             }
-                            className="w-[100px] rounded border border-neutral-200 px-2 py-1 text-[11px] disabled:bg-neutral-50"
+                            className="w-24 rounded border border-neutral-200 px-2 py-1 text-2xs disabled:bg-neutral-50"
                         />
                     </div>
-                    <div className="flex-1 min-w-[160px]">
-                        <label className="block text-[10px] text-neutral-500">Reason</label>
+                    <div className="flex-1 min-w-40">
+                        <label className="block text-2xs text-neutral-500">{t('cpoDiscount.reasonLabel')}</label>
                         <input
                             type="text"
                             disabled={!cfg.cpo_discount}
-                            placeholder="e.g. Sibling discount"
+                            placeholder={t('cpoDiscount.reasonPlaceholder')}
                             value={cfg.cpo_discount?.reason ?? ''}
                             onChange={(e) =>
                                 setCpoDiscount(
@@ -437,21 +442,21 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                         : null,
                                 )
                             }
-                            className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] disabled:bg-neutral-50"
+                            className="w-full rounded border border-neutral-200 px-2 py-1 text-2xs disabled:bg-neutral-50"
                         />
                     </div>
-                    <span className="text-[11px] text-neutral-600">
-                        = {fmt(totals.cpoDiscountAmt)} off
+                    <span className="text-2xs text-neutral-600">
+                        {t('cpoDiscount.offSuffix', { amount: fmt(totals.cpoDiscountAmt) })}
                     </span>
                 </div>
             </div>
 
             {/* Initial offline payment */}
             <div className="rounded-md border border-neutral-200 bg-white p-2.5">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Initial Payment (optional)
+                <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {t('payment.heading')}
                 </p>
-                <div className="mb-2 flex flex-col gap-1.5 text-[11px] text-neutral-700">
+                <div className="mb-2 flex flex-col gap-1.5 text-2xs text-neutral-700">
                     <label className="flex cursor-pointer items-center gap-2">
                         <input
                             type="radio"
@@ -461,7 +466,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                             className="h-3.5 w-3.5"
                         />
                         <span>
-                            <strong>Don't record any payment now.</strong> Learner pays each installment online later.
+                            <strong>{t('payment.skipLabelBold')}</strong> {t('payment.skipLabelRest')}
                         </span>
                     </label>
                     <label className="flex cursor-pointer items-center gap-2">
@@ -481,7 +486,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                             className="h-3.5 w-3.5"
                         />
                         <span>
-                            <strong>Record an offline payment.</strong> Applied across installments earliest first.
+                            <strong>{t('payment.offlineLabelBold')}</strong> {t('payment.offlineLabelRest')}
                         </span>
                     </label>
                 </div>
@@ -490,9 +495,9 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                     // of the per-column helper text (the "Net dues" hint under Amount
                     // would otherwise push Reference's input down with items-end).
                     <div className="flex flex-wrap items-start gap-3">
-                        <div className="flex-1 min-w-[140px]">
-                            <label className="mb-1 block text-[10px] font-medium text-neutral-500">
-                                Amount (₹)
+                        <div className="flex-1 min-w-36">
+                            <label className="mb-1 block text-2xs font-medium text-neutral-500">
+                                {t('payment.amountLabel')}
                             </label>
                             <input
                                 type="number"
@@ -506,17 +511,17 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                                 onFocus={(e) => e.currentTarget.select()}
                                 className="w-full rounded border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-primary-300"
                             />
-                            <p className="mt-1 text-[10px] text-neutral-500">
-                                Net dues: {fmt(totals.net)}
+                            <p className="mt-1 text-2xs text-neutral-500">
+                                {t('payment.netDues', { amount: fmt(totals.net) })}
                             </p>
                         </div>
-                        <div className="flex-1 min-w-[160px]">
-                            <label className="mb-1 block text-[10px] font-medium text-neutral-500">
-                                Reference (optional)
+                        <div className="flex-1 min-w-40">
+                            <label className="mb-1 block text-2xs font-medium text-neutral-500">
+                                {t('payment.referenceLabel')}
                             </label>
                             <input
                                 type="text"
-                                placeholder="e.g. cheque #1234"
+                                placeholder={t('payment.referencePlaceholder')}
                                 value={cfg.payment_reference ?? ''}
                                 onChange={(e) => setPayment({ payment_reference: e.target.value || null })}
                                 className="w-full rounded border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-primary-300"

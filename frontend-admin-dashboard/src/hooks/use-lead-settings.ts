@@ -95,10 +95,136 @@ export interface LeadSettingsConfig {
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
 
+    /**
+     * When true, the unfiltered "All leads" view (Recent Leads + Lead List) hides
+     * converted leads. They stay reachable through the "Enrolled / Converted" option,
+     * the institute's CONVERTED status and the Lead Board. Off by default.
+     */
+    hideConvertedInAllLeads: boolean;
+    /**
+     * Whether the built-in "Enrolled / Converted" option is offered in the Lead Status
+     * filter. It is NOT a lead_status row — it filters on conversion_status, which is why
+     * it needs its own flag rather than the per-status show_in_filter toggle. Institutes
+     * that keep their own CONVERTED status see two near-identical options without this.
+     */
+    showConvertedFilterOption: boolean;
+
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
+    /** The three dropdowns a counsellor fills when logging a follow-up. Off for
+     *  every institute until one turns it on and supplies its own wording. */
+    followUpFields: FollowUpFieldsConfig;
+    /** The "is this number already ours?" lookup. Off, and blank, until configured. */
+    leadLookup: LeadLookupConfig;
     customStatuses: CustomLeadStatus[];
+
+    /**
+     * Institute-specific display names for the built-in lead attributes, e.g. an
+     * Eduzilla-style institute calling Tier "Interest Level" and Lead Status
+     * "Action Label". Empty/missing = the default wording. Read through
+     * useLeadTerminology() so every surface agrees.
+     */
+    labels?: LeadTerminologyLabels;
+}
+
+/**
+ * Student response / follow-up mode / next action — what a counsellor records
+ * when they log a follow-up.
+ *
+ * The options are the institute's own words, not an enum, because every institute
+ * runs a different script. Empty list = that one dropdown is not shown, so an
+ * institute can enable just the two it cares about.
+ */
+export interface FollowUpFieldsConfig {
+    /** Gates the three dropdowns below. Does NOT gate {@link notesRequired}. */
+    enabled: boolean;
+    studentResponses: string[];
+    followUpModes: string[];
+    nextActions: string[];
+    /**
+     * Refuse to save a follow-up with an empty note.
+     *
+     * Independent of {@link enabled}: an institute can insist on a written note
+     * without adopting the dropdowns, or the other way round. Off by default —
+     * the note has always been optional and turning it on retroactively would
+     * block a counsellor mid-task.
+     */
+    notesRequired: boolean;
+    /**
+     * Refuse to save a follow-up until every dropdown the institute configured
+     * has an answer.
+     *
+     * Separate from {@link notesRequired} — an institute can demand the
+     * structured answers without demanding prose, or the other way round. Off by
+     * default: these fields went out optional, and flipping them to mandatory
+     * retroactively would block a counsellor mid-call.
+     */
+    fieldsRequired: boolean;
+}
+
+/**
+ * Lead lookup — what a counsellor may learn about a lead that isn't theirs.
+ *
+ * A counsellor only sees their own leads, so searching a colleague's lead finds
+ * nothing and they call it as a fresh one. This answers for a single exact phone
+ * or email instead of widening the list.
+ *
+ * Every field starts hidden and the institute ticks what it is willing to share.
+ * ADMIN-role users are never masked by this — the backend gives them every field,
+ * since they aren't scoped out of lead data anywhere else either.
+ */
+export interface LeadLookupConfig {
+    enabled: boolean;
+    fields: LeadLookupFields;
+    /**
+     * Offer "Full name" alongside phone and email as a way to search.
+     *
+     * Off by default. Phone and email are things the caller already has in front
+     * of them; a name is something they can guess, so this is the one mode that
+     * could be used to probe other counsellors' leads. Even on, the backend
+     * matches the WHOLE name exactly - never a prefix - so it cannot be walked
+     * one letter at a time.
+     */
+    searchByName: boolean;
+    /**
+     * Which custom field holds the course. Matched by id so a rename doesn't
+     * break it. Blank = the course line is simply not shown; there is no sensible
+     * guess, and destination_package_session_id is unset at the institutes that
+     * collect the course as a form answer.
+     */
+    courseFieldId: string;
+}
+
+export interface LeadLookupFields {
+    name: boolean;
+    email: boolean;
+    phone: boolean;
+    counsellor: boolean;
+    source: boolean;
+    campaign: boolean;
+    status: boolean;
+    course: boolean;
+}
+
+export const LEAD_LOOKUP_FIELD_KEYS: (keyof LeadLookupFields)[] = [
+    'name',
+    'email',
+    'phone',
+    'counsellor',
+    'source',
+    'campaign',
+    'status',
+    'course',
+];
+
+export interface LeadTerminologyLabels {
+    tier?: string;
+    leadStatus?: string;
+    /** What this institute calls the audience's channel (default "Campaign type"; many say "Source"). */
+    campaignType?: string;
+    /** What this institute calls the audience a lead came in through (default "Audience"; I2CAN says "Label"). */
+    leadSource?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
@@ -113,6 +239,31 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    hideConvertedInAllLeads: false,
+    showConvertedFilterOption: true,
+    followUpFields: {
+        enabled: false,
+        studentResponses: [],
+        followUpModes: [],
+        nextActions: [],
+        notesRequired: false,
+        fieldsRequired: false,
+    },
+    leadLookup: {
+        enabled: false,
+        fields: {
+            name: false,
+            email: false,
+            phone: false,
+            counsellor: false,
+            source: false,
+            campaign: false,
+            status: false,
+            course: false,
+        },
+        courseFieldId: '',
+        searchByName: false,
+    },
     tatReminder: {
         enabled: false,
         tatHours: 24,
@@ -130,11 +281,103 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         notifyRoles: [],
     },
     customStatuses: DEFAULT_CUSTOM_LEAD_STATUSES,
+    labels: {},
 };
 
 // ── Fetcher ──────────────────────────────────────────────────────────────────
 
 const SETTING_KEY = 'LEAD_SETTING';
+
+/**
+ * Pull the saved config out of a `/institute/setting/v1/get` response.
+ *
+ * The endpoint answers with the SettingDto itself — `{key, name, data}` — so the config lives
+ * at `response.data.data`, which is what every other settings hook reads. This hook used to
+ * read `response.data.data[SETTING_KEY].data`, a shape the endpoint never returns, so the
+ * lookup was always undefined and EVERY institute silently fell back to
+ * {@link LEAD_SETTINGS_DEFAULTS}: renamed Tier / Lead-status labels never reached the UI and
+ * per-table score visibility was ignored. The nested shape is still tried first so a wrapped
+ * payload would keep working.
+ */
+export function extractLeadSettingData(
+    responseBody: unknown
+): Partial<LeadSettingsConfig> | undefined {
+    if (!responseBody || typeof responseBody !== 'object') return undefined;
+    const body = responseBody as Record<string, unknown>;
+    const nested = (body.data as Record<string, unknown> | undefined)?.[SETTING_KEY] as
+        | { data?: Partial<LeadSettingsConfig> }
+        | undefined;
+    if (nested?.data && typeof nested.data === 'object') return nested.data;
+    const direct = body.data;
+    if (direct && typeof direct === 'object') return direct as Partial<LeadSettingsConfig>;
+    return undefined;
+}
+
+/**
+ * Coerce the three option lists to arrays of strings.
+ *
+ * This subtree gets hand-written into institutes.setting_json when a new institute
+ * is onboarded, so a stray null or a string where a list belongs is a live
+ * possibility — and `.length` on it would take down every follow-up form and the
+ * whole Completed tab, for a config the UI never validated.
+ */
+export function normaliseFollowUpFields(
+    saved: Partial<FollowUpFieldsConfig> | undefined
+): FollowUpFieldsConfig {
+    const list = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+    return {
+        enabled: saved?.enabled === true,
+        studentResponses: list(saved?.studentResponses),
+        followUpModes: list(saved?.followUpModes),
+        nextActions: list(saved?.nextActions),
+        notesRequired: saved?.notesRequired === true,
+        fieldsRequired: saved?.fieldsRequired === true,
+    };
+}
+
+/**
+ * Coerce the lookup config. Same reason as {@link normaliseFollowUpFields}: this
+ * is hand-written into institutes.setting_json during onboarding, and a missing
+ * `fields` object would make every `fields.name` read throw.
+ */
+export function normaliseLeadLookup(
+    saved: Partial<LeadLookupConfig> | undefined
+): LeadLookupConfig {
+    const savedFields = (saved?.fields ?? {}) as Partial<LeadLookupFields>;
+    const fields = {} as LeadLookupFields;
+    for (const key of LEAD_LOOKUP_FIELD_KEYS) {
+        // Only a real boolean true shares a field — a stray "true" string must not.
+        fields[key] = savedFields[key] === true;
+    }
+    return {
+        enabled: saved?.enabled === true,
+        fields,
+        courseFieldId: typeof saved?.courseFieldId === 'string' ? saved.courseFieldId : '',
+        searchByName: saved?.searchByName === true,
+    };
+}
+
+/** Merge saved config over the defaults, keeping nested groups whole. */
+export function mergeLeadSettings(
+    saved: Partial<LeadSettingsConfig> | undefined
+): LeadSettingsConfig {
+    if (!saved) return LEAD_SETTINGS_DEFAULTS;
+    return {
+        ...LEAD_SETTINGS_DEFAULTS,
+        ...saved,
+        // Nested groups are spread so a partially-saved blob can't drop a weight or a flag.
+        scoringWeights: {
+            ...LEAD_SETTINGS_DEFAULTS.scoringWeights,
+            ...(saved.scoringWeights ?? {}),
+        },
+        tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
+        followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        followUpFields: normaliseFollowUpFields(saved.followUpFields),
+        leadLookup: normaliseLeadLookup(saved.leadLookup),
+        labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
+    };
+}
 
 async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
     const instituteId = getCurrentInstituteId();
@@ -145,11 +388,7 @@ async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: SETTING_KEY },
         });
-        const data: LeadSettingsConfig | undefined = response.data?.data?.[SETTING_KEY]?.data;
-        if (!data) return LEAD_SETTINGS_DEFAULTS;
-        // Merge with defaults so any newly added keys are present even if not
-        // yet saved (backward-compatible config evolution).
-        return { ...LEAD_SETTINGS_DEFAULTS, ...data };
+        return mergeLeadSettings(extractLeadSettingData(response.data));
     } catch {
         return LEAD_SETTINGS_DEFAULTS;
     }

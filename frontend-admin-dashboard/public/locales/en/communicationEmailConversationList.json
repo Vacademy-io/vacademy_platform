@@ -1,0 +1,10 @@
+{
+    "searchPlaceholder": "Search by email or subject…",
+    "endOfConversations": "End of conversations",
+    "noConversations": "No email conversations yet",
+    "noConversationsHint": "Conversations appear once you send or receive email",
+    "yesterday": "Yesterday",
+    "you": "You",
+    "deliveryFailed": "Delivery failed",
+    "noSubject": "(no subject)"
+}

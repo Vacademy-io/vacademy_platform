@@ -12,8 +12,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
+import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
+import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.audience.service.LeadStatusService;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService;
@@ -72,6 +74,7 @@ public class AiCallOutcomeProcessor {
     private final LeadStatusService leadStatusService;
     private final CounselorAssignmentService counselorAssignmentService;
     private final UserLeadProfileService userLeadProfileService;
+    private final UserLeadProfileRepository userLeadProfileRepository;
     private final AiCallingSettingsService settingsService;
     private final AiCallOutcomeClassifier classifier;
     private final CallLogService callLogService;
@@ -391,13 +394,18 @@ public class AiCallOutcomeProcessor {
             effectiveDisposition = "Incomplete";
         }
 
+        // callerWordCount is the bot's MEASURED count of what the caller said. It lets
+        // the classifier hand an engaged-but-unjudged call to a human rather than
+        // re-dial it — including the RED-degraded case just above, which is precisely
+        // where a long real conversation used to be thrown to the retry loop.
         AiCallDecision decision = classifier.classify(
                 r.getStatus(), r.getDurationSeconds(), effectiveDisposition, priorAttempts, settings,
-                agentDispositions);
+                agentDispositions, r.getCallerWordCount());
         boolean connected = isConnected(r, settings);
 
-        log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
-                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), decision.action(), decision.reason());
+        log.info("ai-call outcome: result={} lead={} disposition={} status={} callerWords={} -> {} ({})",
+                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), r.getCallerWordCount(),
+                decision.action(), decision.reason());
 
         applyDecision(decision, lead, r, connected);
 
@@ -619,7 +627,9 @@ public class AiCallOutcomeProcessor {
     private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r, boolean connected) {
         switch (decision.action()) {
             case ASSIGN -> {
-                assignCounsellor(lead);
+                // A qualification (not the exhausted-retries hand-off) may move an owned lead
+                // to the pool, when the institute has opted in. See assignCounsellor.
+                assignCounsellor(lead, !decision.isExhausted());
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
                 // Resume the paused CALL_AI state PAST the node (instead of cancelling it,
                 // which killed the graph at CALL_AI) — inject the terminal disposition + the
@@ -726,17 +736,66 @@ public class AiCallOutcomeProcessor {
     }
 
     private void assignCounsellor(Lead lead) {
+        assignCounsellor(lead, false);
+    }
+
+    /**
+     * @param qualified true when this is a real qualification (a disposition the institute
+     *                  maps to "assign"), false for the exhausted-retries hand-off. Only a
+     *                  qualification may move a lead that already has an owner, and only when
+     *                  {@code reassignQualifiedToPool} is on for the institute.
+     */
+    private void assignCounsellor(Lead lead, boolean qualified) {
         if (lead.audienceId() == null || lead.userId() == null) {
             log.info("ai-call assign: skipped (no audience/user) for lead {}", lead.userId());
             return;
+        }
+        // A lead that ALREADY has a counsellor keeps them. The rotation exists to give an
+        // UNOWNED lead an owner, not to move one between people.
+        //
+        // Before CALL_AI could opt out of the already-assigned guard, this could not happen:
+        // automation never dialled an owned lead, so every lead reaching this method was
+        // unowned and the rotation was always the right answer. With ignoreAssignedGuard the
+        // canonical flow is "counsellor rings the lead, marks it DNP, the bot re-calls" — and
+        // without this check that flow ENDS by handing their lead to whoever is next in the
+        // rotation and ringing that person's bell, silently taking it off the counsellor who
+        // is actively working it. assignCounselor() overwrites assigned_counselor_id with no
+        // guard of its own (it is also the manual-reassignment path, so it must not grow one).
+        String currentOwner = userLeadProfileRepository
+                .findByUserIdAndInstituteId(lead.userId(), lead.instituteId())
+                .map(UserLeadProfile::getAssignedCounselorId)
+                .filter(id -> id != null && !id.isBlank())
+                .orElse(null);
+        if (currentOwner != null) {
+            // The opt-in escape: a lead the bot actually QUALIFIED goes to the pool the list is
+            // attached to, even though it already has an owner. Only a qualification, never the
+            // exhausted-retries hand-off — see AiCallingSettingsPojo#reassignQualifiedToPool.
+            AiCallingSettingsPojo settings = settingsService.get(lead.instituteId());
+            boolean mayReassign = qualified && settings != null && settings.isReassignQualifiedToPool();
+            if (!mayReassign) {
+                log.info("ai-call assign: lead {} already owned by counsellor {} — keeping them (no rotation)",
+                        lead.userId(), currentOwner);
+                return;
+            }
+            log.info("ai-call assign: lead {} is owned by {} but the AI qualified it and "
+                            + "reassignQualifiedToPool is on — routing to the pool",
+                    lead.userId(), currentOwner);
         }
         Optional<String> counselorId = counselorAssignmentService.assignCounselorForLead(lead.audienceId());
         if (counselorId.isEmpty()) {
             log.info("ai-call assign: no counsellor returned (manual/empty pool) for audience {}", lead.audienceId());
             return;
         }
+        if (counselorId.get().equals(currentOwner)) {
+            // The rotation landed on the person who already holds it. Nothing to write, and no
+            // assignment bell for a change that is not a change.
+            log.info("ai-call assign: rotation picked the current owner {} for lead {} — no change",
+                    currentOwner, lead.userId());
+            return;
+        }
         userLeadProfileService.assignCounselor(lead.userId(), lead.instituteId(), counselorId.get(), null);
-        log.info("ai-call assign: lead {} -> counsellor {}", lead.userId(), counselorId.get());
+        log.info("ai-call assign: lead {} -> counsellor {}{}", lead.userId(), counselorId.get(),
+                currentOwner != null ? " (reassigned from " + currentOwner + ")" : "");
     }
 
     private void setStatus(Lead lead, String statusKey) {
@@ -762,6 +821,26 @@ public class AiCallOutcomeProcessor {
                 || disposition == null || disposition.isBlank()) return;
         String norm = normalizeKey(disposition);
         if (norm.isEmpty()) return;
+
+        // The institute's configured mapping wins over the name match. This is what lets
+        // an agent vocabulary the catalog does not contain ("Quiz_Link_Sent") still land
+        // the lead on a real status ("FOLLOWUP") — and it works on EVERY webhook, with no
+        // workflow involved, so an outcome that arrives after its workflow closed is still
+        // recorded instead of being silently dropped.
+        String mapped = resolveConfiguredStatusKey(lead.instituteId(), norm);
+        if (mapped != null) {
+            LeadStatus target = leadStatusRepo
+                    .findByInstituteIdAndStatusKey(lead.instituteId(), mapped).orElse(null);
+            if (target != null) {
+                leadStatusService.changeLeadStatus(lead.responseId(), target.getId(), null, "AI_CALLING");
+                log.info("ai-call status: lead {} -> {} (configured mapping for disposition '{}')",
+                        lead.userId(), target.getStatusKey(), disposition);
+                return;
+            }
+            log.warn("ai-call status: disposition '{}' maps to status '{}' which institute {} does not have "
+                            + "— falling back to a name match", disposition, mapped, lead.instituteId());
+        }
+
         LeadStatus match = leadStatusRepo
                 .findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(lead.instituteId())
                 .stream()
@@ -776,6 +855,25 @@ public class AiCallOutcomeProcessor {
         leadStatusService.changeLeadStatus(lead.responseId(), match.getId(), null, "AI_CALLING");
         log.info("ai-call status: lead {} -> {} (matched disposition '{}')",
                 lead.userId(), match.getStatusKey(), disposition);
+    }
+
+    /**
+     * The status key this institute has configured for a disposition, or null when it has
+     * not mapped one. Keys are compared normalised, so the admin can type the disposition
+     * however they like.
+     */
+    private String resolveConfiguredStatusKey(String instituteId, String normalisedDisposition) {
+        try {
+            AiCallingSettingsPojo s = settingsService.get(instituteId);
+            if (s == null || s.getDispositionStatusMap() == null) return null;
+            for (var e : s.getDispositionStatusMap().entrySet()) {
+                if (e.getKey() == null || e.getValue() == null || e.getValue().isBlank()) continue;
+                if (normalisedDisposition.equals(normalizeKey(e.getKey()))) return e.getValue().trim();
+            }
+        } catch (Exception e) {
+            log.debug("ai-call status: disposition map lookup failed for {}: {}", instituteId, e.getMessage());
+        }
+        return null;
     }
 
     /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */

@@ -78,8 +78,13 @@ def test_interrupts_content_words():
 
 
 def test_interrupts_past_word_cap():
+    # The cap was 3 until 2026-09-23. The 22 Sep paid batch had "हाँ जी। नमस्ते
+    # जी। जी।" and "ठीक है जी। हम्म।" stopping the bot as real interruptions —
+    # a run of acknowledgement words is still an acknowledgement. Six is the cap.
     assert mid_reply_action("haan haan haan") == ABSORB
-    assert mid_reply_action("haan haan haan haan") == INTERRUPT
+    assert mid_reply_action("haan haan haan haan") == ABSORB
+    assert mid_reply_action("haan haan haan haan haan haan") == ABSORB
+    assert mid_reply_action("haan haan haan haan haan haan haan") == INTERRUPT
 
 
 # ── duck timing (pure watchdog branches) ──
@@ -305,6 +310,19 @@ def test_the_trim_never_leaves_a_stub_behind():
     assert _trim(s, "सुबोध आठवीं में है।", "") == s
 
 
+def test_an_order_read_back_before_a_confirmation_tag_is_kept():
+    """Call a6849d85: "quantity पांच।" → "पांच pieces, सही है?" was cut to a bare
+    "सही है?" — a question about nothing. The caller said "Hello." 3.6 s later."""
+    s = "पांच pieces, सही है?"
+    assert _trim(s, "quantity पांच।", "उसकी quantity कितनी रखनी है?") == s
+    s = "Five mm, right?"
+    assert _trim(s, "five mm.", "which size do you need?") == s
+    # A real question after the parroting still loses the parroting.
+    out = _trim("पांच pieces, pattern कौन सा रहेगा?", "quantity पांच।",
+                "उसकी quantity कितनी रखनी है?")
+    assert out == "pattern कौन सा रहेगा?", out
+
+
 def test_no_caller_turn_means_nothing_to_parrot():
     s = "ओके, तो main aapko details bhej deti hoon."
     assert _trim(s, "") == s
@@ -380,3 +398,35 @@ def test_strip_echo_opener_only_ever_deletes():
         assert sent.strip() == "" or out.strip(), f"blanked a reply: {sent!r}"
         assert "?" not in sent or "?" in out, f"swallowed a question: {sent!r}"
         assert subsequence(bare(out), bare(sent)), f"invented text from {sent!r}"
+
+
+
+def test_hindi_hang_up_requests_end_the_call():
+    """Call f1368e22 (2026-10-01): the parent said "काट कर रख दो" and "cut करो";
+    neither matched, and the bot talked for another 4.5 minutes."""
+    from app.turntake import caller_wants_to_end
+    for t in ("वो सब छोड़ो आप वो सब छोड़ो छोड़ो छोड़ो आप मुझे। काट कर रख दो", "cut करो।",
+              "काट दो", "phone रख दो", "फोन रख दीजिए", "call cut कर दो", "फोन बंद करो",
+              "मत call करो", "गलत नंबर है", "मुझे नहीं चाहिए", "ज़रूरत नहीं है", "Cut the call."):
+        assert caller_wants_to_end(t), t
+    for t in ("रहने दो।", "अरे वो सब बताने को रहने दो।", "उसके मार्क्स कट गए थे", "कृष्णा दसवीं class में है।",
+              "call back कर लेना", "फोन पर बात कर लेते हैं", "हाँ जी।"):
+        assert not caller_wants_to_end(t), t
+
+
+def test_a_reply_ends_on_its_question_with_a_short_sentence_after_it():
+    """Call 71d0d5bd (2026-10-02): the scripted close puts a short sentence after
+    the question. A "हाँ" over that sentence answers the question; past the
+    8-word tolerance the sentence stands on its own."""
+    from app.turntake import ends_on_question, QUESTION_TAIL_WORDS
+    assert QUESTION_TAIL_WORDS == 8
+    for t in ("ठीक है। क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ? "
+              "पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।",
+              "क्या आप जुड़ना चाहेंगे?", "क्या आप जुड़ना चाहेंगे？", "Who is it right now? Is that ",
+              "Who is it right now? one two three four five six seven eight"):
+        assert ends_on_question(t), t
+    for t in ("", "   ", "ठीक है, मैं भेज देती हूँ।",
+              "क्या मैं link भेज दूँ? पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result "
+              "उसी दिन आपके WhatsApp पर आ जाता है।",
+              "Who is it right now? one two three four five six seven eight nine"):
+        assert not ends_on_question(t), t

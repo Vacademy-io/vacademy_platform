@@ -59,8 +59,10 @@ public class LeadReportService {
                                                String audienceId, String sourceType,
                                                String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
-        Integer tatHours = resolveTatHours(instituteId); // null when TAT disabled
-        Integer tatHoursParam = tatHours != null ? tatHours : 0;
+        LeadSlaConfigDTO.TatReminder tat = resolveTat(instituteId); // null when TAT disabled
+        Integer tatMinutes = tat != null ? tat.getTatMinutes() : null;
+        Integer tatMinutesParam = tatMinutes != null ? tatMinutes : 0;
+        String tatRule = tat != null ? tat.getWorkingHoursRule() : null;
 
         String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
@@ -71,7 +73,7 @@ public class LeadReportService {
                 audienceResponseRepository.findReportTotals(instituteId, range.from, range.to,
                         scopeCsv, audienceFilter, sourceFilter);
         LeadReportProjections.ResponseStatsProjection response =
-                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatHoursParam,
+                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatMinutesParam, tatRule,
                         scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.StatusCountProjection> statusRows =
                 audienceResponseRepository.findReportStatusBreakdown(instituteId, range.from, range.to,
@@ -93,7 +95,7 @@ public class LeadReportService {
         long overdue = nz(totals != null ? totals.getOverdueLeads() : null);
         long responded = nz(response != null ? response.getRespondedLeads() : null);
         Double avgResponseMin = response != null ? response.getAvgResponseMinutes() : null;
-        Long tatMet = (tatHours == null || response == null) ? null : response.getTatMetCount();
+        Long tatMet = (tatMinutes == null || response == null) ? null : response.getTatMetCount();
 
         LeadReportSummaryDTO.Totals totalsDto = LeadReportSummaryDTO.Totals.builder()
                 .totalLeads(total)
@@ -169,14 +171,16 @@ public class LeadReportService {
                                                            String audienceId, String sourceType,
                                                            String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
-        Integer tatHours = resolveTatHours(instituteId);
-        Integer tatHoursParam = tatHours != null ? tatHours : 0;
+        LeadSlaConfigDTO.TatReminder tat = resolveTat(instituteId);
+        Integer tatMinutes = tat != null ? tat.getTatMinutes() : null;
+        Integer tatMinutesParam = tatMinutes != null ? tatMinutes : 0;
+        String tatRule = tat != null ? tat.getWorkingHoursRule() : null;
 
         String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
 
         List<LeadReportProjections.CounselorRowProjection> raw = audienceResponseRepository
-                .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam,
+                .findReportCounselorPerformance(instituteId, range.from, range.to, tatMinutesParam, tatRule,
                         scopeCsv, trimToNull(audienceId), trimToNull(sourceType));
 
         // Every ACTIVE counsellor in the caller's scope must get a row — the
@@ -209,7 +213,7 @@ public class LeadReportService {
             long assigned = nz(r.getLeadsAssigned());
             long responded = nz(r.getLeadsResponded());
             long conversions = nz(r.getConversions());
-            Long tatMet = tatHours == null ? null : r.getTatMetCount();
+            Long tatMet = tatMinutes == null ? null : r.getTatMetCount();
             return CounselorPerformanceDTO.Row.builder()
                     .counselorId(r.getCounselorId())
                     .counselorName(Optional.ofNullable(nameByIdFinal.get(r.getCounselorId()))
@@ -244,7 +248,7 @@ public class LeadReportService {
                         .conversions(0)
                         .conversionRate(null)
                         .avgResponseMinutes(null)
-                        .tatMetCount(tatHours == null ? null : 0L)
+                        .tatMetCount(tatMinutes == null ? null : 0L)
                         .tatMetRate(null)
                         .openLeads(0)
                         .overdueLeads(0)
@@ -271,7 +275,8 @@ public class LeadReportService {
         return CounselorPerformanceDTO.builder()
                 .fromDate(range.from)
                 .toDate(range.to)
-                .tatHours(tatHours)
+                .tatMinutes(tatMinutes)
+                .tatHours(tatMinutes == null ? null : (tatMinutes + 59) / 60)
                 .rows(rows)
                 .summary(summary)
                 .build();
@@ -303,12 +308,12 @@ public class LeadReportService {
                 .collect(Collectors.toList());
     }
 
-    /** Read tat_hours when TAT is enabled; null otherwise (drives "is TAT shown?" downstream). */
-    private Integer resolveTatHours(String instituteId) {
+    /** The TAT config when TAT is enabled; null otherwise (drives "is TAT shown?" downstream). */
+    private LeadSlaConfigDTO.TatReminder resolveTat(String instituteId) {
         try {
             LeadSlaConfigDTO sla = leadSlaConfigService.getSchedulerConfig(instituteId);
             if (sla != null && sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
-                return sla.getTatReminder().getTatHours();
+                return sla.getTatReminder();
             }
         } catch (Exception ex) {
             log.debug("[LeadReport] No SLA config for institute {}: {}", instituteId, ex.getMessage());

@@ -142,6 +142,21 @@ public class CounselorPoolService {
         poolRepository.deleteById(poolId);
     }
 
+    /**
+     * The pool a single lead list feeds, or empty when it feeds none.
+     *
+     * <p>Reuses {@link #getPool} rather than mapping the entity here, so the chip in the
+     * lead-list header shows exactly the pool the Pools screen shows — including its
+     * members, which is what makes "who will pick these up" answerable from the list.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<CounselorPoolDTO> findPoolForAudience(String audienceId) {
+        return poolAudienceRepository.findByAudienceId(audienceId)
+                .map(CounselorPoolAudience::getPoolId)
+                .flatMap(poolRepository::findById)
+                .map(pool -> getPool(pool.getId()));
+    }
+
     @Transactional(readOnly = true)
     public CounselorPoolDTO getPool(String poolId) {
         CounselorPool pool = poolRepository.findById(poolId)
@@ -207,7 +222,9 @@ public class CounselorPoolService {
     }
 
     private void attachAudienceToPoolInternal(String poolId, String audienceId, String addedByUserId) {
-        attachAudienceInternal(poolId, audienceId);
+        if (!attachAudienceInternal(poolId, audienceId)) {
+            return;
+        }
 
         // Seed member rows for the new audience using existing pool members.
         // Display order matches the member's position when listed by added_at.
@@ -297,6 +314,22 @@ public class CounselorPoolService {
      * Validates: every id must be an existing member of (pool, audience); the input
      * list must cover EVERY current member (no missing, no extras).
      */
+    /**
+     * Choose WHEN this list hands out a counsellor — at intake (default) or only on demand.
+     * On-demand is the AI-first setting: the lead stays unowned so the CALL_AI node dials it,
+     * and the pool assigns only when the outcome processor asks (qualified, or retries
+     * exhausted). Nothing else about the pool changes; members and rotation are untouched.
+     */
+    @Transactional
+    public void updateAudienceAssignOnIntake(String poolId, String audienceId, boolean assignOnIntake) {
+        CounselorPoolAudience link = poolAudienceRepository.findByAudienceId(audienceId)
+                .filter(a -> poolId.equals(a.getPoolId()))
+                .orElseThrow(() -> new VacademyException("Audience is not attached to this pool"));
+        link.setAssignOnIntake(assignOnIntake);
+        poolAudienceRepository.save(link);
+        log.info("Pool {} audience {}: assign_on_intake={}", poolId, audienceId, assignOnIntake);
+    }
+
     @Transactional
     public void updateAudienceMemberOrder(String poolId, String audienceId,
                                           List<String> orderedCounselorUserIds) {
@@ -575,15 +608,34 @@ public class CounselorPoolService {
     // Internal helpers
     // ────────────────────────────────────────────────────────────────
 
-    private void attachAudienceInternal(String poolId, String audienceId) {
+    /**
+     * Links the audience to the pool. Returns false when it was already linked to
+     * this same pool (nothing to do). A link left pointing at a pool that no longer
+     * exists has no owner to protect (pool_id has no FK), so it is dropped instead
+     * of blocking the attach.
+     */
+    private boolean attachAudienceInternal(String poolId, String audienceId) {
         requireNonBlank(audienceId, "audience_id is required");
-        if (poolAudienceRepository.existsByAudienceId(audienceId)) {
-            throw new VacademyException("Audience is already linked to a pool. Remove it from the existing pool first.");
+        Optional<CounselorPoolAudience> existing = poolAudienceRepository.findByAudienceId(audienceId);
+        if (existing.isPresent()) {
+            String ownerPoolId = existing.get().getPoolId();
+            if (poolId.equals(ownerPoolId)) {
+                return false;
+            }
+            if (poolRepository.existsById(ownerPoolId)) {
+                throw new VacademyException("Audience is already linked to a pool. Remove it from the existing pool first.");
+            }
+            log.warn("Dropping stale pool link {} — audience={} pointed at missing pool={}",
+                    existing.get().getId(), audienceId, ownerPoolId);
+            poolAudienceRepository.delete(existing.get());
+            // audience_id is UNIQUE and Hibernate flushes inserts before deletes.
+            poolAudienceRepository.flush();
         }
         poolAudienceRepository.save(CounselorPoolAudience.builder()
                 .poolId(poolId)
                 .audienceId(audienceId)
                 .build());
+        return true;
     }
 
     private void createMemberRow(String poolId, String audienceId, String counselorUserId,
@@ -670,6 +722,7 @@ public class CounselorPoolService {
                 .lastAssignedCounselorId(a.getLastAssignedCounselorId())
                 .lastAssignedAt(a.getLastAssignedAt())
                 .addedAt(a.getAddedAt())
+                .assignOnIntake(a.getAssignOnIntake() == null || a.getAssignOnIntake())
                 .build();
     }
 

@@ -12,17 +12,22 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
+import vacademy.io.admin_core_service.features.doubts.dtos.DoubtActivityDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
 import vacademy.io.admin_core_service.features.doubts.dtos.OpenDoubtConfigResponse;
+import vacademy.io.admin_core_service.features.doubts.entity.DoubtActivity;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtActivityActionEnum;
+import vacademy.io.admin_core_service.features.doubts.enums.DoubtActivityActorTypeEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtsSourceEnum;
 import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
 import vacademy.io.admin_core_service.features.doubts.service.DoubtService;
+import vacademy.io.admin_core_service.features.doubts.service.DoubtStatusCatalog;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute.dto.settings.doubt_management.DoubtDefaultAssigneeSourceEnum;
@@ -38,8 +43,10 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -96,12 +103,42 @@ public class DoubtsManager {
     private static final long ROLE_LOOKUP_RETRY_DELAY_MS = 150L;
 
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
+        String actorUserId = userDetails == null ? null : userDetails.getUserId();
         if(StringUtils.hasText(doubtId)){
-            return ResponseEntity.ok(updateDoubt(doubtId, request));
+            return ResponseEntity.ok(updateDoubt(doubtId, request, actorUserId, isStaffViewer(userDetails)));
         }
 
-        return ResponseEntity.ok(createNewDoubt(request));
+        return ResponseEntity.ok(createNewDoubt(request, actorUserId));
     }
+
+    /**
+     * The audit trail of a doubt (assignments — manual and by rule — status changes, remarks).
+     * Staff only: learners and guests never see it, so the internal notes stay internal.
+     */
+    public ResponseEntity<List<DoubtActivityDto>> getDoubtActivity(CustomUserDetails userDetails, String doubtId) {
+        if (!isStaffViewer(userDetails)) {
+            throw new VacademyException("Only institute staff can view doubt activity");
+        }
+        if (doubtService.getDoubtById(doubtId).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(doubtService.getActivity(doubtId));
+    }
+
+    /**
+     * Anyone who works doubts from the admin app: ADMIN / TEACHER / root, and every other
+     * institute role (EVALUATOR, CONTENT CREATOR, custom roles — they're all offered in the
+     * assignee picker). A learner account (STUDENT role, no ADMIN/TEACHER) and a guest (no
+     * principal) are not staff. Same role precedence as {@link #resolveViewerUserId}.
+     */
+    private boolean isStaffViewer(CustomUserDetails user) {
+        if (user == null) return false;
+        if (hasRole(user, "ADMIN") || hasRole(user, "TEACHER") || user.isRootUser()) return true;
+        return !hasRole(user, "STUDENT");
+    }
+
+    /** Sentinel rule label for assignees a person picked by hand (as opposed to a routing rule). */
+    private static final String MANUAL_RULE = "MANUAL";
 
     /** Basic shape check; deliverability is not verified — the reply email just bounces if fake. */
     private static final java.util.regex.Pattern EMAIL_PATTERN =
@@ -221,6 +258,14 @@ public class DoubtsManager {
     }
 
     private String createNewDoubt(DoubtsDto request) {
+        return createNewDoubt(request, null);
+    }
+
+    /**
+     * @param actorUserId the authenticated caller (learner, staff) — recorded on the CREATED row and
+     *                    as the actor of any assignees they picked by hand. {@code null} for guests.
+     */
+    private String createNewDoubt(DoubtsDto request, String actorUserId) {
         boolean isReply = StringUtils.hasText(request.getParentId());
 
         // Resolve type / institute / batch up-front — needed for per-type routing, the admin
@@ -281,9 +326,19 @@ public class DoubtsManager {
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
         List<String> finalAssigneeIds = new ArrayList<>();
+        // Which rule put each assignee on the doubt (first source wins) — feeds the audit trail so
+        // an admin can see "auto-assigned by Technical Issue → Role: Admin" vs "picked by Shreyash".
+        Map<String, String> assigneeRules = new LinkedHashMap<>();
         if (savedDoubt.getParentId() == null) {
             Set<String> assigneeIds = new LinkedHashSet<>();
             DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+            doubtService.recordActivity(DoubtActivity.builder()
+                    .doubtId(savedDoubt.getId())
+                    .action(DoubtActivityActionEnum.CREATED.name())
+                    .actorType(actorUserId != null ? DoubtActivityActorTypeEnum.USER.name() : DoubtActivityActorTypeEnum.SYSTEM.name())
+                    .actorUserId(actorUserId)
+                    .toValue(DoubtStatusCatalog.PENDING)
+                    .build());
 
             // Resolve the sub-org routing up front — it decides whether the PARENT institute's
             // cascade even runs. A doubt from a sub-org learner can be handled by the sub-org
@@ -297,14 +352,18 @@ public class DoubtsManager {
                 // because inbox visibility is scoped by institute/batch, not by assignee. Explicit
                 // admin-picked ids at creation time are still honored.
                 assigneeIds.addAll(subOrg.staff());
+                subOrg.staff().forEach(id -> assigneeRules.putIfAbsent(id, "SUB_ORG"));
                 addExplicitAssignees(request, assigneeIds);
+                explicitAssigneeIds(request).forEach(id -> assigneeRules.putIfAbsent(id, MANUAL_RULE));
                 // Never drop the doubt on the floor: if the sub-org resolved to nobody (e.g. a
                 // sub-org with no admin/team yet), fall back to the parent admin so at least one
                 // person is notified rather than zero.
                 if (assigneeIds.isEmpty() && instituteId != null) {
                     log.info("Doubt {} is sub-org-exclusive but resolved 0 sub-org staff — "
                             + "falling back to parent admin so it isn't dropped", savedDoubt.getId());
-                    assigneeIds.addAll(resolveAdminFallback(instituteId));
+                    List<String> fallback = resolveAdminFallback(instituteId);
+                    assigneeIds.addAll(fallback);
+                    fallback.forEach(id -> assigneeRules.putIfAbsent(id, "ADMIN_FALLBACK"));
                 }
             } else {
                 // ADDITIVE / non-sub-org: resolve the assignee list via per-type routing
@@ -317,8 +376,12 @@ public class DoubtsManager {
                 boolean resolutionFailed = false;
                 try {
                     String subjectId = resolveSubjectIdForDoubt(savedDoubt);
-                    assigneeIds.addAll(resolveAssigneesForDoubt(savedDoubt, subjectId, instituteId, setting));
+                    String rule = describeRoutingRule(savedDoubt, setting);
+                    List<String> routed = resolveAssigneesForDoubt(savedDoubt, subjectId, instituteId, setting);
+                    assigneeIds.addAll(routed);
+                    routed.forEach(id -> assigneeRules.putIfAbsent(id, rule));
                     addExplicitAssignees(request, assigneeIds);
+                    explicitAssigneeIds(request).forEach(id -> assigneeRules.putIfAbsent(id, MANUAL_RULE));
                 } catch (Exception e) {
                     resolutionFailed = true;
                     log.error("Failed to resolve doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
@@ -330,7 +393,9 @@ public class DoubtsManager {
                 // resolution errored out, since the faculty cascade already appends the admin fallback on
                 // its own genuinely-empty results.
                 if (resolutionFailed && assigneeIds.isEmpty() && instituteId != null) {
-                    assigneeIds.addAll(resolveAdminFallback(instituteId));
+                    List<String> fallback = resolveAdminFallback(instituteId);
+                    assigneeIds.addAll(fallback);
+                    fallback.forEach(id -> assigneeRules.putIfAbsent(id, "ADMIN_FALLBACK"));
                 }
                 // Sub-org staff are ADDITIVE here, on top of the parent cascade: none of the
                 // institute-level routes can reach them — batch-teacher lookups exclude sub-org
@@ -338,12 +403,30 @@ public class DoubtsManager {
                 // learner's doubt would otherwise land only on the parent institute's desk. Keyed on
                 // the raiser's own sub-org linkage, so parent-institute learners are unaffected.
                 assigneeIds.addAll(subOrg.staff());
+                subOrg.staff().forEach(id -> assigneeRules.putIfAbsent(id, "SUB_ORG"));
             }
             // Persist the assignee rows best-effort. A transient save failure must not drop the
             // notification — we keep the resolved ids and still notify below.
             if (!assigneeIds.isEmpty()) {
                 try {
                     createDoubtsAssignee(savedDoubt, new ArrayList<>(assigneeIds));
+                    // One ASSIGNED row per person: RULE-actor rows name the routing rule, MANUAL
+                    // ones name the caller who picked them. Only once the rows are really saved —
+                    // the trail must not claim an assignment that never persisted.
+                    for (String id : assigneeIds) {
+                        String rule = assigneeRules.getOrDefault(id, MANUAL_RULE);
+                        boolean manual = MANUAL_RULE.equals(rule);
+                        doubtService.recordActivity(DoubtActivity.builder()
+                                .doubtId(savedDoubt.getId())
+                                .action(DoubtActivityActionEnum.ASSIGNED.name())
+                                .actorType(manual && actorUserId != null
+                                        ? DoubtActivityActorTypeEnum.USER.name()
+                                        : DoubtActivityActorTypeEnum.RULE.name())
+                                .actorUserId(manual ? actorUserId : null)
+                                .targetUserId(id)
+                                .ruleSource(manual ? null : rule)
+                                .build());
+                    }
                 } catch (Exception e) {
                     log.error("Failed to persist doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
                 }
@@ -528,6 +611,36 @@ public class DoubtsManager {
         request.getDoubtAssigneeRequestUserIds().stream()
                 .filter(id -> id != null && !id.isEmpty())
                 .forEach(assigneeIds::add);
+    }
+
+    private List<String> explicitAssigneeIds(DoubtsDto request) {
+        if (request.getDoubtAssigneeRequestUserIds() == null) return List.of();
+        return request.getDoubtAssigneeRequestUserIds().stream()
+                .filter(id -> id != null && !id.isEmpty())
+                .toList();
+    }
+
+    /**
+     * Human-readable code for the rule that routed a doubt, stored on the audit row:
+     * {@code TYPE:<key>:<source>[:<role>]} when the type has its own routing, else
+     * {@code DEFAULT:<default_assignee_source>}. The admin app formats these; keep them stable.
+     */
+    private String describeRoutingRule(Doubts doubt, DoubtManagementSettingDataDto setting) {
+        String typeKey = StringUtils.hasText(doubt.getType()) ? doubt.getType() : DEFAULT_TYPE;
+        DoubtManagementSettingDataDto.QueryTypeConfig typeConfig = findTypeConfig(setting, typeKey);
+        if (typeConfig != null && typeConfig.getAssignee() != null
+                && (StringUtils.hasText(typeConfig.getAssignee().getSource())
+                    || hasAdditionalHandlers(typeConfig.getAssignee()))) {
+            StringBuilder sb = new StringBuilder("TYPE:").append(typeKey);
+            if (StringUtils.hasText(typeConfig.getAssignee().getSource())) {
+                sb.append(':').append(typeConfig.getAssignee().getSource().trim().toUpperCase());
+                if (StringUtils.hasText(typeConfig.getAssignee().getRole())) {
+                    sb.append(':').append(typeConfig.getAssignee().getRole().trim().toUpperCase());
+                }
+            }
+            return sb.toString();
+        }
+        return "DEFAULT:" + parseAssigneeSource(setting).name();
     }
 
     /** Unknown/blank values default to ALL_TEAM (admins + team members), the documented default. */
@@ -854,20 +967,32 @@ public class DoubtsManager {
         }
     }
 
-    private String updateDoubt(String doubtId, DoubtsDto request) {
+    /**
+     * @param actorIsStaff whether the caller works doubts from the admin app. Learners (and guests)
+     *                     keep exactly what they had before: flipping ACTIVE ⇄ RESOLVED on their own
+     *                     doubt. Custom workflow statuses and remarks are staff-only — a learner
+     *                     echoing the doubt back can't move it to "Escalated" or write into the trail.
+     */
+    private String updateDoubt(String doubtId, DoubtsDto request, String actorUserId, boolean actorIsStaff) {
         Doubts resolvedDoubtForNotification = null;
         Doubts assignedDoubtForNotification = null;
         List<String> newlyAssignedUserIds = List.of();
+        // Audit rows are written AFTER the entity save succeeds so a failed update never leaves a
+        // trail claiming it happened.
+        List<DoubtActivity> pendingActivity = new ArrayList<>();
         try{
             Optional<Doubts> doubtsOpt = doubtService.getDoubtById(doubtId);
             if(doubtsOpt.isEmpty()) throw new VacademyException("Doubt Not Found");
+            Doubts doubt = doubtsOpt.get();
 
             // Detect status transition to RESOLVED before we mutate the entity, so we only notify
             // on the actual flip (not every subsequent update while status already == RESOLVED).
-            String previousStatus = doubtsOpt.get().getStatus();
-            boolean transitioningToResolved = request.getStatus() != null
-                    && DoubtStatusEnum.RESOLVED.name().equals(request.getStatus())
-                    && !DoubtStatusEnum.RESOLVED.name().equals(previousStatus);
+            String previousStatus = doubt.getStatus();
+            String previousWorkflow = DoubtStatusCatalog.effectiveKey(doubt);
+            String actorType = actorUserId != null
+                    ? DoubtActivityActorTypeEnum.USER.name() : DoubtActivityActorTypeEnum.SYSTEM.name();
+            String remark = actorIsStaff && StringUtils.hasText(request.getRemark())
+                    ? request.getRemark().trim() : null;
 
             // Snapshot the set of currently-active assignee user ids BEFORE createDoubtsAssignee
             // writes any new rows. The delta (request − snapshot) is who we'll notify as newly
@@ -882,41 +1007,135 @@ public class DoubtsManager {
                     .filter(id -> id != null && !id.isEmpty())
                     .collect(java.util.stream.Collectors.toSet());
 
-            updateIfNotNull(request.getHtmlText(), doubtsOpt.get()::setHtmlText);
-            updateIfNotNull(request.getStatus(), doubtsOpt.get()::setStatus);
+            updateIfNotNull(request.getHtmlText(), doubt::setHtmlText);
 
-            if(request.getStatus()!=null && request.getStatus().equals(DoubtStatusEnum.RESOLVED.name())){
-                updateIfNotNull(new Date(), doubtsOpt.get()::setResolvedTime);
+            // Status. Two ways in, kept consistent with each other:
+            //  1. workflow_status (configurable key) — the admin/teacher status picker and board.
+            //     Validated against the institute catalog; its kind drives the coarse status.
+            //  2. status (ACTIVE/RESOLVED/DELETED) — the legacy resolve toggle and the learner app.
+            //     Flipping it snaps workflow_status to the matching built-in (RESOLVED / PENDING).
+            // A request that echoes both unchanged is a no-op either way.
+            String requestedWorkflow = StringUtils.hasText(request.getWorkflowStatus())
+                    ? request.getWorkflowStatus().trim().toUpperCase() : null;
+            boolean workflowMoveRequested = requestedWorkflow != null
+                    && !requestedWorkflow.equalsIgnoreCase(previousWorkflow);
+            boolean builtInKey = DoubtStatusCatalog.PENDING.equals(requestedWorkflow)
+                    || DoubtStatusCatalog.RESOLVED.equals(requestedWorkflow);
+            // Only an actual MOVE is gated — the learner app echoes the doubt back unchanged
+            // (custom key included) when it flips resolved, and that must keep working.
+            if (workflowMoveRequested && !actorIsStaff && !builtInKey) {
+                throw new VacademyException("Only institute staff can set a custom doubt status");
+            }
+            if (workflowMoveRequested) {
+                List<DoubtManagementSettingDataDto.WorkflowStatusConfig> catalog =
+                        doubtService.getStatusCatalog(resolveNotificationInstituteId(doubt));
+                DoubtManagementSettingDataDto.WorkflowStatusConfig target =
+                        DoubtStatusCatalog.find(catalog, requestedWorkflow)
+                                .filter(c -> !Boolean.FALSE.equals(c.getEnabled()))
+                                .orElseThrow(() -> new VacademyException("Unknown doubt status: " + requestedWorkflow));
+                doubt.setWorkflowStatus(target.getKey());
+                doubt.setStatus(DoubtStatusCatalog.coarseStatusFor(target));
+            } else if (request.getStatus() != null && !request.getStatus().equals(previousStatus)) {
+                doubt.setStatus(request.getStatus());
+                if (DoubtStatusEnum.RESOLVED.name().equals(request.getStatus())) {
+                    doubt.setWorkflowStatus(DoubtStatusCatalog.RESOLVED);
+                } else if (DoubtStatusEnum.ACTIVE.name().equals(request.getStatus())) {
+                    doubt.setWorkflowStatus(DoubtStatusCatalog.PENDING);
+                }
+                // DELETED leaves the workflow key untouched — the row is hidden anyway.
+            }
+            boolean transitioningToResolved = DoubtStatusEnum.RESOLVED.name().equals(doubt.getStatus())
+                    && !DoubtStatusEnum.RESOLVED.name().equals(previousStatus);
+            if (transitioningToResolved) {
+                doubt.setResolvedTime(new Date());
+            }
+            String newWorkflow = DoubtStatusCatalog.effectiveKey(doubt);
+            boolean workflowChanged = !newWorkflow.equalsIgnoreCase(previousWorkflow);
+            if (workflowChanged) {
+                pendingActivity.add(DoubtActivity.builder()
+                        .doubtId(doubtId)
+                        .action(DoubtActivityActionEnum.STATUS_CHANGED.name())
+                        .actorType(actorType)
+                        .actorUserId(actorUserId)
+                        .fromValue(previousWorkflow)
+                        .toValue(newWorkflow)
+                        .remark(remark)
+                        .build());
+            } else if (remark != null) {
+                // A note left on the current status without moving it.
+                pendingActivity.add(DoubtActivity.builder()
+                        .doubtId(doubtId)
+                        .action(DoubtActivityActionEnum.REMARK.name())
+                        .actorType(actorType)
+                        .actorUserId(actorUserId)
+                        .toValue(newWorkflow)
+                        .remark(remark)
+                        .build());
             }
 
             if(request.getDoubtAssigneeRequestUserIds()!=null){
-                createDoubtsAssignee(doubtsOpt.get(), request.getDoubtAssigneeRequestUserIds());
+                createDoubtsAssignee(doubt, request.getDoubtAssigneeRequestUserIds());
                 newlyAssignedUserIds = request.getDoubtAssigneeRequestUserIds().stream()
                         .filter(id -> id != null && !id.isEmpty())
                         .filter(id -> !existingAssigneeUserIds.contains(id))
                         .distinct()
                         .toList();
+                for (String id : newlyAssignedUserIds) {
+                    pendingActivity.add(DoubtActivity.builder()
+                            .doubtId(doubtId)
+                            .action(DoubtActivityActionEnum.ASSIGNED.name())
+                            .actorType(actorType)
+                            .actorUserId(actorUserId)
+                            .targetUserId(id)
+                            .build());
+                }
             }
-            doubtService.updateOrCreateDoubt(doubtsOpt.get());
+            doubtService.updateOrCreateDoubt(doubt);
 
             if(request.getDeleteAssigneeRequest()!=null){
+                // Resolve row ids → user ids BEFORE the rows flip to DELETED, for the trail.
+                existingAssignees.stream()
+                        .filter(a -> request.getDeleteAssigneeRequest().contains(a.getId()))
+                        .map(DoubtAssignee::getSourceId)
+                        .filter(id -> id != null && !id.isEmpty())
+                        .distinct()
+                        .forEach(id -> pendingActivity.add(DoubtActivity.builder()
+                                .doubtId(doubtId)
+                                .action(DoubtActivityActionEnum.UNASSIGNED.name())
+                                .actorType(actorType)
+                                .actorUserId(actorUserId)
+                                .targetUserId(id)
+                                .build()));
                 doubtService.deleteAssigneeForDoubt(request.getDeleteAssigneeRequest());
             }
 
             if(request.getExcludedAssigneeUserIds()!=null && !request.getExcludedAssigneeUserIds().isEmpty()){
-                persistExcludedAssignees(doubtsOpt.get(), request.getExcludedAssigneeUserIds());
+                persistExcludedAssignees(doubt, request.getExcludedAssigneeUserIds());
+                request.getExcludedAssigneeUserIds().stream()
+                        .filter(id -> id != null && !id.isEmpty())
+                        .distinct()
+                        .forEach(id -> pendingActivity.add(DoubtActivity.builder()
+                                .doubtId(doubtId)
+                                .action(DoubtActivityActionEnum.UNASSIGNED.name())
+                                .actorType(actorType)
+                                .actorUserId(actorUserId)
+                                .targetUserId(id)
+                                .ruleSource("DEFAULT_EXCLUDED")
+                                .build()));
             }
 
             if (transitioningToResolved) {
-                resolvedDoubtForNotification = doubtsOpt.get();
+                resolvedDoubtForNotification = doubt;
             }
-            if (!newlyAssignedUserIds.isEmpty() && doubtsOpt.get().getParentId() == null
-                    && !DoubtStatusEnum.RESOLVED.name().equalsIgnoreCase(doubtsOpt.get().getStatus())) {
-                assignedDoubtForNotification = doubtsOpt.get();
+            if (!newlyAssignedUserIds.isEmpty() && doubt.getParentId() == null
+                    && !DoubtStatusEnum.RESOLVED.name().equalsIgnoreCase(doubt.getStatus())) {
+                assignedDoubtForNotification = doubt;
             }
         } catch (Exception e) {
             throw new VacademyException("Failed To Update Doubt: " +e.getMessage());
         }
+
+        pendingActivity.forEach(doubtService::recordActivity);
 
         // Fire notifications outside the try/catch — notification-service errors must never surface
         // as a doubt-update failure. The service itself also swallows its own errors; this is
@@ -1020,7 +1239,9 @@ public class DoubtsManager {
 
         Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(), filter.getSources(),
                 filter.getSourceIds(), filter.getTypes(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(),
-                filter.getBatchIds(), filter.getInstituteId(), viewerUserId, scopeBatch, scopeSubject, pageable);
+                filter.getBatchIds(), filter.getInstituteId(), viewerUserId, scopeBatch, scopeSubject,
+                filter.getAssigneeUserIds(), Boolean.TRUE.equals(filter.getUnassignedOnly()), filter.getWorkflowStatuses(),
+                pageable);
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
     }

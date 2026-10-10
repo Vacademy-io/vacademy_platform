@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useNavigate } from '@tanstack/react-router';
-import { Eye, EyeOff, User, Lock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeSlash, User, Lock, CheckCircle, WarningCircle, CircleNotch } from '@phosphor-icons/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { UPDATE_USER_DETAILS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getUserId, getUserName } from '@/utils/userDetails';
@@ -17,21 +19,22 @@ import { noAutofillProps } from '@/lib/no-autofill';
 import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 
 // Validation schemas
-const accountDetailsSchema = z
-    .object({
-        username: z
-            .string()
-            .min(3, 'Username must be at least 3 characters')
-            .max(50, 'Username must be less than 50 characters'),
-        newPassword: z.string().min(4, 'New password must be at least 4 characters'),
-        confirmPassword: z.string().min(1, 'Please confirm your password'),
-    })
-    .refine((data) => data.newPassword === data.confirmPassword, {
-        message: "Passwords don't match",
-        path: ['confirmPassword'],
-    });
+const buildAccountDetailsSchema = (t: TFunction) =>
+    z
+        .object({
+            username: z
+                .string()
+                .min(3, t('validation.usernameMin'))
+                .max(50, t('validation.usernameMax')),
+            newPassword: z.string().min(4, t('validation.newPasswordMin')),
+            confirmPassword: z.string().min(1, t('validation.confirmPasswordRequired')),
+        })
+        .refine((data) => data.newPassword === data.confirmPassword, {
+            message: t('password.mismatch'),
+            path: ['confirmPassword'],
+        });
 
-type AccountDetailsFormData = z.infer<typeof accountDetailsSchema>;
+type AccountDetailsFormData = z.infer<ReturnType<typeof buildAccountDetailsSchema>>;
 
 interface AccountDetailsProps {
     open: boolean;
@@ -40,6 +43,7 @@ interface AccountDetailsProps {
 }
 
 export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDetailsProps) {
+    const { t } = useTranslation('dashboardAccountDetailsEdit');
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showNewPassword, setShowNewPassword] = useState(false);
@@ -47,6 +51,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
     const [userId, setUserId] = useState<string>('');
     const [currentUsername, setCurrentUsername] = useState<string>('');
     const [redirecting, setRedirecting] = useState(false);
+    const accountDetailsSchema = useMemo(() => buildAccountDetailsSchema(t), [t]);
     const {
         register,
         handleSubmit,
@@ -67,7 +72,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
     const confirmPassword = watch('confirmPassword');
 
     const passwordValidations = [
-        { label: 'At least 4 characters', valid: newPassword.length >= 4 },
+        { label: t('password.minLengthHint'), valid: newPassword.length >= 4 },
     ];
 
     const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword;
@@ -83,7 +88,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                 setValue('username', username || '');
             } catch (error) {
                 console.error('Error loading user details:', error);
-                toast.error('Failed to load user details');
+                toast.error(t('toast.loadUserFailed'));
             }
         };
 
@@ -102,7 +107,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
 
     const onSubmit = async (data: AccountDetailsFormData) => {
         if (!userId) {
-            toast.error('User ID not found. Please try again.');
+            toast.error(t('toast.userIdMissing'));
             return;
         }
 
@@ -123,7 +128,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
 
             if (response.status === 200) {
                 removeCookiesAndLogout();
-                toast.success('Account details updated successfully!');
+                toast.success(t('toast.updateSuccess'));
                 handleClose();
             }
         } catch (error: unknown) {
@@ -134,11 +139,11 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                 response?: { status?: number; data?: { message?: string } };
             };
             if (axiosError.response?.status === 510) {
-                toast.error('Username already exists. Please choose a different username.');
+                toast.error(t('toast.usernameExists'));
             } else if (axiosError.response?.data?.message) {
                 toast.error(axiosError.response.data.message);
             } else {
-                toast.error('Failed to update account details. Please try again.');
+                toast.error(t('toast.updateFailed'));
             }
         } finally {
             setIsLoading(false);
@@ -149,7 +154,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col overflow-y-auto p-0 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                    Edit Account Details
+                    {t('dialogTitle')}
                 </h1>
 
                 {/* Form Content */}
@@ -162,18 +167,18 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                                 <User size={16} />
-                                <h3>Username</h3>
+                                <h3>{t('username.sectionTitle')}</h3>
                             </div>
 
                             <div className="space-y-2">
                                 <Label htmlFor="username" className="text-sm">
-                                    Username*
+                                    {t('username.label')}
                                 </Label>
                                 <Input
                                     id="username"
                                     {...noAutofillProps('text')}
                                     {...register('username')}
-                                    placeholder="Enter your username"
+                                    placeholder={t('username.placeholder')}
                                     className="h-11 text-sm"
                                     disabled={isLoading}
                                 />
@@ -184,7 +189,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                 )}
                                 {currentUsername && (
                                     <p className="text-xs text-gray-500">
-                                        Current: {currentUsername}
+                                        {t('username.current', { username: currentUsername })}
                                     </p>
                                 )}
                             </div>
@@ -194,13 +199,13 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                                 <Lock size={16} />
-                                <h3>Change Password</h3>
+                                <h3>{t('password.sectionTitle')}</h3>
                             </div>
 
                             {/* New Password */}
                             <div className="space-y-2">
                                 <Label htmlFor="newPassword" className="text-sm">
-                                    New Password*
+                                    {t('password.newLabel')}
                                 </Label>
                                 <div className="relative">
                                     <Input
@@ -208,7 +213,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                         type={showNewPassword ? 'text' : 'password'}
                                         {...noAutofillProps('password')}
                                         {...register('newPassword')}
-                                        placeholder="Enter your new password"
+                                        placeholder={t('password.newPlaceholder')}
                                         className="h-11 pr-10 text-sm"
                                         disabled={isLoading}
                                     />
@@ -217,7 +222,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                         onClick={() => setShowNewPassword(!showNewPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                     >
-                                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        {showNewPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
                                     </button>
                                 </div>
                                 {errors.newPassword && (
@@ -241,7 +246,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                                 {validation.valid ? (
                                                     <CheckCircle size={12} />
                                                 ) : (
-                                                    <AlertCircle size={12} />
+                                                    <WarningCircle size={12} />
                                                 )}
                                                 <span>{validation.label}</span>
                                             </div>
@@ -253,7 +258,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                             {/* Confirm Password */}
                             <div className="space-y-2">
                                 <Label htmlFor="confirmPassword" className="text-sm">
-                                    Confirm New Password*
+                                    {t('password.confirmLabel')}
                                 </Label>
                                 <div className="relative">
                                     <Input
@@ -261,7 +266,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                         type={showConfirmPassword ? 'text' : 'password'}
                                         {...noAutofillProps('password')}
                                         {...register('confirmPassword')}
-                                        placeholder="Confirm your new password"
+                                        placeholder={t('password.confirmPlaceholder')}
                                         className="h-11 pr-10 text-sm"
                                         disabled={isLoading}
                                     />
@@ -271,7 +276,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                     >
                                         {showConfirmPassword ? (
-                                            <EyeOff size={16} />
+                                            <EyeSlash size={16} />
                                         ) : (
                                             <Eye size={16} />
                                         )}
@@ -293,12 +298,12 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                         {passwordsMatch ? (
                                             <CheckCircle size={12} />
                                         ) : (
-                                            <AlertCircle size={12} />
+                                            <WarningCircle size={12} />
                                         )}
                                         <span>
                                             {passwordsMatch
-                                                ? 'Passwords match'
-                                                : "Passwords don't match"}
+                                                ? t('password.match')
+                                                : t('password.mismatch')}
                                         </span>
                                     </div>
                                 )}
@@ -317,9 +322,9 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                 disable={isLoading || redirecting}
                             >
                                 {redirecting && (
-                                    <Loader2 className="size-10 animate-spin text-primary-500" />
+                                    <CircleNotch className="size-10 animate-spin text-primary-500" />
                                 )}
-                                Cancel
+                                {t('actions.cancel')}
                             </MyButton>
                             <MyButton
                                 type="submit"
@@ -329,7 +334,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                 className="flex-1"
                                 disabled={isLoading}
                             >
-                                {isLoading ? 'Updating...' : 'Update Details'}
+                                {isLoading ? t('actions.updating') : t('actions.update')}
                             </MyButton>
                         </div>
                     </form>

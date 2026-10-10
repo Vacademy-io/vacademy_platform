@@ -30,6 +30,7 @@ import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
+import vacademy.io.common.core.utils.TextSanitizer;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
@@ -135,7 +136,15 @@ public class AuthService {
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         User user;
         if (optionalUser.isPresent()) {
@@ -167,7 +176,16 @@ public class AuthService {
 
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setUsername(TextSanitizer.cleanIdentifier(registerRequest.getUsername()));
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = Optional.empty();
 
         if (StringUtils.hasText(registerRequest.getMobileNumber())) {
@@ -182,7 +200,21 @@ public class AuthService {
                 && StringUtils.hasText(registerRequest.getMobileNumber());
 
         if (usePhoneAsIdentifier) {
-            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            // Prefer the account that ALREADY belongs to this institute, exactly as phone
+            // login does (AuthManager ~L731). A number routinely fronts several accounts —
+            // at SuchBliss one number has fourteen — and resolving blind-latest here sent the
+            // enrolment to an account the learner was not signed into: login picked the one
+            // holding a role here, enrolment created the plan on the newest one, and the
+            // learner's own dashboard stayed empty while their membership lived elsewhere.
+            // Identity resolution has to agree between logging in and enrolling, or the two
+            // halves of the same person drift apart.
+            if (StringUtils.hasText(instituteId)) {
+                optionalUser = userRepository.findLatestUserByMobileNumberAndInstitute(
+                        registerRequest.getMobileNumber(), instituteId);
+            }
+            if (optionalUser.isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
         }
 
         if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
@@ -450,7 +482,16 @@ public class AuthService {
 
     @Transactional
     public User createUserForLearnerEnrollment(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail, String overrideLoginUrl) {
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setUsername(TextSanitizer.cleanIdentifier(registerRequest.getUsername()));
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = Optional.empty();
 
         if (StringUtils.hasText(registerRequest.getMobileNumber())) {
@@ -465,7 +506,21 @@ public class AuthService {
                 && StringUtils.hasText(registerRequest.getMobileNumber());
 
         if (usePhoneAsIdentifier) {
-            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            // Prefer the account that ALREADY belongs to this institute, exactly as phone
+            // login does (AuthManager ~L731). A number routinely fronts several accounts —
+            // at SuchBliss one number has fourteen — and resolving blind-latest here sent the
+            // enrolment to an account the learner was not signed into: login picked the one
+            // holding a role here, enrolment created the plan on the newest one, and the
+            // learner's own dashboard stayed empty while their membership lived elsewhere.
+            // Identity resolution has to agree between logging in and enrolling, or the two
+            // halves of the same person drift apart.
+            if (StringUtils.hasText(instituteId)) {
+                optionalUser = userRepository.findLatestUserByMobileNumberAndInstitute(
+                        registerRequest.getMobileNumber(), instituteId);
+            }
+            if (optionalUser.isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
         }
 
         if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {

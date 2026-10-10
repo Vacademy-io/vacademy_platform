@@ -73,6 +73,9 @@ public class RazorpayWebHookService {
     private RenewalPaymentService renewalPaymentService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
+
+    @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
 
     @Autowired
@@ -285,6 +288,9 @@ public class RazorpayWebHookService {
         } else if (paymentType != null && PaymentType.APPLICATION_FEE.name().equals(paymentType)) {
             log.info("Processing APPLICATION_FEE payment webhook for orderId: {}", orderId);
             handleApplicationFeePayment(eventType, orderId, instituteId, paymentEntity);
+        } else if (paymentType != null && PaymentType.PLAN_CHANGE.name().equals(paymentType)) {
+            log.info("Processing PLAN_CHANGE payment webhook for orderId: {}", orderId);
+            handlePlanChangePayment(eventType, orderId, instituteId);
         } else {
             // Handle initial payment events
             handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
@@ -1213,6 +1219,25 @@ public class RazorpayWebHookService {
 
         } catch (Exception e) {
             log.error("Error processing renewal payment webhook", e);
+        }
+    }
+
+    /**
+     * An upgrade payment settled. Applying the change is idempotent inside
+     * PlanChangeService (it claims the payment log atomically), which matters here because
+     * Razorpay delivers both payment.captured and order.paid for one payment and prod runs
+     * several replicas.
+     */
+    private void handlePlanChangePayment(String eventType, String orderId, String instituteId) {
+        try {
+            PaymentStatusEnum paymentStatus = determinePaymentStatus(eventType);
+            if (paymentStatus == null) {
+                log.info("Event {} is not relevant for plan-change payment status. Skipping.", eventType);
+                return;
+            }
+            planChangeService.handlePlanChangePaymentConfirmation(orderId, instituteId, paymentStatus);
+        } catch (Exception e) {
+            log.error("Error processing plan-change payment webhook for orderId {}", orderId, e);
         }
     }
 

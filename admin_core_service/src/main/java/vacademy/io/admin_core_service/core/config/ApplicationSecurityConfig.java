@@ -20,6 +20,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
+import vacademy.io.common.auth.config.JsonAuthEntryPoint;
 
 @Configuration
 @EnableMethodSecurity
@@ -83,6 +84,13 @@ public class ApplicationSecurityConfig {
             // Agent SSE stream - EventSource doesn't support auth headers, session is
             // validated internally
             "/admin-core-service/v1/agent/stream/**",
+            // Live activity SSE stream - same EventSource constraint. Unlike the
+            // per-call telephony stream, an instituteId is guessable, so this one is
+            // gated on a short-lived signed token minted by the AUTHENTICATED
+            // /stream-token endpoint, which stays off this list. The token also carries
+            // the caller's permitted categories, and the bus filters every event
+            // against them before writing.
+            "/admin-core-service/v1/live-activity/stream",
             "/admin-core-service/api/v1/audience/webhook/**",
             // Ad platform webhook endpoints (Meta hub.challenge GET + POST, Google POST)
             "/admin-core-service/api/v1/webhook/meta",
@@ -113,6 +121,12 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/recording/complete",
             // BBB server pool management (server-to-server from community_service, no JWT)
             "/admin-core-service/bbb/pool/**",
+            // BBB custom live-class domains, read by the pool start workflow.
+            // No JWT, but NOT unauthenticated: BbbCustomDomainController itself
+            // requires the shared X-Internal-Service-Token. Note the path must not
+            // contain the word "internal" — InternalAuthFilter substring-matches the
+            // URI and would demand clientName + Signature instead.
+            "/admin-core-service/bbb/custom-domains",
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)
@@ -143,6 +157,11 @@ public class ApplicationSecurityConfig {
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
+
+    // Replaces the default bodyless 403 (which is re-dispatched to a secured
+    // /error and comes back empty) with a JSON body naming the actual reason.
+    @Autowired
+    private JsonAuthEntryPoint jsonAuthEntryPoint;
     @Autowired
     UserDetailsService userDetailsService;
 
@@ -173,7 +192,10 @@ public class ApplicationSecurityConfig {
                 .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jsonAuthEntryPoint)
+                        .accessDeniedHandler(jsonAuthEntryPoint));
         return http.build();
     }
 

@@ -3,7 +3,7 @@ import {
     useAiCreditsQuery,
     computeToolCredits,
 } from '@/services/ai-credits/get-ai-credits';
-import type { ToolKey, ToolParams } from '@/services/ai-credits/get-ai-credits';
+import type { ToolKey, ToolParams, ToolPricingRow } from '@/services/ai-credits/get-ai-credits';
 
 export interface ToolCostPreview {
     /** Parametric estimate in credits (computed locally, mirrors the backend). */
@@ -15,6 +15,8 @@ export interface ToolCostPreview {
     sufficient: boolean | null;
     /** true when running this would drop the balance below the low-balance threshold. */
     isLowBalanceAfter: boolean;
+    /** The rate card row the estimate came from (DB-tunable), so a dialog can show the formula. */
+    rate: ToolPricingRow | null;
 }
 
 /**
@@ -25,13 +27,20 @@ export interface ToolCostPreview {
 export function useToolCostPreview(
     toolKey: ToolKey,
     params: ToolParams,
-    enabled = true
+    enabled = true,
+    /**
+     * Number of independent runs `params` describes (e.g. copies in a bulk
+     * check). The backend charges each one separately, so the flat base and
+     * the rounding apply per run — not once over the summed inputs.
+     */
+    runs = 1
 ): ToolCostPreview {
     const { data: pricing, isLoading: pricingLoading } = useToolPricingQuery(enabled);
     const { data: credits } = useAiCreditsQuery(enabled);
 
     const row = pricing?.tools.find((t) => t.tool_key === toolKey);
-    const estimated = computeToolCredits(row, params);
+    const perRun = computeToolCredits(row, params);
+    const estimated = perRun == null ? null : perRun * Math.max(0, runs);
 
     const currentBalance = credits ? parseFloat(credits.current_balance || '0') : null;
     const threshold = credits ? parseFloat(credits.low_balance_threshold || '0') : 0;
@@ -47,5 +56,6 @@ export function useToolCostPreview(
         balanceAfter,
         sufficient,
         isLowBalanceAfter,
+        rate: row ?? null,
     };
 }

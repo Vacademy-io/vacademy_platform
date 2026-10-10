@@ -13,18 +13,20 @@ import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bu
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
 import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
-import { BookOpen, Lightning } from '@phosphor-icons/react';
+import { BookOpen, Lightning, Question } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
-import { getActiveWorkflowsQuery } from '@/services/workflow-service';
+import { getActiveWorkflowsQuery, getWorkflowRawQuery } from '@/services/workflow-service';
+import { evaluateEntryCondition, findEntryCondition } from './workflow-entry-condition';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -35,6 +37,11 @@ import {
     SystemTerms,
 } from '@/routes/settings/-components/NamingSettings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
+import {
+    AdminDiscountField,
+    EMPTY_ADMIN_DISCOUNT,
+} from '@/components/common/payments/AdminDiscountField';
+import { canGrantAdminDiscounts, isDiscountablePlanType } from '@/services/admin-discounts';
 
 interface Props {
     instituteId: string;
@@ -51,6 +58,7 @@ interface CourseConfigRowProps {
 }
 
 const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const { data: resolved } = useResolvedInviteDetails({
         instituteId,
         packageSessionId: ps.packageSessionId,
@@ -58,6 +66,14 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
     });
     const isCpo = resolved?.paymentOption?.type === 'CPO';
     const cpoId = resolved?.complexPaymentOptionId ?? null;
+    const canDiscount =
+        isDiscountablePlanType(resolved?.paymentOption?.type) && canGrantAdminDiscounts(instituteId);
+    // Same plan the backend's DefaultInviteResolver enrolls against: an ACTIVE plan,
+    // DEFAULT-tagged first. Used only to price the discount preview.
+    const activePlans = (resolved?.paymentOption?.payment_plans ?? []).filter(
+        (p) => p.status === 'ACTIVE'
+    );
+    const resolvedPlan = activePlans.find((p) => p.tag === 'DEFAULT') ?? activePlans[0] ?? null;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -70,7 +86,9 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
                 <div className="flex-1">
-                    <Label className="mb-1 text-xs text-neutral-500">Invite Link</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('courseInviteSection.inviteLinkLabel')}
+                    </Label>
                     <InvitePickerDropdown
                         instituteId={instituteId}
                         packageSessionId={ps.packageSessionId}
@@ -82,16 +100,20 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                 // Reset CPO state on invite change — different invite may carry
                                 // a different (or no) CPO mirror.
                                 cpoConfig: undefined,
+                                // A discount priced against the old invite's plan no longer applies.
+                                adminDiscount: undefined,
                             })
                         }
                     />
                 </div>
                 <div className="w-36">
-                    <Label className="mb-1 text-xs text-neutral-500">Access Days Override</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('courseInviteSection.accessDaysLabel')}
+                    </Label>
                     <Input
                         type="number"
                         min={1}
-                        placeholder="From invite"
+                        placeholder={t('courseInviteSection.accessDaysPlaceholder')}
                         value={ps.accessDays ?? ''}
                         onChange={(e) =>
                             onUpdate({
@@ -120,9 +142,26 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     </span>
                     {resolved.resolvedFromDefault && (
                         <span className="text-caption text-neutral-400">
-                            (auto-resolved from DEFAULT invite)
+                            {t('courseInviteSection.autoResolvedFromDefault')}
                         </span>
                     )}
+                </div>
+            )}
+
+            {canDiscount && resolvedPlan && (
+                <div className="mt-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
+                    <AdminDiscountField
+                        value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
+                        onChange={(v) => onUpdate({ adminDiscount: v })}
+                        onServerErrorChange={(e) => onUpdate({ adminDiscountError: e })}
+                        paymentPlanId={resolvedPlan.id}
+                        isSubscription={resolved?.paymentOption?.type === 'SUBSCRIPTION'}
+                        currency={resolvedPlan.currency || 'INR'}
+                        packageSessionId={ps.packageSessionId}
+                        enrollInviteId={resolved?.invite?.id ?? ps.enrollInviteId ?? undefined}
+                        instituteId={instituteId}
+                        label="Discount (optional, applies to every selected learner)"
+                    />
                 </div>
             )}
 
@@ -144,6 +183,7 @@ export const Step3EnrollConfig = ({
     options,
     onOptionsChange,
 }: Props) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
@@ -165,11 +205,10 @@ export const Step3EnrollConfig = ({
             {/* Per-course invite configuration */}
             <div>
                 <h3 className="mb-1 text-sm font-semibold text-neutral-700">
-                    Enrollment Invite per {courseTerm}
+                    {t('courseInviteSection.heading', { term: courseTerm })}
                 </h3>
                 <p className="mb-3 text-xs text-neutral-400">
-                    Choose an invite link for each {courseTerm.toLowerCase()}. Leave blank to
-                    auto-use the default invite.
+                    {t('courseInviteSection.description', { term: courseTerm.toLowerCase() })}
                 </p>
                 <div className="flex flex-col gap-3">
                     {selectedPackageSessions.map((ps) => (
@@ -185,18 +224,23 @@ export const Step3EnrollConfig = ({
 
             {/* Global options */}
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                <h3 className="mb-3 text-sm font-semibold text-neutral-700">Global Options</h3>
+                <h3 className="mb-3 text-sm font-semibold text-neutral-700">
+                    {t('globalOptions.heading')}
+                </h3>
                 <div className="flex flex-col gap-4">
                     {/* Notify learners — visibility controlled by Course Settings */}
                     {showNotifyLearners && (
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label className="text-sm font-medium text-neutral-700">
-                                    Notify {learnersTerm}
+                                    {t('globalOptions.notifyLearnersLabel', {
+                                        term: learnersTerm,
+                                    })}
                                 </Label>
                                 <p className="text-xs text-neutral-400">
-                                    Send enrollment confirmation emails to newly enrolled{' '}
-                                    {learnersTerm.toLowerCase()}
+                                    {t('globalOptions.notifyLearnersDescription', {
+                                        term: learnersTerm.toLowerCase(),
+                                    })}
                                 </p>
                             </div>
                             <Switch
@@ -213,11 +257,12 @@ export const Step3EnrollConfig = ({
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label className="text-sm font-medium text-neutral-700">
-                                    Send Credentials
+                                    {t('globalOptions.sendCredentialsLabel')}
                                 </Label>
                                 <p className="text-xs text-neutral-400">
-                                    Send registration email with login credentials to new{' '}
-                                    {learnersTerm.toLowerCase()}
+                                    {t('globalOptions.sendCredentialsDescription', {
+                                        term: learnersTerm.toLowerCase(),
+                                    })}
                                 </p>
                             </div>
                             <Switch
@@ -232,7 +277,7 @@ export const Step3EnrollConfig = ({
                     {/* Duplicate handling */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            If {learnerTerm} is Already Enrolled
+                            {t('globalOptions.duplicateHandling.label', { term: learnerTerm })}
                         </Label>
                         <Select
                             value={options.duplicateHandling}
@@ -247,23 +292,34 @@ export const Step3EnrollConfig = ({
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="z-popover-above-modal">
-                                <SelectItem value="SKIP">Skip silently (recommended)</SelectItem>
-                                <SelectItem value="ERROR">Mark as error in report</SelectItem>
+                                <SelectItem value="SKIP">
+                                    {t('globalOptions.duplicateHandling.skipOption')}
+                                </SelectItem>
+                                <SelectItem value="ERROR">
+                                    {t('globalOptions.duplicateHandling.errorOption')}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="mt-1 text-xs text-neutral-400">
                             {options.duplicateHandling === 'SKIP' &&
-                                `${learnersTerm} with active access or a pending invitation will be silently skipped.`}
+                                t('globalOptions.duplicateHandling.skipDescription', {
+                                    term: learnersTerm,
+                                })}
                             {options.duplicateHandling === 'ERROR' &&
-                                `${learnersTerm} with active access or a pending invitation will appear as failures in the results.`}
-                            {` Expired or terminated ${learnersTerm.toLowerCase()} are always re-enrolled.`}
+                                t('globalOptions.duplicateHandling.errorDescription', {
+                                    term: learnersTerm,
+                                })}
+                            {' '}
+                            {t('globalOptions.duplicateHandling.alwaysReenrolled', {
+                                term: learnersTerm.toLowerCase(),
+                            })}
                         </p>
                     </div>
 
                     {/* Payment Date (Optional) */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            Payment Date (Optional)
+                            {t('globalOptions.paymentDate.label')}
                         </Label>
                         <Popover>
                             <PopoverTrigger asChild>
@@ -278,7 +334,7 @@ export const Step3EnrollConfig = ({
                                     {options.paymentDate ? (
                                         format(parseISO(options.paymentDate), 'PPP')
                                     ) : (
-                                        <span>Select payment date</span>
+                                        <span>{t('globalOptions.paymentDate.placeholder')}</span>
                                     )}
                                 </Button>
                             </PopoverTrigger>
@@ -307,18 +363,18 @@ export const Step3EnrollConfig = ({
                             </PopoverContent>
                         </Popover>
                         <p className="mt-1 text-xs text-neutral-400">
-                            Date when the payment was made
+                            {t('globalOptions.paymentDate.description')}
                         </p>
                     </div>
 
                     {/* Transaction ID (Optional) */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            Transaction ID (Optional)
+                            {t('globalOptions.transactionId.label')}
                         </Label>
                         <Input
                             type="text"
-                            placeholder="Enter transaction ID"
+                            placeholder={t('globalOptions.transactionId.placeholder')}
                             value={options.transactionId}
                             onChange={(e) =>
                                 onOptionsChange({
@@ -328,7 +384,7 @@ export const Step3EnrollConfig = ({
                             }
                         />
                         <p className="mt-1 text-xs text-neutral-400">
-                            External payment transaction reference
+                            {t('globalOptions.transactionId.description')}
                         </p>
                     </div>
                 </div>
@@ -354,11 +410,15 @@ interface LinkedWorkflowsSectionProps {
  *   - Global block (rendered once): institute-wide workflows (event_id IS NULL) that
  *     fire on every batch enrollment — listed in a single line as the user requested,
  *     since they apply identically to every selected course.
+ *   - A global workflow gated on the course by an entry CONDITION (e.g. "only UnlockX
+ *     courses") is left out of the global line and listed only under the courses it will
+ *     actually fire for.
  */
 const LinkedWorkflowsSection = ({
     instituteId,
     selectedPackageSessions,
 }: LinkedWorkflowsSectionProps) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const navigate = useNavigate();
 
@@ -393,49 +453,99 @@ const LinkedWorkflowsSection = ({
         return { perCourse: byCourse, globalWorkflows: globals };
     }, [workflows, selectedPackageSessions]);
 
+    // A global enrollment workflow can still gate itself on the course (TRIGGER → CONDITION
+    // with no false branch). Read those workflows' nodes so a gated one is shown only under the
+    // courses it will fire for. Other events (e.g. LEARNER_TERMINATION) run with a different
+    // context, so they are never evaluated and keep showing as before. On a failed fetch the
+    // workflow is treated as ungated — the pre-existing display.
+    const enrollmentGlobals = globalWorkflows.filter(
+        (w) => w.trigger?.trigger_event_name === 'LEARNER_BATCH_ENROLLMENT'
+    );
+    const rawEnrollmentGlobals = useQueries({
+        queries: enrollmentGlobals.map((w) => ({
+            ...getWorkflowRawQuery(w.id),
+            staleTime: 60_000,
+            retry: 1,
+        })),
+    });
+    const rawLoading = rawEnrollmentGlobals.some((q) => q.isLoading);
+    const entryConditions = new Map<string, string>();
+    rawEnrollmentGlobals.forEach((q, i) => {
+        const condition = q.data ? findEntryCondition(q.data.nodes ?? []) : null;
+        if (condition) entryConditions.set(enrollmentGlobals[i]!.id, condition);
+    });
+    const alwaysGlobals = globalWorkflows.filter((w) => !entryConditions.has(w.id));
+    const conditionalGlobals = globalWorkflows.filter((w) => entryConditions.has(w.id));
+
+    // Conditional globals that will (or may, for learner-based conditions) fire for a course.
+    // Like WorkflowTriggerService.handleTriggerEvents: an ACTIVE batch-specific trigger for the
+    // same event replaces every global one for that batch.
+    const conditionalFor = (ps: SelectedPackageSession) => {
+        const own = perCourse.get(ps.packageSessionId)?.workflows ?? [];
+        return conditionalGlobals
+            .filter(
+                (w) =>
+                    !own.some(
+                        (s) =>
+                            s.trigger?.trigger_status === 'ACTIVE' &&
+                            s.trigger?.trigger_event_name === w.trigger?.trigger_event_name
+                    )
+            )
+            .map((w) => ({
+                workflow: w,
+                verdict: evaluateEntryCondition(entryConditions.get(w.id)!, {
+                    packageName: ps.courseName,
+                    packageSessionId: ps.packageSessionId,
+                }),
+            }))
+            .filter((g) => g.verdict !== 'skips');
+    };
+
     if (selectedPackageSessions.length === 0) return null;
 
     const totalSpecific = Array.from(perCourse.values()).reduce(
         (n, entry) => n + entry.workflows.length,
         0
     );
-    const hasAny = totalSpecific > 0 || globalWorkflows.length > 0;
+    const hasAny =
+        totalSpecific > 0 ||
+        alwaysGlobals.length > 0 ||
+        selectedPackageSessions.some((ps) => conditionalFor(ps).length > 0);
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
                 <Lightning size={16} weight="duotone" className="text-primary-500" />
                 <h3 className="text-sm font-semibold text-neutral-700">
-                    Workflows that will fire on enrollment
+                    {t('workflows.heading')}
                 </h3>
             </div>
 
-            {isLoading && (
-                <p className="text-xs text-neutral-400">Loading linked workflows…</p>
+            {(isLoading || rawLoading) && (
+                <p className="text-xs text-neutral-400">{t('workflows.loading')}</p>
             )}
 
-            {!isLoading && !hasAny && (
+            {!isLoading && !rawLoading && !hasAny && (
                 <p className="text-xs text-neutral-400">
-                    No automation workflows are linked to the selected{' '}
-                    {courseTerm.toLowerCase()}s.
+                    {t('workflows.noneLinked', { term: courseTerm.toLowerCase() })}
                 </p>
             )}
 
-            {!isLoading && hasAny && (
+            {!isLoading && !rawLoading && hasAny && (
                 <div className="flex flex-col gap-3">
-                    {globalWorkflows.length > 0 && (
+                    {alwaysGlobals.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
                             <Badge
                                 variant="outline"
                                 className="border-neutral-200 bg-white text-caption font-medium text-neutral-600"
                             >
-                                Global
+                                {t('workflows.global')}
                             </Badge>
                             <span className="text-xs text-neutral-500">
-                                Fires on every batch enrollment:
+                                {t('workflows.firesOnEveryEnrollment')}
                             </span>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {globalWorkflows.map((w, idx) => (
+                                {alwaysGlobals.map((w, idx) => (
                                     <span key={w.id} className="inline-flex items-center gap-1">
                                         <button
                                             type="button"
@@ -447,7 +557,7 @@ const LinkedWorkflowsSection = ({
                                             {w.name}
                                             <ArrowSquareOut size={12} weight="duotone" />
                                         </button>
-                                        {idx < globalWorkflows.length - 1 && (
+                                        {idx < alwaysGlobals.length - 1 && (
                                             <span className="text-xs text-neutral-400">,</span>
                                         )}
                                     </span>
@@ -459,6 +569,7 @@ const LinkedWorkflowsSection = ({
                     {selectedPackageSessions.map((ps) => {
                         const entry = perCourse.get(ps.packageSessionId);
                         const list = entry?.workflows ?? [];
+                        const gated = conditionalFor(ps);
                         return (
                             <div
                                 key={ps.packageSessionId}
@@ -477,9 +588,9 @@ const LinkedWorkflowsSection = ({
                                         {ps.levelName}
                                     </span>
                                 </div>
-                                {list.length === 0 ? (
+                                {list.length === 0 && gated.length === 0 ? (
                                     <p className="text-caption text-neutral-400">
-                                        No course-specific workflows linked.
+                                        {t('workflows.noCourseSpecific')}
                                     </p>
                                 ) : (
                                     <ul className="flex flex-col gap-1 pl-1">
@@ -513,6 +624,49 @@ const LinkedWorkflowsSection = ({
                                                         {w.trigger.trigger_event_name}
                                                     </span>
                                                 )}
+                                            </li>
+                                        ))}
+                                        {gated.map(({ workflow: w, verdict }) => (
+                                            <li
+                                                key={w.id}
+                                                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-700"
+                                            >
+                                                {verdict === 'runs' ? (
+                                                    <Lightning
+                                                        size={12}
+                                                        weight="fill"
+                                                        className="text-primary-500"
+                                                    />
+                                                ) : (
+                                                    <Question
+                                                        size={12}
+                                                        className="text-warning-500"
+                                                    />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        navigate({
+                                                            to: `/workflow/${w.id}` as never,
+                                                        })
+                                                    }
+                                                    className="inline-flex items-center gap-1 font-medium text-primary-600 hover:underline"
+                                                >
+                                                    {w.name}
+                                                    <ArrowSquareOut size={12} weight="duotone" />
+                                                </button>
+                                                <span
+                                                    className={cn(
+                                                        'text-caption',
+                                                        verdict === 'runs'
+                                                            ? 'text-neutral-400'
+                                                            : 'text-warning-600'
+                                                    )}
+                                                >
+                                                    {t(`workflows.verdict.${verdict}`, {
+                                                        term: courseTerm.toLowerCase(),
+                                                    })}
+                                                </span>
                                             </li>
                                         ))}
                                     </ul>

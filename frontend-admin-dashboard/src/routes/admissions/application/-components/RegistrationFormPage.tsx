@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useNavigate } from '@tanstack/react-router';
 import html2canvas from 'html2canvas';
@@ -142,6 +143,7 @@ const getInitialFormData = (): Partial<Registration> => ({
 });
 
 export function RegistrationFormPage() {
+    const { t } = useTranslation('admissionsRegistrationFormPage');
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
 
@@ -201,11 +203,11 @@ export function RegistrationFormPage() {
 
     const handleDownloadPdf = useCallback(async () => {
         if (!pdfTargetRef.current) {
-            toast.error('PDF template not ready. Please try again.');
+            toast.error(t('toasts.pdfTemplateNotReady'));
             return;
         }
         setIsGeneratingPdf(true);
-        toast.info('Generating PDF...');
+        toast.info(t('toasts.generatingPdf'));
         try {
             const canvas = await html2canvas(pdfTargetRef.current, {
                 scale: 2,
@@ -233,27 +235,27 @@ export function RegistrationFormPage() {
                 }
             }
             pdf.save(getPdfFilename());
-            toast.success('PDF downloaded!');
+            toast.success(t('toasts.pdfDownloaded'));
         } catch (error) {
             console.error('PDF generation failed:', error);
-            toast.error('Failed to generate PDF. Please try again.');
+            toast.error(t('toasts.pdfGenerationFailed'));
         } finally {
             setIsGeneratingPdf(false);
         }
-    }, [getPdfFilename]);
+    }, [getPdfFilename, t]);
 
     const handlePrint = useCallback(() => {
         if (!printTemplateRef.current) return;
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
-            toast.error('Pop-up blocked. Please allow pop-ups to print.');
+            toast.error(t('toasts.popupBlocked'));
             return;
         }
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Application Form - ${formData.studentName || ''}</title>
+                <title>${t('print.documentTitle', { name: formData.studentName || '' })}</title>
                 <style>
                     @media print { body { margin: 0; } }
                     body { margin: 0; padding: 0; }
@@ -267,7 +269,7 @@ export function RegistrationFormPage() {
             printWindow.print();
             printWindow.close();
         };
-    }, [formData.studentName]);
+    }, [formData.studentName, t]);
 
     // Extract sessionId and enquiry data from URL on mount
     useEffect(() => {
@@ -336,7 +338,7 @@ export function RegistrationFormPage() {
                         // Still surface the QR code even if the payment option lookup failed
                         setPaymentOptionDetails({
                             id: optionId,
-                            name: 'Application / Registration Fee',
+                            name: t('payment.defaultFeeName'),
                             amount: 0,
                             currency: 'INR',
                             qrCodeFileId,
@@ -486,8 +488,8 @@ export function RegistrationFormPage() {
     const sections: FormSection[] = [
         {
             id: 'student',
-            label: 'Student Details',
-            shortLabel: 'Student',
+            label: t('sections.student.label'),
+            shortLabel: t('sections.student.shortLabel'),
             icon: <User size={20} />,
             isComplete: Boolean(
                 formData.studentName &&
@@ -500,8 +502,8 @@ export function RegistrationFormPage() {
         },
         {
             id: 'academic',
-            label: 'Academic Info',
-            shortLabel: 'Academic',
+            label: t('sections.academic.label'),
+            shortLabel: t('sections.academic.shortLabel'),
             icon: <GraduationCap size={20} />,
             isComplete: Boolean(
                 formData.applyingForClass &&
@@ -511,8 +513,8 @@ export function RegistrationFormPage() {
         },
         {
             id: 'parent',
-            label: 'Parent & Guardian',
-            shortLabel: 'Parent',
+            label: t('sections.parent.label'),
+            shortLabel: t('sections.parent.shortLabel'),
             icon: <Users size={20} />,
             isComplete: Boolean(
                 (formData.fatherInfo?.name && formData.fatherInfo?.mobile) ||
@@ -522,8 +524,8 @@ export function RegistrationFormPage() {
         },
         {
             id: 'address',
-            label: 'Address',
-            shortLabel: 'Address',
+            label: t('sections.address.label'),
+            shortLabel: t('sections.address.shortLabel'),
             icon: <MapPin size={20} />,
             isComplete: Boolean(
                 formData.currentAddress?.street &&
@@ -537,8 +539,8 @@ export function RegistrationFormPage() {
         },
         {
             id: 'payment',
-            label: 'Payment',
-            shortLabel: 'Payment',
+            label: t('sections.payment.label'),
+            shortLabel: t('sections.payment.shortLabel'),
             icon: <CreditCard size={20} />,
             isComplete: false,
             hasErrors: false,
@@ -551,10 +553,10 @@ export function RegistrationFormPage() {
     useEffect(() => {
         setNavHeading(
             <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold">New Application</span>
+                <span className="text-lg font-semibold">{t('pageTitle')}</span>
             </div>
         );
-    }, [setNavHeading]);
+    }, [setNavHeading, t]);
 
     // Auto-save every 30 seconds
     useEffect(() => {
@@ -582,43 +584,43 @@ export function RegistrationFormPage() {
         try {
             // Validate all required fields (matching * markers in UI)
             if (!isNonEmpty(formData.studentName)) {
-                toast.warning('Student name is required');
+                toast.warning(t('validation.studentNameRequired'));
                 setActiveSection(0);
                 setIsSaving(false);
                 return;
             }
             if (!isNonEmpty(formData.dateOfBirth)) {
-                toast.warning('Date of birth is required');
+                toast.warning(t('validation.dobRequired'));
                 setActiveSection(0);
                 setIsSaving(false);
                 return;
             }
             if (!formData.gender) {
-                toast.warning('Gender is required');
+                toast.warning(t('validation.genderRequired'));
                 setActiveSection(0);
                 setIsSaving(false);
                 return;
             }
             if (!formData.nationality) {
-                toast.warning('Nationality is required');
+                toast.warning(t('validation.nationalityRequired'));
                 setActiveSection(0);
                 setIsSaving(false);
                 return;
             }
             if (!formData.category) {
-                toast.warning('Category is required');
+                toast.warning(t('validation.categoryRequired'));
                 setActiveSection(0);
                 setIsSaving(false);
                 return;
             }
             if (!formData.applyingForClass) {
-                toast.warning('Please select a class/grade from the Academic Info section');
+                toast.warning(t('validation.classRequired'));
                 setActiveSection(1);
                 setIsSaving(false);
                 return;
             }
             if (!formData.preferredBoard) {
-                toast.warning('Board preference is required');
+                toast.warning(t('validation.boardRequired'));
                 setActiveSection(1);
                 setIsSaving(false);
                 return;
@@ -627,20 +629,20 @@ export function RegistrationFormPage() {
             const hasFather = isNonEmpty(formData.fatherInfo?.name) && isNonEmpty(formData.fatherInfo?.mobile);
             const hasMother = isNonEmpty(formData.motherInfo?.name) && isNonEmpty(formData.motherInfo?.mobile);
             if (!hasFather && !hasMother) {
-                toast.warning('At least one parent (father or mother) with name and mobile is required');
+                toast.warning(t('validation.parentRequired'));
                 setActiveSection(2);
                 setIsSaving(false);
                 return;
             }
             // Email validation
             if (formData.fatherInfo?.email && !isValidEmail(formData.fatherInfo.email)) {
-                toast.warning('Father email address is invalid');
+                toast.warning(t('validation.fatherEmailInvalid'));
                 setActiveSection(2);
                 setIsSaving(false);
                 return;
             }
             if (formData.motherInfo?.email && !isValidEmail(formData.motherInfo.email)) {
-                toast.warning('Mother email address is invalid');
+                toast.warning(t('validation.motherEmailInvalid'));
                 setActiveSection(2);
                 setIsSaving(false);
                 return;
@@ -648,37 +650,33 @@ export function RegistrationFormPage() {
             // Address validation (fields marked with *)
             const addr = formData.currentAddress;
             if (!isNonEmpty(addr?.street) || !isNonEmpty(addr?.area) || !isNonEmpty(addr?.city) || !isNonEmpty(addr?.state)) {
-                toast.warning('Please fill all required address fields (Street, Area, City, State)');
+                toast.warning(t('validation.addressFieldsRequired'));
                 setActiveSection(3);
                 setIsSaving(false);
                 return;
             }
             if (!isNonEmpty(addr?.country)) {
-                toast.warning('Country is required');
+                toast.warning(t('validation.countryRequired'));
                 setActiveSection(3);
                 setIsSaving(false);
                 return;
             }
             const pincode = addr?.pinCode || addr?.pincode || '';
             if (!pincode || !isValidPincode(pincode)) {
-                toast.warning('Please enter a valid 6-digit pincode');
+                toast.warning(t('validation.pincodeInvalid'));
                 setActiveSection(3);
                 setIsSaving(false);
                 return;
             }
 
             if (!sessionId) {
-                toast.warning(
-                    'Session ID is missing. Please select a session from the registration list'
-                );
+                toast.warning(t('validation.sessionMissing'));
                 setIsSaving(false);
                 return;
             }
 
             // Confirmation dialog before submission
-            const confirmed = window.confirm(
-                'Are you sure you want to submit this application? Please review all details before proceeding.'
-            );
+            const confirmed = window.confirm(t('confirmSubmit'));
             if (!confirmed) {
                 setIsSaving(false);
                 return;
@@ -761,7 +759,7 @@ export function RegistrationFormPage() {
             setActiveSection(4);
         } catch (error) {
             console.error('Failed to submit registration:', error);
-            toast.error('Failed to submit application. Please try again.');
+            toast.error(t('toasts.submitFailed'));
         } finally {
             setIsSaving(false);
         }
@@ -806,7 +804,7 @@ export function RegistrationFormPage() {
                 {/* Header */}
                 <div className="mb-6 flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="text-xl font-bold text-neutral-900">New Application</h1>
+                        <h1 className="text-xl font-bold text-neutral-900">{t('pageTitle')}</h1>
                     </div>
                     <div className="flex items-center gap-3">
                         <MyButton
@@ -819,7 +817,7 @@ export function RegistrationFormPage() {
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                            {isGeneratingPdf ? t('buttons.generatingPdf') : t('buttons.downloadPdf')}
                         </MyButton>
                         <MyButton
                             onClick={handlePrint}
@@ -830,7 +828,7 @@ export function RegistrationFormPage() {
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                             </svg>
-                            Print
+                            {t('buttons.print')}
                         </MyButton>
                         {/* Progress */}
                         <div className="flex items-center gap-2">
@@ -952,7 +950,7 @@ export function RegistrationFormPage() {
                                         {section.hasErrors && (
                                             <span className="flex items-center gap-1 text-xs text-red-600">
                                                 <Warning size={12} />
-                                                Has errors
+                                                {t('sectionHasErrors')}
                                             </span>
                                         )}
                                     </div>
@@ -970,7 +968,10 @@ export function RegistrationFormPage() {
                                 {sections[activeSection]?.label}
                             </h2>
                             <p className="mt-1 text-sm text-neutral-500">
-                                Step {activeSection + 1} of {sections.length}
+                                {t('stepProgress', {
+                                    current: activeSection + 1,
+                                    total: sections.length,
+                                })}
                             </p>
                         </div>
 
@@ -986,7 +987,7 @@ export function RegistrationFormPage() {
                                 className="h-10"
                             >
                                 <CaretLeft size={18} className="mr-1" />
-                                Previous
+                                {t('buttons.previous')}
                             </MyButton>
 
                             <div className="flex items-center gap-3">
@@ -997,7 +998,7 @@ export function RegistrationFormPage() {
                                         disabled={isSaving}
                                         className="h-10 "
                                     >
-                                        Submit Application
+                                        {t('buttons.submitApplication')}
                                     </MyButton>
                                 ) : activeSection === 4 ? (
                                     <MyButton
@@ -1005,7 +1006,7 @@ export function RegistrationFormPage() {
                                         onClick={() => navigate({ to: '/admissions/application' })}
                                         className="h-10"
                                     >
-                                        Back to List
+                                        {t('buttons.backToList')}
                                     </MyButton>
                                 ) : (
                                     <MyButton
@@ -1013,7 +1014,7 @@ export function RegistrationFormPage() {
                                         onClick={handleNext}
                                         className="h-10"
                                     >
-                                        Next
+                                        {t('buttons.next')}
                                         <CaretRight size={18} className="ml-1" />
                                     </MyButton>
                                 )}

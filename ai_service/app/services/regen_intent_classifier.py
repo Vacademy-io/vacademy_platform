@@ -157,14 +157,11 @@ def classify_intent(
     )
 
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {openrouter_api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://vacademy.io",
-            },
-            json={
+        from .llm_router import post_chat_sync
+
+        response = post_chat_sync(
+            api_key=openrouter_api_key,
+            payload={
                 "model": _CLASSIFIER_MODEL,
                 "messages": [
                     {"role": "system", "content": _SYSTEM_PROMPT},

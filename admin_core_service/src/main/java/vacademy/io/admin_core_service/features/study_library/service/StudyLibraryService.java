@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.study_library.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.admin_core_service.features.packages.dto.ComingSoonDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -646,6 +647,10 @@ public class StudyLibraryService {
                 }
             }
         }
+
+        // Public details page swaps Enroll for "Notify me" while the course is Coming Soon.
+        ComingSoonDTO comingSoon = ComingSoonDTO.fromCourseSetting(packageEntity.getCourseSetting(), objectMapper);
+        result.forEach(dto -> dto.setComingSoon(comingSoon));
 
         return result;
     }

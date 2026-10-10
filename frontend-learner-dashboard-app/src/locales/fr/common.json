@@ -1,0 +1,36 @@
+{
+    "login": {
+        "heading": "Ravis de vous revoir !",
+        "subheading": "Connectez-vous et poursuivez votre parcours d'apprentissage !",
+        "emailPlaceholder": "vous@email.com",
+        "passwordPlaceholder": "Mot de passe",
+        "forgotPasswordLink": "Mot de passe oublié ?",
+        "loginButton": "Se connecter",
+        "forgotPasswordHeading": "Mot de passe oublié",
+        "forgotPasswordSubheading": "Saisissez votre adresse e-mail et nous enverrons votre mot de passe dans votre boîte de réception",
+        "forgotPasswordEmailPlaceholder": "vous@email.com",
+        "forgotPasswordButton": "Envoyer le lien de réinitialisation",
+        "forgotPasswordBottomText": "Vous vous souvenez de votre mot de passe ?",
+        "setPasswordHeading": "Définir un nouveau mot de passe",
+        "setPasswordSubheading": "Sécurisez votre compte avec un nouveau mot de passe",
+        "setPasswordNewPlaceholder": "Nouveau mot de passe",
+        "setPasswordConfirmPlaceholder": "Confirmer le nouveau mot de passe",
+        "setPasswordButton": "Réinitialiser le mot de passe",
+        "setPasswordBottomText": "Retour à la connexion ?"
+    },
+    "profile": {
+        "language": "Langue",
+        "languageHint": "Choisissez la langue des menus et des boutons."
+    },
+    "actions": {
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "delete": "Supprimer"
+    },
+    "table": {
+        "noResults": "Aucun résultat trouvé"
+    },
+    "common": {
+        "loading": "Chargement..."
+    }
+}

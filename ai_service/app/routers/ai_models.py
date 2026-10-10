@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency
-from ..core.security import get_current_user
+from ..core.security import get_current_user, is_platform_staff
 from ..services.ai_models_service import AIModelsService
 from ..schemas.ai_models import (
     AIModelResponse,
@@ -55,17 +55,13 @@ def get_models_service(db: Session = Depends(db_dependency)) -> AIModelsService:
 
 
 def check_root_admin(user) -> bool:
-    """Check if user is a root admin (super admin)."""
-    if not user:
-        return False
-    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
-    if hasattr(user, "is_root_user") and user.is_root_user:
-        return True
-    # Fallback: check roles list
-    roles = getattr(user, "roles", []) if not isinstance(user, dict) else user.get("roles", [])
-    if isinstance(roles, str):
-        roles = [r.strip() for r in roles.split(",")]
-    return "ROOT_ADMIN" in roles
+    """
+    Gate for the registry writes below, which are GLOBAL (every institute's
+    models and defaults). Platform staff only (SUPER_ADMIN_USER_IDS): is_root_user
+    and the ROOT_ADMIN role are set for ordinary admins and learners, so they no
+    longer pass.
+    """
+    return is_platform_staff(user)
 
 
 # ============================================================================

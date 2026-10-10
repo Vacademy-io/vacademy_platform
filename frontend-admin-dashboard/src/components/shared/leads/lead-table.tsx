@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { counsellorDisplayName } from './counsellor-display';
 import { format } from 'date-fns';
 import {
     Envelope,
@@ -27,7 +28,10 @@ import type { LeadCardVM } from './lead-view-model';
 import { truncateName } from './lead-view-model';
 import type { LeadActionHandlers, LeadTier } from './lead-actions';
 import { LeadAvatar } from './lead-avatar';
-import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
+import { LeadInlineSelect, useLeadTierOptions } from './lead-inline-select';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { orderColumnIds } from './use-lead-column-prefs';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
 import { LeadConversionBadge } from './lead-conversion-badge';
@@ -50,8 +54,20 @@ export interface LeadNotesSummary {
     count: number;
 }
 
-/** Sort keys the backend's lead-list/recent-leads endpoints understand. */
-export type LeadSortKey = 'SUBMITTED_AT' | 'LEAD_SCORE' | 'LEAD_TIER' | 'STATUS';
+/**
+ * Sort keys the backend's lead-list/recent-leads endpoints understand.
+ *
+ * LAST_ACTIVITY sorts by the newest timeline event on the lead — the very feed the
+ * Activity column renders — and LAST_CALLED by the newest telephony_call_log entry,
+ * so "who have I not touched in a while" is one click on the column header.
+ */
+export type LeadSortKey =
+    | 'SUBMITTED_AT'
+    | 'LEAD_SCORE'
+    | 'LEAD_TIER'
+    | 'STATUS'
+    | 'LAST_ACTIVITY'
+    | 'LAST_CALLED';
 export type LeadSortDirection = 'ASC' | 'DESC';
 
 interface LeadTableProps {
@@ -70,6 +86,13 @@ interface LeadTableProps {
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
+    /**
+     * Column ids in the order the user dragged them (from useColumnOrderPrefs). Ids the
+     * table does not have are ignored and ids it has but the order does not mention keep
+     * their natural slot, so a newly shipped column never disappears for someone who
+     * reordered before it existed.
+     */
+    columnOrder?: string[];
     emptyState?: ReactNode;
     /** Surface-specific trailing columns (e.g. the Follow-ups page's inline
      *  "Mark complete" action). Cells are interactive — clicks don't bubble
@@ -236,6 +259,7 @@ export function LeadTable({
     actions,
     onStatusUpdated,
     hiddenColumns,
+    columnOrder,
     emptyState,
     extraColumns,
     selectable = false,
@@ -254,6 +278,11 @@ export function LeadTable({
         : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100';
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
+    // Institute tier catalog (labels, colours, score bands) + the institute's own
+    // names for "Tier" / "Lead status" (e.g. "Interest Level" / "Action Label").
+    const tierCatalog = useLeadTiers();
+    const tierOptions = useLeadTierOptions();
+    const terminology = useLeadTerminology();
 
     // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
     // AND a response id (that's the selection key, and what delete targets). response_id is the
@@ -330,8 +359,7 @@ export function LeadTable({
                 const showPhone = vm.phone !== '-';
                 if (!showEmail && !showPhone)
                     return <span className="text-sm text-neutral-300">—</span>;
-                const callGate =
-                    actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
+                const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
                 // AI Call gating — falls back to canCall (both need a phone on file).
                 const aiGateFn = actions.canAiCall ?? actions.canCall;
                 const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
@@ -415,14 +443,41 @@ export function LeadTable({
         },
         {
             id: 'source',
-            header: 'Lead source',
+            header: terminology.leadSource,
             thClass: 'min-w-32',
             show: true,
             render: (vm) => <LeadSourcePill label={vm.audience} />,
         },
         {
+            // The channel the audience itself belongs to (audience.campaign_type).
+            // Sits beside Lead source because that column shows the audience LIST —
+            // one channel holds many lists, and institutes read them together.
+            id: 'campaignType',
+            header: terminology.campaignType,
+            thClass: 'min-w-32',
+            show: true,
+            render: (vm) => (
+                <LeadSourcePill
+                    label={vm.campaignType}
+                    className="bg-primary-50 text-primary-500"
+                />
+            ),
+        },
+        {
+            // The UTM campaign the lead was tagged with. Separate from the audience's
+            // campaign type: that is the channel the LIST belongs to, this is the ad
+            // campaign the individual lead arrived on.
+            id: 'utmCampaign',
+            header: 'UTM campaign',
+            thClass: 'min-w-32',
+            show: true,
+            render: (vm) => (
+                <LeadSourcePill label={vm.utmCampaign} className="bg-neutral-50 text-neutral-500" />
+            ),
+        },
+        {
             id: 'status',
-            header: 'Lead status',
+            header: terminology.leadStatus,
             thClass: 'w-40',
             show: showOps,
             interactive: true,
@@ -451,27 +506,20 @@ export function LeadTable({
         },
         {
             id: 'tier',
-            header: 'Tier',
+            header: terminology.tier,
             thClass: 'w-28',
             show: showOps,
             interactive: true,
             sortKey: 'LEAD_TIER',
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
-                const explicitTier = profile?.lead_tier;
-                const derivedTier =
-                    !explicitTier && profile?.best_score != null
-                        ? profile.best_score >= 80
-                            ? 'HOT'
-                            : profile.best_score >= 50
-                              ? 'WARM'
-                              : 'COLD'
-                        : undefined;
+                // Explicit override wins, else the institute's score bands.
+                const resolvedTier = tierCatalog.resolve(profile?.lead_tier, profile?.best_score);
                 return (
                     <LeadInlineSelect
-                        value={explicitTier ?? derivedTier}
-                        options={LEAD_TIER_OPTIONS}
-                        placeholder="Set tier"
+                        value={resolvedTier ?? undefined}
+                        options={tierOptions}
+                        placeholder={`Set ${terminology.tier.toLowerCase()}`}
                         onChange={(t) => actions.onSetTier?.(vm.userId!, vm.name, t as LeadTier)}
                     />
                 );
@@ -489,6 +537,8 @@ export function LeadTable({
                     overdue={vm.tatOverdue}
                     respondedAt={vm.firstResponseAt}
                     baselineAt={vm.submittedIso}
+                    responseId={vm.responseId}
+                    dueOverridden={vm.tatDueOverridden}
                 />
             ),
         },
@@ -509,7 +559,7 @@ export function LeadTable({
             interactive: true,
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
-                const owner = profile?.assigned_counselor_name;
+                const owner = counsellorDisplayName(profile);
                 if (!owner) {
                     return (
                         <button
@@ -555,6 +605,11 @@ export function LeadTable({
             header: 'Activity',
             thClass: 'min-w-56',
             show: showOps,
+            // Sortable even though the cell text is hydrated client-side per page:
+            // the ORDER BY runs server-side on the same timeline feed the preview
+            // comes from, so the ordering is over ALL matching leads, not just the
+            // page the notes batch happens to have loaded.
+            sortKey: 'LAST_ACTIVITY',
             interactive: true,
             render: (vm) =>
                 vm.userId ? (
@@ -588,7 +643,15 @@ export function LeadTable({
         allCols.push({ ...extra, show: true, interactive: true });
     }
 
-    const cols = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+    const visible = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+    const cols = columnOrder?.length
+        ? orderColumnIds(
+              visible.map((c) => c.id),
+              columnOrder
+          )
+              .map((id) => visible.find((c) => c.id === id))
+              .filter((c): c is Col => !!c)
+        : visible;
 
     const handleSortClick = (key: LeadSortKey) => {
         if (!onSortChange) return;
@@ -639,9 +702,15 @@ export function LeadTable({
                                         {c.header}
                                         {sortBy === c.sortKey ? (
                                             sortDirection === 'ASC' ? (
-                                                <CaretUp className="size-3.5 text-primary-600" weight="bold" />
+                                                <CaretUp
+                                                    className="size-3.5 text-primary-600"
+                                                    weight="bold"
+                                                />
                                             ) : (
-                                                <CaretDown className="size-3.5 text-primary-600" weight="bold" />
+                                                <CaretDown
+                                                    className="size-3.5 text-primary-600"
+                                                    weight="bold"
+                                                />
                                             )
                                         ) : (
                                             <CaretUpDown className="size-3.5 text-neutral-400 opacity-60 group-hover/sort:opacity-100" />

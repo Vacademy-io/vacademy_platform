@@ -53,7 +53,7 @@ class _StaticKeyResolver:
     def __init__(self, keys: tuple):
         self._keys = keys
 
-    def resolve_keys(self, institute_id=None, user_id=None, request_model=None):
+    def resolve_keys(self, institute_id=None, user_id=None, request_model=None, **_ignored):
         return self._keys
 
 
@@ -177,7 +177,7 @@ class AssistantAgentService:
             setting = load_assistant_tools_setting(db, principal.institute_id)
         groups: Dict[str, Dict[str, Any]] = {}
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 g = groups.setdefault(spec.key(), {"key": spec.key(), "mode": spec.mode, "tools": []})
                 g["tools"].append(spec.name)
                 if spec.mode == "WRITE":
@@ -480,7 +480,7 @@ class AssistantAgentService:
                         db=db, principal=principal, keys=keys,
                         bearer_token=bearer_token, session_id=session_id,
                     )
-                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting)
+                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting, in_product=True)
                     pending_action = ctx.pending_action
 
                 with self._get_db() as db:
@@ -573,7 +573,7 @@ class AssistantAgentService:
         # schema when denied, so without this the model can't know they exist).
         enabled_groups: set = set()
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 enabled_groups.add(spec.key())
         all_groups = list(GROUP_LABELS.keys())
         have = [GROUP_LABELS[g] for g in all_groups if g in enabled_groups]

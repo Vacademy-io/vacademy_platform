@@ -61,6 +61,14 @@ const PDF_VARIABLES = [
     '{{line_items}}', '{{subtotal}}', '{{discount_amount}}', '{{tax_amount}}', '{{total_amount}}',
     '{{currency_symbol}}', '{{tax_components}}', '{{tax_registration_number}}', '{{hsn_code}}',
     '{{country}}', '{{tax_label}}', '{{tax_rate}}', '{{terms_and_conditions}}',
+    '{{institute_tagline}}',
+    // Fee-receipt fields. A receipt has to say where a payment leaves the learner, which an
+    // invoice does not: the course price, what was already paid, what is still owed and the
+    // next installment. Amounts are rendered from the learner fee schedule and are read-only.
+    '{{course_name}}', '{{course_code}}', '{{course_code_bracketed}}', '{{user_mobile}}',
+    '{{course_fees}}', '{{total_fees}}', '{{previous_paid}}', '{{fees_paid_now}}',
+    '{{total_fees_due}}', '{{total_amount_paid}}',
+    '{{next_installment_amount}}', '{{next_installment_date}}', '{{amount_in_words}}',
 ];
 
 const EMAIL_VARIABLES = [

@@ -35,6 +35,8 @@ export interface CampaignLeadUser {
     custom_field_metadata?: Record<string, unknown>;
     // ── TAT / Follow-up SLA (deadlines + badge; visual only) ──
     tat_due_at?: string | null;
+    /** True when an admin set tat_due_at by hand. */
+    tat_due_overridden?: boolean | null;
     /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
     first_response_at?: string | null;
     /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */
@@ -74,7 +76,7 @@ export interface CampaignLeadsRequest {
     submitted_to_local?: string;
     // Substring match across parent_name / parent_email / parent_mobile.
     search_query?: string;
-    // Lead-temperature bucket: 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
+    // Lead tier key(s) from the institute's lead_tier catalog (HOT/WARM/COLD by default), comma-separated. Omitted = all tiers.
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;
@@ -83,6 +85,9 @@ export interface CampaignLeadsRequest {
     // an entry the values are OR-combined; across entries the backend
     // AND-combines them.
     custom_field_filters?: LeadCustomFieldFilter[];
+    // Campaign (UTM) attribution filter — same wire shape on every list
+    // surface; see services/utm-list-filters.
+    utm_filters?: import('@/services/utm-list-filters').UtmListFiltersPayload;
     // Conversion-state filter:
     //   undefined / 'EXCLUDE_CONVERTED' → hide leads who've been assigned to a course
     //   'ONLY_CONVERTED'                → only show those leads
@@ -132,6 +137,7 @@ export const fetchCampaignLeads = async (
                 lead_tier: payload.lead_tier,
                 lead_status_id: payload.lead_status_id,
                 custom_field_filters: payload.custom_field_filters,
+                utm_filters: payload.utm_filters,
                 conversion_status_filter: payload.conversion_status_filter,
                 call_history_filter: payload.call_history_filter,
                 sla_filter: payload.sla_filter,
@@ -194,6 +200,7 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
                       .sort()
                       .join('|')
                 : '',
+            payload.utm_filters ? JSON.stringify(payload.utm_filters) : '',
         ],
         queryFn: () => fetchCampaignLeads(payload),
         staleTime: 60 * 1000, // 1 minute

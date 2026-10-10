@@ -42,9 +42,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * Per-domain reads for one guarded child. Every method: (1) runs the guardian
@@ -140,24 +143,30 @@ public class ParentPortalDetailService {
 
         if (targets.size() == 1) {
             return getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                    targets.get(0), child.childUserId(), 0, null, null, null, caller);
+                    targets.get(0), child.childUserId(), child.instituteId(), 0, null, null, null, caller);
         }
 
         // millis(midnight) -> merged group, TreeMap keeps ascending date order
         Map<Long, GroupedSessionsByDateDTO> byDate = new TreeMap<>();
+        // A class shared by two courses, or an unassigned public class (returned
+        // for every course), must be listed once.
+        Set<String> seenScheduleIds = new HashSet<>();
         for (String psId : targets) {
             List<GroupedSessionsByDateDTO> groups = getLiveSessionService
-                    .getLiveAndUpcomingSessionsForUserAndBatch(psId, child.childUserId(), 0, null, null, null, caller);
+                    .getLiveAndUpcomingSessionsForUserAndBatch(psId, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
             if (groups == null) continue;
             for (GroupedSessionsByDateDTO g : groups) {
                 if (g == null || g.getSessions() == null || g.getSessions().isEmpty()) continue;
+                List<LiveSessionListDTO> fresh = g.getSessions().stream()
+                        .filter(s -> s.getScheduleId() == null || seenScheduleIds.add(s.getScheduleId()))
+                        .collect(Collectors.toCollection(ArrayList::new));
+                if (fresh.isEmpty()) continue;
                 long key = g.getDate() != null ? g.getDate().getTime() : 0L;
                 GroupedSessionsByDateDTO merged = byDate.get(key);
                 if (merged == null) {
-                    byDate.put(key, new GroupedSessionsByDateDTO(g.getDate(),
-                            new ArrayList<LiveSessionListDTO>(g.getSessions())));
+                    byDate.put(key, new GroupedSessionsByDateDTO(g.getDate(), fresh));
                 } else {
-                    merged.getSessions().addAll(g.getSessions());
+                    merged.getSessions().addAll(fresh);
                 }
             }
         }
@@ -182,6 +191,7 @@ public class ParentPortalDetailService {
         }
 
         List<LearnerPastSessionDTO> content = new ArrayList<>();
+        Set<String> seenScheduleIds = new HashSet<>();
         LearnerPastSessionsResponseDTO.DisplayFlagsDTO flags = null;
         long totalElements = 0;
         boolean allLast = true;
@@ -190,8 +200,19 @@ public class ParentPortalDetailService {
                     psId, child.childUserId(), child.instituteId(), page, size, null, null);
             if (r == null) continue;
             if (flags == null) flags = r.getDisplayFlags();
-            if (r.getContent() != null) content.addAll(r.getContent());
-            totalElements += r.getTotalElements();
+            long duplicates = 0;
+            if (r.getContent() != null) {
+                for (LearnerPastSessionDTO d : r.getContent()) {
+                    // Same class reached through two courses (or an unassigned
+                    // public class, returned for every course): list it once.
+                    if (d.getScheduleId() == null || seenScheduleIds.add(d.getScheduleId())) {
+                        content.add(d);
+                    } else {
+                        duplicates++;
+                    }
+                }
+            }
+            totalElements += r.getTotalElements() - duplicates;
             allLast = allLast && r.isLast();
         }
         return LearnerPastSessionsResponseDTO.builder()

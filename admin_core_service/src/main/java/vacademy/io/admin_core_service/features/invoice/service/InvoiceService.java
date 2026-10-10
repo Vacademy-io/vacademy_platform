@@ -66,6 +66,9 @@ import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
+import vacademy.io.admin_core_service.features.common.util.PostalAddressFormatter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -81,6 +84,10 @@ public class InvoiceService {
 
     @Autowired
     private InvoiceLineItemRepository invoiceLineItemRepository;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService adminDiscountService;
 
     @Autowired
     private InvoiceBillingProfileService invoiceBillingProfileService;
@@ -122,6 +129,9 @@ public class InvoiceService {
 
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
 
     // Installment line items name themselves after their fee type ("Registration Fee",
     // "GP Rating Course Installments") rather than the course. student_fee_payment.fee_type_id
@@ -212,6 +222,10 @@ public class InvoiceService {
     private String buildDiscountDescription(PaymentLogLineItem item) {
         String source = item.getSource();
         String type = item.getType();
+        // Admin-granted discount: the grant reason is an internal note, never printed.
+        if ("ADMIN_DISCOUNT".equals(type)) {
+            return "Discount";
+        }
         boolean looksLikeCoupon = (type != null && type.toUpperCase().contains("COUPON"))
                 || (source != null && source.toLowerCase().contains("coupon"));
         if (looksLikeCoupon && item.getSourceId() != null) {
@@ -290,7 +304,8 @@ public class InvoiceService {
             "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
             "place_of_supply", "institute_name", "institute_address", "institute_contact",
             "tax_label", "tax_rate", "country", "country_code", "tax_registration_number",
-            "hsn_code", "notes");
+            "hsn_code", "notes",
+            "course_name", "course_code", "user_mobile", "institute_tagline");
 
     /**
      * Overrides that only make sense for a single billed user. Stripped for bulk
@@ -322,6 +337,8 @@ public class InvoiceService {
         PLACEHOLDER_META.put("institute_name", new PlaceholderMeta("Institute Name", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("institute_address", new PlaceholderMeta("Institute Address", "INSTITUTE", true, "textarea"));
         PLACEHOLDER_META.put("institute_contact", new PlaceholderMeta("Institute Contact", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_tagline",
+                new PlaceholderMeta("Institute Tagline", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("tax_label", new PlaceholderMeta("Tax Label", "TAX", true, "text"));
         PLACEHOLDER_META.put("tax_rate", new PlaceholderMeta("Tax Rate", "TAX", true, "text"));
         PLACEHOLDER_META.put("country", new PlaceholderMeta("Country", "TAX", true, "text"));
@@ -337,8 +354,34 @@ public class InvoiceService {
         PLACEHOLDER_META.put("discount_row", new PlaceholderMeta("Discount Line (hidden when none)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("tax_amount", new PlaceholderMeta("Tax Amount", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("total_amount", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("totals_rows",
+                new PlaceholderMeta("Totals block (amount, discount, tax, paid)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("notes", new PlaceholderMeta("Notes", "NOTES", true, "textarea"));
+        // A fee receipt answers "where does this payment leave me", which an invoice does not:
+        // Money here is NOT editable, for the same reason subtotal and total_amount are not: a
+        // receipt that can be retyped is a receipt that can contradict the ledger. Only the
+        // descriptive fields are editable, and those are whitelisted in EDITABLE_OVERRIDE_KEYS
+        // so that an admin edit actually reaches the PDF instead of being silently dropped.
+        // the course price, what was already paid, what is still owed and the next installment.
+        // Registered here so the template editor offers them and an admin can override any one
+        // on a single receipt. Derived in buildReceiptFigures from the learner fee schedule.
+        PLACEHOLDER_META.put("course_name", new PlaceholderMeta("Course Name", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_code", new PlaceholderMeta("Course Code", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_code_bracketed",
+                new PlaceholderMeta("Course Code in brackets (hidden when none)", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("user_mobile", new PlaceholderMeta("Mobile No.", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_fees", new PlaceholderMeta("Course Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees", new PlaceholderMeta("Total Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("previous_paid", new PlaceholderMeta("Total Previous Paid", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("fees_paid_now", new PlaceholderMeta("Fees Paid Now", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees_due", new PlaceholderMeta("Total Fees Due", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_amount_paid", new PlaceholderMeta("Total Amount Paid", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("next_installment_amount",
+                new PlaceholderMeta("Next Installment Amount", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("next_installment_date",
+                new PlaceholderMeta("Next Installment Due On", "RECEIPT", false, "date"));
+        PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", false, "text"));
     }
 
     /**
@@ -405,6 +448,42 @@ public class InvoiceService {
      * Returns the new file id, or null if any step fails. Caller is responsible for
      * persisting the new id on the Invoice row.
      */
+    /**
+     * Rewrites tax-inclusive line prices to their taxable value so the item column adds up to the
+     * subtotal, leaving the tax to be stated once in the totals block.
+     *
+     * <p>Scales proportionally rather than dividing each line by (1 + rate) independently: with
+     * several lines, per-line division rounds each one and the roundings need not sum back to the
+     * subtotal the totals block prints. The last line absorbs the remainder, so item total ==
+     * subtotal exactly, to the paisa.
+     *
+     * <p>Leaves everything alone when the gross is zero or negative (nothing meaningful to split)
+     * and when a line carries no amount.
+     */
+    private void restateLineItemsNetOfTax(List<InvoiceLineItemData> items, BigDecimal subtotal) {
+        if (items == null || items.isEmpty() || subtotal == null) return;
+        BigDecimal gross = BigDecimal.ZERO;
+        for (InvoiceLineItemData item : items) {
+            if (item.getAmount() != null) gross = gross.add(item.getAmount());
+        }
+        if (gross.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < items.size(); i++) {
+            InvoiceLineItemData item = items.get(i);
+            if (item.getAmount() == null) continue;
+            BigDecimal net = (i == items.size() - 1)
+                    ? subtotal.subtract(allocated)
+                    : item.getAmount().multiply(subtotal).divide(gross, 2, RoundingMode.HALF_UP);
+            allocated = allocated.add(net);
+            item.setAmount(net);
+            Integer qty = item.getQuantity();
+            item.setUnitPrice(qty != null && qty > 0
+                    ? net.divide(BigDecimal.valueOf(qty), 2, RoundingMode.HALF_UP)
+                    : net);
+        }
+    }
+
     private String regenerateInvoicePdf(Invoice invoice) {
         try {
             List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
@@ -456,11 +535,27 @@ public class InvoiceService {
         private final Invoice invoice;
         private final byte[] pdfBytes;
         private final boolean alreadyExisted;
+        /**
+         * How many payment logs this invoice covers — i.e. how many courses one
+         * order bought. The confirmation email needs it to say "4 courses" rather
+         * than implying the total belongs to the single course its own log names.
+         */
+        private final int paymentLogCount;
 
         public InvoiceGenerationResult(Invoice invoice, byte[] pdfBytes, boolean alreadyExisted) {
+            this(invoice, pdfBytes, alreadyExisted, 1);
+        }
+
+        public InvoiceGenerationResult(Invoice invoice, byte[] pdfBytes, boolean alreadyExisted,
+                int paymentLogCount) {
             this.invoice = invoice;
             this.pdfBytes = pdfBytes;
             this.alreadyExisted = alreadyExisted;
+            this.paymentLogCount = Math.max(1, paymentLogCount);
+        }
+
+        public int getPaymentLogCount() {
+            return paymentLogCount;
         }
 
         public Invoice getInvoice() {
@@ -558,7 +653,7 @@ public class InvoiceService {
 
             log.info("Invoice generated successfully: {} with {} payment log(s)",
                     invoiceNumber, paymentLogs.size());
-            return new InvoiceGenerationResult(invoice, pdfBytes, false);
+            return new InvoiceGenerationResult(invoice, pdfBytes, false, paymentLogs.size());
 
         } catch (Exception e) {
             log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}",
@@ -590,13 +685,14 @@ public class InvoiceService {
      * @return List of payment logs that should be grouped together (single log if
      *         no related logs found)
      */
-    private List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
+    /** Visible for testing. */
+    List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
         try {
             // Check if this payment log has payment_specific_data with order_id
             String orderId = extractOrderIdFromPaymentLog(paymentLog);
 
-            if (orderId != null && isMultiPackageOrderId(orderId)) {
-                log.debug("Detected v2 multi-package order ID: {} for payment log: {}", orderId, paymentLog.getId());
+            if (orderId != null && (isMultiPackageOrderId(orderId) || isParentChildOrderId(orderId))) {
+                log.debug("Detected multi-course order ID: {} for payment log: {}", orderId, paymentLog.getId());
 
                 // Find all payment logs with the same order ID that are PAID and not already
                 // invoiced
@@ -606,10 +702,14 @@ public class InvoiceService {
                 List<PaymentLog> uninvoicedLogs = relatedLogs.stream()
                         .filter(log -> !invoicePaymentLogMappingRepository.existsByPaymentLogId(log.getId()))
                         .filter(log -> "PAID".equals(log.getPaymentStatus())) // Ensure paid status
+                        // The ORDER's own log carries the gateway total and no UserPlan; it is
+                        // the parent of these lines, not a line itself. Including it would put
+                        // a planless log first and NPE the invoice builder.
+                        .filter(log -> log.getUserPlan() != null)
                         .collect(Collectors.toList());
 
                 if (uninvoicedLogs.size() > 1) {
-                    log.info("Found {} related payment logs for multi-package invoice with order ID: {}",
+                    log.info("Found {} related payment logs for one invoice with order ID: {}",
                             uninvoicedLogs.size(), orderId);
                     return uninvoicedLogs;
                 }
@@ -662,6 +762,56 @@ public class InvoiceService {
     }
 
     /**
+     * True when this order id names a PARENT payment log that fanned out into one
+     * child log per course — the shape a product-page checkout produces.
+     *
+     * The legacy multi-package flow announced itself with an "MP" prefix on a
+     * synthetic order id. A product-page order has no such marker: its children
+     * share the parent log's UUID as their order id, so the prefix test failed and
+     * every course was invoiced separately. A real ₹949 four-subject order
+     * produced four invoices totalling ₹1,396 and four payment-confirmation
+     * emails, none of which matched the learner's bank statement.
+     *
+     * Asks the data instead of a naming convention: an order is a parent when a
+     * log with that id exists and records the children it paid for.
+     */
+    boolean isParentChildOrderId(String orderId) {
+        if (!StringUtils.hasText(orderId)) {
+            return false;
+        }
+        try {
+            return paymentLogRepository.findById(orderId)
+                    .map(PaymentLog::getPaymentSpecificData)
+                    .filter(StringUtils::hasText)
+                    .map(data -> data.contains("childPaymentLogIds"))
+                    .orElse(false);
+        } catch (Exception e) {
+            log.debug("Could not check order {} for child payment logs: {}", orderId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Whether each grouped log states what IT was charged, or merely repeats the
+     * order total.
+     *
+     * The legacy multi-package flow copies the whole order total onto every child
+     * (see MultiPackageLearnerEnrollService), so summing those amounts multiplies
+     * the invoice by the number of courses — hence that flow's lines are priced
+     * from the payment plan instead. A parent/child order allocates the real
+     * total across its children, so there the log's own amount IS the truth, and
+     * falling back to the plan's list price would re-inflate a discounted basket
+     * back to full price.
+     */
+    boolean logsCarryTheirOwnAmount(List<PaymentLog> paymentLogs) {
+        if (paymentLogs.size() <= 1) {
+            return true;
+        }
+        String orderId = extractOrderIdFromPaymentLog(paymentLogs.get(0));
+        return isParentChildOrderId(orderId);
+    }
+
+    /**
      * Find related payment logs that should be grouped in the same invoice
      *
      * NOTE: This legacy method is kept for backward compatibility but is now
@@ -684,6 +834,7 @@ public class InvoiceService {
         if (paymentLogs == null || paymentLogs.isEmpty()) {
             throw new VacademyException("Payment logs list cannot be empty");
         }
+        final boolean perLogAmounts = logsCarryTheirOwnAmount(paymentLogs);
 
         log.debug("Building invoice data from {} payment log(s) - supports both single and multiple scenarios",
                 paymentLogs.size());
@@ -784,8 +935,9 @@ public class InvoiceService {
             // For multi-package invoices, use the plan's actual_price (per-book price)
             // instead of paymentLog.getPaymentAmount() (which may contain the total gateway charge)
             BigDecimal paymentAmount;
-            if (paymentLogs.size() > 1) {
-                // Multi-package: each line item should show the individual book price
+            if (paymentLogs.size() > 1 && !perLogAmounts) {
+                // Legacy multi-package: every child log repeats the order total, so the
+                // line has to be priced from the plan or the invoice multiplies.
                 paymentAmount = planPrice;
             } else if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
                 paymentAmount = BigDecimal.valueOf(paymentLog.getPaymentAmount());
@@ -803,8 +955,18 @@ public class InvoiceService {
                 BigDecimal lineSubtotal = paymentAmount.divide(
                         BigDecimal.ONE.add(rateFraction), 2, RoundingMode.HALF_UP);
                 componentSubtotalSum = componentSubtotalSum.add(lineSubtotal);
-                componentTaxSum = componentTaxSum.add(paymentAmount.subtract(lineSubtotal));
-                for (Map<String, Object> comp : comps) {
+                BigDecimal lineTax = paymentAmount.subtract(lineSubtotal);
+                componentTaxSum = componentTaxSum.add(lineTax);
+                // Split THIS line's tax across its components so they add back to it exactly.
+                // Computing each component off the subtotal independently rounds each one up:
+                // 4,571.43 x 2.5% = 114.2857 -> 114.29 for CGST and again for SGST, which is
+                // 228.58 against a tax line of 228.57. A GST invoice whose components do not
+                // sum to the tax charged is wrong on its face. The last component takes the
+                // remainder, which is also what a manually prepared invoice does.
+                BigDecimal allocatedLineTax = BigDecimal.ZERO;
+                int lastIndex = comps.size() - 1;
+                for (int ci = 0; ci < comps.size(); ci++) {
+                    Map<String, Object> comp = comps.get(ci);
                     String label = comp.get("label") != null ? comp.get("label").toString() : "";
                     if (label.isEmpty()) {
                         continue;
@@ -815,8 +977,11 @@ public class InvoiceService {
                     } catch (NumberFormatException e) {
                         rate = BigDecimal.ZERO;
                     }
-                    BigDecimal amt = lineSubtotal.multiply(rate)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    BigDecimal amt = (ci == lastIndex)
+                            ? lineTax.subtract(allocatedLineTax)
+                            : lineSubtotal.multiply(rate)
+                                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    allocatedLineTax = allocatedLineTax.add(amt);
                     final BigDecimal compRate = rate;
                     BigDecimal[] acc = componentAccumulator.computeIfAbsent(label,
                             k -> new BigDecimal[] { compRate, BigDecimal.ZERO });
@@ -871,8 +1036,21 @@ public class InvoiceService {
             taxLineDescription = taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%";
         }
 
-        // Add tax as line item if applicable
-        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+        // How tax appears depends on whether the price the learner paid already contains it.
+        //
+        // Tax-INCLUSIVE (taxIncluded = true): the line prices ARE gross. Adding a separate tax row
+        // then shows the same money twice on the face of the document -- an item column reading
+        // 4,800.00 + 228.57 = 5,028.57 against a total of 4,800.00. Restate each line at its
+        // taxable value instead, so the column sums to the subtotal and the tax is stated once, in
+        // the totals block: 4,571.43 + 228.57 GST = 4,800.00, which is the usual GST layout.
+        //
+        // Tax-EXCLUSIVE (the default, and every institute that has never set taxIncluded): tax
+        // genuinely sits on top of the line prices, so it keeps its own row exactly as before.
+        boolean pricesIncludeTax = Boolean.TRUE.equals(taxIncluded)
+                && taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0;
+        if (pricesIncludeTax) {
+            restateLineItemsNetOfTax(allLineItems, subtotal);
+        } else if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             InvoiceLineItemData taxItem = InvoiceLineItemData.builder()
                     .itemType("TAX")
                     .description(taxLineDescription)
@@ -907,10 +1085,79 @@ public class InvoiceService {
                 .paymentDate(paymentDate)
                 .lineItems(allLineItems)
                 .aggregatedTaxComponents(aggregatedTaxComponents)
+                .overrides(organisationBillTo(firstPaymentLog.getUserPlan(), user))
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
         return invoiceData;
+    }
+
+    /**
+     * BILL TO for a channel-partner (sub-org) subscription: the organisation, not the person
+     * who clicked pay.
+     *
+     * <p>The registration wizard collects the ORGANISATION's address and stamps it on the spawned
+     * sub-org institute — never on the admin's own auth user record. So the default
+     * {@code {{user_address}}} (auth {@code address_line}) rendered blank on every VLE invoice,
+     * and {@code {{user_name}}} named the admin rather than the company being invoiced.
+     *
+     * <p>Keyed on the org-level invite (tag {@code SUB_ORG}) rather than {@code UserPlan.source}:
+     * learners enrolled under a partner also carry {@code source=SUB_ORG}, and they must keep
+     * being billed personally. Returns null — "derive everything as before" — for every other
+     * purchase, so no other institute's invoice changes.
+     */
+    private Map<String, String> organisationBillTo(UserPlan plan, UserDTO admin) {
+        try {
+            if (plan == null) {
+                return null;
+            }
+            EnrollInvite invite = plan.getEnrollInvite();
+            if (invite == null || !EnrollInviteTag.SUB_ORG.name().equals(invite.getTag())) {
+                return null;
+            }
+            String subOrgId = StringUtils.hasText(invite.getSubOrgId()) ? invite.getSubOrgId() : plan.getSubOrgId();
+            if (!StringUtils.hasText(subOrgId)) {
+                return null;
+            }
+            Institute org = instituteRepository.findById(subOrgId).orElse(null);
+            if (org == null) {
+                return null;
+            }
+
+            Map<String, String> billTo = new HashMap<>();
+            if (StringUtils.hasText(org.getInstituteName())) {
+                billTo.put("user_name", org.getInstituteName().trim());
+            }
+            List<String> lines = new ArrayList<>();
+            if (admin != null && StringUtils.hasText(admin.getFullName())) {
+                lines.add("Attn: " + admin.getFullName().trim());
+            }
+            String postal = composePostalAddress(org.getAddress(), org.getCity(), org.getState(),
+                    org.getPinCode(), org.getCountry());
+            if (StringUtils.hasText(postal)) {
+                lines.add(postal);
+            }
+            if (!lines.isEmpty()) {
+                billTo.put("user_address", String.join("\n", lines));
+            }
+            return billTo.isEmpty() ? null : billTo;
+        } catch (Exception e) {
+            // Best-effort: a lookup failure must not stop the invoice — fall back to the user.
+            log.warn("Could not resolve organisation bill-to for plan {}: {}",
+                    plan.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** See {@link PostalAddressFormatter#compose}; kept here so the invoice tests read naturally. */
+    static String composePostalAddress(String street, String city, String state, String pinCode,
+            String country) {
+        return PostalAddressFormatter.compose(street, city, state, pinCode, country);
+    }
+
+    /** See {@link PostalAddressFormatter#dedupeSegments}. */
+    static String dedupeAddressSegments(String street) {
+        return PostalAddressFormatter.dedupeSegments(street);
     }
 
     /**
@@ -2087,6 +2334,71 @@ public class InvoiceService {
     }
 
     /**
+     * The invoice's arithmetic, rendered as rows: what the courses cost, what was
+     * taken off, tax, and what was actually paid.
+     *
+     * Why a rendered block rather than more placeholders: an invoice template has
+     * no conditionals, so a hard-coded "Discount" row prints an empty line on
+     * every full-price invoice — which is what the seeded templates do today. It
+     * also lets the rows appear only when they mean something.
+     *
+     * Why not just fix {{subtotal}}: that placeholder means PRE-TAX (total ÷ 1+rate)
+     * and 12 of the 17 live invoice templates pair it with {{tax_amount}} to show
+     * "Subtotal + Tax = Total". Redefining it as pre-DISCOUNT would silently break
+     * every one of those. {{plan_price}} already carries the gross, so this block
+     * reads from that and leaves the older placeholders exactly as they were.
+     *
+     * The gross line is omitted when nothing was discounted, because then it is
+     * the same number as the total and repeating it reads as an error.
+     */
+    /**
+     * Money as it should read on a document: two decimals, thousands grouped — "8,000.00", not
+     * the "8000.0" that {@code BigDecimal.toString()} produced from a double-sourced amount.
+     */
+    static String money(BigDecimal value) {
+        if (value == null) {
+            return "0.00";
+        }
+        return String.format(Locale.ENGLISH, "%,.2f", value.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    static String buildTotalsRowsHtml(InvoiceData invoiceData, String currencySymbol) {
+        if (invoiceData == null) {
+            return "";
+        }
+        BigDecimal gross = invoiceData.getPlanPrice();
+        BigDecimal discount = invoiceData.getDiscountAmount();
+        BigDecimal tax = invoiceData.getTaxAmount();
+        BigDecimal total = invoiceData.getTotalAmount();
+        boolean hasDiscount = discount != null && discount.compareTo(BigDecimal.ZERO) > 0
+                && gross != null && total != null && gross.compareTo(total) > 0;
+        boolean hasTax = tax != null && tax.compareTo(BigDecimal.ZERO) > 0;
+
+        StringBuilder rows = new StringBuilder(
+                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
+                        + "style=\"width:100%;font-size:13px;color:#222;\">");
+        if (hasDiscount) {
+            rows.append(totalsRow("Amount", currencySymbol + money(gross), false));
+            rows.append(totalsRow("Discount", "-" + currencySymbol + money(discount), false));
+        }
+        if (hasTax) {
+            String taxLabel = StringUtils.hasText(invoiceData.getTaxLabel()) ? invoiceData.getTaxLabel() : "Tax";
+            rows.append(totalsRow(taxLabel, currencySymbol + money(tax), false));
+        }
+        rows.append(totalsRow("Total Paid",
+                currencySymbol + money(total), true));
+        return rows.append("</table>").toString();
+    }
+
+    private static String totalsRow(String label, String value, boolean emphasised) {
+        String cell = emphasised
+                ? "padding:4px 0;font-size:15px;font-weight:700;color:#124a34;"
+                : "padding:2px 0;";
+        return "<tr><td style=\"text-align:right;" + cell + "\">" + label + ":&nbsp;&nbsp;</td>"
+                + "<td style=\"text-align:right;white-space:nowrap;" + cell + "\">" + value + "</td></tr>";
+    }
+
+    /**
      * Load default invoice PDF layout template from
      * resources/templates/invoice/default_invoice.html (same style as institute INVOICE templates).
      */
@@ -2193,6 +2505,11 @@ public class InvoiceService {
                 ov.apply("institute_name", institute.getInstituteName()));
         filled = filled.replace("{{institute_address}}",
                 ovMulti.apply("institute_address", institute.getAddress()));
+        // The line an institute prints under its name on letterheads. Held in the institute
+        // description so a receipt reads from settings rather than being baked into a template.
+        filled = filled.replace("{{institute_tagline}}",
+                ov.apply("institute_tagline",
+                        institute.getDescription() != null ? institute.getDescription() : ""));
         filled = filled.replace("{{institute_contact}}",
                 ov.apply("institute_contact", institute.getMobileNumber() != null ? institute.getMobileNumber()
                         : (institute.getEmail() != null ? institute.getEmail() : "")));
@@ -2238,8 +2555,7 @@ public class InvoiceService {
         log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
 
         filled = filled.replace("{{subtotal}}",
-                invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getSubtotal()));
 
         // Original price + discount. {{discount_amount}} was being rendered literally on live
         // invoices because nothing ever substituted it — it was neither in this block nor in
@@ -2250,21 +2566,19 @@ public class InvoiceService {
         BigDecimal invoiceDiscount = invoiceData.getDiscountAmount();
         boolean hasDiscount = invoiceDiscount != null && invoiceDiscount.compareTo(BigDecimal.ZERO) > 0;
         filled = filled.replace("{{plan_price}}",
-                invoiceData.getPlanPrice() != null ? currencySymbol + invoiceData.getPlanPrice().toString()
+                invoiceData.getPlanPrice() != null ? currencySymbol + money(invoiceData.getPlanPrice())
                         : "");
         filled = filled.replace("{{discount_amount}}",
-                hasDiscount ? currencySymbol + invoiceDiscount.toString() : "");
+                hasDiscount ? currencySymbol + money(invoiceDiscount) : "");
         filled = filled.replace("{{discount_row}}",
                 hasDiscount
                         ? "<div class=\"invoice-discount-row\">Discount: -" + currencySymbol
-                                + invoiceDiscount.toString() + "</div>"
+                                + money(invoiceDiscount) + "</div>"
                         : "");
         filled = filled.replace("{{tax_amount}}",
-                invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getTaxAmount()));
         filled = filled.replace("{{total_amount}}",
-                invoiceData.getTotalAmount() != null ? currencySymbol + invoiceData.getTotalAmount().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getTotalAmount()));
         filled = filled.replace("{{currency}}", invoiceCurrency);
         // Replace currency_symbol placeholder if template uses it
         filled = filled.replace("{{currency_symbol}}", currencySymbol);
@@ -2277,6 +2591,50 @@ public class InvoiceService {
         filled = filled.replace("{{payment_date}}",
                 invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
                         : "");
+
+        // Receipt figures, read off the learner fee schedule rather than this one invoice.
+        // A receipt has to answer "where does this payment leave me" — what the course costs,
+        // what was already paid, what is still owed and when the next installment falls due.
+        // Only {{fees_paid_now}} is about this invoice alone. Every value is blank when the
+        // plan has no schedule, so a template using them degrades to empty rather than zero.
+        // Only reach for the fee schedule when the template actually asks for it. Most
+        // institutes print an invoice, not a receipt, and they should not pay a query for
+        // placeholders their template never mentions.
+        ReceiptFigures rf = usesReceiptFields(template)
+                ? buildReceiptFigures(invoiceData)
+                : new ReceiptFigures();
+        filled = filled.replace("{{course_fees}}", ov.apply("course_fees",
+                rf.courseFees != null ? currencySymbol + money(rf.courseFees) : ""));
+        filled = filled.replace("{{total_fees}}", ov.apply("total_fees",
+                rf.totalFees != null ? currencySymbol + money(rf.totalFees) : ""));
+        filled = filled.replace("{{previous_paid}}", ov.apply("previous_paid",
+                rf.previousPaid != null ? currencySymbol + money(rf.previousPaid) : ""));
+        filled = filled.replace("{{fees_paid_now}}", ov.apply("fees_paid_now",
+                invoiceData.getTotalAmount() != null
+                        ? currencySymbol + money(invoiceData.getTotalAmount()) : ""));
+        filled = filled.replace("{{total_fees_due}}", ov.apply("total_fees_due",
+                rf.totalDue != null ? currencySymbol + money(rf.totalDue) : ""));
+        filled = filled.replace("{{total_amount_paid}}", ov.apply("total_amount_paid",
+                rf.totalPaid != null ? currencySymbol + money(rf.totalPaid) : ""));
+        filled = filled.replace("{{next_installment_amount}}", ov.apply("next_installment_amount",
+                rf.nextInstallmentAmount != null
+                        ? currencySymbol + money(rf.nextInstallmentAmount) : ""));
+        filled = filled.replace("{{next_installment_date}}", ov.apply("next_installment_date",
+                rf.nextInstallmentDate != null
+                        ? rf.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : ""));
+        filled = filled.replace("{{amount_in_words}}", ov.apply("amount_in_words",
+                amountInWords(invoiceData.getTotalAmount())));
+        filled = filled.replace("{{user_mobile}}", ov.apply("user_mobile",
+                user != null ? user.getMobileNumber() : ""));
+        filled = filled.replace("{{course_name}}", ov.apply("course_name", rf.courseName));
+        filled = filled.replace("{{course_code}}", ov.apply("course_code", rf.courseCode));
+        // The bracketed form, or nothing at all. A template that writes "( {{course_code}} )"
+        // prints an empty pair of brackets for every course whose plan carries no code, and
+        // most do not. Same shape as {{discount_row}}: the whole fragment or none of it.
+        String courseCode = overrides.containsKey("course_code")
+                ? overrides.get("course_code") : rf.courseCode;
+        filled = filled.replace("{{course_code_bracketed}}",
+                StringUtils.hasText(courseCode) ? "( " + escapeHtml(courseCode) + " )" : "");
 
         // Country & tax registration details (from INVOICE_SETTING.country).
         // These let templates render the operating country, the institute's tax
@@ -2324,6 +2682,9 @@ public class InvoiceService {
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
+
+        // The whole sum, in one conditional block — see buildTotalsRowsHtml.
+        filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
 
         // Terms & Conditions
         String termsHtml = buildTermsAndConditionsHtml(invoiceData);
@@ -2693,11 +3054,11 @@ public class InvoiceService {
             html.append("<td class=\"right text-center\" style=\"text-align:center\">")
                     .append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
             // Format unit price with currency symbol
-            String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
+            String unitPrice = money(item.getUnitPrice());
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(unitPrice).append("</td>");
             // Format amount with currency symbol
-            String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
+            String amount = money(item.getAmount());
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
@@ -3709,16 +4070,15 @@ public class InvoiceService {
         for (InvoiceDTO existing : result) {
             if (existing.getId() != null) realInvoiceIds.add(existing.getId());
         }
-        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId);
-        java.util.Set<String> sfpRowsTakingOverRealId = new java.util.HashSet<>();
+        java.util.Set<String> coveredInvoiceIds = new java.util.HashSet<>();
+        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId, coveredInvoiceIds);
         for (InvoiceDTO sfpRow : sfpRows) {
             String id = sfpRow.getId();
-            if (id != null && !id.startsWith("sfp:") && realInvoiceIds.contains(id)) {
-                sfpRowsTakingOverRealId.add(id);
-            }
+            if (id != null && !id.startsWith("sfp:")) coveredInvoiceIds.add(id);
         }
-        if (!sfpRowsTakingOverRealId.isEmpty()) {
-            result.removeIf(r -> r.getId() != null && sfpRowsTakingOverRealId.contains(r.getId()));
+        coveredInvoiceIds.retainAll(realInvoiceIds);
+        if (!coveredInvoiceIds.isEmpty()) {
+            result.removeIf(r -> r.getId() != null && coveredInvoiceIds.contains(r.getId()));
         }
         result.addAll(sfpRows);
 
@@ -3751,8 +4111,14 @@ public class InvoiceService {
      * <p>Status-prefixed invoice numbers ("PAID-*", "PARTIAL-*", "DUE-*",
      * "WAIVED-*", "OVERDUE-*") let the frontend distinguish the synthetic
      * entries from real Invoice rows. Skips DELETED rows.
+     *
+     * @param coveredInvoiceIds filled with every Invoice reachable from this user's installment
+     *                          ledger. An installment paid in parts has a ledger row per payment,
+     *                          and each of those payments has its own Invoice; the listing must
+     *                          drop all of them, not just the one the installment row ends up
+     *                          labelled with, or the rest are counted a second time.
      */
-    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
+    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId, java.util.Set<String> coveredInvoiceIds) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserId(userId);
 
         // Pre-build a sfpId → (realInvoiceId, pdfFileId, pdfUrl) lookup so each
@@ -3768,6 +4134,10 @@ public class InvoiceService {
         // allocation per SFP because a partial payment can produce multiple ledger
         // rows over time; the latest one corresponds to the invoice the admin wants.
         Map<String, String[]> sfpIdToPdfInfo = new HashMap<>();
+        // userPlanId -> currency, resolved in ONE query below. The synthetic rows used to
+        // report "INR" unconditionally, which rendered every AUD installment with a rupee
+        // symbol in the manage-students payment-history tab.
+        Map<String, String> userPlanIdToCurrency = new HashMap<>();
         try {
             List<String> sfpIds = sfps.stream()
                     .map(StudentFeePayment::getId)
@@ -3780,28 +4150,65 @@ public class InvoiceService {
                 Map<String, String> sfpIdToPaymentLogId = new HashMap<>();
                 for (var ledger : ledgers) {
                     // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
-                    // putIfAbsent keeps the most-recent PaymentLog per SFP.
+                    // putIfAbsent keeps the most-recent PaymentLog per SFP — that is the one
+                    // the row gets labelled with.
                     sfpIdToPaymentLogId.putIfAbsent(
                             ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
                 }
+                // Every payment in the ledger in one lookup, not one query per row.
+                Map<String, Invoice> paymentLogIdToInvoice = new HashMap<>();
+                List<String> ledgerPaymentLogIds = ledgers.stream()
+                        .map(l -> l.getPaymentLogId())
+                        .filter(id -> id != null && !id.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+                if (!ledgerPaymentLogIds.isEmpty()) {
+                    for (var mapping : invoicePaymentLogMappingRepository
+                            .findAllByPaymentLogIdIn(ledgerPaymentLogIds)) {
+                        Invoice inv = mapping.getInvoice();
+                        if (inv == null || mapping.getPaymentLog() == null) continue;
+                        paymentLogIdToInvoice.putIfAbsent(mapping.getPaymentLog().getId(), inv);
+                        // An installment paid in parts has a ledger row per payment, and each of
+                        // those payments has an Invoice of its own. The listing has to drop all of
+                        // them, not only the one this installment ends up labelled with, or the
+                        // rest are shown a second time beside the row that already covers them.
+                        coveredInvoiceIds.add(inv.getId());
+                    }
+                }
                 for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
-                    invoicePaymentLogMappingRepository
-                            .findFirstByPaymentLogId(e.getValue())
-                            .ifPresent(mapping -> {
-                                Invoice inv = mapping.getInvoice();
-                                if (inv == null) return;
-                                String realInvoiceId = inv.getId();
-                                String pdfFileId = inv.getPdfFileId();
-                                String url = StringUtils.hasText(pdfFileId)
-                                        ? mediaService.getFilePublicUrlById(pdfFileId)
-                                        : null;
-                                sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url});
-                            });
+                    Invoice inv = paymentLogIdToInvoice.get(e.getValue());
+                    if (inv != null) {
+                        String realInvoiceId = inv.getId();
+                        String pdfFileId = inv.getPdfFileId();
+                        String url = StringUtils.hasText(pdfFileId)
+                                ? mediaService.getFilePublicUrlById(pdfFileId)
+                                : null;
+                        sfpIdToPdfInfo.put(e.getKey(),
+                                new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
+                                        inv.getInvoiceNumber()});
+                    }
                 }
             }
         } catch (Exception e) {
             log.warn("Could not enrich SFP DTOs with invoice PDFs for user {}: {}", userId, e.getMessage());
+        }
+        try {
+            List<String> userPlanIds = sfps.stream()
+                    .map(StudentFeePayment::getUserPlanId)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!userPlanIds.isEmpty()) {
+                for (Object[] row : userPlanRepository.findPlanCurrencyByUserPlanIds(userPlanIds)) {
+                    String planId = row[0] != null ? row[0].toString() : null;
+                    String planCurrency = row[1] != null ? row[1].toString() : null;
+                    if (StringUtils.hasText(planId) && StringUtils.hasText(planCurrency)) {
+                        userPlanIdToCurrency.put(planId, planCurrency.trim().toUpperCase());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve plan currency for SFP rows of user {}: {}", userId, e.getMessage());
         }
         List<InvoiceDTO> dtos = new ArrayList<>();
         for (StudentFeePayment sfp : sfps) {
@@ -3838,14 +4245,28 @@ public class InvoiceService {
             String realInvoiceId = pdfInfo != null ? pdfInfo[0] : null;
             String pdfFileId = pdfInfo != null ? pdfInfo[1] : null;
             String pdfUrl = pdfInfo != null ? pdfInfo[2] : null;
+            // The real Invoice is authoritative; otherwise the plan the installment belongs
+            // to. INR only as a last resort, for rows with neither.
+            String invoiceCurrency = pdfInfo != null ? pdfInfo[3] : null;
+            String currency = StringUtils.hasText(invoiceCurrency)
+                    ? invoiceCurrency
+                    : userPlanIdToCurrency.getOrDefault(sfp.getUserPlanId(), "INR");
             // When a real Invoice exists for this SFP, expose its id so the FE's
             // existing /v1/invoices/{id}/download path can resolve (and regenerate
             // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
             // the synthetic "sfp:..." marker so the row remains uniquely-keyed.
             String dtoId = StringUtils.hasText(realInvoiceId) ? realInvoiceId : ("sfp:" + sfp.getId());
+            // A settled installment already has a receipt the learner was given; show that
+            // number rather than a fabricated one. Bulk-loaded institutes made this obvious —
+            // every migrated receipt read as "PAID-<uuid>", so an admin matching the screen
+            // against the paper receipt had nothing to match on. Only an installment with no
+            // invoice behind it (anything still due) keeps the status-prefixed placeholder.
+            String realInvoiceNumber = pdfInfo != null && pdfInfo.length > 4 ? pdfInfo[4] : null;
             dtos.add(InvoiceDTO.builder()
                     .id(dtoId)
-                    .invoiceNumber(prefix + "-" + sfp.getId())
+                    .invoiceNumber(StringUtils.hasText(realInvoiceNumber)
+                            ? realInvoiceNumber
+                            : (prefix + "-" + sfp.getId()))
                     .userId(sfp.getUserId())
                     .userPlanId(sfp.getUserPlanId())
                     .instituteId(sfp.getInstituteId())
@@ -3856,7 +4277,7 @@ public class InvoiceService {
                     .dueDate(dueDate)
                     .subtotal(displayAmount)
                     .totalAmount(displayAmount)
-                    .currency("INR")
+                    .currency(currency)
                     .status(mapSfpStatusToInvoiceStatus(status))
                     .createdAt(createdAt)
                     .updatedAt(sfp.getUpdatedAt())
@@ -4219,16 +4640,78 @@ public class InvoiceService {
     // Admin-created invoice: create, pay, and mark paid
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** The admin discount applied to an admin invoice: its rule, amount and audit trail. */
+    private record AdminInvoiceDiscount(
+            vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount rule,
+            BigDecimal amount,
+            Map<String, Object> audit) {
+    }
+
+    /**
+     * Turns {@code request.adminDiscount} into a negative DISCOUNT line appended to the
+     * request's line items, computed on the pre-discount subtotal. Everything downstream
+     * (subtotal, tax, total, stored line items, PDF, preview) then reads the discounted
+     * figures with no special casing. Returns null when no discount was asked for.
+     */
+    private AdminInvoiceDiscount applyAdminInvoiceDiscount(AdminCreateInvoiceRequestDTO request,
+                                                           String adminUserId, boolean persist) {
+        var req = request.getAdminDiscount();
+        if (!vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService
+                .isRequested(req)) {
+            return null;
+        }
+        BigDecimal gross = request.getLineItems().stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var rule = adminDiscountService.resolveForInvoice(
+                req, request.getInstituteId(), gross.doubleValue(), adminUserId, persist);
+        double off = Math.min(
+                vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil
+                        .computeDiscount(rule, gross.doubleValue()),
+                gross.doubleValue());
+        BigDecimal amount = BigDecimal.valueOf(off).setScale(2, java.math.RoundingMode.HALF_UP);
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        String label = rule.getCouponCode() != null && StringUtils.hasText(rule.getCouponCode().getCode())
+                ? "Coupon " + rule.getCouponCode().getCode()
+                : "Discount";
+        AdminInvoiceLineItemRequestDTO discountLine = new AdminInvoiceLineItemRequestDTO();
+        discountLine.setDescription(label);
+        discountLine.setQuantity(1);
+        discountLine.setUnitPrice(amount.negate());
+        discountLine.setItemType("DISCOUNT");
+        List<AdminInvoiceLineItemRequestDTO> items = new ArrayList<>(request.getLineItems());
+        items.add(discountLine);
+        request.setLineItems(items);
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put("applied_coupon_discount_id", rule.getId());
+        audit.put("mode", req.getMode());
+        audit.put("discount_type", rule.getDiscountType());
+        audit.put("discount_value", rule.getDiscountPoint());
+        audit.put("discount_amount", amount);
+        audit.put("reason", req.getReason());
+        audit.put("granted_by_user_id", adminUserId);
+        return new AdminInvoiceDiscount(rule, amount, audit);
+    }
+
     /**
      * Admin creates one invoice per userId in the request (bulk or single).
      * No UserPlan or PackageSession required — line items are free-form.
      */
     @Transactional
-    public List<AdminInvoicePaymentLinkResponseDTO> createAdminInvoices(AdminCreateInvoiceRequestDTO request) {
+    public List<AdminInvoicePaymentLinkResponseDTO> createAdminInvoices(AdminCreateInvoiceRequestDTO request,
+                                                                        String adminUserId) {
         List<AdminInvoicePaymentLinkResponseDTO> results = new ArrayList<>();
 
         Institute institute = instituteRepository.findById(request.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
+
+        // Admin discount becomes a negative DISCOUNT line, so the subtotal, tax, total,
+        // stored line items and PDF below all see the discounted figures.
+        AdminInvoiceDiscount adminInvoiceDiscount = applyAdminInvoiceDiscount(request, adminUserId, true);
 
         // Read institute invoice settings once for all users in this bulk request
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
@@ -4329,7 +4812,12 @@ public class InvoiceService {
             invoice.setInvoiceDate(invoiceDate);
             invoice.setDueDate(request.getDueDate());
             invoice.setSubtotal(subtotal);
-            invoice.setDiscountAmount(BigDecimal.ZERO);
+            invoice.setDiscountAmount(adminInvoiceDiscount != null ? adminInvoiceDiscount.amount() : BigDecimal.ZERO);
+            if (adminInvoiceDiscount != null) {
+                invoice.setDiscountGrantedByUserId(adminUserId);
+                // One coupon redemption per billed learner.
+                adminDiscountService.consumeCouponUse(adminInvoiceDiscount.rule());
+            }
             invoice.setTaxAmount(taxAmount);
             invoice.setTotalAmount(totalAmount);
             invoice.setCurrency(request.getCurrency());
@@ -4344,6 +4832,9 @@ public class InvoiceService {
                 Map<String, Object> dataJson = new HashMap<>();
                 if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
                 if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
+                if (adminInvoiceDiscount != null) {
+                    dataJson.put("admin_discount", adminInvoiceDiscount.audit());
+                }
                 if (proformaMode) {
                     // Read back by finalizeProformaOnPayment: the flag says "still a proforma",
                     // the doc type says which real series to draw from once it is paid.
@@ -4834,6 +5325,64 @@ public class InvoiceService {
                 userDetails != null ? userDetails.getUserId() : "system", reason);
 
         return mapToDTO(invoice);
+    }
+
+    /**
+     * Unwinds the invoices tied to a payment an admin has voided (recorded by mistake). Two
+     * kinds are told apart by source, because they mean opposite things:
+     * <ul>
+     *   <li>A BILL raised before the payment (ADMIN_MANUAL / LIVE_SESSION — it carries its own
+     *       DEBIT_ACCRUAL) is still owed. It loses its link to the voided payment and goes back
+     *       to PENDING_PAYMENT, so the Due figures count it again and it can be paid again.</li>
+     *   <li>An invoice generated FROM the payment documents money that never arrived. It is
+     *       voided as REJECTED — the same terminal state as a cancelled admin invoice — and
+     *       keeps its link so the audit trail still shows which payment it belonged to.</li>
+     * </ul>
+     * No ledger rows are written here; the caller reverses the payment's own credit.
+     *
+     * @return how many invoices were changed
+     */
+    @Transactional
+    public int unwindInvoicesForVoidedPayment(String paymentLogId, String reason, String voidedBy) {
+        List<InvoicePaymentLogMapping> mappings =
+                invoicePaymentLogMappingRepository.findAllByPaymentLogId(paymentLogId);
+        int touched = 0;
+        for (InvoicePaymentLogMapping mapping : mappings) {
+            Invoice invoice = mapping.getInvoice();
+            if (invoice == null || INVOICE_STATUS_REJECTED.equalsIgnoreCase(invoice.getStatus())) {
+                continue;
+            }
+            Map<String, Object> audit = new HashMap<>();
+            audit.put("voidedPaymentLogId", paymentLogId);
+            audit.put("voidedBy", StringUtils.hasText(voidedBy) ? voidedBy : "system");
+            audit.put("voidedAt", LocalDateTime.now().toString());
+            if (StringUtils.hasText(reason)) {
+                audit.put("voidReason", reason);
+            }
+
+            boolean isBill = "ADMIN_MANUAL".equals(invoice.getSource())
+                    || INVOICE_SOURCE_LIVE_SESSION.equals(invoice.getSource());
+            if (isBill) {
+                invoicePaymentLogMappingRepository.delete(mapping);
+                // Another, still-valid payment may cover the same bill; only reopen it if not.
+                boolean stillPaid = invoicePaymentLogMappingRepository.findByInvoiceId(invoice.getId()).stream()
+                        .map(InvoicePaymentLogMapping::getPaymentLog)
+                        .anyMatch(pl -> pl != null
+                                && !paymentLogId.equals(pl.getId())
+                                && INVOICE_STATUS_PAID.equalsIgnoreCase(pl.getPaymentStatus()));
+                if (!stillPaid) {
+                    invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
+                }
+            } else {
+                invoice.setStatus(INVOICE_STATUS_REJECTED);
+            }
+            invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), audit));
+            invoiceRepository.save(invoice);
+            touched++;
+            log.info("[PaymentVoid] invoice {} ({}) -> {} after payment {} was voided",
+                    invoice.getInvoiceNumber(), invoice.getSource(), invoice.getStatus(), paymentLogId);
+        }
+        return touched;
     }
 
     /**
@@ -5519,6 +6068,9 @@ public class InvoiceService {
         Institute institute = instituteRepository.findById(request.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
 
+        // Same discount line create would add — computed, never persisted or redeemed.
+        applyAdminInvoiceDiscount(request, null, false);
+
         // Billed user = first id in the request (the dialog is single-user). Missing user
         // still previews with blank party fields the admin can fill via overrides.
         UserDTO user = null;
@@ -5710,6 +6262,30 @@ public class InvoiceService {
                     institute.getMobileNumber(), institute.getEmail()));
         }
 
+        if (institute != null) {
+            d.put("institute_tagline", nz(institute.getDescription()));
+        }
+        d.put("user_mobile", user != null ? nz(user.getMobileNumber()) : "");
+
+        // Seed the receipt fields too, so the review step shows what the PDF will actually
+        // print rather than an empty box next to every amount.
+        String recCur = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
+        ReceiptFigures rfd = buildReceiptFigures(invoiceData);  // review step: always shown
+        d.put("course_name", nz(rfd.courseName));
+        d.put("course_code", nz(rfd.courseCode));
+        d.put("course_fees", rfd.courseFees != null ? recCur + money(rfd.courseFees) : "");
+        d.put("total_fees", rfd.totalFees != null ? recCur + money(rfd.totalFees) : "");
+        d.put("previous_paid", rfd.previousPaid != null ? recCur + money(rfd.previousPaid) : "");
+        d.put("fees_paid_now", invoiceData.getTotalAmount() != null
+                ? recCur + money(invoiceData.getTotalAmount()) : "");
+        d.put("total_fees_due", rfd.totalDue != null ? recCur + money(rfd.totalDue) : "");
+        d.put("total_amount_paid", rfd.totalPaid != null ? recCur + money(rfd.totalPaid) : "");
+        d.put("next_installment_amount", rfd.nextInstallmentAmount != null
+                ? recCur + money(rfd.nextInstallmentAmount) : "");
+        d.put("next_installment_date", rfd.nextInstallmentDate != null
+                ? rfd.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : "");
+        d.put("amount_in_words", amountInWords(invoiceData.getTotalAmount()));
+
         // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
         // matches what replaceTemplatePlaceholders renders and what create will persist.
         d.put("tax_label", invoiceData.getTaxLabel() != null ? invoiceData.getTaxLabel() : "Tax");
@@ -5854,7 +6430,13 @@ public class InvoiceService {
 
     private byte[] fetchPdfBytesFromS3(String pdfFileId) {
         try {
-            String pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            // Presigned first: deployments that keep Block Public Access on (vet) answer an
+            // unsigned object URL with 403, which silently produced invoice emails with no
+            // PDF attached. The permanent URL stays as a fallback for the CDN-fronted case.
+            String pdfUrl = mediaService.getFilePublicUrlById(pdfFileId);
+            if (!StringUtils.hasText(pdfUrl)) {
+                pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            }
             if (!StringUtils.hasText(pdfUrl)) return null;
             java.net.URL url = new java.net.URL(pdfUrl);
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
@@ -5958,6 +6540,7 @@ public class InvoiceService {
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())
                 .discountAmount(invoice.getDiscountAmount())
+                .discountGrantedByUserId(invoice.getDiscountGrantedByUserId())
                 .taxAmount(invoice.getTaxAmount())
                 .totalAmount(invoice.getTotalAmount())
                 .currency(invoice.getCurrency())
@@ -6021,4 +6604,244 @@ public class InvoiceService {
                 .lineItems(items)
                 .build();
     }
+
+    /**
+     * Everything collected on the plan including the payment this receipt is for. The schedule
+     * only counts that payment once allocation has run, and that ordering differs per gateway
+     * path, so the ledger decides which side of it we are on.
+     */
+    static BigDecimal totalCollected(BigDecimal scheduledPaid, BigDecimal thisPayment,
+            boolean alreadyAllocated) {
+        BigDecimal scheduled = scheduledPaid != null ? scheduledPaid : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return alreadyAllocated ? scheduled : scheduled.add(now);
+    }
+
+    /**
+     * What the learner had paid before this receipt. Never negative: a payment recorded outside
+     * the schedule would otherwise print a nonsense figure on a financial document.
+     */
+    static BigDecimal paidBefore(BigDecimal totalCollected, BigDecimal thisPayment) {
+        BigDecimal total = totalCollected != null ? totalCollected : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return total.subtract(now).max(BigDecimal.ZERO);
+    }
+
+    private static final List<String> RECEIPT_PLACEHOLDERS = List.of(
+            "{{course_fees}}", "{{total_fees}}", "{{previous_paid}}", "{{total_fees_due}}",
+            "{{total_amount_paid}}", "{{next_installment_amount}}", "{{next_installment_date}}",
+            "{{course_name}}", "{{course_code}}", "{{course_code_bracketed}}");
+
+    /** Whether a template mentions any placeholder that needs the learner fee schedule. */
+    static boolean usesReceiptFields(String template) {
+        if (template == null || template.isEmpty()) {
+            return false;
+        }
+        for (String token : RECEIPT_PLACEHOLDERS) {
+            if (template.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The figures a fee receipt needs that a single invoice does not carry: the course price,
+     * what had already been paid before this payment, what is still outstanding and the next
+     * installment. Derived from the learner fee schedule for the plan this invoice belongs to.
+     *
+     * <p>Every field is nullable. A plan with no schedule rows yields an all-null result so the
+     * placeholders render empty instead of a misleading zero.
+     */
+    private static final class ReceiptFigures {
+        private BigDecimal courseFees;
+        private BigDecimal totalFees;
+        private BigDecimal previousPaid;
+        private BigDecimal totalPaid;
+        private BigDecimal totalDue;
+        private BigDecimal nextInstallmentAmount;
+        private LocalDateTime nextInstallmentDate;
+        private String courseName = "";
+        private String courseCode = "";
+    }
+
+    /**
+     * Build the receipt figures for an invoice. The schedule is the source of truth for money
+     * already collected; the payment plan is the source of truth for what the course costs.
+     */
+    private ReceiptFigures buildReceiptFigures(InvoiceData invoiceData) {
+        ReceiptFigures rf = new ReceiptFigures();
+        PaymentPlan plan = invoiceData.getPaymentPlan();
+        if (plan != null) {
+            rf.totalFees = BigDecimal.valueOf(plan.getActualPrice());
+            rf.courseName = plan.getName() != null ? plan.getName() : "";
+            rf.courseCode = deriveCourseCode(plan.getName());
+        }
+        rf.courseFees = invoiceData.getPlanPrice() != null ? invoiceData.getPlanPrice() : rf.totalFees;
+
+        UserPlan userPlan = invoiceData.getUserPlan();
+        if (userPlan == null || userPlan.getId() == null) {
+            return rf;
+        }
+        List<StudentFeePayment> rows;
+        try {
+            rows = studentFeePaymentRepository.findByUserPlanId(userPlan.getId());
+        } catch (Exception e) {
+            log.warn("Could not load fee schedule for user plan {} while building receipt figures",
+                    userPlan.getId(), e);
+            return rf;
+        }
+        if (rows == null || rows.isEmpty()) {
+            return rf;
+        }
+
+        BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal expected = BigDecimal.ZERO;
+        for (var row : rows) {
+            if (row.getAmountPaid() != null) {
+                paid = paid.add(row.getAmountPaid());
+            }
+            if (row.getAmountExpected() != null) {
+                expected = expected.add(row.getAmountExpected());
+            }
+        }
+        BigDecimal thisPayment = invoiceData.getTotalAmount() != null
+                ? invoiceData.getTotalAmount() : BigDecimal.ZERO;
+
+        // Whether this payment is already counted in the schedule depends on whether allocation
+        // has run yet, and that ordering differs per gateway path. Asking the ledger makes the
+        // figures the same either way: a receipt must not report a different "previously paid"
+        // because it was rendered a moment earlier.
+        boolean alreadyAllocated = false;
+        String paymentLogId = invoiceData.getPaymentLog() != null ? invoiceData.getPaymentLog().getId() : null;
+        if (paymentLogId != null) {
+            try {
+                var allocations = studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLogId);
+                alreadyAllocated = allocations != null && !allocations.isEmpty();
+            } catch (Exception e) {
+                log.warn("Could not check fee allocation for payment log {} while building receipt figures",
+                        paymentLogId, e);
+            }
+        }
+        rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
+        rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
+        BigDecimal courseTotal = rf.totalFees != null ? rf.totalFees : expected;
+        rf.totalDue = courseTotal.subtract(rf.totalPaid).max(BigDecimal.ZERO);
+
+        // The earliest installment still carrying a balance is the one the learner owes next.
+        rows.stream()
+                .filter(r -> r.getDueDate() != null)
+                .filter(r -> !"PAID".equalsIgnoreCase(String.valueOf(r.getStatus())))
+                .filter(r -> r.getAmountExpected() != null
+                        && r.getAmountExpected().compareTo(
+                                r.getAmountPaid() != null ? r.getAmountPaid() : BigDecimal.ZERO) > 0)
+                .min(java.util.Comparator.comparing(
+                        StudentFeePayment::getDueDate))
+                .ifPresent(next -> {
+                    rf.nextInstallmentAmount = next.getAmountExpected()
+                            .subtract(next.getAmountPaid() != null ? next.getAmountPaid() : BigDecimal.ZERO);
+                    rf.nextInstallmentDate = toLocalDate(next.getDueDate()).atStartOfDay();
+                });
+        return rf;
+    }
+
+
+    /**
+     * A DATE column arrives as {@link java.sql.Date}, whose {@code toInstant()} throws, so the
+     * subclass is converted directly and only a genuine {@link java.util.Date} goes via the zone.
+     */
+    private static LocalDate toLocalDate(java.util.Date date) {
+        if (date instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        return date.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+    }
+
+    /**
+     * Pull a short course code out of a payment plan name shaped "CODE - Full Course Name",
+     * where the part before the first dash is an uppercase code. Returns an empty string when
+     * the name carries no code, so a template renders nothing rather than a guess.
+     */
+    static String deriveCourseCode(String planName) {
+        if (!StringUtils.hasText(planName)) {
+            return "";
+        }
+        int dash = planName.indexOf(" - ");
+        if (dash <= 0) {
+            return "";
+        }
+        String candidate = planName.substring(0, dash).trim();
+        return candidate.matches("[A-Z0-9_&/]{2,}") ? candidate : "";
+    }
+
+    private static final String[] WORDS_BELOW_TWENTY = {
+            "", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+            "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
+            "EIGHTEEN", "NINETEEN" };
+    private static final String[] WORDS_TENS = {
+            "", "", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY" };
+
+    /**
+     * Render an amount the way a receipt spells it out, on the Indian scale:
+     * 125000 becomes "ONE LAKH TWENTY FIVE THOUSAND only". Paise are included only when present.
+     * Returns an empty string for a null or negative amount.
+     */
+    static String amountInWords(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
+            return "";
+        }
+        BigDecimal rounded = amount.setScale(2, java.math.RoundingMode.HALF_UP);
+        long rupees = rounded.longValue();
+        int paise = rounded.subtract(BigDecimal.valueOf(rupees))
+                .multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).intValue();
+        if (rupees == 0 && paise == 0) {
+            return "ZERO only";
+        }
+        StringBuilder sb = new StringBuilder(indianScale(rupees));
+        if (paise > 0) {
+            sb.append(sb.length() > 0 ? " AND " : "").append(twoDigits(paise)).append(" PAISE");
+        }
+        return sb.toString().trim() + " only";
+    }
+
+    /** Group a whole number into crore / lakh / thousand / hundred, as Indian receipts read it. */
+    private static String indianScale(long n) {
+        if (n == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        long crore = n / 10000000;
+        n %= 10000000;
+        long lakh = n / 100000;
+        n %= 100000;
+        long thousand = n / 1000;
+        n %= 1000;
+        long hundred = n / 100;
+        long rest = n % 100;
+        if (crore > 0) {
+            sb.append(indianScale(crore)).append(" CRORE ");
+        }
+        if (lakh > 0) {
+            sb.append(twoDigits((int) lakh)).append(" LAKH ");
+        }
+        if (thousand > 0) {
+            sb.append(twoDigits((int) thousand)).append(" THOUSAND ");
+        }
+        if (hundred > 0) {
+            sb.append(WORDS_BELOW_TWENTY[(int) hundred]).append(" HUNDRED ");
+        }
+        if (rest > 0) {
+            sb.append(twoDigits((int) rest)).append(" ");
+        }
+        return sb.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private static String twoDigits(int n) {
+        if (n < 20) {
+            return WORDS_BELOW_TWENTY[n];
+        }
+        String tens = WORDS_TENS[n / 10];
+        return n % 10 == 0 ? tens : tens + " " + WORDS_BELOW_TWENTY[n % 10];
+    }
+
 }

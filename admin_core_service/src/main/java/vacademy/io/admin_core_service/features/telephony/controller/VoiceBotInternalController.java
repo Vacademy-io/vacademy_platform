@@ -60,6 +60,15 @@ public class VoiceBotInternalController {
     @Autowired private vacademy.io.admin_core_service.features.telephony.core.AiCallActionService
             aiCallActionService;
 
+    @Autowired private vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository
+            audienceResponseRepo;
+
+    // A lead with at least IMPORT_MIN_ROWS campaign-mates stamped within IMPORT_WINDOW_MINUTES
+    // either side arrived in a bulk import, so its submitted_at is the import time. Real form
+    // traffic peaked at 11 a minute across all institutes (2026-10-10); imports at 100-470.
+    private static final int IMPORT_WINDOW_MINUTES = 5;
+    private static final int IMPORT_MIN_ROWS = 40;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @GetMapping("/call-context")
@@ -128,6 +137,10 @@ public class VoiceBotInternalController {
         Map<String, String> leadFields = row.getResponseId() == null
                 ? Map.of() : audienceService.getLeadCustomFields(row.getResponseId());
         if (leadFields != null && !leadFields.isEmpty()) out.put("leadFields", leadFields);
+        // When and how the lead enquired, so the agent can answer "when did I fill a form?"
+        // with the real date instead of a stock line repeated three times (call 6313b454).
+        Map<String, Object> leadEnquiry = leadEnquiry(row.getResponseId());
+        if (leadEnquiry != null) out.put("leadEnquiry", leadEnquiry);
         out.put("responseId", row.getResponseId());
         out.put("userId", row.getUserId());
         out.put("agent", agent);
@@ -148,6 +161,39 @@ public class VoiceBotInternalController {
         // else global — or every report 401s on envs with a global secret set.
         out.put("webhookToken", aiCallingConfigService.getEffectiveWebhookSecret(instituteId));
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * The lead's enquiry: its source type and, when genuine, the instant it was submitted.
+     * dateKnown=false when the row came in a bulk import, because its submitted_at is then
+     * the import time and the agent would state a wrong date; recordedAt carries that stamp
+     * (the enquiry happened on or before it). Null when there is no lead row. Never fails
+     * the call context: an error only drops this block.
+     */
+    private Map<String, Object> leadEnquiry(String responseId) {
+        if (responseId == null || responseId.isBlank()) return null;
+        try {
+            var resp = audienceResponseRepo.findById(responseId).orElse(null);
+            if (resp == null) return null;
+            java.sql.Timestamp at = resp.getSubmittedAt() != null ? resp.getSubmittedAt() : resp.getCreatedAt();
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("sourceType", resp.getSourceType());
+            if (at == null) {
+                m.put("dateKnown", false);
+                return m;
+            }
+            long windowMs = IMPORT_WINDOW_MINUTES * 60_000L;
+            boolean imported = resp.getAudienceId() != null
+                    && audienceResponseRepo.countByAudienceSubmittedBetween(resp.getAudienceId(),
+                            new java.sql.Timestamp(at.getTime() - windowMs),
+                            new java.sql.Timestamp(at.getTime() + windowMs)) >= IMPORT_MIN_ROWS;
+            m.put("dateKnown", !imported);
+            m.put(imported ? "recordedAt" : "submittedAt", at.toInstant().toString());
+            return m;
+        } catch (Exception e) {
+            log.warn("call-context: lead enquiry lookup failed for {}: {}", responseId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -275,6 +321,9 @@ public class VoiceBotInternalController {
             if (!conditions.isEmpty()) base.put("sendConditions", conditions);
         }
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
+        // V504: consumed by the bot's ProsodyShaper (app/prosody.py). Absent = the
+        // bot's global PROSODY_EXPAND, which defaults to off.
+        if (a.getVoiceModulation() != null) base.put("voiceModulation", a.getVoiceModulation());
         // V421 — snake_case ON PURPOSE: the bot reads agent.get("tts_model"). The
         // neighbours here are camelCase, so this looks like a typo and is not.
         // Always emitted (never conditional on non-null) because the bot's own

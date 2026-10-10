@@ -20,6 +20,8 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Sparkle,
     UsersThree,
@@ -57,11 +59,7 @@ interface Win {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PRESETS = [
-    { days: 7, label: '7 days' },
-    { days: 30, label: '30 days' },
-    { days: 90, label: '90 days' },
-] as const;
+const PRESETS = [7, 30, 90] as const;
 
 /** The selected period — a rolling preset, or an explicit custom range. */
 type Period = { kind: 'preset'; days: number } | { kind: 'custom'; fromMs: number; toMs: number };
@@ -98,12 +96,32 @@ function windowsFor(period: Period): { current: Win; previous: Win } {
     };
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtDay = (ms: number) => {
-    const d = new Date(ms);
-    return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-};
-const fmtRange = (w: Win) => `${fmtDay(w.from)} – ${fmtDay(w.to)}`;
+const buildMonths = (t: TFunction): string[] => [
+    t('months.jan'),
+    t('months.feb'),
+    t('months.mar'),
+    t('months.apr'),
+    t('months.may'),
+    t('months.jun'),
+    t('months.jul'),
+    t('months.aug'),
+    t('months.sep'),
+    t('months.oct'),
+    t('months.nov'),
+    t('months.dec'),
+];
+const buildFmtDay =
+    (t: TFunction) =>
+    (ms: number): string => {
+        const d = new Date(ms);
+        return `${d.getDate()} ${buildMonths(t)[d.getMonth()]}`;
+    };
+const buildFmtRange =
+    (t: TFunction) =>
+    (w: Win): string => {
+        const fmtDay = buildFmtDay(t);
+        return `${fmtDay(w.from)} – ${fmtDay(w.to)}`;
+    };
 
 // ── Delta helpers (all metrics here are "higher is better") ─────────────────
 function Delta({
@@ -117,13 +135,14 @@ function Delta({
     digits?: number;
     suffix?: string;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     if (current == null || previous == null) return null;
     const diff = current - previous;
     const eps = digits > 0 ? 0.05 : 0.5;
     if (Math.abs(diff) < eps) {
         return (
             <span className="inline-flex items-center gap-0.5 text-caption text-neutral-400">
-                <Minus size={12} /> no change
+                <Minus size={12} /> {t('delta.noChange')}
             </span>
         );
     }
@@ -235,32 +254,42 @@ function significantMovers(movers: Mover[]): { improved: Mover[]; declined: Move
  * Returns null when there's no analyzed-call data to summarize — the caller then
  * falls back to the plain mover chips.
  */
-function buildAiSummary(
-    movers: Mover[],
-    coaching: CallIntelligenceCoachingDto | undefined
-): string | null {
-    if (!coaching || coaching.totalAnalyzed === 0) return null;
-    const phrase = (m: Mover) => {
-        const diff = (m.cur ?? 0) - (m.prev ?? 0);
-        return `${m.label.toLowerCase()} ${diff > 0 ? '+' : ''}${diff.toFixed(m.digits)}${m.suffix}`;
+const buildAiSummary =
+    (t: TFunction) =>
+    (
+        movers: Mover[],
+        coaching: CallIntelligenceCoachingDto | undefined
+    ): string | null => {
+        if (!coaching || coaching.totalAnalyzed === 0) return null;
+        const phrase = (m: Mover) => {
+            const diff = (m.cur ?? 0) - (m.prev ?? 0);
+            return `${m.label.toLowerCase()} ${diff > 0 ? '+' : ''}${diff.toFixed(m.digits)}${m.suffix}`;
+        };
+        const { improved, declined } = significantMovers(movers);
+        const parts: string[] = [];
+        if (improved.length > 0) {
+            parts.push(
+                t('teamInsights.aiSummary.improved', {
+                    list: improved.slice(0, 3).map(phrase).join(', '),
+                })
+            );
+        }
+        if (declined.length > 0) {
+            parts.push(
+                t('teamInsights.aiSummary.watch', {
+                    list: declined.slice(0, 2).map(phrase).join(', '),
+                })
+            );
+        }
+        const topTip = coaching.topCoachingTips?.[0]?.text;
+        const topObj = coaching.topObjections?.[0]?.objection;
+        if (topTip) {
+            parts.push(t('teamInsights.aiSummary.coachingFocus', { tip: topTip }));
+        } else if (topObj) {
+            parts.push(t('teamInsights.aiSummary.mostHitObjection', { objection: topObj }));
+        }
+        return parts.length > 0 ? parts.join(' ') : null;
     };
-    const { improved, declined } = significantMovers(movers);
-    const parts: string[] = [];
-    if (improved.length > 0) {
-        parts.push(`Improved: ${improved.slice(0, 3).map(phrase).join(', ')}.`);
-    }
-    if (declined.length > 0) {
-        parts.push(`Watch: ${declined.slice(0, 2).map(phrase).join(', ')}.`);
-    }
-    const topTip = coaching.topCoachingTips?.[0]?.text;
-    const topObj = coaching.topObjections?.[0]?.objection;
-    if (topTip) {
-        parts.push(`AI coaching focus: ${topTip}`);
-    } else if (topObj) {
-        parts.push(`Most-hit objection: ${topObj}.`);
-    }
-    return parts.length > 0 ? parts.join(' ') : null;
-}
 
 function MoverChip({ m, up }: { m: Mover; up: boolean }) {
     const diff = (m.cur ?? 0) - (m.prev ?? 0);
@@ -283,11 +312,12 @@ function MoverChip({ m, up }: { m: Mover; up: boolean }) {
 }
 
 function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?: string | null }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     const { improved, declined } = significantMovers(movers);
     if (improved.length === 0 && declined.length === 0 && !aiSummary) {
         return (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-caption text-neutral-500">
-                No meaningful change vs the previous period yet.
+                {t('teamInsights.summary.noChangeYet')}
             </div>
         );
     }
@@ -297,7 +327,9 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
                 <div className="flex items-start gap-1.5">
                     <Sparkle size={14} weight="fill" className="mt-0.5 shrink-0 text-primary-500" />
                     <p className="text-caption text-neutral-700">
-                        <span className="font-semibold text-primary-700">AI summary — </span>
+                        <span className="font-semibold text-primary-700">
+                            {t('teamInsights.summary.aiSummaryLabel')}{' '}
+                        </span>
                         {aiSummary}
                     </p>
                 </div>
@@ -305,7 +337,7 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
             {improved.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-caption font-semibold text-neutral-600">
-                        What improved
+                        {t('teamInsights.summary.whatImproved')}
                     </span>
                     {improved.map((m) => (
                         <MoverChip key={m.label} m={m} up />
@@ -315,7 +347,7 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
             {declined.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-caption font-semibold text-neutral-600">
-                        Needs attention
+                        {t('teamInsights.summary.needsAttention')}
                     </span>
                     {declined.map((m) => (
                         <MoverChip key={m.label} m={m} up={false} />
@@ -336,6 +368,7 @@ function TeamInsights({
     current: Win;
     previous: Win;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     const cur = useQuery({
         queryKey: ['ai-intel-team', instituteId, current.from, current.to],
         queryFn: () => fetchTeamCallIntelligence(instituteId, current.from, current.to),
@@ -385,50 +418,64 @@ function TeamInsights({
     const summaryReady = !cur.isLoading && !prev.isLoading && !curDisp.isLoading;
     const movers: Mover[] = [
         {
-            label: 'Calls analyzed',
+            label: t('teamInsights.metrics.callsAnalyzed'),
             cur: c?.totalAnalyzed ?? 0,
             prev: p?.totalAnalyzed ?? 0,
             digits: 0,
             suffix: '',
         },
         {
-            label: 'Avg caller rating',
+            label: t('teamInsights.metrics.avgCallerRating'),
             cur: c?.avgCallerSelfGoalRating ?? null,
             prev: p?.avgCallerSelfGoalRating ?? null,
             digits: 1,
             suffix: '',
         },
         {
-            label: 'Avg call output',
+            label: t('teamInsights.metrics.avgCallOutput'),
             cur: c?.avgCallOutputRating ?? null,
             prev: p?.avgCallOutputRating ?? null,
             digits: 1,
             suffix: '',
         },
         {
-            label: 'Positive sentiment',
+            label: t('teamInsights.metrics.positiveSentiment'),
             cur: positivePct(c?.sentimentDistribution),
             prev: positivePct(p?.sentimentDistribution),
             digits: 0,
             suffix: '%',
         },
         {
-            label: 'Leads dispositioned',
+            label: t('teamInsights.metrics.leadsDispositioned'),
             cur: actC.dispositioned,
             prev: actP.dispositioned,
             digits: 0,
             suffix: '',
         },
-        { label: 'Calls made', cur: actC.calls, prev: actP.calls, digits: 0, suffix: '' },
-        { label: 'Team reach', cur: actC.reach, prev: actP.reach, digits: 0, suffix: '%' },
+        {
+            label: t('teamInsights.metrics.callsMade'),
+            cur: actC.calls,
+            prev: actP.calls,
+            digits: 0,
+            suffix: '',
+        },
+        {
+            label: t('teamInsights.metrics.teamReach'),
+            cur: actC.reach,
+            prev: actP.reach,
+            digits: 0,
+            suffix: '%',
+        },
     ];
-    const aiSummary = buildAiSummary(movers, coaching.data);
+    const aiSummary = buildAiSummary(t)(movers, coaching.data);
 
     return (
         <section className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
                 <UsersThree size={18} className="text-primary-500" />
-                <h2 className="text-h3 font-semibold text-neutral-800">Team insights</h2>
+                <h2 className="text-h3 font-semibold text-neutral-800">
+                    {t('teamInsights.heading')}
+                </h2>
             </div>
 
             {/* Headline — what improved / needs attention vs the previous period,
@@ -438,7 +485,7 @@ function TeamInsights({
             {/* Group 1 — calling & call quality */}
             <div className="flex flex-col gap-2">
                 <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                    Calling &amp; call quality
+                    {t('teamInsights.groupCallQuality')}
                 </span>
                 {cur.isLoading ? (
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -449,25 +496,25 @@ function TeamInsights({
                 ) : (
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                         <KpiDeltaCard
-                            label="Calls analyzed"
+                            label={t('teamInsights.metrics.callsAnalyzed')}
                             value={c?.totalAnalyzed ?? 0}
                             previous={p?.totalAnalyzed ?? 0}
                             digits={0}
                         />
                         <KpiDeltaCard
-                            label="Avg caller rating"
+                            label={t('teamInsights.metrics.avgCallerRating')}
                             value={c?.avgCallerSelfGoalRating ?? null}
                             previous={p?.avgCallerSelfGoalRating ?? null}
                             suffix="/10"
                         />
                         <KpiDeltaCard
-                            label="Avg call output"
+                            label={t('teamInsights.metrics.avgCallOutput')}
                             value={c?.avgCallOutputRating ?? null}
                             previous={p?.avgCallOutputRating ?? null}
                             suffix="/10"
                         />
                         <KpiDeltaCard
-                            label="Positive sentiment"
+                            label={t('teamInsights.metrics.positiveSentiment')}
                             value={positivePct(c?.sentimentDistribution)}
                             previous={positivePct(p?.sentimentDistribution)}
                             digits={0}
@@ -480,7 +527,7 @@ function TeamInsights({
             {/* Group 2 — day-to-day activity (dispositions + calling reach) */}
             <div className="flex flex-col gap-2">
                 <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                    Day-to-day activity
+                    {t('teamInsights.groupActivity')}
                 </span>
                 {curDisp.isLoading ? (
                     <div className="grid grid-cols-3 gap-3">
@@ -491,19 +538,19 @@ function TeamInsights({
                 ) : (
                     <div className="grid grid-cols-3 gap-3">
                         <KpiDeltaCard
-                            label="Leads dispositioned"
+                            label={t('teamInsights.metrics.leadsDispositioned')}
                             value={actC.dispositioned}
                             previous={actP.dispositioned}
                             digits={0}
                         />
                         <KpiDeltaCard
-                            label="Calls made"
+                            label={t('teamInsights.metrics.callsMade')}
                             value={actC.calls}
                             previous={actP.calls}
                             digits={0}
                         />
                         <KpiDeltaCard
-                            label="Team reach"
+                            label={t('teamInsights.metrics.teamReach')}
                             value={actC.reach}
                             previous={actP.reach}
                             digits={0}
@@ -533,6 +580,7 @@ function CoachingDrillIn({
     from: number;
     to: number;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     const { data, isLoading } = useQuery({
         queryKey: ['ai-intel-counsellor-coaching', counsellorUserId, from, to],
         queryFn: () => fetchCounsellorCoaching(counsellorUserId, from, to),
@@ -540,11 +588,15 @@ function CoachingDrillIn({
     });
 
     if (isLoading)
-        return <div className="p-3 text-caption text-neutral-400">Loading coaching…</div>;
+        return (
+            <div className="p-3 text-caption text-neutral-400">
+                {t('counsellorBreakdown.coaching.loading')}
+            </div>
+        );
     if (!data || data.totalAnalyzed === 0) {
         return (
             <div className="p-3 text-caption text-neutral-400">
-                No analyzed calls in this range — no coaching for this rep yet.
+                {t('counsellorBreakdown.coaching.noCoaching')}
             </div>
         );
     }
@@ -554,7 +606,9 @@ function CoachingDrillIn({
         <div className="flex flex-col gap-2 px-4 py-3">
             {weakest.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-caption">
-                    <span className="font-medium text-neutral-600">Weakest skills:</span>
+                    <span className="font-medium text-neutral-600">
+                        {t('counsellorBreakdown.coaching.weakestSkills')}
+                    </span>
                     {weakest.map((q) => (
                         <span
                             key={q.key}
@@ -568,20 +622,20 @@ function CoachingDrillIn({
             )}
             {tips.length > 0 && (
                 <ul className="space-y-1">
-                    {tips.map((t, i) => (
+                    {tips.map((tip, i) => (
                         <li
                             key={i}
                             className="flex items-start gap-1.5 text-caption text-neutral-700"
                         >
                             <Target className="mt-0.5 size-3.5 shrink-0 text-primary-400" />
-                            <span>{t.text}</span>
+                            <span>{tip.text}</span>
                         </li>
                     ))}
                 </ul>
             )}
             {weakest.length === 0 && tips.length === 0 && (
                 <span className="text-caption text-neutral-400">
-                    Not enough signal for coaching in this range.
+                    {t('counsellorBreakdown.coaching.notEnoughSignal')}
                 </span>
             )}
         </div>
@@ -651,6 +705,7 @@ function CounsellorBreakdown({
     current: Win;
     previous: Win;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     // Rows are expanded by default (coaching visible without a click); a row is
     // open unless the user has explicitly collapsed it.
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -763,16 +818,18 @@ function CounsellorBreakdown({
         <section className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
                 <ChartLineUp size={18} className="text-primary-500" />
-                <h2 className="text-h3 font-semibold text-neutral-800">Counsellor breakdown</h2>
+                <h2 className="text-h3 font-semibold text-neutral-800">
+                    {t('counsellorBreakdown.heading')}
+                </h2>
                 <span className="text-caption text-neutral-400">
-                    metrics vs the previous equal period
+                    {t('counsellorBreakdown.subtitle')}
                 </span>
             </div>
             {loading ? (
                 <div className="h-40 animate-pulse rounded-lg bg-neutral-100" />
             ) : rows.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-neutral-200 p-6 text-center text-body text-neutral-400">
-                    No counsellor activity in this period.
+                    {t('counsellorBreakdown.noActivity')}
                 </div>
             ) : (
                 <div className="overflow-x-auto">
@@ -780,12 +837,24 @@ function CounsellorBreakdown({
                         {/* Shared column header — aligns with each card's metric row */}
                         <div className="flex items-center px-4 text-caption uppercase tracking-wide text-neutral-500">
                             <span className="w-6 shrink-0" />
-                            <span className="min-w-40 flex-1">Counsellor</span>
-                            <span className="w-24 shrink-0 text-right">Analyzed</span>
-                            <span className="w-24 shrink-0 text-right">Avg caller</span>
-                            <span className="w-24 shrink-0 text-right">Avg output</span>
-                            <span className="w-24 shrink-0 text-right">Dispositioned</span>
-                            <span className="w-24 shrink-0 text-right">Reach</span>
+                            <span className="min-w-40 flex-1">
+                                {t('counsellorBreakdown.columns.counsellor')}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                                {t('counsellorBreakdown.columns.analyzed')}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                                {t('counsellorBreakdown.columns.avgCaller')}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                                {t('counsellorBreakdown.columns.avgOutput')}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                                {t('counsellorBreakdown.columns.dispositioned')}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                                {t('counsellorBreakdown.columns.reach')}
+                            </span>
                         </div>
 
                         {rows.map((r) => {
@@ -839,7 +908,8 @@ function CounsellorBreakdown({
                                     {open && (
                                         <div className="border-t border-neutral-200">
                                             <div className="flex items-center gap-1.5 bg-neutral-50 px-4 py-2 text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                                <Lightbulb size={13} /> What they can improve
+                                                <Lightbulb size={13} />{' '}
+                                                {t('counsellorBreakdown.whatTheyCanImprove')}
                                             </div>
                                             <CoachingDrillIn
                                                 counsellorUserId={r.userId}
@@ -868,15 +938,16 @@ function PeriodControl({
     current: Win;
     onChange: (p: Period) => void;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     const isCustom = period.kind === 'custom';
     const activeDays = period.kind === 'preset' ? period.days : null;
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
 
-    const applyCustom = (f: string, t: string) => {
-        if (!f || !t) return;
+    const applyCustom = (f: string, toStr: string) => {
+        if (!f || !toStr) return;
         const fromMs = new Date(f).getTime();
-        const toMs = new Date(`${t}T23:59:59`).getTime();
+        const toMs = new Date(`${toStr}T23:59:59`).getTime();
         if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) return;
         onChange({ kind: 'custom', fromMs, toMs });
     };
@@ -892,14 +963,14 @@ function PeriodControl({
     return (
         <div className="flex flex-col items-start gap-2 sm:items-end">
             <div className="flex flex-wrap items-center gap-1.5">
-                {PRESETS.map((p) => (
+                {PRESETS.map((days) => (
                     <button
-                        key={p.days}
+                        key={days}
                         type="button"
-                        onClick={() => onChange({ kind: 'preset', days: p.days })}
-                        className={pill(activeDays === p.days)}
+                        onClick={() => onChange({ kind: 'preset', days })}
+                        className={pill(activeDays === days)}
                     >
-                        {p.label}
+                        {t('period.days', { count: days })}
                     </button>
                 ))}
                 <button
@@ -911,7 +982,7 @@ function PeriodControl({
                     }}
                     className={pill(isCustom)}
                 >
-                    Custom
+                    {t('period.custom')}
                 </button>
             </div>
             {isCustom && (
@@ -924,9 +995,9 @@ function PeriodControl({
                             applyCustom(e.target.value, to);
                         }}
                         className="h-9 rounded-md border border-neutral-300 bg-white px-2 text-body text-neutral-800 focus:border-primary-500 focus:outline-none"
-                        aria-label="Start date"
+                        aria-label={t('period.startDateLabel')}
                     />
-                    <span className="text-caption text-neutral-400">to</span>
+                    <span className="text-caption text-neutral-400">{t('period.to')}</span>
                     <input
                         type="date"
                         value={to}
@@ -936,7 +1007,7 @@ function PeriodControl({
                             applyCustom(from, e.target.value);
                         }}
                         className="h-9 rounded-md border border-neutral-300 bg-white px-2 text-body text-neutral-800 focus:border-primary-500 focus:outline-none"
-                        aria-label="End date"
+                        aria-label={t('period.endDateLabel')}
                     />
                 </div>
             )}
@@ -946,6 +1017,7 @@ function PeriodControl({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function AiIntelligencePage() {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
     const enabled = useCallIntelligenceEnabled();
@@ -956,6 +1028,7 @@ export function AiIntelligencePage() {
     const [period, setPeriod] = useState<Period>({ kind: 'preset', days: 30 });
 
     const { current, previous } = useMemo(() => windowsFor(period), [period]);
+    const fmtRange = buildFmtRange(t);
 
     return (
         <div className="flex flex-col gap-6 p-6">
@@ -963,13 +1036,11 @@ export function AiIntelligencePage() {
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <Sparkle size={22} className="text-primary-500" weight="fill" />
-                        <h1 className="text-h2 font-semibold text-neutral-900">AI Intelligence</h1>
+                        <h1 className="text-h2 font-semibold text-neutral-900">
+                            {t('header.title')}
+                        </h1>
                     </div>
-                    <p className="max-w-xl text-body text-neutral-500">
-                        Calling quality and day-to-day activity over time — team first, then each
-                        counsellor, with the change vs the previous period so you can see what
-                        improved.
-                    </p>
+                    <p className="max-w-xl text-body text-neutral-500">{t('header.subtitle')}</p>
                 </div>
                 <PeriodControl period={period} current={current} onChange={setPeriod} />
             </header>
@@ -979,21 +1050,18 @@ export function AiIntelligencePage() {
             {instituteId && !enabled && hasData && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-caption text-amber-700">
                     <Sparkle size={16} weight="fill" className="mt-0.5 shrink-0 text-amber-500" />
-                    <span>
-                        Call Intelligence is turned off — no new calls are being analyzed. Showing
-                        previously analyzed data. Enable it in Settings to resume analysis.
-                    </span>
+                    <span>{t('banner.offWithData')}</span>
                 </div>
             )}
 
             {/* Explicit current-vs-previous comparison so "improved" is unambiguous */}
             {instituteId && showContent && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-caption">
-                    <span className="font-medium text-neutral-700">Comparing</span>
+                    <span className="font-medium text-neutral-700">{t('comparing.label')}</span>
                     <span className="rounded-full bg-primary-50 px-2.5 py-1 font-medium text-primary-700">
                         {fmtRange(current)}
                     </span>
-                    <span className="text-neutral-400">against previous</span>
+                    <span className="text-neutral-400">{t('comparing.against')}</span>
                     <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-neutral-600">
                         {fmtRange(previous)}
                     </span>
@@ -1002,17 +1070,16 @@ export function AiIntelligencePage() {
 
             {!instituteId ? (
                 <div className="rounded-lg border border-dashed border-neutral-200 p-8 text-center text-body text-neutral-400">
-                    Loading institute…
+                    {t('loadingInstitute')}
                 </div>
             ) : !showContent ? (
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <Sparkle size={28} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-600">
-                        AI Intelligence is turned off
+                        {t('emptyState.title')}
                     </p>
                     <p className="max-w-md text-caption text-neutral-400">
-                        Enable Call Intelligence in Settings to transcribe and analyze calls, then
-                        this page will show team and per-counsellor trends.
+                        {t('emptyState.description')}
                     </p>
                 </div>
             ) : (

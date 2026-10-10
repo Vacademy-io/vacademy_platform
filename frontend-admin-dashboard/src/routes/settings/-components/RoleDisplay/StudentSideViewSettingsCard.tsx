@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown } from '@phosphor-icons/react';
 import type {
     StudentSideViewSettings,
     StudentSideViewVisibilityKey,
@@ -66,6 +67,7 @@ export const StudentSideViewSettingsCard = ({
     defaults,
     onChange,
 }: StudentSideViewSettingsCardProps) => {
+    const { t } = useTranslation('settingsStudentSideViewSettingsCard');
     const sortedOptions = useMemo(
         () => sortOptionsByOrder(options, settings.tabOrders),
         [options, settings.tabOrders]
@@ -103,6 +105,15 @@ export const StudentSideViewSettingsCard = ({
         return typeof v === 'boolean' ? v : (defaults[opt.key] as boolean);
     });
 
+    // The Notifications tab's own visibility, resolved the same way the rows above resolve theirs.
+    const notificationTabVisible =
+        typeof settings.notificationTab === 'boolean'
+            ? settings.notificationTab
+            : !!defaults.notificationTab;
+    // Undefined means "never chosen" — fall through to the role's default rather than to a
+    // literal, which would give every role the same answer.
+    const resendAllowed = settings.allowResendMessage ?? defaults.allowResendMessage ?? true;
+
     const currentDefault: StudentSideViewTabId | undefined =
         settings.defaultTab &&
         visibleTabs.some((o) => VISIBILITY_KEY_TO_TAB_ID[o.key] === settings.defaultTab)
@@ -114,11 +125,8 @@ export const StudentSideViewSettingsCard = ({
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Student Side View Options</CardTitle>
-                <CardDescription>
-                    Configure which tabs are visible, their order, and which one opens by default in
-                    the student side view.
-                </CardDescription>
+                <CardTitle>{t('title')}</CardTitle>
+                <CardDescription>{t('description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 {sortedOptions.map(({ key, label }, idx) => {
@@ -137,7 +145,7 @@ export const StudentSideViewSettingsCard = ({
                                     className="size-6"
                                     onClick={() => move(idx, -1)}
                                     disabled={idx === 0}
-                                    aria-label={`Move ${label} up`}
+                                    aria-label={t('ariaLabel.moveUp', { label })}
                                 >
                                     <ArrowUp className="size-3.5" />
                                 </Button>
@@ -147,7 +155,7 @@ export const StudentSideViewSettingsCard = ({
                                     className="size-6"
                                     onClick={() => move(idx, 1)}
                                     disabled={idx === sortedOptions.length - 1}
-                                    aria-label={`Move ${label} down`}
+                                    aria-label={t('ariaLabel.moveDown', { label })}
                                 >
                                     <ArrowDown className="size-3.5" />
                                 </Button>
@@ -161,12 +169,32 @@ export const StudentSideViewSettingsCard = ({
                     );
                 })}
 
+                {/* Not a tab — a control INSIDE the Notifications tab, so it is shown only
+                    when that tab is on. Hiding it with the tab keeps the card from offering a
+                    switch for something the role cannot reach. */}
+                {notificationTabVisible && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded border bg-neutral-50/50 p-3">
+                        <div>
+                            <Label className="text-sm font-medium">
+                                {t('resendMessage.label')}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {t('resendMessage.hint')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={resendAllowed}
+                            onCheckedChange={(v) =>
+                                onChange({ ...settings, allowResendMessage: v })
+                            }
+                        />
+                    </div>
+                )}
+
                 <div className="mt-4 flex items-center justify-between gap-3 rounded border bg-neutral-50/50 p-3">
                     <div>
-                        <Label className="text-sm font-medium">Default Tab</Label>
-                        <p className="text-xs text-muted-foreground">
-                            The tab that opens when the side view is first shown.
-                        </p>
+                        <Label className="text-sm font-medium">{t('defaultTab.label')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('defaultTab.hint')}</p>
                     </div>
                     <Select
                         value={currentDefault ?? ''}
@@ -174,7 +202,7 @@ export const StudentSideViewSettingsCard = ({
                         disabled={visibleTabs.length === 0}
                     >
                         <SelectTrigger className="w-56">
-                            <SelectValue placeholder="Select a tab" />
+                            <SelectValue placeholder={t('defaultTab.placeholder')} />
                         </SelectTrigger>
                         <SelectContent>
                             {visibleTabs.map((opt) => {

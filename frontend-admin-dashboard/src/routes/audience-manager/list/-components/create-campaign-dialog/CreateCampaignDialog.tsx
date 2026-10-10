@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { CreateCampaignForm } from './CreateCampaignForm';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import {
@@ -21,12 +22,15 @@ export const CreateCampaignDialog: React.FC<CreateCampaignDialogProps> = ({
     onClose,
     campaign,
 }) => {
+    const { t } = useTranslation('audienceManagerCreateCampaignDialog');
     const audienceListLabel = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
-    const heading = campaign ? `Edit ${audienceListLabel}` : `Create ${audienceListLabel}`;
+    const heading = campaign
+        ? t('editHeading', { label: audienceListLabel })
+        : t('createHeading', { label: audienceListLabel });
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+            <DialogContent className="w-dialog-lg max-h-dialog-tall overflow-y-auto overflow-x-hidden">
                 <DialogHeader>
                     <DialogTitle>{heading}</DialogTitle>
                 </DialogHeader>

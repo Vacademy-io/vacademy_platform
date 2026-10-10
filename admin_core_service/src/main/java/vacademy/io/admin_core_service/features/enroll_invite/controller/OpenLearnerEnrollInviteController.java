@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.InviteFormAdminNotificationService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.LearnerEnrollInviteService;
 
 @RestController
@@ -20,6 +21,9 @@ public class OpenLearnerEnrollInviteController {
     @Autowired
     private EnrollInviteService enrollInviteService;
 
+    @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
+
     @GetMapping
     public ResponseEntity<EnrollInviteDTO> getEnrollInvite(String instituteId, String inviteCode) {
         return ResponseEntity.ok(learnerEnrollInviteService.getEnrollInvite(instituteId, inviteCode));
@@ -28,6 +32,9 @@ public class OpenLearnerEnrollInviteController {
     @GetMapping("/{instituteId}/{enrollInviteId}")
     public ResponseEntity<EnrollInviteDTO> getEnrollInviteById(@PathVariable("instituteId") String instituteId,
             @PathVariable("enrollInviteId") String enrollInviteId) {
-        return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId, instituteId));
+        EnrollInviteDTO dto = enrollInviteService.findByEnrollInviteId(enrollInviteId, instituteId);
+        // Open endpoint — strip the team-notification email list before it reaches the browser.
+        dto.setSettingJson(inviteFormAdminNotificationService.redactFromSettingJson(dto.getSettingJson()));
+        return ResponseEntity.ok(dto);
     }
 }

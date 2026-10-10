@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.UserPla
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.payments.service.MandateRequestDefaults;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -55,6 +56,9 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
 
     @Autowired
     private UserPlanService userPlanService;
+
+    @Autowired
+    private MandateRequestDefaults mandateRequestDefaults;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
@@ -364,57 +368,15 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         return DEFAULT_TRIAL_AUTH_AMOUNT;
     }
 
+    /**
+     * Per-debit ceiling + frequency come from {@link MandateRequestDefaults} so that the
+     * enrolment, renewal and plan-change re-authorisations all register the same shape
+     * of mandate. The authorisation method (UPI / card) is NOT set here: the learner
+     * picks it on the enrol form and it arrives already on the request.
+     */
     private void applyMandateMaxAmount(PaymentInitiationRequestDTO request,
                                        EnrollInvite enrollInvite, PaymentPlan paymentPlan) {
-        if (request == null || request.getRazorpayRequest() == null) {
-            return;
-        }
-        Double maxAmount = null;
-        try {
-            if (enrollInvite != null && enrollInvite.getSettingJson() != null
-                    && !enrollInvite.getSettingJson().isBlank()) {
-                com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
-                        .readTree(enrollInvite.getSettingJson()).path("setting").path("AUTOPAY_SETTING");
-                if (ap.has("MAX_AMOUNT") && !ap.get("MAX_AMOUNT").isNull()) {
-                    maxAmount = ap.get("MAX_AMOUNT").asDouble();
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Could not read AUTOPAY_SETTING.MAX_AMOUNT for invite {}: {}",
-                    enrollInvite != null ? enrollInvite.getId() : null, e.getMessage());
-        }
-        if (maxAmount == null && paymentPlan != null) {
-            maxAmount = paymentPlan.getActualPrice();
-        }
-        request.getRazorpayRequest().setMandateMaxAmount(maxAmount);
-        request.getRazorpayRequest().setMandateFrequency(resolveMandateFrequency(paymentPlan));
-    }
-
-    /**
-     * Razorpay mandate frequency derived from the plan's validity, so the UPI-app /
-     * bank mandate screen shows the real cadence (monthly, quarterly, ...) instead of
-     * the generic "as presented".
-     *
-     * We charge on our own schedule (RenewalChargeService), so any frequency Razorpay
-     * accepts is fine functionally; this only affects what the mandate advertises.
-     * Only values we can map from a known plan length are sent — anything else falls
-     * back to "as_presented", which imposes no fixed cadence and always registers.
-     */
-    private String resolveMandateFrequency(PaymentPlan paymentPlan) {
-        if (paymentPlan == null || paymentPlan.getValidityInDays() == null) {
-            return "as_presented";
-        }
-        int days = paymentPlan.getValidityInDays();
-        if (days <= 31) {
-            return "monthly";
-        } else if (days <= 95) {
-            return "quarterly";
-        } else if (days <= 190) {
-            return "halfyearly";
-        } else if (days <= 370) {
-            return "yearly";
-        }
-        return "as_presented";
+        mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite, paymentPlan);
     }
 
 }

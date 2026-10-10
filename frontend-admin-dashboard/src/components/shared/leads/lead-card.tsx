@@ -81,6 +81,7 @@ export function LeadCard({ vm, profile, showScore, showOps, actions }: LeadCardP
                 {showOps && vm.userId ? (
                     <LeadCounsellor
                         counsellorName={profile?.assigned_counselor_name}
+                        counsellorId={profile?.assigned_counselor_id}
                         onAssign={
                             actions.onAssignCounsellor
                                 ? () => actions.onAssignCounsellor!(vm.userId!, vm.name)

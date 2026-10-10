@@ -1,5 +1,6 @@
 import { CheckCircle, DownloadSimple } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
+import { useTranslation } from 'react-i18next';
 import { AllocatePaymentResponse, ReceiptLineItem } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ interface PaymentSuccessStepProps {
 }
 
 export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: PaymentSuccessStepProps) {
+    const { t } = useTranslation('financialManagementPaymentSuccessStep');
     const { getPrimaryColorCode } = useTheme();
     const hasReceipt = receipt && receipt.invoice_id;
     const totalConcession = receipt?.total_concession ?? 0;
@@ -36,14 +38,14 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                 <div className="flex justify-center mb-3">
                     <CheckCircle size={56} weight="duotone" className="text-emerald-500" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-800">Payment Submitted</h2>
+                <h2 className="text-xl font-bold text-gray-800">{t('paymentSubmitted')}</h2>
                 <p className="mt-1 text-gray-500">
-                    Payment recorded for{' '}
+                    {t('paymentRecordedFor')}{' '}
                     <span className="font-semibold text-gray-700">{studentName}</span>.
                 </p>
                 {!hasReceipt && (
                     <p className="mt-1 text-sm text-gray-400">
-                        The receipt will be generated and sent automatically.
+                        {t('receiptWillBeGenerated')}
                     </p>
                 )}
             </div>
@@ -54,11 +56,11 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     {/* Receipt header */}
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60 flex items-start justify-between">
                         <div>
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Receipt No</p>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('receipt.receiptNo')}</p>
                             <p className="text-base font-normal text-gray-800 mt-0.5">{receipt.receipt_number}</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</p>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('receipt.date')}</p>
                             <p className="text-sm font-semibold text-gray-700 mt-0.5">
                                 {receipt.receipt_date ? dayjs(receipt.receipt_date).format('DD MMM YYYY') : '—'}
                             </p>
@@ -68,18 +70,18 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     {/* Meta row */}
                     <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap gap-x-8 gap-y-1 text-sm">
                         <div>
-                            <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Student: </span>
+                            <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">{t('receipt.studentLabel')} </span>
                             <span className="font-extrabold text-lg text-gray-800">{studentName}</span>
                         </div>
                         {receipt.payment_mode && (
                             <div>
-                                <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Mode: </span>
+                                <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">{t('receipt.modeLabel')} </span>
                                 <span className="font-extrabold text-lg text-gray-800">{receipt.payment_mode}</span>
                             </div>
                         )}
                         {receipt.transaction_id && (
                             <div>
-                                <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Txn ID: </span>
+                                <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">{t('receipt.txnIdLabel')} </span>
                                 <span className="font-extrabold text-lg text-gray-800">{receipt.transaction_id}</span>
                             </div>
                         )}
@@ -92,15 +94,15 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                 <thead>
                                     <tr className="border-b border-gray-100 bg-gray-50/80">
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">#</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Fee Type</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Expected</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{t('table.feeType')}</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{t('table.dueDate')}</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">{t('table.expected')}</th>
                                         {hasAnyAdjustment && (
-                                            <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Adjustment</th>
+                                            <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">{t('table.adjustment')}</th>
                                         )}
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Paid</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Outstanding</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">{t('table.paid')}</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">{t('table.outstanding')}</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{t('table.status')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
@@ -124,11 +126,11 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                                     <td className="py-2.5 px-4 text-right">
                                                         {isConcession ? (
                                                             <span className={cn('text-xs font-semibold text-emerald-600')}>
-                                                                - {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">(Concession)</span>
+                                                                - {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.concession')})</span>
                                                             </span>
                                                         ) : isPenalty ? (
                                                             <span className={cn('text-xs font-semibold text-red-600')}>
-                                                                + {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">(Penalty)</span>
+                                                                + {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.penalty')})</span>
                                                             </span>
                                                         ) : (
                                                             <span className="text-gray-400">—</span>
@@ -151,7 +153,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                 <tfoot>
                                     <tr className="border-t-2 border-gray-200 bg-gray-50/60">
                                         <td colSpan={3} />
-                                        <td className="py-3 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Expected</td>
+                                        <td className="py-3 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">{t('totals.totalExpected')}</td>
                                         {hasAnyAdjustment && <td />}
                                         <td className="py-3 px-4 text-sm font-bold text-gray-800 text-right">{formatCurrency(receipt.total_expected ?? 0)}</td>
                                         <td className="py-3 px-4 text-sm font-bold text-gray-800 text-right">{formatCurrency(receipt.balance_due ?? 0)}</td>
@@ -159,7 +161,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                     </tr>
                                     <tr className="bg-gray-50/60">
                                         <td colSpan={3} />
-                                        <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Paid</td>
+                                        <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">{t('totals.totalPaid')}</td>
                                         {hasAnyAdjustment && <td />}
                                         <td className="py-1 px-4 text-sm font-bold text-emerald-700 text-right" colSpan={2}>{formatCurrency(receipt.total_paid ?? 0)}</td>
                                         <td />
@@ -167,7 +169,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                     {totalConcession > 0 && (
                                         <tr className="bg-gray-50/60">
                                             <td colSpan={3} />
-                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Concession</td>
+                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">{t('totals.totalConcession')}</td>
                                             {hasAnyAdjustment && <td />}
                                             <td className="py-1 px-4 text-sm font-bold text-emerald-600 text-right" colSpan={2}>- {formatCurrency(totalConcession)}</td>
                                             <td />
@@ -176,7 +178,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                     {totalPenalty > 0 && (
                                         <tr className="bg-gray-50/60">
                                             <td colSpan={3} />
-                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Penalty</td>
+                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">{t('totals.totalPenalty')}</td>
                                             {hasAnyAdjustment && <td />}
                                             <td className="py-1 px-4 text-sm font-bold text-red-600 text-right" colSpan={2}>+ {formatCurrency(totalPenalty)}</td>
                                             <td />
@@ -191,7 +193,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     {receipt.amount_paid_now != null && (
                         <div className="px-6 py-3 border-t border-gray-100 flex justify-end">
                             <div className="text-right">
-                                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Amount Paid Now</p>
+                                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">{t('amountPaidNow')}</p>
                                 <p className="text-xl font-extrabold text-emerald-600 mt-0.5">{formatCurrency(receipt.amount_paid_now)}</p>
                             </div>
                         </div>
@@ -209,7 +211,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                         className="inline-flex items-center gap-2 px-5 py-2.5 bg-black text-white text-sm font-semibold rounded-lg hover:bg-gray-800 transition-colors"
                     >
                         <DownloadSimple size={15} weight="bold" />
-                        Download Receipt
+                        {t('downloadReceipt')}
                     </a>
                 )}
                 <button
@@ -217,7 +219,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     style={{ backgroundColor: getPrimaryColorCode() }}
                     className="px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
-                    Pay for Another Student
+                    {t('payForAnotherStudent')}
                 </button>
             </div>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
@@ -27,6 +28,10 @@ import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4SubOrg } from './steps/Step4SubOrg';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
+import {
+    getAdminDiscountValidationError,
+    toAdminDiscountPayload,
+} from '@/services/admin-discounts';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import {
@@ -45,6 +50,14 @@ interface BulkAssignDialogProps {
     onSuccess?: () => void;
     /** When provided, pre-selects this course/batch in Step 2 */
     initialPackageSessionId?: string;
+    /**
+     * Opens the wizard for ONE learner who is already known — the lead/student side view
+     * knows exactly who it is, so Step 1 has nothing to ask and is dropped. Everything
+     * after it (invite, CPO instalments, discount, preview) is the same wizard, which is
+     * the point: the side view used to run a thinner copy of this flow that had no
+     * instalment or discount editing at all.
+     */
+    initialLearner?: { userId: string; email: string; name: string };
 }
 
 /**
@@ -53,7 +66,14 @@ interface BulkAssignDialogProps {
  */
 type StepKey = 'learners' | 'courses' | 'config' | 'suborg' | 'preview';
 
-export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackageSessionId }: BulkAssignDialogProps) => {
+export const BulkAssignDialog = ({
+    open,
+    onOpenChange,
+    onSuccess,
+    initialPackageSessionId,
+    initialLearner,
+}: BulkAssignDialogProps) => {
+    const { t } = useTranslation('manageStudentsBulkAssignDialog');
     const { getPackageWiseLevels, instituteDetails } = useInstituteDetailsStore();
     const { enrollmentNotifications } = useCourseSettings();
     const showNotifyLearners = enrollmentNotifications?.showNotifyLearners ?? true;
@@ -107,22 +127,45 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
     const needsSubOrgStep = selectedPackageSessions.some((ps) => ps.isOrgAssociated);
 
     const stepKeys: StepKey[] = [
-        'learners',
+        // Nothing to pick when the caller already named the learner.
+        ...(initialLearner ? [] : (['learners'] as StepKey[])),
         'courses',
         'config',
         ...(needsSubOrgStep ? (['suborg'] as StepKey[]) : []),
         'preview',
     ];
     const stepLabels: Record<StepKey, string> = {
-        learners: `Select ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}`,
-        courses: `Select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
-        config: 'Enrollment Config',
-        suborg: 'Sub-Organisation',
-        preview: 'Preview & Confirm',
+        learners: t('stepper.learners', {
+            term: getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner),
+        }),
+        courses: t('stepper.courses', {
+            term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+        }),
+        config: t('stepper.config'),
+        suborg: t('stepper.suborg'),
+        preview: t('stepper.preview'),
     };
     const STEPS = stepKeys.map((key) => stepLabels[key]);
     const currentStep: StepKey = stepKeys[step] ?? 'learners';
     const previewIndex = stepKeys.length - 1;
+
+    // Seed the single known learner so the wizard opens straight on the course step.
+    // Keyed on the VALUES, not the object: callers build this inline, so depending on
+    // identity would re-seed on every render and never settle.
+    const seedUserId = initialLearner?.userId;
+    const seedEmail = initialLearner?.email;
+    const seedName = initialLearner?.name;
+    useEffect(() => {
+        if (!open || !seedUserId) return;
+        setSelectedLearners([
+            {
+                type: 'existing',
+                userId: seedUserId,
+                email: seedEmail ?? '',
+                name: seedName ?? '',
+            },
+        ]);
+    }, [open, seedUserId, seedEmail, seedName]);
 
     // Pre-select course when dialog opens with an initialPackageSessionId
     useEffect(() => {
@@ -179,6 +222,10 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 enroll_invite_id: ps.enrollInviteId ?? null,
                 access_days: ps.accessDays ?? null,
                 cpo_config: ps.cpoConfig ?? null,
+                // Omitted entirely when "No discount" so the request is unchanged from before.
+                ...(toAdminDiscountPayload(ps.adminDiscount)
+                    ? { admin_discount: toAdminDiscountPayload(ps.adminDiscount) }
+                    : {}),
                 // Only org-associated batches carry a sub-org; sending it for a normal batch
                 // would be ignored by the backend but is noise, so it's omitted entirely.
                 ...(ps.isOrgAssociated
@@ -244,7 +291,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
 
     const extractErrorMessage = (reason: unknown): string => {
         const err = reason as { response?: { data?: { message?: string } }; message?: string };
-        return err?.response?.data?.message || err?.message || 'Failed to link guardian.';
+        return err?.response?.data?.message || err?.message || t('errors.guardianLinkFallback');
     };
 
     /**
@@ -311,15 +358,15 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         const existingTargets = selectedLearners
             .map((l, idx) => ({ l, idx }))
             .filter(
-                (t): t is { l: Extract<SelectedLearner, { type: 'existing' }>; idx: number } =>
-                    t.l.type === 'existing' && !!t.l.parentLink && t.l.parentLink.mode !== 'none'
+                (entry): entry is { l: Extract<SelectedLearner, { type: 'existing' }>; idx: number } =>
+                    entry.l.type === 'existing' && !!entry.l.parentLink && entry.l.parentLink.mode !== 'none'
             );
 
         const newGuardianTargets = selectedLearners
             .map((l, idx) => ({ l, idx }))
             .filter(
-                (t): t is { l: Extract<SelectedLearner, { type: 'new' }>; idx: number } =>
-                    t.l.type === 'new' && !!t.l.parentLink && t.l.parentLink.mode === 'is_guardian'
+                (entry): entry is { l: Extract<SelectedLearner, { type: 'new' }>; idx: number } =>
+                    entry.l.type === 'new' && !!entry.l.parentLink && entry.l.parentLink.mode === 'is_guardian'
             );
 
         if (existingTargets.length === 0 && newGuardianTargets.length === 0) return true;
@@ -328,14 +375,14 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             Promise.allSettled(
                 existingTargets.map(({ l }) => {
                     const request = buildParentLinkRequest(l.userId, l.parentLink);
-                    if (!request) return Promise.reject(new Error('Invalid guardian-link selection.'));
+                    if (!request) return Promise.reject(new Error(t('errors.invalidGuardianLinkSelection')));
                     return linkGuardian(request);
                 })
             ),
             Promise.allSettled(
                 newGuardianTargets.map(({ l }) => {
                     const request = buildLinkNewGuardianRequest(l);
-                    if (!request) return Promise.reject(new Error('Invalid guardian-link selection.'));
+                    if (!request) return Promise.reject(new Error(t('errors.invalidGuardianLinkSelection')));
                     return linkNewGuardian(request);
                 })
             ),
@@ -431,11 +478,15 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 const match = result.results.find((r) => !!r.user_email && r.user_email === email && !!r.user_id);
                 if (!match?.user_id) {
                     return Promise.reject(
-                        new Error(`Could not resolve the created user id for ${l.newUser.full_name || email}.`)
+                        new Error(
+                            t('errors.couldNotResolveCreatedUser', {
+                                name: l.newUser.full_name || email,
+                            })
+                        )
                     );
                 }
                 const request = buildParentLinkRequest(match.user_id, l.parentLink);
-                if (!request) return Promise.reject(new Error('Invalid guardian-link selection.'));
+                if (!request) return Promise.reject(new Error(t('errors.invalidGuardianLinkSelection')));
                 return linkGuardian(request);
             })
         );
@@ -445,7 +496,10 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 const l = targets[i];
                 if (!l) return;
                 toast.error(
-                    `Guardian link failed for ${l.newUser.full_name || l.newUser.email}: ${extractErrorMessage(s.reason)}`
+                    t('toasts.guardianLinkFailed', {
+                        name: l.newUser.full_name || l.newUser.email,
+                        message: extractErrorMessage(s.reason),
+                    })
                 );
             }
         });
@@ -467,7 +521,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             setPreviewResponse(result);
             setStep(previewIndex);
         } catch (e) {
-            toast.error('Failed to generate preview. Please try again.');
+            toast.error(t('toasts.previewFailed'));
         } finally {
             setIsSubmitting(false);
         }
@@ -484,12 +538,16 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             await resolveNewChipGuardianLinks(result);
             const { summary } = result;
             toast.success(
-                `Enrollment complete! ✅ ${summary.successful} enrolled, ⏭ ${summary.skipped} skipped, ❌ ${summary.failed} failed.`
+                t('toasts.enrollmentComplete', {
+                    successful: summary.successful,
+                    skipped: summary.skipped,
+                    failed: summary.failed,
+                })
             );
             onSuccess?.();
             handleClose();
         } catch (e) {
-            toast.error('Enrollment failed. Please try again.');
+            toast.error(t('toasts.enrollmentFailed'));
         } finally {
             setIsSubmitting(false);
         }
@@ -514,7 +572,13 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             );
         }
         if (currentStep === 'courses') return selectedPackageSessions.length > 0;
-        if (currentStep === 'config') return true;
+        // An admin discount that's half filled in (no value / no reason) must not be sent.
+        if (currentStep === 'config')
+            return selectedPackageSessions.every(
+                (ps) =>
+                    !getAdminDiscountValidationError(ps.adminDiscount) &&
+                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError)
+            );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.
         if (currentStep === 'suborg') return selectedPackageSessions.every(isSubOrgSelectionReady);
@@ -547,7 +611,11 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 {/* Header */}
                 <DialogHeader>
                     <div className="bg-primary-50 px-4 py-3 sm:px-6 sm:py-4">
-                        <h2 className="text-h3 font-semibold text-primary-500">Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}</h2>
+                        <h2 className="text-h3 font-semibold text-primary-500">
+                            {t('dialogTitle', {
+                                term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                            })}
+                        </h2>
                         {/* Step progress bar */}
                         <div className="mt-3 flex items-center gap-0">
                             {STEPS.map((label, idx) => (
@@ -649,7 +717,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                                 onClick={() => setStep((s) => s - 1)}
                                 disabled={isSubmitting}
                             >
-                                ← Back
+                                {t('footer.back')}
                             </MyButton>
                         )}
                     </div>
@@ -661,7 +729,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                             onClick={handleClose}
                             disabled={isSubmitting}
                         >
-                            Cancel
+                            {t('footer.cancel')}
                         </MyButton>
                         {step < previewIndex ? (
                             <MyButton
@@ -672,12 +740,12 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                                 disable={!canGoNext() || isSubmitting || isResolvingGuardianLinks}
                             >
                                 {isResolvingGuardianLinks
-                                    ? 'Linking guardians…'
+                                    ? t('footer.linkingGuardians')
                                     : isSubmitting
-                                      ? 'Loading…'
+                                      ? t('footer.loading')
                                       : step === previewIndex - 1
-                                        ? 'Preview →'
-                                        : 'Next →'}
+                                        ? t('footer.previewButton')
+                                        : t('footer.next')}
                             </MyButton>
                         ) : (
                             <MyButton
@@ -691,7 +759,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                                         previewResponse?.summary.re_enrolled === 0)
                                 }
                             >
-                                {isSubmitting ? 'Enrolling…' : '✓ Confirm Enrollment'}
+                                {isSubmitting ? t('footer.enrolling') : t('footer.confirmEnrollment')}
                             </MyButton>
                         )}
                     </div>

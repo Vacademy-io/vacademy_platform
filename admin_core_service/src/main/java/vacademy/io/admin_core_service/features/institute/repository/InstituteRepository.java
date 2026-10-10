@@ -129,6 +129,15 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """, nativeQuery = true)
     Long countAllInstitutes(@Param("search") String search);
 
+    /**
+     * Bulk id -> display name, for screens that list institutes they do not otherwise
+     * need to load. Deliberately a two-column projection: {@code institutes} carries
+     * {@code setting_json}, which is large, and fetching whole entities to read a name
+     * pulls every institute's settings blob across with it.
+     */
+    @Query(value = "SELECT i.id, i.name FROM institutes i WHERE i.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdAndNameByIds(@Param("ids") java.util.Collection<String> ids);
+
     @Query(value = "SELECT COUNT(*) FROM institutes", nativeQuery = true)
     Long countTotalInstitutes();
 
@@ -315,4 +324,19 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
               AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
             """, nativeQuery = true)
     Long countAllInstitutesFiltered(@Param("search") String search, @Param("leadTag") String leadTag);
+
+    /**
+     * Every custom live-class hostname currently configured, deduplicated.
+     *
+     * Consumed on each BBB pool-server start to rebuild that server's nginx
+     * server_name list and its certificate SAN set, so an institute added here
+     * becomes reachable on the next restore with no manual step.
+     */
+    @Query(value = """
+            SELECT DISTINCT i.live_session_base_url FROM institutes i
+            WHERE i.live_session_base_url IS NOT NULL
+              AND TRIM(i.live_session_base_url) <> ''
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<String> findDistinctLiveSessionBaseUrls();
 }

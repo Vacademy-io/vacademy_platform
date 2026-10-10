@@ -1,0 +1,22 @@
+{
+    "navHeading": "Create Announcement",
+    "fixIssues_one": "Fix {{count}} issue before creating this announcement.",
+    "fixIssues_other": "Fix {{count}} issues before creating this announcement.",
+    "toast": {
+        "createdImmediate": "Announcement created and queued for delivery.",
+        "scheduled": "Announcement scheduled."
+    },
+    "sections": {
+        "howItWillLook": "How it will look"
+    },
+    "actions": {
+        "reviewAndPreview": "Review & preview",
+        "keepEditing": "Keep editing",
+        "createAndSend": "Create and send",
+        "scheduleAnnouncement": "Schedule announcement",
+        "creating": "Creating…"
+    },
+    "dialog": {
+        "reviewHeading": "Review & preview"
+    }
+}

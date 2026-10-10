@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRes
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionVisibilityService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
@@ -28,6 +29,7 @@ public class GetSessionsListController {
     private final GetLiveSessionService getLiveSessionService;
     private final GetSessionByIdService getSessionByIdService;
     private final LearnerPastSessionService learnerPastSessionService;
+    private final LiveSessionVisibilityService visibilityService;
 
     @GetMapping("/live")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
@@ -56,13 +58,14 @@ public class GetSessionsListController {
     ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessions(
             @RequestParam(required = false, name = "batchId") String batchId,
             @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
             @RequestParam(value = "page", required = false, defaultValue = "0") int page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                batchId, userId, page, size, startDate, endDate, user));
+                batchId, userId, instituteId, page, size, startDate, endDate, user));
     }
 
     /**
@@ -97,6 +100,10 @@ public class GetSessionsListController {
     @GetMapping("/by-session-id")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE)
     ResponseEntity<GetSessionByIdService.SessionDetailsResponse> getSessionById(@RequestParam("sessionId") String sessionId , @RequestAttribute("user") CustomUserDetails user){
+        // Role-based visibility is enforced here too, not just in the lists
+        // (V524) -- otherwise anyone holding a session URL could open a session
+        // their role was configured not to see.
+        visibilityService.assertCanAccessSession(sessionId, user);
         return ResponseEntity.ok(getSessionByIdService.getFullSessionDetails(sessionId));
     }
 

@@ -230,6 +230,49 @@ class PipelineCancelled(Exception):
 
 
 try:
+    from video_llm_reasoning import reasoning_for as _reasoning_for
+except ImportError:  # pragma: no cover - module sits next to this file
+    def _reasoning_for(model):  # type: ignore[misc]
+        return None
+
+_ROUTER_IMPORT_WARNED = False
+
+
+def _llm_router():
+    """The llm_router module, or None where there is none (the render worker).
+
+    ai-service runs as `uvicorn ai_service.main:app` from /app, so its package
+    is `ai_service.app` and a bare `app.` import raises ModuleNotFoundError.
+    This client used to import the router only as `app.services.llm_router` and
+    swallow the ImportError, so every video LLM call went to OpenRouter even with
+    a route configured — from 2026-09-27, when GLM was routed to Isoquant, until
+    2026-10-01, with nothing in any log to say so.
+
+    The production name is tried first. When neither resolves, that is expected
+    in the render worker (no ai_service package at all); inside ai-service it
+    means routing is off, so it is said out loud, once.
+    """
+    global _ROUTER_IMPORT_WARNED
+    import importlib
+    import importlib.util
+
+    errors = []
+    for name in ("ai_service.app.services.llm_router", "app.services.llm_router"):
+        try:
+            return importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001 - any failure means "no router here"
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
+    try:
+        inside_ai_service = importlib.util.find_spec("ai_service") is not None
+    except Exception:  # noqa: BLE001
+        inside_ai_service = False
+    if inside_ai_service and not _ROUTER_IMPORT_WARNED:
+        _ROUTER_IMPORT_WARNED = True
+        print(f"⚠️ llm_router could not be imported inside ai-service — video LLM calls "
+              f"stay on OpenRouter ({'; '.join(errors)})")
+    return None
+
+try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
 except ImportError:
@@ -822,6 +865,34 @@ except ImportError:
     # Fallback when `app/` isn't on path (legacy / standalone). Keep the
     # numeric default in lockstep with `ai_video_constants.py`.
     AI_VIDEO_PER_VIDEO_COST_CAP_USD = 24.00
+
+def _img_label_for(index: int) -> str:
+    """Spreadsheet-style label for an input image: A..Z, then AA, AB, ...
+
+    The old inline lookup indexed a 10-character string and fell back to the
+    bare integer past position 9, so an image-led run mixed letters and digits
+    in the same list ("Image I", "Image 10"). The Director cites these labels
+    back when it plans IMAGE_CLIP shots, so they need to stay one namespace.
+    """
+    if index < 0:
+        index = 0
+    label = ""
+    n = index
+    while True:
+        label = chr(ord("A") + n % 26) + label
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return label
+
+
+# How much of a per-shot failure to keep on the emitted event. 200 characters
+# cut the model's raw output mid-JSON, so a well-formed-but-rejected response
+# and a genuinely truncated one looked identical — that ambiguity cost a wrong
+# diagnosis on a real incident. Raising the aggregator's own cap did not help:
+# this emit is the binding one, and it clips before the aggregator ever sees it.
+_SHOT_ERROR_KEEP = 4000
+
 
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
@@ -1593,6 +1664,9 @@ class OpenRouterClient:
         # fails over to the configured fallback instead of burning the whole
         # retry budget on one model.
         self.use_case_fallback_chain: list[str] = []
+        # The admin's default model for video (`ai_model_defaults.default_model_id`).
+        # A call that names no model uses this before the recommended list.
+        self.use_case_default_model: Optional[str] = None
         try:
             # These modules live in the `ai_service.app` package, but this file is
             # loaded flat via sys.path (the dir name is hyphenated), so a bare
@@ -1615,6 +1689,8 @@ class OpenRouterClient:
                 _free_mid = getattr(_free, "model_id", None) if _free else None
                 if _free_mid:
                     models.append(_free_mid)
+            _dm = getattr(getattr(resp, "default_model", None), "model_id", None)
+            self.use_case_default_model = _dm or None
             # Build the always-on fallback chain (deduped; order fallback → default → free).
             for _m in (
                 getattr(resp, "fallback_model", None),
@@ -1627,6 +1703,113 @@ class OpenRouterClient:
         except Exception as e:
             print(f"Warning: Failed to load model chain from registry: {e}")
         return models
+
+    def _user_default_model(self) -> Optional[str]:
+        """The video-wide model the user chose, or None.
+
+        `model_overrides.default` (or the legacy `model=` field) is stamped by the
+        stage resolver on every user-overridable stage with source "user_default",
+        so any such entry carries it.
+        """
+        for entry in (self.stage_model_map or {}).values():
+            if isinstance(entry, tuple) and len(entry) > 1 and entry[1] == "user_default" and entry[0]:
+                return entry[0]
+        return None
+
+    def _select_models(self, model: Optional[str]) -> Tuple[List[str], str]:
+        """Models to try for one call, in order, and the provenance of the first.
+
+        explicit `model=`  >  the stage's routed model  >  the model the user
+        chose  >  the registry's default for video  >  the registry's
+        recommended list  >  this client's default — then the use-case
+        fallback chain, so a dead model fails over instead of failing the run.
+
+        The user's choice and the registry default used to sit BELOW the
+        recommended list. That list is a catalogue ordering, not a routing
+        preference, and it starts with x-ai/grok-4.6 — so every call that named
+        no model and ran outside a mapped stage went to Grok, on a run whose
+        user had picked z-ai/glm-5.3-flash and whose registry default for
+        video is also z-ai/glm-5.3-flash. Nothing in the video pipeline sets
+        the stage for its main calls, so that was most unnamed calls.
+        """
+        source = ""
+        if model:
+            models_to_try = [model]
+        else:
+            stage_routed: Optional[str] = None
+            if self.stage_model_map:
+                _canonical = _normalize_stage_to_taxonomy(_llm_stage.get())
+                if _canonical:
+                    _entry = self.stage_model_map.get(_canonical)
+                    if isinstance(_entry, tuple) and len(_entry) == 2:
+                        stage_routed, source = _entry[0], (_entry[1] or "matrix")
+                    elif isinstance(_entry, str) and _entry:
+                        # Legacy flat-string callers — source unknown.
+                        stage_routed, source = _entry, "matrix"
+            user_default = self._user_default_model()
+            registry_default = getattr(self, "use_case_default_model", None)
+            if stage_routed:
+                models_to_try = [stage_routed]
+            elif user_default:
+                models_to_try, source = [user_default], "user_default"
+            elif registry_default:
+                models_to_try, source = [registry_default], "use_case_default"
+            elif self.model_chain:
+                models_to_try = list(self.model_chain)
+            else:
+                models_to_try = [self.default_model]
+
+        # Always allow failing over to the use-case fallback chain (from
+        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
+        # A single dead/empty model (explicit OR stage-routed) then fails over to
+        # the configured fallback instead of the retry decorator re-hitting the
+        # same broken model 4× and failing the whole run.
+        for _fb in getattr(self, "use_case_fallback_chain", []):
+            if _fb and _fb not in models_to_try:
+                models_to_try = models_to_try + [_fb]
+        return models_to_try, source
+
+    def _open_chat(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        wire: Dict[str, Any],
+        openrouter_payload: Dict[str, Any],
+        route: Optional[Any],
+        model: str,
+        timeout: float,
+    ):
+        """Open one chat completion, failing over from a routed gateway.
+
+        `route` is the llm_router ChatRoute when the model is routed off
+        OpenRouter (e.g. GLM to Isoquant), else None. A gateway that is down,
+        refuses the key, rate-limits or times out is retried ONCE on OpenRouter
+        with the SAME model and marked failed for its cooldown.
+
+        Without this, a gateway outage raised straight into chat()'s model
+        loop, which moved on to the NEXT model in the chain - so an Isoquant
+        blip silently turned a GLM video into a Gemini one, at Gemini prices.
+        A 400 is the request's own fault and is not retried: OpenRouter would
+        reject it too.
+        """
+        def _req(u: str, h: Dict[str, str], w: Dict[str, Any]) -> urllib.request.Request:
+            return urllib.request.Request(u, data=json.dumps(w).encode("utf-8"), headers=h, method="POST")
+
+        try:
+            return urllib.request.urlopen(_req(url, headers, wire), timeout=timeout)
+        except Exception as exc:
+            router = _llm_router() if route is not None else None
+            if router is None:
+                raise
+            status = getattr(exc, "code", None)
+            if not router.should_fail_over(route, status):
+                raise
+            router.mark_router_failed(route.router)
+            print(
+                f"   ↪ {route.label} failed for {model} at stage '{_llm_stage.get()}' "
+                f"({status or type(exc).__name__}) — retrying the same model on OpenRouter"
+            )
+            return urllib.request.urlopen(_req(self.base_url, self.headers, openrouter_payload), timeout=timeout)
 
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))
     def chat(
@@ -1642,36 +1825,7 @@ class OpenRouterClient:
         # caller's `_llm_stage` ContextVar maps to a taxonomy entry that has a
         # row in `self.stage_model_map`, use that model. Stamps `_source` on
         # the cost event so forensics can attribute the choice.
-        _stage_routed_source = ""
-        if model:
-            models_to_try = [model]
-        else:
-            stage_routed: Optional[str] = None
-            if self.stage_model_map:
-                _runtime_stage = _llm_stage.get()
-                _canonical = _normalize_stage_to_taxonomy(_runtime_stage)
-                if _canonical:
-                    _entry = self.stage_model_map.get(_canonical)
-                    if isinstance(_entry, tuple) and len(_entry) == 2:
-                        stage_routed, _stage_routed_source = _entry[0], (_entry[1] or "matrix")
-                    elif isinstance(_entry, str) and _entry:
-                        # Legacy flat-string callers — source unknown.
-                        stage_routed, _stage_routed_source = _entry, "matrix"
-            if stage_routed:
-                models_to_try = [stage_routed]
-            elif self.model_chain:
-                models_to_try = self.model_chain
-            else:
-                models_to_try = [self.default_model]
-
-        # Always allow failing over to the use-case fallback chain (from
-        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
-        # A single dead/empty model (explicit OR stage-routed) then fails over to
-        # the configured fallback instead of the retry decorator re-hitting the
-        # same broken model 4× and failing the whole run.
-        for _fb in getattr(self, "use_case_fallback_chain", []):
-            if _fb and _fb not in models_to_try:
-                models_to_try = models_to_try + [_fb]
+        models_to_try, _stage_routed_source = self._select_models(model)
 
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
@@ -1699,7 +1853,15 @@ class OpenRouterClient:
                 # doubled budget — which is exactly what the code's own hint
                 # ("raise max_tokens for this model") recommends.
                 _effective_max_tokens = max_tokens
-                for _length_bump in range(2):
+                # Measured on qwen3.8-max planning a 20-shot video: reasoning
+                # consumed the ENTIRE 16k completion budget (reasoning_tokens
+                # 16000/16000, finish_reason "length") and emitted zero content.
+                # One doubling to 32k is not obviously enough for that, so allow
+                # two — 16k → 32k → 64k. Note `reasoning: {exclude: true}` does
+                # NOT help: it hides the reasoning from the response, it does
+                # not stop the model spending the budget on it. Only headroom
+                # does.
+                for _length_bump in range(3):
                     payload: Dict[str, Any] = {
                         "model": model_to_use,
                         "messages": cached_messages,
@@ -1708,14 +1870,47 @@ class OpenRouterClient:
                     }
                     if response_format is not None:
                         payload["response_format"] = response_format
-                    request = urllib.request.Request(
-                        self.base_url,
-                        data=json.dumps(payload).encode("utf-8"),
-                        headers=self.headers,
-                        method="POST",
+                    # A reasoning-mandatory model (GLM 5.x) sent no reasoning
+                    # setting thinks at its own heavy default — 8x the reasoning
+                    # tokens of an explicit "high" for the same complete plan.
+                    # See video_llm_reasoning.py for the measurement.
+                    _reasoning = _reasoning_for(model_to_use)
+                    if _reasoning:
+                        payload["reasoning"] = _reasoning
+                    _url, _headers, _wire, _route = self.base_url, self.headers, payload, None
+                    _router = _llm_router()
+                    if _router is not None:
+                        try:
+                            _routed = _router.route_chat(payload, self.api_key)
+                            if not _routed[3].is_default:
+                                _url, _headers, _wire, _route = _routed[0], _routed[1], _routed[2], _routed[3]
+                        except Exception as _route_err:  # noqa: BLE001
+                            # A routing fault must never take generation down:
+                            # this call simply stays on OpenRouter.
+                            print(f"   ⚠️ routing {model_to_use} failed ({_route_err}) — using OpenRouter")
+                    # Say where each call actually went. The router fell back to
+                    # OpenRouter silently for four days; a line per call is the
+                    # cheapest way to make that visible next time.
+                    print(
+                        f"   ⇢ {model_to_use} via "
+                        f"{_route.label if _route is not None else 'OpenRouter'}"
+                        f"{(' reasoning_effort=' + str(_wire['reasoning_effort'])) if _wire.get('reasoning_effort') else ''}"
+                        f"{(' reasoning=' + str((_wire.get('reasoning') or {}).get('effort'))) if _wire.get('reasoning') else ''}"
+                        f" stage='{_llm_stage.get()}'"
                     )
                     _t_start = time.perf_counter()
-                    with urllib.request.urlopen(request, timeout=180) as response:
+                    # A flat 180s was sized for a fast non-reasoning model. A
+                    # thinking model planning a 20-shot video spends minutes in
+                    # its reasoning channel before the first content token, so
+                    # 180s cut it off, the call failed over to the next model in
+                    # the chain, and the model the user actually picked was
+                    # never the one that answered — silently, since a fallback
+                    # is not an error. Scale with the token budget instead: a
+                    # small utility prompt keeps a tight timeout, a big
+                    # generation gets room to finish.
+                    _req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))
+                    with self._open_chat(_url, _headers, _wire, payload, _route,
+                                         model_to_use, _req_timeout) as response:
                         raw = response.read().decode("utf-8")
                         # Parse JSON response and return content
                         data = json.loads(raw)
@@ -1734,18 +1929,25 @@ class OpenRouterClient:
                             if _reasoning and str(_reasoning).strip():
                                 content = str(_reasoning)
 
+                        # finish_reason "length" means the answer was CUT OFF,
+                        # whether or not any content came back. The budget bump
+                        # used to sit inside the empty-content branch, so a
+                        # partial answer was returned as-is and failed downstream —
+                        # measured on gpt-5.6-luna at reasoning effort "high":
+                        # well-formed JSON that simply stopped at char 40,689,
+                        # which the shot-plan parser can only report as garbage.
+                        # Retry on the cut-off itself; emptiness is a separate
+                        # question handled below.
+                        if _finish == "length" and _length_bump < 2:
+                            _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
+                            print(
+                                f"   ↻ {model_to_use} hit max_tokens at stage "
+                                f"'{_llm_stage.get()}' (content={len(content or '')} chars) — "
+                                f"retrying same model with max_tokens={_effective_max_tokens}"
+                            )
+                            continue
+
                         if not content or not content.strip():
-                            # Empty because the model exhausted its budget before
-                            # emitting content → retry the same model once with a
-                            # bigger budget before failing over to the next one.
-                            if _finish == "length" and _length_bump == 0:
-                                _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
-                                print(
-                                    f"   ↻ {model_to_use} hit max_tokens with empty content at "
-                                    f"stage '{_llm_stage.get()}' — retrying same model with "
-                                    f"max_tokens={_effective_max_tokens}"
-                                )
-                                continue
                             _hint = (
                                 " (finish_reason=length — model hit max_tokens before emitting"
                                 " content even after a budget bump)"
@@ -14566,6 +14768,7 @@ class VideoGenerationPipeline:
                 and (self._assist_state or {}).get("enabled")
             ),
             article_screenshots=self._v3_article_screenshots(),
+            input_images=self._input_image_contexts or None,
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
             valid_template_ids=_tmpl_valid_ids,
@@ -14577,6 +14780,12 @@ class VideoGenerationPipeline:
             # (premium+ set concept_model); free/standard skip it to avoid the ~2x
             # ShotPlanner cost of a corrective re-plan on the cheapest tiers.
             enforce_concept=bool(tier_config.get("concept_model")),
+            # The plan is the largest single response in a run, and the prompt
+            # behind it can run to hundreds of thousands of tokens. Starting at
+            # the 16k default meant a length cut-off re-sent that whole prompt
+            # to buy a bigger budget. max_tokens is a ceiling, not a charge, so
+            # starting higher costs nothing unless the room is actually used.
+            max_tokens=32000,
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],
@@ -14645,7 +14854,15 @@ class VideoGenerationPipeline:
         if tier_config.get("edit_choreographer_enabled"):
             try:
                 from edit_choreographer import choreograph_transitions
-                _ec_model = tier_config.get("concept_model") or shot_planner_model
+                # An explicit user model choice beats the tier's frontier pick —
+                # the rule hero-shot escalation already follows ("escalate over
+                # neither"). Reading concept_model directly sent a run whose user
+                # chose z-ai/glm-5.3-flash to anthropic/claude-opus-4-8 here.
+                _ec_model = (
+                    self.script_client._user_default_model()
+                    or tier_config.get("concept_model")
+                    or shot_planner_model
+                )
                 _ec_map, _ec_usage = choreograph_transitions(
                     shot_plan_dict["shots"],
                     llm_chat=self.script_client.chat,
@@ -14709,6 +14926,9 @@ class VideoGenerationPipeline:
                 )
                 _di_model = (
                     self._resolve_stage_model("design_identity")
+                    # same rule as the edit choreographer: the user's choice
+                    # beats the tier's frontier concept model
+                    or self.script_client._user_default_model()
                     or tier_config.get("concept_model")
                     or shot_planner_model
                 )
@@ -15329,10 +15549,15 @@ class VideoGenerationPipeline:
         # URL itself is in source_public_url — Director embeds it as <img src>
         # in the IMAGE_CLIP HTML (no render-worker compositing).
         if self._input_image_contexts:
-            _img_labels = "ABCDEFGHIJ"
+            _num_images = len(self._input_image_contexts)
+            # OCR blocks are the bulk of an image section. A screenshot-led run
+            # can now carry 15-20 stills, so scale the per-image allowance down
+            # as the count rises rather than emitting 15 blocks x 20 images.
+            # Mirrors the transcript budget in the SOURCE VIDEO block above.
+            _ocr_per_image = max(4, 90 // max(1, _num_images))
             _image_sections = []
             for _iidx, _ictx in enumerate(self._input_image_contexts):
-                _label = _img_labels[_iidx] if _iidx < len(_img_labels) else str(_iidx)
+                _label = _img_label_for(_iidx)
                 _img_meta_blob = _ictx.get("context", {})  # parsed image_metadata.json
                 _img_meta = _img_meta_blob.get("meta", {})
                 _img_caption = _img_meta_blob.get("caption") or {}
@@ -15353,7 +15578,7 @@ class VideoGenerationPipeline:
                 )
                 _ocr_lines = [
                     f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
-                    for b in _img_ocr_blocks[:15]
+                    for b in _img_ocr_blocks[:_ocr_per_image]
                 ]
                 _tags_line = ", ".join(_img_caption.get("tags", [])[:10])
                 _ui_elements = _img_caption.get("ui_elements") or []
@@ -20728,7 +20953,7 @@ class VideoGenerationPipeline:
                             "shot_index": shot_idx,
                             "total_shots": total_shots,
                             "shot_type": shot_type,
-                            "error": str(e)[:200],
+                            "error": str(e)[:_SHOT_ERROR_KEEP],
                             "retrying": False,
                             "attempt": max_attempts,
                             "max_attempts": max_attempts,
@@ -20862,7 +21087,7 @@ class VideoGenerationPipeline:
                         "shot_index": shot_idx,
                         "total_shots": total_shots,
                         "shot_type": shot_type,
-                        "error": str(e)[:200],
+                        "error": str(e)[:_SHOT_ERROR_KEEP],
                         "retrying": True,
                         "attempt": attempt + 1,
                         "max_attempts": max_attempts,
@@ -23469,6 +23694,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               white-space: nowrap;
               word-break: normal;
               overflow-wrap: normal;
+            }}
+            /* Headings must never split mid-word. `word-break: break-word` above is
+               a safety valve for prose in a narrow column, but applied to display
+               type it produces "CONFIRM SUBMISSI / ON". A heading that does not
+               fit should be SHRUNK — the fit sweep in dispatcher_install_js
+               already does that — not hacked in half. keep-all breaks at spaces
+               only; the sweep handles the genuinely-too-wide single word. */
+            h1, h2, h3, h4, h5, h6,
+            [class*="title" i],
+            [class*="headline" i],
+            [class*="heading" i],
+            [class*="display" i] {{
+              word-break: keep-all;
+              overflow-wrap: normal;
+              hyphens: none;
             }}
             /* Word-level wrappers: prevent internal breaks, allow breaks between words */
             [class*="-word"],
@@ -29258,6 +29498,53 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if shot_clips:
                 meta_dict["shots"] = shot_clips
                 print(f"   🎬 Added {len(shot_clips)} shot clips to timeline.meta.shots (v3 editor unit)")
+
+        # Last gate before the timeline is written: motion the frame-stepped
+        # renderer cannot seek is silently dropped from the video — the frame
+        # looks right in a browser and renders frozen, with no error anywhere.
+        # The load-handler case is repairable in place (re-dispatch the events so
+        # the handler runs at inject time); the rest can only be reported, since
+        # a CSS keyframe animation has no mechanical rewrite into GSAP.
+        try:
+            from seekable_motion import (
+                apply_ready_kick,
+                dash_bomb_targets,
+                defuse_dash_bombs,
+                unseekable_techniques,
+            )
+            _repaired = 0
+            _defused = {}
+            _still_broken = {}
+            for _e in timeline_entries:
+                _h = _e.get("html") or ""
+                if not _h:
+                    continue
+                _fixed = apply_ready_kick(_h)
+                if _fixed is not _h and _fixed != _h:
+                    _e["html"] = _fixed
+                    _repaired += 1
+                # A dash array animated toward zero hangs the rasteriser and times
+                # out the screenshot, which fails the whole render job rather than
+                # just this shot. Whether it bites depends on where the frame
+                # stepper samples, so it must be removed, not merely reported.
+                _bombs = dash_bomb_targets(_e["html"])
+                if _bombs:
+                    _e["html"] = defuse_dash_bombs(_e["html"])
+                    _defused[_e.get("id") or "?"] = _bombs
+                _bad = unseekable_techniques(_e["html"])
+                if _bad:
+                    _still_broken[_e.get("id") or "?"] = _bad
+            if _repaired:
+                print(f"   🔧 Motion repair: {_repaired} shot(s) had tweens in a load "
+                      f"handler that would never have fired — re-dispatch injected.")
+            if _defused:
+                print(f"   🔧 Dash-array bombs defused in {len(_defused)} shot(s) "
+                      f"(would have hung the renderer): {_defused}")
+            if _still_broken:
+                print(f"   ⚠️ Unseekable motion will be DROPPED from the render in "
+                      f"{len(_still_broken)} shot(s): {_still_broken}")
+        except Exception as _sm_err:
+            print(f"   ⚠️ Seekable-motion check skipped: {_sm_err}")
 
         timeline_output = {
             "meta": meta_dict,

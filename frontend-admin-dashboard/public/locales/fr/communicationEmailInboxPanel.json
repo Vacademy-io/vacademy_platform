@@ -1,0 +1,13 @@
+{
+    "title": "Boîte de réception e-mail",
+    "subtitle": "Conversations regroupées par e-mail d'audience, limitées à vos expéditeurs configurés",
+    "refresh": "Actualiser",
+    "inboxFor": "Boîte de réception pour",
+    "noSendersConfigured": "Aucun expéditeur configuré",
+    "allSenders": "Tous les expéditeurs ({{count}})",
+    "direction": {
+        "all": "Tout",
+        "sent": "Envoyés",
+        "received": "Reçus"
+    }
+}

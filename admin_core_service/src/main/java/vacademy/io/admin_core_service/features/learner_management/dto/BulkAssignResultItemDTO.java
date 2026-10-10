@@ -59,4 +59,9 @@ public class BulkAssignResultItemDTO {
      * Only populated when paymentOptionType=CPO.
      */
     private String cpoInitialPaymentMode;
+
+    /** Plan price before / discount / after an admin discount, when one was applied. */
+    private Double grossAmount;
+    private Double discountAmount;
+    private Double netAmount;
 }

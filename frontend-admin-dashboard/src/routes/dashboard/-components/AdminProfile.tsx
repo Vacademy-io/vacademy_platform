@@ -4,14 +4,13 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { FormControl, FormField, FormItem } from '@/components/ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormProvider, useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { adminProfileSchema } from '../-utils/admin-profile-schema';
+import { buildAdminProfileSchema, type AdminProfileFormValues } from '../-utils/admin-profile-schema';
 import { OnboardingFrame } from '@/svgs';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { useEffect, useRef, useState } from 'react';
 import { getInstituteId } from '@/constants/helper';
 import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
-import { Upload, Trash2, Pencil } from 'lucide-react';
+import { UploadSimple, Trash, Pencil } from '@phosphor-icons/react';
 import { MyInput } from '@/components/design-system/input';
 import PhoneInputField from '@/components/design-system/phone-input-field';
 import { Separator } from '@/components/ui/separator';
@@ -23,9 +22,11 @@ import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleUpdateAdminDetails } from '../-services/dashboard-services';
 import { Menu, Transition } from '@headlessui/react';
+import { useTranslation } from 'react-i18next';
 
 // Define form values type
 const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
+    const { t } = useTranslation(['dashboardAdminProfile', 'dashboardAdminProfileSchema']);
     const instituteId = getInstituteId();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
@@ -34,7 +35,9 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
     const oldRoles = useRef<string[]>([]);
     const [removeImage, setRemoveImage] = useState(false);
 
-    const form = useForm<z.infer<typeof adminProfileSchema>>({
+    const adminProfileSchema = buildAdminProfileSchema(t);
+
+    const form = useForm<AdminProfileFormValues>({
         resolver: zodResolver(adminProfileSchema),
         defaultValues: {
             profilePictureUrl: '',
@@ -59,7 +62,7 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
             return handleUpdateAdminDetails(data, adminDetails.roles, oldRoles.current, newRoles);
         },
         onSuccess: () => {
-            toast.success('Your details have been updated successfully!', {
+            toast.success(t('toast.updateSuccess'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -131,25 +134,25 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                     layoutVariant="default"
                     className="text-sm"
                 >
-                    Edit Profile
+                    {t('trigger.editProfile')}
                 </MyButton>
             </DialogTrigger>
 
             <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                    Edit Profile
+                    {t('dialog.title')}
                 </h1>
 
                 <div className="flex h-full flex-1 flex-col">
                     <FormProvider {...form}>
-                        <form onSubmit={handleSubmit(onSubmit)} className="flex h-[86%] flex-col">
+                        <form onSubmit={handleSubmit(onSubmit)} className="flex h-5/6 flex-col">
                             <div className="flex-1 overflow-y-auto p-4">
                                 <div className="flex flex-col items-center justify-center gap-8">
                                     <div className="relative">
                                         {form.watch('profilePictureUrl') ? (
                                             <img
                                                 src={form.watch('profilePictureUrl')}
-                                                alt="logo"
+                                                alt={t('logoAlt')}
                                                 className="size-52 rounded-full object-cover"
                                             />
                                         ) : (
@@ -182,8 +185,8 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                                                 : ''
                                                                         } group flex w-full items-center gap-2 rounded-md p-2 text-sm`}
                                                                     >
-                                                                        <Upload className="size-4" />{' '}
-                                                                        Upload New
+                                                                        <UploadSimple className="size-4" />{' '}
+                                                                        {t('menu.uploadNew')}
                                                                     </button>
                                                                 )}
                                                             </Menu.Item>
@@ -208,8 +211,8 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                                                 : ''
                                                                         } group flex w-full items-center gap-2 rounded-md p-2 text-sm text-red-600`}
                                                                     >
-                                                                        <Trash2 className="size-4" />{' '}
-                                                                        Remove Image
+                                                                        <Trash className="size-4" />{' '}
+                                                                        {t('menu.removeImage')}
                                                                     </button>
                                                                 )}
                                                             </Menu.Item>
@@ -238,7 +241,9 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                         <MyInput
                                                             {...field}
                                                             inputType="text"
-                                                            inputPlaceholder="Full Name (First and Last)"
+                                                            inputPlaceholder={t(
+                                                                'fields.name.placeholder'
+                                                            )}
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                             required
@@ -246,7 +251,7 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                                 form.formState.errors.name?.message
                                                             }
                                                             size="large"
-                                                            label="Profile Name"
+                                                            label={t('fields.name.label')}
                                                             className="w-full"
                                                         />
                                                     </FormControl>
@@ -259,7 +264,9 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                             (that would allow granting themselves ADMIN). Role
                                             management is done by an administrator elsewhere. */}
                                         <div className="flex w-full flex-col gap-2">
-                                            <label className="text-base font-normal">Role Type</label>
+                                            <label className="text-base font-normal">
+                                                {t('roles.label')}
+                                            </label>
                                             <div className="flex flex-wrap gap-2">
                                                 {adminDetails.roles?.length ? (
                                                     adminDetails.roles.map((role, idx) => (
@@ -272,19 +279,18 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                     ))
                                                 ) : (
                                                     <span className="text-sm text-neutral-400">
-                                                        No roles assigned
+                                                        {t('roles.empty')}
                                                     </span>
                                                 )}
                                             </div>
                                             <p className="text-caption text-neutral-400">
-                                                Roles are managed by your institute administrator and
-                                                can&apos;t be changed here.
+                                                {t('roles.managedNote')}
                                             </p>
                                         </div>
 
                                         <Separator />
                                         <h1 className="text-lg font-semibold">
-                                            Contact Information
+                                            {t('sections.contactInformation')}
                                         </h1>
 
                                         <FormField
@@ -296,14 +302,16 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                         <MyInput
                                                             {...field}
                                                             inputType="text"
-                                                            inputPlaceholder="you@email.com"
+                                                            inputPlaceholder={t(
+                                                                'fields.email.placeholder'
+                                                            )}
                                                             input={field.value}
                                                             onChangeFunction={field.onChange}
                                                             error={
                                                                 form.formState.errors.email?.message
                                                             }
                                                             size="large"
-                                                            label="Email"
+                                                            label={t('fields.email.label')}
                                                             className="w-full"
                                                         />
                                                     </FormControl>
@@ -318,8 +326,10 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                 <FormItem>
                                                     <FormControl>
                                                         <PhoneInputField
-                                                            label="Mobile Number"
-                                                            placeholder="123 456 7890"
+                                                            label={t('fields.phone.label')}
+                                                            placeholder={t(
+                                                                'fields.phone.placeholder'
+                                                            )}
                                                             name="phone"
                                                             control={form.control}
                                                             labelStyle="text-base font-normal"
@@ -341,7 +351,7 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                     layoutVariant="default"
                                     disable={Object.keys(form.formState.errors).length > 0}
                                 >
-                                    Save Changes
+                                    {t('actions.saveChanges')}
                                 </MyButton>
                             </div>
                         </form>

@@ -1,7 +1,7 @@
 import type { PaymentLogEntry } from '@/types/payment-logs';
 import { isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from './exportPaymentLogsCsv';
-import { classifyEntry, isCancelledEntry } from './paymentSummary';
+import { classifyEntry, isCancelledEntry, isDueEligibleEntry } from './paymentSummary';
 
 /**
  * Dashboard analytics derived entirely client-side from the payment-logs set the Manage Payments
@@ -15,10 +15,13 @@ import { classifyEntry, isCancelledEntry } from './paymentSummary';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Bucketing is shared with the KPI cards so the two can never disagree about what's still due. */
-const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'PENDING' => {
+/** Bucketing is shared with the KPI cards so the two can never disagree about what's in flight. */
+const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'ABANDONED' | 'PENDING' => {
     const bucket = classifyEntry(entry);
-    return bucket === 'paid' ? 'PAID' : bucket === 'failed' ? 'FAILED' : 'PENDING';
+    if (bucket === 'paid') return 'PAID';
+    if (bucket === 'failed') return 'FAILED';
+    if (bucket === 'abandoned') return 'ABANDONED';
+    return 'PENDING';
 };
 
 /** created_at is the real instant; `date` (UTC-midnight DATE) is the pre-created_at fallback. */
@@ -126,6 +129,11 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
     const collected = { amount: 0, count: 0 };
     const outstanding = { amount: 0, count: 0 };
     const failed = { amount: 0, count: 0 };
+    // Unsettled records that will never settle: on a dead enrolment, or a checkout whose gateway
+    // order expired unfinished (ABANDONED). Kept out of `outstanding` (nobody owes this) and out
+    // of the ageing — a cart abandoned a month ago is not "30+ days overdue" — but held here so
+    // the funnel's "Invoiced" stage still totals every record it says it counts.
+    const notDue = { amount: 0, count: 0 };
 
     const methodMix: Record<string, AmountSlice> = {};
     const gatewayBreakdown: Record<string, AmountSlice> = {};
@@ -153,7 +161,8 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
             slice.count += 1;
         };
 
-        if (status !== 'PENDING') {
+        // Abandoned never reached the gateway either — the order was created, nobody paid.
+        if (status !== 'PENDING' && status !== 'ABANDONED') {
             attemptedAmount += amount;
             attemptedCount += 1;
         }
@@ -167,6 +176,12 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
         } else if (status === 'FAILED') {
             failed.amount += amount;
             failed.count += 1;
+        } else if (status === 'ABANDONED' || !isDueEligibleEntry(entry)) {
+            // Unsettled, but never going to be collected — an expired checkout, or a record
+            // hanging off a cancelled/terminated/expired enrolment. Neither outstanding nor worth
+            // ageing. Still a payment record, so it stays in the funnel.
+            notDue.amount += amount;
+            notDue.count += 1;
         } else {
             outstanding.amount += amount;
             outstanding.count += 1;
@@ -188,7 +203,9 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
     const funnel: FunnelStage[] = [
         {
             label: 'Invoiced',
-            amount: collected.amount + outstanding.amount + failed.amount,
+            // Every record, dead enrolments included — `count` is entries.length, so the amount has
+            // to span the same set or the stage contradicts itself.
+            amount: collected.amount + outstanding.amount + notDue.amount + failed.amount,
             count: entries.length,
             hint: 'All payment records in view',
         },

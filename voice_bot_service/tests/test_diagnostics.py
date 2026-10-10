@@ -1,9 +1,10 @@
 """Tests for the per-call technical diagnostics (app/diagnostics.py).
 
-Pure module, no pipecat — driven directly like the callstate harness. Each
-verdict test encodes one of the founder-flagged 2026-07 calls, so the panel can
+Verdicts are driven directly like the callstate harness; metrics routing also
+exercises the Pipecat observer. Each verdict test encodes a flagged call, so the panel can
 never silently stop naming the fault that call actually had.
 """
+import pytest
 import app.diagnostics as dg
 
 
@@ -109,6 +110,33 @@ def test_human_call_is_not_flagged_as_machine():
                            barge_ins=2)
     assert dg.machine_score(d) < 0.5
     assert dg.LIKELY_MACHINE not in dg.verdict(d)["faults"]
+
+
+def test_screener_then_a_person_is_not_a_machine():
+    """Calls b5b43ae1 / 34452119 (2026-10-02): Google's call screen spoke
+    first, then a parent talked through a 2-minute call — and both were AMBER
+    "Probably an answering machine" on the screener's marker alone."""
+    d = dg.CallDiagnostics(user_turns=18, bot_turns=12, longest_user_secs=3.1,
+                           barge_ins=2, tts_chars=1800,
+                           machine_markers=["record your name", "reason for calling"],
+                           person_turns=8)
+    assert dg.machine_score(d) < 0.5
+    v = dg.verdict(d)
+    assert dg.LIKELY_MACHINE not in v["faults"] and v["health"] == dg.GREEN, v
+    p = dg.to_payload(d)
+    # the screener is still on record as evidence, with what outweighed it
+    assert p["machine"]["markers"] == ["record your name", "reason for calling"]
+    assert p["machine"]["personTurns"] == 8
+
+
+def test_marker_still_counts_when_nobody_answered_past_it():
+    """A screen with nobody behind it still relays a line or two (787aa111
+    scored 2), and an unmeasured count must not read as a person."""
+    for person in (None, 0, 2):
+        d = dg.CallDiagnostics(user_turns=8, bot_turns=3, tts_chars=300,
+                               machine_markers=["record your name"], person_turns=person)
+        assert dg.verdict(d)["faults"].get(dg.LIKELY_MACHINE) == dg.AMBER, person
+    assert dg.to_payload(dg.CallDiagnostics())["machine"]["personTurns"] is None
 
 
 # ── latency needs a sample floor before it accuses anyone ───────────────────
@@ -227,20 +255,28 @@ def test_reconciled_count_drives_the_fault():
 # STT latency into the TTS reservoir. The panel's first live call reported
 # SLOW_TTS while the real TTS times were all ~0.2s.
 
-def test_ttfb_routing_discriminates_stt_from_tts():
-    import inspect
-    import app.bot as b
-    src = inspect.getsource(b.TtfbObserver)
-    body = src[src.index("proc = (d.processor"):]
-    body = body[:body.index("except Exception")] if "except Exception" in body else body
-    assert body.index('"stt" in proc') < body.index('"tts" in proc'), (
-        "stt must be tested BEFORE tts: the STT class name contains 'tts'"
-    )
-    # And prove the discrimination on the real class names.
-    stt = "ResilientSarvamSTTService#0".lower()
-    tts = "ResilientSarvamTTSService#0".lower()
-    assert "tts" in stt and "stt" in stt      # the trap
-    assert "stt" not in tts                   # …which ordering resolves cleanly
+@pytest.mark.asyncio
+@pytest.mark.parametrize("processor,bucket", [
+    ("ResilientSarvamSTTService#0", "stt_ttfb"),
+    ("SarvamSTTService#1", "stt_ttfb"),
+    ("SmallestSTTService#0", "stt_ttfb"),
+    ("SmallestTTSService#1", "tts_ttfb"),
+    ("ResilientSarvamTTSService#0", "tts_ttfb"),
+    ("GoogleTTSService#1", "tts_ttfb"),
+    ("OpenAILLMService#2", "llm_ttfb"),
+])
+async def test_ttfb_routing_discriminates_stt_from_tts(processor, bucket):
+    from types import SimpleNamespace
+    from app.bot import TtfbObserver
+    from pipecat.frames.frames import MetricsFrame
+    from pipecat.metrics.metrics import TTFBMetricsData
+    diag = dg.CallDiagnostics()
+    observer = TtfbObserver("test", diag).observer
+    data = SimpleNamespace(frame=MetricsFrame(data=[TTFBMetricsData(processor=processor, value=0.25)]))
+    await observer.on_push_frame(data)
+    await observer.on_push_frame(data)  # another pipeline hop must not duplicate it
+    for name in ("stt_ttfb", "tts_ttfb", "llm_ttfb"):
+        assert getattr(diag, name) == ([0.25] if name == bucket else [])
 
 
 # ── a dial nobody answered is NOT a broken call ─────────────────────────────
@@ -350,6 +386,30 @@ def test_reconcile_short_keys_never_containment_match():
     # the transcript and hide REAL deletions of short acks.
     n, _ = dg.reconcile_answers(["हाँ।"], ["हाय। इफ यू रिकॉर्ड योर नेम।"])
     assert n == 1
+
+
+def test_reconcile_short_answers_inside_a_joined_message_are_delivered():
+    """Live ee6f561c (2026-09-11): four saaras finals joined by the aggregator
+    into one message the model demonstrably answered ("fifth class") — and
+    'ठीक।' was reported DELETED because its 2-char key is below the substring
+    floor. Whole-word matching places it. Over 7 days 'Yes.' x8 / 'हाँ।' x3 /
+    'Yeah.' x3 were the top "deleted answers" for the same reason."""
+    heard = ["But.", "बच्चा भी।", "ठीक।", "fifth class में पढ़ रहा है।"]
+    delivered = ["But. बच्चा भी। ठीक। fifth class में पढ़ रहा है।"]
+    lost = dg.split_lost(heard, delivered)
+    assert (lost.answers, lost.fragments) == (0, 0), lost
+    assert dg.reconcile_answers(["Yes, speak.", "Yes."], ["Yes, speak. Yes."])[0] == 0
+    assert dg.reconcile_answers(["हाँ।", "जी।", "दीदी से।"], ["हाँ। जी। दीदी से।"])[0] == 0
+
+
+def test_reconcile_short_answers_are_whole_words_and_consumed_once():
+    # A word is spoken for once: a second 'Yes.' still needs its own copy...
+    n, samples = dg.reconcile_answers(["Yes.", "Yes."], ["Okay. Yes."])
+    assert (n, samples) == (1, ["Yes."])
+    # ...and a genuinely undelivered 'Yes.' is still a loss.
+    assert dg.reconcile_answers(["Yes."], ["I will call you back tomorrow."])[0] == 1
+    # Whole words only: 'yes' is not inside 'yesterday'.
+    assert dg.reconcile_answers(["Yes."], ["I said yesterday."])[0] == 1
 
 
 def test_reconcile_exact_matched_message_not_reused_as_span():

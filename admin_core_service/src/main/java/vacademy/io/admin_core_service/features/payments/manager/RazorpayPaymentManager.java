@@ -280,6 +280,10 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             orderRequest.put("currency", request.getCurrency().toUpperCase());
             orderRequest.put("receipt", request.getOrderId());
             orderRequest.put("payment_capture", 1);
+            // NOTE: do NOT send token_id on this order. The public docs list it as
+            // mandatory for subsequent recurring payments, but this account rejects it
+            // outright: "BAD_REQUEST_ERROR: token_id is/are not required and should not
+            // be sent" -- and it fails at orders.create, so the charge never even starts.
             JSONObject notes = new JSONObject();
             notes.put("orderId", request.getOrderId());
             notes.put("instituteId", request.getInstituteId());
@@ -289,8 +293,13 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
             JSONObject rec = new JSONObject();
             rec.put("email", request.getEmail());
-            if (StringUtils.hasText(request.getVendorId())) {
-                rec.put("contact", request.getVendorId());
+            // The payer's phone number -- NOT vendorId, which is the invite's gateway
+            // id ("RAZORPAY") and is rejected as an invalid contact.
+            String contact = request.getRazorpayRequest() != null
+                    ? request.getRazorpayRequest().getContact()
+                    : null;
+            if (StringUtils.hasText(contact)) {
+                rec.put("contact", contact);
             }
             rec.put("amount", amountInPaise);
             rec.put("currency", request.getCurrency().toUpperCase());

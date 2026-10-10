@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.dto.UserAudienceMembershipDTO;
 import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
@@ -67,6 +68,7 @@ public class UserLeadProfileService {
     private final AuthService authService;
     private final LeadSlaConfigService leadSlaConfigService;
     private final LeadStatusMirrorService leadStatusMirrorService;
+    private final LeadTierService leadTierService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -280,8 +282,11 @@ public class UserLeadProfileService {
                         .build());
 
         String oldTier = profile.getLeadTier();
-        String requested = tier.toUpperCase();
-        String scoreDerived = profile.computeTier();
+        String requested = tier.trim().toUpperCase();
+        if (!leadTierService.isKnownTier(instituteId, requested)) {
+            throw new VacademyException("Unknown lead tier: " + requested);
+        }
+        String scoreDerived = leadTierService.deriveTier(instituteId, profile.getBestScore());
 
         // If the admin is requesting the tier the score would derive anyway, clear
         // lead_tier instead of storing it. The frontend falls back to score-derived
@@ -399,21 +404,24 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Add {@code tat} (human-readable e.g. "24 hours") and {@code tatHours} (raw int) to ctx
-     * so templates can render copy like "Please reach out before {{tat}}". Falls back to a
-     * generic "the earliest" string when TAT isn't configured for the institute — that way
-     * the template still reads sensibly instead of leaving a literal `tat` placeholder.
+     * Add {@code tat} (human-readable e.g. "1 hour 30 minutes"), {@code tatMinutes} (exact)
+     * and {@code tatHours} (whole hours, rounded up) to ctx so templates can render copy like
+     * "Please reach out before {{tat}}". Falls back to a generic "the earliest" string when TAT
+     * isn't configured for the institute — that way the template still reads sensibly instead
+     * of leaving a literal `tat` placeholder.
      */
     private void enrichTatInfo(Map<String, Object> ctx, String instituteId) {
         String tat = "the earliest";
         Integer tatHours = null;
+        Integer tatMinutes = null;
         if (instituteId != null && !instituteId.isBlank()) {
             try {
                 LeadSlaConfigDTO config = leadSlaConfigService.getSchedulerConfig(instituteId);
                 if (config != null && config.getTatReminder() != null
-                        && config.getTatReminder().getTatHours() != null) {
+                        && config.getTatReminder().getTatMinutes() != null) {
+                    tatMinutes = config.getTatReminder().getTatMinutes();
                     tatHours = config.getTatReminder().getTatHours();
-                    tat = tatHours == 1 ? "1 hour" : tatHours + " hours";
+                    tat = LeadSlaConfigService.formatDuration(tatMinutes);
                 }
             } catch (Exception e) {
                 log.debug("[LeadTrigger] TAT lookup failed for institute {}: {}",
@@ -422,6 +430,7 @@ public class UserLeadProfileService {
         }
         leadTriggerContextBuilder.put(ctx, "tat", tat);
         if (tatHours != null) leadTriggerContextBuilder.put(ctx, "tatHours", tatHours);
+        if (tatMinutes != null) leadTriggerContextBuilder.put(ctx, "tatMinutes", tatMinutes);
     }
 
     /**
@@ -535,11 +544,13 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Get all audience/campaign memberships for a user.
-     * Returns one entry per audience response the user has submitted.
+     * Get a user's audience/campaign memberships within one institute.
+     * Returns one entry per audience response the user has submitted there — never
+     * another institute's campaigns, even when the same person is a lead in both.
      */
-    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId) {
-        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId, String instituteId) {
+        List<AudienceResponse> responses =
+                audienceResponseRepository.findAllByInstituteAndUserOrStudent(instituteId, userId);
         if (responses.isEmpty()) return Collections.emptyList();
 
         // Batch fetch audience details
@@ -735,6 +746,19 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        // Resolve the display name when the caller only knows the id. The column is a
+        // denormalised copy and the lead list renders the NAME, so an id written with a
+        // null name shows the lead as unassigned however correct the id is -- and on a
+        // REassignment it also wipes the name the previous assignment had stored, which
+        // is how an owned lead ends up looking ownerless. The AI-call outcome processor
+        // is the caller that has only the id (the pool rotation returns a user id), so
+        // it relied on this. A genuine un-assignment still clears both, because the
+        // backfill only runs when an id is actually being set.
+        if (counselorId != null && !counselorId.isBlank()
+                && (counselorName == null || counselorName.isBlank())) {
+            counselorName = resolveCounselorName(counselorId);
+        }
+
         profile.setAssignedCounselorId(counselorId);
         profile.setAssignedCounselorName(counselorName);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
@@ -751,6 +775,26 @@ public class UserLeadProfileService {
             safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
         }
         return saved;
+    }
+
+    /**
+     * Display name for a counsellor user id, or null when it cannot be resolved.
+     *
+     * <p>Never throws: a name is cosmetic next to the assignment itself, so a flaky
+     * auth-service lookup must not fail the assignment or roll back the transaction
+     * it runs in. Returning null simply leaves the column as it would have been.
+     */
+    private String resolveCounselorName(String counselorId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorId));
+            if (users != null && !users.isEmpty() && users.get(0) != null) {
+                String name = users.get(0).getFullName();
+                if (name != null && !name.isBlank()) return name;
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve counsellor name for {}: {}", counselorId, e.getMessage());
+        }
+        return null;
     }
 
     private UserLeadProfileDTO toDTO(UserLeadProfile p) {

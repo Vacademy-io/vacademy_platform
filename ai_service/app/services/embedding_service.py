@@ -1,17 +1,28 @@
 """
 Service for generating text embeddings.
 
-Uses google/gemini-embedding-001 through OpenRouter (pay-per-token, no
-free-tier daily quota) so all vectors live in one embedding space,
-compatible with the existing content_embeddings rows. The direct-Gemini
-fallback was retired — embeddings run exclusively through OpenRouter.
+Two providers, chosen PER MODEL — every knowledge base pins the model it was
+indexed with (kb_embedding_model registry, V435), and a query against it must
+use the same one:
+
+  * google/gemini-embedding-001 through OpenRouter (pay-per-token). The
+    default; also what the legacy content_embeddings rows were written with.
+    The direct-Gemini fallback was retired — this one runs exclusively
+    through OpenRouter.
+  * BAAI/bge-base-en-v1.5 IN-PROCESS (fastembed, ONNX on CPU). No account, no
+    per-token cost, ~600 MB of RAM once loaded. Registered by V520 for the
+    curriculum libraries: 35k chunks of NCERT would cost dollars to embed and
+    every client's search would then depend on a metered key. Same 768 width,
+    so it shares the embedding_768 column — one KB, one model, always.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import threading
 from collections import OrderedDict
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
@@ -36,9 +47,41 @@ TASK_TYPES = {
     "query": "search_query",
 }
 
+# Models served in-process by fastembed (ONNX, CPU). Value = vector width.
+LOCAL_MODELS: Dict[str, int] = {"BAAI/bge-base-en-v1.5": 768}
+LOCAL_BATCH = 32
+# Where the ONNX weights live. The Dockerfile bakes them in at this path so a
+# pod never downloads from Hugging Face at request time.
+LOCAL_CACHE_DIR = os.getenv("FASTEMBED_CACHE_PATH") or os.path.join(
+    os.path.expanduser("~"), ".cache", "fastembed"
+)
+
 # Module-level so the cache survives per-request EmbeddingService instances.
 QUERY_CACHE_SIZE = 256
-_query_cache: "OrderedDict[Tuple[str, str], List[float]]" = OrderedDict()
+_query_cache: "OrderedDict[Tuple[str, str, str], List[float]]" = OrderedDict()
+
+# One loaded local model per process; loading takes seconds and ~600 MB.
+_local_models: Dict[str, Any] = {}
+_local_lock = threading.Lock()
+
+
+def _local_model(model_id: str):
+    with _local_lock:
+        model = _local_models.get(model_id)
+        if model is None:
+            from fastembed import TextEmbedding  # heavy import; only when used
+
+            logger.info("Loading local embedding model %s from %s", model_id, LOCAL_CACHE_DIR)
+            model = TextEmbedding(model_id, cache_dir=LOCAL_CACHE_DIR)
+            _local_models[model_id] = model
+        return model
+
+
+def _embed_local_sync(model_id: str, texts: List[str], task: str) -> List[List[float]]:
+    model = _local_model(model_id)
+    # bge prefixes queries with its retrieval instruction; passages are raw.
+    it = model.query_embed(texts) if task == "query" else model.embed(texts, batch_size=LOCAL_BATCH)
+    return [[float(x) for x in vec] for vec in it]
 
 
 class EmbeddingService:
@@ -116,9 +159,25 @@ class EmbeddingService:
         return embeddings
 
     async def _embed_with_providers(
-        self, texts: List[str], task: str, institute_id: str
+        self, texts: List[str], task: str, institute_id: str, model: Optional[str] = None
     ) -> List[Optional[List[float]]]:
-        """Embed up to BATCH_LIMIT texts via OpenRouter."""
+        """Embed up to BATCH_LIMIT texts with the provider that serves `model`
+        (default: the OpenRouter Gemini embedder)."""
+        model = model or OPENROUTER_EMBED_MODEL
+
+        if model in LOCAL_MODELS:
+            try:
+                # CPU-bound ONNX inference: off the event loop, so a 100-chunk
+                # batch does not stall every other request the worker serves.
+                return await asyncio.to_thread(_embed_local_sync, model, texts, task)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Local embedding ({model}) failed, batch dropped: {e}")
+                return [None] * len(texts)
+
+        if model != OPENROUTER_EMBED_MODEL:
+            logger.error("Unknown embedding model %s — no provider serves it", model)
+            return [None] * len(texts)
+
         openrouter_key, _gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
         openrouter_input_type = TASK_TYPES[task]
 
@@ -129,33 +188,41 @@ class EmbeddingService:
         try:
             return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key)
         except Exception as e:
-            # No cross-provider fallback anymore — a failure means these
-            # chunks go un-embedded (logged so it's diagnosable, not silent).
+            # No cross-provider fallback — a failure means these chunks go
+            # un-embedded (logged so it's diagnosable, not silent). Falling
+            # over to a different model would write vectors from another
+            # space into the same knowledge base.
             logger.error(f"OpenRouter embedding failed, batch dropped: {e}")
             return [None] * len(texts)
 
-    async def embed_text(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
+    async def embed_text(
+        self, text: str, institute_id: str = "default", model: Optional[str] = None
+    ) -> Optional[List[float]]:
         """Generate embedding for a single document text."""
-        results = await self._embed_with_providers([text], "document", institute_id)
+        results = await self._embed_with_providers([text], "document", institute_id, model)
         return results[0]
 
-    async def embed_batch(self, texts: List[str], institute_id: str = "default") -> List[Optional[List[float]]]:
-        """Generate embeddings for multiple texts in batched API calls."""
+    async def embed_batch(
+        self, texts: List[str], institute_id: str = "default", model: Optional[str] = None
+    ) -> List[Optional[List[float]]]:
+        """Generate embeddings for multiple texts in batched calls."""
         results: List[Optional[List[float]]] = []
         for start in range(0, len(texts), BATCH_LIMIT):
             batch = texts[start:start + BATCH_LIMIT]
-            results.extend(await self._embed_with_providers(batch, "document", institute_id))
+            results.extend(await self._embed_with_providers(batch, "document", institute_id, model))
         return results
 
-    async def embed_query(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
+    async def embed_query(
+        self, text: str, institute_id: str = "default", model: Optional[str] = None
+    ) -> Optional[List[float]]:
         """Generate embedding for a search query (uses retrieval-query task type)."""
-        cache_key = (institute_id, text)
+        cache_key = (institute_id, model or OPENROUTER_EMBED_MODEL, text)
         cached = _query_cache.get(cache_key)
         if cached is not None:
             _query_cache.move_to_end(cache_key)
             return cached
 
-        results = await self._embed_with_providers([text], "query", institute_id)
+        results = await self._embed_with_providers([text], "query", institute_id, model)
         embedding = results[0]
         if embedding is None:
             return None

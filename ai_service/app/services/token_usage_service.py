@@ -146,9 +146,13 @@ class TokenUsageService:
         user_role: Optional[str] = None,
         subject_user_id: Optional[str] = None,
         allow_negative: bool = False,
+        description: Optional[str] = None,
     ) -> AiTokenUsage:
         """
         Record token usage AND deduct credits from institute balance.
+
+        description: optional credit_transactions.description (defaults to
+            "{request_type} using {model}"); tool charges add the price source.
 
         precomputed_credits: when set, the exact amount to deduct (bypasses
             token-based calculation). Used by the academy-credits parametric
@@ -213,6 +217,7 @@ class TokenUsageService:
                     user_role=user_role,
                     subject_user_id=subject_user_id,
                     allow_negative=allow_negative,
+                    description=description,
                 )
                 logger.info(f"[TokenUsageService] CreditDeductRequest created: {deduct_request}")
                 

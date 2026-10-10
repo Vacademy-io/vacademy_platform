@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Where;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
@@ -57,6 +58,17 @@ public class PaymentOption {
     private String unit;
 
     /**
+     * Master switch for plan change: members already enrolled under another option of the
+     * same package session may switch INTO this option. A plan is only offered as a switch
+     * target when BOTH this and {@code PaymentPlan.planChangeAllowed} are true.
+     *
+     * Boxed rather than primitive so a partial DTO that omits the field can be told apart
+     * from an explicit false and left alone on edit.
+     */
+    @Column(name = "plan_change_allowed")
+    private Boolean planChangeAllowed = false;
+
+    /**
      * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
      * relation — two Hibernate mappings on the same column cause the scalar to come back
      * null on some read paths (notably the enroll-invite payload). All callers use
@@ -64,6 +76,17 @@ public class PaymentOption {
      */
     @Column(name = "complex_payment_option_id")
     private String complexPaymentOptionId;
+
+    /**
+     * auth_service user id of the admin who created this option. Stamped by the
+     * service on insert from the request's JWT, never from the client DTO.
+     *
+     * updatable = false on purpose: the Settings page edits a plan through the same
+     * POST, which rebuilds the entity from the DTO and merges it — with an updatable
+     * column that merge would silently null the creator on every edit.
+     */
+    @Column(name = "created_by_user_id", updatable = false)
+    private String createdByUserId;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
@@ -75,6 +98,12 @@ public class PaymentOption {
     // mappedBy refers to the field in the PaymentPlan entity that owns the relationship (the foreign key)
     @OneToMany(mappedBy = "paymentOption", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Where(clause = "status = 'ACTIVE'")
+    // Every caller that maps a list of options to DTOs reads this collection, so a lazy
+    // load per option is an N+1 the size of the list. get-payment-options measured 31s
+    // against an institute with 6,665 options while the query behind it takes 31ms --
+    // a thousand lazy SELECTs, not a slow query. Hibernate now fetches the plans for up
+    // to 500 options at a time, turning that into about fourteen round trips.
+    @BatchSize(size = 500)
     // Without this the plans come back in physical row order, so editing any one plan
     // silently reshuffles the learner's plan list. Shortest cycle first (Monthly →
     // Quarterly → Half-Yearly → Annual), which is the order learners expect to compare in.
@@ -92,6 +121,7 @@ public class PaymentOption {
         this.type = paymentOptionDTO.getType();
         this.requireApproval = paymentOptionDTO.isRequireApproval();
         this.unit = paymentOptionDTO.getUnit();
+        this.planChangeAllowed = Boolean.TRUE.equals(paymentOptionDTO.getPlanChangeAllowed());
         this.complexPaymentOptionId = paymentOptionDTO.getComplexPaymentOptionId();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
@@ -115,7 +145,11 @@ public class PaymentOption {
                 .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
                 .requireApproval(this.requireApproval)
                 .unit(this.unit)
+                .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
                 .complexPaymentOptionId(this.complexPaymentOptionId)
+                .createdByUserId(this.createdByUserId)
+                .createdAt(this.createdAt)
+                .updatedAt(this.updatedAt)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()
                         .map(PaymentPlan::mapToPaymentPlanDTO)
@@ -136,7 +170,11 @@ public class PaymentOption {
             .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
             .requireApproval(this.requireApproval)
             .unit(this.unit)
+            .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
             .complexPaymentOptionId(this.complexPaymentOptionId)
+            .createdByUserId(this.createdByUserId)
+            .createdAt(this.createdAt)
+            .updatedAt(this.updatedAt)
             .build();
     }
 

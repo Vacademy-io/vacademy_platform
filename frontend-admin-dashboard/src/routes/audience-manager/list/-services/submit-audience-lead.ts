@@ -1,5 +1,6 @@
 import { SUBMIT_AUDIENCE_LEAD_ADMIN_URL, SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { TFunction } from 'i18next';
 
 export interface SubmitLeadUserDto {
     id?: string;
@@ -119,9 +120,14 @@ export const throwWithServerMessage = (error: unknown, fallback: string): never 
  *
  * Use {@link submitAudienceLead} for anything that isn't an authenticated
  * dashboard user (embedded forms, the cURL integration snippet).
+ *
+ * `t` must be bound to the `audienceManagerSubmitAudienceLead` namespace — it only
+ * supplies the fallback wording used when the server response carries no message
+ * of its own (see {@link throwWithServerMessage}).
  */
 export const submitAudienceLeadAsAdmin = async (
-    payload: SubmitLeadRequest
+    payload: SubmitLeadRequest,
+    t: TFunction
 ): Promise<SubmitLeadResponse> => {
     let response;
     try {
@@ -131,7 +137,7 @@ export const submitAudienceLeadAsAdmin = async (
             data: payload,
         });
     } catch (error) {
-        return throwWithServerMessage(error, 'Failed to submit response. Please try again.');
+        return throwWithServerMessage(error, t('errors.submitFailed'));
     }
 
     const body = response.data;

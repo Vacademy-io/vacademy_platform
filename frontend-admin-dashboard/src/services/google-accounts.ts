@@ -61,13 +61,17 @@ export const listGoogleAccounts = async (): Promise<GoogleAccountSummary[]> => {
  * browser there; Google bounces back to the server callback, which stores the encrypted
  * refresh token and lands the admin back on Settings (?google_connected=1 or ?google_error=...).
  */
-export const initiateGoogleOAuth = async (): Promise<{ oauth_url: string; session_key: string }> => {
+export const initiateGoogleOAuth = async (
+    driveAccess = false
+): Promise<{ oauth_url: string; session_key: string }> => {
     const instituteId = getInstituteId();
-    const { data } = await authenticatedAxiosInstance.post<{ oauth_url: string; session_key: string }>(
-        GOOGLE_OAUTH_INITIATE,
-        null,
-        { params: { instituteId } }
-    );
+    // driveAccess also asks for read access to Meet recordings in Drive ("Save to library").
+    const { data } = await authenticatedAxiosInstance.post<{
+        oauth_url: string;
+        session_key: string;
+    }>(GOOGLE_OAUTH_INITIATE, null, {
+        params: driveAccess ? { instituteId, driveAccess } : { instituteId },
+    });
     return data;
 };
 

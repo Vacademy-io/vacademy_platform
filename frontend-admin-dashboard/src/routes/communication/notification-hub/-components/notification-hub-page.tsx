@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChatCircle, EnvelopeSimple, ChartLine } from '@phosphor-icons/react';
 import { OverviewTab } from './overview/overview-tab';
@@ -8,16 +9,15 @@ import { EmailInboxPanel } from './email-inbox/email-inbox-panel';
 type HubTab = 'overview' | 'whatsapp' | 'email';
 
 export function NotificationHubPage() {
+    const { t } = useTranslation('communicationNotificationHubPage');
     const [activeTab, setActiveTab] = useState<HubTab>('overview');
 
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-4 py-3 border-b bg-white shrink-0">
-                <h2 className="text-lg font-semibold text-gray-800">Notification Hub</h2>
-                <p className="text-xs text-gray-400">
-                    Stats, recent learner activity and inbox conversations
-                </p>
+                <h2 className="text-lg font-semibold text-gray-800">{t('title')}</h2>
+                <p className="text-xs text-gray-400">{t('subtitle')}</p>
             </div>
 
             {/* Tabs */}
@@ -29,13 +29,13 @@ export function NotificationHubPage() {
                 <div className="px-4 pt-3 border-b bg-white shrink-0 overflow-x-auto">
                     <TabsList className="w-max">
                         <TabsTrigger value="overview" className="gap-2">
-                            <ChartLine size={16} /> Overview
+                            <ChartLine size={16} /> {t('tabs.overview')}
                         </TabsTrigger>
                         <TabsTrigger value="whatsapp" className="gap-2">
-                            <ChatCircle size={16} /> WhatsApp Inbox
+                            <ChatCircle size={16} /> {t('tabs.whatsapp')}
                         </TabsTrigger>
                         <TabsTrigger value="email" className="gap-2">
-                            <EnvelopeSimple size={16} /> Email Inbox
+                            <EnvelopeSimple size={16} /> {t('tabs.email')}
                         </TabsTrigger>
                     </TabsList>
                 </div>

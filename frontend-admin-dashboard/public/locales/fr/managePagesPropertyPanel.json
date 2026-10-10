@@ -445,6 +445,16 @@
     "cartWhenNotEmpty": "Seulement s'il contient des articles",
     "megaMenuStyle": "Style du méga-menu"
   },
+  "headerExtras": {
+    "heading": "Options de l'en-tête",
+    "currentPage": "Page actuelle",
+    "tintedPill": "Pastille teintée",
+    "underline": "Soulignement",
+    "search": "Recherche",
+    "searchHint": "Une icône de recherche qui trouve les cours, les pages et les filières du méga-menu.",
+    "languageSwitch": "Sélecteur de langue",
+    "languageSwitchHint": "हिन्दी | EN — les autres langues d'abord, la langue principale du site en dernier. Apparaît dès que le site a plus d'une langue (Paramètres globaux) ; sur téléphone, il se trouve dans le menu."
+  },
   "footer": {
     "column2": "Colonne 2",
     "column3": "Colonne 3",

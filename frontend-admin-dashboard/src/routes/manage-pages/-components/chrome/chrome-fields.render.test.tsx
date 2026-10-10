@@ -8,8 +8,12 @@ import brahmVarchasSite from '../brahm-varchas-site.fixture.json';
  * Header "Look", brand footer, band banner and editorial hero fields, on the
  * real Brahm Varchas site: each control writes its own key and every other
  * setting of the section stays as it was. Renders the real panel against the
- * real store.
+ * real store. Sites without a palette (other institutes) see none of the new
+ * design choices.
  */
+
+// Each test renders the whole property panel; give a loaded machine room.
+vi.setConfig({ testTimeout: 15_000 });
 
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -59,6 +63,16 @@ const load = (edit?: (site: Json) => void) => {
     const site = clone(BV) as Json;
     edit?.(site);
     useEditorStore.getState().setConfig(site as never);
+};
+/** Another institute's site: no theme.palette. */
+const noPalette = (site: Json) => {
+    delete site.globalSettings.theme.palette;
+};
+const PLAIN_CTA = {
+    id: 'plain-cta',
+    type: 'ctaBanner',
+    enabled: true,
+    props: { heading: 'Join', button: { enabled: true, text: 'Go', target: '/x' } },
 };
 
 describe('Header "Look" group', () => {
@@ -122,6 +136,33 @@ describe('Header "Look" group', () => {
         expect(JSON.stringify(config())).toBe(before);
     });
 
+    it('a site without a palette and a header without the keys shows no Look group', () => {
+        load((site) => {
+            noPalette(site);
+            site.globalSettings.layout.header.props = { title: 'Site', navigation: [] };
+        });
+        useEditorStore.getState().selectGlobalLayout('header');
+        const before = JSON.stringify(config());
+        render(<PropertyPanel />);
+
+        expect(screen.getByText('headerExtras.heading')).toBeInTheDocument();
+        expect(screen.queryByText('headerLook.heading')).toBeNull();
+        expect(screen.queryByRole('group', { name: 'headerLook.navStyle' })).toBeNull();
+        expect(JSON.stringify(config())).toBe(before);
+    });
+
+    it('a site without a palette still shows the group once the header sets a look key', () => {
+        load((site) => {
+            noPalette(site);
+            site.globalSettings.layout.header.props = { title: 'Site', barSize: 'compact' };
+        });
+        useEditorStore.getState().selectGlobalLayout('header');
+        render(<PropertyPanel />);
+        expect(
+            group('headerLook.barSize').getByRole('button', { name: 'headerLook.barCompact' })
+        ).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('an unknown stored value stays selected as "Custom"', () => {
         load((site) => {
             site.globalSettings.layout.header.props.contentWidth = 'shell';
@@ -171,18 +212,36 @@ describe('Brand footer fields', () => {
         });
     });
 
-    it('the logo is editable and the "Support" column (column 5) stays editable', () => {
+    it('the logo is editable', () => {
         const before = clone(chrome('footer'));
         render(<PropertyPanel />);
 
         fireEvent.change(screen.getAllByDisplayValue(before.leftSection.logo)[0]!, {
             target: { value: 'https://cdn.example.com/logo.png' },
         });
-        expect(screen.getByText('footer.column5')).toBeInTheDocument();
 
         expect(chrome('footer')).toEqual({
             ...before,
             leftSection: { ...before.leftSection, logo: 'https://cdn.example.com/logo.png' },
+        });
+    });
+
+    it('the "Support" column (column 5) is editable and only it changes', () => {
+        const before = clone(chrome('footer'));
+        render(<PropertyPanel />);
+
+        expect(screen.getByText('footer.column5')).toBeInTheDocument();
+        fireEvent.change(screen.getByDisplayValue('Support'), { target: { value: 'Help' } });
+        fireEvent.click(screen.getByRole('button', { name: /Privacy Policy/ }));
+        fireEvent.change(screen.getByDisplayValue('Privacy Policy'), {
+            target: { value: 'Privacy' },
+        });
+
+        const links = [...before.rightSection4.links];
+        links[1] = { ...links[1], label: 'Privacy' };
+        expect(chrome('footer')).toEqual({
+            ...before,
+            rightSection4: { ...before.rightSection4, title: 'Help', links },
         });
     });
 
@@ -263,14 +322,102 @@ describe('Band banner fields', () => {
         });
     });
 
-    it('a classic banner shows only the design choice and writes nothing until it is used', () => {
+    it('app band: the phone picture switched off and on again comes back', () => {
+        const before = clone(live('learning-paths', 'lp-app'));
+        useEditorStore.getState().selectComponent('lp-app');
+        render(<PropertyPanel />);
+
+        const phone = () => screen.getByRole('switch', { name: 'ctaBand.phoneShow' });
+        fireEvent.click(phone());
+        expect(live('learning-paths', 'lp-app').props.mockup).toBeUndefined();
+        expect(screen.queryByDisplayValue(before.props.mockup.alt)).toBeNull();
+        fireEvent.click(phone());
+
+        expect(live('learning-paths', 'lp-app').props).toEqual(before.props);
+    });
+
+    it('the second button switched off and on keeps its text and action', () => {
+        const before = clone(live('learning-paths', 'lp-institutions'));
+        useEditorStore.getState().selectComponent('lp-institutions');
+        render(<PropertyPanel />);
+
+        const [, second] = screen.getAllByRole('switch', { name: 'ctaBanner.showButton' });
+        fireEvent.click(second!);
+        expect(live('learning-paths', 'lp-institutions').props.secondaryButton).toEqual({
+            ...before.props.secondaryButton,
+            enabled: false,
+        });
+        // Text and form title are both "Partner with us".
+        expect(screen.queryAllByDisplayValue('Partner with us')).toHaveLength(0);
+        fireEvent.click(second!);
+
+        expect(live('learning-paths', 'lp-institutions').props).toEqual({
+            ...before.props,
+            secondaryButton: { ...before.props.secondaryButton, enabled: true },
+        });
+        expect(screen.queryAllByDisplayValue('Partner with us')).toHaveLength(2);
+    });
+
+    it('a band button without "enabled" shows as on, as on the site', () => {
         load((site) => {
             site.pages[0].components.push({
-                id: 'plain-cta',
-                type: 'ctaBanner',
-                enabled: true,
-                props: { heading: 'Join', button: { enabled: true, text: 'Go', target: '/x' } },
+                ...PLAIN_CTA,
+                props: { variant: 'band', button: { text: 'Go', target: '/x' } },
             });
+        });
+        useEditorStore.getState().selectComponent('plain-cta');
+        const before = JSON.stringify(config());
+        render(<PropertyPanel />);
+
+        const [first] = screen.getAllByRole('switch', { name: 'ctaBanner.showButton' });
+        expect(first).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByDisplayValue('Go')).toBeInTheDocument();
+        expect(screen.getByText('ctaBand.firstButtonLook')).toBeInTheDocument();
+        expect(JSON.stringify(config())).toBe(before);
+
+        fireEvent.click(first!);
+        expect(live('courses', 'plain-cta').props.button).toEqual({
+            text: 'Go',
+            target: '/x',
+            enabled: false,
+        });
+        // A hidden button shows neither its text nor its look.
+        expect(screen.queryByDisplayValue('Go')).toBeNull();
+        expect(screen.queryByText('ctaBand.firstButtonLook')).toBeNull();
+    });
+
+    it('a band without colours shows the site colour note, not made-up defaults', () => {
+        load((site) => {
+            site.pages[0].components.push({
+                ...PLAIN_CTA,
+                props: { variant: 'band', heading: 'Join' },
+            });
+        });
+        useEditorStore.getState().selectComponent('plain-cta');
+        render(<PropertyPanel />);
+
+        expect(screen.queryByDisplayValue(/3B82F6/i)).toBeNull();
+        // background, text, eyebrow and subheading colours are all unset
+        expect(screen.getAllByText('chromeLook.siteColourNote')).toHaveLength(4);
+    });
+
+    it('a site without a palette shows no design choice on a classic banner', () => {
+        load((site) => {
+            noPalette(site);
+            site.pages[0].components.push(clone(PLAIN_CTA));
+        });
+        useEditorStore.getState().selectComponent('plain-cta');
+        const before = JSON.stringify(config());
+        render(<PropertyPanel />);
+
+        expect(screen.queryByRole('group', { name: 'ctaBand.style' })).toBeNull();
+        expect(screen.getByDisplayValue('Go')).toBeInTheDocument();
+        expect(JSON.stringify(config())).toBe(before);
+    });
+
+    it('a classic banner shows only the design choice and writes nothing until it is used', () => {
+        load((site) => {
+            site.pages[0].components.push(clone(PLAIN_CTA));
         });
         useEditorStore.getState().selectComponent('plain-cta');
         const before = JSON.stringify(config());
@@ -309,9 +456,8 @@ describe('Editorial hero fields', () => {
         fireEvent.change(input('heroEditorial.checklist 2'), {
             target: { value: 'Step 1 free' },
         });
-        fireEvent.change(screen.getAllByLabelText('heroEditorial.crumbRoute')[0]!, {
-            target: { value: '' },
-        });
+        // The first crumb links to the home page; "Clear" makes it plain text.
+        fireEvent.click(screen.getAllByRole('button', { name: 'Clear' })[0]!);
         fireEvent.change(input('heroEditorial.mediaWidth'), { target: { value: '560' } });
         fireEvent.click(screen.getByRole('button', { name: 'chromeLook.useSiteColour' }));
 
@@ -324,6 +470,41 @@ describe('Editorial hero fields', () => {
             mediaWidth: 560,
             outlineColor: undefined,
         });
+    });
+
+    it('an empty picture width removes the key (the site default is used)', () => {
+        load((site) => {
+            site.pages
+                .find((p: Json) => p.id === 'learning-paths')
+                .components.find((c: Json) => c.id === 'lp-hero').props.mediaWidth = 560;
+        });
+        useEditorStore.getState().selectComponent('lp-hero');
+        const before = clone(live('learning-paths', 'lp-hero'));
+        render(<PropertyPanel />);
+
+        fireEvent.change(input('heroEditorial.mediaWidth'), { target: { value: '' } });
+
+        expect(live('learning-paths', 'lp-hero').props).toEqual({
+            ...before.props,
+            mediaWidth: undefined,
+        });
+    });
+
+    it('a site without a palette shows no design choice on a classic hero', () => {
+        load((site) => {
+            noPalette(site);
+            const hero = site.pages
+                .find((p: Json) => p.id === 'learning-paths')
+                .components.find((c: Json) => c.id === 'lp-hero');
+            delete hero.props.variant;
+        });
+        useEditorStore.getState().selectComponent('lp-hero');
+        const before = JSON.stringify(config());
+        render(<PropertyPanel />);
+
+        expect(screen.queryByRole('group', { name: 'heroEditorial.style' })).toBeNull();
+        expect(screen.queryByLabelText('heroEditorial.titleAccent')).toBeNull();
+        expect(JSON.stringify(config())).toBe(before);
     });
 
     it('switching to Classic hides the editorial fields and keeps their values', () => {

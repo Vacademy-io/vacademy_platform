@@ -4,6 +4,7 @@ import { Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LinkPicker } from '../LinkPicker';
 import {
     LookChoice,
     OptionalColorField,
@@ -11,6 +12,7 @@ import {
     TextField,
     obj,
     str,
+    useSiteHasPalette,
 } from './chrome-controls';
 
 /** Hero props are hand- or AI-written JSON: read them as unknown and narrow. */
@@ -27,7 +29,10 @@ export interface HeroEditorialFieldsProps {
     updateLeft: (field: string, value: unknown) => void;
 }
 
-/** "Home / Learning Paths": earlier items with a route are links, the last is the current page. */
+/**
+ * "Home / Learning Paths": earlier items with a route are links (picked with
+ * LinkPicker), the last is the current page.
+ */
 const BreadcrumbField = ({
     items,
     onChange,
@@ -63,31 +68,34 @@ const BreadcrumbField = ({
             </div>
             <p className="text-caption text-neutral-500">{t('heroEditorial.breadcrumbHint')}</p>
             {list.map((item, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                    <Input
-                        className="h-7 text-xs"
-                        aria-label={t('heroEditorial.crumbLabel')}
-                        placeholder={t('heroEditorial.crumbLabel')}
-                        value={str(item.label) ?? ''}
-                        onChange={(e) => setItem(i, 'label', e.target.value)}
-                    />
-                    <Input
-                        className="h-7 text-xs"
-                        aria-label={t('heroEditorial.crumbRoute')}
-                        placeholder={t('heroEditorial.crumbRoute')}
-                        value={str(item.route) ?? ''}
-                        onChange={(e) => setItem(i, 'route', e.target.value)}
-                    />
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-7 shrink-0 p-0 text-red-500"
-                        title={t('actions.delete')}
-                        aria-label={t('actions.delete')}
-                        onClick={() => onChange(list.filter((_, j) => j !== i))}
-                    >
-                        <Trash2 className="size-3" />
-                    </Button>
+                <div key={i} className="space-y-1.5 rounded border bg-white p-2">
+                    <div className="flex items-center gap-1.5">
+                        <Input
+                            className="h-7 text-xs"
+                            aria-label={t('heroEditorial.crumbLabel')}
+                            placeholder={t('heroEditorial.crumbLabel')}
+                            value={str(item.label) ?? ''}
+                            onChange={(e) => setItem(i, 'label', e.target.value)}
+                        />
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="size-7 shrink-0 p-0 text-red-500"
+                            title={t('actions.delete')}
+                            aria-label={t('actions.delete')}
+                            onClick={() => onChange(list.filter((_, j) => j !== i))}
+                        >
+                            <Trash2 className="size-3" />
+                        </Button>
+                    </div>
+                    {/* The last item is this page and never a link on the site. */}
+                    {i < list.length - 1 && (
+                        <LinkPicker
+                            label={t('heroEditorial.crumbRoute')}
+                            value={str(item.route) ?? ''}
+                            onChange={(v) => setItem(i, 'route', v)}
+                        />
+                    )}
                 </div>
             ))}
         </div>
@@ -97,8 +105,9 @@ const BreadcrumbField = ({
 /**
  * Fields of the "editorial" hero (accent line, checklist, breadcrumb, media
  * width, outline colour). PropertyPanel mounts it for every heroSection: the
- * Classic/Editorial choice shows for all, the rest only when props.variant is
- * 'editorial'.
+ * Classic/Editorial choice shows on a site with its own palette or a hero
+ * that already has a variant (other sites see no change), the rest only when
+ * props.variant is 'editorial'.
  */
 export const HeroEditorialFields: FC<HeroEditorialFieldsProps> = ({
     props,
@@ -107,6 +116,7 @@ export const HeroEditorialFields: FC<HeroEditorialFieldsProps> = ({
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const widthId = useId();
+    const hasPalette = useSiteHasPalette();
     const left = obj(props.left);
     const width =
         typeof props.mediaWidth === 'number' || typeof props.mediaWidth === 'string'
@@ -115,17 +125,19 @@ export const HeroEditorialFields: FC<HeroEditorialFieldsProps> = ({
 
     return (
         <div className="space-y-4">
-            <LookChoice
-                label={t('heroEditorial.style')}
-                hint={t('heroEditorial.styleHint')}
-                stored={props.variant}
-                fallback="default"
-                options={[
-                    { value: 'default', label: t('heroEditorial.styleClassic') },
-                    { value: 'editorial', label: t('heroEditorial.styleEditorial') },
-                ]}
-                onChange={(v) => updateProp('variant', v === 'default' ? undefined : v)}
-            />
+            {(hasPalette || props.variant !== undefined) && (
+                <LookChoice
+                    label={t('heroEditorial.style')}
+                    hint={t('heroEditorial.styleHint')}
+                    stored={props.variant}
+                    fallback="default"
+                    options={[
+                        { value: 'default', label: t('heroEditorial.styleClassic') },
+                        { value: 'editorial', label: t('heroEditorial.styleEditorial') },
+                    ]}
+                    onChange={(v) => updateProp('variant', v === 'default' ? undefined : v)}
+                />
+            )}
             {props.variant === 'editorial' && (
                 <div className="space-y-3 rounded border bg-gray-50 p-3">
                     <h5 className="text-xs font-semibold">{t('heroEditorial.heading')}</h5>

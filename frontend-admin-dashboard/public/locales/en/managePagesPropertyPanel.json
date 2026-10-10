@@ -448,6 +448,16 @@
     "cartWhenNotEmpty": "Only when it has items",
     "megaMenuStyle": "Mega menu style"
   },
+  "headerExtras": {
+    "heading": "Header extras",
+    "currentPage": "Current page",
+    "tintedPill": "Tinted pill",
+    "underline": "Underline",
+    "search": "Search",
+    "searchHint": "A search icon that finds courses, pages and mega-menu streams.",
+    "languageSwitch": "Language switch",
+    "languageSwitchHint": "हिन्दी | EN — the other languages first, the site's main language last. Appears once the site has more than one language (Global Settings); on phones it sits in the menu."
+  },
   "footer": {
     "column2": "Column 2",
     "column3": "Column 3",

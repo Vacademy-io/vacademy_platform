@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { HeaderChoice, HeaderToggle } from './HeaderEditorFields';
 
 /**
@@ -11,31 +12,34 @@ export const HeaderDisplayOptions = ({
 }: {
     props: Record<string, unknown>;
     onChange: (key: 'activeStyle' | 'showSearch' | 'showLanguageSwitcher', value: unknown) => void;
-}) => (
-    <div className="space-y-3 rounded border border-neutral-200 p-3">
-        <p className="text-sm font-medium">Header extras</p>
-        <HeaderChoice
-            label="Current page"
-            value={props.activeStyle === 'underline' ? 'underline' : 'pill'}
-            options={[
-                { value: 'pill', label: 'Tinted pill' },
-                { value: 'underline', label: 'Underline' },
-            ]}
-            onChange={(v) => onChange('activeStyle', v)}
-        />
-        <HeaderToggle
-            label="Search"
-            hint="A search icon that finds courses, pages and mega-menu streams."
-            checked={props.showSearch === true}
-            onChange={(v) => onChange('showSearch', v)}
-        />
-        <HeaderToggle
-            label="Language switch"
-            hint="हिन्दी | EN — the other languages first, the site's main language last. Appears once the site has more than one language (Global Settings); on phones it sits in the menu."
-            checked={props.showLanguageSwitcher === true}
-            onChange={(v) => onChange('showLanguageSwitcher', v)}
-        />
-    </div>
-);
+}) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    return (
+        <div className="space-y-3 rounded border border-neutral-200 p-3">
+            <p className="text-sm font-medium">{t('headerExtras.heading')}</p>
+            <HeaderChoice
+                label={t('headerExtras.currentPage')}
+                value={props.activeStyle === 'underline' ? 'underline' : 'pill'}
+                options={[
+                    { value: 'pill', label: t('headerExtras.tintedPill') },
+                    { value: 'underline', label: t('headerExtras.underline') },
+                ]}
+                onChange={(v) => onChange('activeStyle', v)}
+            />
+            <HeaderToggle
+                label={t('headerExtras.search')}
+                hint={t('headerExtras.searchHint')}
+                checked={props.showSearch === true}
+                onChange={(v) => onChange('showSearch', v)}
+            />
+            <HeaderToggle
+                label={t('headerExtras.languageSwitch')}
+                hint={t('headerExtras.languageSwitchHint')}
+                checked={props.showLanguageSwitcher === true}
+                onChange={(v) => onChange('showLanguageSwitcher', v)}
+            />
+        </div>
+    );
+};
 
 export default HeaderDisplayOptions;

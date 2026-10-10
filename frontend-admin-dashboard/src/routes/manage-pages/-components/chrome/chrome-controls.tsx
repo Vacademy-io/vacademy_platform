@@ -4,6 +4,7 @@ import { Plus, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useEditorStore } from '../../-stores/editor-store';
 import { ColorPickerField } from '../ColorPickerField';
 import { HeaderChoice } from '../header/HeaderEditorFields';
 
@@ -21,6 +22,22 @@ export const str = (v: unknown): string | undefined => (typeof v === 'string' ? 
 /** A plain object from hand- or AI-written JSON, or an empty one. */
 export const obj = (v: unknown): Record<string, unknown> =>
     v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+/** The site shows a band banner button unless enabled is false (and it has text). */
+export const bandButtonShown = (button: unknown) =>
+    Object.keys(obj(button)).length > 0 && obj(button).enabled !== false;
+
+/**
+ * True when the site has its own colour palette (globalSettings.theme.palette).
+ * The editorial looks (band banner, editorial hero, header look) are drawn
+ * from that palette, so their design choices are offered only on such sites
+ * or on a section that already uses them; other sites see no change.
+ */
+export const useSiteHasPalette = () =>
+    useEditorStore((s) => {
+        const theme = obj(s.config?.globalSettings?.theme);
+        return Object.keys(obj(theme.palette)).length > 0;
+    });
 
 /**
  * A row of choice buttons. `stored` is the saved value (undefined = unset,

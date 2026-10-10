@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HeaderToggle } from './HeaderEditorFields';
-import { LookChoice } from '../chrome/chrome-controls';
+import { LookChoice, useSiteHasPalette } from '../chrome/chrome-controls';
 
 /** Header props are hand- or AI-written JSON: read them as unknown and narrow. */
 type Props = Record<string, unknown>;
@@ -13,6 +13,17 @@ export interface HeaderLookGroupProps {
     onChange: (key: string, value: unknown) => void;
 }
 
+/** The keys this group edits; any one of them set shows the group. */
+const LOOK_KEYS = [
+    'navStyle',
+    'barSize',
+    'contentWidth',
+    'logoOnly',
+    'languageSwitcherStyle',
+    'cartDisplay',
+    'megaMenuStyle',
+] as const;
+
 const hasMegaMenu = (navigation: unknown) =>
     Array.isArray(navigation) &&
     navigation.some((item) => (item as { type?: unknown } | null)?.type === 'megaMenu');
@@ -20,13 +31,17 @@ const hasMegaMenu = (navigation: unknown) =>
 /**
  * The header's "Look" options (nav style, bar size, width, logo only,
  * language switch style, cart icon, mega-menu style). PropertyPanel mounts it
- * for every header, right after HeaderDisplayOptions. An unset option shows
+ * for every header, right after HeaderDisplayOptions; it shows only on a site
+ * with its own palette or a header that already sets one of these keys, so
+ * other institutes see no change. An unset option shows
  * the original look and nothing is written until the admin changes a
  * control. The language-switch and mega-menu styles appear only once the
  * header has a language switch or a mega menu.
  */
 export const HeaderLookGroup: FC<HeaderLookGroupProps> = ({ props, onChange }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const hasPalette = useSiteHasPalette();
+    if (!hasPalette && LOOK_KEYS.every((k) => props[k] === undefined)) return null;
     const standard = t('headerLook.standard');
     const editorial = t('headerLook.editorial');
     const showSwitchStyle =

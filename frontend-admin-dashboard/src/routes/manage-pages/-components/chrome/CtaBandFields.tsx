@@ -1,10 +1,17 @@
-import type { FC } from 'react';
+import { useRef, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CampaignPicker } from '../CampaignPicker';
 import { ImageUploadField } from '../ImageUploadField';
 import { LinkPicker } from '../LinkPicker';
 import { HeaderToggle } from '../header/HeaderEditorFields';
-import { LookChoice, OptionalColorField, TextField, obj } from './chrome-controls';
+import {
+    LookChoice,
+    OptionalColorField,
+    TextField,
+    bandButtonShown,
+    obj,
+    useSiteHasPalette,
+} from './chrome-controls';
 
 /** Banner props are hand- or AI-written JSON: read them as unknown and narrow. */
 type Props = Record<string, unknown>;
@@ -22,24 +29,27 @@ export interface CtaBandFieldsProps {
  * One button of the band banner. `full` edits everything (the second
  * button); without it only the band's extras are shown (style, arrow, form
  * title), for the first button whose text and action the banner editor
- * already edits. Every write spreads the button object.
+ * already edits, and only while that button is `shown`. Every write
+ * spreads the button object.
  */
 export const BandButtonFields = ({
     title,
     button,
     onChange,
     full = false,
+    shown = true,
 }: {
     title: string;
     button: unknown;
     onChange: (next: Props) => void;
     full?: boolean;
+    shown?: boolean;
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const b = obj(button);
     const set = (next: Props) => onChange({ ...b, ...next });
-    // The site shows a button unless enabled is false (and it has text).
-    const enabled = full ? !!button && b.enabled !== false : true;
+    const enabled = full ? bandButtonShown(button) : shown;
+    if (!full && !enabled) return null;
     const action = b.action === 'openForm' ? 'openForm' : 'navigate';
 
     return (
@@ -120,30 +130,40 @@ export const BandButtonFields = ({
 
 /**
  * Fields of the "band" banner (eyebrow, second button, button styles, phone
- * mockup, band size). PropertyPanel mounts it for every ctaBanner: the
- * Classic/Band choice shows for all, the band fields only when props.variant
- * is 'band'.
+ * mockup, band size). PropertyPanel mounts it for every ctaBanner (keyed by
+ * the banner's id): the Classic/Band choice shows on a site with its own
+ * palette or a banner that already has a variant (other sites see no change),
+ * the band fields only when props.variant is 'band'.
  */
 export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const hasPalette = useSiteHasPalette();
+    // The phone picture switched off, so switching it back on restores it.
+    const lastMockup = useRef<unknown>(undefined);
     const isBand = props.variant === 'band';
     const mockup = obj(props.mockup);
     const hasMockup = props.mockup !== undefined && props.mockup !== null;
     const setMockup = (next: Props) => updateProp('mockup', { ...mockup, ...next });
+    const toggleMockup = (on: boolean) => {
+        if (!on) lastMockup.current = props.mockup;
+        updateProp('mockup', on ? lastMockup.current ?? { kind: 'phone' } : undefined);
+    };
 
     return (
         <div className="space-y-4">
-            <LookChoice
-                label={t('ctaBand.style')}
-                hint={t('ctaBand.styleHint')}
-                stored={props.variant}
-                fallback="classic"
-                options={[
-                    { value: 'classic', label: t('ctaBand.styleClassic') },
-                    { value: 'band', label: t('ctaBand.styleBand') },
-                ]}
-                onChange={(v) => updateProp('variant', v === 'classic' ? undefined : v)}
-            />
+            {(hasPalette || props.variant !== undefined) && (
+                <LookChoice
+                    label={t('ctaBand.style')}
+                    hint={t('ctaBand.styleHint')}
+                    stored={props.variant}
+                    fallback="classic"
+                    options={[
+                        { value: 'classic', label: t('ctaBand.styleClassic') },
+                        { value: 'band', label: t('ctaBand.styleBand') },
+                    ]}
+                    onChange={(v) => updateProp('variant', v === 'classic' ? undefined : v)}
+                />
+            )}
             {isBand && (
                 <>
                     <div className="space-y-3 rounded border bg-gray-50 p-3">
@@ -178,6 +198,7 @@ export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => 
                     <BandButtonFields
                         title={t('ctaBand.firstButtonLook')}
                         button={props.button}
+                        shown={bandButtonShown(props.button)}
                         onChange={(next) => updateProp('button', next)}
                     />
                     <BandButtonFields
@@ -192,9 +213,7 @@ export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => 
                             label={t('ctaBand.phoneShow')}
                             hint={t('ctaBand.phoneHint')}
                             checked={hasMockup}
-                            onChange={(on) =>
-                                updateProp('mockup', on ? { kind: 'phone' } : undefined)
-                            }
+                            onChange={toggleMockup}
                         />
                         {hasMockup && (
                             <>

@@ -32,6 +32,18 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
             + "WHERE ar.id IN (:ids)", nativeQuery = true)
     List<Object[]> findIdNameAndMobileByIds(@Param("ids") java.util.Collection<String> ids);
 
+    /**
+     * Leads in one campaign stamped between two instants. A CSV import or migration stamps
+     * hundreds of rows within a minute, while real form traffic peaks near ten a minute, so
+     * the AI voice bot uses this to tell a genuine enquiry date from an import date.
+     * Served by idx_audience_response_audience_submitted (audience_id, submitted_at).
+     */
+    @Query(value = "SELECT count(*) FROM audience_response ar WHERE ar.audience_id = :audienceId "
+            + "AND ar.submitted_at BETWEEN :fromTs AND :toTs", nativeQuery = true)
+    long countByAudienceSubmittedBetween(@Param("audienceId") String audienceId,
+                                         @Param("fromTs") Timestamp fromTs,
+                                         @Param("toTs") Timestamp toTs);
+
 
         /**
          * Find all leads for a specific campaign, INCLUDING soft-deleted ones.

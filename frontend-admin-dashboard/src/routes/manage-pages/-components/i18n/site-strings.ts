@@ -3,22 +3,24 @@
  * Languages card, the Translations panel and the publish checks.
  *
  * Authored text = every translatable string a visitor can see in the page
- * sections (column children included), page titles and SEO, the global
- * header/footer and the site settings the public site translates (course
- * languages, intro captions, WhatsApp, Course Finder, lead popup). It is
- * exactly the set the learner localizes, so "100%" means the whole page
- * reads in that language.
+ * sections (column children and a course grid's card texts included), page
+ * titles and SEO, the global header/footer and the site settings the public
+ * site translates (course languages and formats, catalogue words, intro
+ * captions, WhatsApp, Course Finder, lead popup). It is exactly the set the
+ * learner localizes, so "100%" means the whole page reads in that language.
  */
 import {
-    collectTranslatableStrings,
     localesOf,
     mergeTranslations,
+    renderTextEntries,
     translationCoverage,
+    visitTranslatableStrings,
     type CatalogueLocale,
     type TranslationDictionary,
 } from '../../-utils/catalogue-i18n';
 import type { CatalogueConfig, Component } from '../../-types/editor-types';
 import { effectiveCourseLanguages } from '../settings/course-languages';
+import { componentLabel } from '../../-utils/component-labels';
 import { LOCALE_LABELS } from '@/i18n/locales';
 
 type SiteConfig =
@@ -87,42 +89,81 @@ const withoutFieldNames = (c: Component): unknown => {
     };
 };
 
-const visitComponent = (c: Component | null | undefined, out: string[], seen: Set<string>) => {
+/** Where a text of the site is shown, for the Translations panel. */
+export interface SiteStringLocation {
+    area: 'header' | 'footer' | 'page' | 'pageTitle' | 'seo' | 'settings';
+    /** The page's title (or route): page, pageTitle and seo texts. */
+    page?: string;
+    /** The section's name ('Course Catalog'). */
+    section?: string;
+    /** The field inside the section or the settings ('hero › stats #2 › label'). */
+    field?: string;
+}
+
+export interface SiteString {
+    text: string;
+    /** The first place the text is shown. */
+    location: SiteStringLocation;
+}
+
+type AddText = (text: string, location: SiteStringLocation) => void;
+
+/** Prop keys and list positions as one readable field name: ['stats', 1, 'label'] → 'stats #2 › label'. */
+const fieldName = (path: (string | number)[]): string =>
+    path
+        .reduce<string[]>((parts, step) => {
+            if (typeof step === 'number' && parts.length > 0) {
+                parts[parts.length - 1] = `${parts[parts.length - 1]} #${step + 1}`;
+            } else {
+                parts.push(String(step));
+            }
+            return parts;
+        }, [])
+        .join(' › ');
+
+const visitComponent = (
+    c: Component | null | undefined,
+    add: AddText,
+    where: SiteStringLocation
+): void => {
     if (!c || typeof c !== 'object' || c.enabled === false) return;
     if (!c.props || typeof c.props !== 'object') return;
-    collectTranslatableStrings(withoutInternalKeys(withoutFieldNames(c)), out, seen);
+    const section = componentLabel(c.type);
+    visitTranslatableStrings(withoutInternalKeys(withoutFieldNames(c)), (text, path) =>
+        add(text, { ...where, section, field: fieldName(path) })
+    );
+    // A course grid's card labels, Load more and grid heading sit under the
+    // opaque `render`; the site still shows them through the dictionary.
+    for (const { path, text } of renderTextEntries(c.props.render)) {
+        add(text, { ...where, section, field: fieldName(['render', ...path]) });
+    }
     // Column children sit under the opaque `slots` key: walk them as sections.
     const slots = c.props.slots;
     if (Array.isArray(slots)) {
         for (const slot of slots) {
             if (!Array.isArray(slot)) continue;
-            for (const child of slot) visitComponent(child as Component, out, seen);
+            for (const child of slot) visitComponent(child as Component, add, where);
         }
     }
 };
 
-/** Distinct translatable texts of the site, in reading order (header, pages, footer). Hidden sections are skipped. */
 /**
  * Site-settings texts the public site translates at display time (WhatsApp
  * button, Course Finder step labels, intro screen and lead popup labels).
  * Only label-like keys are read — never `value`, which is submitted data.
  */
 const SETTINGS_TEXT_KEYS = new Set(['label', 'caption', 'message', 'placeholder', 'title']);
-const collectSettingsTexts = (node: unknown, out: string[], seen: Set<string>, depth = 0): void => {
+const collectSettingsTexts = (node: unknown, add: AddText, field: string, depth = 0): void => {
     if (!node || typeof node !== 'object' || depth > 6) return;
     if (Array.isArray(node)) {
-        for (const item of node) collectSettingsTexts(item, out, seen, depth + 1);
+        for (const item of node) collectSettingsTexts(item, add, field, depth + 1);
         return;
     }
     for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
         if (typeof v === 'string') {
-            const text = v.trim();
-            if (SETTINGS_TEXT_KEYS.has(k) && text && !seen.has(v)) {
-                seen.add(v);
-                out.push(v);
-            }
+            if (SETTINGS_TEXT_KEYS.has(k) && v.trim()) add(v, { area: 'settings', field });
         } else {
-            collectSettingsTexts(v, out, seen, depth + 1);
+            collectSettingsTexts(v, add, field, depth + 1);
         }
     }
 };
@@ -133,47 +174,82 @@ const collectSettingsTexts = (node: unknown, out: string[], seen: Set<string>, d
  * text up exactly and then trimmed, so the trimmed key serves both. Blanks,
  * links and bare numbers are skipped.
  */
-const pushShownText = (value: unknown, out: string[], seen: Set<string>): void => {
+const pushShownText = (value: unknown, add: AddText, location: SiteStringLocation): void => {
     if (typeof value !== 'string') return;
     const text = value.trim();
-    if (!text || seen.has(text)) return;
+    if (!text) return;
     if (/^(https?:|mailto:|tel:|\/\/|www\.)/i.test(text)) return;
     if (/^[\d\s.,:;%+\-–—/×x*₹$€£¥()]+$/.test(text)) return;
-    seen.add(text);
-    out.push(text);
+    add(text, location);
 };
 
-export const collectSiteStrings = (config: SiteConfig): string[] => {
-    const out: string[] = [];
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Distinct translatable texts of the site in reading order (header, pages, footer, settings), each with where it is first shown. Hidden sections are skipped. */
+export const collectSiteStringEntries = (config: SiteConfig): SiteString[] => {
+    const out: SiteString[] = [];
     const seen = new Set<string>();
+    const add: AddText = (text, location) => {
+        if (seen.has(text)) return;
+        seen.add(text);
+        out.push({ text, location });
+    };
     if (!config) return out;
     const gs = config.globalSettings as Record<string, any> | undefined;
     const layout = gs?.layout;
-    visitComponent(layout?.header, out, seen);
+    visitComponent(layout?.header, add, { area: 'header' });
     for (const page of config.pages || []) {
+        const name = page?.title?.trim() || page?.route || page?.id;
         // The title band of a page and the header's site search show the
         // title of every published page.
-        if (page && page.published !== false) pushShownText(page.title, out, seen);
-        for (const c of page?.components || []) visitComponent(c, out, seen);
-        if (page?.seo) collectTranslatableStrings(page.seo, out, seen);
+        if (page && page.published !== false) {
+            pushShownText(page.title, add, { area: 'pageTitle', page: name });
+        }
+        for (const c of page?.components || [])
+            visitComponent(c, add, { area: 'page', page: name });
+        if (page?.seo) {
+            visitTranslatableStrings(page.seo, (text, path) =>
+                add(text, { area: 'seo', page: name, field: fieldName(path) })
+            );
+        }
     }
-    visitComponent(layout?.footer, out, seen);
+    visitComponent(layout?.footer, add, { area: 'footer' });
     // Course language names and chips: the language filter, card chips,
     // course page picker and cart lines (the built-in English / Hindi pair
     // when the site keeps no list of its own).
     if (gs?.courseLanguages?.enabled) {
         for (const lang of effectiveCourseLanguages(gs.courseLanguages)) {
-            pushShownText(lang?.label, out, seen);
-            pushShownText(lang?.chip, out, seen);
+            const field = 'courseLanguages';
+            pushShownText(lang?.label, add, { area: 'settings', field });
+            pushShownText(lang?.chip, add, { area: 'settings', field });
         }
     }
-    if (gs?.whatsapp?.enabled !== false) collectSettingsTexts(gs?.whatsapp, out, seen);
+    // Course formats: the Format filter, the card's format pill and a
+    // learning path's step formats show each label through the dictionary.
+    // Their levels and tags are matched raw and stay out.
+    if (isRecord(gs?.courseFormats)) {
+        for (const [key, format] of Object.entries(gs.courseFormats)) {
+            if (isRecord(format)) {
+                pushShownText(format.label, add, {
+                    area: 'settings',
+                    field: `courseFormats › ${key}`,
+                });
+            }
+        }
+    }
+    // The catalogue's own words for a course and its filters ('Format').
+    if (isRecord(gs?.naming)) {
+        for (const [key, word] of Object.entries(gs.naming)) {
+            pushShownText(word, add, { area: 'settings', field: `naming › ${key}` });
+        }
+    }
+    if (gs?.whatsapp?.enabled !== false) collectSettingsTexts(gs?.whatsapp, add, 'whatsapp');
     const stepLabels = gs?.courseFinder?.stepLabels;
     if (gs?.courseFinder?.enabled && stepLabels) {
-        for (const v of Object.values(stepLabels)) {
-            if (typeof v === 'string' && v.trim() && !seen.has(v)) {
-                seen.add(v);
-                out.push(v);
+        for (const [key, v] of Object.entries(stepLabels)) {
+            if (typeof v === 'string' && v.trim()) {
+                add(v, { area: 'settings', field: `courseFinder › ${key}` });
             }
         }
     }
@@ -182,11 +258,19 @@ export const collectSiteStrings = (config: SiteConfig): string[] => {
     // its buttons show the app's own labels.
     const intro = config.introPage ?? gs?.introPage;
     if (intro?.enabled && Array.isArray(intro.imageSlider?.images)) {
-        for (const image of intro.imageSlider.images) pushShownText(image?.caption, out, seen);
+        for (const image of intro.imageSlider.images) {
+            pushShownText(image?.caption, add, { area: 'settings', field: 'introPage' });
+        }
     }
-    if (gs?.leadCollection?.enabled) collectSettingsTexts(gs.leadCollection?.fields, out, seen);
+    if (gs?.leadCollection?.enabled) {
+        collectSettingsTexts(gs.leadCollection?.fields, add, 'leadCollection');
+    }
     return out;
 };
+
+/** Distinct translatable texts of the site, in reading order (header, pages, footer). Hidden sections are skipped. */
+export const collectSiteStrings = (config: SiteConfig): string[] =>
+    collectSiteStringEntries(config).map((entry) => entry.text);
 
 export interface Coverage {
     total: number;

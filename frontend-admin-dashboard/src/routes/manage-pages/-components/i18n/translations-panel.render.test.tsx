@@ -246,3 +246,27 @@ describe('TranslationsPanel', () => {
         expect(hi()).toEqual({});
     });
 });
+
+describe('TranslationsPanel — where a text is and entries no tab lists', () => {
+    beforeEach(() => {
+        translateSiteStrings.mockReset();
+        load({ 'Learn the Indian way': 'भारतीय तरीके से सीखें', 'Old banner text': 'पुराना बैनर' });
+    });
+
+    it('shows under each page text where it is: page › section › field', () => {
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        expect(screen.getByText('home › Hero Section › buttonText')).toBeInTheDocument();
+    });
+
+    it('lists a translation no page text uses under Other entries, where Clear deletes it', () => {
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        expect(screen.queryByText('Old banner text')).not.toBeInTheDocument();
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Other entries' }), { button: 0 });
+        expect(screen.getByText('Old banner text')).toBeInTheDocument();
+        expect(screen.queryByText('Learn the Indian way')).not.toBeInTheDocument();
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Clear/ }));
+        expect(hi()['Old banner text']).toBeUndefined();
+        expect(hi()['Learn the Indian way']).toBe('भारतीय तरीके से सीखें');
+    });
+});

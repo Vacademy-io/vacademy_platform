@@ -147,5 +147,15 @@
         "sampleExcerpt": "Un court aperçu de l’article s’affiche ici.",
         "readMore": "Lire la suite",
         "liveNote": "Les articles publiés apparaissent ici sur le site. Rédigez-les dans Manage Pages → Blog."
+    },
+    "catalogFeatures": {
+        "hero": "Bannière d'en-tête",
+        "streamIcons": "Icônes de filières",
+        "streamTabs": "Onglets de filières",
+        "filterSidebar": "Barre de filtres",
+        "highlightedRows_one": "{{count}} rangée mise en avant",
+        "highlightedRows_many": "{{count}} de rangées mises en avant",
+        "highlightedRows_other": "{{count}} rangées mises en avant",
+        "editorialCards": "Cartes éditoriales"
     }
 }

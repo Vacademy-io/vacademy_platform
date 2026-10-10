@@ -165,5 +165,18 @@
         "sampleExcerpt": "يظهر هنا مقتطف قصير من المقال.",
         "readMore": "اقرأ المزيد",
         "liveNote": "تظهر المقالات المنشورة هنا على الموقع المباشر. اكتبها في Manage Pages → Blog."
+    },
+    "catalogFeatures": {
+        "hero": "واجهة رئيسية",
+        "streamIcons": "أيقونات المسارات",
+        "streamTabs": "علامات تبويب المسارات",
+        "filterSidebar": "شريط التصفية الجانبي",
+        "highlightedRows_zero": "لا توجد صفوف مميزة",
+        "highlightedRows_one": "صف مميز واحد",
+        "highlightedRows_two": "صفان مميزان",
+        "highlightedRows_few": "{{count}} صفوف مميزة",
+        "highlightedRows_many": "{{count}} صفًا مميزًا",
+        "highlightedRows_other": "{{count}} صف مميز",
+        "editorialCards": "بطاقات تحريرية"
     }
 }

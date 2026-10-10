@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     BookOpen, Brain, Briefcase, Certificate, ChartLineUp, ChatsCircle, Check,
     Clock, Code, Globe, GraduationCap, Lightbulb, Medal, Rocket, ShieldCheck,
@@ -13,6 +14,7 @@ import {
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
 import { isHexDark } from '../-utils/style-engine';
+import { catalogFeatures } from '../-utils/block-summary';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
@@ -410,10 +412,35 @@ const widthToFr = (w?: string): string => {
 
 // ─── Structural components ────────────────────────────────────────────────────
 
+/** #rrggbb for a lower-case #rgb(a), #rrggbb(aa) or rgb()/rgba() colour ('' otherwise; alpha ignored). */
+const toHex6 = (c: string): string => {
+    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])[0-9a-f]?$/.exec(c);
+    if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+    const long = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/.exec(c);
+    if (long) return `#${long[1]}`;
+    const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(c);
+    if (!rgb) return '';
+    return `#${rgb
+        .slice(1, 4)
+        .map((n) => Math.min(255, Number(n)).toString(16).padStart(2, '0'))
+        .join('')}`;
+};
+
+/** True for a light colour; false for dark or unreadable values. */
+const isLightColour = (colour: unknown): boolean => {
+    const c = typeof colour === 'string' ? colour.trim().toLowerCase() : '';
+    if (c === 'white') return true;
+    const hex = toHex6(c);
+    return hex !== '' && !isHexDark(hex);
+};
+
 const HeaderPreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     const bg = props.backgroundColor || '#4F46E5';  // design-lint-ignore: page-builder default color
-    const fg = props.textColor || '#FFFFFF';  // design-lint-ignore: page-builder default color
+    // No authored text colour: ink that reads on the bar (a white bar got white text).
+    const fg = props.textColor || (isLightColour(bg) ? '#1A1A1A' : '#FFFFFF');  // design-lint-ignore: page-builder default color
+    // The button chip inverts the bar: bar-coloured text on a text-coloured pill.
+    const chipStyle = { color: bg, backgroundColor: fg };
     return (
         <header className="flex items-center justify-between px-6 py-3 shadow-sm" style={{ backgroundColor: bg }}>
             <div className="flex items-center gap-3">
@@ -434,12 +461,12 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
             </nav>
             <div className="flex items-center gap-2">
                 {props.ctaButton?.enabled && (
-                    <span className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold shadow-sm" style={{ color: bg }}>
+                    <span className="rounded-lg px-4 py-1.5 text-xs font-semibold shadow-sm" style={chipStyle}>
                         {props.ctaButton.text || t('header.getStarted')}
                     </span>
                 )}
                 {!props.ctaButton?.enabled && (props.authLinks || []).slice(0, 1).map((link: any, i: number) => (
-                    <span key={i} className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold" style={{ color: bg }}>
+                    <span key={i} className="rounded-lg px-4 py-1.5 text-xs font-semibold" style={chipStyle}>
                         {link.label}
                     </span>
                 ))}
@@ -1183,6 +1210,14 @@ const GalleryPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+/** "Hero · Stream icons · Filter sidebar · 2 highlighted rows · Editorial cards";
+ *  '' for a catalogue using none of the opt-in features. `t` must be bound to
+ *  the managePagesComponentPreviews namespace. */
+export const describeCatalogFeatures = (props: unknown, t: TFunction): string =>
+    catalogFeatures(props)
+        .map((feature) => t(`catalogFeatures.${feature.key}`, { count: feature.count }))
+        .join(' · ');
+
 // ─── Data-driven placeholder ──────────────────────────────────────────────────
 
 const DataPlaceholder: React.FC<{ label: string; description?: string }> = ({ label, description }) => {
@@ -1287,7 +1322,10 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return (
                 <DataPlaceholder
                     label={t('dispatcher.courseCatalogLabel')}
-                    description={t('dispatcher.courseCatalogDesc', { title: props.title || t('dispatcher.ourCoursesDefault') })}
+                    description={
+                        describeCatalogFeatures(props, t) ||
+                        t('dispatcher.courseCatalogDesc', { title: props.title || t('dispatcher.ourCoursesDefault') })
+                    }
                 />
             );
         case 'bookCatalogue':

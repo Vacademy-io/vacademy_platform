@@ -1,97 +1,37 @@
 {
-    "globalSettings": {
-        "title": "वैश्विक सेटिंग्स",
-        "description": "हेडर, फ़ुटर और वैश्विक गुण कॉन्फ़िगर करें",
-        "header": "हेडर",
-        "footer": "फ़ुटर",
-        "selectedIndicator": "● चयनित",
-        "overview": {
-            "title": "कॉन्फ़िगरेशन का अवलोकन",
-            "catalogueType": "कैटलॉग प्रकार",
-            "notAvailable": "उपलब्ध नहीं",
-            "themeMode": "थीम मोड",
-            "fontFamily": "फ़ॉन्ट फ़ैमिली",
-            "defaultFont": "डिफ़ॉल्ट",
-            "payment": "भुगतान",
-            "leadCollection": "लीड संग्रह",
-            "enquiry": "पूछताछ",
-            "enabledBadge": "✓ सक्षम",
-            "disabledBadge": "✗ अक्षम"
-        }
+    "view": {
+        "website": "वेबसाइट",
+        "websiteTitle": "विज़िटर ठीक यही देखेंगे, आपके बिना सहेजे बदलावों के साथ",
+        "structure": "संरचना",
+        "structureTitle": "इस पेज के सभी ब्लॉक एक सूची में — क्रम बदलें या संपादित करने के लिए कोई चुनें"
     },
-    "page": {
-        "notFound": "पेज नहीं मिला",
-        "componentsCount_one": "पेज घटक • {{count}} घटक",
-        "componentsCount_other": "पेज घटक • {{count}} घटक",
-        "duplicateComponentTitle": "घटक डुप्लिकेट करें",
-        "deleteComponentTitle": "घटक हटाएँ",
-        "confirmDeleteComponent": "क्या इस घटक को हटाना है?",
-        "selected": "चयनित",
-        "empty": {
-            "title": "इस पेज पर कोई घटक नहीं है",
-            "hint": "घटकों को जोड़ने के लिए लाइब्रेरी से खींचें"
-        }
+    "toolbar": {
+        "desktop": "डेस्कटॉप",
+        "tablet": "टैबलेट (768px)",
+        "mobile": "मोबाइल (375px)",
+        "untitled": "बिना शीर्षक",
+        "viewLive": "लाइव देखें",
+        "viewLiveDraft": "लाइव देखें (ड्राफ़्ट)",
+        "viewLiveTitle": "लाइव पेज देखें",
+        "unpublishedTitle": "यह पेज प्रकाशित नहीं है — विज़िटर इसे अभी नहीं देखेंगे"
     },
-    "summary": {
-        "hero": {
-            "fallbackTitle": "हीरो सेक्शन"
-        },
-        "catalogue": {
-            "fallbackTitle": "कोर्स कैटलॉग",
-            "layoutLine": "लेआउट: {{layout}} • फ़िल्टर: {{filters}}",
-            "filtersEnabled": "सक्षम",
-            "filtersDisabled": "अक्षम",
-            "filterCountSuffix_one": " • {{count}} फ़िल्टर",
-            "filterCountSuffix_other": " • {{count}} फ़िल्टर"
-        },
-        "courseDetails": {
-            "title": "कोर्स विवरण पेज",
-            "enquirySuffix": "पूछताछ • ",
-            "paymentSuffix": "भुगतान • ",
-            "addToCart": "कार्ट में जोड़ें"
-        },
-        "cart": {
-            "title": "शॉपिंग कार्ट",
-            "quantityControlsSuffix": "मात्रा नियंत्रण • ",
-            "pricingEnabled": "मूल्य निर्धारण सक्षम"
-        },
-        "mediaShowcase": {
-            "title": "मीडिया शोकेस",
-            "layoutSlides_one": "लेआउट: {{layout}} • {{count}} स्लाइड",
-            "layoutSlides_other": "लेआउट: {{layout}} • {{count}} स्लाइड्स",
-            "autoplaySuffix": " • ऑटोप्ले"
-        },
-        "buyRent": {
-            "fallbackTitle": "खरीदें/किराए पर लें अनुभाग",
-            "buyFallback": "खरीदें",
-            "rentFallback": "किराए पर लें",
-            "buyRentLine": "{{buy}} • {{rent}}"
-        },
-        "stats": {
-            "title": "आँकड़े हाइलाइट्स",
-            "count_one": "{{count}} आँकड़ा",
-            "count_other": "{{count}} आँकड़े"
-        },
-        "testimonials": {
-            "fallbackTitle": "प्रशंसापत्र",
-            "countLayout_one": "{{count}} प्रशंसापत्र • लेआउट: {{layout}}",
-            "countLayout_other": "{{count}} प्रशंसापत्र • लेआउट: {{layout}}"
-        },
-        "policy": {
-            "fallbackTitle": "नीति सामग्री",
-            "subtitle": "नीति पेज"
-        },
-        "header": {
-            "fallbackTitle": "हेडर",
-            "navItems_one": "{{count}} नेविगेशन आइटम",
-            "navItems_other": "{{count}} नेविगेशन आइटम"
-        },
-        "footer": {
-            "title": "फ़ुटर",
-            "layout": "लेआउट: {{layout}}"
-        },
-        "hideDetails": "विवरण छुपाएँ",
-        "showDetails": "विवरण दिखाएँ",
-        "fullConfigurationLabel": "पूर्ण कॉन्फ़िगरेशन:"
+    "structure": {
+        "intro": "इस पेज के ब्लॉक, ऊपर से नीचे। संपादित करने के लिए किसी ब्लॉक पर क्लिक करें; उसे खिसकाने के लिए हैंडल से खींचें। विज़िटर को पेज जैसा दिखता है, वैसा देखने के लिए वेबसाइट पर जाएँ।",
+        "noPage": "संपादन शुरू करने के लिए नीचे की पट्टी से कोई पेज चुनें",
+        "empty": "यह पेज खाली है। बाईं ओर से कोई ब्लॉक खींचें, या जोड़ने के लिए उस पर क्लिक करें।",
+        "blockCount_one": "{{count}} ब्लॉक",
+        "blockCount_other": "{{count}} ब्लॉक",
+        "header": "साइट हेडर",
+        "footer": "साइट फ़ुटर",
+        "everyPage": "हर पेज पर",
+        "hidden": "छिपा हुआ",
+        "hiddenTitle": "विज़िटर यह ब्लॉक नहीं देखते। इसे लेयर्स या इसकी सेटिंग्स से फिर दिखाएँ।",
+        "noHeading": "कोई शीर्षक नहीं",
+        "dragHandle": "{{name}} खिसकाएँ: खींचें, या ऊपर और नीचे तीर कुंजियाँ दबाएँ",
+        "columns_one": "{{count}} कॉलम",
+        "columns_other": "{{count}} कॉलम",
+        "column": "कॉलम {{index}}",
+        "emptyColumn": "खाली — यहाँ कोई ब्लॉक खींचें",
+        "dropHere": "ब्लॉक को पेज के अंत में जोड़ने के लिए यहाँ छोड़ें"
     }
 }

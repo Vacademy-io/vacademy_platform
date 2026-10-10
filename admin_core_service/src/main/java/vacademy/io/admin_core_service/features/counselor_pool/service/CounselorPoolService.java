@@ -222,7 +222,9 @@ public class CounselorPoolService {
     }
 
     private void attachAudienceToPoolInternal(String poolId, String audienceId, String addedByUserId) {
-        attachAudienceInternal(poolId, audienceId);
+        if (!attachAudienceInternal(poolId, audienceId)) {
+            return;
+        }
 
         // Seed member rows for the new audience using existing pool members.
         // Display order matches the member's position when listed by added_at.
@@ -606,15 +608,34 @@ public class CounselorPoolService {
     // Internal helpers
     // ────────────────────────────────────────────────────────────────
 
-    private void attachAudienceInternal(String poolId, String audienceId) {
+    /**
+     * Links the audience to the pool. Returns false when it was already linked to
+     * this same pool (nothing to do). A link left pointing at a pool that no longer
+     * exists has no owner to protect (pool_id has no FK), so it is dropped instead
+     * of blocking the attach.
+     */
+    private boolean attachAudienceInternal(String poolId, String audienceId) {
         requireNonBlank(audienceId, "audience_id is required");
-        if (poolAudienceRepository.existsByAudienceId(audienceId)) {
-            throw new VacademyException("Audience is already linked to a pool. Remove it from the existing pool first.");
+        Optional<CounselorPoolAudience> existing = poolAudienceRepository.findByAudienceId(audienceId);
+        if (existing.isPresent()) {
+            String ownerPoolId = existing.get().getPoolId();
+            if (poolId.equals(ownerPoolId)) {
+                return false;
+            }
+            if (poolRepository.existsById(ownerPoolId)) {
+                throw new VacademyException("Audience is already linked to a pool. Remove it from the existing pool first.");
+            }
+            log.warn("Dropping stale pool link {} — audience={} pointed at missing pool={}",
+                    existing.get().getId(), audienceId, ownerPoolId);
+            poolAudienceRepository.delete(existing.get());
+            // audience_id is UNIQUE and Hibernate flushes inserts before deletes.
+            poolAudienceRepository.flush();
         }
         poolAudienceRepository.save(CounselorPoolAudience.builder()
                 .poolId(poolId)
                 .audienceId(audienceId)
                 .build());
+        return true;
     }
 
     private void createMemberRow(String poolId, String audienceId, String counselorUserId,

@@ -1,0 +1,16 @@
+{
+    "tabs": {
+        "other": "Autres entrées"
+    },
+    "other": {
+        "hint": "Traductions qu’aucun texte de page ni cours n’utilise plus, ou ajoutées à la main. Modifiez-les ici, ou cliquez sur Clear pour les supprimer.",
+        "empty": "Chaque traduction appartient à un texte de page, un cours, un dossier ou une page."
+    },
+    "location": {
+        "header": "En-tête",
+        "footer": "Pied de page",
+        "pageTitle": "Titre de la page",
+        "seo": "Moteurs de recherche (SEO)",
+        "settings": "Paramètres du site"
+    }
+}

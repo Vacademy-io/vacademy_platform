@@ -596,6 +596,10 @@ public class MetaOAuthController {
         connector.setAudienceId(request.getAudienceId());
         // The connector list builds the "copy webhook URL" action from platform_form_id.
         connector.setPlatformFormId(googleKey);
+        // The name the list shows instead of the key (which is a credential).
+        if (request.getPlatformFormName() != null) {
+            connector.setPlatformFormName(cleanConnectorName(request.getPlatformFormName()));
+        }
         connector.setRoutingRulesJson(request.getRoutingRulesJson());
         connector.setFieldMappingJson(request.getFieldMappingJson());
         connector.setProducesSourceType("GOOGLE_ADS");
@@ -611,6 +615,13 @@ public class MetaOAuthController {
                 "status", "ACTIVE",
                 "message", "Google Lead Form connector created. Paste the webhook URL and the key into Google Ads."
         ));
+    }
+
+    /** Trimmed, at most the column's 255 chars; blank clears the name. */
+    private static String cleanConnectorName(String name) {
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) return null;
+        return trimmed.length() > 255 ? trimmed.substring(0, 255) : trimmed;
     }
 
     /** 24 random bytes → 32 URL-safe characters. */
@@ -739,6 +750,10 @@ public class MetaOAuthController {
             @RequestBody ConnectorUpdateRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
         FormWebhookConnector connector = loadConnectorForStaff(connectorId, user);
+
+        if (request.getPlatformFormName() != null) {
+            connector.setPlatformFormName(cleanConnectorName(request.getPlatformFormName()));
+        }
 
         if (request.getDefaultValuesJson() != null) {
             String trimmed = request.getDefaultValuesJson().trim();

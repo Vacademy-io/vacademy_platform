@@ -8,6 +8,7 @@ import {
     type UtmAttributionRecord,
 } from '@/services/utm-attribution';
 import { cn } from '@/lib/utils';
+import { useUtmCampaignLabels } from '@/hooks/use-utm-campaign-labels';
 
 /**
  * "Where did this learner come from?" — the campaign that produced them.
@@ -35,6 +36,7 @@ export const StudentAttribution = ({
     mobileNumber?: string;
 }) => {
     const { t } = useTranslation('manageStudentsAttribution');
+    const { labelFor: campaignLabel } = useUtmCampaignLabels(instituteId);
 
     const { data: touches = [] } = useQuery({
         queryKey: utmAttributionQueryKey(userId ?? '', instituteId ?? '', email, mobileNumber),
@@ -73,7 +75,7 @@ export const StudentAttribution = ({
             <ProfileFieldRow
                 key={`${keyPrefix}-campaign`}
                 label={t('fields.campaign')}
-                value={touch.utm_campaign || ''}
+                value={campaignLabel(touch.utm_campaign)}
             />
             {touch.utm_content && (
                 <ProfileFieldRow

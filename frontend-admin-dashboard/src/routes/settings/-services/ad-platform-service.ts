@@ -281,6 +281,8 @@ export interface ConnectorUpdateRequest {
      * Pass '{}' to clear all defaults.
      */
     defaultValuesJson?: string;
+    /** Display name for the connector; '' clears it. Omit to leave it unchanged. */
+    platformFormName?: string;
 }
 
 export const updateConnector = async (
@@ -336,5 +338,15 @@ export const buildFieldMappingJson = (
 };
 
 /** Build the full Google webhook URL for display. */
+/**
+ * The id to show for a connector in lists. A Google connector's platform_form_id IS
+ * its webhook key (a credential), so only its last four characters are shown.
+ */
+export const connectorDisplayId = (c: Pick<ConnectorListItem, 'vendor' | 'platformFormId'>) => {
+    if (!c.platformFormId) return null;
+    if (c.vendor === 'GOOGLE_LEAD_ADS') return `••••${c.platformFormId.slice(-4)}`;
+    return c.platformFormId;
+};
+
 export const buildGoogleWebhookUrl = (googleKey: string): string =>
     `${WEBHOOK_BASE}/google/${googleKey}`;

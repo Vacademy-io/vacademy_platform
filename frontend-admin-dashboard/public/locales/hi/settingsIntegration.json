@@ -39,7 +39,8 @@
         "copyKey": "Google की कॉपी करें",
         "urlLabel": "URL",
         "keyLabel": "की",
-        "googleSetup": "सेटअप और स्टेटस"
+        "googleSetup": "सेटअप, स्टेटस और कैंपेन के नाम",
+        "googleUnnamed": "Google लीड फ़ॉर्म"
     },
     "vendor": {
         "meta": "Meta",
@@ -111,7 +112,21 @@
         "troubleshootHeading": "अगर Google का टेस्ट फ़ेल हो",
         "troubleshoot404": "\"Not found\" (404): वेबहुक URL अधूरा कॉपी हुआ है, या यह कनेक्टर बंद कर दिया गया है। URL फिर से कॉपी करें।",
         "troubleshoot401": "\"Unauthorized\" (401): Google Ads में डाली गई Key मेल नहीं खाती। की फिर से कॉपी करें; इसमें छोटे-बड़े अक्षर मायने रखते हैं।",
-        "troubleshootNoLeads": "टेस्ट डेटा कभी लीड के रूप में सेव नहीं होता। असली लीड तब आती हैं जब फ़ॉर्म किसी चालू कैंपेन पर चलता है।"
+        "troubleshootNoLeads": "टेस्ट डेटा कभी लीड के रूप में सेव नहीं होता। असली लीड तब आती हैं जब फ़ॉर्म किसी चालू कैंपेन पर चलता है।",
+        "connectorNameLabel": "कनेक्टर का नाम",
+        "connectorNamePlaceholder": "उदा. एडमिशन लीड फ़ॉर्म",
+        "nameSave": "नाम सेव करें",
+        "nameSaved": "कनेक्टर का नाम बदल दिया गया",
+        "nameSaveError": "कनेक्टर का नाम नहीं बदला जा सका",
+        "campaignsHeading": "Google कैंपेन",
+        "campaignsHint": "Google सिर्फ़ कैंपेन ID भेजता है। हर कैंपेन का नाम एक बार रखें; फिर लीड टेबल, कैंपेन फ़िल्टर, लीड प्रोफ़ाइल और UTM रिपोर्ट में नाम दिखेगा, पुरानी लीड के लिए भी।",
+        "campaignsEmpty": "अभी तक कोई लीड नहीं। लीड भेजने वाला हर Google कैंपेन यहाँ दिखेगा ताकि आप उसका नाम रख सकें।",
+        "campaignLeads": "लीड: {{count}}",
+        "campaignLastLead": "आख़िरी {{time}}",
+        "campaignNamePlaceholder": "कैंपेन का नाम, उदा. Pune MBBS Search",
+        "campaignsSave": "कैंपेन के नाम सेव करें",
+        "campaignsSaved": "कैंपेन के नाम सेव हो गए",
+        "campaignsSaveError": "कैंपेन के नाम सेव नहीं हो सके"
     },
     "meta": {
         "sessionExpiredReconnect": "आपका Meta सेशन समाप्त हो गया है। कृपया Meta को फिर से कनेक्ट करें।",

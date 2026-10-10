@@ -47,6 +47,7 @@ import {
     resubscribeConnector,
     pollConnectorNow,
     buildGoogleWebhookUrl,
+    connectorDisplayId,
     fetchAudienceCustomFields,
     buildFieldMappingJson,
     type MetaPage,
@@ -56,6 +57,11 @@ import {
     type AudienceCustomField,
 } from '../-services/ad-platform-service';
 import { AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
+import {
+    fetchUtmCampaigns,
+    saveUtmCampaignLabels,
+    utmCampaignsQueryKey,
+} from '@/services/utm-campaign-labels';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     buildCampaignTypeFilterOptions,
@@ -491,6 +497,12 @@ function ConnectorTable({
                         const vendorLabel = v ? t(v.labelKey) : c.vendor;
                         const vendorColor = v?.color ?? 'text-neutral-700';
                         const vendorBg = v?.bg ?? 'bg-neutral-100';
+                        // A Google connector's form id is its webhook key, a credential: show a
+                        // name instead, and only the key's last four characters.
+                        const displayName =
+                            c.platformFormName ??
+                            (c.vendor === 'GOOGLE_LEAD_ADS' ? t('table.googleUnnamed') : null);
+                        const displayId = connectorDisplayId(c);
                         return (
                             <tr key={c.id} className="border-b last:border-0">
                                 <td className="px-4 py-2.5">
@@ -501,27 +513,27 @@ function ConnectorTable({
                                     </span>
                                 </td>
                                 <td className="max-w-xs px-4 py-2.5 text-sm">
-                                    {c.platformFormName ? (
+                                    {displayName ? (
                                         <>
                                             <div
                                                 className="truncate font-medium"
-                                                title={c.platformFormName}
+                                                title={displayName}
                                             >
-                                                {c.platformFormName}
+                                                {displayName}
                                             </div>
                                             <div
                                                 className="whitespace-nowrap font-mono text-caption text-neutral-400"
-                                                title={c.platformFormId ?? undefined}
+                                                title={displayId ?? undefined}
                                             >
-                                                {c.platformFormId ?? '-'}
+                                                {displayId ?? '-'}
                                             </div>
                                         </>
                                     ) : (
                                         <span
                                             className="whitespace-nowrap font-mono text-caption text-neutral-600"
-                                            title={c.platformFormId ?? undefined}
+                                            title={displayId ?? undefined}
                                         >
-                                            {c.platformFormId ?? '-'}
+                                            {displayId ?? '-'}
                                         </span>
                                     )}
                                 </td>
@@ -892,6 +904,138 @@ function GoogleDeliveryStatus({ connector }: { connector: ConnectorListItem }) {
     );
 }
 
+/** Rename a Google connector: the list shows this name, never the key (a credential). */
+function GoogleConnectorName({ connector }: { connector: ConnectorListItem }) {
+    const { t } = useTranslation('settingsIntegration');
+    const queryClient = useQueryClient();
+    // null = not edited; the list refetches every few seconds while the dialog is open.
+    const [draft, setDraft] = useState<string | null>(null);
+    const current = connector.platformFormName ?? '';
+    const value = draft ?? current;
+
+    const { mutate: rename, isPending } = useMutation({
+        mutationFn: () => updateConnector(connector.id, { platformFormName: value.trim() }),
+        onSuccess: () => {
+            toast.success(t('google.nameSaved'));
+            setDraft(null);
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: () => toast.error(t('google.nameSaveError')),
+    });
+
+    return (
+        <div className="space-y-1">
+            <Label className="text-xs">{t('google.connectorNameLabel')}</Label>
+            <div className="flex gap-2">
+                <Input
+                    value={value}
+                    placeholder={t('google.connectorNamePlaceholder')}
+                    onChange={(e) => setDraft(e.target.value)}
+                />
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => rename()}
+                    disable={isPending || value.trim() === current}
+                >
+                    {isPending ? t('google.saving') : t('google.nameSave')}
+                </MyButton>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Name the Google campaigns this institute's lead forms have sent leads from. Google
+ * sends only the campaign id; once named, the leads table, campaign filter, lead side
+ * panel and UTM report show the name (filters still match the id underneath).
+ */
+function GoogleCampaignNames() {
+    const { t } = useTranslation('settingsIntegration');
+    const instituteId = getCurrentInstituteId() ?? '';
+    const queryClient = useQueryClient();
+    const { data: rows = [], isLoading } = useQuery({
+        queryKey: utmCampaignsQueryKey(instituteId, 'google', 'lead_form'),
+        queryFn: () => fetchUtmCampaigns(instituteId, 'google', 'lead_form'),
+        enabled: !!instituteId,
+    });
+    // Edited names by campaign id; untouched rows show their saved name.
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    const changes = Object.entries(drafts).filter(
+        ([campaign, name]) =>
+            (rows.find((r) => r.campaign === campaign)?.name ?? '') !== name.trim()
+    );
+
+    const { mutate: save, isPending } = useMutation({
+        mutationFn: () =>
+            saveUtmCampaignLabels(
+                instituteId,
+                Object.fromEntries(changes.map(([campaign, name]) => [campaign, name.trim()]))
+            ),
+        onSuccess: () => {
+            toast.success(t('google.campaignsSaved'));
+            setDrafts({});
+            queryClient.invalidateQueries({ queryKey: ['utm-campaign-labels'] });
+            queryClient.invalidateQueries({ queryKey: ['utm-campaigns'] });
+        },
+        onError: () => toast.error(t('google.campaignsSaveError')),
+    });
+
+    return (
+        <div className="space-y-1.5">
+            <p className="text-xs font-medium text-neutral-500">{t('google.campaignsHeading')}</p>
+            {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                    <CircleNotch className="size-4 animate-spin" />
+                    {t('activeConnectors.loading')}
+                </div>
+            ) : rows.length === 0 ? (
+                <p className="text-caption text-neutral-500">{t('google.campaignsEmpty')}</p>
+            ) : (
+                <>
+                    <p className="text-caption text-neutral-500">{t('google.campaignsHint')}</p>
+                    <div className="divide-y rounded-md border">
+                        {rows.map((r) => (
+                            <div
+                                key={r.campaign}
+                                className="flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center"
+                            >
+                                <div className="min-w-0 sm:w-56">
+                                    <p className="font-mono text-xs text-neutral-700">
+                                        {r.campaign}
+                                    </p>
+                                    <p className="text-caption text-neutral-500">
+                                        {t('google.campaignLeads', { count: r.people })}
+                                        {r.last_seen &&
+                                            ` · ${t('google.campaignLastLead', {
+                                                time: formatDateTime(r.last_seen),
+                                            })}`}
+                                    </p>
+                                </div>
+                                <Input
+                                    value={drafts[r.campaign] ?? r.name ?? ''}
+                                    placeholder={t('google.campaignNamePlaceholder')}
+                                    onChange={(e) =>
+                                        setDrafts((d) => ({ ...d, [r.campaign]: e.target.value }))
+                                    }
+                                />
+                            </div>
+                        ))}
+                    </div>
+                    <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        onClick={() => save()}
+                        disable={isPending || changes.length === 0}
+                    >
+                        {isPending ? t('google.saving') : t('google.campaignsSave')}
+                    </MyButton>
+                </>
+            )}
+        </div>
+    );
+}
+
 const GOOGLE_SETUP_DIALOG_CLASS = 'flex max-h-[90vh] w-[95vw] max-w-2xl flex-col'; // design-lint-ignore: viewport-bounded so the guide scrolls on short screens
 
 /**
@@ -933,6 +1077,7 @@ export function GoogleSetupDialog({
                         </div>
                     ) : (
                         <div className="space-y-4">
+                            <GoogleConnectorName connector={connector} />
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <CopyableValue
                                     label={t('google.webhookUrlLabel')}
@@ -947,6 +1092,7 @@ export function GoogleSetupDialog({
                                 </p>
                                 <GoogleDeliveryStatus connector={connector} />
                             </div>
+                            <GoogleCampaignNames />
                             <div className="space-y-1">
                                 <p className="text-xs font-medium text-neutral-500">
                                     {t('google.troubleshootHeading')}
@@ -974,6 +1120,7 @@ export function GoogleSetupDialog({
 function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void }) {
     const { t } = useTranslation('settingsIntegration');
     const [audienceId, setAudienceId] = useState('');
+    const [name, setName] = useState('');
     const instituteId = getCurrentInstituteId() ?? '';
     const { data: audiences = [] } = useAudienceList(instituteId);
 
@@ -984,11 +1131,13 @@ function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void
                 vendor: 'GOOGLE_LEAD_ADS',
                 instituteId,
                 audienceId,
+                platformFormName: name.trim() || undefined,
                 producesSourceType: 'GOOGLE_ADS',
             }),
         onSuccess: (result) => {
             toast.success(result.message);
             setAudienceId('');
+            setName('');
             onCreated(result.connector_id);
         },
         onError: () => toast.error(t('google.saveError')),
@@ -1004,6 +1153,14 @@ function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void
                     audienceLabel={t('google.audienceLabel')}
                     audiencePlaceholder={t('google.selectAudiencePlaceholder')}
                 />
+                <div className="space-y-1">
+                    <Label className="text-xs">{t('google.connectorNameLabel')}</Label>
+                    <Input
+                        value={name}
+                        placeholder={t('google.connectorNamePlaceholder')}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+                </div>
             </div>
             <div className="rounded-md bg-neutral-50 p-3">
                 <p className="mb-1.5 text-xs font-medium text-neutral-600">

@@ -79,6 +79,16 @@ class ToolContext:
     # part of the tool result string — the model never sees the nonce, so it can
     # never fabricate a confirmation.
     pending_action: Optional[Dict[str, Any]] = None
+    # The tool settings this call was gated with (set by execute_tool), so a READ
+    # tool can word its advice for what the caller may also do — e.g. "bind it
+    # with website_edit" only to a caller who has website_edit. None = unknown,
+    # which a tool must treat as "not allowed".
+    gate_setting: Optional[Dict[str, Any]] = None
+    gate_checked: bool = False
+
+    def may_use(self, tool_name: str) -> bool:
+        """True iff this caller may also call ``tool_name`` (same AND-gate as execute_tool)."""
+        return self.gate_checked and is_tool_allowed(tool_name, self.principal, self.gate_setting)
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str
@@ -2356,6 +2366,7 @@ async def execute_tool(
         })
 
     spec = ASSISTANT_TOOLS[tool_name]
+    ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
     # Identity is ALWAYS taken from the pinned principal, never from the model.
     safe_args["user_id"] = ctx.principal.user_id

@@ -445,9 +445,23 @@ export const applyOps = (config: CatalogueConfig, pageId: string, ops: EditOp[])
             case 'updateGlobalSettings': {
                 const gs: Record<string, any> = clone.globalSettings as any;
                 for (const [k, v] of Object.entries(op.patch)) {
+                    const before = k === 'theme' ? gs.theme?.palette : undefined;
                     gs[k] = v && typeof v === 'object' && !Array.isArray(v)
                         ? { ...(gs[k] || {}), ...v }
                         : v;
+                    // theme.palette merges one level deeper: a patch naming one
+                    // colour must not drop the site's other palette colours.
+                    const palettePatch = (v as any)?.palette;
+                    if (k === 'theme' && palettePatch && typeof palettePatch === 'object' && !Array.isArray(palettePatch)) {
+                        const merged: Record<string, unknown> = { ...(before && typeof before === 'object' ? before : {}) };
+                        for (const [key, value] of Object.entries(palettePatch)) {
+                            if (value === null) delete merged[key];
+                            else merged[key] = value;
+                        }
+                        // No colour left: applyToTokens alone means nothing (same as the MCP's apply_ops).
+                        if (Object.keys(merged).some((key) => key !== 'applyToTokens')) gs.theme.palette = merged;
+                        else delete gs.theme.palette;
+                    }
                 }
                 break;
             }

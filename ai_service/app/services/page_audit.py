@@ -172,12 +172,45 @@ def _contrast_ratio(fg: str, bg: str) -> Optional[float]:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def audit_component(comp: Dict[str, Any], *, fidelity: bool = False) -> List[Dict[str, Any]]:
+#: Codes of sections bound to no live data (product page / folder library).
+UNBOUND_CODES = frozenset({"offer-unbound", "folders-unbound", "path-unbound"})
+
+
+def bind_hint(code: str, component_id: Optional[str], list_mode: Optional[bool] = None,
+              page_route: Optional[str] = None) -> Optional[str]:
+    """
+    The fix for an unbound section when the caller can edit the site (the
+    assistant / MCP ``website_edit`` tool): bind it, never remove it — the
+    design put it there. None for any other code.
+    """
+    sid = component_id or "<section id>"
+    where = f", page_route='{page_route}'" if page_route else ""
+    call = "website_edit(action='bind_data'" + where + ", section_id='" + sid + "', data_kind='{kind}', data_id=<{what}>)"
+    library = call.format(kind="folderLibrary", what="a folder library id from website(action='context') folder_libraries")
+    product = call.format(kind="productPage", what="a product page code from website(action='context')")
+    if code == "offer-unbound":
+        hint = product
+    elif code == "folders-unbound":
+        hint = library
+    elif code == "path-unbound":
+        hint = library if list_mode else product if list_mode is False else f"{library} (list mode) or {product}"
+    else:
+        return None
+    return (f"Bind it with {hint}. Do not remove the section. If no suitable one exists, ask the admin to "
+            "create it (Folders / Product pages in the dashboard) and leave the section in place.")
+
+
+def audit_component(comp: Dict[str, Any], can_bind: bool = False, page_route: Optional[str] = None,
+                    *, fidelity: bool = False) -> List[Dict[str, Any]]:
     """Defects decidable from ONE component, with no page context.
 
     Split out of audit_page so the section-variants endpoint can reject a bad
     alternative before the admin is asked to choose it — offering someone three
     options one of which renders blank is worse than offering two.
+
+    ``can_bind``: the caller can bind live data (website_edit bind_data), so an
+    unbound section's hint says how instead of "remove this component"
+    (``page_route``: the page it is on, named in that hint).
 
     ``fidelity`` (a page built from a design): placeholder copy is looked for
     only in the text a visitor reads, not in ids, links or enum tokens."""
@@ -205,6 +238,7 @@ def audit_component(comp: Dict[str, Any], *, fidelity: bool = False) -> List[Dic
         issues.append(_issue(
             "offer-unbound", "fix",
             "'productPageOffer' has no productPageCode, so the section is invisible to visitors.",
+            bind_hint("offer-unbound", cid, page_route=page_route) if can_bind else
             "Remove this component — only an admin can pick the product page, so it cannot be "
             "generated. Use courseCatalog if the page needs a live listing.",
             cid,
@@ -215,6 +249,7 @@ def audit_component(comp: Dict[str, Any], *, fidelity: bool = False) -> List[Dic
         issues.append(_issue(
             "folders-unbound", "fix",
             "'folderBrowser' has no libraryId, so the section is invisible to visitors.",
+            bind_hint("folders-unbound", cid, page_route=page_route) if can_bind else
             "Remove this component — only an admin can pick the folder library, so it cannot be "
             "generated. Use courseCatalog if the page needs a live listing.",
             cid,
@@ -228,6 +263,7 @@ def audit_component(comp: Dict[str, Any], *, fidelity: bool = False) -> List[Dic
             issues.append(_issue(
                 "path-unbound", "fix",
                 "'learningPath' has no " + ("libraryId" if list_mode else "productPageCode") + ", so the section is invisible to visitors.",
+                bind_hint("path-unbound", cid, list_mode, page_route=page_route) if can_bind else
                 "Remove this component — only an admin can pick the product page or folder library, so it cannot be generated.",
                 cid,
             ))
@@ -457,6 +493,7 @@ def audit_page(
     info_only: bool = False,
     inspiration: Optional[Dict[str, Any]] = None,
     fidelity: bool = False,
+    can_bind: bool = False,
 ) -> List[Dict[str, Any]]:
     """Return the visible defects in a composed page, worst kind first.
 
@@ -465,6 +502,8 @@ def audit_page(
     repeats on learningPath sections (a featured path, then "more paths" —
     adjacent or not; every section sharing the heading must be a learningPath)
     is not a duplicate. Every defect a visitor would see still counts.
+
+    ``can_bind``: see audit_component (the in-product composer leaves it off).
     """
     issues: List[Dict[str, Any]] = []
     components = [c for c in _walk(page.get("components") or [])]
@@ -477,7 +516,8 @@ def audit_page(
 
     heading_types: Dict[str, set] = {}
     for comp in components:
-        issues.extend(audit_component(comp, fidelity=fidelity))
+        issues.extend(audit_component(comp, can_bind=can_bind, page_route=page.get("route") if can_bind else None,
+                                      fidelity=fidelity))
         props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
         heading = _heading_of(props)
         if heading:

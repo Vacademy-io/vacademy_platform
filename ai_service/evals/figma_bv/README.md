@@ -35,7 +35,7 @@ Tier 1, the one CI runs, reads only the three files named in `expected.json` (`m
 - **Block all public access** must be on. The upload script refuses a bucket where it cannot confirm this.
 - Objects are encrypted at rest: SSE-S3 by default, or SSE-KMS when `FIGMA_BV_KMS_KEY_ID` is set.
 - Give CI a **read-only** key scoped to the prefix (`s3:GetObject` on `arn:aws:s3:::<bucket>/evals/figma-bv/*`) rather than the deploy key.
-- Delete the prefix if the client withdraws permission. CI then skips again on its own once the secret is removed.
+- Delete the prefix if the client withdraws permission, and remove `FIGMA_BV_S3_URI` from the `figma-bv-eval` environment. CI then skips again on its own.
 
 ## Upload (maintainers)
 
@@ -52,19 +52,26 @@ The script refuses the bucket root, missing tier-1 files, and buckets that do no
 
 ## CI
 
-The workflow is `.github/workflows/figma-bv-eval.yml`. It runs on changes to the importer, the eval, the pattern catalog or the fixture, and it can also be started by hand. Set these repository secrets:
+The workflow is `.github/workflows/figma-bv-eval.yml`. It runs on changes to the importer, the eval, the pattern catalog, the fixture, the `design_import` model or its migration, and it can also be started by hand. It has two jobs:
 
-| Secret | Required | Meaning |
-|---|---|---|
-| `FIGMA_BV_S3_URI` | yes, to run | `s3://<private-bucket>/<prefix>` |
-| `FIGMA_BV_AWS_ACCESS_KEY` / `FIGMA_BV_AWS_SECRET_KEY` | recommended | A read-only key. Without it the job falls back to `AWS_ACCESS_KEY` / `AWS_SECRET_ACCESS_KEY`. |
-| `FIGMA_BV_AWS_REGION` | no | Defaults to `us-east-1` |
+- **`unit`** always runs and needs no secrets. It runs `tests/test_design_import_migration_parity.py` and `tests/test_figma_bv_eval.py` (the scorer unit tests).
+- **`tier1`** scores the real design. It needs the private inputs.
 
-Without `FIGMA_BV_S3_URI` the job **skips**. It stays green, leaves a notice, and writes "skipped" in the run summary. This is what happens for forks, Dependabot, and any copy of the repo without the bucket. When the secret is set, the job:
+`tier1` reads its secrets from the GitHub **environment** `figma-bv-eval`, not from repository secrets. The repository is at GitHub's limit of 100 secrets, so a new repository secret is refused. Create the environment under Settings > Environments with **no required reviewers** and the deployment-branch policy **No restriction**, so pull-request runs can use it. Then add:
 
-1. downloads the tier-1 files with the AWS credentials, which only that step receives;
-2. runs `python -m evals.figma_bv.run --check` with no credentials;
-3. writes the pass or fail table to the run summary;
+| Name | Kind | Required | Meaning |
+|---|---|---|---|
+| `FIGMA_BV_S3_URI` | environment secret | yes, to run | `s3://<private-bucket>/<prefix>` |
+| `FIGMA_BV_AWS_ACCESS_KEY` / `FIGMA_BV_AWS_SECRET_KEY` | environment secret | yes, when the URI is set | A **read-only** key: `s3:GetObject` on `arn:aws:s3:::<bucket>/<prefix>/*` and nothing else |
+| `FIGMA_BV_AWS_REGION` | environment variable | no | Defaults to `us-east-1` |
+
+There is no fallback to the deploy key (`AWS_ACCESS_KEY`), because this job runs pull-request code. If the URI is set without the read-only key, the job fails and says so.
+
+Without `FIGMA_BV_S3_URI` the `tier1` job **skips**. It stays green, leaves a notice, and writes "skipped" in the run summary. This is what happens for forks, Dependabot, and any copy of the repo without the bucket. When the secret is set, the job:
+
+1. downloads the tier-1 files with the AWS credentials, which only that step receives (the step runs no repo code; the file list is read from `expected.json` with `jq`);
+2. installs only the few packages the eval imports and runs `python -m evals.figma_bv.run --check` with no credentials;
+3. writes the pass or fail table to the run summary, with the report-only variants listed separately;
 4. deletes the inputs.
 
 No artifact is uploaded, because the scorecard can quote the client's copy.

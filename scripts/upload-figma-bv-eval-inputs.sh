@@ -111,18 +111,24 @@ if [ "$OWNERSHIP" = "BucketOwnerEnforced" ]; then
 else
 	ACL=(--acl private)
 fi
-# OS and editor junk stays local.
-COMMON=(${ACL[@]+"${ACL[@]}"} "${SSE[@]}" --only-show-errors --exclude ".DS_Store" --exclude "*/.DS_Store" --exclude "._*" --exclude "*/._*" ${DRY_RUN[@]+"${DRY_RUN[@]}"})
+COMMON=(${ACL[@]+"${ACL[@]}"} "${SSE[@]}" --only-show-errors ${DRY_RUN[@]+"${DRY_RUN[@]}"})
+# OS and editor junk stays local. The aws CLI applies the LAST matching
+# filter, so these must come after any --include (else ._c0-5.png matches
+# --include "*.png" and is uploaded).
+JUNK=(--exclude ".DS_Store" --exclude "*/.DS_Store" --exclude "._*" --exclude "*/._*")
 
 echo "Uploading $FIGMA_DIR -> $DEST/"
-aws s3 sync "$FIGMA_DIR" "$DEST/" "${COMMON[@]}"
+aws s3 sync "$FIGMA_DIR" "$DEST/" "${COMMON[@]}" "${JUNK[@]}"
 if [ -n "$RENDERS_DIR" ]; then
 	echo "Uploading $RENDERS_DIR/*.png -> $DEST/fig/"
-	aws s3 sync "$RENDERS_DIR" "$DEST/fig/" "${COMMON[@]}" --exclude "*" --include "*.png"
+	aws s3 sync "$RENDERS_DIR" "$DEST/fig/" "${COMMON[@]}" --exclude "*" --include "*.png" "${JUNK[@]}"
 fi
 
 if [ ${#DRY_RUN[@]} -eq 0 ]; then
 	echo "Uploaded. Objects under $DEST/:"
 	aws s3 ls "$DEST/" --recursive --summarize | tail -2
-	echo "Set the repository secret FIGMA_BV_S3_URI=$DEST to run the eval in CI."
+	echo "To run the eval in CI, set the ENVIRONMENT secret FIGMA_BV_S3_URI=$DEST in the"
+	echo "figma-bv-eval GitHub environment (Settings > Environments; not a repository secret,"
+	echo "the repo is at the 100-secret limit), plus FIGMA_BV_AWS_ACCESS_KEY / FIGMA_BV_AWS_SECRET_KEY"
+	echo "for a read-only key (s3:GetObject on $DEST/*)."
 fi

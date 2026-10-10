@@ -5,7 +5,9 @@
  *  - every `fullFrom` resolves in the Brahm Varchas fixture, on the component
  *    the pattern names, with the minimal's keys present;
  *  - every `bound` path reaches a value, and the scrubbed full example carries
- *    no fixture id or uploaded-asset URL;
+ *    no fixture id, uploaded-asset URL, absolute link or brand name;
+ *  - every id placeholder tells the AI to leave the id empty (writes do not
+ *    check ids; link_lead_form or the admin fills them);
  *  - every minimal switches its opt-in on, read through the renderer's own
  *    config resolvers (the same code the components call);
  *  - recipes and contracts only name patterns that exist.
@@ -18,6 +20,7 @@ import {
   CHROME_CONTRACT,
   DESIGN_PATTERNS,
   DESIGN_RECIPES,
+  FIXTURE_BRAND_NAMES,
   GLOBAL_SETTINGS_CONTRACT,
   UUID_PATTERN,
   boundPathExists,
@@ -54,6 +57,9 @@ const ADMIN_COPY_PATH = path.resolve(
   "../../../../../frontend-admin-dashboard/src/routes/manage-pages/-utils/generated/design-patterns.json",
 );
 const source = (rel: string) => fs.readFileSync(path.join(TAG_ROOT, rel), "utf8");
+const BRANDS = FIXTURE_BRAND_NAMES["brahm-varchas-site"];
+/** A pattern's full example as the exporter writes it. */
+const scrubbedFull = (p: DesignPattern) => scrubExample(fullExampleOf(FIXTURE, p.fullFrom!), p.bound, FIXTURE_BRAND_NAMES[p.fullFrom!.fixture]);
 
 type Json = Record<string, unknown>;
 const asJson = (v: unknown): Json => (v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {});
@@ -211,11 +217,54 @@ describe("design-pattern registry: full examples from the Brahm Varchas fixture"
     expect(p.bound.some(reaches), p.id).toBe(true);
   });
 
-  it.each(withFull.map((p) => [p.id, p] as const))("%s: the scrubbed example carries no fixture id or asset URL", (_id: string, p: DesignPattern) => {
-    const scrubbed = JSON.stringify(scrubExample(fullExampleOf(FIXTURE, p.fullFrom!), p.bound));
+  it.each(withFull.map((p) => [p.id, p] as const))("%s: the scrubbed example carries no fixture id, asset URL, link or brand", (_id: string, p: DesignPattern) => {
+    const scrubbed = JSON.stringify(scrubbedFull(p));
     expect(scrubbed.match(UUID_PATTERN)).toBeNull();
     expect(scrubbed).not.toMatch(/cloudfront\.net/);
+    expect(scrubbed).not.toMatch(/https?:\/\//i);
+    expect(scrubbed).not.toMatch(/brahm ?varchas|bvshiksha|ब्रह्म/i);
+    expect(scrubbed).not.toMatch(/Translate Knowledge/i);
     for (const code of ["forbvy", "ks61g1", "7pc4tl"]) expect(scrubbed).not.toContain(`"${code}"`);
+  });
+
+  it("no minimal or pattern text names the fixture's brand", () => {
+    for (const p of DESIGN_PATTERNS) {
+      const { fullFrom: _from, ...authored } = p;
+      expect(JSON.stringify(authored), p.id).not.toMatch(/brahm ?varchas|bvshiksha|ब्रह्म/i);
+    }
+  });
+
+  it("every id placeholder says to leave the id empty", () => {
+    for (const p of DESIGN_PATTERNS) {
+      const values = [p.minimal, p.fullFrom ? scrubbedFull(p) : undefined].flatMap((root) =>
+        p.bound.flatMap((b) => valuesAt(root, b.replace(/\{\}$/, ""))),
+      );
+      const strings = values.flatMap((v) => (typeof v === "string" ? [v] : Array.isArray(v) ? v.flat(2) : Object.keys(asJson(v))));
+      for (const v of strings.filter((x): x is string => typeof x === "string" && x !== "")) {
+        expect(v, `${p.id}: ${v}`).toMatch(/^<[^<>]*leave empty[^<>]*>$/);
+      }
+    }
+  });
+
+  it("scrubbing replaces links, taglines and brand names", () => {
+    const out = asJson(
+      scrubExample(
+        {
+          route: "https://brahmvarchas.org/blogs/",
+          local: "/courses",
+          text: "See https://x.example/a for Brahm Varchas news",
+          tagline: "Translate Knowledge",
+          bottomNote: "© 2026 ब्रह्म वर्चस",
+        },
+        [],
+        BRANDS,
+      ),
+    );
+    expect(String(out.route)).toMatch(/^<link/);
+    expect(out.local).toBe("/courses");
+    expect(out.text).toBe("See <url> for <institute name> news");
+    expect(String(out.tagline)).toMatch(/^<the institute's tagline>$/);
+    expect(out.bottomNote).toBe("© 2026 <institute name>");
   });
 
   it("scrubbing keeps empty ids empty and leaves the fixture untouched", () => {
@@ -330,7 +379,7 @@ describe("generated outputs are fresh (re-run scripts/export-catalogue-schema-ca
   const adminCopy = JSON.parse(fs.readFileSync(ADMIN_COPY_PATH, "utf8")) as Json;
   const expected = DESIGN_PATTERNS.map((p) => {
     const { fullFrom, ...rest } = p;
-    const full = fullFrom ? scrubExample(fullExampleOf(FIXTURE, fullFrom), p.bound) : undefined;
+    const full = fullFrom ? scrubbedFull(p) : undefined;
     return JSON.parse(
       JSON.stringify({ ...rest, ...(full !== undefined ? { full, fullSource: `${fullFrom!.fixture}#${fullFrom!.pointer}` } : {}) }),
     ) as Json;

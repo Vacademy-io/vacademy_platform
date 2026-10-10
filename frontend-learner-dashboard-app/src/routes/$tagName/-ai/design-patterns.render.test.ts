@@ -2,9 +2,10 @@
  * The registry's minimal examples for the self-contained section looks render
  * the opt-in markup through the real components (the same harness as
  * hero-editorial.render.test.ts): heroSection "editorial", ctaBanner "band"
- * (dark, light lg, app) and stepsProcess "cards". Data-bound patterns
- * (courseCatalog, learningPath) are checked through their config resolvers in
- * design-patterns.test.ts, because rendering them needs live data.
+ * (dark, light lg, app), stepsProcess "cards" and footer "brand" (with the
+ * newsletter). Data-bound patterns (courseCatalog, learningPath) and the
+ * header (router, cart and mega-menu data) are checked through their config
+ * resolvers in design-patterns.test.ts, because rendering them needs live data.
  */
 import { describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -33,6 +34,7 @@ const { findDesignPattern } = await import("./design-patterns");
 const { HeroSectionComponent } = await import("../-components/components/HeroSectionComponent");
 const { CtaBand } = await import("../-components/components/promo/CtaBand");
 const { StepsCards } = await import("../-components/components/promo/StepsCards");
+const { FooterBrand } = await import("../-components/components/footer/FooterBrand");
 
 const minimal = (id: string) => findDesignPattern(id)!.minimal as Record<string, unknown>;
 /** Text as renderToStaticMarkup escapes it (placeholders are "<…>"). */
@@ -70,5 +72,15 @@ describe("registry minimal examples render the opt-in look", () => {
     const out = html(StepsCards as never, props);
     expect(out).toContain("data-steps-cards");
     for (const step of props.steps as Array<{ title: string }>) expect(out).toContain(esc(step.title));
+  });
+
+  it.each(["footer.brand", "footer.newsletter"])("%s renders the brand footer", (id: string) => {
+    const props = minimal(id);
+    const out = html(FooterBrand as never, props);
+    expect(out).toContain('data-footer-variant="brand"');
+    const newsletter = props.newsletter as { heading?: string } | undefined;
+    if (newsletter?.heading) expect(out).toContain(esc(newsletter.heading));
+    const left = props.leftSection as { tagline?: string } | undefined;
+    if (left?.tagline) expect(out).toContain(esc(left.tagline));
   });
 });

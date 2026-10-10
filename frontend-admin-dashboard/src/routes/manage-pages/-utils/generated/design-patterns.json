@@ -295,7 +295,7 @@
         "streams": {
           "enabled": true,
           "source": "folderLibrary",
-          "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+          "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
           "variant": "icons",
           "showCounts": true
         }
@@ -304,7 +304,7 @@
         "streams": {
           "enabled": true,
           "source": "folderLibrary",
-          "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+          "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
           "libraryName": "<name shown in the editor>",
           "variant": "icons",
           "showCounts": true,
@@ -504,7 +504,7 @@
             "enabled": true,
             "screenImage": "<image url from website(list_media) or website_edit(import_image)>",
             "imageAlt": "",
-            "eyebrow": "Brahm Varchas app",
+            "eyebrow": "<institute name> app",
             "title": "Your learning, in your pocket",
             "text": "Pick up where you left off, and learn in English or Hindi wherever you are.",
             "button": {
@@ -678,7 +678,7 @@
               "audiobook": "listen"
             },
             "descriptions": {
-              "<course id>": "The Vedic science of conception, pregnancy and newborn care."
+              "<course id: leave empty — the admin picks the course in the editor>": "The Vedic science of conception, pregnancy and newborn care."
             },
             "colors": {
               "divider": "#EFE6CC",
@@ -822,7 +822,7 @@
             "title": "New here? Start free",
             "subtitle": "Try a free E-learning course, film or article before you enrol.",
             "courseIds": [
-              "<course id>"
+              "<course id: leave empty — the admin picks the course in the editor>"
             ],
             "limit": 3,
             "ctaRules": [
@@ -861,7 +861,7 @@
       "requires": [
         {
           "kind": "productPage",
-          "detail": "cta.action 'course' needs a real course id (+ invite); 'product-page' a product page code; 'open-form' a campaign"
+          "detail": "cta.action 'course' needs a course id (+ invite); 'product-page' a product page code; 'open-form' a campaign — all picked by the admin in the editor, so leave them empty"
         }
       ],
       "bound": [
@@ -894,7 +894,7 @@
                 "cta": {
                   "label": "Enrol for {price}",
                   "action": "product-page",
-                  "productPageCode": "<productPageCode: a product page of this institute>"
+                  "productPageCode": "<productPageCode: leave empty — the admin picks a product page in the editor>"
                 },
                 "steps": [
                   {
@@ -933,10 +933,10 @@
                   "label": "Enrol for {price}",
                   "price": "₹1,001",
                   "action": "course",
-                  "courseId": "<courseId: a course of this institute>",
-                  "enrollInviteId": "<enrollInviteId: that course's invite>",
-                  "packageSessionId": "<packageSessionId: that course's batch>",
-                  "productPageCode": "<productPageCode: a product page of this institute>"
+                  "courseId": "<course id: leave empty — the admin picks the course in the editor>",
+                  "enrollInviteId": "<enrollInviteId: leave empty — the admin picks that course's invite>",
+                  "packageSessionId": "<packageSessionId: leave empty — the admin picks that course's batch>",
+                  "productPageCode": "<productPageCode: leave empty — the admin picks a product page in the editor>"
                 },
                 "steps": [
                   {
@@ -1177,7 +1177,7 @@
       "minimal": {
         "mode": "list",
         "listLayout": "featured",
-        "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+        "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
         "title": "What do you want to achieve?",
         "goals": [
           {
@@ -1189,7 +1189,7 @@
           }
         ],
         "featured": {
-          "code": "<productPageCode: a product page of this institute>",
+          "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
           "badge": "Most popular path"
         }
       },
@@ -1198,7 +1198,7 @@
         "listLayout": "featured",
         "productPageCode": "",
         "productPageName": "",
-        "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+        "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
         "libraryName": "<name shown in the editor>",
         "folderId": "",
         "streamFromUrl": false,
@@ -1244,12 +1244,12 @@
           }
         ],
         "featured": {
-          "code": "<productPageCode: a product page of this institute>",
+          "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
           "badge": "Most popular path"
         },
         "pathExtras": [
           {
-            "code": "<productPageCode: a product page of this institute>",
+            "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
             "mergeSteps": [
               [
                 1,
@@ -1259,7 +1259,7 @@
             "comingSoon": [
               {
                 "title": "Sanskrit Language teaching",
-                "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+                "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
               }
             ]
           }
@@ -1325,7 +1325,7 @@
       "minimal": {
         "mode": "list",
         "listLayout": "featured",
-        "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+        "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
         "showGoals": false,
         "showFeatured": false,
         "moreTitle": "More learning paths"
@@ -1335,7 +1335,7 @@
         "listLayout": "featured",
         "productPageCode": "",
         "productPageName": "",
-        "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+        "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
         "libraryName": "<name shown in the editor>",
         "folderId": "",
         "streamFromUrl": false,
@@ -1381,12 +1381,12 @@
           }
         ],
         "featured": {
-          "code": "<productPageCode: a product page of this institute>",
+          "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
           "badge": "Most popular path"
         },
         "pathExtras": [
           {
-            "code": "<productPageCode: a product page of this institute>",
+            "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
             "mergeSteps": [
               [
                 1,
@@ -1396,7 +1396,7 @@
             "comingSoon": [
               {
                 "title": "Sanskrit Language teaching",
-                "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+                "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
               }
             ]
           }
@@ -1460,7 +1460,7 @@
       "minimal": {
         "pathExtras": [
           {
-            "code": "<productPageCode: a product page of this institute>",
+            "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
             "mergeSteps": [
               [
                 1,
@@ -1470,7 +1470,7 @@
             "comingSoon": [
               {
                 "title": "<step not launched yet>",
-                "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+                "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
               }
             ]
           }
@@ -1479,7 +1479,7 @@
       "full": {
         "pathExtras": [
           {
-            "code": "<productPageCode: a product page of this institute>",
+            "code": "<productPageCode: leave empty — the admin picks a product page in the editor>",
             "mergeSteps": [
               [
                 1,
@@ -1489,7 +1489,7 @@
             "comingSoon": [
               {
                 "title": "Sanskrit Language teaching",
-                "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+                "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
               }
             ]
           }
@@ -1543,7 +1543,7 @@
           "text": "Talk to us",
           "style": "outline-light",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
         }
       },
       "full": {
@@ -1567,7 +1567,7 @@
           "text": "Talk to us",
           "style": "outline-light",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>",
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>",
           "formTitle": "Talk to us"
         }
       },
@@ -1613,14 +1613,14 @@
           "text": "Talk to us",
           "style": "outline-dark",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
         },
         "secondaryButton": {
           "enabled": true,
           "text": "Partner with us",
           "style": "primary",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
         }
       },
       "full": {
@@ -1637,7 +1637,7 @@
           "text": "Talk to us",
           "style": "outline-dark",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>",
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>",
           "formTitle": "Talk to us"
         },
         "secondaryButton": {
@@ -1645,7 +1645,7 @@
           "text": "Partner with us",
           "style": "primary",
           "action": "openForm",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>",
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>",
           "formTitle": "Partner with us"
         }
       },
@@ -1699,13 +1699,13 @@
         "layout": "split",
         "backgroundColor": "#1A1208",
         "textColor": "#FFFFFF",
-        "eyebrow": "Brahm Varchas app",
+        "eyebrow": "<institute name> app",
         "heading": "Walk your path, one step at a time, from your phone.",
         "subheading": "Open your next step wherever you are, and learn in English or Hindi.",
         "mockup": {
           "kind": "phone",
           "image": "<image url from website(list_media) or website_edit(import_image)>",
-          "alt": "The Brahm Varchas app on a phone"
+          "alt": "The <institute name> app on a phone"
         },
         "button": {
           "enabled": true,
@@ -1838,7 +1838,7 @@
             "openInSameTab": true,
             "type": "megaMenu",
             "megaMenu": {
-              "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+              "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
               "libraryName": "<name shown in the editor>",
               "eyebrow": "Six streams of knowledge",
               "helpLabel": "Not sure where to begin? Find your path",
@@ -1860,12 +1860,12 @@
           },
           {
             "label": "Resources",
-            "route": "https://brahmvarchas.org/blogs/",
+            "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
             "openInSameTab": false
           },
           {
             "label": "About Us",
-            "route": "https://brahmvarchas.org/about-us/",
+            "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
             "openInSameTab": false
           }
         ],
@@ -1917,7 +1917,7 @@
             "route": "/courses",
             "type": "megaMenu",
             "megaMenu": {
-              "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+              "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
               "eyebrow": "<panel eyebrow>",
               "showLegend": true
             }
@@ -1933,7 +1933,7 @@
             "openInSameTab": true,
             "type": "megaMenu",
             "megaMenu": {
-              "libraryId": "<libraryId: a folder library the admin built in Manage Pages → Folders>",
+              "libraryId": "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>",
               "libraryName": "<name shown in the editor>",
               "eyebrow": "Six streams of knowledge",
               "helpLabel": "Not sure where to begin? Find your path",
@@ -1997,30 +1997,30 @@
         "layout": "four-column",
         "backgroundColor": "#F5EAC9",
         "leftSection": {
-          "title": "Brahm Varchas",
+          "title": "<institute name>",
           "logo": "<image url from website(list_media) or website_edit(import_image)>",
           "text": "<p>A modern learning platform rooted in Bharatiya Knowledge Systems. Structured learning journeys inspired by Bharatiya knowledge traditions.</p>",
-          "tagline": "Translate Knowledge • Transform Society",
+          "tagline": "<the institute's tagline>",
           "socials": [
             {
               "platform": "YouTube",
               "icon": "youtube",
-              "url": "https://www.youtube.com/@brahmvarchasshiksha"
+              "url": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "platform": "Instagram",
               "icon": "instagram",
-              "url": "https://www.instagram.com/brahmvarchasshiksha"
+              "url": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "platform": "Facebook",
               "icon": "facebook",
-              "url": "https://www.facebook.com/profile.php?id=100040195303676"
+              "url": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "platform": "Twitter",
               "icon": "twitter",
-              "url": "https://twitter.com/BVShiksha"
+              "url": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             }
           ]
         },
@@ -2030,9 +2030,9 @@
           "subheading": "Join us for new courses, knowledge resources, live sessions and occasional updates.",
           "placeholder": "Your email address",
           "buttonText": "Subscribe",
-          "note": "No clutter. Just thoughtful updates from Brahm Varchas.",
+          "note": "No clutter. Just thoughtful updates from <institute name>.",
           "successMessage": "Thank you. We'll keep you posted, with no clutter.",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>",
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>",
           "audienceName": "<name shown in the editor>"
         },
         "rightSection1": {
@@ -2055,7 +2055,7 @@
             },
             {
               "label": "Resources",
-              "route": "https://brahmvarchas.org/blogs/"
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             }
           ]
         },
@@ -2089,19 +2089,19 @@
           "links": [
             {
               "label": "About Us",
-              "route": "https://brahmvarchas.org/about-us/"
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "label": "Team",
-              "route": "https://brahmvarchas.org/about-us/"
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "label": "Testimonials",
-              "route": "https://brahmvarchas.org/about-us/"
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>"
             },
             {
               "label": "Contact Us",
-              "route": "https://learning.brahmvarchas.org/contactus",
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
               "openInSameTab": true
             }
           ]
@@ -2111,28 +2111,28 @@
           "links": [
             {
               "label": "FAQ",
-              "route": "https://learning.brahmvarchas.org/faqs",
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
               "openInSameTab": true
             },
             {
               "label": "Privacy Policy",
-              "route": "https://learning.brahmvarchas.org/privacypolicy",
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
               "openInSameTab": true
             },
             {
               "label": "Terms of Use",
-              "route": "https://learning.brahmvarchas.org/termsofuse",
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
               "openInSameTab": true
             },
             {
               "label": "Refund Policy",
-              "route": "https://learning.brahmvarchas.org/refundpolicy",
+              "route": "<link: a route of this site (e.g. /courses) or this institute's own https url>",
               "openInSameTab": true
             }
           ]
         },
-        "bottomNote": "© 2026 Brahm Varchas. All rights reserved.",
-        "bottomTagline": "Translate Knowledge → Transform Society",
+        "bottomNote": "© 2026 <institute name>. All rights reserved.",
+        "bottomTagline": "<the institute's tagline>",
         "showLanguageSwitcher": true
       },
       "fullSource": "brahm-varchas-site#/globalSettings/layout/footer/props"
@@ -2168,7 +2168,7 @@
         "newsletter": {
           "enabled": true,
           "heading": "Stay connected",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>"
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>"
         }
       },
       "full": {
@@ -2179,9 +2179,9 @@
           "subheading": "Join us for new courses, knowledge resources, live sessions and occasional updates.",
           "placeholder": "Your email address",
           "buttonText": "Subscribe",
-          "note": "No clutter. Just thoughtful updates from Brahm Varchas.",
+          "note": "No clutter. Just thoughtful updates from <institute name>.",
           "successMessage": "Thank you. We'll keep you posted, with no clutter.",
-          "audienceId": "<audienceId: an ACTIVE lead campaign of this institute>",
+          "audienceId": "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>",
           "audienceName": "<name shown in the editor>"
         }
       },
@@ -2420,7 +2420,7 @@
       "i18n": "opaque",
       "reviewAs": [],
       "pitfalls": [
-        "versionGroups lists course (package) ids of one course in several languages; take them from website(context)."
+        "versionGroups lists course (package) ids of one course in several languages; the admin pairs them in the editor — leave it empty."
       ],
       "minimal": {
         "courseLanguages": {
@@ -2474,8 +2474,8 @@
           ],
           "versionGroups": [
             [
-              "<course id (English version)>",
-              "<course id (Hindi version)>"
+              "<course id (English version): leave empty — the admin groups versions>",
+              "<course id (Hindi version): leave empty>"
             ]
           ]
         }
@@ -2539,13 +2539,13 @@
       "minimal": {
         "siteCart": {
           "enabled": true,
-          "storeProductPageCode": "<productPageCode: a product page of this institute>"
+          "storeProductPageCode": "<productPageCode: leave empty — the admin picks a product page in the editor>"
         }
       },
       "full": {
         "siteCart": {
           "enabled": true,
-          "storeProductPageCode": "<productPageCode: a product page of this institute>",
+          "storeProductPageCode": "<productPageCode: leave empty — the admin picks a product page in the editor>",
           "storeProductPageName": "<name shown in the editor>"
         }
       },
@@ -2637,7 +2637,7 @@
                 "catalog.sections.spotlight",
                 "catalog.sections.comingSoon"
               ],
-              "note": "Merge the patterns' minimal objects into one section's props."
+              "note": "Deep-merge the patterns' minimal objects into one section's props: merge nested objects key by key (hero, filterSidebar, render…) and concatenate arrays (columnSections, quickFilters, customFilters)."
             },
             {
               "component": "ctaBanner",

@@ -79,6 +79,7 @@ const {
     DESIGN_RECIPES,
     CHROME_CONTRACT,
     GLOBAL_SETTINGS_CONTRACT,
+    FIXTURE_BRAND_NAMES,
     UUID_PATTERN,
     fullExampleOf,
     scrubExample,
@@ -193,7 +194,8 @@ const CAPABILITIES = {
         'variant "band" (only when the design shows it): a full-width band with eyebrow, heading, subheading, button and ' +
         'secondaryButton {enabled,text,action: navigate|openForm,target,audienceId,formTitle,style: primary|olive|outline-light|' +
         'outline-dark,icon: arrow}, bandSize md|lg, mockup {kind: phone, image} (an app banner), backgroundColor, textColor, ' +
-        'eyebrowColor, subheadingColor — patterns cta.band, cta.band.light, cta.band.app. audienceId is an existing campaign; never invent one.',
+        'eyebrowColor, subheadingColor — patterns cta.band, cta.band.light, cta.band.app. Leave every audienceId EMPTY: ' +
+        'link_lead_form wires the primary button, and the admin picks the secondary button\'s campaign in the editor.',
     courseCatalog:
         'Every look below is OPT-IN (absent = the original grid) — use one only when the design shows it, and see the ' +
         'catalog.* patterns for exact JSON. hero {enabled, breadcrumb[], title, lead, stats[{kind: courses|streams|categories, ' +
@@ -215,16 +217,20 @@ const CAPABILITIES = {
         'showGoals/showFeatured/showGrid (split one list over two sections around a band), moreTitle, moreNote, sharedWith ' +
         '(the id of the section holding goals/featured/pathExtras) — patterns learningPath.*.',
     header:
-        'Site chrome, written with set_layout (never a page section). Opt-in looks (absent = the original header; use only ' +
+        'Site chrome: the header shared by every page, kept in globalSettings.layout (over the MCP: website_edit(set_layout)). ' +
+        'Opt-in looks (absent = the original header; use only ' +
         'when the design shows them): barSize compact (64px bar), contentWidth contained, navStyle editorial (13px text nav, ' +
         'current page bold), logoOnly, languageSwitcherStyle segmented (हिन्दी | EN), cartDisplay whenNotEmpty, activeStyle ' +
         'pill|underline, megaMenuStyle editorial, navigation[{label,route,type: link|megaMenu,megaMenu{libraryId,eyebrow,' +
-        'helpLabel,helpRoute,categoriesHeading,showLegend,footnote}}] — patterns header.editorial, header.megaMenu.',
+        'helpLabel,helpRoute,categoriesHeading,showLegend,footnote}}] — patterns header.editorial, header.megaMenu. ' +
+        'megaMenu.libraryId is a folder library the admin picks: leave it empty, never invent one.',
     footer:
-        'Site chrome, written with set_layout (never a page section). layout two-column|three-column|four-column, ' +
+        'Site chrome: the footer shared by every page, kept in globalSettings.layout (over the MCP: website_edit(set_layout)). ' +
+        'layout two-column|three-column|four-column, ' +
         'leftSection{title,text,socials[]}, rightSection1-3{title,links[]}, bottomNote. variant "brand" (only when the design ' +
         'shows it): leftSection.logo, leftSection.tagline, rightSection4, newsletter{enabled,heading,subheading,placeholder,' +
-        'buttonText,note,successMessage,audienceId}, bottomTagline, showLanguageSwitcher — patterns footer.brand, footer.newsletter.',
+        'buttonText,note,successMessage,audienceId}, bottomTagline, showLanguageSwitcher — patterns footer.brand, footer.newsletter. ' +
+        'newsletter.audienceId is a campaign the admin picks: leave it empty, never invent one.',
 };
 
 const DATA_BOUND = {
@@ -358,18 +364,22 @@ const readFixture = (name) => {
 };
 
 // A full example is the real Brahm Varchas JSON with every institute id,
-// display name and uploaded-asset URL replaced by a placeholder, so an AI can
-// copy its shape but never another institute's records.
+// display name, uploaded-asset URL, absolute link, tagline and brand name
+// replaced by a placeholder, so an AI can copy its shape but never another
+// institute's records, links or name.
 const patterns = DESIGN_PATTERNS.map((p) => {
     let full;
     if (p.fullFrom) {
         const raw = fullExampleOf(readFixture(p.fullFrom.fixture), p.fullFrom);
         if (raw === undefined) throw new Error(`Pattern ${p.id}: fullFrom ${JSON.stringify(p.fullFrom)} does not resolve`);
-        full = scrubExample(raw, p.bound);
+        const brandNames = FIXTURE_BRAND_NAMES[p.fullFrom.fixture] ?? [];
+        full = scrubExample(raw, p.bound, brandNames);
         const text = JSON.stringify(full);
-        if (new RegExp(UUID_PATTERN.source, 'i').test(text) || /cloudfront\.net/.test(text)) {
-            throw new Error(`Pattern ${p.id}: the full example still carries a fixture id or asset URL`);
+        if (new RegExp(UUID_PATTERN.source, 'i').test(text) || /cloudfront\.net|https?:\/\//i.test(text)) {
+            throw new Error(`Pattern ${p.id}: the full example still carries a fixture id, asset URL or link`);
         }
+        const leaked = brandNames.find((name) => text.toLowerCase().includes(name.toLowerCase()));
+        if (leaked) throw new Error(`Pattern ${p.id}: the full example still names the fixture's brand ("${leaked}")`);
     }
     const { fullFrom, ...rest } = p;
     return {

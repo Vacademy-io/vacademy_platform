@@ -150,10 +150,17 @@ export interface DesignRecipe {
 
 /* ── placeholders ──────────────────────────────────────────────────────── */
 
-const LIBRARY = "<libraryId: a folder library the admin built in Manage Pages → Folders>";
-const CAMPAIGN = "<audienceId: an ACTIVE lead campaign of this institute>";
-const PRODUCT_PAGE = "<productPageCode: a product page of this institute>";
+// Ids of institute records are never written by an AI: page / layout writes do
+// not check them. Each id placeholder says so, and who fills it instead.
+const LIBRARY = "<libraryId: leave empty — the admin picks a folder library (Manage Pages → Folders) in the editor>";
+const CAMPAIGN = "<audienceId: leave empty — wire it with website_edit(link_lead_form), or the admin picks an ACTIVE campaign in the editor>";
+const PRODUCT_PAGE = "<productPageCode: leave empty — the admin picks a product page in the editor>";
+const COURSE = "<course id: leave empty — the admin picks the course in the editor>";
 const MEDIA = "<image url from website(list_media) or website_edit(import_image)>";
+/** Absolute links of the fixture's institute (its own pages, policies, social profiles). */
+const LINK = "<link: a route of this site (e.g. /courses) or this institute's own https url>";
+const BRAND_NAME = "<institute name>";
+const TAGLINE = "<the institute's tagline>";
 
 /* ── the registry ──────────────────────────────────────────────────────── */
 
@@ -451,7 +458,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
     figmaCues: ["a sand-tinted rounded panel 300-400px tall inside the results column", "3-4 small numbered circles with labels and prices", "pager dots or arrows"],
     useWhen: "The design spotlights one or more flagship programmes inside the catalogue.",
     avoidWhen: "The programme does not exist yet — never invent a course.",
-    requires: [{ kind: "productPage", detail: "cta.action 'course' needs a real course id (+ invite); 'product-page' a product page code; 'open-form' a campaign" }],
+    requires: [{ kind: "productPage", detail: "cta.action 'course' needs a course id (+ invite); 'product-page' a product page code; 'open-form' a campaign — all picked by the admin in the editor, so leave them empty" }],
     bound: [
       "columnSections[].slides[].cta.courseId",
       "columnSections[].slides[].cta.enrollInviteId",
@@ -870,7 +877,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
     bound: ["courseLanguages.versionGroups"],
     i18n: "opaque",
     reviewAs: [],
-    pitfalls: ["versionGroups lists course (package) ids of one course in several languages; take them from website(context)."],
+    pitfalls: ["versionGroups lists course (package) ids of one course in several languages; the admin pairs them in the editor — leave it empty."],
     minimal: {
       courseLanguages: {
         enabled: true,
@@ -964,7 +971,8 @@ export const DESIGN_RECIPES: DesignRecipe[] = [
               "catalog.sections.spotlight",
               "catalog.sections.comingSoon",
             ],
-            note: "Merge the patterns' minimal objects into one section's props.",
+            note:
+              "Deep-merge the patterns' minimal objects into one section's props: merge nested objects key by key (hero, filterSidebar, render…) and concatenate arrays (columnSections, quickFilters, customFilters).",
           },
           { component: "ctaBanner", patterns: ["cta.band"] },
         ],
@@ -1201,35 +1209,54 @@ export const boundPathExists = (root: unknown, path: string): boolean => {
 /** Placeholder per id key. */
 const ID_PLACEHOLDERS: Record<string, unknown> = {
   libraryId: LIBRARY,
-  folderId: "<folderId: a folder of that library, or empty>",
+  folderId: "<folderId: leave empty — the admin picks a folder of that library>",
   audienceId: CAMPAIGN,
   productPageCode: PRODUCT_PAGE,
   storeProductPageCode: PRODUCT_PAGE,
   code: PRODUCT_PAGE,
-  courseId: "<courseId: a course of this institute>",
-  courseIds: "<course id>",
-  enrollInviteId: "<enrollInviteId: that course's invite>",
-  packageSessionId: "<packageSessionId: that course's batch>",
-  descriptions: "<course id>",
-  versionGroups: [["<course id (English version)>", "<course id (Hindi version)>"]],
+  courseId: COURSE,
+  courseIds: COURSE,
+  enrollInviteId: "<enrollInviteId: leave empty — the admin picks that course's invite>",
+  packageSessionId: "<packageSessionId: leave empty — the admin picks that course's batch>",
+  descriptions: COURSE,
+  versionGroups: [["<course id (English version): leave empty — the admin groups versions>", "<course id (Hindi version): leave empty>"]],
 };
 
 /** Editor-only display names of bound records: never meaningful on another site. */
 const DISPLAY_NAME_KEYS = new Set(["libraryName", "productPageName", "audienceName", "storeProductPageName"]);
 /** Keys whose http(s) value is an uploaded asset of the fixture's institute. */
 const ASSET_KEYS = new Set(["logo", "image", "screenImage", "imageUrl", "src", "avatar", "backgroundImage", "coverImage"]);
+/** Keys that always hold the fixture institute's own slogan. */
+const TAGLINE_KEYS = new Set(["tagline", "bottomTagline"]);
 export const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const ABSOLUTE_URL = /^https?:\/\//i;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>)]+/gi;
+
+/**
+ * The brand names of each fixture's institute, in every spelling the fixture
+ * uses (display name, script, domain / handle). The scrub turns them into
+ * placeholders and the exporter refuses a full example that still has one.
+ */
+export const FIXTURE_BRAND_NAMES: Record<PatternFullFrom["fixture"], string[]> = {
+  "brahm-varchas-site": ["Brahm Varchas", "ब्रह्म वर्चस", "brahmvarchas", "BVShiksha"],
+};
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const placeholderFor = (key: string): unknown => clone(ID_PLACEHOLDERS[key] ?? `<${key}>`);
 
 /**
  * A full example made safe to show another institute: every `bound` path, the
- * editor display names and the fixture's uploaded asset URLs become
- * placeholders, and any id left in a string becomes "<id>". Empty values stay
- * empty. Pure; returns a copy.
+ * editor display names, the fixture's uploaded asset URLs, its absolute links
+ * (own pages, policies, social profiles), its taglines and its brand names
+ * (`brandNames`, see FIXTURE_BRAND_NAMES) become placeholders, and any id
+ * left in a string becomes "<id>". Empty values stay empty. Pure; returns a copy.
  */
-export const scrubExample = (value: unknown, bound: string[]): unknown => {
+export const scrubExample = (value: unknown, bound: string[], brandNames: string[] = []): unknown => {
   const out = clone(value);
+  const brand = brandNames.length
+    ? new RegExp(brandNames.map(escapeRegExp).sort((a, b) => b.length - a.length).join("|"), "gi")
+    : null;
   const replaceBound = (node: unknown, steps: BoundStep[]): void => {
     if (!isObject(node)) return;
     const [step, ...rest] = steps;
@@ -1252,13 +1279,18 @@ export const scrubExample = (value: unknown, bound: string[]): unknown => {
   for (const path of bound) replaceBound(out, parseBound(path));
 
   const sweep = (node: unknown): unknown => {
-    if (typeof node === "string") return node.replace(UUID_PATTERN, "<id>");
+    if (typeof node === "string") {
+      if (ABSOLUTE_URL.test(node.trim())) return LINK;
+      const text = node.replace(UUID_PATTERN, "<id>").replace(URL_IN_TEXT, "<url>");
+      return brand ? text.replace(brand, BRAND_NAME) : text;
+    }
     if (Array.isArray(node)) return node.map(sweep);
     if (!isObject(node)) return node;
     const next: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node)) {
       if (DISPLAY_NAME_KEYS.has(k) && typeof v === "string") next[k] = v ? "<name shown in the editor>" : v;
-      else if (ASSET_KEYS.has(k) && typeof v === "string" && /^https?:\/\//i.test(v)) next[k] = MEDIA;
+      else if (ASSET_KEYS.has(k) && typeof v === "string" && ABSOLUTE_URL.test(v)) next[k] = MEDIA;
+      else if (TAGLINE_KEYS.has(k) && typeof v === "string") next[k] = v ? TAGLINE : v;
       else next[k.replace(UUID_PATTERN, "<id>")] = sweep(v);
     }
     return next;

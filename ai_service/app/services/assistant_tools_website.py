@@ -153,7 +153,8 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "- patterns (ids?, component?, query?): design patterns — named opt-in looks (catalogue hero, icon stream "
             "tabs, editorial sidebar/cards, CTA bands, brand footer, palette…) with what each looks like, Figma cues, "
             "the data it needs, and its minimal and full JSON. Use it to match a design (Figma frame, screenshot) to "
-            "components; replace every <placeholder> with a real value from context, never invent ids.\n"
+            "components. Replace each text <placeholder> with your own copy or a list_media image; leave every id path "
+            "(`bound`) EMPTY and wire it afterwards (link_lead_form, or the admin in the editor).\n"
             "- list_media (kind?, limit?): images the admin has uploaded, ranked with hero-worthy landscape "
             "photos first — the ONLY images (besides import_image) a page may use.\n"
             "tag_name is the site's name from `list`; when the institute has one site it may be omitted."
@@ -169,7 +170,7 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
                 "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive). patterns: words to match against pattern ids, looks and Figma cues."},
-                "ids": {"type": "array", "items": {"type": "string"}, "description": "patterns: pattern ids to return in full (e.g. ['catalog.hero','cta.band'])."},
+                "ids": {"type": "array", "items": {"type": "string"}, "description": "patterns: pattern ids to return in full (e.g. ['catalog.hero','cta.band']); up to 20 per call."},
                 "component": {"type": "string", "description": "patterns: only patterns of this block type (courseCatalog, ctaBanner, header, footer, globalSettings…)."},
                 "section_id": {"type": "string", "description": "preview: screenshot only this section."},
                 "viewport": {"type": "string", "enum": ["desktop", "mobile"], "description": "preview: default desktop (1280px); mobile is 390px."},
@@ -594,14 +595,23 @@ def _pattern_index_entry(p: Dict[str, Any]) -> Dict[str, Any]:
 # ──────────────────────────────────────────────────────────────────────────
 #: Matches beyond this come back without their minimal/full JSON (ask by id).
 _PATTERN_FULL_LIMIT = 6
-_PATTERN_MAX_IDS = 12
+#: Patterns returned in full per call: at least the largest recipe (pages + site settings).
+_PATTERN_MAX_IDS = 20
 
 _PATTERN_RULES = (
-    "Patterns are OPT-IN looks: use one only when the design shows it, and merge several catalogue patterns into ONE "
-    "courseCatalog section's props. Text in <angle brackets> is a placeholder: replace it with a real value (ids from "
-    "website(context), images from list_media / import_image) or leave the prop empty — never invent ids, numbers the "
-    "widgets compute live, or image URLs. `full` is the published Brahm Varchas site with its ids replaced; copy its "
-    "shape, not its words. header/footer patterns go through website_edit(set_layout); globalSettings patterns are site settings."
+    "Patterns are OPT-IN looks: use one only when the design shows it. Several catalogue patterns combine into ONE "
+    "courseCatalog section: DEEP-merge their minimal objects (merge nested objects such as hero, filterSidebar, render "
+    "key by key; concatenate arrays such as columnSections, quickFilters, customFilters) — a shallow merge drops keys. "
+    "Text in <angle brackets> is a placeholder: replace it with your own copy from the brief, images from list_media / "
+    "import_image, or leave the prop empty — never invent numbers the widgets compute live, or image URLs. IDS: every "
+    "path a pattern lists in `bound` holds an id of this institute's records (campaign, folder library, product page, "
+    "course). create_page / update_page / set_layout do NOT check those ids, so leave every bound path EMPTY when you "
+    "write the JSON — never paste an id there, not even one from website(context). Afterwards wire a section's form or "
+    "button to a campaign with website_edit(link_lead_form) (it checks the campaign is this institute's and ACTIVE), "
+    "and tell the admin which folder library, product page, course or campaign to pick in the editor for the rest "
+    "(header mega menu, footer newsletter, learning paths, spotlight, secondary buttons, site cart). `full` is the "
+    "published Brahm Varchas site with its ids, links and names replaced; copy its shape, not its words or links. "
+    "header/footer patterns go through website_edit(set_layout); globalSettings patterns are site settings."
 )
 
 
@@ -623,8 +633,12 @@ async def _action_patterns(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, 
     patterns = [p for p in catalog.get("patterns") or [] if isinstance(p, dict) and p.get("id")]
     raw_ids = args.get("ids")
     raw_ids = [raw_ids] if isinstance(raw_ids, str) else raw_ids if isinstance(raw_ids, list) else []
-    ids = [i.strip() for i in raw_ids if isinstance(i, str) and i.strip()][:_PATTERN_MAX_IDS]
-    component = str(args.get("component") or "").strip()
+    asked = list(dict.fromkeys(i.strip() for i in raw_ids if isinstance(i, str) and i.strip()))
+    ids, skipped = asked[:_PATTERN_MAX_IDS], asked[_PATTERN_MAX_IDS:]
+    components = sorted({str(p.get("component")) for p in patterns})
+    component_raw = str(args.get("component") or "").strip()
+    # Block types are camelCase; accept any casing of a known one.
+    component = next((c for c in components if c.lower() == component_raw.lower()), component_raw)
     words = [w for w in str(args.get("query") or "").lower().split() if w]
     recipes = [{"id": r.get("id"), "name": r.get("name"), "description": r.get("description")}
                for r in catalog.get("recipes") or [] if isinstance(r, dict)]
@@ -641,7 +655,7 @@ async def _action_patterns(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, 
     by_id = {p["id"]: p for p in patterns}
     matches: List[Dict[str, Any]] = []
     if ids:
-        matches = [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
+        matches = [by_id[i] for i in ids if i in by_id]
     else:
         for p in patterns:
             if component and p.get("component") != component:
@@ -662,10 +676,25 @@ async def _action_patterns(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, 
     if unknown:
         out["unknown_ids"] = unknown
         out["available_ids"] = sorted(by_id)
+    if skipped:
+        out["skipped_ids"] = skipped
+        out["truncated"] = True
+    if ids and (component_raw or words):
+        out["ignored_filters"] = [k for k, v in (("component", component_raw), ("query", words)) if v]
+    if component_raw and not ids and component not in components:
+        out["unknown_component"] = component_raw
+        out["available_components"] = components
+    hints = []
+    if skipped:
+        hints.append(f"Only the first {_PATTERN_MAX_IDS} ids are returned per call: call again with ids={skipped}.")
+    if out.get("ignored_filters"):
+        hints.append("component / query are ignored when ids are given.")
     if not with_json:
-        out["hint"] = f"{len(matches)} matches: pass ids=[…] (up to {_PATTERN_MAX_IDS}) for their minimal and full JSON."
+        hints.append(f"{len(matches)} matches: pass ids=[…] (up to {_PATTERN_MAX_IDS}) for their minimal and full JSON.")
     if not matches and not unknown:
-        out["hint"] = "Nothing matched. Call website(action='patterns') with no filter for the full index."
+        hints.append("Nothing matched. Call website(action='patterns') with no filter for the full index.")
+    if hints:
+        out["hint"] = " ".join(hints)
     return out
 
 

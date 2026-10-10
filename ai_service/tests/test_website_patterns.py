@@ -27,6 +27,8 @@ CATALOG_PATH = Path(__file__).resolve().parents[1] / "app" / "data" / "catalogue
 REPO = Path(__file__).resolve().parents[2]
 ADMIN_COPY = REPO / "frontend-admin-dashboard/src/routes/manage-pages/-utils/generated/design-patterns.json"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+BRAND = re.compile(r"brahm ?varchas|bvshiksha|ब्रह्म|translate knowledge", re.I)
+LEAVE_EMPTY = re.compile(r"^<[^<>]*leave empty[^<>]*>$")
 
 
 def ctx():
@@ -79,6 +81,16 @@ def test_capabilities_list_the_new_variants():
     assert "NEVER ADD" in comps["learningPath"]["dataBound"]
 
 
+def test_chrome_capabilities_keep_ids_out_and_fit_the_budget():
+    comps = {c["type"]: c for c in catalog()["components"]}
+    for t in ("header", "footer"):
+        assert "never a page section" not in comps[t]["capabilities"], t  # the composer may emit chrome (allow_chrome)
+        assert "leave it empty" in comps[t]["capabilities"], t
+    assert "Leave every audienceId EMPTY" in comps["ctaBanner"]["capabilities"]
+    # Every composer / copilot / restyle / chrome prompt carries these: keep the growth deliberate.
+    assert sum(len(c.get("capabilities") or "") for c in comps.values()) <= 8500
+
+
 def test_full_examples_never_carry_fixture_ids_or_assets():
     for p in catalog()["patterns"]:
         if "full" not in p:
@@ -88,6 +100,52 @@ def test_full_examples_never_carry_fixture_ids_or_assets():
         assert "cloudfront.net" not in text, p["id"]
         for code in ("forbvy", "ks61g1", "7pc4tl"):
             assert f'"{code}"' not in text, p["id"]
+
+
+def test_full_examples_never_carry_fixture_links_or_brand():
+    """A copied footer must not link another institute to Brahm Varchas' policies, socials or name."""
+    for p in catalog()["patterns"]:
+        authored = {k: v for k, v in p.items() if k not in ("full", "fullSource")}
+        assert not BRAND.search(json.dumps(authored, ensure_ascii=False)), p["id"]
+        if "full" not in p:
+            continue
+        text = json.dumps(p["full"], ensure_ascii=False)
+        assert not BRAND.search(text), p["id"]
+        assert not re.search(r"https?://", text), p["id"]
+
+
+def _bound_values(root, path):
+    nodes = [root]
+    for seg in path.split("."):
+        key, each = re.sub(r"(\[\]|\{\})$", "", seg), seg.endswith("[]")
+        nxt = []
+        for n in nodes:
+            v = n.get(key) if isinstance(n, dict) else None
+            if v is None:
+                continue
+            nxt.extend(v if each and isinstance(v, list) else [v])
+        nodes = nxt
+    out = []
+    for v in nodes:
+        if isinstance(v, str):
+            out.append(v)
+        elif isinstance(v, list):  # an id list, or versionGroups' list of id lists
+            out.extend(y for x in v for y in (x if isinstance(x, list) else [x]) if isinstance(y, str))
+        elif isinstance(v, dict):
+            out.extend(v.keys())
+    return [v for v in out if v]
+
+
+def test_bound_placeholders_say_leave_empty():
+    """Writes do not check ids, so no example may invite the AI to paste one (it must stay empty)."""
+    checked = 0
+    for p in catalog()["patterns"]:
+        for b in p.get("bound") or []:
+            for root in (p["minimal"], p.get("full") or {}):
+                for v in _bound_values(root, b):
+                    assert LEAVE_EMPTY.match(v), (p["id"], b, v)
+                    checked += 1
+    assert checked > 20
 
 
 def test_every_pattern_targets_a_known_block():
@@ -138,6 +196,17 @@ async def test_schema_keeps_its_existing_keys():
 
 # ── website(action='patterns') ───────────────────────────────────────────
 @pytest.mark.asyncio
+async def test_patterns_rules_keep_ids_empty_and_deep_merge():
+    out = await run({"action": "patterns"})
+    rules = out["rules"]
+    assert "leave every bound path EMPTY" in rules and "link_lead_form" in rules
+    assert "DEEP-merge" in rules and "columnSections" in rules
+    assert "not even one from website(context)" in rules
+    recipe = next(r for r in catalog()["recipes"] if r["id"] == "editorial-catalogue")
+    assert "Deep-merge" in recipe["pages"][0]["sections"][0]["note"]
+
+
+@pytest.mark.asyncio
 async def test_patterns_without_filter_is_an_index():
     out = await run({"action": "patterns"})
     assert out["action"] == "patterns"
@@ -185,6 +254,43 @@ async def test_patterns_by_component_and_query():
 
     none = await run({"action": "patterns", "query": "zzzz-not-a-look"})
     assert none["count"] == 0 and "hint" in none
+
+
+@pytest.mark.asyncio
+async def test_patterns_by_id_covers_the_largest_recipe():
+    cat = catalog()
+    for recipe in cat["recipes"]:
+        ids = [i for page in recipe["pages"] for s in page["sections"] for i in s["patterns"]] + recipe["site"]
+        out = await run({"action": "patterns", "ids": ids})
+        assert out["count"] == len(set(ids)), recipe["id"]
+        assert "skipped_ids" not in out and "truncated" not in out
+
+
+@pytest.mark.asyncio
+async def test_patterns_by_id_reports_what_it_skipped():
+    every = [p["id"] for p in catalog()["patterns"]]
+    out = await run({"action": "patterns", "ids": every})
+    cap = website_mod._PATTERN_MAX_IDS
+    assert out["count"] == cap and len(every) > cap
+    assert out["skipped_ids"] == every[cap:] and out["truncated"] is True
+    assert "call again" in out["hint"]
+    again = await run({"action": "patterns", "ids": out["skipped_ids"]})
+    assert [p["id"] for p in again["patterns"]] == every[cap:]
+
+
+@pytest.mark.asyncio
+async def test_patterns_filter_ergonomics():
+    # Any casing of a block type works.
+    out = await run({"action": "patterns", "component": "CourseCatalog"})
+    assert out["count"] > 6 and {p["component"] for p in out["patterns"]} == {"courseCatalog"}
+    # An unknown block type lists the real ones.
+    bad = await run({"action": "patterns", "component": "megaFooter"})
+    assert bad["count"] == 0 and bad["unknown_component"] == "megaFooter"
+    assert "courseCatalog" in bad["available_components"] and "globalSettings" in bad["available_components"]
+    # ids win over filters, and the response says so.
+    mixed = await run({"action": "patterns", "ids": ["cta.band"], "component": "footer", "query": "phone"})
+    assert [p["id"] for p in mixed["patterns"]] == ["cta.band"]
+    assert mixed["ignored_filters"] == ["component", "query"] and "ignored" in mixed["hint"]
 
 
 @pytest.mark.asyncio

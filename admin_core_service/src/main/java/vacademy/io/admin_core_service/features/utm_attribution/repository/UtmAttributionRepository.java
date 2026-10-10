@@ -112,28 +112,4 @@ public interface UtmAttributionRepository extends JpaRepository<UtmAttribution, 
     List<Object[]> summarise(@Param("instituteId") String instituteId,
                              @Param("from") Timestamp from,
                              @Param("to") Timestamp to);
-
-    /**
-     * Campaigns one source/medium (e.g. google / lead_form) has produced touches
-     * on: campaign, distinct people, first and last touch — newest activity first.
-     * People are counted on the same identity the filters join on (user id, else
-     * the typed email or mobile).
-     */
-    @Query(value = """
-                SELECT u.utm_campaign,
-                       COUNT(DISTINCT COALESCE(u.user_id, u.email, u.mobile_number)),
-                       MIN(u.created_at),
-                       MAX(u.created_at)
-                  FROM utm_attribution u
-                 WHERE u.institute_id = :instituteId
-                   AND u.utm_source = :source
-                   AND u.utm_medium = :medium
-                   AND u.utm_campaign IS NOT NULL
-                 GROUP BY u.utm_campaign
-                 ORDER BY MAX(u.created_at) DESC
-                 LIMIT 500
-            """, nativeQuery = true)
-    List<Object[]> campaignsFor(@Param("instituteId") String instituteId,
-                                @Param("source") String source,
-                                @Param("medium") String medium);
 }

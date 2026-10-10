@@ -414,10 +414,6 @@ export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/fil
 // Campaign-attribution dashboard (people / enrolments per source, medium,
 // campaign …, daily trend, campaign matrix) over a date window.
 export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
-// Admin-given names for utm_campaign values (GET reads, PUT merges; blank removes).
-export const UTM_CAMPAIGN_LABELS = `${BASE_URL}/admin-core-service/v1/utm/campaign-labels`;
-// Campaigns one source/medium (e.g. google / lead_form) has sent leads from.
-export const GET_UTM_CAMPAIGNS = `${BASE_URL}/admin-core-service/v1/utm/campaigns`;
 
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>

@@ -4,7 +4,6 @@ import { Megaphone } from '@phosphor-icons/react';
 import type { ListCustomFieldSurface } from '@/types/display-settings';
 import type { UtmFilterDimension, UtmFilterSelection } from '@/services/utm-list-filters';
 import { MultiSelectFilter, type MultiSelectOption } from './multi-select-filter';
-import { useUtmCampaignLabels } from '@/hooks/use-utm-campaign-labels';
 import { useUtmListFilters } from './use-utm-list-filters';
 import { UTM_UNTAGGED_SENTINEL } from './utm-filter-encoding';
 
@@ -58,7 +57,6 @@ export function UtmFilterControls({
 }: UtmFilterControlsProps) {
     const { t } = useTranslation('utmListFilters');
     const { enabled, dimensions } = useUtmListFilters(surface, instituteId || undefined);
-    const { labelFor: campaignLabel } = useUtmCampaignLabels();
 
     const labels = useMemo<Record<UtmFilterDimension, string>>(
         () => ({
@@ -80,9 +78,7 @@ export function UtmFilterControls({
             label:
                 dimension === 'source_type'
                     ? t(SOURCE_TYPE_LABEL_KEYS[v] ?? 'sourceTypes.custom', { defaultValue: v })
-                    : dimension === 'campaign'
-                      ? campaignLabel(v)
-                      : v,
+                    : v,
         }));
         if (dimension === 'source') {
             return [{ value: UTM_UNTAGGED_SENTINEL, label: t('untagged') }, ...base];

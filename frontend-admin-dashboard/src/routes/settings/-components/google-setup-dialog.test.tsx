@@ -7,10 +7,10 @@ import copy from '../../../../public/locales/en/settingsIntegration.json';
 import { formatDateTime } from '@/lib/formatters';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GoogleSetupDialog } from './IntegrationSettings';
-import type { ConnectorListItem } from '../-services/ad-platform-service';
+import type { CampaignRoutes, ConnectorListItem } from '../-services/ad-platform-service';
 
 vi.mock('@/lib/auth/axiosInstance', () => ({
-    default: { get: vi.fn(), put: vi.fn(), post: vi.fn() },
+    default: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 vi.mock('@/lib/auth/instituteUtils', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@/lib/auth/instituteUtils')>()),
@@ -36,7 +36,7 @@ function connector(overrides: Partial<ConnectorListItem> = {}): ConnectorListIte
         id: 'conn-1',
         vendor: 'GOOGLE_LEAD_ADS',
         vendorId: KEY,
-        audienceId: 'aud-1',
+        audienceId: 'aud-main',
         platformPageId: null,
         platformFormId: KEY,
         platformFormName: null,
@@ -51,22 +51,33 @@ function connector(overrides: Partial<ConnectorListItem> = {}): ConnectorListIte
     };
 }
 
-const CAMPAIGNS = [
-    {
-        campaign: '22173284076',
-        people: 4,
-        first_seen: '2026-10-09T15:52:05.915+00:00',
-        last_seen: '2026-10-10T06:11:44.706+00:00',
-        name: 'Pune MBBS Search',
-    },
-    {
-        campaign: '22206499349',
-        people: 1,
-        first_seen: '2026-10-10T07:05:24.222+00:00',
-        last_seen: '2026-10-10T07:05:24.222+00:00',
-        name: null,
-    },
+const LISTS = [
+    { id: 'aud-main', name: 'GoogleAds Leads form', status: 'ACTIVE' },
+    { id: 'aud-pune', name: 'Pune MBBS 2027', status: 'ACTIVE' },
+    { id: 'aud-old', name: 'Closed list', status: 'INACTIVE' },
 ];
+
+const ROUTES: CampaignRoutes = {
+    main_audience_id: 'aud-main',
+    routes: [
+        {
+            campaign_id: '22173284076',
+            audience_id: null,
+            lead_count: 4,
+            first_lead_at: '2026-10-09T15:52:05',
+            last_lead_at: '2026-10-10T06:11:44',
+            added_manually: false,
+        },
+        {
+            campaign_id: '22180441198',
+            audience_id: 'aud-pune',
+            lead_count: 3,
+            first_lead_at: '2026-10-09T11:50:45',
+            last_lead_at: '2026-10-09T16:58:50',
+            added_manually: false,
+        },
+    ],
+};
 
 function mount(c: ConnectorListItem | null) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -75,7 +86,8 @@ function mount(c: ConnectorListItem | null) {
             <QueryClientProvider client={client}>
                 <GoogleSetupDialog
                     connector={c}
-                    audienceName="NEET 2027"
+                    audienceName="GoogleAds Leads form"
+                    audiences={LISTS}
                     open
                     onOpenChange={() => {}}
                 />
@@ -84,12 +96,23 @@ function mount(c: ConnectorListItem | null) {
     );
 }
 
+const listSelects = () =>
+    screen.getAllByRole('combobox', { name: copy.google.routes.listLabel }) as HTMLSelectElement[];
+
 beforeEach(() => {
     api.get.mockReset();
     api.put.mockReset();
     api.get.mockImplementation((url: string) =>
-        Promise.resolve({ data: url.includes('/utm/campaigns') ? CAMPAIGNS : {} })
+        Promise.resolve({ data: url.includes('/campaign-routes') ? ROUTES : {} })
     );
+    api.put.mockResolvedValue({
+        data: {
+            route: { ...ROUTES.routes[0], audience_id: 'aud-pune' },
+            created_audience_id: null,
+            moved_leads: 4,
+            skipped_leads: 0,
+        },
+    });
 });
 
 describe('GoogleSetupDialog', () => {
@@ -97,7 +120,6 @@ describe('GoogleSetupDialog', () => {
         mount(connector());
         expect(screen.getByText(new RegExp(`/webhook/google/${KEY}$`))).toBeTruthy();
         expect(screen.getByText(KEY)).toBeTruthy();
-        expect(screen.getByText(/Leads from this connector go to NEET 2027/)).toBeTruthy();
         expect(screen.getByText(/Click "Send test data"/)).toBeTruthy();
         expect(screen.getByText(/Nothing received from Google yet/)).toBeTruthy();
         expect(screen.getByText(/"Unauthorized" \(401\)/)).toBeTruthy();
@@ -116,11 +138,10 @@ describe('GoogleSetupDialog', () => {
             connector({
                 lastCheckedAt: '2026-10-08T14:05:03',
                 connectionStatus: 'ACTION_REQUIRED',
-                statusDetail: 'Google reached this connector, but the Key does not match.',
+                statusDetail: 'Campaign 22173284076 is routed to a list that was deleted.',
             })
         );
-        expect(screen.getByText(/the Key does not match/)).toBeTruthy();
-        expect(screen.queryByText(/The setup works/)).toBeNull();
+        expect(screen.getByText(/routed to a list that was deleted/)).toBeTruthy();
     });
 
     it('waits for the list refetch when the connector was just created', () => {
@@ -128,37 +149,71 @@ describe('GoogleSetupDialog', () => {
         expect(screen.getByText(copy.activeConnectors.loading)).toBeTruthy();
     });
 
-    it('lists the campaigns that sent leads, with their saved names', async () => {
+    it('lists each campaign with its lead count and the list it feeds', async () => {
         mount(connector());
         expect(await screen.findByText('22173284076')).toBeTruthy();
-        expect(screen.getByDisplayValue('Pune MBBS Search')).toBeTruthy();
         expect(screen.getByText(/Leads: 4/)).toBeTruthy();
-        expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/utm/campaigns'), {
-            params: { instituteId: 'inst-1', source: 'google', medium: 'lead_form' },
-        });
+        expect(screen.getByText(copy.google.routes.notMapped)).toBeTruthy();
+        const [unmapped, mapped] = listSelects();
+        // Selected option by text: happy-dom reads an empty option value as its label.
+        expect(unmapped!.options[unmapped!.selectedIndex]!.textContent).toBe(
+            'Not mapped (goes to GoogleAds Leads form)'
+        );
+        expect(mapped!.value).toBe('aud-pune');
+        // An inactive list is never offered as a target.
+        expect(screen.queryByRole('option', { name: 'Closed list' })).toBeNull();
     });
 
-    it('saves only the campaign names that changed', async () => {
-        api.put.mockResolvedValue({ data: { labels: {} } });
+    it('routes a campaign to an existing list and moves its existing leads', async () => {
         mount(connector());
-        await screen.findByText('22206499349');
-        const save = screen.getByRole('button', { name: copy.google.campaignsSave });
+        await screen.findByText('22173284076');
+        fireEvent.change(listSelects()[0]!, { target: { value: 'aud-pune' } });
+        expect(screen.getByText(/Also move this campaign's existing leads \(4\)/)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: copy.google.routes.save }));
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/connectors/conn-1/campaign-routes/22173284076'),
+            { audience_id: 'aud-pune', move_existing_leads: true }
+        );
+    });
+
+    it('creates a new list for a campaign from the same place', async () => {
+        mount(connector());
+        await screen.findByText('22173284076');
+        fireEvent.change(listSelects()[0]!, { target: { value: '__create_list__' } });
+        const save = screen.getByRole('button', { name: copy.google.routes.save });
         expect((save as HTMLButtonElement).disabled).toBe(true);
 
-        const unnamed = screen.getAllByPlaceholderText(copy.google.campaignNamePlaceholder)[1]!;
-        fireEvent.change(unnamed, { target: { value: '  Pune NEET Display  ' } });
+        fireEvent.change(screen.getByPlaceholderText(copy.google.routes.newListNamePlaceholder), {
+            target: { value: '  Pune NEET Crash  ' },
+        });
         fireEvent.click(save);
 
         await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
         expect(api.put).toHaveBeenCalledWith(
-            expect.stringContaining('/utm/campaign-labels'),
-            { labels: { '22206499349': 'Pune NEET Display' } },
-            { params: { instituteId: 'inst-1' } }
+            expect.stringContaining('/campaign-routes/22173284076'),
+            {
+                new_list: { name: 'Pune NEET Crash', campaign_type: undefined },
+                move_existing_leads: true,
+            }
         );
     });
 
-    it('never shows the key as the connector name', () => {
-        mount(connector({ platformFormName: 'Admissions lead form' }));
-        expect(screen.getByDisplayValue('Admissions lead form')).toBeTruthy();
+    it('routes a campaign before its first lead, by its Google Ads id', async () => {
+        mount(connector());
+        await screen.findByText('22173284076');
+        fireEvent.change(screen.getByPlaceholderText(copy.google.routes.campaignIdPlaceholder), {
+            target: { value: ' 2220-6499349x ' },
+        });
+        const selects = listSelects();
+        fireEvent.change(selects[selects.length - 1]!, { target: { value: 'aud-pune' } });
+        fireEvent.click(screen.getByRole('button', { name: copy.google.routes.add }));
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/campaign-routes/22206499349'),
+            { audience_id: 'aud-pune', move_existing_leads: false }
+        );
     });
 });

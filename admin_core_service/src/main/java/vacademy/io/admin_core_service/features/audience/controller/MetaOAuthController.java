@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
+import vacademy.io.admin_core_service.features.audience.dto.CampaignRouteUpdateRequest;
+import vacademy.io.admin_core_service.features.audience.dto.CampaignRouteUpdateResponse;
+import vacademy.io.admin_core_service.features.audience.dto.CampaignRoutesResponse;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorHealthDTO;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorListItemDTO;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorUpdateRequest;
@@ -23,9 +26,11 @@ import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
 import vacademy.io.admin_core_service.features.audience.dto.WebhookSubscriptionResult;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.entity.OAuthConnectState;
+import vacademy.io.admin_core_service.features.audience.repository.AdCampaignRouteRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
+import vacademy.io.admin_core_service.features.audience.service.AdCampaignRouteService;
 import vacademy.io.admin_core_service.features.audience.service.AdPlatformWebhookService;
 import vacademy.io.admin_core_service.features.audience.service.MetaConnectorHealthService;
 import vacademy.io.admin_core_service.features.audience.service.OAuthRedirectResolver;
@@ -94,6 +99,8 @@ public class MetaOAuthController {
     private final ObjectMapper objectMapper;
     private final InstituteAccessValidator instituteAccessValidator;
     private final AudienceRepository audienceRepository;
+    private final AdCampaignRouteService campaignRouteService;
+    private final AdCampaignRouteRepository campaignRouteRepository;
 
     private static final SecureRandom GOOGLE_KEY_RANDOM = new SecureRandom();
     /** A caller-supplied Google key must look like a generated one: long and URL-safe. */
@@ -698,6 +705,23 @@ public class MetaOAuthController {
                         || "GOOGLE_LEAD_ADS".equals(c.getVendor()))
                 .map(ConnectorListItemDTO::from)
                 .collect(Collectors.toList());
+
+        // Google rows: how many campaigns still need a list (their leads go to the catch-all).
+        List<String> googleIds = result.stream()
+                .filter(c -> "GOOGLE_LEAD_ADS".equals(c.getVendor()))
+                .map(ConnectorListItemDTO::getId)
+                .toList();
+        if (!googleIds.isEmpty()) {
+            Map<String, Integer> unmapped = new HashMap<>();
+            for (Object[] row : campaignRouteRepository.countUnmapped(googleIds)) {
+                unmapped.put((String) row[0], ((Number) row[1]).intValue());
+            }
+            result.forEach(c -> {
+                if ("GOOGLE_LEAD_ADS".equals(c.getVendor())) {
+                    c.setUnmappedCampaigns(unmapped.getOrDefault(c.getId(), 0));
+                }
+            });
+        }
         return ResponseEntity.ok(result);
     }
 
@@ -781,6 +805,60 @@ public class MetaOAuthController {
         FormWebhookConnector saved = connectorRepository.save(connector);
         log.info("Updated connector id={} vendor={}", saved.getId(), saved.getVendor());
         return ResponseEntity.ok(ConnectorListItemDTO.from(saved));
+    }
+
+    // ── Google campaign → lead list routing ──────────────────────────────────
+
+    /** A Google connector's campaigns and the list each one's leads go to. */
+    @GetMapping("/connectors/{connectorId}/campaign-routes")
+    public ResponseEntity<CampaignRoutesResponse> campaignRoutes(
+            @PathVariable String connectorId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        FormWebhookConnector connector = loadGoogleConnectorForStaff(connectorId, user);
+        return ResponseEntity.ok(campaignRouteService.list(connector));
+    }
+
+    /**
+     * Route one campaign to an existing list or a new one, optionally moving its existing
+     * leads. Also how an admin maps a campaign id before its first lead arrives.
+     */
+    @PutMapping("/connectors/{connectorId}/campaign-routes/{campaignId}")
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "UPDATE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'routed Google campaign ' + #campaignId + ' to a lead list'")
+    public ResponseEntity<CampaignRouteUpdateResponse> updateCampaignRoute(
+            @PathVariable String connectorId,
+            @PathVariable String campaignId,
+            @RequestBody CampaignRouteUpdateRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        FormWebhookConnector connector = loadGoogleConnectorForStaff(connectorId, user);
+        return ResponseEntity.ok(campaignRouteService.update(connector, campaignId, request, user));
+    }
+
+    /** Remove a campaign added by mistake (only while it has sent no leads). */
+    @DeleteMapping("/connectors/{connectorId}/campaign-routes/{campaignId}")
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "UPDATE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'removed Google campaign ' + #campaignId + ' from a connector'")
+    public ResponseEntity<Map<String, String>> deleteCampaignRoute(
+            @PathVariable String connectorId,
+            @PathVariable String campaignId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        FormWebhookConnector connector = loadGoogleConnectorForStaff(connectorId, user);
+        campaignRouteService.delete(connector, campaignId);
+        return ResponseEntity.ok(Map.of("status", "deleted"));
+    }
+
+    private FormWebhookConnector loadGoogleConnectorForStaff(String connectorId, CustomUserDetails user) {
+        FormWebhookConnector connector = loadConnectorForStaff(connectorId, user);
+        if (!"GOOGLE_LEAD_ADS".equals(connector.getVendor())) {
+            throw new VacademyException("Campaign routing is only available for Google Lead Form connectors");
+        }
+        return connector;
     }
 
     // ── Connection health + re-subscribe ─────────────────────────────────────

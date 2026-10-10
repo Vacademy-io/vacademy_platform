@@ -1763,6 +1763,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
         /**
+         * Live (not soft-deleted) leads one ad campaign delivered into one list — the ones to
+         * move when that campaign is routed to another list. Ad-platform leads carry the
+         * campaign id in source_id and the connector vendor in source_type.
+         */
+        @Query("SELECT r.id FROM AudienceResponse r WHERE r.audienceId = :audienceId "
+                + "AND r.sourceType = :sourceType AND r.sourceId = :sourceId AND r.audienceStatus = 'ACTIVE'")
+        List<String> findActiveIdsByAudienceAndSource(@Param("audienceId") String audienceId,
+                @Param("sourceType") String sourceType,
+                @Param("sourceId") String sourceId);
+
+        /**
          * This person's leads in this campaign with the given audience_status. Backs
          * reactivate-on-resubmit: {@link #existsByAudienceIdAndUserId} above is derived and so
          * cannot see status, which is exactly why a soft-deleted lead would otherwise trip the

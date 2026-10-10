@@ -168,6 +168,8 @@ export interface ConnectorListItem {
      * means no defaults are configured.
      */
     defaultValuesJson: string | null;
+    /** Google: campaigns that sent leads but have no list yet (they feed the main list). */
+    unmappedCampaigns?: number | null;
 }
 
 /**
@@ -338,6 +340,70 @@ export const buildFieldMappingJson = (
 };
 
 /** Build the full Google webhook URL for display. */
+// ── Google campaign → lead list routing ──────────────────────────────────────
+
+/** One Google campaign of a connector and the list its leads go to (snake_case: API shape). */
+export interface CampaignRoute {
+    campaign_id: string;
+    /** null = not mapped yet: its leads go to the connector's main list. */
+    audience_id: string | null;
+    lead_count: number;
+    /** UTC, zone-less (the server JVM runs in UTC). */
+    first_lead_at: string | null;
+    last_lead_at: string | null;
+    added_manually: boolean;
+}
+
+export interface CampaignRoutes {
+    /** The connector's own list: the catch-all for campaigns without a list. */
+    main_audience_id: string;
+    routes: CampaignRoute[];
+}
+
+export interface CampaignRouteUpdate {
+    audience_id?: string;
+    /** Create this list and route the campaign to it (wins over audience_id). */
+    new_list?: { name: string; campaign_type?: string };
+    move_existing_leads?: boolean;
+}
+
+export interface CampaignRouteUpdateResult {
+    route: CampaignRoute;
+    created_audience_id: string | null;
+    moved_leads: number;
+    skipped_leads: number;
+}
+
+export const campaignRoutesQueryKey = (connectorId: string) =>
+    ['google-campaign-routes', connectorId] as const;
+
+export const fetchCampaignRoutes = async (connectorId: string): Promise<CampaignRoutes> => {
+    const res = await authenticatedAxiosInstance.get<CampaignRoutes>(
+        `${BASE}/connectors/${connectorId}/campaign-routes`
+    );
+    return res.data;
+};
+
+/** Route a campaign to a list (also maps a campaign id before its first lead). */
+export const updateCampaignRoute = async (
+    connectorId: string,
+    campaignId: string,
+    update: CampaignRouteUpdate
+): Promise<CampaignRouteUpdateResult> => {
+    const res = await authenticatedAxiosInstance.put<CampaignRouteUpdateResult>(
+        `${BASE}/connectors/${connectorId}/campaign-routes/${encodeURIComponent(campaignId)}`,
+        update
+    );
+    return res.data;
+};
+
+/** Remove a campaign added by mistake (only while it has sent no leads). */
+export const deleteCampaignRoute = async (connectorId: string, campaignId: string) => {
+    await authenticatedAxiosInstance.delete(
+        `${BASE}/connectors/${connectorId}/campaign-routes/${encodeURIComponent(campaignId)}`
+    );
+};
+
 /**
  * The id to show for a connector in lists. A Google connector's platform_form_id IS
  * its webhook key (a credential), so only its last four characters are shown.

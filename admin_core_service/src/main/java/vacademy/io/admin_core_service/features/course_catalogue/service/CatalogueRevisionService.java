@@ -40,6 +40,9 @@ public class CatalogueRevisionService {
     /** Error code (message prefix) of the 409 when the draft is not the one the caller checked. */
     public static final String DRAFT_CHANGED = "DRAFT_CHANGED";
 
+    /** Error code (message prefix) of the 409 when a checked-draft publish arrives while the stale guard is off. */
+    public static final String STALE_GUARD_OFF = "STALE_GUARD_OFF";
+
     /**
      * Refuse (409) to publish a draft older than the live site. On by default:
      * the editor handles the 409 (Use the live site / Keep my draft / publish
@@ -155,6 +158,10 @@ public class CatalogueRevisionService {
      * no longer the one the caller checked — an autosave or another editor
      * changed it in between. Checked under the catalogue row lock, whatever
      * overrideStale says. Null skips the check (the editor's call).
+     *
+     * A checked-draft publish (the MCP one) relies on the stale guard, so while
+     * the guard is turned off it is refused with 409 STALE_GUARD_OFF instead of
+     * publishing unguarded. The editor's publish (no hash) is unaffected.
      */
     @Transactional
     public RevisionResponse publish(String catalogueId, String userId, boolean overrideStale,
@@ -168,6 +175,11 @@ public class CatalogueRevisionService {
                 && !expectedDraftSha256.trim().equalsIgnoreCase(sha256Hex(draft.getCatalogueJson()))) {
             throw new VacademyException(HttpStatus.CONFLICT, DRAFT_CHANGED
                     + ": the draft changed after it was checked. Nothing was published; check the draft again.");
+        }
+        if (expectedDraftSha256 != null && !expectedDraftSha256.isBlank() && !staleGuardEnabled) {
+            throw new VacademyException(HttpStatus.CONFLICT, STALE_GUARD_OFF
+                    + ": the publish stale guard is turned off on this server, so a checked draft cannot be "
+                    + "published from here. Nothing was published; publish from the editor.");
         }
 
         if (staleGuardEnabled && !overrideStale) {

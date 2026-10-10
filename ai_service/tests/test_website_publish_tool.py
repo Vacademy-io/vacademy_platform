@@ -185,9 +185,9 @@ def clean_checks(monkeypatch):
     monkeypatch.setattr(edit_mod, "run_publish_checks", lambda config: [])
 
 
-def ctx(db, institute="inst-1", user="user-1"):
+def ctx(db, institute="inst-1", user="user-1", via_mcp=True):
     p = PinnedPrincipal(user_id=user, institute_id=institute, roles=["ADMIN"], permissions=[], is_root_user=False)
-    return ToolContext(db=db, principal=p, keys=(), bearer_token="jwt")
+    return ToolContext(db=db, principal=p, keys=(), bearer_token="jwt", via_mcp=via_mcp)
 
 
 async def call(db, tool, args, setting=PUBLISH, **who):
@@ -397,6 +397,7 @@ async def test_a_live_site_that_moved_is_refused(db, monkeypatch):
 @pytest.mark.parametrize("detail,code", [
     ('{"ex":"DRAFT_OLDER_THAN_LIVE: the live site changed"}', "draft_older_than_live"),
     ('{"ex":"DRAFT_CHANGED: the draft changed"}', "draft_changed"),
+    ('{"ex":"STALE_GUARD_OFF: the publish stale guard is turned off"}', "stale_guard_off"),
 ])
 async def test_the_servers_409_is_a_refusal(db, monkeypatch, detail, code):
     """admin-core's own guard (row-locked) catches what changed between our check and its publish."""
@@ -461,6 +462,53 @@ async def test_the_tool_is_off_without_its_own_group(db, monkeypatch):
     token = (await request(db))["publish_confirm"]["confirm_token"]
     out = await publish(db, token, setting=EDIT_ONLY)
     assert out["error"] == "tool_not_permitted" and be.publishes() == []
+
+
+@pytest.mark.asyncio
+async def test_the_in_product_assistant_can_neither_get_a_token_nor_publish(db, monkeypatch):
+    """MCP-only is enforced, not just "not offered": a settings row enabling the group for the in-product
+    assistant (whose context is not via_mcp) gets no token and cannot call the tool."""
+    live = sample_config()
+    be = AdminCore(monkeypatch, live, edited(live))
+    out = await call(db, "website_edit", {"action": "request_publish", "tag_name": "main-site"}, via_mcp=False)
+    assert out["verdict"] == "ready" and "publish_confirm" not in out and tokens(db) == []
+    token = (await request(db))["publish_confirm"]["confirm_token"]
+    out = await call(db, "website_publish", {"action": "publish", "tag_name": "main-site", "confirm_token": token},
+                     via_mcp=False)
+    assert out["error"] == "tool_not_available" and be.publishes() == []
+    assert (await publish(db, token))["published"] is True      # the token was not spent by the refused call
+
+
+def test_the_group_is_not_listed_as_an_assistant_settings_capability():
+    """The in-product assistant tells the model every GROUP_LABELS group can be turned on in Assistant
+    settings; this MCP-only group is not there (its label lives in MCP_TOOL_GROUP_LABELS)."""
+    from app.mcp.constants import MCP_TOOL_GROUP_LABELS
+    from app.services.assistant_tool_registry import GROUP_LABELS
+    assert pub.WEBSITE_PUBLISH_GROUP_KEY not in GROUP_LABELS
+    assert MCP_TOOL_GROUP_LABELS[pub.WEBSITE_PUBLISH_GROUP_KEY] == "Website: publish"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_token_issue_leaves_the_session_usable(db, monkeypatch):
+    live = sample_config()
+    be = AdminCore(monkeypatch, live, edited(live))
+    rolled = []
+    real_rollback = db.rollback
+
+    def _rollback():
+        rolled.append(True)
+        real_rollback()
+
+    def _boom(*a, **k):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(db, "rollback", _rollback)
+    monkeypatch.setattr(pub, "_issue_token", lambda *a, **k: _boom())
+    out = await request(db)
+    assert out["publish_confirm"]["issued"] is False and rolled
+    rolled.clear()
+    be.draft = None                      # a rollback needs a site without an open draft
+    out = await rollback(db)
+    assert out["error"] == "token_unavailable" and rolled
 
 
 @pytest.mark.asyncio
@@ -597,6 +645,35 @@ async def test_a_failed_rollback_publish_drops_only_its_own_draft(db, monkeypatc
     be.publish_error = {"error": "fetch_failed", "status": 409, "detail": '{"ex":"DRAFT_CHANGED: x"}'}
     out = await rollback(db, token=token)
     assert out["error"] == "draft_changed" and be.draft is not None
+
+
+@pytest.mark.asyncio
+async def test_a_rollback_refused_because_the_guard_is_off_drops_its_own_draft(db, monkeypatch):
+    live = sample_config()
+    be = AdminCore(monkeypatch, live)
+    token = (await rollback(db))["confirm_token"]
+    be.publish_error = {"error": "fetch_failed", "status": 409, "detail": '{"ex":"STALE_GUARD_OFF: off"}'}
+    out = await rollback(db, token=token)
+    assert out["error"] == "stale_guard_off" and "Do not retry" in out["message"] and be.draft is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [
+    {"error": "fetch_failed", "status": 400},          # "No draft to publish": someone published / discarded it
+    {"error": "fetch_failed", "status": 502},
+    {"error": "fetch_failed"},                          # no answer: outcome unknown
+])
+async def test_a_rollback_publish_failure_never_discards_a_draft_it_cannot_vouch_for(db, monkeypatch, error):
+    """discard-draft drops whichever draft is open, so it runs only after the server confirmed it is ours."""
+    live = sample_config()
+    be = AdminCore(monkeypatch, live)
+    token = (await rollback(db))["confirm_token"]
+    be.publish_error = error
+    out = await rollback(db, token=token)
+    assert out["published"] is False
+    assert not [p for p in be.writes() if p.endswith("/discard-draft")] and be.draft is not None
+    if error.get("status") == 502:
+        assert "draft_left_open" in out
 
 
 @pytest.mark.asyncio

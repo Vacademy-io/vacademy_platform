@@ -306,6 +306,27 @@ class CatalogueRevisionStaleDraftTest {
         assertEquals(DRAFT, catalogue.getCatalogueJson());
     }
 
+    /** MCP publish never goes out unguarded: with the guard off a checked-draft publish is refused. */
+    @Test
+    void checkedDraftPublishIsRefusedWhileTheGuardIsOff() {
+        ReflectionTestUtils.setField(revisions, "staleGuardEnabled", false);
+        saveDraft(DRAFT);
+        String checked = CatalogueRevisionService.sha256Hex(DRAFT);
+
+        VacademyException ex = assertThrows(VacademyException.class,
+                () -> revisions.publish(CATALOGUE, "mcp", false, 1, checked));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().startsWith(CatalogueRevisionService.STALE_GUARD_OFF));
+        assertThrows(VacademyException.class, () -> revisions.publish(CATALOGUE, "mcp", true, 1, checked));
+        assertEquals(LIVE, catalogue.getCatalogueJson());
+        assertEquals("DRAFT", revisions.getDraft(CATALOGUE).orElseThrow().getStatus());
+
+        // The editor's publish (no hash) keeps working with the guard off.
+        RevisionResponse published = revisions.publish(CATALOGUE, "editor", false, 1);
+        assertEquals("PUBLISHED", published.getStatus());
+        assertEquals(DRAFT, catalogue.getCatalogueJson());
+    }
+
     /** MCP rollback: a create-only save never overwrites an open draft. */
     @Test
     void createOnlySaveRefusesWhileADraftIsOpen() {

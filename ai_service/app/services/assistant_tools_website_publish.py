@@ -179,6 +179,14 @@ def _issue_token(ctx: ToolContext, action: str, site: Dict[str, Any], **fields: 
     return token, expires
 
 
+def _rollback_quietly(ctx: ToolContext) -> None:
+    """A failed write leaves the shared session aborted; roll it back so later writes (the audit log) still land."""
+    try:
+        ctx.db.rollback()
+    except Exception:  # noqa: BLE001
+        logger.warning("website_publish: session rollback failed", exc_info=True)
+
+
 def _token_refusal(code: str, message: str, **extra: Any) -> Dict[str, Any]:
     return _err(code, published=False, message=message, **extra)
 
@@ -270,6 +278,7 @@ def attach_publish_confirm(ctx: ToolContext, site: Dict[str, Any], out: Dict[str
             live_sha256=site.get("live_sha256"))
     except Exception:  # noqa: BLE001 — a failed issue never breaks the readiness report
         logger.exception("website_publish: issuing a publish token failed for %s", site.get("tag_name"))
+        _rollback_quietly(ctx)
         out["publish_confirm"] = {"issued": False, "reason": "The publish token could not be issued; re-run request_publish."}
         return
     out["publish_confirm"] = {
@@ -294,8 +303,17 @@ def attach_publish_confirm(ctx: ToolContext, site: Dict[str, Any], out: Dict[str
 # admin-core calls
 # ──────────────────────────────────────────────────────────────────────────
 def _conflict_kind(data: Dict[str, Any]) -> str:
+    """Which 409 admin-core answered; "" when it is none of the publish guard's (or not a 409)."""
+    if data.get("status") != 409:
+        return ""
     detail = str(data.get("detail") or "")
-    return "draft_changed" if "DRAFT_CHANGED" in detail else "draft_older_than_live"
+    if "DRAFT_CHANGED" in detail:
+        return "draft_changed"
+    if "STALE_GUARD_OFF" in detail:
+        return "stale_guard_off"
+    if "DRAFT_OLDER_THAN_LIVE" in detail:
+        return "draft_older_than_live"
+    return ""
 
 
 async def _publish_draft(ctx: ToolContext, catalogue_id: str, draft_sha: str,
@@ -312,11 +330,17 @@ async def _publish_draft(ctx: ToolContext, catalogue_id: str, draft_sha: str,
 
 def _publish_failure(err: Dict[str, Any], tag: str, editor: str, again: str) -> Dict[str, Any]:
     status = err.get("status")
+    kind = _conflict_kind(err)
+    if kind == "draft_changed":
+        return _token_refusal("draft_changed", (
+            "Refused by the server: the draft changed after it was checked (an autosave or another editor). "
+            f"Nothing was published. {again}"), editor_url=editor)
+    if kind == "stale_guard_off":
+        return _token_refusal("stale_guard_off", (
+            "Refused by the server: its publish safety check (the stale-draft guard) is turned off, so nothing can "
+            "be published from here. Nothing was published. Do not retry; hand the admin editor_url to publish "
+            "there."), editor_url=editor)
     if status == 409:
-        if _conflict_kind(err) == "draft_changed":
-            return _token_refusal("draft_changed", (
-                "Refused by the server: the draft changed after it was checked (an autosave or another editor). "
-                f"Nothing was published. {again}"), editor_url=editor)
         return _token_refusal("draft_older_than_live", (
             "Refused by the server: the live site changed after this was checked, so publishing would undo "
             f"newer live changes. Nothing was published. {again} The admin decides in the editor."),
@@ -507,6 +531,7 @@ async def _action_rollback(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, 
                 live_revision_no=live_no, live_sha256=site.get("live_sha256"))
         except Exception:  # noqa: BLE001
             logger.exception("website_publish: issuing a rollback token failed for %s", tag)
+            _rollback_quietly(ctx)
             return _token_refusal("token_unavailable", "The confirm token could not be issued; try again.")
         return {
             "published": False,
@@ -553,11 +578,17 @@ async def _action_rollback(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, 
 
     published, perr = await _publish_draft(ctx, site["catalogue_id"], target_sha, live_no)
     if perr:
-        # The draft is our own copy of v{to_no}: drop it so the admin's editor is not left holding it —
-        # unless someone edited it in between (DRAFT_CHANGED) or the outcome is unknown.
-        if perr.get("status") is not None and not (perr.get("status") == 409 and _conflict_kind(perr) == "draft_changed"):
+        out = _publish_failure(perr, tag, editor, again)
+        # Drop our own copy of v{to_no} only when the server has just confirmed the open draft IS that copy
+        # (it checks the draft hash before these two refusals). Any other failure — a draft edited in between,
+        # no draft, a 5xx, no answer — may leave someone else's draft open, and discard-draft drops whichever
+        # draft is open, so it is left alone.
+        if _conflict_kind(perr) in ("draft_older_than_live", "stale_guard_off"):
             await _admin_core_json(ctx, "POST", _DISCARD_PATH, params={"catalogueId": site["catalogue_id"]})
-        return _publish_failure(perr, tag, editor, again)
+        elif perr.get("status") not in (None, 409, 400):
+            out["draft_left_open"] = (f"A draft with v{to_no}'s content may be open in the editor; the admin can "
+                                      "publish or discard it there.")
+        return out
     out = {
         "published": True,
         "tag_name": tag,
@@ -621,10 +652,14 @@ WEBSITE_PUBLISH_TOOLS: Dict[str, ToolSpec] = {
 
 
 def _register() -> None:
-    """Self-register into the shared registry (see assistant_tool_registry._load_feature_tools)."""
-    from .assistant_tool_registry import ASSISTANT_TOOLS, GROUP_LABELS
+    """
+    Self-register into the shared registry (see assistant_tool_registry._load_feature_tools).
+    No GROUP_LABELS entry, like design_import: the in-product assistant lists every
+    labelled group as one an admin can turn on in Assistant settings, and this
+    MCP-only group is not there (its label is MCP_TOOL_GROUP_LABELS').
+    """
+    from .assistant_tool_registry import ASSISTANT_TOOLS
     ASSISTANT_TOOLS.update(WEBSITE_PUBLISH_TOOLS)
-    GROUP_LABELS.update({WEBSITE_PUBLISH_GROUP_KEY: "Website: publish"})
 
 
 _register()

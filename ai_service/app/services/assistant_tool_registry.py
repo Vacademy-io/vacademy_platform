@@ -89,9 +89,15 @@ class ToolContext:
     # which a tool must treat as "not allowed".
     gate_setting: Optional[Dict[str, Any]] = None
     gate_checked: bool = False
+    # True only for calls that came in over the MCP server (set by the adapter).
+    # ``mcp_only`` tools refuse every other caller, whatever the settings say.
+    via_mcp: bool = False
 
     def may_use(self, tool_name: str) -> bool:
-        """True iff this caller may also call ``tool_name`` (same AND-gate as execute_tool)."""
+        """True iff this caller may also call ``tool_name`` (same gates as execute_tool)."""
+        spec = ASSISTANT_TOOLS.get(tool_name)
+        if spec is not None and spec.mcp_only and not self.via_mcp:
+            return False
         return self.gate_checked and is_tool_allowed(tool_name, self.principal, self.gate_setting)
 
 
@@ -2380,6 +2386,16 @@ async def execute_tool(
         })
 
     spec = ASSISTANT_TOOLS[tool_name]
+    if spec.mcp_only and not ctx.via_mcp:
+        # Never offered outside MCP; refuse a model that names it anyway (e.g. a
+        # settings row that enables the group for the in-product assistant).
+        logger.warning("Assistant refused MCP-only tool '%s' outside MCP for user=%s institute=%s",
+                       tool_name, ctx.principal.user_id, ctx.principal.institute_id)
+        return json.dumps({
+            "error": "tool_not_available",
+            "tool": tool_name,
+            "message": "This tool is only available to AI apps connected over the MCP server. Do not retry.",
+        })
     ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
     # Identity is ALWAYS taken from the pinned principal, never from the model.

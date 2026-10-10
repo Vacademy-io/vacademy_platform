@@ -182,6 +182,7 @@ async def call_tool(
         keys=(),  # embeddings-only; none of the exposed tools need API keys
         bearer_token=platform_token,
         images_as_content=True,  # image fields become ImageContent below
+        via_mcp=True,  # mcp_only tools (design_import, website_publish) run only here
     )
 
     started = time.monotonic()

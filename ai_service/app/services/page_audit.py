@@ -301,11 +301,53 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
     return issues
 
 
+def audit_design_compare(compare: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Issues from website(action='compare') — the render measured against the design image
+    itself, so section coverage and colours are exact rather than a vision pass's guesses."""
+    issues: List[Dict[str, Any]] = []
+    if not isinstance(compare, dict):
+        return issues
+    for miss in compare.get("missing_sections") or []:
+        if not isinstance(miss, dict):
+            continue
+        hint = ((miss.get("hints") or [{}])[0] or {}).get("suggestion") or "Add a section for it."
+        issues.append(_issue(
+            "reference-section-missing", "fix",
+            f"The design has '{miss.get('design_section')}' ({miss.get('design_height')}px, mostly "
+            f"{miss.get('design_color')}) with no counterpart on the page.",
+            hint,
+        ))
+    for sec in compare.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        cid = sec.get("section_id") or None
+        if sec.get("extra"):
+            issues.append(_issue(
+                "reference-section-extra", "warn",
+                f"'{cid}' has no counterpart in the design.",
+                "Remove it, or move it to where the design has it.", cid,
+            ))
+            continue
+        for hint in sec.get("hints") or []:
+            path = str((hint or {}).get("prop_path") or "")
+            if path.endswith("backgroundColor"):
+                issues.append(_issue("reference-colour-ignored", "warn", str(hint.get("suggestion")),
+                                     f"Set {path} to \"{sec.get('design_color')}\".", cid))
+        if sec.get("missing_text"):
+            issues.append(_issue(
+                "reference-text-missing", "warn",
+                f"'{cid}' lacks design text: " + "; ".join(f'"{t[:60]}"' for t in sec["missing_text"][:4]) + ".",
+                "Add it where the block has a prop for it (heading, button, item) — see this section's hints.", cid,
+            ))
+    return issues
+
+
 def audit_reference_fidelity(
     page: Dict[str, Any],
     global_settings: Optional[Dict[str, Any]],
     inspiration: Dict[str, Any],
     theme_locked: bool = False,
+    compare: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Did the page actually adopt the reference design it was given?
 
@@ -317,8 +359,11 @@ def audit_reference_fidelity(
     with no counterpart on the page, an `avoid` treatment used anyway. They are
     not taste; each one is a specific instruction that was handed over and
     dropped.
+
+    ``compare``: a website(action='compare') result for this page; its exact
+    section and colour findings are added (``audit_design_compare``).
     """
-    issues: List[Dict[str, Any]] = []
+    issues: List[Dict[str, Any]] = audit_design_compare(compare) if compare else []
     if not isinstance(inspiration, dict) or not inspiration:
         return issues
 

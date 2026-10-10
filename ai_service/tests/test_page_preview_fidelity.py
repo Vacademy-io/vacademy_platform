@@ -46,14 +46,17 @@ class FakeLocator:
         self.page.clicks.append(self.text)
         if self.text == "Courses":                      # a nav button that navigates away
             self.page.url = "https://sites.acme.edu/main-site/courses"
+        if self.text == "Knowledge Streams":            # opens a mega menu
+            self.page.opened += 1
 
 
 class FakePage:
     def __init__(self, recorder, height=5000):
         self.rec, self.height = recorder, height
         self.url = ""
-        self.clickable = {"Knowledge Streams", "Courses"}
+        self.clickable = {"Knowledge Streams", "Courses", "About"}
         self.clicks = recorder.setdefault("clicks", [])
+        self.opened = 0
 
     async def goto(self, url, wait_until=None, timeout=None):
         self.url = url
@@ -68,7 +71,9 @@ class FakePage:
             return [{"id": "header-1", "top": 0, "height": 64, "text": "Courses" if arg else None},
                     {"id": "courses-catalog", "top": 64, "height": 3000}, {"id": "footer-1", "top": 3064, "height": 700}]
         if script == page_preview._BOX_JS:
-            return {"top": 3064, "height": 700} if arg == "footer-1" else None
+            return self.rec.get("boxes", {"footer-1": {"top": 3064, "height": 700}}).get(arg)
+        if script == page_preview._DOM_STATE_JS:
+            return [self.opened, 100, 2000]
         if "postMessage(JSON.parse(msg)" in script:
             self.rec.setdefault("posted", []).append(json.loads(arg))
             return None
@@ -86,9 +91,9 @@ class FakePage:
 
     async def screenshot(self, **kw):
         self.rec["screenshot"] = kw
-        h = kw["clip"]["height"]
-        img = np.full((h, kw["clip"]["width"], 3), 230, dtype=np.uint8)
-        img[3064:] = 20                                   # a dark footer
+        clip = kw["clip"]
+        img = np.full((clip["height"], clip["width"], 3), 230, dtype=np.uint8)
+        img[max(0, 3064 - clip["y"]):] = 20               # a dark footer from y=3064 of the page
         return cv2.imencode(".jpg", img)[1].tobytes()
 
 
@@ -197,6 +202,31 @@ def test_at_most_two_browsers_run_at_once(monkeypatch):
     assert len(asyncio.run(many())) == 6 and peak[0] == 2
 
 
+def test_a_queued_preview_answers_busy_instead_of_a_false_timeout(monkeypatch):
+    rendered = []
+
+    async def legacy(*a):
+        rendered.append(a)
+        return {"png_base64": "A", "width": 1280, "height": 800}
+
+    monkeypatch.setattr(page_preview, "_render", legacy)
+    monkeypatch.setattr(page_preview, "_SLOT_WAIT_S", 0.05)
+    monkeypatch.setattr(page_preview, "_TOTAL_TIMEOUT_S", 0.01)   # the render's own budget is not spent waiting
+
+    async def scenario():
+        slots = asyncio.Semaphore(2)
+        monkeypatch.setattr(page_preview, "BROWSER_SLOTS", slots)
+        await slots.acquire()
+        await slots.acquire()                                      # two fidelity renders hold both slots
+        busy = await page_preview.render_preview(base_url="b", tag_name="t", page_route="home", config=site())
+        slots.release()
+        free = await page_preview.render_preview(base_url="b", tag_name="t", page_route="home", config=site())
+        return busy, free, slots._value
+    busy, free, left = asyncio.run(scenario())
+    assert busy["error"] == "preview_busy" and len(rendered) == 1
+    assert free == {"png_base64": "A", "width": 1280, "height": 800} and left == 1
+
+
 # ── what is posted ───────────────────────────────────────────────────────
 def test_the_message_carries_the_real_route_like_the_editor():
     msg = page_preview.fidelity_message(site(), "courses", None)
@@ -241,23 +271,103 @@ def test_mobile_width_emulates_a_phone():
     assert rec["context"]["viewport"] == {"width": 390, "height": 844} and rec["context"]["is_mobile"] is True
 
 
-def test_a_section_is_cropped_from_the_full_capture():
+def test_a_section_is_shot_from_its_own_box():
     rec = {}
     out = run_fidelity(rec, section_id="footer-1", full_image=True)
+    assert rec["screenshot"]["clip"] == {"x": 0, "y": 3064, "width": 1440, "height": 700}
     assert out["height"] == 700 and len(out["tiles"]) == 1 and out["truncated"] is False
     crop = cv2.imdecode(np.frombuffer(out["full_jpeg"], np.uint8), cv2.IMREAD_COLOR)
     assert crop.shape[:2] == (700, 1440) and crop.mean() < 40          # the dark footer
     assert run_fidelity({}, section_id="nope")["error"] == "section_not_rendered"
 
 
+def test_a_section_below_the_capture_height_is_still_shot_not_a_one_pixel_image():
+    # The footer of a 20000px page, with max_height 400: its own box is shot.
+    rec = {"page_height": 20_000, "boxes": {"footer-1": {"top": 19_000, "height": 1_000}}}
+    out = run_fidelity(rec, section_id="footer-1", max_height=400)
+    assert rec["screenshot"]["clip"] == {"x": 0, "y": 19_000, "width": 1440, "height": 400}
+    assert out["height"] == 400 and out["truncated"] is True
+    rec = {"page_height": 20_000, "boxes": {"footer-1": {"top": 19_000, "height": 1_000}}}
+    assert run_fidelity(rec, section_id="footer-1")["height"] == 1_000
+    # A box past the end of the page, or of no height, is not a section on the page.
+    for box in ({"top": 25_000, "height": 300}, {"top": 100, "height": 0}):
+        out = run_fidelity({"page_height": 20_000, "boxes": {"footer-1": box}}, section_id="footer-1")
+        assert out["error"] == "section_not_rendered", box
+
+
 def test_click_text_switches_browse_mode_on_and_clicks():
     rec = {}
     out = run_fidelity(rec, click_text="Knowledge  Streams", section_text=True)
     assert rec["interact"] is True and rec["clicks"] == ["Knowledge Streams"] and out["clicked"] is True
+    assert out["click_changed"] is True
     assert rec["section_text"] is True and out["sections"][0]["text"] == "Courses"
-    assert run_fidelity({}, click_text="Nowhere")["clicked"] is False
+    nothing = run_fidelity({}, click_text="Nowhere")
+    assert nothing["clicked"] is False and nothing["click_changed"] is False
+
+
+def test_a_click_that_opens_nothing_says_so():
+    out = run_fidelity({}, click_text="About")
+    assert out["clicked"] is True and out["click_changed"] is False
 
 
 def test_a_click_that_leaves_the_page_is_an_error_not_a_wrong_screenshot():
     out = run_fidelity({}, click_text="Courses")
     assert out["error"] == "click_navigated"
+
+
+# ── the section measuring script, in a real browser ─────────────────────
+def _launch_args():
+    """Playwright's own Chromium, or a headless shell found in its cache; None skips."""
+    import glob
+    import os
+    explicit = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE")
+    found = [explicit] if explicit else []
+    for pattern in ("~/Library/Caches/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell",
+                    "~/.cache/ms-playwright/chromium_headless_shell-*/*/headless_shell",
+                    "~/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell"):
+        found += sorted(glob.glob(os.path.expanduser(pattern)), reverse=True)
+    return [{}] + [{"executable_path": path} for path in found if path]
+
+
+# The learner site's shape: the header's [data-cid] wrapper has no height of
+# its own (its bar is position:fixed inside it), the page starts below it.
+_SITE_HTML = """<!doctype html><html><body style="margin:0">
+<div data-cid="header-1"><style>.x{}</style><header style="position:fixed;top:0;left:0;right:0;height:64px;background:#fff">
+  <nav>Courses Knowledge Streams</nav></header></div>
+<main style="padding-top:64px">
+  <div data-cid="courses-catalog" style="height:900px">All courses<div data-cid="nested" style="height:40px">n</div></div>
+  <div data-cid="courses-not-sure" style="height:240px">Not sure?</div>
+  <div data-cid="empty-1"></div>
+</main>
+<div data-cid="footer-1" style="height:300px">Brahm Varchas</div>
+</body></html>"""
+
+
+def test_the_header_wrapper_of_no_height_is_measured_by_its_bar_in_a_real_browser():
+    playwright = pytest.importorskip("playwright.async_api")
+
+    async def measure():
+        async with playwright.async_playwright() as pw:
+            browser = None
+            for args in _launch_args():
+                try:
+                    browser = await pw.chromium.launch(headless=True, **args)
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+            if browser is None:
+                return None
+            try:
+                page = await browser.new_page(viewport={"width": 1440, "height": 900})
+                await page.set_content(_SITE_HTML)
+                return (await page.evaluate(page_preview._SECTIONS_JS, True),
+                        await page.evaluate(page_preview._BOX_JS, "header-1"))
+            finally:
+                await browser.close()
+    measured = asyncio.run(measure())
+    if measured is None:
+        pytest.skip("no Chromium for Playwright on this machine")
+    sections, header_box = measured
+    assert [(s["id"], s["top"], s["height"]) for s in sections] == [
+        ("header-1", 0, 64), ("courses-catalog", 64, 900), ("courses-not-sure", 964, 240), ("footer-1", 1204, 300)]
+    assert "Knowledge Streams" in sections[0]["text"] and header_box == {"top": 0, "height": 64}

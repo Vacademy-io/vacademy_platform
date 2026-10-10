@@ -1374,7 +1374,11 @@ async def _import_one_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     kind = args.get("kind") if args.get("kind") in IMAGE_KINDS else "photo"
     try:
         from .s3_service import S3Service
-        key = f"page-builder/imports/{kind}-{uuid.uuid4().hex}.{ext}"
+        # Under the institute, so website(action='compare') can tell this institute's
+        # imports from another's (it reads a reference image only from its own).
+        institute = str(ctx.principal.institute_id or "")
+        scope = f"{institute}/" if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", institute) else ""
+        key = f"page-builder/imports/{scope}{kind}-{uuid.uuid4().hex}.{ext}"
         stored = S3Service().upload_file_content(resp.content, f"{kind}.{ext}", s3_key=key, content_type=ctype)
     except Exception as exc:  # noqa: BLE001
         logger.warning("import_image upload failed: %s", exc)

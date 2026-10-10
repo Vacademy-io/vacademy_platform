@@ -79,6 +79,10 @@ class ToolContext:
     # part of the tool result string — the model never sees the nonce, so it can
     # never fabricate a confirmation.
     pending_action: Optional[Dict[str, Any]] = None
+    # True when the caller shows a tool's base64 images to the model as images
+    # (the MCP adapter). The in-product assistant stores tool results as chat
+    # text, so tools leave large images out for it.
+    images_as_content: bool = False
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str

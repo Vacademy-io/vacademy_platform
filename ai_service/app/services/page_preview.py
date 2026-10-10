@@ -50,6 +50,9 @@ _HOME_ROUTES = ("", "/", "home", "homepage")
 
 #: Chromium is ~400 MB a page here; at most two renders at once per process.
 BROWSER_SLOTS = asyncio.Semaphore(2)
+#: How long a preview waits for a free slot before answering ``preview_busy``
+#: (the wait is outside the render timeout, so a queued call never "times out").
+_SLOT_WAIT_S = 45
 
 
 async def render_preview(*, base_url: str, tag_name: str, page_route: str, config: Dict[str, Any],
@@ -76,32 +79,41 @@ async def render_preview(*, base_url: str, tag_name: str, page_route: str, confi
         from playwright.async_api import async_playwright
     except ImportError:
         return {"error": "preview_unavailable", "message": "Screenshots need Playwright on the server."}
-    if fidelity:
+    slots = BROWSER_SLOTS
+    try:
+        await asyncio.wait_for(slots.acquire(), _SLOT_WAIT_S)
+    except asyncio.TimeoutError:
+        return {"error": "preview_busy",
+                "message": "Other previews are rendering right now; try again in a minute."}
+    try:
+        if fidelity:
+            try:
+                return await asyncio.wait_for(
+                    _render_fidelity(async_playwright, base_url, tag_name, page_route, config, section_id,
+                                     sections=sections or section_text, section_text=section_text,
+                                     full_image=full_image, **opts),
+                    _FIDELITY_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                return {"error": "preview_timeout", "message": f"The page did not render within {_FIDELITY_TIMEOUT_S}s."}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("fidelity preview failed for %s/%s at %s: %r", tag_name, page_route, base_url, exc)
+                reason = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:300]
+                return {"error": "preview_failed", "message": f"The page could not be rendered: {reason}"}
         try:
             return await asyncio.wait_for(
-                _in_slot(_render_fidelity(async_playwright, base_url, tag_name, page_route, config, section_id,
-                                          sections=sections or section_text, section_text=section_text,
-                                          full_image=full_image, **opts)),
-                _FIDELITY_TIMEOUT_S,
+                _render(async_playwright, base_url, tag_name, page_route, config, section_id, viewport),
+                _TOTAL_TIMEOUT_S,
             )
         except asyncio.TimeoutError:
-            return {"error": "preview_timeout", "message": f"The page did not render within {_FIDELITY_TIMEOUT_S}s."}
+            return {"error": "preview_timeout", "message": "The page did not render within 60s."}
         except Exception as exc:  # noqa: BLE001
-            logger.warning("fidelity preview failed for %s/%s at %s: %r", tag_name, page_route, base_url, exc)
+            logger.warning("preview render failed for %s/%s at %s: %r", tag_name, page_route, base_url, exc)
+            # First line only: Playwright appends a multi-line call log.
             reason = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:300]
             return {"error": "preview_failed", "message": f"The page could not be rendered: {reason}"}
-    try:
-        return await asyncio.wait_for(
-            _in_slot(_render(async_playwright, base_url, tag_name, page_route, config, section_id, viewport)),
-            _TOTAL_TIMEOUT_S,
-        )
-    except asyncio.TimeoutError:
-        return {"error": "preview_timeout", "message": "The page did not render within 60s."}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("preview render failed for %s/%s at %s: %r", tag_name, page_route, base_url, exc)
-        # First line only: Playwright appends a multi-line call log.
-        reason = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:300]
-        return {"error": "preview_failed", "message": f"The page could not be rendered: {reason}"}
+    finally:
+        slots.release()
 
 
 def _preview_url(base_url: str, tag_name: str) -> str:
@@ -180,12 +192,6 @@ async def _render(async_playwright: Any, base_url: str, tag_name: str, page_rout
             await browser.close()
 
 
-async def _in_slot(coro: Any) -> Any:
-    """Run a render once a browser slot is free (the wait counts against the caller's timeout)."""
-    async with BROWSER_SLOTS:
-        return await coro
-
-
 def _fidelity_options(width: Optional[int], lang: Optional[str], click_text: Optional[str],
                       max_height: Optional[int]) -> Dict[str, Any]:
     """Validated fidelity options; ValueError names the bad one."""
@@ -235,18 +241,33 @@ def _fidelity_url(base_url: str, tag_name: str, lang: Optional[str]) -> str:
     return f"{url}&lang={quote(lang, safe='-')}" if lang else url
 
 
-# Top-level sections only: a block nested in another block's slot is part of it.
-_SECTIONS_JS = """(withText) => Array.from(document.querySelectorAll('[data-cid]'))
-  .filter(el => !(el.parentElement && el.parentElement.closest('[data-cid]')))
-  .map(el => { const r = el.getBoundingClientRect();
-    return { id: el.getAttribute('data-cid'), top: Math.round(r.top + window.scrollY), height: Math.round(r.height),
-             text: withText ? (el.innerText || '').slice(0, %d) : undefined }; })
-  .filter(s => s.height > 0)""" % _SECTION_TEXT_CAP
+# A section's box in page pixels. A wrapper of height 0 (the site header's,
+# whose bar is position:fixed inside it) is measured by what it contains.
+_RECT_OF_JS = """const rectOf = (el, depth) => { const r = el.getBoundingClientRect();
+    if (r.height > 0) return { top: r.top, bottom: r.bottom };
+    if (depth >= 4) return null;
+    let top = Infinity, bottom = -Infinity;
+    for (const child of Array.from(el.children)) { const c = rectOf(child, depth + 1);
+      if (c) { top = Math.min(top, c.top); bottom = Math.max(bottom, c.bottom); } }
+    return bottom > top ? { top, bottom } : null; };"""
 
-_BOX_JS = """(id) => { const el = Array.from(document.querySelectorAll('[data-cid], [data-component-id]'))
+# Top-level sections only: a block nested in another block's slot is part of it.
+_SECTIONS_JS = """(withText) => { %s
+  return Array.from(document.querySelectorAll('[data-cid]'))
+  .filter(el => !(el.parentElement && el.parentElement.closest('[data-cid]')))
+  .map(el => { const r = rectOf(el, 0); if (!r) return null;
+    return { id: el.getAttribute('data-cid'), top: Math.round(r.top + window.scrollY), height: Math.round(r.bottom - r.top),
+             text: withText ? (el.innerText || '').slice(0, %d) : undefined }; })
+  .filter(s => s && s.height > 0); }""" % (_RECT_OF_JS, _SECTION_TEXT_CAP)
+
+_BOX_JS = """(id) => { %s const el = Array.from(document.querySelectorAll('[data-cid], [data-component-id]'))
   .find(e => e.getAttribute('data-cid') === id || e.getAttribute('data-component-id') === id);
-  if (!el) return null; const r = el.getBoundingClientRect();
-  return { top: Math.round(r.top + window.scrollY), height: Math.round(r.height) }; }"""
+  if (!el) return null; const r = rectOf(el, 0); if (!r) return null;
+  return { top: Math.round(r.top + window.scrollY), height: Math.round(r.bottom - r.top) }; }""" % _RECT_OF_JS
+
+# What a click changed: open menus / panels and the size of the visible page.
+_DOM_STATE_JS = """() => [document.querySelectorAll('[aria-expanded="true"], [data-state="open"], details[open], [role="menu"], [role="dialog"]').length,
+  document.getElementsByTagName('*').length, document.body ? (document.body.innerText || '').length : 0]"""
 
 # Unframed there is no editor to hold a navigation, so a click on a nav item
 # could take the page off the posted draft: cancel anything but a #hash jump.
@@ -323,17 +344,21 @@ async def _render_fidelity(async_playwright: Any, base_url: str, tag_name: str, 
             await page.wait_for_timeout(500)
 
             clicked: Optional[bool] = None
+            click_changed: Optional[bool] = None
             if click_text:
                 # Browse mode: the site's own menus and tabs respond to clicks.
                 await page.evaluate("() => window.postMessage({type: 'PREVIEW_INTERACT', on: true}, '*')")
                 await page.evaluate(_NAV_GUARD_JS)
                 await page.wait_for_timeout(300)
                 start_url = page.url
+                before = await page.evaluate(_DOM_STATE_JS)
                 clicked = await _click_text(page, click_text)
                 await page.wait_for_timeout(1_500)
                 if page.url.split("#")[0] != start_url.split("#")[0]:
                     return {"error": "click_navigated",
                             "message": f"Clicking \"{click_text}\" left the page; preview that page instead."}
+                # "Clicked" only says something was clicked; this says whether anything opened.
+                click_changed = bool(clicked) and (await page.evaluate(_DOM_STATE_JS)) != before
 
             boxes = await page.evaluate(_SECTIONS_JS, section_text) if sections else None
             box = await page.evaluate(_BOX_JS, section_id) if section_id else None
@@ -342,18 +367,25 @@ async def _render_fidelity(async_playwright: Any, base_url: str, tag_name: str, 
 
             page_height = int(await page.evaluate(
                 "Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)"))
-            shot_height = max(1, min(page_height, max_height))
-            data = await page.screenshot(type="jpeg", quality=_FULL_JPEG_QUALITY, full_page=True,
-                                         clip={"x": 0, "y": 0, "width": width, "height": shot_height})
+            if box:
+                # Shoot the section's own box, wherever it is on the page.
+                top = max(0, int(box["top"]))
+                height = min(int(box["height"]), page_height - top, max_height)
+                if height <= 0:
+                    return {"error": "section_not_rendered",
+                            "message": "That section has no visible height on the rendered page."}
+                shot_height = height
+                clip = {"x": 0, "y": top, "width": width, "height": height}
+            else:
+                shot_height = max(1, min(page_height, max_height))
+                clip = {"x": 0, "y": 0, "width": width, "height": shot_height}
+            data = await page.screenshot(type="jpeg", quality=_FULL_JPEG_QUALITY, full_page=True, clip=clip)
         finally:
             await browser.close()
 
     image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return {"error": "preview_failed", "message": "The screenshot could not be read."}
-    if box:
-        top = max(0, min(int(box["top"]), image.shape[0] - 1))
-        image = image[top: top + max(1, int(box["height"]))]
     tiles = _tiles(image, cv2)
     out: Dict[str, Any] = {
         "png_base64": tiles[0]["png_base64"] if tiles else "",
@@ -361,14 +393,15 @@ async def _render_fidelity(async_playwright: Any, base_url: str, tag_name: str, 
         "width": int(image.shape[1]),
         "height": int(image.shape[0]),
         "page_height": page_height,
-        "truncated": page_height > shot_height and not box,
+        "truncated": (int(box["height"]) > shot_height) if box else page_height > shot_height,
     }
     if boxes is not None:
         out["sections"] = boxes
     if clicked is not None:
         out["clicked"] = clicked
+        out["click_changed"] = bool(click_changed)
     if full_image:
-        out["full_jpeg"] = data if not box else cv2.imencode(".jpg", image)[1].tobytes()
+        out["full_jpeg"] = data
     return out
 
 

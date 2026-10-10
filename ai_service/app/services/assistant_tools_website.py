@@ -29,6 +29,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
@@ -146,8 +147,9 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "change — plus a side-by-side image. reference = {asset_url} (a url from "
             "website_edit(import_image) or list_media) or {asset_id} (a list_media file_id), or {tiles:[…]} "
             "for an export cut into pieces; add sections:[{name, top, height, texts?}] (the design's frame "
-            "children, in frame units) and frame_width to pair against the design's own sections. Only images "
-            "stored on this platform are read; no other address is ever fetched. Fix the top hints with "
+            "children, in frame units) and frame_width to pair against the design's own sections. Only this "
+            "institute's images stored on this platform are read (its imports, its media library, images already "
+            "on the site); no other address is ever fetched. Fix the top hints with "
             "website_edit(update_page) and compare again (at most 3 rounds, then 390 wide and each language).\n"
             "- context (tag_name?): what may be linked on a site — real courses, product pages, lead "
             "campaigns (with leads received), the site's theme. Use these ids; never invent them.\n"
@@ -413,6 +415,8 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
 #: preview / compare arguments that switch preview to design-matching (fidelity) mode.
 _FIDELITY_ARGS = ("width", "lang", "sections", "click_text", "max_height", "fidelity")
 _MAX_REFERENCE_TILES = 12
+_MAX_REFERENCE_BYTES = 40 * 1024 * 1024
+_COMPARE_SLOT_WAIT_S = 60
 _MAX_DESIGN_SECTIONS = 60
 _MAX_DESIGN_TEXTS = 300
 
@@ -521,19 +525,24 @@ async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         out["sections"] = _render_sections(result["sections"], _section_components(site["config"], page))
     if result.get("clicked") is not None:
         out["clicked"] = result["clicked"]
+        out["click_changed"] = bool(result.get("click_changed"))
         if not result["clicked"]:
             out["click_note"] = f"Nothing visible says \"{args.get('click_text')}\"; the page is shown as loaded."
+        elif not result.get("click_changed"):
+            out["click_note"] = (f"\"{args.get('click_text')}\" was clicked but nothing opened or changed (no menu, "
+                                 "panel or tab); here it may be a plain link.")
     out["note"] = (
         f"Rendered by the learner site from the {'current draft' if site['from_draft'] else 'published site'} as "
         f"{len(tiles)} image(s), top to bottom; section boxes are in page pixels. Live course data comes from the "
         "host's institute when the institute has no domain of its own."
     )
-    return {**out, **stale_note(site)}
+    return _images_for_caller({**out, **stale_note(site)}, ctx)
 
 
 async def _action_compare(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     from . import page_preview
     from . import visual_compare as vc
+    from .page_audit import audit_reference_fidelity
     reference = args.get("reference")
     if not isinstance(reference, dict) or not reference:
         return _err("missing_argument", action="compare", needs=["reference"],
@@ -548,67 +557,198 @@ async def _action_compare(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
     lang, err = _check_lang(site["config"], args.get("lang"))
     if err:
         return err
+    # Everything the comparison will read is checked BEFORE the 30–90 s render.
+    width = args.get("width")
+    width_px = vc.finite_number(page_preview.FIDELITY_DEFAULT_WIDTH if width in (None, "") else width)
+    if width_px is None or not page_preview.MIN_WIDTH <= width_px <= page_preview.MAX_WIDTH:
+        return _err("bad_request", message=f"width must be between {page_preview.MIN_WIDTH} and {page_preview.MAX_WIDTH}.")
+    width_px = int(width_px)
     design_sections = reference.get("sections")
-    if design_sections is not None and (not isinstance(design_sections, list) or len(design_sections) > _MAX_DESIGN_SECTIONS):
-        return _err("bad_request", message=f"reference.sections is a list of at most {_MAX_DESIGN_SECTIONS} boxes.")
+    if design_sections is not None:
+        problem = _design_sections_problem(design_sections)
+        if problem:
+            return _err("bad_request", message=problem)
     texts = reference.get("texts")
     if texts is not None and not isinstance(texts, list):
         return _err("bad_request", message="reference.texts is a list of strings.")
     frame_width = reference.get("frame_width")
-    try:
-        frame_width = float(frame_width) if frame_width not in (None, "") else None
-    except (TypeError, ValueError):
-        return _err("bad_request", message="reference.frame_width is a number of pixels.")
-    if frame_width is not None and not 100 <= frame_width <= 10_000:
-        return _err("bad_request", message="reference.frame_width must be between 100 and 10000.")
+    if frame_width not in (None, ""):
+        frame_width = vc.finite_number(frame_width)
+        if frame_width is None or not 100 <= frame_width <= 10_000:
+            return _err("bad_request", message="reference.frame_width is a number of pixels between 100 and 10000.")
+    else:
+        frame_width = None
 
-    blobs, err = await _load_reference_images(ctx, reference)
+    blobs, err = await _load_reference_images(ctx, reference, site["config"])
     if err:
         return err
     try:
-        design = await asyncio.to_thread(lambda: vc.stitch_vertical([vc.decode_image(b) for b in blobs]))
+        vc.check_reference(blobs, width_px)
     except vc.CompareError as exc:
         return _err(exc.code, message=f"The reference image: {exc.message}")
 
     base = learner_portal_base(ctx) or _settings().learner_dashboard_url
-    width = args.get("width")
     result = await page_preview.render_preview(
         base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""), config=site["config"],
-        width=page_preview.FIDELITY_DEFAULT_WIDTH if width in (None, "") else width, lang=lang,
-        sections=True, section_text=True, full_image=True,
+        width=width_px, lang=lang, sections=True, section_text=True, full_image=True,
     )
     if result.get("error"):
         return _err(result["error"], message=result.get("message"))
     comps = _section_components(site["config"], page)
-    try:
-        rendered = vc.decode_image(result["full_jpeg"])
-        report = await asyncio.to_thread(
-            vc.compare_page, design, rendered,
-            page_sections=[{**b, "type": (comps.get(str(b.get("id"))) or {}).get("type")} for b in result.get("sections") or []],
-            design_sections=design_sections, design_width=frame_width,
-            design_texts=[str(t)[:300] for t in (texts or [])[:_MAX_DESIGN_TEXTS]], components=comps,
+    page_sections = [{**b, "type": (comps.get(str(b.get("id"))) or {}).get("type")} for b in result.get("sections") or []]
+    chrome = _unmeasured_chrome(site["config"], page_sections)
+    full_jpeg = result["full_jpeg"]
+    del result["full_jpeg"]
+
+    def work() -> Dict[str, Any]:
+        try:
+            design = vc.decode_reference(blobs, width_px)
+        except vc.CompareError as exc:
+            raise vc.CompareError(exc.code, f"The reference image: {exc.message}") from None
+        rendered = vc.decode_image(full_jpeg, max_pixels=vc.MAX_RENDER_PIXELS)
+        return vc.compare_page(
+            design, rendered, page_sections=page_sections, design_sections=design_sections,
+            design_width=frame_width, design_texts=[str(t)[:300] for t in (texts or [])[:_MAX_DESIGN_TEXTS]],
+            components=comps, chrome=chrome, truncated=bool(result.get("truncated")),
         )
+
+    # Decoding and comparing hold a few hundred MB: one at a time per process.
+    slots = vc.COMPARE_SLOTS
+    try:
+        await asyncio.wait_for(slots.acquire(), _COMPARE_SLOT_WAIT_S)
+    except asyncio.TimeoutError:
+        return _err("compare_busy", message="Another comparison is running; try again in a minute.")
+    try:
+        report = await asyncio.to_thread(work)
     except vc.CompareError as exc:
         return _err(exc.code, message=exc.message)
+    finally:
+        slots.release()
     picture = report.pop("side_by_side_jpeg", None)
+    issues = audit_reference_fidelity(page, site["config"].get("globalSettings"), {}, compare=report)
     out: Dict[str, Any] = {
         "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
         "width": result["width"], **({"lang": lang} if lang else {}),
         "page_height": result.get("page_height"), "truncated": bool(result.get("truncated")),
         **report,
+        "issues": issues,
         "note": "The image is the design (left) beside the page (right); boxes of one colour are a pair. Scores are "
                 "provisional. Live course lists, counts and real photos differ from a mock-up by design — judge those "
                 "sections by layout, not by text.",
         "next": "Fix missing sections and `hints` with website_edit(update_page), then compare again (at most 3 rounds).",
         **stale_note(site),
     }
+    if result.get("truncated"):
+        out["truncated_note"] = (f"The page is taller than the {page_preview.MAX_TILED_HEIGHT}px captured; design "
+                                 "sections below that are listed in beyond_capture, not compared.")
     if picture:
         out["image_png_base64"] = base64.b64encode(picture).decode()
+    return _images_for_caller(out, ctx)
+
+
+def _design_sections_problem(sections: Any) -> Optional[str]:
+    """Why ``reference.sections`` cannot be used, or None."""
+    from .visual_compare import finite_number
+    if not isinstance(sections, list) or len(sections) > _MAX_DESIGN_SECTIONS:
+        return f"reference.sections is a list of at most {_MAX_DESIGN_SECTIONS} boxes."
+    for i, item in enumerate(sections):
+        if not isinstance(item, dict):
+            return f"reference.sections[{i}] must be an object {{name, top, height, texts?}}."
+        top, height = finite_number(item.get("top", item.get("y"))), finite_number(item.get("height"))
+        if top is None or height is None:
+            return f"reference.sections[{i}] needs numeric top and height (frame pixels)."
+        if not 0 <= top <= 1_000_000 or not 0 < height <= 1_000_000:
+            return f"reference.sections[{i}]: top must be ≥ 0 and height > 0, in frame pixels."
+        if item.get("texts") is not None and not isinstance(item.get("texts"), list):
+            return f"reference.sections[{i}].texts is a list of strings."
+    return None
+
+
+def _unmeasured_chrome(config: Dict[str, Any], page_sections: List[Dict[str, Any]]) -> Dict[str, bool]:
+    """The site's header / footer when it is switched on but the render gave it no box, so compare
+    reads a design band above (below) the page's sections as that bar instead of a missing section."""
+    layout = (config.get("globalSettings") or {}).get("layout")
+    measured = {str(s.get("id")) for s in page_sections}
+    out: Dict[str, bool] = {}
+    for key in ("header", "footer"):
+        comp = layout.get(key) if isinstance(layout, dict) else None
+        if isinstance(comp, dict) and comp.get("enabled", True) is not False and str(comp.get("id")) not in measured:
+            out[key] = True
     return out
 
 
-async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any]) -> Tuple[List[bytes], Optional[Dict[str, Any]]]:
-    """The design image(s) for compare — only images this platform stores, never an arbitrary address."""
+def _images_for_caller(out: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    """Tiles and the side-by-side go only to a caller that shows them as images (MCP). The
+    in-product assistant keeps tool results as chat text; megabytes of base64 would be its context."""
+    if getattr(ctx, "images_as_content", False):
+        return out
+    dropped = bool(out.pop("image_png_base64", None)) | bool(out.pop("images_base64", None))
+    if dropped:
+        out["images_omitted"] = ("The rendered images are sent only to clients that display them (MCP); use the "
+                                 "section boxes and scores here.")
+    return out
+
+
+#: Objects ``website_edit(import_image)`` stored for an institute live under this prefix + institute id.
+_IMPORT_PREFIX = "page-builder/imports/"
+_S3_HOST_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*\.s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com$")
+
+
+def _config_strings(node: Any, out: set) -> set:
+    if isinstance(node, str):
+        if node.startswith("https://"):
+            out.add(node.strip())
+    elif isinstance(node, dict):
+        for value in node.values():
+            _config_strings(value, out)
+    elif isinstance(node, list):
+        for value in node:
+            _config_strings(value, out)
+    return out
+
+
+def _platform_object(url: str) -> Optional[Tuple[str, str]]:
+    """(bucket, key) when ``url`` is an object in one of the buckets this service writes."""
+    from urllib.parse import unquote
+    from .s3_url_utils import extract_s3_key
+    st = _settings()
+    buckets = [b for b in dict.fromkeys([st.aws_bucket_name, getattr(st, "aws_s3_public_bucket", None)]) if b]
+    bare = url.split("#", 1)[0].split("?", 1)[0]
+    found: Optional[Tuple[str, str]] = None
+    for bucket in buckets:
+        key = extract_s3_key(bare, str(bucket), None)
+        if key:
+            found = (str(bucket), key)
+            break
+    if found is None and buckets and st.cdn_public_base_url:
+        key = extract_s3_key(bare, str(buckets[0]), st.cdn_public_base_url)
+        if key:
+            found = (str(buckets[0]), key)
+    if found is None:
+        return None
+    key = unquote(found[1])
+    if not key or key.startswith("/") or ".." in key.split("/"):
+        return None
+    return found[0], key
+
+
+def _media_host_allowed(url: str) -> bool:
+    """A media-library url we may download over https: this platform's CDN / media hosts, or a
+    plain S3 endpoint (never another *.amazonaws.com service, never another CloudFront)."""
+    from urllib.parse import urlparse
+    st = _settings()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    own = {h for h in ((urlparse(st.cdn_public_base_url or "").hostname or ""),
+                       (urlparse(st.media_server_base_url or "").hostname or "")) if h}
+    return parsed.scheme == "https" and bool(host) and (host in own or bool(_S3_HOST_RE.match(host)))
+
+
+async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any],
+                                 config: Dict[str, Any]) -> Tuple[List[bytes], Optional[Dict[str, Any]]]:
+    """The design image(s) for compare — only images of THIS institute that the platform stores:
+    the caller's media library (asset_id, or its url), this site's own images, or this
+    institute's import_image uploads. No other address is ever fetched."""
     if reference.get("import_id") or reference.get("frame_id"):
         return [], _err("reference_unavailable",
                         message="Stored design-import renders are not available yet. Import the frame's image with "
@@ -617,25 +757,49 @@ async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any]) ->
     if not items or len(items) > _MAX_REFERENCE_TILES:
         return [], _err("bad_request", message=f"reference.tiles holds 1 to {_MAX_REFERENCE_TILES} images.")
     media: Optional[List[Dict[str, Any]]] = None
+    site_urls: Optional[set] = None
+    institute = str(ctx.principal.institute_id or "")
     blobs: List[bytes] = []
+    total = 0
     for item in items:
         if not isinstance(item, dict):
             return [], _err("bad_request", message="Each reference image is {asset_url} or {asset_id}.")
         if item.get("asset_id"):
             if media is None:
-                media = await _load_media(ctx, "any", 200)
+                media = await _load_media(ctx, "any", None)
             match = next((m for m in media if str(m.get("file_id")) == str(item["asset_id"])), None)
             if not match or not match.get("url"):
                 return [], _err("unknown_asset", message="That asset_id is not one of your uploaded images "
                                                           "(website(action='list_media')).")
             data, err = await _read_platform_image(str(match["url"]), from_media_library=True)
         elif item.get("asset_url"):
-            data, err = await _read_platform_image(str(item["asset_url"]).strip(), from_media_library=False)
+            url = str(item["asset_url"]).strip()
+            obj = _platform_object(url)
+            if site_urls is None:
+                site_urls = _config_strings(config, set())
+            allowed = bool(obj and institute and obj[1].startswith(f"{_IMPORT_PREFIX}{institute}/")) or (
+                bool(obj) and url in site_urls)
+            from_library = False
+            if not allowed and (obj or _media_host_allowed(url)):
+                if media is None:
+                    media = await _load_media(ctx, "any", None)
+                from_library = any(str(m.get("url") or "").strip() == url for m in media)
+                allowed = from_library
+            if not allowed:
+                return [], _err("reference_not_allowed",
+                                message="reference.asset_url must be one of this institute's images stored on this "
+                                        "platform: a url from website_edit(import_image), website(list_media), or an "
+                                        "image already on this site. Other addresses are never fetched.")
+            data, err = await _read_platform_image(url, from_media_library=from_library)
         else:
             return [], _err("bad_request", message="Each reference image is {asset_url} or {asset_id}; other "
                                                    "addresses are never fetched — import the image first.")
         if err:
             return [], err
+        total += len(data)
+        if total > _MAX_REFERENCE_BYTES:
+            return [], _err("too_large", message=f"The reference images add up to over "
+                                                  f"{_MAX_REFERENCE_BYTES // (1024 * 1024)} MB.")
         blobs.append(data)
     return blobs, None
 
@@ -643,16 +807,13 @@ async def _load_reference_images(ctx: ToolContext, reference: Dict[str, Any]) ->
 async def _read_platform_image(url: str, *, from_media_library: bool) -> Tuple[bytes, Optional[Dict[str, Any]]]:
     """Bytes of an image in OUR bucket (read through S3, no HTTP), or — only for a url the media
     service itself returned for the caller's own file — a capped, redirect-free https download."""
-    from urllib.parse import urlparse
-    from .s3_url_utils import extract_s3_key
     from .visual_compare import MAX_IMAGE_BYTES
 
-    st = _settings()
-    bucket = st.aws_bucket_name or getattr(st, "aws_s3_public_bucket", None)
-    key = extract_s3_key(url, str(bucket), st.cdn_public_base_url) if bucket else None
-    if key and ".." not in key:
+    obj = _platform_object(url)
+    if obj:
+        bucket, key = obj
         try:
-            return await asyncio.to_thread(_read_s3_object, str(bucket), key, MAX_IMAGE_BYTES), None
+            return await asyncio.to_thread(_read_s3_object, bucket, key, MAX_IMAGE_BYTES), None
         except ValueError as exc:
             return b"", _err("too_large", message=str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -662,11 +823,7 @@ async def _read_platform_image(url: str, *, from_media_library: bool) -> Tuple[b
         return b"", _err("reference_not_allowed",
                          message="reference.asset_url must be an image stored on this platform (a url returned by "
                                  "website_edit(import_image) or website(list_media)). Other addresses are never fetched.")
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    own_hosts = {h for h in ((urlparse(st.cdn_public_base_url or "").hostname or ""),
-                             (urlparse(st.media_server_base_url or "").hostname or "")) if h}
-    if parsed.scheme != "https" or not (host in own_hosts or host.endswith(".amazonaws.com") or host.endswith(".cloudfront.net")):
+    if not _media_host_allowed(url):
         return b"", _err("reference_not_allowed", message="That media file is not served from this platform's storage.")
     import httpx
     try:
@@ -833,8 +990,9 @@ async def _action_schema(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
     return _load_schema(page_type, section_types)
 
 
-async def _load_media(ctx: ToolContext, kind: str, limit: int) -> List[Dict[str, Any]]:
-    """The caller's uploads (what the editor's media library shows), images only."""
+async def _load_media(ctx: ToolContext, kind: str, limit: Optional[int]) -> List[Dict[str, Any]]:
+    """The caller's uploads (what the editor's media library shows), images only, best first;
+    ``limit=None`` returns all of them (to find one file by id or url)."""
     from ..config import get_settings
     from .assistant_tool_registry import _service_json
 
@@ -873,7 +1031,7 @@ async def _load_media(ctx: ToolContext, kind: str, limit: int) -> List[Dict[str,
     out.sort(key=lambda m: m.get("_rank", (3, 0)))
     for m in out:
         m.pop("_rank", None)
-    return out[:limit]
+    return out if limit is None else out[:limit]
 
 
 async def _action_list_media(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

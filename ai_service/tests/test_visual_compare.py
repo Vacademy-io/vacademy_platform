@@ -118,6 +118,62 @@ def test_transparent_pixels_are_composited_on_white():
     assert tuple(out[0, 0]) == (0, 0, 255) and tuple(out[3, 3]) == (255, 255, 255)
 
 
+def test_sixteen_bit_pngs_keep_their_colours():
+    rgb16 = np.zeros((8, 8, 3), np.uint16)
+    rgb16[:] = (26 * 257, 18 * 257, 8 * 257)                 # BGR of #081a1a-ish, as 16-bit samples
+    out = vc.decode_image(cv2.imencode(".png", rgb16)[1].tobytes())
+    assert out.dtype == np.uint8 and tuple(out[0, 0]) == (26, 18, 8)
+    assert vc.dominant_color(out)["hex"] == "#08121a"
+    rgba16 = np.zeros((8, 8, 4), np.uint16)
+    rgba16[:4] = (0, 0, 65535, 65535)                        # opaque red top half
+    rgba16[4:] = (0, 0, 0, 0)                                # transparent bottom half
+    out = vc.decode_image(cv2.imencode(".png", rgba16)[1].tobytes())
+    assert out.dtype == np.uint8 and tuple(out[0, 0]) == (0, 0, 255) and tuple(out[7, 7]) == (255, 255, 255)
+
+
+def test_partial_transparency_is_blended_onto_white():
+    rgba = np.zeros((300, 10, 4), np.uint8)                  # taller than one compositing band
+    rgba[:] = (0, 0, 0, 128)
+    out = vc.decode_image(cv2.imencode(".png", rgba)[1].tobytes())
+    assert out.shape == (300, 10, 3) and abs(int(out[299, 9, 0]) - 127) <= 1
+
+
+def test_memory_is_bounded_from_the_header():
+    # 8000×10000 (a 334 KB PNG) is refused before decoding; a 2x export is decoded already reduced.
+    bomb = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 8000, 10000) + b"\x08\x06\x00\x00\x00"
+    with pytest.raises(vc.CompareError) as exc:
+        vc.decode_image(bomb)
+    assert exc.value.code == "too_large"
+    assert vc.MAX_IMAGE_PIXELS <= 25_000_000
+    assert vc._reduction(2880, 16000, 1440, vc.MAX_IMAGE_PIXELS) == 2       # read at half size, never in full
+    assert vc._reduction(5800, 4000, 1440, vc.MAX_IMAGE_PIXELS) == 4
+    assert vc._reduction(1440, 16000, 1440, vc.MAX_IMAGE_PIXELS) == 1
+    wide = np.full((40, 2880, 4), 255, np.uint8)
+    wide[:, :, :3] = (10, 120, 200)
+    out = vc.decode_image(cv2.imencode(".png", wide)[1].tobytes(), target_width=1440)
+    assert out.shape == (20, 1440, 3) and tuple(out[10, 700]) == (10, 120, 200)
+
+
+def test_tiles_are_bounded_in_total_and_stitched_at_the_comparison_width():
+    narrow = cv2.imencode(".png", np.full((3000, 360, 3), 200, np.uint8))[1].tobytes()   # 12000 tall at 1440
+    with pytest.raises(vc.CompareError) as exc:
+        vc.check_reference([narrow] * 3, 1440)
+    assert exc.value.code == "too_large"
+    top = np.full((100, 2880, 3), 10, np.uint8)
+    bottom = np.full((50, 1440, 3), 240, np.uint8)
+    out = vc.decode_reference([cv2.imencode(".png", top)[1].tobytes(), cv2.imencode(".png", bottom)[1].tobytes()], 1440)
+    assert out.shape == (100, 1440, 3) and out[:50].mean() < 20 and out[50:].mean() > 230
+    assert vc.image_info(cv2.imencode(".png", np.zeros((2, 2, 4), np.uint8))[1].tobytes())["alpha"] is True
+    assert vc.image_info(cv2.imencode(".jpg", np.zeros((2, 2, 3), np.uint8))[1].tobytes())["alpha"] is False
+
+
+def test_bad_design_boxes_are_skipped_not_raised():
+    boxes = ["x", {"top": "nan", "height": 10}, {"top": "inf", "height": 10}, {"top": 0, "height": "1e999"},
+             {"top": True, "height": 10}, {"top": 0, "height": 64, "name": "ok"}]
+    assert [b["name"] for b in vc._scaled_sections(boxes, 1.0, 1000)] == ["ok"]
+    assert vc.finite_number("12.5") == 12.5 and vc.finite_number("nan") is None and vc.finite_number(None) is None
+
+
 def test_dominant_colour_is_the_band_background():
     band = _band(DARK, 200, "Heading", 9, ("Go",))
     col = vc.dominant_color(band)
@@ -241,6 +297,42 @@ def test_page_level_design_texts_are_checked_across_the_whole_page():
     out = vc.compare_page(design, design, page_sections=sections, design_texts=["Stay connected", "Become a member"],
                           with_image=False)
     assert out["page_missing_text"] == ["Become a member"]
+
+
+def test_an_unmeasured_header_or_footer_bar_is_not_a_missing_section():
+    design, sections = _page(DESIGN_BANDS)
+    body = [s for s in sections if s["id"] not in ("header-1", "footer-1")]
+    out = vc.compare_page(design, design, page_sections=body, design_sections=_design_sections(sections),
+                          with_image=False)
+    assert sorted(m["design_section"] for m in out["missing_sections"]) == ["footer-1", "header-1"]
+    out = vc.compare_page(design, design, page_sections=body, design_sections=_design_sections(sections),
+                          chrome={"header": True, "footer": True}, with_image=False)
+    assert out["missing_sections"] == [] and out["overall"]["passes"] is True
+    assert [(b["design_section"], b["matched_by"]) for b in out["chrome_bands"]] == [
+        ("header-1", "header"), ("footer-1", "footer")]
+
+
+def test_bands_below_a_truncated_capture_are_not_called_missing():
+    design, sections = _page(DESIGN_BANDS)
+    cut = sections[3]["top"]                                   # the capture stops before the CTA band
+    page = design[:cut]
+    out = vc.compare_page(design, page, page_sections=sections[:3], design_sections=_design_sections(sections),
+                          truncated=True, with_image=False)
+    assert out["missing_sections"] == [] and out["overall"]["complete"] is False
+    assert [b["design_section"] for b in out["beyond_capture"]] == ["courses-not-sure", "footer-1"]
+    assert out["overall"]["passes"] is False
+
+
+def test_compare_results_feed_the_reference_fidelity_audit():
+    from app.services.page_audit import audit_reference_fidelity
+    design, sections = _page(DESIGN_BANDS)
+    page, page_sections = _page([b for b in DESIGN_BANDS if b[0] != "courses-not-sure"])
+    report = vc.compare_page(design, page, page_sections=page_sections, design_sections=_design_sections(sections),
+                             with_image=False)
+    issues = audit_reference_fidelity({"components": []}, {}, {}, compare=report)
+    assert [(i["code"], i["severity"]) for i in issues][:1] == [("reference-section-missing", "fix")]
+    assert "courses-not-sure" in issues[0]["message"]
+    assert audit_reference_fidelity({"components": []}, {}, {}) == []      # unchanged without a compare
 
 
 # ── the real Brahm Varchas Figma renders (local only) ─────────────────────

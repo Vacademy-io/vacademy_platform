@@ -31,6 +31,7 @@ The pass thresholds are provisional until the Brahm Varchas eval sets them.
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import struct
 import unicodedata
@@ -41,9 +42,24 @@ import numpy as np
 
 #: Largest reference file accepted (a 1440 × 16000 PNG export is ~10 MB).
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
-#: Decoded size guard, checked from the file header BEFORE decoding.
-MAX_IMAGE_PIXELS = 80_000_000
+#: Decoded size guards, checked from the file header BEFORE decoding. At most
+#: MAX_IMAGE_PIXELS are ever held (75 MB as BGR); a larger image, up to
+#: MAX_SOURCE_PIXELS (a 2880 × 16000 Figma @2x export is 46M), is decoded
+#: colour-only and reduced while decoding. Alpha is kept only while the
+#: decoded image with it fits _ALPHA_DECODE_BYTES; it is composited a band of
+#: rows at a time, never as whole-image float copies.
+MAX_IMAGE_PIXELS = 25_000_000
+MAX_SOURCE_PIXELS = 50_000_000
 MAX_IMAGE_SIDE = 40_000
+_ALPHA_DECODE_BYTES = 100 * 1024 * 1024
+_COMPOSITE_ROWS = 256
+#: Tallest design compared, at the comparison width (twice the tallest render).
+MAX_STITCHED_HEIGHT = 32_000
+#: The page's own capture: at most 1920 wide × 16000 tall (page_preview's limits).
+MAX_RENDER_PIXELS = 1920 * 16_000
+#: Decoding plus comparing holds a few hundred MB at most; one at a time per
+#: process (the caller acquires it around the worker thread).
+COMPARE_SLOTS = asyncio.Semaphore(1)
 
 #: Provisional pass bar (§3.7 of the plan): every paired section at least this
 #: similar, and no design section missing.
@@ -120,28 +136,117 @@ def image_size(data: bytes) -> Optional[Tuple[int, int]]:
     return None
 
 
-def decode_image(data: bytes) -> np.ndarray:
-    """BGR uint8 image; transparent areas are composited onto white."""
+def image_info(data: bytes) -> Optional[Dict[str, Any]]:
+    """{width, height, alpha, depth} from a PNG / JPEG / WebP header, without decoding; None if unknown.
+
+    ``alpha`` is whether the file can carry transparency (PNG colour types 4 / 6
+    or a tRNS chunk, WebP's alpha flag); ``depth`` is bits per sample (16 for a
+    16-bit PNG, else 8).
+    """
+    size = image_size(data)
+    if size is None:
+        return None
+    alpha, depth = False, 8
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 26:
+        depth, colour_type = data[24], data[25]
+        alpha = colour_type in (4, 6)
+        i = 8
+        # tRNS sits before the first IDAT; walk chunk headers only.
+        while not alpha and i + 8 <= len(data):
+            length = struct.unpack(">I", data[i:i + 4])[0]
+            kind = data[i + 4:i + 8]
+            if kind in (b"IDAT", b"IEND"):
+                break
+            alpha = kind == b"tRNS"
+            i += 12 + length
+    elif data[:4] == b"RIFF" and len(data) >= 30:
+        chunk = data[12:16]
+        alpha = (chunk == b"VP8X" and bool(data[20] & 0x10)) or (
+            chunk == b"VP8L" and bool((int.from_bytes(data[21:25], "little") >> 28) & 1))
+    return {"width": size[0], "height": size[1], "alpha": alpha, "depth": 16 if depth == 16 else 8}
+
+
+def _checked_info(data: bytes, max_pixels: int) -> Dict[str, Any]:
     if not data:
         raise CompareError("bad_image", "The image is empty.")
     if len(data) > MAX_IMAGE_BYTES:
         raise CompareError("too_large", f"Images over {MAX_IMAGE_BYTES // (1024 * 1024)} MB cannot be compared.")
-    size = image_size(data)
-    if size is None:
+    info = image_info(data)
+    if info is None:
         raise CompareError("bad_image", "Only PNG, JPEG or WebP images can be compared.")
-    w, h = size
-    if w <= 0 or h <= 0 or w > MAX_IMAGE_SIDE or h > MAX_IMAGE_SIDE or w * h > MAX_IMAGE_PIXELS:
-        raise CompareError("too_large", f"The image is {w}×{h}; that is too large to compare.")
-    img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    w, h = info["width"], info["height"]
+    if w <= 0 or h <= 0 or w > MAX_IMAGE_SIDE or h > MAX_IMAGE_SIDE or w * h > max(max_pixels, MAX_SOURCE_PIXELS):
+        raise CompareError("too_large", f"The image is {w}×{h}; that is too large to compare. Export it at 1x, "
+                                        "or in pieces passed as reference.tiles.")
+    return info
+
+
+def _reduction(w: int, h: int, target_width: Optional[int], max_pixels: int) -> int:
+    """The decode-time reduction (1, 2, 4 or 8): enough to fit ``max_pixels``, and as much as
+    ``target_width`` allows (never below it), so a 2x export is never held at full size."""
+    k = 1
+    while k < 8 and (w // k) * (h // k) > max_pixels:
+        k *= 2
+    if (w // k) * (h // k) > max_pixels:
+        raise CompareError("too_large", f"The image is {w}×{h}; that is too large to compare. Export it at 1x, "
+                                        "or in pieces passed as reference.tiles.")
+    if target_width:
+        while k < 8 and w // (k * 2) >= target_width:
+            k *= 2
+    return k
+
+
+def _over_white(img: np.ndarray) -> np.ndarray:
+    """Composite a uint8 BGRA (or grey + alpha) image onto white, a band of rows at a time
+    (no whole-image float copies)."""
+    if img.shape[2] == 2:
+        colour, alpha = cv2.cvtColor(img[:, :, 0], cv2.COLOR_GRAY2BGR), img[:, :, 1]
+    else:
+        colour, alpha = img[:, :, :3], img[:, :, 3]
+    if int(alpha.min()) == 255:
+        return np.ascontiguousarray(colour)
+    out = np.empty(colour.shape, dtype=np.uint8)
+    for top in range(0, colour.shape[0], _COMPOSITE_ROWS):
+        a = alpha[top:top + _COMPOSITE_ROWS, :, None].astype(np.float32) * (1.0 / 255.0)
+        part = colour[top:top + _COMPOSITE_ROWS].astype(np.float32)
+        out[top:top + _COMPOSITE_ROWS] = np.rint(part * a + 255.0 * (1.0 - a)).astype(np.uint8)
+    return out
+
+
+def decode_image(data: bytes, *, target_width: Optional[int] = None,
+                 max_pixels: int = MAX_IMAGE_PIXELS) -> np.ndarray:
+    """BGR uint8 image; transparent areas are composited onto white.
+
+    Memory is bounded from the header before anything is decoded: at most
+    ``max_pixels`` are kept (a larger image up to ``MAX_SOURCE_PIXELS`` is
+    decoded colour-only and reduced 2/4/8x), 16-bit samples become 8-bit, and
+    with ``target_width`` the image comes back no wider than that.
+    """
+    info = _checked_info(data, max_pixels)
+    w, h = info["width"], info["height"]
+    k = _reduction(w, h, target_width, max_pixels)
+    buf = np.frombuffer(data, dtype=np.uint8)
+    bytes_with_alpha = w * h * 4 * (2 if info["depth"] == 16 else 1)
+    if info["alpha"] and bytes_with_alpha <= _ALPHA_DECODE_BYTES:
+        img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+        if img is not None:
+            if img.dtype != np.uint8:
+                img = cv2.convertScaleAbs(img, alpha=1.0 / 257.0)
+            if img.ndim == 2:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif img.shape[2] in (2, 4):
+                img = _over_white(img)
+    else:
+        # No transparency to keep, or too large to hold with it (a 2x Figma
+        # export is RGBA but opaque): colour only, reduced while decoding.
+        flag = {1: cv2.IMREAD_COLOR, 2: cv2.IMREAD_REDUCED_COLOR_2,
+                4: cv2.IMREAD_REDUCED_COLOR_4, 8: cv2.IMREAD_REDUCED_COLOR_8}[k]
+        img = cv2.imdecode(buf, flag)
     if img is None:
         raise CompareError("bad_image", "The image could not be decoded.")
-    if img.ndim == 2:
-        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-    if img.shape[2] == 4:
-        alpha = img[:, :, 3:4].astype(np.float32) / 255.0
-        rgb = img[:, :, :3].astype(np.float32)
-        return (rgb * alpha + 255.0 * (1.0 - alpha)).round().astype(np.uint8)
-    return img[:, :, :3]
+    if target_width and img.shape[1] > target_width:
+        img = resize_to_width(img, target_width)
+    return img
 
 
 def resize_to_width(img: np.ndarray, width: int) -> np.ndarray:
@@ -153,12 +258,51 @@ def resize_to_width(img: np.ndarray, width: int) -> np.ndarray:
     return cv2.resize(img, (width, height), interpolation=interp)
 
 
-def stitch_vertical(images: Sequence[np.ndarray]) -> np.ndarray:
-    """Tiles of one tall export, top to bottom, at the first tile's width."""
+def check_reference(blobs: Sequence[bytes], width: int) -> None:
+    """Refuse a reference before anything is rendered or decoded: each tile must be a PNG /
+    JPEG / WebP within the size limits, and the tiles stitched at ``width`` at most
+    ``MAX_STITCHED_HEIGHT`` tall (so twelve copies of a tall export cannot add up)."""
+    if not blobs:
+        raise CompareError("bad_image", "No image to compare.")
+    total = 0
+    for data in blobs:
+        info = _checked_info(data, MAX_IMAGE_PIXELS)
+        _reduction(info["width"], info["height"], width, MAX_IMAGE_PIXELS)
+        total += int(round(info["height"] * width / float(info["width"])))
+    if total > MAX_STITCHED_HEIGHT:
+        raise CompareError("too_large", f"The design is {total}px tall at {width}px wide; at most "
+                                        f"{MAX_STITCHED_HEIGHT}px can be compared.")
+
+
+def decode_reference(blobs: Sequence[bytes], width: int) -> np.ndarray:
+    """The design: its tiles decoded one at a time, each straight to ``width``, stacked top to
+    bottom into one preallocated image (``check_reference`` bounds its height)."""
+    check_reference(blobs, width)
+    if len(blobs) == 1:
+        return resize_to_width(decode_image(blobs[0], target_width=width), width)
+    infos = [image_info(b) for b in blobs]
+    capacity = sum(int(round(i["height"] * width / float(i["width"]))) + 2 for i in infos)
+    out = np.empty((capacity, width, 3), dtype=np.uint8)
+    top = 0
+    for data in blobs:
+        tile = resize_to_width(decode_image(data, target_width=width), width)
+        rows = min(tile.shape[0], capacity - top)
+        out[top:top + rows] = tile[:rows]
+        top += rows
+        del tile
+    return out[:top]
+
+
+def stitch_vertical(images: Sequence[np.ndarray], width: Optional[int] = None) -> np.ndarray:
+    """Tiles of one tall export, top to bottom, at ``width`` (default: the first tile's)."""
     if not images:
         raise CompareError("bad_image", "No image to compare.")
-    width = images[0].shape[1]
-    return np.vstack([resize_to_width(i, width) for i in images])
+    width = width or images[0].shape[1]
+    out = np.vstack([resize_to_width(i, width) for i in images])
+    if out.shape[0] > MAX_STITCHED_HEIGHT:
+        raise CompareError("too_large", f"The design is {out.shape[0]}px tall; at most {MAX_STITCHED_HEIGHT}px "
+                                        "can be compared.")
+    return out
 
 
 def encode_jpeg(img: np.ndarray, quality: int = 80) -> bytes:
@@ -307,12 +451,14 @@ def _skip_cost(k: np.ndarray) -> np.ndarray:
     return np.where(k <= 0, 0.0, np.where(k == 1, _SKIP_ONE_COST, _SKIP_BASE_COST + _SKIP_ROW_COST * (k - 1)))
 
 
-def align_rows(page: np.ndarray, design: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def align_rows(page: np.ndarray, design: np.ndarray, free_end: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     """Monotone map of each page row → a design row, and each row's match cost.
 
     ``page`` and ``design`` are row-feature matrices. A step of one design row
     per page row is free; staying on a row, skipping one, or skipping a run
     cost more, so heights may differ while a whole missing band is jumped.
+    ``free_end``: the page capture stops early, so leaving the design's last
+    rows unmatched costs nothing.
     """
     n, m = len(page), len(design)
     jj = np.arange(m)
@@ -341,7 +487,7 @@ def align_rows(page: np.ndarray, design: np.ndarray) -> Tuple[np.ndarray, np.nda
         pick = np.argmin(cand, axis=0)
         acc = cand[pick, jj] + _row_cost(page[i], design)
         back[i] = args[pick, jj]
-    end = int(np.argmin(acc + _skip_cost(m - 1 - jj)))
+    end = int(np.argmin(acc if free_end else acc + _skip_cost(m - 1 - jj)))
     mapping = np.zeros(n, dtype=np.int64)
     mapping[-1] = end
     for i in range(n - 1, 0, -1):
@@ -424,13 +570,24 @@ def _colour_prop(component: Optional[Dict[str, Any]]) -> str:
 
 
 # ── the comparison ──────────────────────────────────────────────────────
+def finite_number(value: Any) -> Optional[float]:
+    """``value`` as a finite float (a number or numeric string), else None ("nan" / "inf" too)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _scaled_sections(sections: Optional[Sequence[Dict[str, Any]]], factor: float, height: int) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for i, s in enumerate(sections or []):
-        try:
-            top = float(s.get("top", s.get("y")))
-            h = float(s.get("height"))
-        except (TypeError, ValueError):
+        if not isinstance(s, dict):
+            continue
+        top, h = finite_number(s.get("top", s.get("y"))), finite_number(s.get("height"))
+        if top is None or h is None or abs(top) > 1e7 or abs(h) > 1e7:
             continue
         t, b = int(round(top * factor)), int(round((top + h) * factor))
         t, b = max(0, min(t, height)), max(0, min(b, height))
@@ -481,6 +638,8 @@ def compare_page(
     design_texts: Optional[Sequence[str]] = None,
     components: Optional[Dict[str, Dict[str, Any]]] = None,
     with_image: bool = True,
+    chrome: Optional[Dict[str, bool]] = None,
+    truncated: bool = False,
 ) -> Dict[str, Any]:
     """Compare a rendered page with its design, section by section.
 
@@ -489,7 +648,11 @@ def compare_page(
     height, texts?}]`` in design units, where the frame is ``design_width``
     wide (default: the page width). ``design_texts``: page-level design strings
     for a whole-page text check. ``components``: section id → component JSON,
-    for hints that name a prop.
+    for hints that name a prop. ``chrome``: ``{header, footer}`` — the site has
+    that bar but it was not measured as a section, so a design band above the
+    first (below the last) paired section is the bar, not a missing section.
+    ``truncated``: the render stopped before the page ended, so design bands
+    below the last paired section were not compared (``beyond_capture``).
     """
     width = int(page.shape[1])
     design = resize_to_width(design, width)
@@ -501,7 +664,7 @@ def compare_page(
         regions = [{**b, "node": None, "texts": []} for b in segment_bands(design)]
 
     pitch = max(4, int(math.ceil(max(dh, ph) / float(_ALIGN_MAX_ROWS))))
-    mapping, costs = align_rows(_row_features(page, pitch), _row_features(design, pitch))
+    mapping, costs = align_rows(_row_features(page, pitch), _row_features(design, pitch), free_end=truncated)
     n = len(mapping)
 
     edges = sorted({0, dh, *(r["top"] for r in regions), *(r["top"] + r["height"] for r in regions)})
@@ -592,9 +755,30 @@ def compare_page(
         pairs.append((d_top, d_bot, top, bottom))
 
     missing_sections: List[Dict[str, Any]] = []
+    chrome_bands: List[Dict[str, Any]] = []
+    beyond_capture: List[Dict[str, Any]] = []
+    chrome = chrome or {}
+    spans = [(p["design_top"], p["design_top"] + p["design_height"]) for p in sections_out if not p.get("extra")]
+    first_top = min((a for a, _ in spans), default=None)
+    last_bottom = max((b for _, b in spans), default=None)
+    slack = 2 * pitch
     for k, r in enumerate(regions):
         if covered[k] >= _COVERED:
             continue
+        r_bottom = r["top"] + r["height"]
+        if chrome.get("header") and first_top is not None and r_bottom <= first_top + slack:
+            chrome_bands.append({"design_section": r["name"], "design_top": r["top"], "design_height": r["height"],
+                                 "matched_by": "header"})
+            continue
+        if last_bottom is not None and r["top"] >= last_bottom - slack:
+            if chrome.get("footer"):
+                chrome_bands.append({"design_section": r["name"], "design_top": r["top"],
+                                     "design_height": r["height"], "matched_by": "footer"})
+                continue
+            if truncated:
+                beyond_capture.append({"design_section": r["name"], "design_top": r["top"],
+                                       "design_height": r["height"]})
+                continue
         crop = design[r["top"]: r["top"] + r["height"]]
         col = dominant_color(crop)
         item: Dict[str, Any] = {"design_section": r["name"], "design_top": r["top"], "design_height": r["height"],
@@ -620,7 +804,8 @@ def compare_page(
             "sections_extra": len(extra_ids),
             "sections_missing": len(missing_sections),
             "height_ratio": round(ph / float(max(1, dh)), 3),
-            "passes": bool(paired) and not missing_sections and all(p["ssim"] >= SECTION_SSIM_BAR for p in paired),
+            "passes": (bool(paired) and not missing_sections and not beyond_capture
+                       and all(p["ssim"] >= SECTION_SSIM_BAR for p in paired)),
             "bar": {"section_ssim": SECTION_SSIM_BAR, "missing_sections": 0, "provisional": True},
         },
         "design_sections_from": "given" if regions_given else "bands",
@@ -628,6 +813,11 @@ def compare_page(
         "missing_sections": missing_sections,
         "extra_sections": extra_ids,
     }
+    if chrome_bands:
+        out["chrome_bands"] = chrome_bands
+    if truncated:
+        out["overall"]["complete"] = False
+        out["beyond_capture"] = beyond_capture
     if design_texts:
         page_text = "\n".join(str(s.get("text") or "") for s in page_sections if isinstance(s, dict))
         missing, _ = text_diff(design_texts, page_text)
@@ -638,8 +828,8 @@ def compare_page(
 
 
 __all__ = [
-    "CompareError", "MAX_IMAGE_BYTES", "SECTION_SSIM_BAR",
-    "align_rows", "compare_page", "crop_ssim", "decode_image", "delta_e2000", "dominant_color", "encode_jpeg",
+    "CompareError", "MAX_IMAGE_BYTES", "MAX_IMAGE_PIXELS", "MAX_STITCHED_HEIGHT", "SECTION_SSIM_BAR",
+    "align_rows", "check_reference", "compare_page", "crop_ssim", "decode_image", "decode_reference", "image_info", "delta_e2000", "dominant_color", "encode_jpeg",
     "image_size", "normalize_text", "resize_to_width", "segment_bands", "side_by_side", "ssim", "stitch_vertical",
     "text_diff", "text_hints",
 ]

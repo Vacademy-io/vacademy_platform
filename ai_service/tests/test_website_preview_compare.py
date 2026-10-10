@@ -42,9 +42,9 @@ class _FakeDb:
         return SimpleNamespace(first=lambda: None, fetchall=lambda: [])
 
 
-def ctx():
+def ctx(images=True):
     principal = PinnedPrincipal(user_id="user-1", institute_id="inst-1", roles=["ADMIN"], permissions=[], is_root_user=False)
-    return ToolContext(db=_FakeDb(), principal=principal, keys=(), bearer_token="jwt")
+    return ToolContext(db=_FakeDb(), principal=principal, keys=(), bearer_token="jwt", images_as_content=images)
 
 
 @pytest.fixture
@@ -73,8 +73,8 @@ def bv(monkeypatch):
     return config
 
 
-def call(args):
-    return json.loads(asyncio.run(website_mod.execute_website(args, ctx())))
+def call(args, images=True):
+    return json.loads(asyncio.run(website_mod.execute_website(args, ctx(images))))
 
 
 def jpeg(img):
@@ -210,19 +210,22 @@ def test_compare_reads_our_stored_image_and_returns_section_hints(bv, monkeypatc
     seen = {}
     monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, seen))
     out = call({"action": "compare", "page_route": "courses", "lang": "en", "reference": {
-        "asset_url": f"{CDN}/page-builder/imports/photo-1.png", "frame_width": 1440,
+        "asset_url": f"{CDN}/page-builder/imports/inst-1/photo-1.png", "frame_width": 1440,
         "sections": [{"name": "Header", "id": "1:37", "top": 0, "height": 64},
                      {"name": "Hero + Main", "id": "1:69", "top": 64, "height": 1036},
                      {"name": "Help band", "id": "1:435", "top": 1100, "height": 200,
                       "texts": ["Not sure which course is right for you?", "Find your path", "Talk to us"]},
                      {"name": "Footer", "id": "1:444", "top": 1300, "height": 300}]}})
-    assert reads == [(BUCKET, "page-builder/imports/photo-1.png")]
+    assert reads == [(BUCKET, "page-builder/imports/inst-1/photo-1.png")]
     assert seen["width"] == 1440 and seen["sections"] is True and seen["section_text"] and seen["full_image"]
     assert out["overall"]["sections_paired"] == 4 and out["missing_sections"] == []
     cta = next(s for s in out["sections"] if s["section_id"] == "courses-not-sure")
     assert cta["figma_nodes"] == ["1:435"] and cta["missing_text"] == ["Talk to us"]
     assert cta["hints"][0]["prop_path"] == "props.secondaryButton"
     assert base64.b64decode(out["image_png_base64"])[:2] == b"\xff\xd8"
+    # The same findings, in the audit's shape (audit_reference_fidelity).
+    assert any(i["code"] == "reference-text-missing" and i.get("component_id") == "courses-not-sure"
+               for i in out["issues"])
 
 
 def test_compare_never_fetches_an_address_it_was_handed(bv, monkeypatch):
@@ -233,8 +236,17 @@ def test_compare_never_fetches_an_address_it_was_handed(bv, monkeypatch):
             raise AssertionError("no network for a caller's URL")
     monkeypatch.setattr(httpx, "AsyncClient", Boom)
     monkeypatch.setattr(website_mod, "_read_s3_object", lambda *a: (_ for _ in ()).throw(AssertionError("no S3")))
+
+    async def media(ctx_, kind, limit):
+        return [{"file_id": "f-1", "url": f"{CDN}/media/f-1.png"}]
+    monkeypatch.setattr(website_mod, "_load_media", media)
     for url in ("http://169.254.169.254/latest/meta-data", "https://evil.example/figma.png",
-                "https://other-bucket.s3.amazonaws.com/x.png", f"{CDN}.evil.com/x.png"):
+                "https://other-bucket.s3.amazonaws.com/x.png", f"{CDN}.evil.com/x.png",
+                "https://ec2-1-2-3-4.ap-south-1.compute.amazonaws.com/x.png", "https://d123.cloudfront.net/x.png",
+                # our bucket, but not this institute's: another institute's import, an unscoped one, any key
+                f"{CDN}/page-builder/imports/inst-2/photo-1.png", f"{CDN}/page-builder/imports/photo-1.png",
+                f"https://{BUCKET}.s3.amazonaws.com/private/report.png",
+                f"{CDN}/page-builder/imports/inst-1/../inst-2/x.png"):
         out = call({"action": "compare", "reference": {"asset_url": url}})
         assert out["error"] == "reference_not_allowed", url
     out = call({"action": "compare", "reference": {"url": "https://www.figma.com/design/abc"}})
@@ -264,9 +276,174 @@ def test_compare_tiles_are_stitched_top_to_bottom(bv, monkeypatch):
     monkeypatch.setattr(website_mod, "_read_s3_object",
                         lambda bucket, key, cap: cv2.imencode(".png", halves[key.rsplit("/", 1)[-1]])[1].tobytes())
     monkeypatch.setattr(page_preview, "render_preview", _fake_render(design, {}))
+    imports = f"{CDN}/page-builder/imports/inst-1"
     out = call({"action": "compare", "page_route": "courses",
-                "reference": {"tiles": [{"asset_url": f"{CDN}/x/a.png"}, {"asset_url": f"{CDN}/x/b.png"}]}})
+                "reference": {"tiles": [{"asset_url": f"{imports}/a.png"}, {"asset_url": f"{imports}/b.png"}]}})
     assert out["overall"]["passes"] is True and out["design_sections_from"] == "bands"
+
+
+def _no_render(monkeypatch):
+    async def render(**kw):
+        raise AssertionError("nothing is rendered for a bad request")
+    monkeypatch.setattr(page_preview, "render_preview", render)
+
+
+@pytest.mark.parametrize("sections", [["x"], [{"top": "nan", "height": 10}], [{"top": "inf", "height": 10}],
+                                      [{"top": 0, "height": "1e999"}], [{"top": 0}], [{"top": -5, "height": 10}],
+                                      [{"top": 0, "height": 10, "texts": "Talk to us"}]])
+def test_bad_design_sections_are_refused_before_anything_is_read_or_rendered(bv, monkeypatch, sections):
+    _no_render(monkeypatch)
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda *a: (_ for _ in ()).throw(AssertionError("no S3")))
+    out = call({"action": "compare", "reference": {
+        "asset_url": f"{CDN}/page-builder/imports/inst-1/p.png", "sections": sections}})
+    assert out["error"] == "bad_request" and "reference.sections" in out["message"]
+    assert call({"action": "compare", "reference": {"asset_url": "x", "frame_width": "nan"}})["error"] == "bad_request"
+    assert call({"action": "compare", "width": 99999, "reference": {"asset_url": "x"}})["error"] == "bad_request"
+
+
+def test_a_design_too_tall_in_total_is_refused_before_the_render(bv, monkeypatch):
+    _no_render(monkeypatch)
+    tall = cv2.imencode(".png", np.full((3000, 360, 3), 200, np.uint8))[1].tobytes()   # 12000px tall at 1440
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: tall)
+    tile = {"asset_url": f"{CDN}/page-builder/imports/inst-1/t.png"}
+    out = call({"action": "compare", "reference": {"tiles": [tile] * 12}})
+    assert out["error"] == "too_large" and "reference image" in out["message"]
+
+
+def test_images_on_this_site_and_in_the_media_library_are_allowed(bv, monkeypatch):
+    design, rendered = _design_and_render()
+    png = cv2.imencode(".png", design)[1].tobytes()
+    reads = []
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: reads.append(key) or png)
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, {}))
+    site_image = f"{CDN}/site/hero.png"
+    bv["pages"][1]["components"][0]["props"]["backgroundImage"] = site_image
+    row = json.dumps(bv)
+
+    async def admin_core(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/revision/draft"):
+            return {"error": "fetch_failed", "status": 204}
+        if path.endswith("/revision/history"):
+            return []
+        return [{"id": "c", "tag_name": "bv", "status": "ACTIVE", "is_default": True, "catalogue_json": row}] \
+            if path.endswith("get-all") else {"id": "c", "tag_name": "bv", "status": "ACTIVE", "catalogue_json": row}
+    monkeypatch.setattr(website_data, "_admin_core_json", admin_core)
+
+    async def media(ctx_, kind, limit):
+        return [{"file_id": "f-9", "url": f"https://{BUCKET}.s3.amazonaws.com/media/f-9.png"}]
+    monkeypatch.setattr(website_mod, "_load_media", media)
+    assert "overall" in call({"action": "compare", "page_route": "courses", "reference": {"asset_url": site_image}})
+    assert "overall" in call({"action": "compare", "page_route": "courses",
+                              "reference": {"asset_url": f"https://{BUCKET}.s3.amazonaws.com/media/f-9.png"}})
+    assert reads == ["site/hero.png", "media/f-9.png"]
+
+
+def test_an_asset_id_is_found_among_all_the_callers_uploads_not_the_top_200(bv, monkeypatch):
+    from app.services import assistant_tool_registry as registry
+    files = [{"file_detail": {"id": f"big-{i}", "url": f"{CDN}/m/big-{i}.png", "file_type": "image/png",
+                              "file_name": f"b{i}.png", "width": 2000, "height": 1000}} for i in range(250)]
+    files.append({"file_detail": {"id": "mine", "url": f"{CDN}/m/mine.png", "file_type": "image/png",
+                                  "file_name": "design.png", "width": 300, "height": 200}})
+
+    async def service_json(ctx_, method, base, path, **kw):
+        return files
+    monkeypatch.setattr(registry, "_service_json", service_json)
+    assert len(asyncio.run(website_mod._load_media(ctx(), "any", 200))) == 200
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: b"not an image")
+    out = call({"action": "compare", "reference": {"asset_id": "mine"}})
+    assert out["error"] == "bad_image"                    # found and read, not "unknown_asset"
+
+
+def test_a_header_the_render_could_not_measure_is_not_a_missing_section(bv, monkeypatch):
+    design, rendered = _design_and_render()
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: cv2.imencode(".png", design)[1].tobytes())
+    base = _fake_render(rendered, {})
+
+    async def render(**kw):
+        out = await base(**kw)
+        out["sections"] = [s for s in out["sections"] if s["id"] != "header-1"]    # as before the fix
+        return out
+    monkeypatch.setattr(page_preview, "render_preview", render)
+    ref = {"asset_url": f"{CDN}/page-builder/imports/inst-1/p.png",
+           "sections": [{"name": "Header", "top": 0, "height": 64}, {"name": "Main", "top": 64, "height": 1036},
+                        {"name": "Help", "top": 1100, "height": 200}, {"name": "Footer", "top": 1300, "height": 300}]}
+    out = call({"action": "compare", "page_route": "courses", "reference": ref})
+    assert out["missing_sections"] == [] and out["chrome_bands"][0]["matched_by"] == "header"
+
+
+def test_the_page_against_its_own_render_passes(bv, monkeypatch):
+    _, rendered = _design_and_render()
+    monkeypatch.setattr(website_mod, "_read_s3_object",
+                        lambda bucket, key, cap: cv2.imencode(".png", rendered)[1].tobytes())
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, {}))
+    out = call({"action": "compare", "page_route": "courses",
+                "reference": {"asset_url": f"{CDN}/page-builder/imports/inst-1/p.png"}})
+    assert out["overall"]["passes"] is True and out["missing_sections"] == []
+
+
+def test_a_busy_comparer_answers_busy(bv, monkeypatch):
+    from app.services import visual_compare as vc
+    design, rendered = _design_and_render()
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: cv2.imencode(".png", design)[1].tobytes())
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, {}))
+    monkeypatch.setattr(website_mod, "_COMPARE_SLOT_WAIT_S", 0.01)
+
+    async def scenario():
+        monkeypatch.setattr(vc, "COMPARE_SLOTS", asyncio.Semaphore(0))
+        return json.loads(await website_mod.execute_website(
+            {"action": "compare", "page_route": "courses",
+             "reference": {"asset_url": f"{CDN}/page-builder/imports/inst-1/p.png"}}, ctx()))
+    assert asyncio.run(scenario())["error"] == "compare_busy"
+
+
+def test_the_in_product_assistant_gets_no_base64_from_the_new_modes(bv, monkeypatch):
+    design, rendered = _design_and_render()
+    monkeypatch.setattr(website_mod, "_read_s3_object", lambda bucket, key, cap: cv2.imencode(".png", design)[1].tobytes())
+    monkeypatch.setattr(page_preview, "render_preview", _fake_render(rendered, {}))
+    out = call({"action": "compare", "page_route": "courses",
+                "reference": {"asset_url": f"{CDN}/page-builder/imports/inst-1/p.png"}}, images=False)
+    assert "image_png_base64" not in out and out["images_omitted"] and "overall" in out
+
+    async def tiles(**kw):
+        return {"png_base64": "x", "width": 1440, "height": 3600,
+                "tiles": [{"png_base64": "T" * 1000, "top": i * 1800, "height": 1800} for i in range(2)]}
+    monkeypatch.setattr(page_preview, "render_preview", tiles)
+    out = call({"action": "preview", "width": 1440}, images=False)
+    assert "image_png_base64" not in out and "images_base64" not in out and out["images"]
+
+    async def plain(**kw):
+        return {"png_base64": "AAAA", "width": 1280, "height": 3000}
+    monkeypatch.setattr(page_preview, "render_preview", plain)
+    assert call({"action": "preview"}, images=False)["image_png_base64"] == "AAAA"     # unchanged
+
+
+def test_import_image_stores_under_the_institute(monkeypatch):
+    from app.routers import page_builder as pb
+    from app.services import assistant_tools_website_edit as edit
+    from app.services import s3_service
+    import httpx
+    monkeypatch.setattr(pb, "_is_public_http_host", lambda u: True)
+
+    class _Resp:
+        status_code = 200
+        content = b"\x89PNG...."
+        headers = {"content-type": "image/png"}
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None): return _Resp()
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    keys = []
+
+    class _S3:
+        def upload_file_content(self, content, name, s3_key=None, content_type=None):
+            keys.append(s3_key)
+            return f"{CDN}/{s3_key}"
+    monkeypatch.setattr(s3_service, "S3Service", _S3)
+    out = asyncio.run(edit._import_one_image({"url": "https://example.com/a.png"}, ctx()))
+    assert keys[0].startswith("page-builder/imports/inst-1/photo-") and out["url"].endswith(keys[0])
 
 
 # ── the MCP result ───────────────────────────────────────────────────────

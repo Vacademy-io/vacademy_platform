@@ -19,10 +19,12 @@ import base64
 import binascii
 import hashlib
 import io
+import math
 import re
+import threading
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 #: Largest download / upload we read at all.
 MAX_SOURCE_BYTES = 25_000_000
@@ -30,8 +32,12 @@ MAX_SOURCE_BYTES = 25_000_000
 KEEP_ORIGINAL_MAX_BYTES = 6_000_000
 #: Longest edge we store; bigger rasters are downscaled to WebP.
 MAX_EDGE_PX = 2400
-#: Decoded pixel budget (a 25 MB PNG can claim 50k x 50k; refuse before decoding).
-MAX_PIXELS = 80_000_000
+#: Decoded pixel budget for an image we must SHRINK (a 25 MB PNG — or a 30 KB
+#: flat one — can claim 50k x 50k; refuse before decoding). 32 MP is a 4x
+#: export of a 1440 x 1400 frame; at 4 bytes/px that is ~128 MB while decoding.
+MAX_PIXELS = 32_000_000
+#: Shrinks running at once in this process (each holds one decoded source).
+DECODE_SLOTS = 1
 #: base64 input is meant for a local file or a design-tool export, not a bulk upload.
 MAX_BASE64_BYTES = 10_000_000
 #: SVGs are text; anything bigger than this is not an icon or illustration.
@@ -104,16 +110,48 @@ ET.register_namespace("", _SVG_NS)
 ET.register_namespace("xlink", _XLINK_NS)
 
 _DROP_ELEMENTS = {"script", "foreignobject", "iframe", "object", "embed", "handler", "listener", "audio", "video"}
+# Attributes that load or navigate somewhere on some element (HTML img/meta/
+# form/object…). Inert on SVG elements, but never needed there either.
+_URL_ATTRS = {"src", "srcset", "action", "formaction", "data", "content", "poster", "ping", "background", "codebase"}
 _ANIMATION_ELEMENTS = {"set", "animate", "animatetransform", "animatemotion", "animatecolor"}
 _SAFE_DATA_IMAGE_RE = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp);base64,", re.I)
 _CTRL_WS_RE = re.compile(r"[\x00-\x20]+")
 _DANGEROUS_VALUE_RE = re.compile(r"(javascript:|vbscript:|data:text/html|expression\s*\()", re.I)
-# url(...) that is not a same-document reference (#id).
+# url(...) that is not a same-document reference (#id), and the CSS functions
+# that load a bare string with no url() at all.
 _EXTERNAL_URL_RE = re.compile(r"url\s*\(\s*['\"]?\s*(?!#)", re.I)
+_CSS_LOADER_RE = re.compile(r"(?:image-set|src)\s*\(|@import", re.I)
+_CSS_ESCAPE_RE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})[ \t\r\n\f]?|(.))", re.S)
+_CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+# A DOCTYPE with no internal subset (older Illustrator / Inkscape exports name
+# the SVG 1.1 DTD); the parser never fetches it, so it is simply removed.
+_PLAIN_DOCTYPE_RE = re.compile(r"<!DOCTYPE[^>\[]*>", re.I)
+
+
+def _css_unescape(css: str) -> str:
+    """CSS text as the browser reads it: escapes decoded (\\75rl( is url(),
+    comments removed — so the filters below see what would actually run."""
+    def one(m: "re.Match[str]") -> str:
+        if m.group(1):
+            try:
+                return chr(int(m.group(1), 16))
+            except (ValueError, OverflowError):
+                return "\ufffd"
+        return m.group(2)
+    return _CSS_COMMENT_RE.sub("", _CSS_ESCAPE_RE.sub(one, css))
+
+
+def _css_is_unsafe(css: str) -> bool:
+    text = _css_unescape(css)
+    return bool(_EXTERNAL_URL_RE.search(text) or _CSS_LOADER_RE.search(text) or _DANGEROUS_VALUE_RE.search(text))
 
 
 def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower() if isinstance(tag, str) else ""
+
+
+def _ns(tag: str) -> str:
+    return tag[1:].split("}", 1)[0] if isinstance(tag, str) and tag.startswith("{") else ""
 
 
 def _href_ok(value: str) -> bool:
@@ -126,24 +164,34 @@ def sanitize_svg_document(raw: bytes) -> bytes:
 
     Deny-by-construction for the dangerous parts and keep everything else, so
     Figma exports (gradients, masks, filters, embedded PNG patterns) survive:
-    no DTD/entities at all (billion-laughs / XXE), no script / foreignObject /
-    embedded documents, no on* handlers, no href that leaves the document
-    (only #id or a data:image raster), no url(...) to anything external in
-    attributes or <style>, no animation that rewrites an href."""
+    no DTD/entities at all (billion-laughs / XXE; a plain public DOCTYPE is
+    removed), only elements in the SVG namespace (an XHTML <img>/<meta> inside
+    an SVG is a tracker / redirect when the file is opened directly), no
+    script / foreignObject / embedded documents, no on* handlers, no href or
+    src-like attribute that leaves the document (only #id or a data:image
+    raster), no url(...) / image-set / @import to anything external in
+    attributes or <style> (CSS escapes decoded first), no animation that
+    rewrites an href."""
     if len(raw) > MAX_SVG_BYTES:
         raise ImageImportError("too_large", f"SVGs are limited to {MAX_SVG_BYTES // 1_000_000} MB.")
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise ImageImportError("not_an_image", "The SVG is not UTF-8 text.") from None
-    if re.search(r"<!DOCTYPE|<!ENTITY", text, re.I):
+    if re.search(r"<!ENTITY", text, re.I):
+        raise ImageImportError("not_an_image", "SVGs with a DOCTYPE or entities are not accepted.")
+    text = _PLAIN_DOCTYPE_RE.sub("", text, count=1)
+    if re.search(r"<!DOCTYPE", text, re.I):  # an internal subset, or a second DOCTYPE
         raise ImageImportError("not_an_image", "SVGs with a DOCTYPE or entities are not accepted.")
     try:
         root = ET.fromstring(text)
     except ET.ParseError:
         raise ImageImportError("not_an_image", "The SVG could not be parsed.") from None
-    if _local(root.tag) != "svg":
+    if _local(root.tag) != "svg" or _ns(root.tag) not in ("", _SVG_NS):
         raise ImageImportError("not_an_image", "The file is not an SVG image.")
+    # Children must share the root's namespace: SVG, or none on an SVG with no
+    # xmlns (it gets the SVG namespace below).
+    svg_ns = _ns(root.tag)
 
     def scrub(node: ET.Element) -> None:
         for child in list(node):
@@ -151,7 +199,7 @@ def sanitize_svg_document(raw: bytes) -> bytes:
             if not name:  # comments / processing instructions
                 node.remove(child)
                 continue
-            if name in _DROP_ELEMENTS:
+            if _ns(child.tag) != svg_ns or name in _DROP_ELEMENTS:
                 node.remove(child)
                 continue
             if name in _ANIMATION_ELEMENTS:
@@ -160,8 +208,7 @@ def sanitize_svg_document(raw: bytes) -> bytes:
                     node.remove(child)
                     continue
             if name == "style":
-                css = child.text or ""
-                if "@import" in css.lower() or _EXTERNAL_URL_RE.search(css) or _DANGEROUS_VALUE_RE.search(css):
+                if _css_is_unsafe("".join(child.itertext())):
                     node.remove(child)
                     continue
             scrub_attrs(child)
@@ -173,12 +220,12 @@ def sanitize_svg_document(raw: bytes) -> bytes:
             value = el.attrib[attr]
             if local.startswith("on"):
                 del el.attrib[attr]
-            elif local == "href" or attr.endswith("}href"):
+            elif local == "href" or local in _URL_ATTRS:
                 if not _href_ok(value):
                     del el.attrib[attr]
             elif _DANGEROUS_VALUE_RE.search(_CTRL_WS_RE.sub("", value)):
                 del el.attrib[attr]
-            elif _EXTERNAL_URL_RE.search(value):
+            elif _css_is_unsafe(value):
                 del el.attrib[attr]
 
     scrub_attrs(root)
@@ -212,6 +259,14 @@ def _svg_size(svg: bytes) -> Tuple[Optional[int], Optional[int]]:
 
 
 # ── Raster ──────────────────────────────────────────────────────────────────
+#: Held while a source is decoded and shrunk (a worker thread, via to_thread):
+#: bounds this process to DECODE_SLOTS decoded sources at once, whatever the
+#: number of concurrent import requests.
+_DECODE_SLOTS = threading.BoundedSemaphore(DECODE_SLOTS)
+#: Pixels converted at once while shrinking (one horizontal band).
+_BAND_PIXELS = 2_000_000
+
+
 def prepare_image(raw: bytes, declared_type: str = "") -> PreparedImage:
     """Validate and (when needed) shrink one image. Raises ImageImportError."""
     if not raw:
@@ -230,23 +285,27 @@ def prepare_image(raw: bytes, declared_type: str = "") -> PreparedImage:
         return PreparedImage(clean, ctype, "svg", w, h, len(raw), digest, resized=False)
 
     try:
-        from PIL import Image, ImageOps
+        from PIL import Image
     except ImportError:  # pragma: no cover — Pillow ships with moviepy
         if len(raw) > KEEP_ORIGINAL_MAX_BYTES:
             raise ImageImportError("too_large", "Images over 6 MB cannot be imported.") from None
         return PreparedImage(raw, ctype, EXT_BY_TYPE[ctype], None, None, len(raw), digest, resized=False)
 
     try:
-        img = Image.open(io.BytesIO(raw))
+        img = Image.open(io.BytesIO(raw))  # header only — no pixels decoded yet
         width, height = img.size
     except Image.DecompressionBombError:
         raise ImageImportError("too_large", "The image has too many pixels to import.") from None
     except Exception:  # noqa: BLE001 — a header that lies about being an image
         raise ImageImportError("not_an_image", "The file could not be read as an image.") from None
-    if width * height > MAX_PIXELS:
-        raise ImageImportError("too_large", "The image has too many pixels to import.")
 
     needs_shrink = len(raw) > KEEP_ORIGINAL_MAX_BYTES or max(width, height) > MAX_EDGE_PX
+    if needs_shrink and getattr(img, "is_animated", False):
+        # Re-encoding would keep only the first frame. Up to the old 6 MB cap an
+        # animation is stored as sent (as before); bigger ones are refused.
+        if len(raw) > KEEP_ORIGINAL_MAX_BYTES:
+            raise ImageImportError("too_large", "Animated images must be at most 6 MB.")
+        needs_shrink = False
     if not needs_shrink:
         try:
             img.verify()  # truncated / corrupt files fail here, before they reach a page
@@ -254,17 +313,66 @@ def prepare_image(raw: bytes, declared_type: str = "") -> PreparedImage:
             raise ImageImportError("not_an_image", "The image file is damaged.") from None
         return PreparedImage(raw, ctype, EXT_BY_TYPE[ctype], width, height, len(raw), digest, resized=False)
 
-    if getattr(img, "is_animated", False):
-        # Re-encoding would keep only the first frame; refuse rather than lose the animation.
-        raise ImageImportError("too_large", "Animated images must be at most 6 MB and 2400 px.")
+    with _DECODE_SLOTS:
+        try:
+            out = _shrink(img, Image)
+            buf = io.BytesIO()
+            out.save(buf, format="WEBP", quality=WEBP_QUALITY, method=4)
+        except ImageImportError:
+            raise
+        except Exception:  # noqa: BLE001
+            raise ImageImportError("not_an_image", "The image could not be converted.") from None
+        finally:
+            img.close()
+    return PreparedImage(buf.getvalue(), "image/webp", "webp", out.size[0], out.size[1], len(raw), digest, resized=True)
+
+
+def _shrink(img: Any, Image: Any) -> Any:
+    """`img` (opened, not loaded) downscaled to fit MAX_EDGE_PX, upright.
+
+    Memory is the decoded source plus one band plus the small result: a JPEG
+    is decoded at a reduced scale (draft), and the colour conversion and the
+    LANCZOS resize run one horizontal band at a time. (convert() then
+    thumbnail() on a whole 9000 px palette PNG allocated two more full-size
+    RGBA copies — ~650 MB — on top of the decode.) Each band is cropped with
+    the filter's reach as margin and resized through `box`, so the result is
+    the same pixels as one whole-image resize: no seams."""
     try:
-        img = ImageOps.exif_transpose(img)
-        if img.mode not in ("RGB", "RGBA"):
-            img = img.convert("RGBA" if ("A" in img.mode or "transparency" in img.info) else "RGB")
-        img.thumbnail((MAX_EDGE_PX, MAX_EDGE_PX), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="WEBP", quality=WEBP_QUALITY, method=4)
-    except Exception:  # noqa: BLE001
-        raise ImageImportError("not_an_image", "The image could not be converted.") from None
-    out = buf.getvalue()
-    return PreparedImage(out, "image/webp", "webp", img.size[0], img.size[1], len(raw), digest, resized=True)
+        orientation = int(img.getexif().get(0x0112) or 1)
+    except Exception:  # noqa: BLE001 — unreadable EXIF = no rotation
+        orientation = 1
+    w, h = img.size
+    if img.format == "JPEG":
+        scale = MAX_EDGE_PX / max(w, h)
+        img.draft(None, (max(1, math.ceil(w * scale)), max(1, math.ceil(h * scale))))
+        w, h = img.size
+    if w * h > MAX_PIXELS:
+        raise ImageImportError("too_large", "The image has too many pixels to import.")
+
+    out_mode = "RGBA" if ("A" in img.mode or "transparency" in img.info) else "RGB"
+    scale = min(1.0, MAX_EDGE_PX / max(w, h))
+    tw, th = max(1, round(w * scale)), max(1, round(h * scale))
+    step = h / th                      # source rows per output row
+    reach = 3 * max(step, 1.0) + 2     # LANCZOS support (3) in source rows, plus rounding
+    rows = max(1, int(_BAND_PIXELS / w / step))
+    img.load()
+    small = Image.new(out_mode, (tw, th))
+    for top in range(0, th, rows):
+        bottom = min(th, top + rows)
+        y0, y1 = top * step, bottom * step
+        c0, c1 = max(0, math.floor(y0 - reach)), min(h, math.ceil(y1 + reach))
+        tile = img.crop((0, c0, w, c1)).convert(out_mode)
+        part = tile.resize((tw, bottom - top), Image.LANCZOS, box=(0, y0 - c0, w, y1 - c0))
+        small.paste(part, (0, top))
+        del tile, part
+    transpose = _EXIF_TRANSPOSE.get(orientation)
+    if transpose is not None:
+        small = small.transpose(getattr(Image.Transpose, transpose))
+    return small
+
+
+# ImageOps.exif_transpose's table (the EXIF is gone once the image is cropped).
+_EXIF_TRANSPOSE = {
+    2: "FLIP_LEFT_RIGHT", 3: "ROTATE_180", 4: "FLIP_TOP_BOTTOM", 5: "TRANSPOSE",
+    6: "ROTATE_270", 7: "TRANSVERSE", 8: "ROTATE_90",
+}

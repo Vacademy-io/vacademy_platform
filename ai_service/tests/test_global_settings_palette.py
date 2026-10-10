@@ -69,10 +69,44 @@ def test_chrome_palette_edits_merge_per_colour(bv):
     assert "palette" not in cleared["theme"] and "contentMaxWidth" not in cleared["theme"]
 
 
-@pytest.mark.parametrize("raw,expected", [(1152, 1152), ("1200", 1200), (5000, 2400), (100, 320), (1151.6, 1152)])
-def test_content_width_is_clamped_to_the_renderer_range(raw, expected):
+@pytest.mark.parametrize("raw,expected", [
+    (1152, 1152), ("1200", 1200), (1151.6, 1152), (1151.5, 1152), (320, 320), (2400, 2400),
+    (5000, None), (100, None), (2400.6, None), ("1100px", None),
+])
+def test_content_width_follows_the_renderer_rule(raw, expected):
+    # resolveContentMaxWidth: Math.round, then 320–2400 or nothing — never a clamp.
     out = pb._coerce_global_settings({"theme": {"contentMaxWidth": raw}})
-    assert out["theme"]["contentMaxWidth"] == expected
+    assert out["theme"].get("contentMaxWidth") == expected
+
+
+def test_an_out_of_range_width_is_not_narrowed_by_an_unrelated_edit():
+    # The renderer ignores 3000 (default width); clamping it to 2400 on "make
+    # corners sharp" visibly narrowed the page.
+    merged = pb._merge_chrome({"theme": {"contentMaxWidth": 3000}}, {"theme": {"borderRadius": "sharp"}}, [])
+    assert merged["theme"].get("contentMaxWidth") is None
+
+
+def test_the_model_cannot_add_a_palette_or_width_to_a_site_without_one():
+    proposal = {"theme": {"preset": "ocean", "palette": {"canvas": "#000000", "applyToTokens": True},
+                          "contentMaxWidth": 1000}}
+    # Unpinned /v1/generate: the model's own globalSettings.
+    out = pb._coerce_global_settings(copy.deepcopy(proposal), model_proposed=True)
+    assert "palette" not in out["theme"] and "contentMaxWidth" not in out["theme"]
+    # /v1/site-chrome on a site with neither.
+    site = {"theme": {"preset": "forest", "borderRadius": "rounded"}}
+    merged = pb._merge_chrome(site, copy.deepcopy(proposal), [])
+    assert "palette" not in merged["theme"] and "contentMaxWidth" not in merged["theme"]
+    assert merged["theme"]["preset"] == "ocean"  # the rest of the proposal still applies
+    # The same settings sent by the CALLER (a pinned theme) are the admin's own.
+    pinned = pb._coerce_global_settings(copy.deepcopy(proposal))
+    assert pinned["theme"]["palette"] == {"canvas": "#000000", "applyToTokens": True}
+    assert pinned["theme"]["contentMaxWidth"] == 1000
+
+
+def test_the_model_may_edit_a_palette_and_width_the_site_has(bv):
+    merged = pb._merge_chrome(bv, {"theme": {"palette": {"accent": "#AA5500"}, "contentMaxWidth": 1280}}, [])
+    assert merged["theme"]["palette"]["accent"] == "#AA5500"
+    assert merged["theme"]["contentMaxWidth"] == 1280
 
 
 def test_junk_width_keeps_the_sites_own():

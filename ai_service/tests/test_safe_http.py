@@ -67,11 +67,15 @@ def server(monkeypatch):
             return ["93.184.216.34", "10.0.0.5"]
         if host == "other.test":
             return ["127.0.0.1"]
+        if host == "dual.test":
+            return ["::1", "127.0.0.1"]  # nothing listens on ::1 — like a v6 answer on a v4-only pod
+        if host == "xn--bcher-kva.test":
+            return ["127.0.0.1"]
         raise OSError("no such host")
 
     real = safe_http.is_public_address
     monkeypatch.setattr(safe_http, "_resolve_host", _resolve)
-    monkeypatch.setattr(safe_http, "is_public_address", lambda ip: ip == "127.0.0.1" or real(ip))
+    monkeypatch.setattr(safe_http, "is_public_address", lambda ip: ip in ("127.0.0.1", "::1") or real(ip))
     yield {"port": port, "base": f"http://img.test:{port}", "lookups": lookups}
     httpd.shutdown()
 
@@ -203,3 +207,36 @@ async def test_url_shape_rules(url, code, monkeypatch):
 ])
 def test_public_address_rules(ip, public):
     assert is_public_address(ip) is public
+
+
+@pytest.mark.asyncio
+async def test_every_validated_address_is_tried_in_turn(server):
+    _Handler.routes["/a.png"] = (200, {"Content-Type": "image/png"}, PNG)
+    res = await safe_fetch(f"http://dual.test:{server['port']}/a.png", **_kw(server))
+    assert res.status_code == 200 and res.content == PNG
+    assert server["lookups"] == ["dual.test"]
+
+
+@pytest.mark.asyncio
+async def test_an_internationalised_host_is_fetched_by_its_idna_name(server):
+    _Handler.routes["/a.png"] = (200, {"Content-Type": "image/png"}, PNG)
+    res = await safe_fetch(f"http://bücher.test:{server['port']}/a.png", **_kw(server))
+    assert res.status_code == 200 and res.content == PNG
+    assert server["lookups"] == ["xn--bcher-kva.test"]
+    assert _Handler.seen[-1][1] == f"xn--bcher-kva.test:{server['port']}"
+
+
+@pytest.mark.asyncio
+async def test_web_ports_are_an_opt_in_for_the_legacy_callers(monkeypatch):
+    async def _resolve(host, port):
+        return ["93.184.216.34"]
+
+    async def _hop(target, headers, max_bytes, timeout):
+        return 200, httpx.Headers({"content-type": "image/png"}), PNG
+    monkeypatch.setattr(safe_http, "_resolve_host", _resolve)
+    monkeypatch.setattr(safe_http, "_fetch_one", _hop)
+    ok = await safe_fetch("https://example.com:8443/a.png", max_bytes=1000, allowed_ports=safe_http.WEB_PORTS)
+    assert ok.content == PNG
+    with pytest.raises(SafeFetchError) as exc:
+        await safe_fetch("https://example.com:6443/a.png", max_bytes=1000, allowed_ports=safe_http.WEB_PORTS)
+    assert exc.value.code == "blocked_host"

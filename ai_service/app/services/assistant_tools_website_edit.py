@@ -1353,8 +1353,9 @@ async def _action_set_site_settings(args: Dict[str, Any], ctx: ToolContext) -> D
 
 _MAX_IMPORT_URLS = 16
 _IMPORT_CONCURRENCY = 3
-#: Images being decoded / re-encoded at once, across every request on this pod
-#: (a 25 MB PNG decodes to ~200 MB of pixels).
+#: Images being validated in worker threads at once, across every request on
+#: this pod. The memory-heavy part (decoding a source that must be shrunk) is
+#: further limited to website_image_import.DECODE_SLOTS (1) inside the thread.
 _IMPORT_SLOTS = asyncio.Semaphore(_IMPORT_CONCURRENCY)
 _MEDIA_ORIGIN = "website_import_image"
 
@@ -1395,6 +1396,10 @@ def _is_figma_asset(url: str) -> bool:
 
 async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     raw_urls = [u for u in (args.get("urls") or []) if isinstance(u, str) and u.strip()]
+    if args.get("data_base64") and (raw_urls or str(args.get("url") or "").strip()):
+        # One source per call: silently ignoring one of them lost an image.
+        return _err("bad_request", message="Send either url / urls or data_base64 (with file_name), not both — "
+                                           "import the base64 file in its own call.")
     if raw_urls:
         urls = raw_urls[:_MAX_IMPORT_URLS]
         gate = asyncio.Semaphore(_IMPORT_CONCURRENCY)

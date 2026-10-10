@@ -526,7 +526,7 @@ async def fetch_public_file(url: str, *, max_bytes: int, allowed_types: Dict[str
     Download a public https file (SSRF-guarded like the website importer).
     Returns (bytes, content_type, ext) or an error dict.
     """
-    from .safe_http import SafeFetchError, safe_fetch
+    from .safe_http import WEB_PORTS, SafeFetchError, safe_fetch
 
     if not str(url or "").lower().startswith("https://"):
         return err("bad_request", message="Only public https URLs can be imported.")
@@ -535,7 +535,7 @@ async def fetch_public_file(url: str, *, max_bytes: int, allowed_types: Dict[str
     # address, and a second DNS lookup could be rebound).
     try:
         resp = await safe_fetch(
-            url, max_bytes=max_bytes, timeout=45.0, total_timeout=90.0,
+            url, max_bytes=max_bytes, timeout=45.0, total_timeout=90.0, allowed_ports=WEB_PORTS,
             headers={"User-Agent": "VacademyCourseImport/1.0"},
         )
     except SafeFetchError as exc:

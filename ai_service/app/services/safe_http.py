@@ -19,9 +19,10 @@ Here every hop is validated before any byte is sent:
      loopback, link-local, CGNAT (100.64/10), ULA (fc00::/7), multicast,
      reserved, NAT64 and v4-mapped/6to4/Teredo-embedded private addresses are
      refused;
-  3. the connection is PINNED to that resolved address (TLS SNI and
-     certificate checks still use the hostname), so there is no second lookup
-     to rebind;
+  3. the connection is PINNED to those resolved addresses — tried in order,
+     like a normal connect, so a v6 answer on a v4-only pod falls through to
+     the v4 one (TLS SNI and certificate checks still use the hostname) — so
+     there is no second lookup to rebind;
   4. redirects are followed by hand (at most `max_redirects`), each Location
      going through 1-3 again; an https → http downgrade is refused;
   5. the body is streamed with a byte cap (Content-Length is checked first),
@@ -46,6 +47,10 @@ import httpx
 DEFAULT_USER_AGENT = "VacademyFetch/1.0"
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+#: The common web ports, for callers that fetched any port before safe_fetch
+#: existed (a reference image on :8443). Non-web ports on a public address
+#: (a cluster API, a database) stay refused.
+WEB_PORTS = frozenset({80, 443, 8080, 8443})
 _BLOCKED_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".localdomain", ".home.arpa")
 
 # Prefixes `is_global` does not catch (NAT64 maps any IPv4 address, including
@@ -143,9 +148,19 @@ async def _resolve_host(host: str, port: int) -> List[str]:
 class _Target:
     url: str
     scheme: str
-    host: str
+    host: str                    # ASCII (IDNA) form — what httpcore connects to
     port: int
-    ip: str
+    ips: List[str]
+
+
+def _ascii_host(url: str, host: str) -> str:
+    """The host as httpx sends it (IDNA/punycode for an internationalised name)."""
+    if host.isascii():
+        return host
+    try:
+        return httpx.URL(url).raw_host.decode("ascii").lower().rstrip(".")
+    except (httpx.InvalidURL, UnicodeError, ValueError) as exc:
+        raise SafeFetchError("bad_url", f"Not a valid host name ({type(exc).__name__}).") from None
 
 
 async def _validate(
@@ -168,6 +183,9 @@ async def _validate(
     host = (parts.hostname or "").lower().rstrip(".")
     if host_is_blocked_name(host):
         raise SafeFetchError("blocked_host", "That address is not a public website.")
+    host = _ascii_host(url, host)
+    if host_is_blocked_name(host):
+        raise SafeFetchError("blocked_host", "That address is not a public website.")
     if not _host_allowed(host, allowed_hosts):
         raise SafeFetchError("blocked_host", f"Fetching from '{host}' is not allowed here.")
     port = port or _DEFAULT_PORTS[scheme]
@@ -185,26 +203,34 @@ async def _validate(
     # answer is exactly what a rebinding attack looks like.
     if not all(is_public_address(a) for a in addresses):
         raise SafeFetchError("blocked_address", "That address is not a public website.")
-    return _Target(url=url, scheme=scheme, host=host, port=port, ip=addresses[0])
+    return _Target(url=url, scheme=scheme, host=host, port=port, ips=addresses)
 
 
 class _PinnedBackend(httpcore.AsyncNetworkBackend):
-    """Connects to the pre-validated address whatever host httpcore asks for.
+    """Connects to the pre-validated addresses whatever host httpcore asks for.
 
-    TLS still runs start_tls with server_hostname=<the URL host>, so SNI and
-    certificate verification are against the real name."""
+    Each address is tried in turn (the first answer may be IPv6 on a pod with
+    no v6 route). TLS still runs start_tls with server_hostname=<the URL host>,
+    so SNI and certificate verification are against the real name."""
 
-    def __init__(self, host: str, ip: str):
+    def __init__(self, host: str, ips: Sequence[str]):
         self._host = host
-        self._ip = ip
+        self._ips = list(ips)
         self._inner = httpcore.AnyIOBackend()
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        if str(host).lower().rstrip(".") != self._host:
+        asked = host.decode("ascii") if isinstance(host, bytes) else str(host)
+        if asked.lower().rstrip(".") != self._host:
             raise httpcore.ConnectError("refusing an unexpected host on a pinned connection")
-        return await self._inner.connect_tcp(
-            self._ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options,
-        )
+        last: Optional[Exception] = None
+        for ip in self._ips:
+            try:
+                return await self._inner.connect_tcp(
+                    ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout, OSError) as exc:
+                last = exc
+        raise last if last is not None else httpcore.ConnectError("no address to connect to")
 
     async def connect_unix_socket(self, path, timeout=None, socket_options=None):  # pragma: no cover
         raise httpcore.ConnectError("unix sockets are not allowed")
@@ -227,7 +253,7 @@ class _PinnedTransport(httpx.AsyncHTTPTransport):
     """httpx's own transport with the connection pool swapped for one whose
     network backend is pinned to a single validated address."""
 
-    def __init__(self, host: str, ip: str):
+    def __init__(self, host: str, ips: Sequence[str]):
         super().__init__(trust_env=False, retries=0)
         self._pool = httpcore.AsyncConnectionPool(
             ssl_context=_ssl_context(),
@@ -235,13 +261,13 @@ class _PinnedTransport(httpx.AsyncHTTPTransport):
             http1=True,
             http2=False,
             retries=0,
-            network_backend=_PinnedBackend(host, ip),
+            network_backend=_PinnedBackend(host, ips),
         )
 
 
 async def _fetch_one(target: _Target, headers: dict, max_bytes: int, timeout: float):
     """One hop. Returns (status, headers, body-or-None-for-redirects)."""
-    transport = _PinnedTransport(target.host, target.ip)
+    transport = _PinnedTransport(target.host, target.ips)
     async with httpx.AsyncClient(
         transport=transport, follow_redirects=False, trust_env=False, timeout=timeout,
     ) as client:

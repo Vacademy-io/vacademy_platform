@@ -587,7 +587,12 @@ async def _action_list_media(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
         "note": "These are the admin's own uploads. A file_id without a url needs the dashboard's media library; "
                 "public URLs can be brought in with website_edit(action='import_image').",
     }
-    imported = await asyncio.to_thread(_load_imported_images, ctx.principal.institute_id, limit)
+    imported = await asyncio.to_thread(_load_imported_images, ctx.principal.institute_id, 60)
+    if kind in ("logo", "photo"):
+        # Same split as the uploads above: an import tagged 'logo' is a logo,
+        # every other import kind (photo, banner…) is a photo.
+        imported = [i for i in imported if ("logo" if i.get("kind") == "logo" else "photo") == kind]
+    imported = imported[:limit]
     if imported:
         out["imported"] = imported
     return out

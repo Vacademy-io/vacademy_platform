@@ -125,3 +125,96 @@ def test_base64_input_accepts_raw_and_data_urls_and_is_capped():
     with pytest.raises(ImageImportError) as e:
         decode_base64_image("A" * 14_000_000)
     assert e.value.code == "too_large"
+
+
+def test_svg_keeps_only_svg_elements_and_no_outside_loads():
+    # An XHTML <img>/<meta> inside an SVG is a tracking pixel / redirect when
+    # the file is opened directly from our CDN.
+    raw = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml" '
+        b'xmlns:x="urn:other" width="8" height="8">'
+        b'<h:img src="https://evil.example/t.png"/>'
+        b'<h:meta http-equiv="refresh" content="0;url=https://evil.example"/>'
+        b'<x:thing/>'
+        b'<image width="1" height="1" src="https://evil.example/b"/>'
+        b'<filter id="f"><feImage href="https://evil.example/a.png"/></filter>'
+        b'<rect width="8" height="8" fill="#883000"/>'
+        b'</svg>'
+    )
+    out = prepare_image(raw, "image/svg+xml").data.decode()
+    for bad in ("evil.example", "img", "meta", "refresh", "thing", "src="):
+        assert bad not in out, bad
+    assert 'fill="#883000"' in out and "<image" in out and "<feImage" in out
+
+
+def test_css_escapes_do_not_hide_an_outside_url():
+    raw = (
+        b'<svg xmlns="http://www.w3.org/2000/svg">'
+        b'<style>rect{fill:\\75rl(https://evil.example/x.svg#a)}</style>'
+        b'<style>.a{background:image-set("https://evil.example/i.png" 1x)}</style>'
+        b'<style>.b{fill:u\\rl(https://evil.example/c)}</style>'
+        b'<style>.ok{fill:url(#g)}</style>'
+        b'<rect style="fill:\\75rl(https://evil.example/y)" width="5" height="5"/>'
+        b'<rect style="fill:url(#g)" width="5" height="5"/>'
+        b'</svg>'
+    )
+    out = sanitize_svg_document(raw).decode()
+    assert "evil.example" not in out
+    assert ".ok{fill:url(#g)}" in out and 'style="fill:url(#g)"' in out
+
+
+def test_a_plain_public_doctype_is_removed_not_refused():
+    # Older Illustrator / Inkscape exports name the SVG 1.1 DTD.
+    raw = (b'<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+           b'"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
+           b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>')
+    out = prepare_image(raw, "image/svg+xml")
+    assert b"DOCTYPE" not in out.data and b"<rect" in out.data and (out.width, out.height) == (10, 10)
+    with pytest.raises(ImageImportError):  # an internal subset is still refused
+        sanitize_svg_document(b'<!DOCTYPE svg [<!ATTLIST svg x CDATA "y">]><svg xmlns="http://www.w3.org/2000/svg"/>')
+
+
+def _gif_frames(w, h, n=2):
+    frames = [Image.new("P", (w, h), i) for i in range(n)]
+    buf = io.BytesIO()
+    frames[0].save(buf, format="GIF", save_all=True, append_images=frames[1:], duration=100, loop=0)
+    return buf.getvalue()
+
+
+def test_an_animated_gif_up_to_6mb_is_stored_as_sent_whatever_its_size():
+    raw = _gif_frames(3000, 400)
+    out = prepare_image(raw, "image/gif")
+    assert out.data == raw and out.content_type == "image/gif" and not out.resized
+    assert (out.width, out.height) == (3000, 400)
+
+
+def test_a_flat_huge_png_is_refused_before_it_is_decoded():
+    # 28 KB on the wire, ~80 MP: decoding it is what cost hundreds of MB.
+    flat = io.BytesIO()
+    Image.new("P", (8900, 8980), 7).save(flat, format="PNG")
+    assert len(flat.getvalue()) < 100_000
+    with pytest.raises(ImageImportError) as e:
+        prepare_image(flat.getvalue(), "image/png")
+    assert e.value.code == "too_large"
+
+
+def test_a_big_jpeg_is_decoded_at_reduced_scale_and_kept_upright():
+    # 9000 x 6000 is over the pixel budget at full size, fine via draft().
+    img = Image.linear_gradient("L").resize((9000, 6000)).convert("RGB")
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotated 90° — must come out portrait
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=70, exif=exif)
+    out = prepare_image(buf.getvalue(), "image/jpeg")
+    assert out.resized and out.content_type == "image/webp"
+    assert (out.width, out.height) == (1600, 2400)
+
+
+def test_banded_shrink_matches_a_whole_image_resize():
+    from PIL import ImageChops
+    from app.services import website_image_import as wi
+    raw = _png(5000, 2600, noise=True)
+    got = wi._shrink(Image.open(io.BytesIO(raw)), Image)
+    ref = Image.open(io.BytesIO(raw)).convert("RGB").resize(got.size, Image.LANCZOS)
+    assert got.size == (2400, 1248)
+    assert max(hi for _, hi in ImageChops.difference(got, ref).getextrema()) <= 1  # no seams

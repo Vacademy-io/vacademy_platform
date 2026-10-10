@@ -179,3 +179,33 @@ async def test_a_rebinding_dns_answer_is_refused(monkeypatch, stores):
     monkeypatch.setattr(safe_http, "_fetch_one", _hop)
     out = await run({"action": "import_image", "url": "https://rebind.example.com/a.png"})
     assert out["error"] == "bad_request"
+
+
+@pytest.mark.asyncio
+async def test_url_and_base64_together_are_refused_not_half_ignored(monkeypatch, stores):
+    seen = _serve(monkeypatch, _png(10, 10), "image/png")
+    b64 = base64.b64encode(_png(12, 12)).decode()
+    for extra in ({"url": "https://cdn.example.com/a.png"}, {"urls": ["https://cdn.example.com/a.png"]}):
+        out = await run({"action": "import_image", "data_base64": b64, "file_name": "x.png", **extra})
+        assert out["error"] == "bad_request" and "not both" in out["message"]
+    assert seen == [] and stores["uploads"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_media_applies_kind_to_imported_images_too(monkeypatch):
+    from app.services import assistant_tools_website as site_mod
+
+    async def _uploads(ctx_, kind, limit):
+        return []
+    monkeypatch.setattr(site_mod, "_load_media", _uploads)
+    monkeypatch.setattr(site_mod, "_load_imported_images", lambda inst, limit: [
+        {"url": "https://d1om4dxj9e7kkd.cloudfront.net/a.png", "kind": "logo"},
+        {"url": "https://d1om4dxj9e7kkd.cloudfront.net/b.png", "kind": "photo"},
+        {"url": "https://d1om4dxj9e7kkd.cloudfront.net/c.png", "kind": "banner"},
+    ])
+    logos = await site_mod._action_list_media({"kind": "logo"}, ctx())
+    assert [i["kind"] for i in logos["imported"]] == ["logo"]
+    photos = await site_mod._action_list_media({"kind": "photo", "limit": 1}, ctx())
+    assert [i["kind"] for i in photos["imported"]] == ["photo"]
+    everything = await site_mod._action_list_media({}, ctx())
+    assert len(everything["imported"]) == 3

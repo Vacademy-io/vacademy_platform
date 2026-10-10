@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 import base64
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -424,7 +425,7 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
     presigned/short-lived or served with non-image content types, which
     providers reject. SSRF-guarded. Returns (data_url, None) on success or
     (None, reason) on failure."""
-    from ..services.safe_http import SafeFetchError, safe_fetch
+    from ..services.safe_http import WEB_PORTS, SafeFetchError, safe_fetch
     if not isinstance(url, str) or not _is_public_http_host(url):
         return None, "blocked non-public host"
     try:
@@ -433,6 +434,7 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
         try:
             resp = await safe_fetch(
                 url, max_bytes=_MAX_INLINE_IMAGE_BYTES, timeout=12.0, total_timeout=30.0, allow_http=True,
+                allowed_ports=WEB_PORTS,  # the old fetch took any port; keep :8080 / :8443 working
             )
         except SafeFetchError as exc:
             if exc.code == "too_large":
@@ -2358,7 +2360,12 @@ def _clean_palette(raw: Any) -> Dict[str, Any]:
 
 
 def _clean_content_max_width(raw: Any) -> Optional[int]:
-    """A content width in px clamped to the renderer's range, else None."""
+    """A content width in px the renderer honours, else None.
+
+    Same rule as resolveContentMaxWidth (and the editor's palette card): round,
+    then 320–2400 or nothing. NOT a clamp — the renderer ignores 3000 and
+    shows the default width, so clamping it to 2400 would visibly narrow the
+    page on an unrelated edit."""
     if isinstance(raw, bool):
         return None
     if isinstance(raw, str):
@@ -2368,23 +2375,33 @@ def _clean_content_max_width(raw: Any) -> Optional[int]:
             return None
     if not isinstance(raw, (int, float)) or raw != raw or raw in (float("inf"), float("-inf")):
         return None
+    px = int(math.floor(raw + 0.5))  # Math.round, not banker's rounding
     lo, hi = _CONTENT_MAX_WIDTH_RANGE
-    return max(lo, min(hi, int(round(raw))))
+    return px if lo <= px <= hi else None
 
 
-def _carry_theme_extras(theme_in: Dict[str, Any], base_theme: Dict[str, Any]) -> Dict[str, Any]:
+def _carry_theme_extras(
+    theme_in: Dict[str, Any], base_theme: Dict[str, Any], allow_new: bool = True
+) -> Dict[str, Any]:
     """theme.palette / theme.contentMaxWidth for the clamp's output.
 
     Incoming wins over base, per colour for the palette (so "change the accent"
     keeps the other 15). An explicit null clears the key, the same contract as
-    primaryColor; a null colour inside an incoming palette removes that colour."""
+    primaryColor; a null colour inside an incoming palette removes that colour.
+
+    `allow_new=False` is for input that is the MODEL's own proposal (unpinned
+    generation, the chrome assistant): it may edit a palette / width the site
+    already has, but never add one to a site that has none — both are opt-in."""
     out: Dict[str, Any] = {}
 
+    base_palette = _clean_palette(base_theme.get("palette"))
     if "palette" in theme_in and theme_in.get("palette") is None:
         palette: Dict[str, Any] = {}
     else:
-        palette = _clean_palette(base_theme.get("palette"))
+        palette = dict(base_palette)
         incoming = theme_in.get("palette")
+        if not allow_new and not base_palette:
+            incoming = None
         if isinstance(incoming, dict):
             for key, value in incoming.items():
                 if value is None:
@@ -2393,19 +2410,22 @@ def _carry_theme_extras(theme_in: Dict[str, Any], base_theme: Dict[str, Any]) ->
     if palette:
         out["palette"] = palette
 
-    if "contentMaxWidth" in theme_in:
+    base_width = _clean_content_max_width(base_theme.get("contentMaxWidth"))
+    if "contentMaxWidth" in theme_in and (allow_new or base_width is not None or theme_in.get("contentMaxWidth") is None):
         width = _clean_content_max_width(theme_in.get("contentMaxWidth"))
         if width is None and theme_in.get("contentMaxWidth") is not None:
             # Junk from the model: keep the site's own width rather than drop it.
-            width = _clean_content_max_width(base_theme.get("contentMaxWidth"))
+            width = base_width
     else:
-        width = _clean_content_max_width(base_theme.get("contentMaxWidth"))
+        width = base_width
     if width is not None:
         out["contentMaxWidth"] = width
     return out
 
 
-def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def _coerce_global_settings(
+    raw: Any, base: Optional[Dict[str, Any]] = None, *, model_proposed: bool = False
+) -> Optional[Dict[str, Any]]:
     """Clamp the model's globalSettings to valid values (the theme presets,
     atmospheres, fonts, etc. the renderers actually support). Font label OR a
     known stack maps to a stack; anything else falls back to Inter.
@@ -2414,7 +2434,11 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
     back to the base instead of to a hardcoded default — required by the chrome
     editor, whose prompt says "include ONLY the keys you actually changed": with
     no base, "switch the theme to ocean" also reset atmosphere, heading scale,
-    radius and the brand color to defaults."""
+    radius and the brand color to defaults.
+
+    `model_proposed=True` marks `raw` as the model's own output (not the
+    caller's pinned settings): it may then change a palette / content width
+    the base already has, but cannot introduce either."""
     if not isinstance(raw, dict):
         return None
     theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
@@ -2476,7 +2500,7 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
     # 16-colour palette on "add a page" or "make the corners sharper". Carry
     # them through (incoming wins, base fills in), validated the way the
     # renderer reads them; a site without either still gets neither.
-    theme_out.update(_carry_theme_extras(theme_in, base_theme))
+    theme_out.update(_carry_theme_extras(theme_in, base_theme, allow_new=not model_proposed))
 
     return {
         "theme": theme_out,
@@ -2710,7 +2734,9 @@ def _sanitize_page(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
 
-    global_settings = _coerce_global_settings(data.get("globalSettings")) if isinstance(data, dict) else None
+    global_settings = (
+        _coerce_global_settings(data.get("globalSettings"), model_proposed=True) if isinstance(data, dict) else None
+    )
     page = data.get("page") if isinstance(data, dict) else None
     if page is None and isinstance(data, dict) and "components" in data:
         page = data  # model returned the page object directly
@@ -4609,7 +4635,7 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
     # wiped the brand color, because the clamp defaults every absent key.
     theme_like = {k: v for k, v in proposed.items() if k in _CHROME_WRITABLE_KEYS}
     if theme_like:
-        coerced = _coerce_global_settings(theme_like, base=merged)
+        coerced = _coerce_global_settings(theme_like, base=merged, model_proposed=True)
         if coerced:
             for k in _CHROME_WRITABLE_KEYS:
                 if k in theme_like and k in coerced:

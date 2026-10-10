@@ -458,7 +458,9 @@
         "name-asc": "Name A-Z",
         "name-desc": "Name Z-A"
       },
-      "quickFilterLabel": "Text before the quick filters"
+      "quickFilterLabel": "Text before the quick filters",
+      "groupResults": "Above the results",
+      "groupResultsHint": "The \"Showing N courses\" line and the text before the quick filters."
     },
     "rows": {
       "group": "Rows above and below the courses",
@@ -475,7 +477,7 @@
       },
       "subtitle": "Line under the heading",
       "freeCourses": "Courses shown first",
-      "freeCoursesHint": "In this order; then other free courses fill the row.",
+      "freeCoursesHint": "Free courses only, in this order; other free courses fill the rest. The first {{limit}} show.",
       "courseN": "Course {{n}}",
       "addCourse": "Add a course…",
       "ctaLabel": "Button text",
@@ -501,7 +503,15 @@
       "addSlide": "Add slide",
       "notifyLabel": "Button text",
       "categories": "Categories shown",
-      "categoriesHint": "Tick the coming-soon categories this row lists."
+      "categoriesHint": "Only coming-soon categories with a notify form can show. None ticked = all of them.",
+      "freeLimit": "How many courses show",
+      "freeLimitDefault": "3 (built-in)",
+      "seeAllOn": "Show the \"See all\" link",
+      "buttonTextHint": "{price} is replaced by the live price. Empty removes the button.",
+      "noButton": "This slide has no button. A button is set up in \"Edit as JSON\".",
+      "removeSlideConfirm": "This slide's button opens a course or form set in \"Edit as JSON\". Removing the slide removes those ids too. Remove it?",
+      "noComingSoon": "No category is marked coming soon with a notify form yet. Mark one in the folder library.",
+      "categoryOrder": "Order on the site"
     },
     "sidebar": {
       "group": "Filter sidebar",
@@ -530,7 +540,10 @@
       "image": "Ready-made picture",
       "imageHint": "A ready-made picture replaces the drawn phone.",
       "imageAlt": "Picture description (for screen readers)",
-      "buttonLink": "Button link"
+      "buttonLink": "Button link",
+      "urlKey": "Link key: ?{{id}}=… (fixed once set)",
+      "urlKeyReserved": "The page already uses this key for something else, so the site hides this group. Change the id in \"Edit as JSON\".",
+      "needsTag": "Add at least one tag: an option without tags is not shown."
     },
     "cards": {
       "group": "Course cards",

@@ -5,14 +5,18 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ImageUploadField } from '../ImageUploadField';
 import { LinkPicker } from '../LinkPicker';
-import { moveItem } from './catalog-discovery-props';
 import {
+    appendObject,
+    groupIdFrom,
+    isReservedGroupId,
     movedGroupOrder,
+    moveObject,
     objectOf,
     objectsOf,
     optionIdFrom,
     parseTagList,
-    patchItem,
+    patchObject,
+    removeObject,
     sidebarGroupRows,
     stringsOf,
     textOf,
@@ -128,6 +132,7 @@ export const SidebarGroup = ({
                 return (
                     <ExtraFilterFields
                         key={index}
+                        number={index + 1}
                         filter={raw as Props}
                         takenIds={rows
                             .map((r) => r.id)
@@ -210,18 +215,22 @@ export const SidebarGroup = ({
 
 /** One extra option group: its heading and, unless it lists the course formats, its options. */
 const ExtraFilterFields = ({
+    number,
     filter,
     takenIds,
     update,
 }: {
+    /** Its place in the list, for the fallback URL key (filter-2). */
+    number: number;
     filter: Props;
     takenIds: string[];
     update: (next: Props) => void;
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const options = objectsOf(filter.options);
-    const setOptions = (list: Props[]) => update({ options: list });
+    const setOptions = (list: unknown[]) => update({ options: list });
     const label = textOf(filter.label);
+    const id = textOf(filter.id).trim();
     const fromFormats = filter.source === 'courseFormats';
 
     return (
@@ -237,10 +246,20 @@ const ExtraFilterFields = ({
                 // A new group gets its URL key (?for=…) from its first heading; an existing key never
                 // changes, so links to it keep working.
                 onBlur={() => {
-                    const key = optionIdFrom(label);
-                    if (!textOf(filter.id) && key) update({ id: uniqueId(key, takenIds) });
+                    if (!id && label.trim())
+                        update({ id: groupIdFrom(label, takenIds, `filter-${number}`) });
                 }}
             />
+            {id && (
+                <p className="text-caption text-neutral-500">
+                    {t('catalogDesign.sidebar.urlKey', { id })}
+                </p>
+            )}
+            {id && isReservedGroupId(id) && (
+                <p className="text-caption text-danger-600">
+                    {t('catalogDesign.sidebar.urlKeyReserved')}
+                </p>
+            )}
             {fromFormats ? (
                 <p className="text-caption text-neutral-500">
                     {t('catalogDesign.sidebar.formatsNote')}
@@ -258,9 +277,11 @@ const ExtraFilterFields = ({
                                         index={index}
                                         count={options.length}
                                         item={name}
-                                        onMove={(d) => setOptions(moveItem(options, index, d))}
+                                        onMove={(d) =>
+                                            setOptions(moveObject(filter.options, index, d))
+                                        }
                                         onRemove={() =>
-                                            setOptions(options.filter((_, i) => i !== index))
+                                            setOptions(removeObject(filter.options, index))
                                         }
                                     />
                                 }
@@ -269,16 +290,18 @@ const ExtraFilterFields = ({
                                     label={t('catalogDesign.common.text')}
                                     value={textOf(option.label)}
                                     onChange={(v) =>
-                                        setOptions(patchItem(options, index, { label: v }))
+                                        setOptions(patchObject(filter.options, index, { label: v }))
                                     }
+                                    // Like the group: a key from the first text, option-N when it has no Latin letters.
                                     onBlur={() => {
-                                        const key = optionIdFrom(textOf(option.label));
+                                        const text = textOf(option.label).trim();
+                                        const key = optionIdFrom(text) || `option-${index + 1}`;
                                         const taken = options
                                             .filter((_, i) => i !== index)
                                             .map((o) => textOf(o.id));
-                                        if (!textOf(option.id) && key)
+                                        if (!textOf(option.id) && text)
                                             setOptions(
-                                                patchItem(options, index, {
+                                                patchObject(filter.options, index, {
                                                     id: uniqueId(key, taken),
                                                 })
                                             );
@@ -289,15 +312,25 @@ const ExtraFilterFields = ({
                                     hint={t('catalogDesign.sidebar.tagsHint')}
                                     tags={stringsOf(option.tags)}
                                     onCommit={(tags) =>
-                                        setOptions(patchItem(options, index, { tags }))
+                                        setOptions(patchObject(filter.options, index, { tags }))
                                     }
                                 />
+                                {!stringsOf(option.tags).length &&
+                                    !stringsOf(option.levels).length && (
+                                        <p className="text-caption text-warning-600">
+                                            {t('catalogDesign.sidebar.needsTag')}
+                                        </p>
+                                    )}
                             </ItemBox>
                         );
                     })}
                     <AddButton
                         label={t('catalogDesign.sidebar.addOption')}
-                        onClick={() => setOptions([...options, { id: '', label: '', tags: [] }])}
+                        onClick={() =>
+                            setOptions(
+                                appendObject(filter.options, { id: '', label: '', tags: [] })
+                            )
+                        }
                     />
                 </>
             )}

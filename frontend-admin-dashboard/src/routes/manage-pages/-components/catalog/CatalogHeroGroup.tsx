@@ -1,11 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { LinkPicker } from '../LinkPicker';
-import { moveItem } from './catalog-discovery-props';
 import {
+    appendObject,
     chipActionOf,
+    insertObject,
+    moveObject,
     objectOf,
     objectsOf,
-    patchItem,
+    patchObject,
+    removeObject,
+    replaceObject,
     setOrDelete,
     textOf,
     withChipAction,
@@ -74,12 +78,19 @@ export const CatalogHeroGroup = ({
     const quickFilterBar = hero.quickFilterBar ? objectOf(hero.quickFilterBar) : null;
     const quickFilters = objectsOf(props.quickFilters);
 
-    const setChips = (list: Props[]) => setHero({ popular: list });
+    const setChips = (list: unknown[]) => setHero({ popular: list });
+    const setChip = (index: number, chip: Props) =>
+        setChips(replaceObject(hero.popular, index, chip));
+    // Without the band only the results line and the quick-filter label are edited here.
+    const band = hero.enabled === true;
     const chipLabel = (n: number) => t('catalogDesign.hero.chipN', { n });
 
     return (
-        <DesignGroup title={t('catalogDesign.hero.group')} hint={t('catalogDesign.hero.groupHint')}>
-            {hero.enabled === true && (
+        <DesignGroup
+            title={t(band ? 'catalogDesign.hero.group' : 'catalogDesign.hero.groupResults')}
+            hint={t(band ? 'catalogDesign.hero.groupHint' : 'catalogDesign.hero.groupResultsHint')}
+        >
+            {band && (
                 <>
                     <TextField
                         label={t('catalogDesign.hero.title')}
@@ -101,7 +112,7 @@ export const CatalogHeroGroup = ({
                     {breadcrumb.map((item, index) => {
                         const name = t('catalogDesign.hero.crumbN', { n: index + 1 });
                         const isLast = index === breadcrumb.length - 1;
-                        const setList = (list: Props[]) => setHero({ breadcrumb: list });
+                        const setList = (list: unknown[]) => setHero({ breadcrumb: list });
                         return (
                             <ItemBox
                                 key={index}
@@ -111,9 +122,11 @@ export const CatalogHeroGroup = ({
                                         index={index}
                                         count={breadcrumb.length}
                                         item={name}
-                                        onMove={(d) => setList(moveItem(breadcrumb, index, d))}
+                                        onMove={(d) =>
+                                            setList(moveObject(hero.breadcrumb, index, d))
+                                        }
                                         onRemove={() =>
-                                            setList(breadcrumb.filter((_, i) => i !== index))
+                                            setList(removeObject(hero.breadcrumb, index))
                                         }
                                     />
                                 }
@@ -122,7 +135,7 @@ export const CatalogHeroGroup = ({
                                     label={t('catalogDesign.common.text')}
                                     value={textOf(item.label)}
                                     onChange={(v) =>
-                                        setList(patchItem(breadcrumb, index, { label: v }))
+                                        setList(patchObject(hero.breadcrumb, index, { label: v }))
                                     }
                                 />
                                 {isLast ? (
@@ -134,7 +147,9 @@ export const CatalogHeroGroup = ({
                                         label={t('catalogDesign.common.link')}
                                         value={textOf(item.route)}
                                         onChange={(v) =>
-                                            setList(patchItem(breadcrumb, index, { route: v }))
+                                            setList(
+                                                patchObject(hero.breadcrumb, index, { route: v })
+                                            )
                                         }
                                     />
                                 )}
@@ -143,7 +158,14 @@ export const CatalogHeroGroup = ({
                     })}
                     <AddButton
                         label={t('catalogDesign.hero.addCrumb')}
-                        onClick={() => setHero({ breadcrumb: [...breadcrumb, { label: '' }] })}
+                        // Before the last item: that one is this page and stays last.
+                        onClick={() =>
+                            setHero({
+                                breadcrumb: insertObject(hero.breadcrumb, breadcrumb.length - 1, {
+                                    label: '',
+                                }),
+                            })
+                        }
                     />
 
                     <SubHeading
@@ -152,7 +174,7 @@ export const CatalogHeroGroup = ({
                     />
                     {stats.map((stat, index) => {
                         const name = t('catalogDesign.hero.statN', { n: index + 1 });
-                        const setList = (list: Props[]) => setHero({ stats: list });
+                        const setList = (list: unknown[]) => setHero({ stats: list });
                         return (
                             <ItemBox
                                 key={index}
@@ -162,10 +184,8 @@ export const CatalogHeroGroup = ({
                                         index={index}
                                         count={stats.length}
                                         item={name}
-                                        onMove={(d) => setList(moveItem(stats, index, d))}
-                                        onRemove={() =>
-                                            setList(stats.filter((_, i) => i !== index))
-                                        }
+                                        onMove={(d) => setList(moveObject(hero.stats, index, d))}
+                                        onRemove={() => setList(removeObject(hero.stats, index))}
                                     />
                                 }
                             >
@@ -176,13 +196,17 @@ export const CatalogHeroGroup = ({
                                         value: k,
                                         label: t(`catalogDesign.hero.statKinds.${k}`),
                                     }))}
-                                    onChange={(v) => setList(patchItem(stats, index, { kind: v }))}
+                                    onChange={(v) =>
+                                        setList(patchObject(hero.stats, index, { kind: v }))
+                                    }
                                 />
                                 <TextField
                                     label={t('catalogDesign.hero.statLabel')}
                                     value={textOf(stat.label)}
                                     placeholder={t('catalogDesign.common.builtInText')}
-                                    onChange={(v) => setList(patchItem(stats, index, { label: v }))}
+                                    onChange={(v) =>
+                                        setList(patchObject(hero.stats, index, { label: v }))
+                                    }
                                 />
                             </ItemBox>
                         );
@@ -190,7 +214,9 @@ export const CatalogHeroGroup = ({
                     <AddButton
                         label={t('catalogDesign.hero.addStat')}
                         disabled={stats.length >= MAX_STATS}
-                        onClick={() => setHero({ stats: [...stats, { kind: 'courses' }] })}
+                        onClick={() =>
+                            setHero({ stats: appendObject(hero.stats, { kind: 'courses' }) })
+                        }
                     />
 
                     <SubHeading title={t('catalogDesign.hero.search')} />
@@ -229,7 +255,8 @@ export const CatalogHeroGroup = ({
                     {chips.map((chip, index) => {
                         const name = chipLabel(index + 1);
                         const action = chipActionOf(chip);
-                        const update = (next: Props) => setChips(patchItem(chips, index, next));
+                        const update = (next: Props) =>
+                            setChips(patchObject(hero.popular, index, next));
                         const stream = streams.find((s) => s.slug === textOf(chip.streamSlug));
                         return (
                             <ItemBox
@@ -240,10 +267,8 @@ export const CatalogHeroGroup = ({
                                         index={index}
                                         count={chips.length}
                                         item={name}
-                                        onMove={(d) => setChips(moveItem(chips, index, d))}
-                                        onRemove={() =>
-                                            setChips(chips.filter((_, i) => i !== index))
-                                        }
+                                        onMove={(d) => setChips(moveObject(hero.popular, index, d))}
+                                        onRemove={() => setChips(removeObject(hero.popular, index))}
                                     />
                                 }
                             >
@@ -260,11 +285,7 @@ export const CatalogHeroGroup = ({
                                         label: t(`catalogDesign.hero.chipActions.${a}`),
                                     }))}
                                     onChange={(v) =>
-                                        setChips(
-                                            chips.map((c, i) =>
-                                                i === index ? withChipAction(c, v as ChipAction) : c
-                                            )
-                                        )
+                                        setChip(index, withChipAction(chip, v as ChipAction))
                                     }
                                 />
                                 {action === 'stream' && (
@@ -281,9 +302,7 @@ export const CatalogHeroGroup = ({
                                             onChange={(v) => {
                                                 const next: Props = { ...chip, streamSlug: v };
                                                 delete next.categorySlug;
-                                                setChips(
-                                                    chips.map((c, i) => (i === index ? next : c))
-                                                );
+                                                setChip(index, next);
                                             }}
                                         />
                                         <SelectField
@@ -297,9 +316,7 @@ export const CatalogHeroGroup = ({
                                             onChange={(v) => {
                                                 const next: Props = { ...chip, categorySlug: v };
                                                 if (!v) delete next.categorySlug;
-                                                setChips(
-                                                    chips.map((c, i) => (i === index ? next : c))
-                                                );
+                                                setChip(index, next);
                                             }}
                                         />
                                         {streams.length === 0 && (
@@ -346,7 +363,9 @@ export const CatalogHeroGroup = ({
                     <AddButton
                         label={t('catalogDesign.hero.addChip')}
                         disabled={chips.length >= MAX_CHIPS}
-                        onClick={() => setChips([...chips, { label: '', streamSlug: '' }])}
+                        onClick={() =>
+                            setChips(appendObject(hero.popular, { label: '', streamSlug: '' }))
+                        }
                     />
                 </>
             )}

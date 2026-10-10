@@ -456,7 +456,9 @@
         "name-asc": "Nom A-Z",
         "name-desc": "Nom Z-A"
       },
-      "quickFilterLabel": "Texte avant les filtres rapides"
+      "quickFilterLabel": "Texte avant les filtres rapides",
+      "groupResults": "Au-dessus des résultats",
+      "groupResultsHint": "La ligne « N cours affichés » et le texte avant les filtres rapides."
     },
     "rows": {
       "group": "Rangées au-dessus et au-dessous des cours",
@@ -473,7 +475,7 @@
       },
       "subtitle": "Ligne sous le titre",
       "freeCourses": "Cours affichés en premier",
-      "freeCoursesHint": "Dans cet ordre ; d'autres cours gratuits complètent la rangée.",
+      "freeCoursesHint": "Cours gratuits uniquement, dans cet ordre ; d'autres cours gratuits complètent. Les {{limit}} premiers s'affichent.",
       "courseN": "Cours {{n}}",
       "addCourse": "Ajouter un cours…",
       "ctaLabel": "Texte du bouton",
@@ -499,7 +501,15 @@
       "addSlide": "Ajouter une diapositive",
       "notifyLabel": "Texte du bouton",
       "categories": "Catégories affichées",
-      "categoriesHint": "Cochez les catégories « bientôt » que liste cette rangée."
+      "categoriesHint": "Seules les catégories « bientôt » avec un formulaire d'alerte peuvent s'afficher. Aucune cochée = toutes.",
+      "freeLimit": "Nombre de cours affichés",
+      "freeLimitDefault": "3 (par défaut)",
+      "seeAllOn": "Afficher le lien « Tout voir »",
+      "buttonTextHint": "{price} est remplacé par le prix actuel. Vide, le bouton disparaît.",
+      "noButton": "Cette diapositive n'a pas de bouton. Un bouton se configure dans « Modifier en JSON ».",
+      "removeSlideConfirm": "Le bouton de cette diapositive ouvre un cours ou un formulaire réglé dans « Modifier en JSON ». Supprimer la diapositive supprime aussi ces identifiants. La supprimer ?",
+      "noComingSoon": "Aucune catégorie n'est encore marquée « bientôt » avec un formulaire d'alerte. Marquez-en une dans la bibliothèque de dossiers.",
+      "categoryOrder": "Ordre sur le site"
     },
     "sidebar": {
       "group": "Barre de filtres",
@@ -528,7 +538,10 @@
       "image": "Image prête",
       "imageHint": "Une image prête remplace le téléphone dessiné.",
       "imageAlt": "Description de l'image (lecteurs d'écran)",
-      "buttonLink": "Lien du bouton"
+      "buttonLink": "Lien du bouton",
+      "urlKey": "Clé de lien : ?{{id}}=… (fixe une fois définie)",
+      "urlKeyReserved": "La page utilise déjà cette clé pour autre chose, le site masque donc ce groupe. Changez l'identifiant dans « Modifier en JSON ».",
+      "needsTag": "Ajoutez au moins une étiquette : une option sans étiquette n'est pas affichée."
     },
     "cards": {
       "group": "Cartes de cours",

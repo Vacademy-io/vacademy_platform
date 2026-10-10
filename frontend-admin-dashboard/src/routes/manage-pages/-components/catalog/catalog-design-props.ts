@@ -28,16 +28,67 @@ export const setOrDelete = (map: unknown, key: string, value: string): Props => 
     return next;
 };
 
-/** `list` with item `index` merged with `next` (other items and keys untouched). */
-export const patchItem = <T extends Props>(list: T[], index: number, next: Props): T[] =>
-    list.map((item, i) => (i === index ? ({ ...item, ...next } as T) : item));
+/*
+ * Lists edited in place. The editors number a list's object items the way
+ * objectsOf reads them; these writers take the raw list and that number, so an
+ * entry the editor skips (not an object) stays where it was.
+ */
+const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const rawIndexOf = (list: unknown[], n: number): number => {
+    let seen = -1;
+    return list.findIndex((x) => isObject(x) && ++seen === n);
+};
+
+/** Object item `n` of `raw` replaced by `item`. */
+export const replaceObject = (raw: unknown, n: number, item: Props): unknown[] => {
+    const list = listOf(raw);
+    const at = rawIndexOf(list, n);
+    return list.map((x, i) => (i === at ? item : x));
+};
+
+/** Object item `n` of `raw` merged with `next`. */
+export const patchObject = (raw: unknown, n: number, next: Props): unknown[] => {
+    const list = listOf(raw);
+    const at = rawIndexOf(list, n);
+    return list.map((x, i) => (i === at ? { ...objectOf(x), ...next } : x));
+};
+
+/** `raw` without object item `n`. */
+export const removeObject = (raw: unknown, n: number): unknown[] => {
+    const list = listOf(raw);
+    const at = rawIndexOf(list, n);
+    return list.filter((_, i) => i !== at);
+};
+
+/** Object item `n` of `raw` swapped with the object item `delta` places away. */
+export const moveObject = (raw: unknown, n: number, delta: number): unknown[] => {
+    const list = listOf(raw);
+    const from = rawIndexOf(list, n);
+    const to = rawIndexOf(list, n + delta);
+    if (from < 0 || to < 0) return list;
+    const next = [...list];
+    [next[from], next[to]] = [next[to], next[from]];
+    return next;
+};
+
+/** `raw` with `item` added at the end. */
+export const appendObject = (raw: unknown, item: Props): unknown[] => [...listOf(raw), item];
+
+/** `raw` with `item` added just before object item `n` (at the end when there is none). */
+export const insertObject = (raw: unknown, n: number, item: Props): unknown[] => {
+    const list = [...listOf(raw)];
+    const at = rawIndexOf(list, n);
+    list.splice(at < 0 ? list.length : at, 0, item);
+    return list;
+};
 
 /* ── streams and categories, for the pickers ───────────────────────── */
 
 export interface StreamOption {
     slug: string;
     label: string;
-    categories: { slug: string; label: string }[];
+    /** `comingSoon`: flagged coming soon with a notify form, so the coming-soon row can list it. */
+    categories: { slug: string; label: string; comingSoon?: boolean }[];
 }
 
 const folderName = (n: FolderNode): string => {
@@ -58,18 +109,22 @@ export const streamOptionsFromTree = (roots: FolderNode[] | null | undefined): S
                 .map((c) => ({
                     slug: effectiveFolderSlug(c),
                     label: folderName(c) || effectiveFolderSlug(c),
+                    ...(c.coming_soon && c.audience_id ? { comingSoon: true } : {}),
                 })),
         }));
 
-/** Stream tabs written as course tags (streams.source 'tags'): no categories. */
-export const streamOptionsFromItems = (items: unknown): StreamOption[] =>
-    objectsOf(items)
-        .filter((it) => textOf(it.slug).trim())
-        .map((it) => ({
-            slug: textOf(it.slug).trim(),
-            label: textOf(it.label).trim() || textOf(it.slug).trim(),
-            categories: [],
-        }));
+/** Stream tabs written as course tags (streams.source 'tags'): no categories. Keyed like the site's resolveStreamItems. */
+export const streamOptionsFromItems = (items: unknown): StreamOption[] => {
+    const seen = new Set<string>();
+    return objectsOf(items).flatMap((it) => {
+        const label = textOf(it.label).trim();
+        const tag = textOf(it.tag).trim();
+        const slug = optionIdFrom(textOf(it.slug).trim() || tag || label);
+        if (!slug || seen.has(slug)) return [];
+        seen.add(slug);
+        return [{ slug, label: label || tag || slug, categories: [] }];
+    });
+};
 
 /* ── page header: Popular chips ────────────────────────────────────── */
 
@@ -99,9 +154,15 @@ export const withChipAction = (chip: Props, action: ChipAction): Props => {
 
 /* ── rows above / below the grid ───────────────────────────────────── */
 
+/** Whether `list` has `slug`, ignoring case (the site lower-cases category slugs). */
+export const hasSlug = (list: string[], slug: string): boolean =>
+    list.some((s) => s.toLowerCase() === slug.toLowerCase());
+
 /** The coming-soon row's categories with `slug` ticked or unticked; the order of the others is kept. */
 export const toggleSlug = (list: string[], slug: string): string[] =>
-    list.includes(slug) ? list.filter((s) => s !== slug) : [...list, slug];
+    hasSlug(list, slug)
+        ? list.filter((s) => s.toLowerCase() !== slug.toLowerCase())
+        : [...list, slug];
 
 /* ── sidebar ───────────────────────────────────────────────────────── */
 
@@ -163,8 +224,8 @@ export const sidebarGroupRows = (props: Props): SidebarGroupRow[] => {
 
 /**
  * The new `filterSidebar.order` after moving row `index` by `delta`: every
- * listed group in its new place, then the ids the editor does not show
- * (legacy groups such as 'level') where they were, so none is lost.
+ * listed group in its new place, and the ids the editor does not show (legacy
+ * groups such as 'level') back at their old positions, so none is lost or moved.
  */
 export const movedGroupOrder = (
     rows: SidebarGroupRow[],
@@ -177,20 +238,22 @@ export const movedGroupOrder = (
     const ids = rows.map((r) => r.id);
     const [moved] = ids.splice(index, 1);
     ids.splice(target, 0, moved!);
-    const others = stringsOf(order).filter(
-        (id) => !ids.some((r) => r.toLowerCase() === id.toLowerCase())
-    );
-    return [...ids, ...others];
+    stringsOf(order).forEach((id, at) => {
+        if (!ids.some((r) => r.toLowerCase() === id.toLowerCase())) ids.splice(at, 0, id);
+    });
+    return ids;
 };
 
-/** A URL-safe option id from its label ("Women's health" → "women-s-health"). */
+/** A URL-safe id from a label ("Women's health" → "women-s-health"), as the site's toSlug makes it. */
 export const optionIdFrom = (label: string): string =>
     label
         .normalize('NFKD')
         .replace(/[̀-ͯ]/g, '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 120)
+        .replace(/-+$/g, '');
 
 /** An id not used by `taken` yet: `base`, else base-2, base-3… */
 export const uniqueId = (base: string, taken: string[]): string => {
@@ -199,6 +262,47 @@ export const uniqueId = (base: string, taken: string[]): string => {
     let n = 2;
     while (used.has(`${base}-${n}`.toLowerCase())) n += 1;
     return `${base}-${n}`;
+};
+
+/**
+ * URL keys an extra filter group can never use: the ones other catalogue
+ * features read (the site's RESERVED_FILTER_IDS, catalog-custom-filters.ts)
+ * and the legacy filter groups. The site also skips keys starting with 'utm'.
+ */
+const RESERVED_GROUP_IDS = [
+    'stream',
+    'category',
+    'language',
+    'price',
+    'sort',
+    'q',
+    'quick',
+    'path',
+    'badge',
+    'lang',
+    'page',
+    'goal',
+    'folder',
+    'level',
+    'session',
+    'tags',
+    'instructor',
+    'priceRange',
+];
+
+/** Whether the site drops a filter group with this URL key. */
+export const isReservedGroupId = (id: string): boolean => {
+    const key = id.toLowerCase();
+    return key.startsWith('utm') || RESERVED_GROUP_IDS.some((r) => r.toLowerCase() === key);
+};
+
+/** A new filter group's URL key from its heading; `fallback` when the heading has no Latin letters. */
+export const groupIdFrom = (label: string, taken: string[], fallback: string): string => {
+    const base = optionIdFrom(label) || fallback;
+    return uniqueId(base.startsWith('utm') ? `filter-${base}` : base, [
+        ...RESERVED_GROUP_IDS,
+        ...taken,
+    ]);
 };
 
 /** "for-parents, parents" → ['for-parents', 'parents'] (lower-case, as the site matches tags). */

@@ -42,7 +42,7 @@ vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('../../-services/ai-page-service', () => ({ generateSectionVariants: vi.fn() }));
 
-const folder = (slug: string, title: string, children: unknown[] = []) => ({
+const folder = (slug: string, title: string, children: unknown[] = [], extra = {}) => ({
     id: `id-${slug}`,
     node_type: 'FOLDER',
     title,
@@ -50,7 +50,9 @@ const folder = (slug: string, title: string, children: unknown[] = []) => ({
     display_order: 0,
     status: 'ACTIVE',
     children,
+    ...extra,
 });
+const soon = { coming_soon: true, audience_id: 'aud-1' };
 const TREE = {
     library: { id: '904e2152-f6b8-4c49-bfa0-e8849d13825f', name: 'Knowledge Streams' },
     roots: [
@@ -60,8 +62,10 @@ const TREE = {
             folder('ayurveda-shiksha', 'Ayurveda'),
         ]),
         folder('shiksha', 'Shiksha', [
-            folder('sanskrit', 'Sanskrit'),
-            folder('chhanda', 'Chhanda'),
+            folder('sanskrit', 'Sanskrit', [], soon),
+            folder('chhanda', 'Chhanda', [], soon),
+            // Coming soon without a notify form: the site does not list it.
+            folder('ganit', 'Ganit', [], { coming_soon: true }),
         ]),
     ],
 };
@@ -219,6 +223,26 @@ describe('Courses page design: page header', () => {
         expect(hero.breadcrumb).toEqual(before.breadcrumb);
         expectOnlyChanged('hero');
     });
+
+    it('a new breadcrumb item goes before this page, which stays last', () => {
+        load();
+        const hero = group('catalogDesign.hero.group');
+        fireEvent.click(hero.getByRole('button', { name: /catalogDesign.hero.addCrumb/ }));
+        const [home, courses] = original().hero.breadcrumb;
+        expect(liveProps().hero.breadcrumb).toEqual([home, { label: '' }, courses]);
+    });
+
+    it('without the band the group is named for what it edits', () => {
+        load((site) => {
+            const catalog = site.pages
+                .find((p) => p.id === PAGE)!
+                .components.find((c: Json) => c.id === ID)!;
+            catalog.props.hero.enabled = false;
+        });
+        expect(screen.getByText('catalogDesign.hero.groupResults')).toBeInTheDocument();
+        expect(screen.queryByText('catalogDesign.hero.group')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('catalogDesign.hero.quickFilterLabel')).toBeInTheDocument();
+    });
 });
 
 describe('Courses page design: rows above and below the grid', () => {
@@ -258,16 +282,91 @@ describe('Courses page design: rows above and below the grid', () => {
         expect(soon).toEqual(before[2]);
     });
 
-    it('unticks a coming-soon category and lists unknown ones as custom', () => {
+    it('offers only coming-soon categories, unticks one and lists unknown ones as custom', () => {
         load();
         const rows = group('catalogDesign.rows.group');
-        expect(rows.getByText('options.customValue:khagol')).toBeInTheDocument();
+        expect(
+            rows.getByRole('checkbox', { name: 'options.customValue:khagol' })
+        ).toBeInTheDocument();
+        // Ordinary categories, and coming-soon ones without a notify form, are not offered.
+        expect(rows.queryByRole('checkbox', { name: 'Garbha Vigyan' })).not.toBeInTheDocument();
+        expect(rows.queryByRole('checkbox', { name: 'Ganit' })).not.toBeInTheDocument();
         fireEvent.click(rows.getByRole('checkbox', { name: 'Sanskrit' }));
         const soon = liveProps().columnSections[2];
         expect(soon.categorySlugs).toEqual(
             original().columnSections[2].categorySlugs.filter((s: string) => s !== 'sanskrit')
         );
         expectOnlyChanged('columnSections');
+    });
+
+    it('reorders the ticked categories and matches stored slugs in any case', () => {
+        load((site) => {
+            const catalog = site.pages
+                .find((p) => p.id === PAGE)!
+                .components.find((c: Json) => c.id === ID)!;
+            catalog.props.columnSections[2].categorySlugs = ['Chhanda', 'sanskrit'];
+        });
+        const rows = group('catalogDesign.rows.group');
+        expect(rows.getByRole('checkbox', { name: 'Chhanda' })).toBeChecked();
+        fireEvent.click(rows.getByRole('button', { name: 'catalogDesign.common.moveUp:Sanskrit' }));
+        expect(liveProps().columnSections[2].categorySlugs).toEqual(['sanskrit', 'Chhanda']);
+    });
+
+    it('free strip: an emptied "See all" text goes, the switch hides the link, the count is picked', () => {
+        load();
+        const rows = group('catalogDesign.rows.group');
+        const seeAll = rows.getByLabelText('catalogDesign.rows.seeAllLabel');
+        fireEvent.change(seeAll, { target: { value: 'All free courses' } });
+        expect(liveProps().columnSections[0].seeAllLabel).toBe('All free courses');
+        fireEvent.change(seeAll, { target: { value: '' } });
+        // No key: the site's own "See all {count} free" (an empty text would hide the link).
+        expect(liveProps().columnSections[0]).toEqual(original().columnSections[0]);
+
+        fireEvent.click(rows.getByRole('switch', { name: 'catalogDesign.rows.seeAllOn' }));
+        expect(liveProps().columnSections[0].seeAllLabel).toBe('');
+        expect(rows.queryByLabelText('catalogDesign.rows.seeAllLabel')).not.toBeInTheDocument();
+        fireEvent.click(rows.getByRole('switch', { name: 'catalogDesign.rows.seeAllOn' }));
+        expect(liveProps().columnSections[0]).toEqual(original().columnSections[0]);
+
+        fireEvent.change(rows.getByLabelText('catalogDesign.rows.freeLimit'), {
+            target: { value: '4' },
+        });
+        expect(liveProps().columnSections[0]).toEqual({
+            ...original().columnSections[0],
+            limit: 4,
+        });
+        expectOnlyChanged('columnSections');
+    });
+
+    it('asks before removing a slide whose button has ids; a new slide says where its button is set', () => {
+        load();
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const remove = screen.getByRole('button', {
+            name: 'catalogDesign.common.remove:catalogDesign.rows.slideN:1',
+        });
+        fireEvent.click(remove);
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(liveProps()).toEqual(original());
+
+        fireEvent.click(screen.getByRole('button', { name: /catalogDesign.rows.addSlide/ }));
+        expect(screen.getByText('catalogDesign.rows.noButton')).toBeInTheDocument();
+        confirm.mockRestore();
+    });
+
+    it('keeps an entry that is not a row where it was', () => {
+        load((site) => {
+            const catalog = site.pages
+                .find((p) => p.id === PAGE)!
+                .components.find((c: Json) => c.id === ID)!;
+            catalog.props.columnSections.splice(1, 0, 'note');
+        });
+        fireEvent.change(screen.getByDisplayValue('Included'), {
+            target: { value: 'Free with the course' },
+        });
+        const list = liveProps().columnSections;
+        expect(list).toHaveLength(4);
+        expect(list[1]).toBe('note');
+        expect(list[2].slides[0].steps[2].meta).toBe('Free with the course');
     });
 });
 
@@ -318,6 +417,62 @@ describe('Courses page design: sidebar', () => {
             { id: 'grand-parents', label: 'Grand parents', tags: [] },
         ]);
         expectOnlyChanged('customFilters');
+    });
+
+    it('a new filter group never gets a URL key the site drops, and says so', () => {
+        load();
+        const sidebar = group('catalogDesign.sidebar.group');
+        const add = () =>
+            fireEvent.click(
+                sidebar.getByRole('button', { name: /catalogDesign.sidebar.addFilter/ })
+            );
+        const newGroup = () =>
+            within(
+                screen
+                    .getByText('catalogDesign.sidebar.filterTitle:…')
+                    .closest('div.space-y-2') as HTMLElement
+            );
+        const name = (box: ReturnType<typeof newGroup>, value: string) => {
+            const heading = box.getByLabelText('catalogDesign.common.heading');
+            fireEvent.change(heading, { target: { value } });
+            fireEvent.blur(heading);
+        };
+        add();
+        name(newGroup(), 'Price');
+        add();
+        name(newGroup(), 'किसके लिए');
+        const [, , price, hindi] = liveProps().customFilters;
+        expect(price).toEqual({ id: 'price-2', label: 'Price', options: [] });
+        expect(hindi).toEqual({ id: 'filter-4', label: 'किसके लिए', options: [] });
+        expect(screen.getByText('catalogDesign.sidebar.urlKey:price-2')).toBeInTheDocument();
+        expect(screen.getByText('catalogDesign.sidebar.urlKey:filter-4')).toBeInTheDocument();
+        expect(screen.queryByText('catalogDesign.sidebar.urlKeyReserved')).not.toBeInTheDocument();
+        expect(screen.queryByText('catalogDesign.sidebar.needsTag')).not.toBeInTheDocument();
+    });
+
+    it('a reserved key written in JSON is flagged; an option without tags says it is hidden', () => {
+        load((site) => {
+            const catalog = site.pages
+                .find((p) => p.id === PAGE)!
+                .components.find((c: Json) => c.id === ID)!;
+            catalog.props.customFilters[1].id = 'goal';
+        });
+        expect(screen.getByText('catalogDesign.sidebar.urlKeyReserved')).toBeInTheDocument();
+        const forFilter = within(
+            screen
+                .getByText('catalogDesign.sidebar.filterTitle:For')
+                .closest('div.space-y-2') as HTMLElement
+        );
+        fireEvent.click(forFilter.getByRole('button', { name: /catalogDesign.sidebar.addOption/ }));
+        expect(screen.getByText('catalogDesign.sidebar.needsTag')).toBeInTheDocument();
+        const label = forFilter.getAllByLabelText('catalogDesign.common.text').at(-1)!;
+        fireEvent.change(label, { target: { value: 'दादा-दादी' } });
+        fireEvent.blur(label);
+        expect(liveProps().customFilters[1].options.at(-1)).toEqual({
+            id: 'option-5',
+            label: 'दादा-दादी',
+            tags: [],
+        });
     });
 
     it('edits the app card texts and keeps its image and colours', () => {

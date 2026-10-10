@@ -176,6 +176,58 @@
       "sameAsLabel": "Liens sociaux et profils",
       "sameAsHint": "Une URL par ligne. Les liens déjà présents dans le pied de page sont inclus automatiquement.",
       "sitemapHint": "Un sitemap est généré automatiquement sur /<catalogue>/sitemap.xml (et /sitemap.xml lorsque le site est servi depuis votre propre domaine)."
+    },
+    "palette": {
+      "heading": "Couleurs du site",
+      "hint": "Les couleurs propres à ce site. Modifiez-en une ici et tout ce qui l’utilise sur le site suit.",
+      "keys": {
+        "text": "Titres",
+        "body": "Texte courant",
+        "muted": "Texte discret",
+        "muted2": "Texte très discret",
+        "primary": "Marque (boutons et liens)",
+        "gold": "Touches dorées",
+        "accent": "Accent",
+        "olive": "Accent olive",
+        "cream": "Panneau crème",
+        "canvas": "Fond de page",
+        "sand": "Panneau sable",
+        "border": "Lignes",
+        "borderStrong": "Lignes marquées",
+        "accentOnDark": "Accent sur bandeaux sombres",
+        "bodyOnDark": "Texte sur bandeaux sombres",
+        "outline": "Boutons contour"
+      },
+      "otherKey": "Autre couleur : {{key}}",
+      "applyToTokens": "Utiliser ces couleurs partout",
+      "applyToTokensHint": "Recolore aussi les couleurs standard du texte, des fonds et des lignes du site (mode clair).",
+      "contentWidth": "Largeur du contenu",
+      "contentWidthDefault": "Par défaut",
+      "contentWidthHint": "Largeur du contenu de la page en pixels, de {{min}} à {{max}}. Laissez vide pour la valeur par défaut."
+    },
+    "courseFormats": {
+      "heading": "Formats de cours",
+      "hint": "Les formats comme E-books ou Sessions en direct s’affichent sur les cartes de cours et dans le filtre Format. Un cours reçoit un format grâce à son tag format-<id>.",
+      "namesInTranslations": "Les noms des formats se traduisent dans Languages → Translations. Passez l’éditeur à la langue de base pour renommer ou ajouter un format.",
+      "renameHint": "Renommer un format copie ses traductions vers le nouveau nom. Vérifiez-les dans Languages → Translations.",
+      "name": "Nom",
+      "id": "ID",
+      "namePlaceholder": "Livre audio",
+      "moveUp": "Monter",
+      "moveDown": "Descendre",
+      "remove": "Supprimer {{name}}",
+      "confirmRemove": "Supprimer « {{name}} » ? Les cours avec le tag {{tag}} n’afficheront plus ce format, et ses réglages de correspondance seront perdus.",
+      "noNameWarning": "Un format sans nom est masqué sur le site.",
+      "alsoMatches": "Correspond aussi à : {{list}}",
+      "addHeading": "Ajouter un format",
+      "add": "Ajouter le format",
+      "tagHint": "Ajouté. Ajoutez le tag {{tag}} aux cours pour qu’ils apparaissent sous « {{name}} ».",
+      "issue": {
+        "noId": "Saisissez un ID en lettres latines ou chiffres.",
+        "badId": "L’ID doit commencer par une lettre ou un chiffre et n’utiliser que a-z, 0-9 et des tirets.",
+        "taken": "Un format avec cet ID existe déjà.",
+        "tooMany": "Le site affiche au plus {{max}} formats. Supprimez-en un pour en ajouter un autre."
+      }
     }
   },
   "options": {

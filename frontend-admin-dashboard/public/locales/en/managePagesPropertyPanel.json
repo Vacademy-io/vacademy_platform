@@ -176,6 +176,58 @@
       "sameAsLabel": "Social & profile links",
       "sameAsHint": "One URL per line. Links already in your footer are included automatically.",
       "sitemapHint": "A sitemap is generated automatically at /<catalogue>/sitemap.xml (and /sitemap.xml when the site is served from your own domain)."
+    },
+    "palette": {
+      "heading": "Site colours",
+      "hint": "This site's own colours. Change one here and every part of the site that uses it follows.",
+      "keys": {
+        "text": "Headings",
+        "body": "Body text",
+        "muted": "Soft text",
+        "muted2": "Faint text",
+        "primary": "Brand (buttons and links)",
+        "gold": "Gold highlights",
+        "accent": "Accent",
+        "olive": "Olive accent",
+        "cream": "Cream panel",
+        "canvas": "Page background",
+        "sand": "Sand panel",
+        "border": "Lines",
+        "borderStrong": "Strong lines",
+        "accentOnDark": "Accent on dark bands",
+        "bodyOnDark": "Text on dark bands",
+        "outline": "Outlined buttons"
+      },
+      "otherKey": "Other colour: {{key}}",
+      "applyToTokens": "Use these colours everywhere",
+      "applyToTokensHint": "Also recolours the standard text, background and line colours of the site (light mode).",
+      "contentWidth": "Content width",
+      "contentWidthDefault": "Default",
+      "contentWidthHint": "Width of the page content in pixels, from {{min}} to {{max}}. Leave empty for the default."
+    },
+    "courseFormats": {
+      "heading": "Course formats",
+      "hint": "Formats such as E-books or Live sessions show on course cards and in the Format filter. A course gets a format from its tag format-<id>.",
+      "namesInTranslations": "Format names are translated in Languages → Translations. Switch the editor to the base language to rename or add a format.",
+      "renameHint": "Renaming a format copies its translations to the new name. Check them in Languages → Translations.",
+      "name": "Name",
+      "id": "ID",
+      "namePlaceholder": "Audio book",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "remove": "Remove {{name}}",
+      "confirmRemove": "Remove “{{name}}”? Courses tagged {{tag}} will no longer show this format, and its matching settings are lost.",
+      "noNameWarning": "A format with no name is hidden on the site.",
+      "alsoMatches": "Also matches: {{list}}",
+      "addHeading": "Add a format",
+      "add": "Add format",
+      "tagHint": "Added. Tag courses {{tag}} so they show under “{{name}}”.",
+      "issue": {
+        "noId": "Type an ID in English letters or digits.",
+        "badId": "The ID must start with a letter or digit and use only a-z, 0-9 and dashes.",
+        "taken": "A format with this ID already exists.",
+        "tooMany": "The site shows at most {{max}} formats. Remove one to add another."
+      }
     }
   },
   "options": {

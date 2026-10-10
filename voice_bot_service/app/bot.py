@@ -4399,6 +4399,82 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
             + "; ".join(pairs) + ".")
 
 
+# Parent-facing words for where a lead came from (audience_response.source_type).
+# An unknown type falls back to a plain "enquiry form": a wrong channel is worse
+# than a vague one.
+_ENQUIRY_SOURCES = {
+    "META_LEAD_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
+    "FACEBOOK_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
+    "INSTAGRAM_ADS": "the form on one of {inst}'s ads on Facebook or Instagram",
+    "GOOGLE_ADS": "the form on one of {inst}'s ads on Google",
+    "LINKEDIN_ADS": "the form on one of {inst}'s ads on LinkedIn",
+    "WEBSITE": "the enquiry form on {inst}'s website",
+    "COURSE_CATALOGUE": "a course page on {inst}'s website",
+    "SELF_SIGNUP": "signing up on {inst}'s website",
+    "WALK_IN": "visiting {inst} in person",
+    "INBOUND_CALL": "calling {inst}",
+}
+
+
+def _ago(days: int) -> str:
+    if days <= 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    if days < 14:
+        return f"{days} days ago"
+    if days < 60:
+        return f"about {round(days / 7)} weeks ago"
+    return f"about {round(days / 30)} months ago"
+
+
+def _lead_enquiry_line(context: Dict[str, Any]) -> str:
+    """When and where the lead enquired, from admin_core's leadEnquiry block. Parents
+    ask "मैंने कब form भरा?" / "कहाँ से number मिला?"; without this the model could only
+    repeat a stock line (call 6313b454: three times, then "Not interested"). A date is
+    given ONLY when admin_core marked it genuine (dateKnown): a bulk-imported lead's
+    stamp is the import day, and stating it would be a false date. Empty when there is
+    no block."""
+    enq = context.get("leadEnquiry")
+    if not isinstance(enq, dict) or not enq:
+        return ""
+    inst = str(context.get("instituteName") or "").strip() or "the institute"
+    source = _ENQUIRY_SOURCES.get(str(enq.get("sourceType") or "").strip().upper(),
+                                  "an enquiry form for {inst}").format(inst=inst)
+    agent = context.get("agent") or {}
+    tzname = (agent.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        tz = ZoneInfo(tzname)
+    except Exception:
+        tz = ZoneInfo("Asia/Kolkata")
+    today = datetime.now(tz).date()
+
+    def _day(key: str):
+        raw = str(enq.get(key) or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(tz).date()
+        except ValueError:
+            return None
+
+    head = ("WHEN AND WHERE THEY ENQUIRED — use this ONLY if they ask when, where or how "
+            "they enquired, or how you got their number. ")
+    tail = (" Say it once, simply, in the language of the call, then carry on with the "
+            "conversation; if they ask again, do not repeat it word for word. Never add "
+            "details that are not here: no ad name, no page, no time of day.")
+    day = _day("submittedAt") if enq.get("dateKnown") is True else None
+    if day is not None:
+        return (head + f"They enquired through {source} on {day.strftime('%A %-d %B %Y')} "
+                f"({_ago((today - day).days)}). Name that date when you answer." + tail)
+    recorded = _day("recordedAt")
+    months = (today - recorded).days // 30 if recorded is not None else 0
+    when = ("some months ago" if months >= 2 else "some time ago")
+    return (head + f"They enquired through {source} {when}. The exact date is NOT on record: "
+            f"never name a date, a month or a number of days or weeks, only say it was {when}."
+            + tail)
+
+
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_ ]+?)\s*\}\}")
 
 # Author-written placeholder names -> the lead-field names they should resolve
@@ -5150,6 +5226,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "them. If you need a beat, one word at most (\u2018Great.\u2019), never their words."
     )
     fields_line = _lead_fields_line(context)
+    enquiry_line = _lead_enquiry_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}. If the caller asks you to end the call, says they are "
                 f"not interested, or says they do not need this: ONE short polite line and "
@@ -5312,6 +5389,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             lead_name_line,
             dialled_number_line,
             fields_line,
+            enquiry_line,
             end_line,
             human_line,
             sends_line,
@@ -5333,6 +5411,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         intent_line,
         lead_name_line,
         fields_line,
+        enquiry_line,
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",
         "Rules:",

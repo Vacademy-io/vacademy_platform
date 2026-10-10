@@ -23,6 +23,7 @@ write tool and the lead-forms tool share it without importing this module.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -580,12 +581,40 @@ async def _action_list_media(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
     kind = str(args.get("kind") or "any").lower()
     limit = max(1, min(int(args.get("limit") or 24), 60))
     media = await _load_media(ctx, kind, limit)
-    return {
+    out: Dict[str, Any] = {
         "images": media,
         "count": len(media),
         "note": "These are the admin's own uploads. A file_id without a url needs the dashboard's media library; "
                 "public URLs can be brought in with website_edit(action='import_image').",
     }
+    imported = await asyncio.to_thread(_load_imported_images, ctx.principal.institute_id, limit)
+    if imported:
+        out["imported"] = imported
+    return out
+
+
+def _load_imported_images(institute_id: str, limit: int) -> List[Dict[str, Any]]:
+    """Images earlier website_edit(import_image) calls brought in (their sha256
+    lets a design import map a Figma asset to the copy we already host)."""
+    try:
+        from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+        rows = EditorMediaAssetRepository().list_by_metadata(institute_id, limit=limit, origin="website_import_image")
+    except Exception as exc:  # noqa: BLE001 — a convenience listing, never a failure
+        logger.info("list_media: imported images skipped: %s", exc)
+        return []
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        meta = r.extra_metadata or {}
+        out.append({k: v for k, v in {
+            "url": r.url,
+            "source": r.source_url,
+            "sha256": meta.get("sha256"),
+            "kind": next((t for t in (r.tags or []) if t != "website"), None),
+            "size": f"{r.width}x{r.height}" if r.width and r.height else None,
+            "caption": meta.get("caption"),
+            "imported_at": r.created_at.isoformat() if r.created_at else None,
+        }.items() if v})
+    return out
 
 
 _ACTIONS = {

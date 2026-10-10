@@ -21,6 +21,7 @@ const api = authenticatedAxiosInstance as unknown as {
     get: ReturnType<typeof vi.fn>;
     put: ReturnType<typeof vi.fn>;
 };
+const routes = copy.google.routes;
 
 const i18n = createInstance();
 void i18n.init({
@@ -59,10 +60,12 @@ const LISTS = [
 
 const ROUTES: CampaignRoutes = {
     main_audience_id: 'aud-main',
+    auto_create_lists: false,
     routes: [
         {
             campaign_id: '22173284076',
             audience_id: null,
+            campaign_name: null,
             lead_count: 4,
             first_lead_at: '2026-10-09T15:52:05',
             last_lead_at: '2026-10-10T06:11:44',
@@ -71,6 +74,7 @@ const ROUTES: CampaignRoutes = {
         {
             campaign_id: '22180441198',
             audience_id: 'aud-pune',
+            campaign_name: 'Maharashtra-ADCT',
             lead_count: 3,
             first_lead_at: '2026-10-09T11:50:45',
             last_lead_at: '2026-10-09T16:58:50',
@@ -249,6 +253,64 @@ describe('GoogleSetupDialog', () => {
         expect(api.put).toHaveBeenCalledWith(
             expect.stringContaining('/campaign-routes/22206499349'),
             { audience_id: 'aud-pune', move_existing_leads: false }
+        );
+    });
+
+    it('turns automatic lists per campaign on for the connector', async () => {
+        api.put.mockResolvedValueOnce({ data: { ...ROUTES, auto_create_lists: true } });
+        mount(connector());
+        const toggle = await screen.findByRole('switch', { name: routes.autoListsLabel });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        fireEvent.click(toggle);
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/connectors/conn-1/campaign-auto-lists'),
+            { enabled: true }
+        );
+        await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'));
+    });
+
+    it('shows and edits a campaign name without changing its list', async () => {
+        mount(connector());
+        expect(await screen.findByText('Maharashtra-ADCT')).toBeTruthy();
+        expect(screen.getByText(routes.unnamed)).toBeTruthy();
+
+        fireEvent.click(screen.getAllByRole('button', { name: routes.editName })[0]!);
+        // The row being named renders before the add-a-campaign row.
+        const input = screen.getAllByPlaceholderText(routes.campaignNamePlaceholder)[0]!;
+        fireEvent.change(input, { target: { value: ' Gujarat-ADCT ' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/campaign-routes/22173284076'),
+            {
+                campaign_name: 'Gujarat-ADCT',
+            }
+        );
+    });
+
+    it('names a campaign before its first lead, with no list yet', async () => {
+        mount(connector());
+        await screen.findByText('22173284076');
+        fireEvent.change(screen.getByPlaceholderText(routes.campaignIdPlaceholder), {
+            target: { value: '22806287191' },
+        });
+        // An id alone is not enough: it needs a list or a name.
+        expect(screen.queryByRole('button', { name: routes.add })).toBeNull();
+        fireEvent.change(screen.getAllByPlaceholderText(routes.campaignNamePlaceholder).at(-1)!, {
+            target: { value: 'Mumbai-Cosmetology' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: routes.add }));
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/campaign-routes/22806287191'),
+            {
+                move_existing_leads: false,
+                campaign_name: 'Mumbai-Cosmetology',
+            }
         );
     });
 });

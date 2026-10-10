@@ -220,9 +220,7 @@ export interface ConnectorHealth {
  * ACTIVE) based on the result, so callers should refetch the connector list.
  */
 export const checkConnectorHealth = async (connectorId: string): Promise<ConnectorHealth> => {
-    const res = await authenticatedAxiosInstance.get(
-        `${BASE}/connectors/${connectorId}/health`
-    );
+    const res = await authenticatedAxiosInstance.get(`${BASE}/connectors/${connectorId}/health`);
     return res.data;
 };
 
@@ -230,9 +228,7 @@ export const checkConnectorHealth = async (connectorId: string): Promise<Connect
  * Re-attempt the page→app webhook subscription using the connector's stored
  * token. Use after granting the connecting account Full control of the Page.
  */
-export const resubscribeConnector = async (
-    connectorId: string
-): Promise<ConnectorSaveResult> => {
+export const resubscribeConnector = async (connectorId: string): Promise<ConnectorSaveResult> => {
     const res = await authenticatedAxiosInstance.post(
         `${BASE}/connectors/${connectorId}/resubscribe`
     );
@@ -347,6 +343,8 @@ export interface CampaignRoute {
     campaign_id: string;
     /** null = not mapped yet: its leads go to the connector's main list. */
     audience_id: string | null;
+    /** Admin-entered name (Google's webhook sends only the id); null until named. */
+    campaign_name: string | null;
     lead_count: number;
     /** UTC, zone-less (the server JVM runs in UTC). */
     first_lead_at: string | null;
@@ -358,6 +356,8 @@ export interface CampaignRoutes {
     /** The connector's own list: the catch-all for campaigns without a list. */
     main_audience_id: string;
     routes: CampaignRoute[];
+    /** New campaigns get their own list on their first lead. */
+    auto_create_lists: boolean;
 }
 
 export interface CampaignRouteUpdate {
@@ -365,6 +365,8 @@ export interface CampaignRouteUpdate {
     /** Create this list and route the campaign to it (wins over audience_id). */
     new_list?: { name: string; campaign_type?: string };
     move_existing_leads?: boolean;
+    /** The campaign's name from Google Ads; blank clears it. Sent alone, it only names it. */
+    campaign_name?: string;
 }
 
 export interface CampaignRouteUpdateResult {
@@ -393,6 +395,18 @@ export const updateCampaignRoute = async (
     const res = await authenticatedAxiosInstance.put<CampaignRouteUpdateResult>(
         `${BASE}/connectors/${connectorId}/campaign-routes/${encodeURIComponent(campaignId)}`,
         update
+    );
+    return res.data;
+};
+
+/** Turn "a new list for each new campaign" on or off for a connector. */
+export const setCampaignAutoLists = async (
+    connectorId: string,
+    enabled: boolean
+): Promise<CampaignRoutes> => {
+    const res = await authenticatedAxiosInstance.put<CampaignRoutes>(
+        `${BASE}/connectors/${connectorId}/campaign-auto-lists`,
+        { enabled }
     );
     return res.data;
 };

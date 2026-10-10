@@ -10,6 +10,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Date;
+
 
 @Data
 @AllArgsConstructor
@@ -28,4 +30,7 @@ public class CourseCatalogueResponse {
     /** /update only: an editor draft is still open (it was not discarded). */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Integer openDraftRevisionNo;
+    /** get/by-tag only: when the live config was last written. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Date updatedAt;
 }

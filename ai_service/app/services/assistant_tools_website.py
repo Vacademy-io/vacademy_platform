@@ -394,7 +394,8 @@ async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
     return {
         "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
         "image_png_base64": result["png_base64"], "width": result["width"], "height": result["height"],
-        "note": "Rendered by the learner site from the current draft. Live course data comes from the host's institute when the institute has no domain of its own.",
+        "note": f"Rendered by the learner site from the {'current draft' if site['from_draft'] else 'published site'}. "
+                "Live course data comes from the host's institute when the institute has no domain of its own.",
         **stale_note(site),
     }
 

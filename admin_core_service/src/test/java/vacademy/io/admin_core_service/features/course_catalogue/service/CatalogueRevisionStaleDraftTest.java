@@ -92,6 +92,11 @@ class CatalogueRevisionStaleDraftTest {
                 .thenAnswer(i -> rows.stream().filter(r -> r.getStatus().equals(i.getArgument(1))
                                 && !r.getUpdatedAt().after(i.getArgument(2)))
                         .max(Comparator.comparing(CatalogueRevision::getUpdatedAt)));
+        when(revisionRepository.findFirstByCatalogueIdAndRevisionNoAndStatusOrderByUpdatedAtDescIdDesc(
+                eq(CATALOGUE), any(Integer.class), anyString()))
+                .thenAnswer(i -> rows.stream().filter(r -> r.getRevisionNo().equals(i.getArgument(1))
+                                && r.getStatus().equals(i.getArgument(2)))
+                        .max(Comparator.comparing(CatalogueRevision::getUpdatedAt)));
         when(revisionRepository.findFirstByCatalogueIdOrderByRevisionNoDescIdDesc(CATALOGUE))
                 .thenAnswer(i -> rows.stream().max(Comparator.comparing(CatalogueRevision::getRevisionNo)));
 
@@ -103,6 +108,7 @@ class CatalogueRevisionStaleDraftTest {
         revisions = new CatalogueRevisionService();
         ReflectionTestUtils.setField(revisions, "revisionRepository", revisionRepository);
         ReflectionTestUtils.setField(revisions, "courseCatalogueRepository", courseCatalogueRepository);
+        ReflectionTestUtils.setField(revisions, "staleGuardEnabled", true);
         catalogues = new CourseCatalogueService();
         ReflectionTestUtils.setField(catalogues, "courseCatalogueRepository", courseCatalogueRepository);
         ReflectionTestUtils.setField(catalogues, "catalogueInstituteMappingRepository", mappingRepository);
@@ -207,6 +213,7 @@ class CatalogueRevisionStaleDraftTest {
         VacademyException ex = assertThrows(VacademyException.class,
                 () -> revisions.publish(CATALOGUE, "editor", false, 1));
         assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().contains("after you opened the editor"));
         // Knowing the current live number publishes normally
         assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, 2).getStatus());
     }
@@ -227,5 +234,40 @@ class CatalogueRevisionStaleDraftTest {
         revisions.discardDraft(CATALOGUE);
 
         assertNull(legacyUpdate(NEWER_LIVE).getOpenDraftRevisionNo());
+    }
+
+    @Test
+    void sameContentWrittenAgainSinceEditorLoadedIsNotAConflict() {
+        // Live goes v1 -> v2 -> back to v1's content as v3; the editor loaded v1
+        legacyUpdate(NEWER_LIVE);
+        legacyUpdate(LIVE);
+        saveDraft(DRAFT);
+
+        assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, 1).getStatus());
+        assertEquals(DRAFT, catalogue.getCatalogueJson());
+    }
+
+    @Test
+    void settingsOnlyUpdateWithoutAnyHistoryIsNotStale() {
+        // A site made by /create (or before revisions existed) has no PUBLISHED row
+        rows.clear();
+        saveDraft(DRAFT);
+        legacyUpdate(LIVE);
+
+        assertFalse(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
+        assertEquals(1, rows.size());
+        assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, null).getStatus());
+    }
+
+    @Test
+    void staleDraftPublishesWhileTheGuardIsOff() {
+        ReflectionTestUtils.setField(revisions, "staleGuardEnabled", false);
+        saveDraft(DRAFT);
+        legacyUpdate(NEWER_LIVE);
+
+        // Still reported, so the editor and AI tools can warn
+        assertTrue(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
+        assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, 1).getStatus());
+        assertEquals(DRAFT, catalogue.getCatalogueJson());
     }
 }

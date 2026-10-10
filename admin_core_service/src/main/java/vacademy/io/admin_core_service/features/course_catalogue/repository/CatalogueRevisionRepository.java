@@ -22,4 +22,8 @@ public interface CatalogueRevisionRepository extends JpaRepository<CatalogueRevi
     // What was live when a draft started: the last PUBLISHED row touched at or before then
     Optional<CatalogueRevision> findFirstByCatalogueIdAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtDescIdDesc(
             String catalogueId, String status, Date at);
+
+    // A given PUBLISHED version (what the editor loaded)
+    Optional<CatalogueRevision> findFirstByCatalogueIdAndRevisionNoAndStatusOrderByUpdatedAtDescIdDesc(
+            String catalogueId, Integer revisionNo, String status);
 }

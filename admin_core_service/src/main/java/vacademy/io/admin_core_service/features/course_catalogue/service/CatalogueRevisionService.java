@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.course_catalogue.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,16 @@ public class CatalogueRevisionService {
     public static final String DRAFT_OLDER_THAN_LIVE = "DRAFT_OLDER_THAN_LIVE";
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /**
+     * Refuse (409) to publish a draft older than the live site. Off until the
+     * editor that handles the 409 (discard / override confirm) is deployed —
+     * the older editor can only retry, so it would be stuck. Env:
+     * CATALOGUE_PUBLISH_STALEGUARD_ENABLED=true. The stale flag on getDraft is
+     * reported either way.
+     */
+    @Value("${catalogue.publish.stale-guard.enabled:false}")
+    private boolean staleGuardEnabled;
 
     @Autowired
     private CatalogueRevisionRepository revisionRepository;
@@ -90,7 +101,8 @@ public class CatalogueRevisionService {
      * Refuses with 409 DRAFT_OLDER_THAN_LIVE when publishing would undo a live
      * change: the live site was published after the draft was started, or
      * after the editor loaded it (expectedLiveRevisionNo), and differs from
-     * the draft. overrideStale publishes anyway.
+     * the draft. overrideStale publishes anyway. Only while the stale guard is
+     * enabled (see staleGuardEnabled).
      */
     @Transactional
     public RevisionResponse publish(String catalogueId, String userId, boolean overrideStale,
@@ -100,16 +112,15 @@ public class CatalogueRevisionService {
         CatalogueRevision draft = findDraft(catalogueId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.BAD_REQUEST, "No draft to publish"));
 
-        if (!overrideStale) {
+        if (staleGuardEnabled && !overrideStale) {
             CatalogueRevision live = findLive(catalogueId).orElse(null);
             Integer liveNo = live != null ? live.getRevisionNo() : null;
-            boolean liveMovedSinceLoad = expectedLiveRevisionNo != null
-                    && !expectedLiveRevisionNo.equals(liveNo)
-                    && !sameJson(draft.getCatalogueJson(), catalogue.getCatalogueJson());
-            if (liveMovedSinceLoad || isStale(draft, live, catalogue.getCatalogueJson())) {
-                throw new VacademyException(HttpStatus.CONFLICT, DRAFT_OLDER_THAN_LIVE
-                        + ": the live site changed after this draft was started (live v" + liveNo
-                        + "). Publishing it would undo those changes. Discard the draft, or publish with overrideStale=true.");
+            String liveJson = catalogue.getCatalogueJson();
+            if (liveMovedSinceLoad(catalogueId, expectedLiveRevisionNo, liveNo, liveJson, draft)) {
+                throw staleConflict("the live site changed after you opened the editor (live v" + liveNo + ")");
+            }
+            if (isStale(draft, live, liveJson)) {
+                throw staleConflict("the live site changed after this draft was started (live v" + liveNo + ")");
             }
         }
 
@@ -123,6 +134,36 @@ public class CatalogueRevisionService {
         courseCatalogueRepository.save(catalogue);
 
         return toResponse(draft, false);
+    }
+
+    /**
+     * The editor loaded live version expectedLiveRevisionNo; has the live
+     * content changed since? A newer number with the same content (e.g. a
+     * settings-only PUT /update) does not count, nor does a live site that
+     * already equals the draft.
+     */
+    private boolean liveMovedSinceLoad(String catalogueId, Integer expectedLiveRevisionNo, Integer liveNo,
+                                       String liveJson, CatalogueRevision draft) {
+        if (expectedLiveRevisionNo == null || expectedLiveRevisionNo.equals(liveNo)) return false;
+        if (sameJson(draft.getCatalogueJson(), liveJson)) return false;
+        return revisionRepository
+                .findFirstByCatalogueIdAndRevisionNoAndStatusOrderByUpdatedAtDescIdDesc(catalogueId,
+                        expectedLiveRevisionNo, CatalogueRevisionStatusEnum.PUBLISHED.name())
+                .map(loaded -> !sameJson(loaded.getCatalogueJson(), liveJson))
+                .orElse(true);
+    }
+
+    private static VacademyException staleConflict(String why) {
+        return new VacademyException(HttpStatus.CONFLICT, DRAFT_OLDER_THAN_LIVE + ": " + why
+                + ". Publishing this draft would undo those changes. Discard the draft, or publish with overrideStale=true.");
+    }
+
+    /** Catalogue a revision belongs to (404 when the revision does not exist). */
+    @Transactional(readOnly = true)
+    public String catalogueIdOf(String revisionId) {
+        return revisionRepository.findById(revisionId)
+                .map(CatalogueRevision::getCatalogueId)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Revision not found"));
     }
 
     /** Discards the current DRAFT (editor falls back to the published config). */

@@ -311,7 +311,7 @@ def _widget_capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "kind": "button", "path": f"props.columnSections[{i}].slides[{j}].cta.audienceId",
                             "label": str(cta.get("label") or slide.get("title") or "Spotlight button"),
                             "audience_id": str(cta.get("audienceId") or "").strip(),
-                            "audience_name": "", "required": True,
+                            "audience_name": "", "required": True, "hidden_until_wired": True,
                         })
                     for k, step in enumerate(slide.get("steps") or []):
                         # A step is a form button only once it has a campaign; otherwise a link or text.
@@ -736,17 +736,25 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 form_buttons.append(p["secondaryButton"])
             left = p.get("left") if isinstance(p.get("left"), dict) else {}
             form_buttons.extend(b for b in (left.get("buttons") or []) if isinstance(b, dict))
-            # A catalogue spotlight 'open-form' button without a campaign is not drawn.
-            for section in (p.get("columnSections") or []) if c.get("type") == "courseCatalog" else []:
-                for slide in (section.get("slides") or []) if isinstance(section, dict) and section.get("kind") == "spotlight" else []:
-                    cta = slide.get("cta") if isinstance(slide, dict) and isinstance(slide.get("cta"), dict) else {}
-                    if cta.get("action") == "open-form":
-                        form_buttons.append({"action": "openForm", "audienceId": cta.get("audienceId")})
             if any(b.get("action") == "openForm" and not str(b.get("audienceId") or "").strip() for b in form_buttons):
                 issues.append({
                     "severity": "error",
                     "title": "A button opens a form but no campaign is selected",
                     "fix": "Pick a campaign for it, or change the button back to a link. Right now it does nothing when tapped.",
+                    **cctx,
+                })
+            # A catalogue spotlight 'open-form' button without a campaign is not drawn at all.
+            unwired_spotlight = False
+            for section in (p.get("columnSections") or []) if c.get("type") == "courseCatalog" else []:
+                for slide in (section.get("slides") or []) if isinstance(section, dict) and section.get("kind") == "spotlight" else []:
+                    cta = slide.get("cta") if isinstance(slide, dict) and isinstance(slide.get("cta"), dict) else {}
+                    if cta.get("action") == "open-form" and not str(cta.get("audienceId") or "").strip():
+                        unwired_spotlight = True
+            if unwired_spotlight:
+                issues.append({
+                    "severity": "error",
+                    "title": "A spotlight button opens a form but no campaign is selected",
+                    "fix": "Pick a campaign for it, or change it to a link. Until then the button is hidden from visitors.",
                     **cctx,
                 })
             if c.get("type") == "htmlPage":

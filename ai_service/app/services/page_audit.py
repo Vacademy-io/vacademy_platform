@@ -111,30 +111,34 @@ def _strings(node: Any, out: List[str], depth: int = 0) -> None:
             _strings(v, out, depth + 1)
 
 
-# Keys whose values are data, not words a visitor reads: ids, links, colours,
-# enum tokens. The learner's i18n uses the same rule (catalogue-i18n.ts:
-# "keys ending in Color / Image / Mode … are never translated").
+# Keys whose STRING values are data, not words a visitor reads: ids, links,
+# colours, enum tokens. The learner's i18n uses the same rule (catalogue-i18n.ts:
+# "keys ending in Color / Image / Mode … are never translated"). Only the plain
+# string under such a key is skipped: an object or list under it (a link's
+# label, an image's alt, a button under `secondaryAction`) is still read.
 _NON_TEXT_KEY_RE = re.compile(
-    r"^(?:id|ids|url|urls|route|target|href|link|src|image|images|icon|iconName|code|codes|slug|slugs|tags?|"
+    r"^(?:id|ids|url|urls|route|target|href|link|src|image|images|icon|iconName|code|codes|slug|slugs|"
     r"color|colour|param|mode|variant|style|layout|kind|action|placement|showWhen)$"
     r"|[a-z0-9](?:Id|Ids|Url|Urls|Route|Target|Href|Link|Src|Image|Images|Icon|IconName|Code|Codes|Slug|Slugs|"
-    r"Tags?|Color|Colour|Param|Mode|Variant|Style|Layout|Kind|Action|Placement)$"
+    r"Color|Colour|Param|Mode|Variant|Style|Layout|Kind|Action|Placement)$"
 )
 
 
-def text_values(node: Any, out: List[str], depth: int = 0) -> None:
-    """Like ``_strings`` but only the values a visitor reads (fidelity review)."""
+def text_values(node: Any, out: List[str], depth: int = 0, data: bool = False) -> None:
+    """Like ``_strings`` but only the values a visitor reads (fidelity review).
+
+    ``data``: the strings directly under this node sit under a data key."""
     if depth > 6 or node is None:
         return
     if isinstance(node, str):
-        out.append(node)
+        if not data:
+            out.append(node)
     elif isinstance(node, dict):
         for k, v in node.items():
-            if not (isinstance(k, str) and _NON_TEXT_KEY_RE.search(k)):
-                text_values(v, out, depth + 1)
+            text_values(v, out, depth + 1, isinstance(k, str) and bool(_NON_TEXT_KEY_RE.search(k)))
     elif isinstance(node, list):
         for v in node:
-            text_values(v, out, depth + 1)
+            text_values(v, out, depth + 1, data)
 
 
 def _heading_of(props: Dict[str, Any]) -> Optional[str]:
@@ -457,9 +461,10 @@ def audit_page(
     """Return the visible defects in a composed page, worst kind first.
 
     ``fidelity``: the page reproduces a design (page meta ``designSource``),
-    so the length advice is dropped and a heading a design deliberately splits
-    across consecutive learningPath sections (featured path, then "more
-    paths") is not a duplicate. Every defect a visitor would see still counts.
+    so the length advice is dropped and a heading a design deliberately
+    repeats on learningPath sections (a featured path, then "more paths" —
+    adjacent or not; every section sharing the heading must be a learningPath)
+    is not a duplicate. Every defect a visitor would see still counts.
     """
     issues: List[Dict[str, Any]] = []
     components = [c for c in _walk(page.get("components") or [])]

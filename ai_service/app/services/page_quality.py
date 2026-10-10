@@ -263,10 +263,16 @@ def _review_page(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]]
                              "Set style.layout.width and paddings on key sections; add an ornament or divider to the hero or CTA (see style_schema).", weight=8))
 
     # ── hero quality ─────────────────────────────────────────────────────
-    catalog_hero = _catalog_hero(hero) if hero is not None else None
-    if catalog_hero is not None and not str(catalog_hero.get("title") or "").strip():
-        issues.append(_issue("hero-no-headline", "fix", "The catalogue hero has no headline.", "Set props.hero.title.", hero.get("id"), 10))
-    if hero is not None and catalog_hero is None:
+    # A catalogue hero owns the fold for the structure rules above, but every
+    # heroSection is still checked on its own: a catalogue hero must not hide
+    # an empty or half-empty hero further down. Standard mode checks the first
+    # heroSection (as it always has); fidelity mode checks each of them.
+    for c in comps:
+        catalog_hero = _catalog_hero(c)
+        if catalog_hero is not None and not str(catalog_hero.get("title") or "").strip():
+            issues.append(_issue("hero-no-headline", "fix", "The catalogue hero has no headline.", "Set props.hero.title.", c.get("id"), 10))
+    hero_sections = [c for c in comps if c.get("type") == "heroSection"]
+    for hero in hero_sections if fidelity else hero_sections[:1]:
         p = hero.get("props") or {}
         left = p.get("left") if isinstance(p.get("left"), dict) else {}
         title = left.get("title") or p.get("title") or ""
@@ -339,18 +345,37 @@ def _finish(issues: List[Dict[str, Any]], summary: str) -> Dict[str, Any]:
     }
 
 
+def audit_kind(issue: Dict[str, Any], fidelity: bool) -> str:
+    """
+    ``fix`` / ``warn`` for one ``page_audit`` issue. Audit issues carry
+    ``severity`` ('fix' | 'warn'), not ``kind``, so standard mode has always
+    merged them as warnings (kept as is: its verdicts must not move). Fidelity
+    mode drops most of the review's own fix items, which leaves the audit as
+    its correctness gate — there an audit ``fix`` is a fix.
+    """
+    if issue.get("kind") == "fix" or (fidelity and issue.get("severity") == "fix"):
+        return "fix"
+    return "warn"
+
+
 def review_with_audit(page: Dict[str, Any], global_settings: Optional[Dict[str, Any]], page_type: str,
                       fidelity: bool = False) -> Dict[str, Any]:
     """Beauty review merged with the builder's defect audit (deduplicated by code)."""
     out = _review_page(page, global_settings, page_type, fidelity)
     try:
         from .page_audit import audit_page
-        seen = {i["code"] for i in out["issues"]}
+        # Standard mode keeps its historic dedupe (by code, against the review's own items). Fidelity
+        # mode dedupes per section: the audit is its main correctness gate, so
+        # a second broken section must not hide behind the first one's code.
+        def _key(code: str, component_id: Any) -> Any:
+            return (code, component_id) if fidelity else code
+
+        seen = {_key(i["code"], i.get("component_id")) for i in out["issues"]}
         for i in audit_page(page, global_settings, page_type=page_type or "homepage", fidelity=fidelity):
             code = str(i.get("code") or "")
-            if code in seen:
+            if _key(code, i.get("component_id")) in seen:
                 continue
-            kind = "fix" if i.get("kind") == "fix" else "warn"
+            kind = audit_kind(i, fidelity)
             out["issues"].append(_issue(code, kind, str(i.get("message") or ""), str(i.get("hint") or ""), i.get("component_id"), 8 if kind == "fix" else 4))
     except Exception:  # noqa: BLE001 — the beauty review stands on its own
         pass
@@ -359,5 +384,5 @@ def review_with_audit(page: Dict[str, Any], global_settings: Optional[Dict[str, 
     return _finish(out["issues"], out["summary"])
 
 
-__all__ = ["review_page", "review_with_audit", "review_mode", "content_page_type", "design_source_of",
+__all__ = ["review_page", "review_with_audit", "review_mode", "audit_kind", "content_page_type", "design_source_of",
            "SCORE_BAR", "REVIEW_PAGE_TYPES", "FIDELITY_SKIPPED_CODES"]

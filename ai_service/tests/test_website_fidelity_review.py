@@ -205,6 +205,7 @@ def bv_backend(monkeypatch):
     row = {"id": "cat-bv", "tag_name": "main-site", "status": "ACTIVE", "is_default": True,
            "catalogue_json": json.dumps(site), "updated_at": "2026-10-09T10:00:00"}
     rec = _Saves()
+    rec.row = row
     base = fake_admin_core([])
 
     async def _call(ctx_, method, path, params=None, body=None, timeout=None):
@@ -270,8 +271,11 @@ async def test_create_page_with_a_design_source_is_reviewed_in_fidelity_mode(bv_
     assert out["quality"]["mode"] == "fidelity" and out["quality"]["passes"] is True, out["quality"]
     assert not [i for i in out["design_issues"] if i["severity"] == "error"], out["design_issues"]
     saved = bv_backend.saved[-1]["pages"][-1]
-    assert saved["meta"] == {"designSource": {"kind": "figma", "url": FIGMA_URL.split("&")[0], "fileKey": "AbCdEf0123456789xyz",
-                                              "nodeId": "1:247", "frame": "Courses"}, "pageType": "catalog"}
+    # The published catalogue JSON is public: the page keeps kind / node / frame, never the link or file key.
+    assert saved["meta"] == {"designSource": {"kind": "figma", "nodeId": "1:247", "frame": "Courses"}, "pageType": "catalog"}
+    assert "AbCdEf0123456789xyz" not in json.dumps(bv_backend.saved[-1]) and "figma.com" not in json.dumps(bv_backend.saved[-1])
+    # ...while the caller gets back what it sent, cleaned, and is told so.
+    assert out["design_source"]["fileKey"] == "AbCdEf0123456789xyz" and "NOT stored" in out["design_source_note"]
     # The website review picks the mode up from the page itself.
     async def _draft(ctx_, catalogue_id):
         return {"id": "rev-d", "revision_no": 7, "source": "AI_COPILOT", "catalogue_json": json.dumps(bv_backend.saved[-1])}
@@ -301,7 +305,8 @@ async def test_create_site_with_a_design_source_marks_every_page(bv_backend):
     assert out["created_site"] is True and out["review_mode"] == "fidelity"
     created = json.loads(bv_backend.created[0]["catalogue_json"])
     assert [p["meta"]["pageType"] for p in created["pages"]] == ["catalog", "catalog", "about"]
-    assert all(p["meta"]["designSource"]["fileKey"] == "AbCdEf0123456789xyz" for p in created["pages"])
+    assert all(p["meta"]["designSource"] == {"kind": "figma", "nodeId": "1:247"} for p in created["pages"])
+    assert "AbCdEf0123456789xyz" not in json.dumps(created) and "AbCdEf0123456789xyz" not in json.dumps(bv_backend.saved[-1])
     # No error-level design issue on any page of the faithful site.
     for route, issues in (out.get("design_issues") or {}).items():
         assert not [i for i in issues if i["severity"] == "error"], (route, issues)
@@ -391,3 +396,198 @@ async def test_link_lead_form_surface_path_wires_just_one_button(bv_backend):
                       "surface_path": "props.pathExtras[0].comingSoon[0].audienceId"})
     path = next(c for c in bv_backend.saved[-1]["pages"][2]["components"] if c["id"] == "paths")
     assert path["props"]["pathExtras"][0]["comingSoon"][0]["audienceId"] == BV_TALK
+
+
+# ── review findings (lane b45) ───────────────────────────────────────────
+def test_a_single_unbound_section_alone_fails_fidelity_review():
+    """The audit is fidelity mode's correctness gate: its `fix` items are fixes there."""
+    for comp in (
+        {"id": "path", "type": "learningPath", "props": {"title": "Paths", "mode": "list"}},
+        {"id": "cta", "type": "ctaBanner", "props": {"heading": "Join", "button": {"text": ""}}},
+        {"id": "grid", "type": "featureGrid", "props": {"headerText": "Why", "features": []}},
+    ):
+        page = {"route": "home", "meta": {"designSource": {"kind": "figma"}}, "components": [
+            {"id": "hero", "type": "heroSection", "props": {"layout": "centered", "left": {
+                "title": "Brahm Varchas", "buttons": [{"text": "Explore", "action": "navigate", "target": "#paths"}]}}},
+            comp,
+        ]}
+        page_type, fidelity = review_mode(page)
+        r = review_with_audit(page, None, page_type or "homepage", fidelity=fidelity)
+        assert fidelity and not r["passes"], (comp["id"], r)
+        assert [i["component_id"] for i in r["issues"] if i["kind"] == "fix"] == [comp["id"]], r["issues"]
+        # Standard mode reports the audit exactly as before (merged as warnings).
+        std = review_with_audit(page, None, "homepage")
+        assert all(i["kind"] == "warn" for i in std["issues"] if i.get("component_id") == comp["id"])
+
+
+def test_fidelity_mode_fails_broken_sections_without_any_placeholder_copy():
+    page = {"route": "home", "components": [
+        {"id": "path", "type": "learningPath", "props": {"title": "Paths", "productPageCode": ""}},
+        {"id": "cta", "type": "ctaBanner", "props": {"heading": "Join", "button": {"text": ""}}},
+        {"id": "grid", "type": "featureGrid", "props": {"headerText": "Why", "features": []}},
+    ]}
+    r = review_with_audit(page, None, "homepage", fidelity=True)
+    assert not r["passes"]
+    assert {"path-unbound", "cta-no-button", "empty-section"} <= set(_issues(r, "fix"))
+    assert "placeholder-copy" not in _issues(r)
+
+
+def test_two_broken_sections_of_the_same_kind_are_both_reported_in_fidelity_mode():
+    page = {"route": "home", "components": [
+        {"id": "a", "type": "featureGrid", "props": {"headerText": "Why", "features": []}},
+        {"id": "b", "type": "stepsProcess", "props": {"headerText": "How", "steps": []}},
+    ]}
+    r = review_with_audit(page, None, "homepage", fidelity=True)
+    assert sorted(i["component_id"] for i in r["issues"] if i["code"] == "empty-section") == ["a", "b"]
+
+
+def test_a_catalogue_hero_does_not_hide_a_broken_hero_section():
+    catalog = copy.deepcopy(bv_site()["pages"][0]["components"][0])
+    page = {"route": "home", "components": [
+        catalog,
+        {"id": "split", "type": "heroSection", "props": {"layout": "split", "left": {"title": ""}}},
+    ]}
+    for fidelity in (False, True):
+        r = review_with_audit(page, None, "homepage", fidelity=fidelity)
+        fixes = {(i["code"], i.get("component_id")) for i in r["issues"] if i["kind"] == "fix"}
+        assert {("hero-no-headline", "split"), ("hero-split-no-image", "split")} <= fixes, (fidelity, r["issues"])
+        assert not r["passes"]
+    # Fidelity mode checks every heroSection, not just the first.
+    two = {"route": "x", "components": [
+        {"id": "h1", "type": "heroSection", "props": {"layout": "centered", "left": {"title": "One", "buttons": [{"text": "Go"}]}}},
+        {"id": "h2", "type": "heroSection", "props": {"layout": "split", "left": {"title": "Two", "buttons": [{"text": "Go"}]}}},
+    ]}
+    r = review_page(two, None, "about", fidelity=True)
+    assert ("hero-split-no-image", "h2") in {(i["code"], i.get("component_id")) for i in r["issues"]}
+
+
+def test_fidelity_placeholder_check_reads_text_inside_link_image_and_tag_objects():
+    def page(props):
+        return {"route": "x", "components": [{"id": "c", "type": "featureGrid", "props": {
+            "headerText": "Why", "features": [{"title": "A"}, {"title": "B"}, {"title": "C"}], **props}}]}
+    for props in (
+        {"ctaLink": {"label": "Lorem ipsum", "url": "/x"}},
+        {"heroImage": {"src": "https://cdn.x/a.png", "alt": "Your institute name"}},
+        {"tags": ["Lorem ipsum"]},
+        {"secondaryAction": {"text": "Description here"}},
+    ):
+        r = review_with_audit(page(props), None, "about", fidelity=True)
+        assert "placeholder-copy" in _issues(r, "fix"), props
+    # The data values themselves are still skipped.
+    r = review_with_audit(page({"ctaLink": "https://example.com/placeholder", "heroImage": "placeholder.png"}),
+                          None, "about", fidelity=True)
+    assert "placeholder-copy" not in _issues(r)
+
+
+def test_publish_checks_word_an_unwired_spotlight_as_hidden():
+    config = {"pages": [{"id": "p", "route": "home", "seo": {"metaDescription": "x"}, "components": [
+        {"id": "cat", "type": "courseCatalog", "props": {"columnSections": [
+            {"id": "s", "kind": "spotlight", "slides": [{"id": "a", "title": "F", "cta": {"label": "Ask", "action": "open-form"}}]}]}},
+    ]}]}
+    [issue] = [i for i in run_publish_checks(config) if i["severity"] == "error"]
+    assert issue["title"] == "A spotlight button opens a form but no campaign is selected"
+    assert "hidden" in issue["fix"] and "does nothing" not in issue["fix"]
+
+
+@pytest.mark.asyncio
+async def test_lead_summary_gives_every_surface_its_path_and_the_spotlight_its_own_problem(bv_backend):
+    site = bv_site()
+    cat = site["pages"][0]["components"][0]
+    cat["props"].setdefault("columnSections", []).append(
+        {"id": "spot", "kind": "spotlight", "slides": [{"id": "s1", "title": "Flagship", "cta": {"label": "Ask us", "action": "open-form"}}]})
+    site["pages"][2]["components"][0]["props"]["left"]["buttons"] = [
+        {"text": "Talk", "action": "openForm", "audienceId": BV_TALK}, {"text": "Notify", "action": "openForm"}]
+    bv_backend.row["catalogue_json"] = json.dumps(site)
+    out = await website({"action": "lead_summary", "tag_name": "main-site"})
+    every = out["forms"] + out["forms_without_campaign"]
+    assert all(f.get("surface_path") for f in every), [f for f in every if not f.get("surface_path")]
+    hero = {f["surface_path"] for f in every if f["section_id"] == "lp-hero"}
+    assert hero == {"props.left.buttons[0].audienceId", "props.left.buttons[1].audienceId"}
+    spot = next(f for f in out["forms_without_campaign"] if f["section_id"] == "home-catalog")
+    assert spot["problem"] == "is hidden until a campaign is chosen"
+
+
+@pytest.mark.asyncio
+async def test_link_lead_form_on_a_named_page_never_falls_back_to_the_site_chrome(bv_backend):
+    out = await edit({"action": "link_lead_form", "tag_name": "main-site", "page_route": "home",
+                      "section_id": "footer", "audience_id": BV_TALK})
+    assert out["error"] == "unknown_section"
+    out = await edit({"action": "link_lead_form", "tag_name": "main-site", "page_route": "no-such-page",
+                      "section_id": "footer", "audience_id": BV_TALK})
+    assert out["error"] == "unknown_page"
+    assert bv_backend.saved == []
+
+
+@pytest.mark.asyncio
+async def test_link_lead_form_on_a_chrome_section_without_an_id_reports_not_a_form(bv_backend):
+    site = bv_site()
+    site["globalSettings"]["layout"]["header"].pop("id", None)
+    bv_backend.row["catalogue_json"] = json.dumps(site)
+    out = await edit({"action": "link_lead_form", "tag_name": "main-site", "section_id": "header", "audience_id": BV_TALK})
+    assert out["error"] == "not_a_form" and "header" in out["message"]
+
+
+@pytest.mark.asyncio
+async def test_create_page_with_a_design_source_reports_an_unbound_section_as_an_error(bv_backend):
+    page = {"route": "paths-figma", "components": [
+        {"id": "hero", "type": "heroSection", "props": {"layout": "centered", "left": {"title": "Paths", "buttons": [{"text": "See", "action": "navigate", "target": "#p"}]}}},
+        {"id": "p", "type": "learningPath", "props": {"title": "Pick a path", "mode": "list"}},
+    ]}
+    out = await edit({"action": "create_page", "tag_name": "main-site", "page": page, "design_source": FIGMA_URL})
+    assert out["review_mode"] == "fidelity"
+    assert [i["code"] for i in out["design_issues"] if i["severity"] == "error"] == ["path-unbound"]
+    assert out["quality"]["passes"] is False
+    # Without a design source, design_issues are reported exactly as before (warnings).
+    page["route"] = "paths-plain"
+    out = await edit({"action": "create_page", "tag_name": "main-site", "page": page})
+    assert not [i for i in out["design_issues"] if i["severity"] == "error"]
+
+
+@pytest.mark.asyncio
+async def test_create_site_takes_a_design_source_per_page(bv_backend):
+    pages = copy.deepcopy(bv_site()["pages"])
+    pages[0]["design_source"] = {"url": "https://www.figma.com/design/AbCdEf0123456789xyz/BV?node-id=1-2", "frame": "Home"}
+    pages[2]["design_source"] = {"kind": "figma", "node_id": "3-9", "frame": "Paths"}
+    out = await edit({"action": "create_site", "new_site_name": "bv-frames", "pages": pages,
+                      "design_source": {"kind": "figma", "node_id": "1-247"}})
+    created = json.loads(bv_backend.created[0]["catalogue_json"])
+    assert [p["meta"]["designSource"] for p in created["pages"]] == [
+        {"kind": "figma", "nodeId": "1:2", "frame": "Home"}, {"kind": "figma", "nodeId": "1:247"},
+        {"kind": "figma", "nodeId": "3:9", "frame": "Paths"}]
+    assert set(out["design_sources"]) == {"home", "courses", "learning-paths"}
+    assert "design_source" not in json.dumps([{k: v for k, v in p.items() if k != "meta"} for p in created["pages"]])
+
+
+@pytest.mark.asyncio
+async def test_update_page_sets_and_clears_a_design_source(bv_backend, monkeypatch):
+    out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                      "design_source": {"url": FIGMA_URL, "frame": "Paths"}})
+    assert out["saved_as"] == "draft" and out["review_mode"] == "fidelity" and out["quality"]["mode"] == "fidelity"
+    saved = bv_backend.saved[-1]
+    lp = saved["pages"][2]
+    assert lp["meta"] == {"designSource": {"kind": "figma", "nodeId": "1:247", "frame": "Paths"}, "pageType": "about"}
+    assert lp["components"] == bv_site()["pages"][2]["components"] and "figma.com" not in json.dumps(saved)
+
+    async def _draft(ctx_, catalogue_id):
+        return {"id": "rev-d", "revision_no": 7, "source": "AI_COPILOT", "catalogue_json": json.dumps(bv_backend.saved[-1])}
+    monkeypatch.setattr(website_data, "get_draft", _draft)
+    got = await website({"action": "get_page", "tag_name": "main-site", "page_route": "learning-paths"})
+    assert got["design_source"] == {"kind": "figma", "nodeId": "1:247", "frame": "Paths"}
+    assert got["review_mode"] == "fidelity" and got["page_type"] == "about"
+
+    out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                      "design_source": {"clear": True}})
+    assert out["review_mode"] == "standard" and "meta" not in bv_backend.saved[-1]["pages"][2]
+    out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths",
+                      "design_source": {"url": "http://insecure.example/x"}})
+    assert out["error"] == "invalid_design_source"
+    out = await edit({"action": "update_page", "tag_name": "main-site", "page_route": "learning-paths"})
+    assert out["error"] == "missing_argument"
+
+
+@pytest.mark.asyncio
+async def test_review_accepts_fidelity_sent_as_a_string(bv_backend):
+    out = await website({"action": "review", "tag_name": "main-site", "fidelity": "true"})
+    assert all(p.get("mode") == "fidelity" for p in out["pages"].values()) and out["passes"] is True
+    out = await website({"action": "review", "tag_name": "main-site", "fidelity": "false"})
+    assert not any("mode" in p for p in out["pages"].values())

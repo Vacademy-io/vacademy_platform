@@ -76,7 +76,10 @@ describe('publish checks — Knowledge Streams additions', () => {
         });
         const unwired = 'A button opens a form but no campaign is selected';
         expect(titles(site([band({ text: 'Talk to us', action: 'openForm' })]))).toEqual([unwired]);
-        expect(titles(site([spotlight({ label: 'Ask', action: 'open-form' })]))).toEqual([unwired]);
+        // The spotlight button is not drawn at all without a campaign: its own wording.
+        expect(titles(site([spotlight({ label: 'Ask', action: 'open-form' })]))).toEqual([
+            'A spotlight button opens a form but no campaign is selected',
+        ]);
         // Wired, switched off, unlabelled, or not the band variant: nothing to report.
         expect(titles(site([band({ text: 'Talk', action: 'openForm', audienceId: 'c1' })]))).toEqual([]);
         expect(titles(site([band({ text: 'Talk', action: 'openForm', enabled: false })]))).toEqual([]);

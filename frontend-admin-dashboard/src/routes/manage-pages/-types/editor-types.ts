@@ -224,6 +224,33 @@ export interface LearningPathProps {
     viewPathLabel?: string;
     emptyText?: string;
     backgroundColor?: string;
+    /** List mode, opt-in: "featured" = goal chips, a featured path and the other paths (learner LearningPathFeatured). */
+    listLayout?: 'cards' | 'featured';
+    /** Featured layout: the parts this section shows (each defaults to true). */
+    showGoals?: boolean;
+    showFeatured?: boolean;
+    showGrid?: boolean;
+    goalParam?: string;
+    /** First chip label (default "All paths"). */
+    allGoalsLabel?: string;
+    goals?: LearningPathGoal[];
+    featured?: { code?: string; badge?: string; image?: string };
+    /** Per-path extras (step labels, merged steps, coming-soon steps); not edited here, always kept. */
+    pathExtras?: unknown[];
+    formatLabels?: Record<string, string>;
+    /** "More learning paths" heading and the note on its right. */
+    moreTitle?: string;
+    moreNote?: string;
+    /** Opt-in: read goals, the featured path and path extras from this learningPath section on the page. */
+    sharedWith?: string;
+}
+
+/** A goal chip of the featured layout: matches the paths in these stream tags (folder course tag / slug). */
+export interface LearningPathGoal {
+    /** Kept in ?goal= */
+    key: string;
+    label: string;
+    tags?: string[];
 }
 
 /** Show a section only for certain query strings (mirrors the learner VisibleWhenRule). */

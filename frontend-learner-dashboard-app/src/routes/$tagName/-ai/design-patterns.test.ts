@@ -171,6 +171,16 @@ describe("design-pattern registry: shape", () => {
       expect(Object.keys(asJson(p.minimal)).length, p.id).toBeGreaterThan(0);
     }
   });
+
+  it("has a short, unique label per pattern (the editor shows it on a button)", () => {
+    const labels = DESIGN_PATTERNS.map((p) => p.label.trim());
+    expect(new Set(labels.map((l) => l.toLowerCase())).size).toBe(labels.length);
+    for (const p of DESIGN_PATTERNS) {
+      expect(p.label.trim().length, p.id).toBeGreaterThan(0);
+      expect(p.label.length, p.id).toBeLessThanOrEqual(28);
+      expect(p.label, p.id).not.toMatch(/[<>]/);
+    }
+  });
 });
 
 describe("design-pattern registry: every variant literal has a pattern", () => {
@@ -356,6 +366,24 @@ describe("design-pattern registry: recipes and contracts", () => {
           for (const id of s.patterns) expect(findDesignPattern(id)?.component, `${r.id}: ${id}`).toBe(s.component);
       for (const id of r.site) expect(["header", "footer", "globalSettings"]).toContain(findDesignPattern(id)?.component);
     }
+  });
+
+  it("a recipe page the fixture has is laid out as the fixture is, with the same section props", () => {
+    const fixturePages = FIXTURE.pages as Array<{ route: string; components: Array<{ type: string; props: Record<string, unknown> }> }>;
+    let checked = 0;
+    for (const r of DESIGN_RECIPES) {
+      for (const page of r.pages) {
+        const real = fixturePages.find((p) => p.route === page.route);
+        if (!real) continue;
+        checked += 1;
+        expect(page.sections.map((s) => s.component), `${r.id}/${page.route}`).toEqual(real.components.map((c) => c.type));
+        page.sections.forEach((s, i) => {
+          for (const [key, value] of Object.entries(s.props ?? {}))
+            expect(real.components[i]!.props[key], `${r.id}/${page.route}#${i}.${key}`).toEqual(value);
+        });
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(2);
   });
 
   it("contracts name existing patterns", () => {

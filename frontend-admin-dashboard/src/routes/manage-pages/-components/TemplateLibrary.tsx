@@ -28,6 +28,13 @@ export const TemplateLibrary = () => {
     const applyTemplate = (template: PageTemplate) => {
         if (!config || !selectedPageId) return;
 
+        if (template.applyLayout) {
+            // Site chrome (header / footer): merged onto the current layout, pages untouched.
+            const layout = template.applyLayout(config.globalSettings?.layout, tTemplates);
+            updateConfig({ ...config, globalSettings: { ...config.globalSettings, layout } });
+            return;
+        }
+
         const newPages = config.pages.map((page) => {
             if (page.id !== selectedPageId) return page;
             return template.category === 'page'
@@ -41,7 +48,7 @@ export const TemplateLibrary = () => {
 
     const handleTemplateClick = (template: PageTemplate) => {
         if (!selectedPageId) return;
-        if (template.category === 'page') {
+        if (template.category === 'page' && !template.applyLayout) {
             // Warn before replacing all components
             setPendingTemplate(template);
         } else {
@@ -95,7 +102,11 @@ export const TemplateLibrary = () => {
                         <span className="text-sm font-medium text-gray-800">{template.name}</span>
                         <span className="text-xs text-gray-500">{template.description}</span>
                         <span className="mt-1 rounded bg-gray-100 px-2 py-0.5 text-2xs font-medium text-gray-500 uppercase tracking-wide">
-                            {template.category === 'page' ? 'Replaces page' : 'Inserts section'}
+                            {template.applyLayout
+                                ? 'Sets header & footer'
+                                : template.category === 'page'
+                                  ? 'Replaces page'
+                                  : 'Inserts section'}
                         </span>
                     </button>
                 ))}

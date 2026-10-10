@@ -16,7 +16,8 @@ and the model reads one schema. Actions:
     analytics       traffic + lead counts for the last N days
     lead_summary    every lead-capture surface on the site and whether it is wired
     audit           the dashboard's pre-publish checks
-    brief_checklist the interview an AI should run before generating a site
+    brief_checklist the interview an AI should run before generating a site (with design_source: data questions only)
+    playbook        the steps to rebuild a design (Figma, screenshots, a site) as a draft site, with budgets
     schema          the component contract (+ header/footer chrome, site-settings contract, pattern index)
     patterns        design patterns: what a look is called, its minimal and full JSON, what it needs
     list_media      images the caller has uploaded (for logos / photos)
@@ -77,6 +78,14 @@ from .website_data import (
     stale_note,
 )
 
+from .website_playbook import (
+    DESIGN_DATA_CHECKLIST,
+    DESIGN_INTERVIEW_RULES,
+    PLAYBOOK_SOURCES,
+    build_playbook,
+    normalise_source as normalise_playbook_source,
+)
+
 logger = logging.getLogger(__name__)
 
 WEBSITE_TOOL_NAME = "website"
@@ -85,6 +94,7 @@ WEBSITE_GROUP_KEY = "website_builder"
 WEBSITE_ACTIONS = (
     "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
     "brief_checklist", "schema", "patterns", "list_media", "preview", "compare", "strings", "data_inventory", "data_audit",
+    "playbook",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -197,9 +207,13 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "it feeds, leads received, and forms wired to nothing.\n"
             "- audit (tag_name, page_route?): the dashboard's pre-publish checks — what is broken or "
             "missing before publishing.\n"
-            "- brief_checklist (tag_name?): the interview to run BEFORE composing a website or page — "
+            "- brief_checklist (tag_name?, design_source?): the interview to run BEFORE composing a website or page — "
             "what to ask (colours, logo, photos, tone, pages, courses, enquiries), what is already "
-            "known, and the available presets/fonts/design languages.\n"
+            "known, and the available presets/fonts/design languages. With design_source (a Figma / design link, or "
+            "{kind:'screenshot'|'url'}) the design answers the look, so it asks only the data questions.\n"
+            "- playbook (source: figma|screenshot|url): call it FIRST when the admin gives a design — the steps to "
+            "rebuild it as a draft site with this server's actions, the Figma call budget, stop conditions, and a "
+            "Figma → pattern table (which design cues mean which pattern).\n"
             "- schema (page_type?, section_types?): the component contract you compose pages in — the "
             "block types with what each does, design rules, the archetype for a page type, and full "
             "example props for the section_types you name, the header/footer contract (`chrome`, written with "
@@ -224,10 +238,10 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "tag_name": {"type": "string", "description": "Site name (from `list`). Optional when there is a single/default site."},
                 "page_route": {"type": "string", "description": "Page route within the site, e.g. 'home', 'about', 'admissions'. Defaults to the first page."},
                 "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "schema: which page archetype's rules to include. review: judge the page as this type (default: the type it was created as, else what its content says, else by position/route)."},
-                "fidelity": {"type": "boolean", "description": "review: true = the page reproduces a design (taste rules skipped); default: on for pages saved with design_source."},
+                "fidelity": {"type": "boolean", "description": "review: true = the page reproduces a design (taste rules skipped); default: on for pages saved with design_source. preview: design-matching mode (1440 wide, sections, full height as tiles); on by default for pages created from a design."},
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
                 "detail": {"type": "boolean", "description": "context: add course tags / language / format / invites, folder libraries and product-page steps."},
-                "library_id": {"type": "string", "description": "data_audit: the folder library to check courses against when the site names none yet."},
+                "library_id": {"type": "string", "description": "data_audit: the folder library to check courses against when the site names none yet. context: also list this folder library's folders (id from folder_libraries)."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
                 "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive). patterns: words to match against pattern ids, looks and Figma cues."},
@@ -239,7 +253,6 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "lang": {"type": "string", "description": "preview / compare: render in this site language (a code from the site's languages, e.g. 'hi')."},
                 "sections": {"type": "boolean", "description": "preview: also return each top-level section's id and box (top, height in px)."},
                 "click_text": {"type": "string", "description": "preview: click the element with this text first (opens a mega menu, a tab)."},
-                "fidelity": {"type": "boolean", "description": "preview: design-matching mode (1440 wide, sections, full height as tiles). On by default for pages created from a design."},
                 "max_height": {"type": "integer", "description": "preview: tallest capture in px (default and cap 16000)."},
                 "reference": {
                     "type": "object",
@@ -257,7 +270,17 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "limit": {"type": "integer", "description": "list_media: max items (default 24). strings: max texts (default 200, max 500)."},
                 "locale": {"type": "string", "description": "strings: the language to check, e.g. 'hi' (not the site's base language)."},
                 "offset": {"type": "integer", "description": "strings: skip this many untranslated texts (paging)."},
-                "library_id": {"type": "string", "description": "context: also list this folder library's folders (id from folder_libraries)."},
+                "source": {"type": "string", "enum": ["figma", "screenshot", "url"], "description": "playbook: what the design is — a Figma file, screenshots, or an existing website."},
+                "design_source": {
+                    "type": "object",
+                    "description": "brief_checklist: the design the site is rebuilt from. The interview then asks only data questions. Never put an access token here.",
+                    "properties": {
+                        "kind": {"type": "string", "enum": ["figma", "screenshot", "url", "other"]},
+                        "url": {"type": "string", "description": "https link to the design (a figma.com/design/… URL, or the site to rebuild)."},
+                        "node_id": {"type": "string", "description": "Figma frame/node id, e.g. '1:247'."},
+                        "frame": {"type": "string", "description": "Frame or screen name in the design."},
+                    },
+                },
             },
             "required": ["action"],
         },
@@ -1144,6 +1167,20 @@ async def _action_brief_checklist(args: Dict[str, Any], ctx: ToolContext) -> Dic
     media = await _load_media(ctx, "any", 12)
     if media:
         known["uploaded_images"] = media
+    design = _checklist_design_source(args.get("design_source"))
+    if design:
+        # The design answers the look; only the data behind it is left to ask about.
+        return {
+            "rules": DESIGN_INTERVIEW_RULES,
+            "design_source": design,
+            "checklist": DESIGN_DATA_CHECKLIST,
+            "known": _compact(known, max_items=40, max_str=160),
+            "choices": {"fonts": FONT_CHOICES, "page_types": PAGE_TYPES},
+            "then": (
+                f"Follow website(action='playbook', source='{design['playbook']}'). website(action='data_inventory') "
+                "has the folder libraries, tags and product pages the data questions refer to. No credits are used."
+            ),
+        }
     return {
         "rules": INTERVIEW_RULES,
         "checklist": BRIEF_CHECKLIST,
@@ -1159,6 +1196,32 @@ async def _action_brief_checklist(args: Dict[str, Any], ctx: ToolContext) -> Dic
         },
         "then": "Read website(action='schema', page_type=…) and compose the page JSON yourself; save it with website_edit(action='create_page' | 'create_site'). No credits are used.",
     }
+
+
+def _checklist_design_source(raw: Any) -> Optional[Dict[str, Any]]:
+    """brief_checklist's design_source → {kind, playbook, url?, node_id?, frame?}, or None (no design given)."""
+    from .assistant_tools_website_edit import DESIGN_SOURCE_KINDS, clean_design_source
+    if isinstance(raw, str) and raw.strip().lower() in DESIGN_SOURCE_KINDS:
+        raw = {"kind": raw.strip().lower()}
+    design = clean_design_source(raw) if raw else None
+    if not design:
+        return None
+    out: Dict[str, Any] = {"kind": design["kind"]}
+    for src, dst in (("url", "url"), ("nodeId", "node_id"), ("frame", "frame")):
+        if design.get(src):
+            out[dst] = design[src]
+    out["playbook"] = normalise_playbook_source(design["kind"]) or "screenshot"
+    return out
+
+
+async def _action_playbook(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .assistant_tools_website_edit import authoring_catalog
+    raw = args.get("source")
+    source = normalise_playbook_source(raw) if raw else "figma"
+    if not source:
+        return _err("bad_source", message=f"source must be one of {', '.join(PLAYBOOK_SOURCES)}.",
+                    available=list(PLAYBOOK_SOURCES))
+    return build_playbook(source, authoring_catalog())
 
 
 _SCHEMA_OMIT_TYPES = frozenset({"header", "footer", "htmlPage"})   # chrome → set_layout; HTML → add_html_page
@@ -1270,7 +1333,10 @@ def _schema_chrome(catalog: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _pattern_index_entry(p: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": p.get("id"), "component": p.get("component"), "looks_like": p.get("looksLike")}
+    entry = {"id": p.get("id"), "component": p.get("component"), "looks_like": p.get("looksLike")}
+    if p.get("label"):
+        entry["label"] = p["label"]
+    return entry
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -1299,7 +1365,7 @@ _PATTERN_RULES = (
 
 
 def _pattern_detail(p: Dict[str, Any], with_json: bool) -> Dict[str, Any]:
-    keys = ("id", "component", "propPath", "looksLike", "figmaCues", "useWhen", "avoidWhen", "requires", "bound",
+    keys = ("id", "label", "component", "propPath", "looksLike", "figmaCues", "useWhen", "avoidWhen", "requires", "bound",
             "i18n", "reviewAs", "pitfalls")
     out = {k: p.get(k) for k in keys if p.get(k) not in (None, "", [])}
     if with_json:
@@ -1308,6 +1374,14 @@ def _pattern_detail(p: Dict[str, Any], with_json: bool) -> Dict[str, Any]:
             out["full"] = p["full"]
             out["full_source"] = p.get("fullSource")
     return out
+
+
+def pattern_resource(pattern_id: str, catalog: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """One pattern in full (the MCP resource vacademy://patterns/{id}), or None for an unknown id."""
+    for p in catalog.get("patterns") or []:
+        if isinstance(p, dict) and p.get("id") == pattern_id:
+            return {**_pattern_detail(p, True), "rules": _PATTERN_RULES}
+    return None
 
 
 async def _action_patterns(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1549,6 +1623,7 @@ _ACTIONS = {
     "strings": _action_strings,
     "data_inventory": _action_data_inventory,
     "data_audit": _action_data_audit,
+    "playbook": _action_playbook,
 }
 
 

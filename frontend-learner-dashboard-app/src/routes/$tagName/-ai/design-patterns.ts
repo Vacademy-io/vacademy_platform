@@ -106,6 +106,8 @@ export interface PatternFullFrom {
 interface DesignPatternBase<C extends PatternComponent> {
   /** Stable id: 'catalog.hero', 'cta.band', 'footer.brand', 'global.palette'… */
   id: string;
+  /** Short name an admin reads (editor variant switcher, template library, MCP index): 'Catalogue hero'. */
+  label: string;
   component: C;
   /** Where `minimal` is written: 'props.hero', 'globalSettings.layout.header.props', 'globalSettings.theme.palette'. */
   propPath: string;
@@ -136,6 +138,8 @@ export interface DesignRecipeSection {
   /** Pattern ids combined in this one section (several opt-ins share one courseCatalog). */
   patterns: string[];
   note?: string;
+  /** Section props beyond its patterns' minimal JSON (e.g. the featured path section hides its own grid). */
+  props?: Record<string, unknown>;
 }
 
 export interface DesignRecipe {
@@ -170,6 +174,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── courseCatalog ───────────────────────────────────────────────────── */
   pattern({
     id: "catalog.hero",
+    label: "Catalogue hero",
     component: "courseCatalog",
     propPath: "props.hero",
     looksLike:
@@ -207,6 +212,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.resultsHeader",
+    label: "Results header",
     component: "courseCatalog",
     propPath: "props.hero.resultsHeader",
     looksLike: "A thin row above the results: 'Showing 22 courses', a chip with the current stream, and a boxed 'Sort: Most popular' select on the right.",
@@ -223,6 +229,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.quickFilters",
+    label: "Quick filters",
     component: "courseCatalog",
     propPath: "props.quickFilters + props.hero.quickFilterBar",
     looksLike: "A 'Quick filters:' label followed by small filled chips (Popular, New, Free, Bestseller, Hindi, Under ₹1000).",
@@ -252,6 +259,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.streams.icons",
+    label: "Stream icon tabs",
     component: "courseCatalog",
     propPath: "props.streams",
     looksLike:
@@ -277,6 +285,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.streams.pills",
+    label: "Stream pill tabs",
     component: "courseCatalog",
     propPath: "props.streams",
     looksLike: "A row of rounded pill tabs above the grid ('All courses', 'Science', 'Arts'…), sticky under the header.",
@@ -299,6 +308,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.filterSidebar.editorial",
+    label: "Editorial filter sidebar",
     component: "courseCatalog",
     propPath: "props.filterSidebar + priceFilter + categoryFilter + languageFilter",
     looksLike:
@@ -337,6 +347,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.filterSidebar.promo",
+    label: "Sidebar promo card",
     component: "courseCatalog",
     propPath: "props.filterSidebar.promo",
     looksLike: "A dark card under the filter card: small coloured eyebrow, a bold title, one line of text, a button, and a phone mock-up showing an app screen.",
@@ -358,6 +369,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.customFilters",
+    label: "Custom filters",
     component: "courseCatalog",
     propPath: "props.customFilters",
     looksLike: "Extra checkbox groups such as FORMAT (E-books, Live sessions…) and FOR (Parents, Students…) inside the filter sidebar.",
@@ -382,6 +394,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.cards.editorial",
+    label: "Editorial course cards",
     component: "courseCatalog",
     propPath: "props.render.cardStyle + props.render.card",
     looksLike:
@@ -403,6 +416,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.pagination.loadMore",
+    label: "Load more",
     component: "courseCatalog",
     propPath: "props.render.pagination + props.render.gridHeading",
     looksLike: "An 'All courses · Sorted by most popular' heading over the grid and a centred 'Load more courses' button with 'Showing 9 of 24' under it.",
@@ -419,6 +433,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.languageVersions",
+    label: "Language versions",
     component: "courseCatalog",
     propPath: "props.groupLanguageVersions + props.languageFilter",
     looksLike: "One card per course with EN / हिं chips instead of one card per language version.",
@@ -435,6 +450,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.sections.freeCourses",
+    label: "Start-free row",
     component: "courseCatalog",
     propPath: "props.columnSections[kind=free-courses]",
     looksLike: "Inside the results column, before the grid: 'New here? Start free' with 3 free course cards and 'See all N free →'.",
@@ -451,6 +467,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.sections.spotlight",
+    label: "Spotlight carousel",
     component: "courseCatalog",
     propPath: "props.columnSections[kind=spotlight]",
     looksLike:
@@ -491,6 +508,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "catalog.sections.comingSoon",
+    label: "Coming-soon cards",
     component: "courseCatalog",
     propPath: "props.columnSections[kind=coming-soon]",
     looksLike: "After the grid: 'Coming soon' with dashed cards, each a bell icon, a category name and a 'Notify me' button.",
@@ -509,6 +527,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── heroSection ─────────────────────────────────────────────────────── */
   pattern({
     id: "hero.editorial",
+    label: "Editorial hero",
     component: "heroSection",
     propPath: "props",
     looksLike:
@@ -539,6 +558,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── learningPath ────────────────────────────────────────────────────── */
   pattern({
     id: "learningPath.featured",
+    label: "Featured path",
     component: "learningPath",
     propPath: "props",
     looksLike:
@@ -570,6 +590,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "learningPath.moreGrid",
+    label: "More paths grid",
     component: "learningPath",
     propPath: "props",
     looksLike: "'More learning paths' — two-column path cards further down the page, after a band.",
@@ -586,6 +607,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "learningPath.pathExtras",
+    label: "Path extras",
     component: "learningPath",
     propPath: "props.pathExtras",
     looksLike: "Inside an opened path: two language versions shown as one step, and 'coming soon' steps with a Notify me action.",
@@ -604,6 +626,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── ctaBanner ───────────────────────────────────────────────────────── */
   pattern({
     id: "cta.band",
+    label: "Dark CTA band",
     component: "ctaBanner",
     propPath: "props",
     looksLike: "A full-width dark band: heading, one line of text, a filled (olive/primary) button with an arrow and an outlined light button.",
@@ -628,6 +651,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "cta.band.light",
+    label: "Light CTA band",
     component: "ctaBanner",
     propPath: "props",
     looksLike: "A taller light band ('For schools & institutions'): eyebrow, heading, text, an outlined dark button and a filled primary button.",
@@ -651,6 +675,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "cta.band.app",
+    label: "App band",
     component: "ctaBanner",
     propPath: "props",
     looksLike: "A dark app banner: eyebrow, heading, text and a button on the left, a phone showing an app screenshot on the right.",
@@ -675,6 +700,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── stepsProcess ────────────────────────────────────────────────────── */
   pattern({
     id: "steps.cards",
+    label: "Step cards",
     component: "stepsProcess",
     propPath: "props",
     looksLike: "'How it works': three white numbered cards in one row on a tinted band.",
@@ -693,6 +719,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── header (set_layout) ─────────────────────────────────────────────── */
   pattern({
     id: "header.editorial",
+    label: "Editorial header",
     component: "header",
     propPath: "globalSettings.layout.header.props",
     looksLike: "A 64px white header: logo only, small text nav with the current page bold in gold, a line search icon, a segmented हिन्दी | EN switch, and a cart icon only once the cart has items.",
@@ -723,6 +750,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "header.megaMenu",
+    label: "Mega menu",
     component: "header",
     propPath: "globalSettings.layout.header.props.navigation[type=megaMenu]",
     looksLike: "A nav item that opens a panel of stream tiles (120px images), the open stream's categories in a cream box, a legend and a footnote.",
@@ -751,6 +779,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── footer (set_layout) ─────────────────────────────────────────────── */
   pattern({
     id: "footer.brand",
+    label: "Brand footer",
     component: "footer",
     propPath: "globalSettings.layout.footer.props",
     looksLike: "A tinted footer: logo, large wordmark, description and tagline, a newsletter box, social icons, four link columns and a bottom bar with a language toggle.",
@@ -773,6 +802,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "footer.newsletter",
+    label: "Footer newsletter",
     component: "footer",
     propPath: "globalSettings.layout.footer.props.newsletter",
     looksLike: "'Stay connected' with an email field and a Subscribe button inside the brand footer.",
@@ -791,6 +821,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   /* ── globalSettings ──────────────────────────────────────────────────── */
   pattern({
     id: "global.palette",
+    label: "Palette",
     component: "globalSettings",
     propPath: "globalSettings.theme.palette",
     looksLike: "A named colour set used across the design: ink, body, muted text, brand, gold/accent highlights, cream/sand surfaces and hairline borders.",
@@ -816,6 +847,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.contentMaxWidth",
+    label: "Content width",
     component: "globalSettings",
     propPath: "globalSettings.theme.contentMaxWidth",
     looksLike: "Content sits in a column narrower than the frame (1152px on a 1440px frame).",
@@ -832,6 +864,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.fonts",
+    label: "Fonts",
     component: "globalSettings",
     propPath: "globalSettings.fonts",
     looksLike: "One body font across the design (e.g. Lato), with Devanagari runs in Noto Sans Devanagari.",
@@ -851,6 +884,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.courseFormats",
+    label: "Course formats",
     component: "globalSettings",
     propPath: "globalSettings.courseFormats + courseFormatOrder",
     looksLike: "A format taxonomy (E-books, Live sessions, Short film…) on card pills, the FORMAT filter and path steps.",
@@ -867,6 +901,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.courseLanguages",
+    label: "Course languages",
     component: "globalSettings",
     propPath: "globalSettings.courseLanguages",
     looksLike: "Language chips on cards and a LANGUAGE filter: one course, several language versions.",
@@ -891,6 +926,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.naming",
+    label: "Naming",
     component: "globalSettings",
     propPath: "globalSettings.naming",
     looksLike: "The site's own word for a level/course ('Format' instead of 'Level').",
@@ -907,6 +943,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.siteCart",
+    label: "Site cart",
     component: "globalSettings",
     propPath: "globalSettings.siteCart",
     looksLike: "One site-wide cart icon whose checkout is a store product page.",
@@ -923,6 +960,7 @@ export const DESIGN_PATTERNS: DesignPattern[] = [
   }),
   pattern({
     id: "global.i18n",
+    label: "Site languages",
     component: "globalSettings",
     propPath: "globalSettings.i18n",
     looksLike: "A language switcher; the site in two languages.",
@@ -972,7 +1010,8 @@ export const DESIGN_RECIPES: DesignRecipe[] = [
               "catalog.sections.comingSoon",
             ],
             note:
-              "Deep-merge the patterns' minimal objects into one section's props: merge nested objects key by key (hero, filterSidebar, render…) and concatenate arrays (columnSections, quickFilters, customFilters).",
+              "Deep-merge the patterns' minimal objects into one section's props: merge nested objects key by key (hero, filterSidebar, render…) and concatenate arrays (columnSections, quickFilters, customFilters). The hero carries the H1, so the section title is empty; the legacy level/session/tag filter groups are off (FORMAT and the sidebar replace them).",
+            props: { title: "", filtersConfig: [] },
           },
           { component: "ctaBanner", patterns: ["cta.band"] },
         ],
@@ -990,7 +1029,7 @@ export const DESIGN_RECIPES: DesignRecipe[] = [
         title: "Learning Paths",
         sections: [
           { component: "heroSection", patterns: ["hero.editorial"] },
-          { component: "learningPath", patterns: ["learningPath.featured", "learningPath.pathExtras"], note: "showGrid:false" },
+          { component: "learningPath", patterns: ["learningPath.featured", "learningPath.pathExtras"], note: "showGrid:false", props: { showGrid: false } },
           { component: "ctaBanner", patterns: ["cta.band.light"] },
           { component: "learningPath", patterns: ["learningPath.moreGrid"] },
           { component: "ctaBanner", patterns: ["cta.band.app"] },

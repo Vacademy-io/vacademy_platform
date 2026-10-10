@@ -1798,6 +1798,41 @@ _NO_COMMERCE_RULE = (
 )
 
 
+#: Pattern components that are page sections the composer may emit (header /
+#: footer are site chrome, globalSettings patterns are site settings).
+_PATTERN_CARD_SKIP = frozenset({"header", "footer", "globalSettings"})
+
+_PATTERN_CARDS_RULES = (
+    "## DESIGN PATTERNS — opt-in looks of our blocks (use one ONLY when the REFERENCE DESIGN shows it)\n"
+    "Each card is a named look of a component in the vocabulary: what it looks like, when NOT to use it, and the props "
+    "that produce it (merge `props` into that component's props). When a reference section matches a card, build it "
+    "from the card instead of the nearest generic look — e.g. a course grid of text-led cards with a stream label and "
+    "format chips is courseCatalog with render.cardStyle 'editorial', not a default grid. Several courseCatalog cards "
+    "combine into ONE courseCatalog: deep-merge their props (objects key by key, arrays concatenated). Text in "
+    "<angle brackets> is a placeholder: write your own copy from the brief, or leave the field empty. Every id "
+    "(libraryId, audienceId, productPageCode, course ids) stays EMPTY — the admin links them in the editor. Never "
+    "write numbers the widgets compute live (stats kinds, counts, prices). A card the reference does not show stays "
+    "off: the block's ordinary look is the default."
+)
+
+
+def _pattern_cards_block(catalog: Dict[str, Any], vocab_types: set) -> str:
+    """Compact pattern cards for the components this page may contain, or "" when the catalog has none."""
+    cards = []
+    for p in catalog.get("patterns") or []:
+        if not isinstance(p, dict) or not p.get("id"):
+            continue
+        component = p.get("component")
+        if component in _PATTERN_CARD_SKIP or component not in vocab_types:
+            continue
+        card = {"id": p["id"], "component": component, "looks": p.get("looksLike"), "avoid": p.get("avoidWhen"),
+                "props": p.get("minimal")}
+        cards.append({k: v for k, v in card.items() if v not in (None, "", [], {})})
+    if not cards:
+        return ""
+    return _PATTERN_CARDS_RULES + "\n" + json.dumps(cards, ensure_ascii=False)
+
+
 def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration: Any = None, site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     parts.append(
@@ -1863,6 +1898,11 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
             theme_locked=bool(fixed_global),
             locked_surface=_derive_dark_surface((fixed_global or {}).get("theme")) if fixed_global else None,
         ))
+        # Only with a reference design: the cards name looks to MATCH, so a
+        # page composed from a brief alone is prompted exactly as before.
+        cards = _pattern_cards_block(catalog, {c.get("type") for c in vocab})
+        if cards:
+            parts.append(cards)
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
 

@@ -1,4 +1,4 @@
-import { COMPONENT_VARIANTS } from '../-utils/component-variants';
+import { getComponentVariants } from '../-utils/component-variants';
 
 interface VariantSwitcherProps {
     componentType: string;
@@ -11,7 +11,7 @@ interface VariantSwitcherProps {
  * Clicking a variant deep-merges its props into the current component props.
  */
 export const VariantSwitcher = ({ componentType, currentProps, onApply }: VariantSwitcherProps) => {
-    const variants = COMPONENT_VARIANTS[componentType];
+    const variants = getComponentVariants(componentType);
     if (!variants || variants.length === 0) return null;
 
     // Deep merge helper — only merges one level deep (enough for our variant props)
@@ -61,7 +61,7 @@ export const VariantSwitcher = ({ componentType, currentProps, onApply }: Varian
                                     : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50'
                             }`}
                         >
-                            <span className="text-[10px] font-mono whitespace-pre leading-tight text-gray-400 mb-1 hidden">
+                            <span className="text-2xs font-mono whitespace-pre leading-tight text-gray-400 mb-1 hidden">
                                 {variant.thumbnail}
                             </span>
                             {variant.label}

@@ -63,9 +63,10 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     ),
     "catalog_data_edit": (
         "additive only; never deletes or renames existing records; new folder nodes start HIDDEN; tags are "
-        "appended; product pages are created DRAFT. Every action is a dry run unless dry_run=false; existing "
-        "folders change only in a library this tool created or no live site uses; the store sync never switches "
-        "a course off; activating a product page and invite payment vendors stay admin clicks"
+        "appended; product pages are created DRAFT. Every action is a dry run first: applying needs the dry run's "
+        "plan_token (10 minutes, refused when the data changed); a shown folder changes only while no live site "
+        "uses its library; the store sync never switches a course off; activating a product page and invite "
+        "payment vendors stay admin clicks"
     ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
@@ -135,7 +136,8 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "folders (new folders start hidden), append tags to courses (existing tags are kept), create product "
         "pages as DRAFT and add catalogue courses to a store page. It shows each change first and never deletes, "
         "renames or hides anything; activating a product page and payment settings stay with you. These are "
-        "live records, not drafts. Uses no AI credits."
+        "live records, not drafts: tags added to live courses change the site's filters at once, and courses "
+        "added to an active store page are on sale at once. Uses no AI credits."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."
@@ -203,8 +205,10 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
 #:   level: "view" | "edit"   (edit needs view — the page turns view on with it)
 #:   risk:  what an edit can touch — "drafts" (nothing goes live), "additive"
 #:          (only adds), "not_live" (only courses not live yet), "live_additive"
-#:          (adds live records, hidden / draft until an admin shows them; the
-#:          settings page never turns it on with the area's Edit level), "live"
+#:          (only adds, but to live records: new folders / pages start hidden or
+#:          draft, while tags on live courses and courses added to an active
+#:          store page show at once; the settings page never turns it on with
+#:          the area's Edit level), "live"
 #:          (changes what learners see straight away)
 #:   sub_label: the edit's own name, shown when an area has several edits
 MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {

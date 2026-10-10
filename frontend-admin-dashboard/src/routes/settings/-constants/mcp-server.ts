@@ -57,8 +57,9 @@ export interface McpToolCatalogEntry {
 
 /**
  * drafts: nothing goes live · additive: only adds · not_live: courses not live yet ·
- * live_additive: adds live records (hidden / draft until an admin shows them), never turned on by the
- * area's Edit level · live: learners see it at once.
+ * live_additive: only adds, but to live records (new folders / pages start hidden or draft; tags on live
+ * courses and courses added to an active store page show at once), never turned on by the area's Edit
+ * level · live: learners see it at once.
  */
 export type McpToolRisk = 'drafts' | 'additive' | 'not_live' | 'live_additive' | 'live';
 

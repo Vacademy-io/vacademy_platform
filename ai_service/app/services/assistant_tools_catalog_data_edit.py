@@ -12,8 +12,9 @@ Actions:
                            created HIDDEN; a matching folder gets the fields the
                            caller sends that differ — never its title (no
                            rename), parent (no move) or visibility, and only
-                           in a library this tool created or no live site uses.
-                           Nothing is ever deleted or cleared.
+                           while it is HIDDEN or no live (ACTIVE) site uses the
+                           library, whoever created it. Nothing is ever deleted
+                           or cleared.
     add_course_tags        appends slug-normalised tags; existing tags are kept
                            exactly. admin-core's update-course writes EVERY
                            field of the course and lower-cases its tags, so the
@@ -22,13 +23,21 @@ Actions:
                            round trip would change is refused.
     create_product_page    a DRAFT product page selling the given courses
                            through each one's DEFAULT invite (or the invite
-                           named), its payment option and cheapest ACTIVE plan.
+                           named), its payment option and plan — picked by the
+                           rule admin-core's catalogue sync uses. NOTE: admin-
+                           core does not gate DRAFT pages yet; anyone with the
+                           page's code can open it (follow-up for admin-core).
     sync_store             the product page's own "add catalogue courses"
                            (/{id}/sync-catalogue) with deactivateMissing=false:
                            adds courses, never switches one off.
 
 Every action is a dry run unless the caller passes dry_run=false, and returns
-exactly what it would change. Not here, on purpose (product decision 2):
+exactly what it would change plus a ``plan_token``: an HMAC over the caller,
+the action, its arguments and the plan computed from the data read, valid
+for 10 minutes. Applying (dry_run=false) requires that token and recomputes
+the plan from fresh data first: a different plan (other arguments, or data
+that changed since) is refused, so what is applied is what the admin saw.
+Not here, on purpose (product decision 2):
 activating a product page and switching an invite's payment vendor stay admin
 clicks in the dashboard.
 
@@ -40,9 +49,12 @@ every admin-core call replays the caller's own token (``_admin_core_json``).
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import re
+import time
 import unicodedata
 import uuid
 from datetime import date, datetime, timezone
@@ -74,6 +86,9 @@ WRITE_ENDPOINTS = {
 }
 
 MAX_NODES = 100
+#: How long a dry run's plan_token may be applied (decision 2: dry run first).
+PLAN_TOKEN_TTL_SECONDS = 600
+_PLAN_TOKEN_VERSION = "cdp1"
 MAX_COURSES = 50
 MAX_TAGS_PER_COURSE = 20
 MAX_PRODUCT_PAGE_ITEMS = 50
@@ -90,6 +105,9 @@ _MAX_SUBTITLE = 255
 _MAX_TAGLINE = 255
 _MAX_CTA = 120
 _MAX_URL = 2048
+#: admin-core CatalogueFolderService.MAX_DEPTH (top level = 1) and MAX_NODES (items per library).
+_MAX_DEPTH = 10
+_MAX_LIBRARY_NODES = 2000
 _HEX_COLOR = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 _SECRET_ARG_RE = re.compile(r"(token|secret|password|api[_-]?key|authorization|bearer|cookie|^pat$)", re.I)
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -112,6 +130,11 @@ DEFAULT_PRODUCT_PAGE_SETTINGS: Dict[str, Any] = {
     "showLoginButton": True,
     "successPageContent": "",
 }
+
+#: admin-core does not gate a DRAFT product page by status yet (by-code read and
+#: enrol both serve it), so the tool never calls DRAFT "hidden".
+DRAFT_PAGE_NOTE = ("DRAFT here means not activated and not on any site until one binds it; the page's own link "
+                   "(its code) still opens for anyone who has it, so share it only after the admin activates it.")
 
 #: Plain words for admin-core's sync / sellability reason codes.
 REASON_TEXT = {
@@ -161,29 +184,37 @@ CATALOG_DATA_EDIT_SCHEMA: Dict[str, Any] = {
         "name": CATALOG_DATA_EDIT_TOOL_NAME,
         "description": (
             "Set up the catalogue DATA a site design needs — ADDITIVE ONLY: never deletes, renames, hides or clears "
-            "anything. Every action is a DRY RUN by default and returns exactly what it would change: show it to the "
-            "admin, then call again with dry_run=false. Ids come from website(action='data_inventory').\n"
+            "anything. Every action is a DRY RUN by default and returns exactly what it would change plus a "
+            "plan_token: show the plan to the admin, then call again with the SAME arguments, dry_run=false and that "
+            f"plan_token (valid {PLAN_TOKEN_TTL_SECONDS // 60} minutes; refused when the data changed since). Unknown "
+            "arguments are refused. Ids come from website(action='data_inventory').\n"
             "- create_folder_library (name, description?): a new empty folder library (not used by any site until "
             "you bind it with website_edit(bind_data)).\n"
             f"- upsert_folder_nodes (library_id, nodes[≤{MAX_NODES}]): folders matched by key. New folders are "
             "created HIDDEN (the admin shows them in Manage Pages → Folders). A matching folder gets the fields you "
-            "send that differ — never its title, parent or visibility — and only in a library this tool created or "
-            f"no live site uses. {FIELD_TEXT}\n"
+            "send that differ — never its title, parent or visibility — and only while the folder is HIDDEN or no "
+            f"live site uses the library. {FIELD_TEXT}\n"
             f"- add_course_tags (assignments[≤{MAX_COURSES}] of {{course_id, add[]}}): appends tags (lower-case, "
-            "[a-z0-9-], e.g. 'format-ebook', 'for-students'); existing tags are kept. Returns before/after per course.\n"
+            "[a-z0-9-], e.g. 'format-ebook', 'for-students'); existing tags are kept. Returns before/after per course. "
+            "On a live course the new tags change the site's filters at once.\n"
             "- create_product_page (name, items[{course_id, invite_id?, package_session_id?}], role='path'|'store'): "
             "a DRAFT product page selling each course through its DEFAULT invite (or invite_id), its payment option "
             "and cheapest active plan. 'path' = one batch per step (pass package_session_id when a course has "
-            "several); 'store' = every sellable batch. Activating it is the admin's click in the dashboard.\n"
+            "several); 'store' = every sellable batch. It is listed nowhere until a site binds it and the admin "
+            "activates it, but its link already opens for anyone who has the code — do not share it before then.\n"
             "- sync_store (product_page_code): adds the catalogue courses the product page does not sell yet (never "
-            "switches one off) and returns why any were skipped.\n"
+            "switches one off) and returns why any were skipped. On an ACTIVE page the added courses are on sale at "
+            "once.\n"
             "Never send access tokens or other credentials."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": list(CATALOG_DATA_EDIT_ACTIONS)},
-                "dry_run": {"type": "boolean", "description": "Default true: report the change without making it. false = apply."},
+                "dry_run": {"type": "boolean", "description": "Default true: report the change without making it. false = apply (needs plan_token)."},
+                "plan_token": {"type": "string", "description": (
+                    "dry_run=false: the plan_token the dry run of these same arguments returned (valid "
+                    f"{PLAN_TOKEN_TTL_SECONDS // 60} minutes). It is this server's own check value, not a credential.")},
                 "name": {"type": "string", "description": "create_folder_library / create_product_page: its name."},
                 "description": {"type": "string", "description": "create_folder_library: optional description."},
                 "library_id": {"type": "string", "description": "upsert_folder_nodes: the library (website(data_inventory) folder_libraries)."},
@@ -288,10 +319,118 @@ def _as_date(value: Any) -> Optional[date]:
     return None
 
 
+def _as_timestamp(value: Any) -> Optional[float]:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).timestamp()
+    return None
+
+
 def _fetch_failed(what: str, data: Any) -> Dict[str, Any]:
     status = data.get("status") if isinstance(data, dict) else None
     return _err("fetch_failed", message=f"Could not read {what}; nothing was changed. Try again.",
                 **({"status": status} if status else {}))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Arguments: only the ones an action reads (an ignored "remove" or
+# "status": "ACTIVE" would let a caller believe it happened)
+# ──────────────────────────────────────────────────────────────────────────
+_COMMON_ARGS = {"action", "dry_run", "plan_token", "user_id", "institute_id"}
+_ACTION_ARGS = {
+    "create_folder_library": {"name", "description"},
+    "upsert_folder_nodes": {"library_id", "nodes"},
+    "add_course_tags": {"assignments"},
+    "create_product_page": {"name", "items", "role"},
+    "sync_store": {"product_page_code"},
+}
+_ASSIGNMENT_KEYS = {"course_id", "add"}
+_ITEM_KEYS = {"course_id", "invite_id", "package_session_id"}
+#: Not part of what a plan_token covers: how the call is made, not what it does.
+_NOT_PLAN_ARGS = {"dry_run", "plan_token", "user_id", "institute_id"}
+
+
+def _unknown_args(action: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    accepted = _ACTION_ARGS.get(action, set())
+    unknown = sorted(str(k) for k in args if k not in accepted and k not in _COMMON_ARGS)
+    if not unknown:
+        return None
+    return _err("unknown_argument", fields=unknown, accepted=sorted(accepted | {"dry_run", "plan_token"}), message=(
+        f"{action} does not take " + ", ".join(unknown) + "; nothing was changed. This tool only adds: it never "
+        "removes, deletes, renames, hides or activates anything, so there is no argument for that."))
+
+
+def _unknown_item_keys(items: List[Any], allowed: Set[str], what: str) -> List[Dict[str, Any]]:
+    out = []
+    for i, it in enumerate(items):
+        if isinstance(it, dict):
+            unknown = sorted(str(k) for k in it if k not in allowed)
+            if unknown:
+                out.append({"index": i, "field": ",".join(unknown), "message": (
+                    f"Unknown field(s) in {what}; each takes only " + ", ".join(sorted(allowed)) + ".")})
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# plan_token: apply only the plan a dry run showed (decision 2, "dry_run first")
+# ──────────────────────────────────────────────────────────────────────────
+def _plan_key() -> bytes:
+    from ..config import get_settings
+    secret = get_settings().resolve_mcp_encryption_key()
+    return hashlib.sha256(b"catalog_data_edit.plan_token|" + secret.encode("utf-8")).digest()
+
+
+def _plan_digest(ctx: ToolContext, action: str, args: Dict[str, Any], plan: Dict[str, Any]) -> str:
+    """Who, what and the exact plan computed from the data read — any difference is another digest."""
+    request = {k: v for k, v in args.items() if k not in _NOT_PLAN_ARGS}
+    payload = json.dumps({"institute": ctx.principal.institute_id, "user": ctx.principal.user_id,
+                          "action": action, "args": request, "plan": plan},
+                         sort_keys=True, default=str, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _plan_signature(expires: int, digest: str) -> str:
+    return hmac.new(_plan_key(), f"{_PLAN_TOKEN_VERSION}.{expires}.{digest}".encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def issue_plan_token(ctx: ToolContext, action: str, args: Dict[str, Any], plan: Dict[str, Any],
+                     now: Optional[float] = None) -> str:
+    expires = int(now if now is not None else time.time()) + PLAN_TOKEN_TTL_SECONDS
+    return f"{_PLAN_TOKEN_VERSION}.{expires}.{_plan_signature(expires, _plan_digest(ctx, action, args, plan))}"
+
+
+def check_plan_token(ctx: ToolContext, action: str, args: Dict[str, Any], plan: Dict[str, Any],
+                     now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """None when ``plan_token`` was issued for this caller, action, arguments and plan less than 10 minutes ago."""
+    again = ("Nothing was written. Call again without dry_run (a dry run), show the admin the plan it returns, "
+             "then apply with dry_run=false and that plan_token.")
+    token = args.get("plan_token")
+    if not isinstance(token, str) or not token.strip():
+        return _err("plan_token_required", message="Applying needs the plan_token of a dry run of this same call. " + again)
+    parts = token.strip().split(".")
+    if len(parts) != 3 or parts[0] != _PLAN_TOKEN_VERSION or not parts[1].isdigit():
+        return _err("invalid_plan_token", message="That is not a plan_token this tool issued. " + again)
+    expires = int(parts[1])
+    expected = _plan_signature(expires, _plan_digest(ctx, action, args, plan))
+    if not hmac.compare_digest(parts[2], expected):
+        return _err("plan_changed", message=(
+            "This plan_token does not match what applying would do now: the arguments differ from the dry run, "
+            "the data changed since, or it was issued for another action or connection. " + again))
+    if expires < int(now if now is not None else time.time()):
+        return _err("plan_token_expired", message=(
+            f"This plan_token expired (they last {PLAN_TOKEN_TTL_SECONDS // 60} minutes). " + again))
+    return None
+
+
+def _dry_run_result(ctx: ToolContext, action: str, args: Dict[str, Any], plan: Dict[str, Any],
+                    next_text: str) -> Dict[str, Any]:
+    return {"dry_run": True, **plan, "plan_token": issue_plan_token(ctx, action, args, plan),
+            "plan_token_expires_in_seconds": PLAN_TOKEN_TTL_SECONDS, "next": next_text}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -368,7 +507,11 @@ async def _action_create_folder_library(args: Dict[str, Any], ctx: ToolContext) 
     plan = {"create": {"name": name, **({"description": description} if description else {})},
             "note": "The library starts empty and unattached: no site shows it until a page binds it."}
     if _dry_run(args):
-        return {"dry_run": True, **plan, "next": "Nothing was written. Call again with dry_run=false to create it."}
+        return _dry_run_result(ctx, "create_folder_library", args, plan, (
+            "Nothing was written. Call again with dry_run=false and this plan_token to create it."))
+    refusal = check_plan_token(ctx, "create_folder_library", args, plan)
+    if refusal:
+        return refusal
     body = {"name": name, **({"description": description} if description else {})}
     data = await _admin_core_json(ctx, "POST", "/admin-core-service/v1/folder-library/library",
                                   params={"instituteId": ctx.principal.institute_id}, body=body, timeout=30.0)
@@ -376,7 +519,8 @@ async def _action_create_folder_library(args: Dict[str, Any], ctx: ToolContext) 
         return _err("write_failed", message="admin-core did not create the library; nothing else was changed.",
                     **({"status": data.get("status")} if isinstance(data, dict) and data.get("status") else {}))
     library_id = str(data["id"])
-    recorded = record_created(ctx, _KIND_LIBRARY, library_id)
+    # Bookkeeping only (which libraries this tool made); it grants no extra edits.
+    record_created(ctx, _KIND_LIBRARY, library_id)
     out: Dict[str, Any] = {
         "dry_run": False,
         "library": {"id": library_id, "name": data.get("name") or name},
@@ -384,9 +528,6 @@ async def _action_create_folder_library(args: Dict[str, Any], ctx: ToolContext) 
                  "to a section with website_edit(bind_data, data_kind='folderLibrary')."),
         "dashboard_url": _folders_url(ctx),
     }
-    if not recorded:
-        out["warning"] = ("The library was created, but this tool could not note that it made it: editing its "
-                          "existing folders later is allowed only while no live site uses it.")
     return out
 
 
@@ -438,6 +579,20 @@ async def library_live_sites(ctx: ToolContext, library_id: str) -> Optional[List
         if library_id in raw:
             out.append(str(row.get("tag_name") or ""))
     return out
+
+
+def link_url_ok(url: str) -> bool:
+    """admin-core CatalogueFolderService.linkUrlOrNull, so a bad link fails here, before any write."""
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in url):
+        return False
+    if url.startswith("/"):
+        return not (url.startswith("//") or url.startswith("/\\"))
+    lower = url.lower()
+    rest = url[8:] if lower.startswith("https://") else url[7:] if lower.startswith("http://") else None
+    if rest is None:
+        return False
+    host = re.split(r"[/?#]", rest, maxsplit=1)[0]
+    return bool(host) and "\\" not in host and not any(c.isspace() for c in host)
 
 
 def _clean_node(raw: Any, index: int, errors: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -492,14 +647,15 @@ def _clean_node(raw: Any, index: int, errors: List[Dict[str, Any]]) -> Optional[
                 bad(field, "course_tag must contain letters or digits (it is stored lower-case, [a-z0-9-]).")
                 continue
             value = tag
-        elif field == "accent_color" and not _HEX_COLOR.match(value):
-            bad(field, "accent_color is #rgb, #rrggbb or #rrggbbaa.")
-            continue
+        elif field == "accent_color":
+            if not _HEX_COLOR.match(value):
+                bad(field, "accent_color is #rgb, #rrggbb or #rrggbbaa.")
+                continue
+            value = value.lower()           # admin-core stores it lower-case
         elif field == "link_url":
-            lower = value.lower()
-            if not ((value.startswith("/") and not value.startswith("//")) or lower.startswith("https://")
-                    or lower.startswith("http://")):
-                bad(field, "link_url is a site route starting with '/' or an http(s):// address.")
+            if not link_url_ok(value):
+                bad(field, "link_url is a site route starting with '/' or an http(s):// address with a host "
+                           "(no spaces, backslashes or control characters).")
                 continue
         elif field == "image_url":
             from .assistant_tools_website_edit import _is_institute_asset
@@ -512,6 +668,38 @@ def _clean_node(raw: Any, index: int, errors: List[Dict[str, Any]]) -> Optional[
             continue
         node[field] = value
     return node
+
+
+def _depth(node_id: str, by_id: Dict[str, Dict[str, Any]]) -> int:
+    """Level of an existing node, the top level being 1 (admin-core depthOf); bounded against a corrupt cycle."""
+    depth, cur = 0, by_id.get(node_id)
+    while cur is not None and depth <= _MAX_DEPTH + 5:
+        depth += 1
+        cur = by_id.get(str(cur.get("parent_id") or ""))
+    return depth
+
+
+def _check_room(existing: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ordered: List[Dict[str, Any]],
+                folders_by_key: Dict[str, Dict[str, Any]], errors: List[Dict[str, Any]]) -> None:
+    """admin-core's library size and nesting limits, checked before the first write (all or nothing)."""
+    if len(existing) + len(ordered) > _MAX_LIBRARY_NODES:
+        errors.append({"field": "nodes", "message": (
+            f"A folder library holds at most {_MAX_LIBRARY_NODES} items; this one has {len(existing)}, so at most "
+            f"{max(0, _MAX_LIBRARY_NODES - len(existing))} more can be added.")})
+    depths: Dict[str, int] = {}
+    for node in ordered:            # parents first
+        parent_key = node.get("parent_key")
+        if not parent_key:
+            depth = 1
+        elif parent_key in depths:
+            depth = depths[parent_key] + 1
+        else:
+            parent = folders_by_key.get(parent_key)
+            depth = (_depth(str(parent["id"]), by_id) if parent else 0) + 1
+        depths[node["key"]] = depth
+        if depth > _MAX_DEPTH:
+            errors.append({"index": node.get("index"), "key": node["key"], "field": "parent_key",
+                           "message": f"Folders can be nested at most {_MAX_DEPTH} levels deep."})
 
 
 def _order_creates(creates: List[Dict[str, Any]], errors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -653,6 +841,10 @@ async def _action_upsert_folder_nodes(args: Dict[str, Any], ctx: ToolContext) ->
             if field in _KEPT_ON_MATCH:
                 kept.append(field)
                 continue
+            if field == "subtitle" and not _str(match.get("slug")):
+                # Its link key (?stream=…) is made from the subtitle: a new one would rename it.
+                kept.append(field)
+                continue
             changes[field] = {"before": before, "after": node[field]}
         current_parent = by_id.get(str(match.get("parent_id") or ""))
         current_parent_key = folder_slug(current_parent) if current_parent else None
@@ -667,22 +859,29 @@ async def _action_upsert_folder_nodes(args: Dict[str, Any], ctx: ToolContext) ->
             unchanged.append(entry)
 
     ordered = _order_creates(creates, errors) if creates else []
+    _check_room(existing, by_id, ordered, folders_by_key, errors)
     if errors:
         return _err("invalid_nodes", errors=errors[:MAX_LISTED], message=(
             "Nothing was written. Fix these folders and call again (all or nothing)."))
 
-    live_sites = await library_live_sites(ctx, library_id) if updates else []
-    mine = created_by_tool(ctx, _KIND_LIBRARY, library_id) if updates else False
+    # A HIDDEN folder is not on any public site, so filling it in changes nothing
+    # learners see. A shown folder is edited only while no live site uses the
+    # library — whoever created the library (decision 2: additive only).
     refused: List[Dict[str, Any]] = []
-    if updates and not mine and live_sites is None:
-        refused = [{**u, "reason": "Could not check whether a live site uses this library, so existing folders "
-                                   "are left as they are."} for u in updates]
-        updates = []
-    elif updates and not mine and live_sites:
-        refused = [{**u, "reason": ("The live site(s) " + ", ".join(live_sites) + " use this library: existing "
-                                    "folders there are changed by the admin in Manage Pages → Folders.")}
-                   for u in updates]
-        updates = []
+    visible = [u for u in updates if str(u.get("status") or "").upper() != "HIDDEN"]
+    if visible:
+        live_sites = await library_live_sites(ctx, library_id)
+        if live_sites is None:
+            reason = ("Could not check whether a live site uses this library, so its shown folders are left as "
+                      "they are.")
+        elif live_sites:
+            reason = ("The live site(s) " + ", ".join(live_sites) + " use this library: shown folders there are "
+                      "changed by the admin in Manage Pages → Folders.")
+        else:
+            reason = None
+        if reason:
+            refused = [{**u, "reason": reason} for u in visible]
+            updates = [u for u in updates if u not in visible]
 
     plan: Dict[str, Any] = {
         "library": {"id": library_id, "name": library.get("name")},
@@ -694,11 +893,15 @@ async def _action_upsert_folder_nodes(args: Dict[str, Any], ctx: ToolContext) ->
         plan["refused"] = refused
     if any(u.get("kept") for u in updates + unchanged + refused):
         plan["kept_note"] = ("Titles, parents and visibility of existing folders are never changed here (no rename, "
-                             "move, show or hide): the admin does that in Manage Pages → Folders.")
+                             "move, show or hide), nor the subtitle of a folder whose link key is made from it: the "
+                             "admin does that in Manage Pages → Folders.")
     if _dry_run(args):
-        return {"dry_run": True, **plan, "next": (
-            "Nothing was written. Show the admin this plan; call again with dry_run=false to apply it. New folders "
-            "are created HIDDEN.")}
+        return _dry_run_result(ctx, "upsert_folder_nodes", args, plan, (
+            "Nothing was written. Show the admin this plan; call again with the same nodes, dry_run=false and this "
+            "plan_token to apply it. New folders are created HIDDEN."))
+    refusal = check_plan_token(ctx, "upsert_folder_nodes", args, plan)
+    if refusal:
+        return refusal
 
     created: List[Dict[str, Any]] = []
     updated: List[Dict[str, Any]] = []
@@ -810,7 +1013,7 @@ async def _action_add_course_tags(args: Dict[str, Any], ctx: ToolContext) -> Dic
                     message="Pass assignments: [{course_id, add: ['format-ebook', …]}].")
     if len(assignments) > MAX_COURSES:
         return _err("too_many_courses", limit=MAX_COURSES, message=f"At most {MAX_COURSES} courses per call.")
-    errors: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = _unknown_item_keys(assignments, _ASSIGNMENT_KEYS, "assignments")
     wanted: Dict[str, List[str]] = {}
     normalised: Dict[str, Dict[str, str]] = {}
     for i, a in enumerate(assignments):
@@ -864,14 +1067,21 @@ async def _action_add_course_tags(args: Dict[str, Any], ctx: ToolContext) -> Dic
                 "Saving tags through the course editor lower-cases every tag, which would change these existing "
                 "ones: " + ", ".join(plan["would_lowercase"]) + ". The admin adds the tags in the course editor.")})
         else:
-            changes.append({**entry, "add": plan["add"], "after": plan["after"]})
+            live = (_str(row.get("status")).upper() == "ACTIVE" and row.get("is_course_published_to_catalaouge") is True)
+            changes.append({**entry, "add": plan["add"], "after": plan["after"], **({"live": True} if live else {})})
     result: Dict[str, Any] = {"changes": changes, "unchanged": unchanged}
     if refused:
         result["refused"] = refused
+    if any(c.get("live") for c in changes):
+        result["warnings"] = ["Courses marked live are ACTIVE and in the catalogue: their new tags change the live "
+                              "site's filters and folders as soon as they are applied."]
     if _dry_run(args):
-        return {"dry_run": True, **result, "next": (
-            "Nothing was written. Show the admin these before/after tags; call again with dry_run=false to append "
-            "them. Existing tags are never removed.")}
+        return _dry_run_result(ctx, "add_course_tags", args, result, (
+            "Nothing was written. Show the admin these before/after tags; call again with the same assignments, "
+            "dry_run=false and this plan_token to append them. Existing tags are never removed."))
+    refusal = check_plan_token(ctx, "add_course_tags", args, result)
+    if refusal:
+        return refusal
 
     applied: List[Dict[str, Any]] = []
     failed: List[Dict[str, Any]] = []
@@ -919,7 +1129,7 @@ async def _action_add_course_tags(args: Dict[str, Any], ctx: ToolContext) -> Dic
 _SELLABLE_SQL = """
 SELECT ps.id AS package_session_id, p.id AS course_id, p.package_name AS course_name,
        l.level_name, s.session_name,
-       b.id AS bridge_id, ei.id AS invite_id, ei.name AS invite_name, ei.tag AS invite_tag,
+       b.id AS bridge_id, b.updated_at AS bridge_updated_at, ei.id AS invite_id, ei.name AS invite_name, ei.tag AS invite_tag,
        ei.status AS invite_status, ei.start_date AS invite_start, ei.end_date AS invite_end,
        ei.vendor AS invite_vendor, ei.currency AS invite_currency,
        po.id AS payment_option_id, po.type AS payment_type,
@@ -976,13 +1186,20 @@ def pick_mapping(rows: List[Dict[str, Any]], invite_id: Optional[str] = None,
         if not linked:
             return None, "invite_not_linked"
 
-    def rank(r: Dict[str, Any]) -> Tuple[int, float, str]:
+    # ProductPageCatalogueRepository.findCatalogueSessions: tier, then the most
+    # recently updated link (psli.updated_at DESC NULLS LAST), then the cheapest
+    # plan, then ids — so a page made here sells at the price the store sync and
+    # the Courses page use.
+    def rank(r: Dict[str, Any]) -> Tuple[int, int, float, float, str, str]:
         default = _str(r.get("invite_tag")).upper() == "DEFAULT"
         tier = 0 if default and _invite_open(r, today) is None else (1 if default else 2)
         if invite_id:
             tier = 0 if _invite_open(r, today) is None else 1
+        updated = _as_timestamp(r.get("bridge_updated_at"))
         price = r.get("price")
-        return (tier, float(price) if isinstance(price, (int, float)) else float("inf"), str(r.get("bridge_id")))
+        return (tier, 0 if updated is not None else 1, -(updated or 0.0),
+                float(price) if isinstance(price, (int, float)) else float("inf"),
+                str(r.get("bridge_id")), str(r.get("plan_id") or ""))
 
     best = sorted(linked, key=rank)[0]
     if not invite_id and _str(best.get("invite_tag")).upper() != "DEFAULT":
@@ -1055,7 +1272,7 @@ async def _action_create_product_page(args: Dict[str, Any], ctx: ToolContext) ->
     if len(items) > MAX_PRODUCT_PAGE_ITEMS:
         return _err("too_many_items", limit=MAX_PRODUCT_PAGE_ITEMS, message=f"At most {MAX_PRODUCT_PAGE_ITEMS} courses per page.")
 
-    errors: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = _unknown_item_keys(items, _ITEM_KEYS, "items")
     clean: List[Dict[str, Any]] = []
     for i, it in enumerate(items):
         course_id = _str(it.get("course_id")) if isinstance(it, dict) else ""
@@ -1089,6 +1306,7 @@ async def _action_create_product_page(args: Dict[str, Any], ctx: ToolContext) ->
         by_course.setdefault(str(r.get("course_id")), []).append(r)
 
     steps: List[Dict[str, Any]] = []
+    not_sold: List[Dict[str, Any]] = []
     seen_sessions: Set[str] = set()
     for it in clean:
         course_id = it["course_id"]
@@ -1124,6 +1342,7 @@ async def _action_create_product_page(args: Dict[str, Any], ctx: ToolContext) ->
             errors.append({"index": it["index"], "course_id": course_id,
                            "message": "No batch of this course can be sold from a product page.", "batches": skipped[:20]})
             continue
+        not_sold.extend(skipped)
         for row in picks:
             session_id = str(row["package_session_id"])
             if session_id in seen_sessions:
@@ -1137,12 +1356,19 @@ async def _action_create_product_page(args: Dict[str, Any], ctx: ToolContext) ->
     listed = [{"order": i, **_step(r)} for i, r in enumerate(steps)]
     warnings = _money_warnings(listed)
     plan: Dict[str, Any] = {"product_page": {"name": name, "status": "DRAFT", "role": role}, "steps": listed}
-    if warnings:
-        plan["warnings"] = warnings
+    if not_sold:
+        plan["batches_not_sold"], more = _cap(not_sold)
+        if more:
+            plan["batches_not_sold_more"] = more
+    warnings.append(DRAFT_PAGE_NOTE)
+    plan["warnings"] = warnings
     if _dry_run(args):
-        return {"dry_run": True, **plan, "next": (
-            "Nothing was written. Show the admin the steps and prices; call again with dry_run=false to create the "
-            "DRAFT page.")}
+        return _dry_run_result(ctx, "create_product_page", args, plan, (
+            "Nothing was written. Show the admin the steps and prices; call again with the same items, "
+            "dry_run=false and this plan_token to create the DRAFT page."))
+    refusal = check_plan_token(ctx, "create_product_page", args, plan)
+    if refusal:
+        return refusal
     body = {
         "name": name,
         "status": "DRAFT",
@@ -1161,11 +1387,10 @@ async def _action_create_product_page(args: Dict[str, Any], ctx: ToolContext) ->
                          "status": data.get("status") or "DRAFT", "role": role},
         "steps": listed,
         "editor_url": _product_page_url(ctx, data.get("id")),
-        "next": ("The page is a DRAFT: the admin reviews it and activates it in the dashboard (editor_url). Bind it "
-                 "with website_edit(bind_data, data_kind='productPage', data_id=<code>)."),
+        "warnings": warnings,
+        "next": ("The page is saved as DRAFT: the admin reviews it and activates it in the dashboard (editor_url). "
+                 "Bind it with website_edit(bind_data, data_kind='productPage', data_id=<code>)."),
     }
-    if warnings:
-        out["warnings"] = warnings
     return out
 
 
@@ -1183,35 +1408,39 @@ async def _action_sync_store(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
                     available=[{"code": p.get("code"), "name": p.get("name"), "status": p.get("status")}
                                for p in pages][:30])
     page_ref = {"id": page.get("id"), "code": code, "name": page.get("name"), "status": page.get("status")}
+    rows = load_sellable_rows(ctx)
+    if rows is None:
+        return _fetch_failed("the catalogue's batches", None)
+    sold = {str(m.get("package_session_id")) for m in page.get("mappings") or []
+            if isinstance(m, dict) and str(m.get("status") or "ACTIVE").upper() == "ACTIVE"}
+    would_add, would_skip = [], []
+    for session_id, srows in _by_session(rows).items():
+        if session_id in sold:
+            continue
+        row, reason = pick_mapping(srows)
+        if row:
+            would_add.append(_step(row))
+        else:
+            would_skip.append({**_step(srows[0]), "reason": reason, "why": REASON_TEXT.get(reason or "", reason)})
+    would_add, more_add = _cap(would_add)
+    would_skip, more_skipped = _cap(would_skip)
+    plan: Dict[str, Any] = {"product_page": page_ref, "already_sold": len(sold),
+                            "would_add": would_add, "would_skip": would_skip}
+    if more_add:
+        plan["would_add_more"] = more_add
+    if more_skipped:
+        plan["would_skip_more"] = more_skipped
+    page_active = _str(page.get("status")).upper() == "ACTIVE"
+    if page_active and (would_add or more_add):
+        plan["warnings"] = ["This product page is ACTIVE: the courses added are on sale on it immediately."]
     if _dry_run(args):
-        rows = load_sellable_rows(ctx)
-        if rows is None:
-            return _fetch_failed("the catalogue's batches", None)
-        sold = {str(m.get("package_session_id")) for m in page.get("mappings") or []
-                if isinstance(m, dict) and str(m.get("status") or "ACTIVE").upper() == "ACTIVE"}
-        would_add, skipped = [], []
-        for session_id, srows in _by_session(rows).items():
-            if session_id in sold:
-                continue
-            row, reason = pick_mapping(srows)
-            if row:
-                would_add.append(_step(row))
-            else:
-                skipped.append({**_step(srows[0]), "reason": reason, "why": REASON_TEXT.get(reason or "", reason)})
-        would_add, more_add = _cap(would_add)
-        skipped, more_skipped = _cap(skipped)
-        out: Dict[str, Any] = {
-            "dry_run": True, "product_page": page_ref, "already_sold": len(sold),
-            "would_add": would_add, "would_skip": skipped,
-            "next": ("Nothing was written. This preview applies the catalogue rule; on apply admin-core also skips "
-                     "courses on another payment gateway or currency than the page. Call again with dry_run=false. "
-                     "Courses already on the page are never switched off."),
-        }
-        if more_add:
-            out["would_add_more"] = more_add
-        if more_skipped:
-            out["would_skip_more"] = more_skipped
-        return out
+        return _dry_run_result(ctx, "sync_store", args, plan, (
+            "Nothing was written. This preview applies the catalogue rule; on apply admin-core also skips courses on "
+            "another payment gateway or currency than the page. Call again with dry_run=false and this plan_token. "
+            "Courses already on the page are never switched off."))
+    refusal = check_plan_token(ctx, "sync_store", args, plan)
+    if refusal:
+        return refusal
     data = await _admin_core_json(
         ctx, "POST", f"/admin-core-service/v1/product-page/{page['id']}/sync-catalogue",
         params={"instituteId": ctx.principal.institute_id, "deactivateMissing": "false"}, timeout=60.0)
@@ -1224,13 +1453,14 @@ async def _action_sync_store(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
         "why": REASON_TEXT.get(str(s.get("reason") or ""), s.get("reason")),
     }.items() if v} for s in data.get("skipped") or [] if isinstance(s, dict)]
     skipped, more = _cap(skipped)
-    out = {
+    out: Dict[str, Any] = {
         "dry_run": False,
         "product_page": page_ref,
         "added": data.get("added") if isinstance(data.get("added"), int) else len(data.get("added_package_session_ids") or []),
         "added_package_session_ids": (data.get("added_package_session_ids") or [])[:MAX_LISTED],
         "skipped": skipped,
-        "warnings": [w if isinstance(w, str) else str(w) for w in data.get("warnings") or []][:20],
+        "warnings": ([w if isinstance(w, str) else str(w) for w in data.get("warnings") or []][:20]
+                     + (plan.get("warnings") or [])),
         "editor_url": _product_page_url(ctx, page["id"]),
     }
     if more:
@@ -1257,7 +1487,8 @@ _ACTIONS = {
 
 async def execute_catalog_data_edit(args: Dict[str, Any], ctx: ToolContext) -> str:
     args = args or {}
-    secrets = _secret_args({k: v for k, v in args.items() if k not in ("user_id", "institute_id")})
+    # plan_token is this tool's own check value (an HMAC it issued), never a credential.
+    secrets = _secret_args({k: v for k, v in args.items() if k not in ("user_id", "institute_id", "plan_token")})
     if secrets:
         return json.dumps(_err("secret_not_accepted", message=(
             "Never send access tokens or other credentials to this tool; it acts as the connected admin."),
@@ -1269,7 +1500,7 @@ async def execute_catalog_data_edit(args: Dict[str, Any], ctx: ToolContext) -> s
             "Not an action of this tool. Activating a product page and changing an invite's payment gateway are "
             "admin clicks in the dashboard; nothing is ever deleted or renamed from here."
             if action else "Pass action.")))
-    result = await handler(args, ctx)
+    result = _unknown_args(action, args) or await handler(args, ctx)
     if isinstance(result, dict) and "action" not in result:
         result = {"action": action, **result}
     return json.dumps(result, ensure_ascii=False, default=str)
@@ -1304,5 +1535,6 @@ _register()
 __all__ = [
     "CATALOG_DATA_EDIT_TOOLS", "CATALOG_DATA_EDIT_TOOL_NAME", "CATALOG_DATA_EDIT_GROUP_KEY",
     "CATALOG_DATA_EDIT_ACTIONS", "CATALOG_DATA_EDIT_SCHEMA", "WRITE_ENDPOINTS", "execute_catalog_data_edit",
-    "slugify", "pick_mapping", "course_update_body",
+    "slugify", "pick_mapping", "course_update_body", "link_url_ok", "issue_plan_token", "check_plan_token",
+    "PLAN_TOKEN_TTL_SECONDS",
 ]

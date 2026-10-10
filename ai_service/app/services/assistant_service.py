@@ -480,7 +480,7 @@ class AssistantAgentService:
                         db=db, principal=principal, keys=keys,
                         bearer_token=bearer_token, session_id=session_id,
                     )
-                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting)
+                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting, in_product=True)
                     pending_action = ctx.pending_action
 
                 with self._get_db() as db:

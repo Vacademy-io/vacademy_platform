@@ -124,8 +124,8 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "Data the institute does not have yet (stream folders, course tags, learning-path product pages, campaigns): "
             "if the catalog_data_edit tool is enabled for this connection, set it up with catalog_data_edit("
             "create_folder_library | upsert_folder_nodes | add_course_tags | create_product_page | sync_store) once the "
-            "admin agrees — every action is a dry run first: show the admin the plan, then apply it with dry_run=false. "
-            "New folders start HIDDEN, tags are only appended, product pages are created DRAFT; showing folders and "
+            "admin agrees — every action is a dry run first: show the admin the plan, then apply it with dry_run=false "
+            "and the plan_token the dry run returned. New folders start HIDDEN, tags are only appended, product pages are created DRAFT; showing folders and "
             "activating product pages stay admin clicks. Otherwise the admin sets it up in the dashboard: hand over "
             "website(action='data_audit') — each item has a fix and a dashboard link. audience_forms_edit(create) can "
             "create a missing lead campaign when the admin agrees.",

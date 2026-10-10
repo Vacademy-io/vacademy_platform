@@ -230,8 +230,17 @@ def backend(monkeypatch):
     return be
 
 
-async def run(args):
-    return json.loads(await tool.execute_catalog_data_edit(args, ctx()))
+async def run(args, context=None):
+    return json.loads(await tool.execute_catalog_data_edit(args, context or ctx()))
+
+
+async def apply(args):
+    """The two-step flow an AI app follows: the dry run, then dry_run=false with its plan_token."""
+    plan = await run({**args, "dry_run": True})
+    if "error" in plan:
+        return plan
+    assert plan["plan_token"] and plan["plan_token_expires_in_seconds"] == tool.PLAN_TOKEN_TTL_SECONDS
+    return await run({**args, "dry_run": False, "plan_token": plan["plan_token"]})
 
 
 def writes(be):
@@ -301,15 +310,15 @@ def test_source_has_no_delete_rename_move_or_activate_call():
 
 @pytest.mark.asyncio
 async def test_every_applied_action_sends_only_additive_calls(backend):
-    backend.created.add("lib-1")    # so existing folders may be edited
-    await run({"action": "create_folder_library", "name": "Paths", "dry_run": False})
-    await run({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [
+    backend.catalogues[0]["status"] = "DRAFT"    # no live site uses lib-1, so its shown folders may be filled in
+    await apply({"action": "create_folder_library", "name": "Paths", "dry_run": False})
+    await apply({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [
         {"key": "shastra", "title": "Renamed?", "tagline": "Texts", "parent_key": "gita"},
         {"key": "kala", "title": "Kala", "course_tag": "Kala"},
     ]})
-    await run({"action": "add_course_tags", "dry_run": False, "assignments": [{"course_id": "c-1", "add": ["format-video"]}]})
-    await run({"action": "create_product_page", "name": "Path", "dry_run": False, "items": [{"course_id": "c-1"}]})
-    await run({"action": "sync_store", "product_page_code": "forbvy", "dry_run": False})
+    await apply({"action": "add_course_tags", "dry_run": False, "assignments": [{"course_id": "c-1", "add": ["format-video"]}]})
+    await apply({"action": "create_product_page", "name": "Path", "dry_run": False, "items": [{"course_id": "c-1"}]})
+    await apply({"action": "sync_store", "product_page_code": "forbvy", "dry_run": False})
     sent = {(c["method"], re.sub(r"/(c-1|pp-1)(/|$)", r"/{id}\2", c["path"])) for c in writes(backend)}
     assert sent == {
         ("POST", "/admin-core-service/v1/folder-library/library"),
@@ -343,15 +352,16 @@ async def test_every_action_is_a_dry_run_by_default(backend):
         await run({"action": "sync_store", "product_page_code": "forbvy"}),
     ]
     assert all(o["dry_run"] is True and "Nothing was written" in o["next"] for o in outs), outs
+    assert all(o["plan_token"].startswith("cdp1.") and "plan_token" in o["next"] for o in outs), outs
     assert writes(backend) == []
 
 
 # ── create_folder_library ────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_create_library_records_it_and_refuses_a_duplicate_name(backend):
-    out = await run({"action": "create_folder_library", "name": "Learning Paths", "dry_run": False})
+    out = await apply({"action": "create_folder_library", "name": "Learning Paths", "dry_run": False})
     assert out["library"]["id"] in backend.created
-    again = await run({"action": "create_folder_library", "name": "learning paths", "dry_run": False})
+    again = await apply({"action": "create_folder_library", "name": "learning paths", "dry_run": False})
     assert again["error"] == "library_exists" and again["library_id"] == out["library"]["id"]
     assert sum(1 for c in writes(backend) if c["path"].endswith("/library")) == 1
 
@@ -359,7 +369,7 @@ async def test_create_library_records_it_and_refuses_a_duplicate_name(backend):
 # ── upsert_folder_nodes ──────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_new_folders_are_hidden_slugged_and_parents_first(backend):
-    out = await run({"action": "upsert_folder_nodes", "library_id": "lib-2", "dry_run": False, "nodes": [
+    out = await apply({"action": "upsert_folder_nodes", "library_id": "lib-2", "dry_run": False, "nodes": [
         {"key": "Rishi Gyan", "title": "Rishi Gyan", "parent_key": "shastra2"},
         {"key": "shastra2", "title": "Shastra", "image_url": ASSET, "audience_id": "aud-1", "coming_soon": True,
          "accent_color": "#aa3300", "cta": "Explore", "subtitle": "", "tagline": None},
@@ -377,7 +387,7 @@ async def test_new_folders_are_hidden_slugged_and_parents_first(backend):
 async def test_matched_folder_changes_only_what_differs_and_keeps_title_and_parent(backend):
     out = await run({"action": "upsert_folder_nodes", "library_id": "lib-2", "nodes": [{"key": "x", "title": "X"}]})
     assert out["create"][0]["status"] == "HIDDEN"
-    backend.created.add("lib-1")
+    backend.catalogues[0]["status"] = "DRAFT"
     plan = await run({"action": "upsert_folder_nodes", "library_id": "lib-1", "nodes": [
         {"key": "shastra", "title": "Shastra!", "subtitle": "Scriptures", "tagline": "Texts", "parent_key": "gita"},
         {"key": "swasthya", "course_tag": "swasthya"},       # derived key; course_tag differs from None
@@ -393,7 +403,7 @@ async def test_matched_folder_changes_only_what_differs_and_keeps_title_and_pare
 
 @pytest.mark.asyncio
 async def test_existing_folders_of_a_live_library_are_left_alone(backend):
-    out = await run({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [
+    out = await apply({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [
         {"key": "shastra", "tagline": "Texts"},
         {"key": "kala", "title": "Kala"},
     ]})
@@ -424,7 +434,7 @@ async def test_unreadable_site_list_fails_closed_for_edits(backend, monkeypatch)
     ({"key": "a", "title": "A", "status": "ACTIVE"}, "status"),               # visibility is not an input
 ])
 async def test_invalid_folder_is_reported_and_nothing_is_written(backend, node, field):
-    out = await run({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [node]})
+    out = await apply({"action": "upsert_folder_nodes", "library_id": "lib-1", "dry_run": False, "nodes": [node]})
     assert out["error"] == "invalid_nodes" and field in out["errors"][0]["field"], out
     assert writes(backend) == []
 
@@ -454,7 +464,7 @@ async def test_tags_are_appended_through_a_full_round_trip(backend):
     assert c1["before"] == ["english", "shastra"] and c1["add"] == ["format-ebook", "for-students"]
     assert c1["after"] == ["english", "shastra", "format-ebook", "for-students"]
     assert c1["normalised"] == {"Format eBook": "format-ebook"}
-    out = await run({"action": "add_course_tags", "dry_run": False, "assignments": [
+    out = await apply({"action": "add_course_tags", "dry_run": False, "assignments": [
         {"course_id": "c-1", "add": ["Format eBook", "shastra", "for-students"]},
         {"course_id": "c-2", "add": ["for-womens-health"]},
     ]})
@@ -475,7 +485,7 @@ async def test_tags_are_appended_through_a_full_round_trip(backend):
 
 @pytest.mark.asyncio
 async def test_tags_already_there_and_capitalised_existing_tags(backend):
-    out = await run({"action": "add_course_tags", "dry_run": False, "assignments": [
+    out = await apply({"action": "add_course_tags", "dry_run": False, "assignments": [
         {"course_id": "c-1", "add": ["English"]},
         {"course_id": "c-3", "add": ["format-live"]},
     ]})
@@ -486,7 +496,7 @@ async def test_tags_already_there_and_capitalised_existing_tags(backend):
 
 @pytest.mark.asyncio
 async def test_tag_assignments_are_validated_all_or_nothing(backend):
-    out = await run({"action": "add_course_tags", "dry_run": False, "assignments": [
+    out = await apply({"action": "add_course_tags", "dry_run": False, "assignments": [
         {"course_id": "c-1", "add": ["ok"]}, {"course_id": "other-inst", "add": ["x"]}, {"course_id": "c-2", "add": ["हिन्दी"]},
     ]})
     assert out["error"] == "invalid_assignments" and len(out["errors"]) == 2
@@ -498,7 +508,7 @@ async def test_tag_assignments_are_validated_all_or_nothing(backend):
 # ── create_product_page ──────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_product_page_is_a_draft_on_the_default_invite_and_cheapest_plan(backend):
-    out = await run({"action": "create_product_page", "name": "Women's health path", "dry_run": False, "items": [
+    out = await apply({"action": "create_product_page", "name": "Women's health path", "dry_run": False, "items": [
         {"course_id": "c-1"}, {"course_id": "c-2", "package_session_id": "ps-2hi"}]})
     create = next(c for c in writes(backend) if c["path"].endswith("/product-page/create"))
     assert create["params"] == {"instituteId": INST}
@@ -555,13 +565,13 @@ async def test_sync_store_preview_and_apply(backend):
     reasons = {r["package_session_id"]: r["reason"] for r in preview["would_skip"]}
     assert reasons == {"ps-c": "cpo_not_supported", "ps-d": "invite_expired"}
     assert preview["already_sold"] == 1
-    out = await run({"action": "sync_store", "product_page_code": "forbvy", "dry_run": False})
+    out = await apply({"action": "sync_store", "product_page_code": "forbvy", "dry_run": False})
     call = next(c for c in writes(backend) if c["path"].endswith("/sync-catalogue"))
     assert call["path"] == "/admin-core-service/v1/product-page/pp-1/sync-catalogue"
     assert call["params"] == {"instituteId": INST, "deactivateMissing": "false"}
     assert out["added"] == 1 and out["skipped"][0]["reason"] == "cpo_not_supported" and "CPO" in out["skipped"][0]["why"]
     assert "deactivated" not in out
-    unknown = await run({"action": "sync_store", "product_page_code": "nope", "dry_run": False})
+    unknown = await apply({"action": "sync_store", "product_page_code": "nope", "dry_run": False})
     assert unknown["error"] == "unknown_product_page" and unknown["available"][0]["code"] == "forbvy"
 
 
@@ -606,3 +616,170 @@ def test_data_reads_point_at_the_tool_only_when_this_caller_has_it():
     assert "catalog_data_edit" in with_tool and "dry run first" in with_tool
     assert "catalog_data_edit" not in without and "admin task in the dashboard" in without
     assert "catalog_data_edit" not in _data_change_advice(ctx()), "an unchecked gate never advertises the tool"
+
+
+# ── review fixes: live folders, plan_token, ranking, admin-core limits ───
+@pytest.mark.asyncio
+async def test_a_live_library_this_tool_created_still_keeps_its_shown_folders(backend):
+    """Creating the library grants nothing: once a live site uses it, only HIDDEN folders are filled in."""
+    backend.created.add("lib-1")
+    backend.nodes["lib-1"].append(_node("n-5", "Veda", "veda", status="HIDDEN"))
+    out = await apply({"action": "upsert_folder_nodes", "library_id": "lib-1", "nodes": [
+        {"key": "shastra", "tagline": "Texts", "accent_color": "#E85D04"},
+        {"key": "veda", "tagline": "Hymns"},
+    ]})
+    assert [r["key"] for r in out["refused"]] == ["shastra"] and "main" in out["refused"][0]["reason"]
+    assert [u["key"] for u in out["updated"]] == ["veda"]
+    puts = [c for c in writes(backend) if c["method"] == "PUT"]
+    assert [c["params"]["nodeId"] for c in puts] == ["n-5"] and puts[0]["body"] == {"tagline": "Hymns"}
+
+
+@pytest.mark.asyncio
+async def test_subtitle_of_a_folder_keyed_by_it_is_kept(backend):
+    backend.catalogues[0]["status"] = "DRAFT"
+    backend.nodes["lib-1"].append(_node("n-6", "Ayurveda", None, subtitle="Health"))     # key 'health'
+    plan = await run({"action": "upsert_folder_nodes", "library_id": "lib-1",
+                      "nodes": [{"key": "health", "subtitle": "Wellbeing", "tagline": "Body"}]})
+    upd = plan["update"][0]
+    assert upd["id"] == "n-6" and upd["changes"] == {"tagline": {"before": None, "after": "Body"}}
+    assert upd["kept"] == ["subtitle"] and "subtitle" in plan["kept_note"]
+
+
+@pytest.mark.asyncio
+async def test_accent_colour_is_compared_and_sent_lower_case(backend):
+    backend.catalogues[0]["status"] = "DRAFT"
+    backend.nodes["lib-1"][0]["accent_color"] = "#e85d04"
+    plan = await run({"action": "upsert_folder_nodes", "library_id": "lib-1", "nodes": [
+        {"key": "shastra", "accent_color": "#E85D04"}, {"key": "kala", "title": "Kala", "accent_color": "#AABBCC"}]})
+    assert plan["update"] == [] and [u["key"] for u in plan["unchanged"]] == ["shastra"]
+    assert plan["create"][0]["accent_color"] == "#aabbcc"
+
+
+@pytest.mark.asyncio
+async def test_applying_needs_the_plan_token_of_the_same_plan(backend, monkeypatch):
+    args = {"action": "add_course_tags", "assignments": [{"course_id": "c-2", "add": ["for-students"]}]}
+    missing = await run({**args, "dry_run": False})
+    assert missing["error"] == "plan_token_required" and "dry run" in missing["message"]
+    token = (await run(args))["plan_token"]
+    forged = await run({**args, "dry_run": False, "plan_token": "cdp1.99999999999.deadbeef"})
+    assert forged["error"] == "plan_changed"
+    garbage = await run({**args, "dry_run": False, "plan_token": "hello"})
+    assert garbage["error"] == "invalid_plan_token"
+    # Other arguments than the dry run's.
+    other = await run({"action": "add_course_tags", "dry_run": False, "plan_token": token,
+                       "assignments": [{"course_id": "c-2", "add": ["for-teachers"]}]})
+    assert other["error"] == "plan_changed"
+    # Another connection / institute replaying it.
+    stranger = ToolContext(db=_Db(), principal=PinnedPrincipal(user_id="u-2", institute_id=INST, roles=["ADMIN"],
+                                                               permissions=[], is_root_user=False),
+                           keys=(), bearer_token="jwt")
+    assert (await run({**args, "dry_run": False, "plan_token": token}, stranger))["error"] == "plan_changed"
+    # The data changed after the dry run: the plan the admin saw is not what would be applied.
+    COURSES["c-2"]["comma_separated_tags"] = "hindi"
+    stale = await run({**args, "dry_run": False, "plan_token": token})
+    assert stale["error"] == "plan_changed" and "changed since" in stale["message"]
+    assert backend.course_updates == {} and writes(backend) == []
+    # A fresh dry run applies.
+    out = await apply(args)
+    assert out["applied"][0]["after"] == ["hindi", "for-students"]
+
+
+@pytest.mark.asyncio
+async def test_an_expired_plan_token_is_refused(backend, monkeypatch):
+    args = {"action": "create_folder_library", "name": "Paths"}
+    monkeypatch.setattr(tool, "PLAN_TOKEN_TTL_SECONDS", -1)
+    token = (await run(args))["plan_token"]
+    out = await run({**args, "dry_run": False, "plan_token": token})
+    assert out["error"] == "plan_token_expired" and writes(backend) == []
+
+
+def test_plan_token_is_not_taken_for_a_credential():
+    assert tool._secret_args({"plan_token": "x"}) == ["plan_token"], "the generic rule would refuse it"
+    assert "plan_token" in tool.CATALOG_DATA_EDIT_SCHEMA["function"]["parameters"]["properties"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_arguments_are_refused_not_ignored(backend):
+    act = await run({"action": "create_product_page", "name": "P", "status": "ACTIVE", "items": [{"course_id": "c-1"}]})
+    assert act["error"] == "unknown_argument" and act["fields"] == ["status"] and "activates" in act["message"]
+    stray = await run({"action": "add_course_tags", "nodes": [], "assignments": [{"course_id": "c-1", "add": ["x"]}]})
+    assert stray["error"] == "unknown_argument" and stray["fields"] == ["nodes"]
+    remove = await run({"action": "add_course_tags", "assignments": [{"course_id": "c-1", "add": ["x"], "remove": ["english"]}]})
+    assert remove["error"] == "invalid_assignments" and remove["errors"][0]["field"] == "remove"
+    price = await run({"action": "create_product_page", "name": "P", "items": [{"course_id": "c-1", "price": 1}]})
+    assert price["error"] == "invalid_items" and price["errors"][0]["field"] == "price"
+    assert writes(backend) == []
+
+
+@pytest.mark.parametrize("url, ok", [
+    ("/courses?stream=shiksha", True), ("https://example.com/x", True), ("http://example.com", True),
+    ("//evil.example", False), ("/\\evil.example", False), ("https://", False), ("https:///x", False),
+    ("https://exa mple.com", False), ("https://a\\b.com", False), ("/a\tb", False), ("/a\x7fb", False),
+    ("javascript:alert(1)", False), ("mailto:a@b.c", False),
+])
+def test_link_rule_matches_admin_core(url, ok):
+    assert tool.link_url_ok(url) is ok
+
+
+@pytest.mark.asyncio
+async def test_nesting_and_library_size_are_checked_before_any_write(backend, monkeypatch):
+    chain = [{"key": f"l{i}", "title": f"L{i}", **({"parent_key": f"l{i - 1}"} if i else {})} for i in range(11)]
+    deep = await apply({"action": "upsert_folder_nodes", "library_id": "lib-2", "nodes": chain})
+    assert deep["error"] == "invalid_nodes" and deep["errors"][0]["key"] == "l10" and "10 levels" in deep["errors"][0]["message"]
+    # Under an existing folder: gita is level 2, so 9 more levels fit and the 9th new one is level 11.
+    under = [{"key": f"g{i}", "title": "G", "parent_key": f"g{i - 1}" if i else "gita"} for i in range(9)]
+    deep2 = await apply({"action": "upsert_folder_nodes", "library_id": "lib-1", "nodes": under})
+    assert deep2["error"] == "invalid_nodes" and [e["key"] for e in deep2["errors"]] == ["g8"]
+    monkeypatch.setattr(tool, "_MAX_LIBRARY_NODES", 5)
+    full = await apply({"action": "upsert_folder_nodes", "library_id": "lib-1",
+                        "nodes": [{"key": "a", "title": "A"}, {"key": "b", "title": "B"}]})
+    assert full["error"] == "invalid_nodes" and "at most 1 more" in full["errors"][0]["message"]
+    assert writes(backend) == []
+
+
+def test_pick_mapping_prefers_the_most_recently_updated_link_like_the_store_sync():
+    from datetime import datetime
+    old = _sell("p", "c", "n", bridge="b-old", invite="i-old", plan="pl-old", price=999.0)
+    new = _sell("p", "c", "n", bridge="b-new", invite="i-new", plan="pl-new", price=1499.0)
+    old["bridge_updated_at"], new["bridge_updated_at"] = datetime(2026, 1, 1), datetime(2026, 9, 1)
+    assert tool.pick_mapping([old, new])[0]["bridge_id"] == "b-new"
+    assert tool.pick_mapping([new, old])[0]["bridge_id"] == "b-new"
+    # Same link: its cheapest plan; a link with no update time ranks after one with it.
+    cheap = {**new, "plan_id": "pl-cheap", "price": 10.0}
+    assert tool.pick_mapping([new, cheap])[0]["plan_id"] == "pl-cheap"
+    undated = {**old, "bridge_updated_at": None, "price": 1.0}
+    assert tool.pick_mapping([undated, new])[0]["bridge_id"] == "b-new"
+
+
+@pytest.mark.asyncio
+async def test_draft_page_note_skipped_batches_and_live_warnings(backend, monkeypatch):
+    rows = SELLABLE + [
+        _sell("ps-1b", "c-1", "Gita Natyam", bridge="b-9", invite="inv-9", tag="PROMO", level="Hindi"),
+    ]
+    monkeypatch.setattr(tool, "load_sellable_rows",
+                        lambda ctx_, ids=None: [r for r in rows if r["course_id"] in ids] if ids is not None
+                        else list(CATALOGUE_SELLABLE))
+    plan = await run({"action": "create_product_page", "name": "Path", "items": [{"course_id": "c-1"}]})
+    assert [s["package_session_id"] for s in plan["steps"]] == ["ps-1"]
+    assert plan["batches_not_sold"][0]["package_session_id"] == "ps-1b"
+    assert plan["batches_not_sold"][0]["reason"] == "non_default_invite"
+    assert any("opens for anyone" in w for w in plan["warnings"])
+    assert "opens for anyone" in tool.CATALOG_DATA_EDIT_SCHEMA["function"]["description"]
+    tags = await run({"action": "add_course_tags", "assignments": [{"course_id": "c-1", "add": ["format-video"]},
+                                                                    {"course_id": "c-2", "add": ["x"]}]})
+    assert {c["course_id"]: c.get("live") for c in tags["changes"]} == {"c-1": True, "c-2": None}
+    assert "live site's filters" in tags["warnings"][0]
+    store = await run({"action": "sync_store", "product_page_code": "forbvy"})
+    assert any("ACTIVE" in w and "immediately" in w for w in store["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_in_product_dispatch_refuses_mcp_only_tools(backend):
+    from app.mcp.access import setting_for_tool_gate
+    from app.services.assistant_tool_registry import execute_tool
+    gate = setting_for_tool_gate(setting(["website_builder", "website_data_edits"]), principal())
+    args = {"action": "create_folder_library", "name": "Paths"}
+    via_mcp = json.loads(await execute_tool("catalog_data_edit", dict(args), ctx(), gate))
+    assert via_mcp["dry_run"] is True
+    in_product = json.loads(await execute_tool("catalog_data_edit", dict(args), ctx(), gate, in_product=True))
+    assert in_product["error"] == "tool_not_permitted" and "MCP" in in_product["message"]

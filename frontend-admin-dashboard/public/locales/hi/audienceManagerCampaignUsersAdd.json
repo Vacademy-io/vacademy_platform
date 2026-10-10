@@ -32,5 +32,13 @@
     "audienceFallbackName": "इस {{audienceTerm}}",
     "footer": {
         "responsesAppearUnder": "प्रतिक्रियाएँ आपकी {{audienceTerm}} सूची में <bold>{{audienceName}}</bold> के अंतर्गत दिखाई देती हैं।"
+    },
+    "assign": {
+        "label": "काउंसलर को असाइन करें",
+        "placeholder": "काउंसलर चुनें (वैकल्पिक)",
+        "loading": "काउंसलर लोड हो रहे हैं…",
+        "search": "काउंसलर खोजें…",
+        "empty": "कोई काउंसलर नहीं मिला।",
+        "hint": "खाली छोड़ने पर लीड आपकी सामान्य लीड रूटिंग से जाएगा।"
     }
 }

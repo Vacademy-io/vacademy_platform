@@ -32,5 +32,13 @@
     "audienceFallbackName": "this {{audienceTerm}}",
     "footer": {
         "responsesAppearUnder": "Responses appear under <bold>{{audienceName}}</bold> in your {{audienceTerm}} list."
+    },
+    "assign": {
+        "label": "Assign to counsellor",
+        "placeholder": "Select counsellor (optional)",
+        "loading": "Loading counsellors…",
+        "search": "Search counsellor…",
+        "empty": "No counsellor found.",
+        "hint": "Left empty, the lead follows your usual lead routing."
     }
 }

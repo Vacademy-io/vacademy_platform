@@ -356,8 +356,8 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "- discard_draft (tag_name): throw the draft away — the undo for everything above.\n"
             "- request_publish (tag_name, library_id?): the hand-over check when you think the draft is done. "
             "Runs the pre-publish checks, the data audit and the review (fidelity mode for pages from a design) "
-            "and returns ready + blockers, what publishing would change on the live site (diff_vs_live), a "
-            "stale-draft verdict and editor_url. It NEVER publishes: the admin presses Publish in the editor.\n"
+            "and returns ready + blockers, what publishing would change on the live site (diff_vs_live; first_publish "
+            "for a site never published), a stale-draft verdict and editor_url. It NEVER publishes: the admin presses Publish in the editor.\n"
             "Every result carries editor_url: tell the admin to review and publish there."
         ),
         "parameters": {
@@ -2878,8 +2878,24 @@ def _canon(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-def _section_key(comp: Dict[str, Any], index: int) -> str:
-    return str(comp.get("id") or "") or f"#{index}:{comp.get('type')}"
+def _keyed_sections(components: List[Any]) -> List[Tuple[Tuple[str, str, int], Dict[str, Any]]]:
+    """
+    ``[(key, section)]`` in page order. A section is keyed by its id, a section
+    without one by its type; the n-th repeat of the same id (or the n-th
+    id-less section of a type) gets n, so inserting a section never shifts the
+    others' keys and duplicate ids are each compared with their own counterpart.
+    """
+    seen: Dict[Tuple[str, str], int] = {}
+    out: List[Tuple[Tuple[str, str, int], Dict[str, Any]]] = []
+    for comp in components or []:
+        if not isinstance(comp, dict):
+            continue
+        cid = str(comp.get("id") or "")
+        base = ("id", cid) if cid else ("type", str(comp.get("type") or ""))
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        out.append(((base[0], base[1], n), comp))
+    return out
 
 
 def _section_ref(comp: Dict[str, Any]) -> Dict[str, Any]:
@@ -2887,18 +2903,22 @@ def _section_ref(comp: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _diff_sections(live: List[Any], draft: List[Any]) -> Dict[str, Any]:
-    lc = {_section_key(c, i): c for i, c in enumerate(live or []) if isinstance(c, dict)}
-    dc = {_section_key(c, i): c for i, c in enumerate(draft or []) if isinstance(c, dict)}
+    lk, dk = _keyed_sections(live), _keyed_sections(draft)
+    lc, dc = dict(lk), dict(dk)
     out: Dict[str, Any] = {
-        "added": [_section_ref(c) for k, c in dc.items() if k not in lc][:_DIFF_CAP],
-        "removed": [_section_ref(c) for k, c in lc.items() if k not in dc][:_DIFF_CAP],
-        "changed": [_section_ref(c) for k, c in dc.items() if k in lc and _canon(c) != _canon(lc[k])][:_DIFF_CAP],
+        "added": [_section_ref(c) for k, c in dk if k not in lc][:_DIFF_CAP],
+        "removed": [_section_ref(c) for k, c in lk if k not in dc][:_DIFF_CAP],
+        "changed": [_section_ref(c) for k, c in dk if k in lc and _canon(c) != _canon(lc[k])][:_DIFF_CAP],
     }
-    common_live = [k for k in lc if k in dc]
-    common_draft = [k for k in dc if k in lc]
+    common_live = [k for k, _ in lk if k in dc]
+    common_draft = [k for k, _ in dk if k in lc]
     if common_live != common_draft:
         out["reordered"] = True
-    return {k: v for k, v in out.items() if v}
+    out = {k: v for k, v in out.items() if v}
+    if out and any(k[0] == "type" or k[2] for k, _ in lk + dk):
+        out["matched_by"] = ("Sections without an id are matched by type and order, and repeated ids by order, "
+                             "so a moved one may show as removed + added.")
+    return out
 
 
 def _match_pages(live: List[Dict[str, Any]], draft: List[Dict[str, Any]]):
@@ -3029,6 +3049,31 @@ def diff_site_configs(live: Optional[Dict[str, Any]], draft: Dict[str, Any]) -> 
     return {k: v for k, v in out.items() if v not in ([], {}, None)}
 
 
+#: A DRAFT / INACTIVE catalogue: admin-core's public by-tag read (what the site's own link loads) serves
+#: ACTIVE and DRAFT sites alike, but only an ACTIVE one can be the institute's default site.
+SITE_NOT_ACTIVE_NOTE = ("The site's status is {status}, not ACTIVE. Publishing does not change that status: a DRAFT "
+                        "site is still served at its own link (live_url) but cannot be the institute's default site, "
+                        "and an INACTIVE one is not served. The admin can check the status in Manage Pages.")
+
+
+def _first_publish_diff(diff: Dict[str, Any], draft: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    ``diff_vs_live`` for a site that was never published (e.g. just made by
+    create_site, whose starting JSON equals the draft): says so instead of
+    "the draft is the same as the live site", so nobody is told to discard it.
+    """
+    routes = [str(p.get("route") or "") for p in draft.get("pages") or [] if isinstance(p, dict)]
+    out = {**diff, "changed": True, "first_publish": True}
+    lines = [f"Never published: publishing makes this draft ({len(routes)} page(s): "
+             + ", ".join(f"'{r}'" for r in routes[:_DIFF_CAP]) + ") the site's first published version."]
+    if not diff.get("changed"):
+        out["pages"] = {"added": routes[:_DIFF_CAP]}
+        lines.append("The site's link already serves the version it was created with, which equals this draft.")
+    out["summary"] = lines + [line for line in diff.get("summary") or []
+                              if line != "The draft is the same as the live site."]
+    return out
+
+
 #: What request_publish never does, said in every result so no caller reads "ready" as "live".
 REQUEST_PUBLISH_NOTE = ("request_publish only checks the draft; it never publishes. The admin publishes by opening "
                         "editor_url and pressing Publish. Never tell the admin the site is live.")
@@ -3065,15 +3110,29 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
         return {**err, "action": "request_publish"}
     tag = site["tag_name"]
     editor = site_editor_url(tag, ctx=ctx)
-    revisions = {k: v for k, v in (site.get("revisions") or {}).items() if v is not None}
+    raw_revisions = site.get("revisions") or {}
+    revisions = {k: v for k, v in raw_revisions.items() if v is not None}
     stale_flag = revisions.pop("live_changed_since_draft", None)
     out: Dict[str, Any] = {"tag_name": tag, "ready": False, "editor_url": editor, "live_url": site_url(ctx, tag),
                            "site_status": site.get("status"), **revisions}
     if out["live_url"] is None:
         out["live_url_note"] = NO_PORTAL_DOMAIN_NOTE
-    if str(site.get("status") or "").upper() not in ("", "ACTIVE"):
-        out["site_status_note"] = (f"The site's status is {site.get('status')}, not ACTIVE, so visitors may not see "
-                                   "it even after publishing; the admin can check it in Manage Pages.")
+    not_active = str(site.get("status") or "").upper() not in ("", "ACTIVE")
+    if not_active:
+        out["site_status_note"] = SITE_NOT_ACTIVE_NOTE.format(status=site.get("status"))
+
+    if site.get("draft_read_ok") is False:
+        # A failed read is not "no draft": never tell the admin there is nothing unpublished.
+        out.update({"verdict": "unknown",
+                    "blockers": [{"code": "draft_unavailable",
+                                  "message": ("The site's draft could not be read (the server did not answer), so "
+                                              "it is unknown whether there are unpublished changes."),
+                                  "fix": "Re-run request_publish in a moment; if it keeps failing, the admin checks editor_url."}],
+                    "checks": "skipped: the draft could not be read",
+                    "next": ("Tell the admin the readiness check could not read the draft and hand them editor_url; "
+                             "do not say there are no unpublished changes."),
+                    "note": REQUEST_PUBLISH_NOTE})
+        return out
 
     stale = site.get("stale_draft")
     if stale:
@@ -3100,6 +3159,13 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
         out["note"] = REQUEST_PUBLISH_NOTE
         return out
 
+    # Never published: a site that is not ACTIVE with no published revision behind its draft — e.g. one
+    # create_site just made (status DRAFT), whose starting JSON equals the draft. An ACTIVE site without a
+    # revision predates revision history: its JSON is what visitors see, so it is diffed as before.
+    first_publish = bool(site["from_draft"] and not_active and raw_revisions.get("live_revision_no") is None)
+    if first_publish:
+        out["first_publish"] = True
+
     if not site["from_draft"]:
         out.update({"verdict": "nothing_to_publish",
                     "blockers": [{"code": "no_draft", "message": "There is no unpublished draft: the live site "
@@ -3109,6 +3175,11 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
 
     config = site["config"]
     diff = diff_site_configs(site.get("live_config"), config)
+    if first_publish:
+        diff = _first_publish_diff(diff, config)
+    if not_active:
+        diff["summary"] = [*(diff.get("summary") or []),
+                           f"The site's status is {site.get('status')}, not ACTIVE (see site_status_note)."]
     out["diff_vs_live"] = diff
     if not diff.get("changed"):
         out.update({"verdict": "nothing_to_publish",
@@ -3119,6 +3190,13 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
 
     blockers: List[Dict[str, Any]] = []
     warnings: List[Dict[str, Any]] = []
+    if first_publish:
+        warnings.append({"code": "first_publish",
+                         "message": ("This site has never been published: pressing Publish in the editor makes this "
+                                     "draft its first published version. Do not discard the draft.")})
+    if not_active:
+        warnings.append({"code": "site_not_active", "status": site.get("status"),
+                         "message": SITE_NOT_ACTIVE_NOTE.format(status=site.get("status"))})
     out["live_changed_since_draft"] = stale_flag
     if stale_flag is None:
         warnings.append({"code": "stale_check_unavailable",
@@ -3179,7 +3257,8 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
         "warnings": warnings,
         "checks": {"publish_checks": publish, "review": review, "data_audit": data},
         "next": (("Ready: give the admin editor_url and diff_vs_live.summary, and ask them to review and press "
-                  "Publish there.") if ready else
+                  "Publish there." + (" It is the site's first publish." if first_publish else "")
+                  + (" Mention site_status_note." if not_active else "")) if ready else
                  ("Not ready: fix the blockers you can (page edits) and re-run request_publish; hand the admin the "
                   "ones only they can fix (data, a stale draft) with their links. The admin may still publish "
                   "from editor_url.")),

@@ -7,8 +7,11 @@ returns ready + blockers, a structural diff against live, admin-core's
 stale-draft verdict and the editor link. The tests pin down: it only ever GETs
 (no save, publish or discard); a stale draft is "not ready" with the server's
 revision numbers; a clean draft is "ready" with the editor link; a faithful
-Brahm Varchas page is judged in its design's mode; and nothing about the
-existing actions or ``load_site`` changes for callers that do not ask.
+Brahm Varchas page is judged in its design's mode; a site create_site just
+made is a first publish, never "nothing to publish"; a failed draft read is
+"unknown", never "no draft"; id-less and duplicate-id sections diff one by
+one; and nothing about the existing actions (website review byte for byte) or
+``load_site`` changes for callers that do not ask.
 """
 import copy
 import json
@@ -58,16 +61,20 @@ def with_design(config):
 class Backend:
     """admin-core for one site: `live` is the published JSON, `draft` the open draft (or None)."""
 
-    def __init__(self, monkeypatch, live, draft=None, stale=False, base=None):
+    def __init__(self, monkeypatch, live, draft=None, stale=False, base=None, status="ACTIVE", published=True,
+                 draft_error=None):
         self.calls = []
         self.live, self.draft, self.stale = live, draft, stale
+        # status: the catalogue row's; published=False: no PUBLISHED revision yet (what create_site leaves);
+        # draft_error: the draft endpoint fails with this instead of answering (None: 200, or 204 without a draft).
+        self.status, self.published, self.draft_error = status, published, draft_error
         self.base = base or fake_admin_core([])
         monkeypatch.setattr(website_data, "_admin_core_json", self._call)
         monkeypatch.setattr(edit_mod, "_admin_core_json", self._call)
         monkeypatch.setattr(website_mod, "_admin_core_json", self._call)
 
     def row(self):
-        return {**CATALOGUE_ROW, "catalogue_json": json.dumps(self.live)}
+        return {**CATALOGUE_ROW, "status": self.status, "catalogue_json": json.dumps(self.live)}
 
     async def _call(self, ctx_, method, path, params=None, body=None, timeout=None):
         self.calls.append((method, path))
@@ -76,8 +83,10 @@ class Backend:
         if path.endswith("/course-catalogue/institute/get/by-tag"):
             return self.row()
         if path.endswith("/revision/draft"):
+            if self.draft_error is not None:
+                return self.draft_error
             if self.draft is None:
-                return {"error": "fetch_failed", "status": 204}
+                return {"error": "fetch_failed", "status": 204}   # what _service_json makes of the 204
             draft = {"id": "rev-d", "revision_no": 12, "source": "AI_COPILOT", "catalogue_json": json.dumps(self.draft),
                      "created_at": "2026-10-01T00:00:00", "updated_at": "2026-10-09T00:00:00",
                      "live_revision_no": 11, "live_updated_at": "2026-09-30T00:00:00",
@@ -85,6 +94,10 @@ class Backend:
             if self.stale:
                 draft.update({"live_changed_since_draft": True, "live_revision_no": 14,
                               "live_updated_at": "2026-10-08T12:00:00"})
+            if not self.published:
+                # admin-core leaves the live_* fields out (NON_NULL) when no revision was ever published.
+                draft = {k: v for k, v in draft.items() if k not in ("live_revision_no", "live_updated_at")}
+                draft["revision_no"] = 1
             return draft
         return await self.base(ctx_, method, path, params=params, body=body, timeout=timeout)
 
@@ -162,6 +175,114 @@ async def test_a_draft_equal_to_live_changes_nothing(monkeypatch):
     assert out["verdict"] == "nothing_to_publish" and [b["code"] for b in out["blockers"]] == ["no_changes"]
     assert out["diff_vs_live"]["changed"] is False
     be.assert_read_only()
+
+
+# ── a site that was never published (create_site → request_publish) ─────
+@pytest.mark.asyncio
+async def test_a_site_create_site_just_made_is_a_first_publish_not_nothing_to_publish(monkeypatch):
+    """create_site writes the config as the row's JSON (status DRAFT) AND as the draft: the two are equal."""
+    site = with_design(bv_site())
+    be = Backend(monkeypatch, site, copy.deepcopy(site), status="DRAFT", published=False)
+    clean_data_audit(monkeypatch)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "ready" and out["ready"] is True and out["first_publish"] is True
+    assert "no_changes" not in [b["code"] for b in out["blockers"]]
+    diff = out["diff_vs_live"]
+    assert diff["changed"] is True and diff["first_publish"] is True
+    assert diff["pages"]["added"] == [p["route"] for p in site["pages"]]
+    assert diff["summary"][0].startswith("Never published")
+    assert "The draft is the same as the live site." not in diff["summary"]
+    assert {"first_publish", "site_not_active"} <= {w["code"] for w in out["warnings"]}
+    # Accurate about what a DRAFT-status site is: still served at its own link, never the default site.
+    assert "served at its own link" in out["site_status_note"] and "default site" in out["site_status_note"]
+    text_out = json.dumps(out)
+    assert "Discard the draft" not in text_out and "discard_draft" not in text_out
+    assert "Publish" in out["next"] and "first publish" in out["next"]
+    # Every check still ran on the draft.
+    assert out["checks"]["review"]["pages"] and out["checks"]["publish_checks"]["error_count"] == 0
+    be.assert_read_only()
+
+
+@pytest.mark.asyncio
+async def test_a_first_publish_with_problems_lists_its_blockers(monkeypatch):
+    site = sample_config()
+    Backend(monkeypatch, site, copy.deepcopy(site), status="DRAFT", published=False)
+    clean_data_audit(monkeypatch)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "not_ready" and out["first_publish"] is True
+    assert "publish_check_errors" in [b["code"] for b in out["blockers"]]
+
+
+@pytest.mark.asyncio
+async def test_a_first_publish_is_spotted_on_an_older_server_too(monkeypatch):
+    """No live_* fields at all (an older admin-core): a DRAFT-status site with no live revision is still new."""
+    site = with_design(bv_site())
+    be = Backend(monkeypatch, site, copy.deepcopy(site), status="DRAFT", published=False)
+    real = be._call
+
+    async def older_server(ctx_, method, path, params=None, body=None, timeout=None):
+        data = await real(ctx_, method, path, params=params, body=body, timeout=timeout)
+        if path.endswith("/revision/draft"):
+            data = {k: v for k, v in data.items() if not k.startswith("live_")}
+        return data
+    monkeypatch.setattr(website_data, "_admin_core_json", older_server)
+    clean_data_audit(monkeypatch)
+    out = await run({"tag_name": "main-site"})
+    assert out["first_publish"] is True and out["verdict"] == "ready"
+    assert "stale_check_unavailable" in [w["code"] for w in out["warnings"]]
+
+
+@pytest.mark.asyncio
+async def test_published_or_active_sites_keep_the_old_verdicts(monkeypatch):
+    live = sample_config()
+    # A DRAFT-status site that HAS been published: the draft equal to it really changes nothing.
+    Backend(monkeypatch, live, copy.deepcopy(live), status="DRAFT", published=True)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "nothing_to_publish" and "first_publish" not in out
+    assert "site_status_note" in out
+    # An ACTIVE site from before revision history (no published revision): its JSON is what visitors see.
+    Backend(monkeypatch, live, copy.deepcopy(live), status="ACTIVE", published=False)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "nothing_to_publish" and "first_publish" not in out
+    assert "site_status_note" not in out
+    # No draft at all on a DRAFT-status site: still nothing to publish.
+    Backend(monkeypatch, live, None, status="DRAFT", published=False)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "nothing_to_publish" and [b["code"] for b in out["blockers"]] == ["no_draft"]
+
+
+# ── a failed draft read is not "no draft" ────────────────────────────────
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [
+    {"error": "fetch_failed", "status": 503},
+    {"error": "fetch_failed", "status": 401},
+    {"error": "fetch_failed"},                       # timeout / connection error
+    {"error": "no_auth", "message": "This lookup is unavailable right now."},
+])
+async def test_a_failed_draft_read_is_unknown_not_nothing_to_publish(monkeypatch, failure):
+    live = sample_config()
+    draft = copy.deepcopy(live)
+    draft["pages"][0]["title"] = "Unpublished change"
+    be = Backend(monkeypatch, live, draft, draft_error=failure)
+    out = await run({"tag_name": "main-site"})
+    assert out["verdict"] == "unknown" and out["ready"] is False
+    assert [b["code"] for b in out["blockers"]] == ["draft_unavailable"]
+    assert "no_draft" not in json.dumps(out) and "nothing_to_publish" not in json.dumps(out)
+    assert out["checks"].startswith("skipped") and "manage-pages/editor/main-site" in out["editor_url"]
+    be.assert_read_only()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_draft_read_leaves_plain_load_site_as_it_was(monkeypatch):
+    live = sample_config()
+    Backend(monkeypatch, live, copy.deepcopy(live), draft_error={"error": "fetch_failed", "status": 503})
+    site, err = await website_data.load_site(ctx(), "main-site")
+    assert err is None and site["from_draft"] is False and site["draft"] is None and "draft_read_ok" not in site
+    site, _ = await website_data.load_site(ctx(), "main-site", with_live=True)
+    assert site["draft_read_ok"] is False
+    Backend(monkeypatch, live, None)                  # the 204: a real "no draft"
+    site, _ = await website_data.load_site(ctx(), "main-site", with_live=True)
+    assert site["draft_read_ok"] is True and site["from_draft"] is False
 
 
 @pytest.mark.asyncio
@@ -354,3 +475,131 @@ def test_diff_spots_page_reorder_and_removal_and_unreadable_live():
     assert d["live_unreadable"] is True and d["pages"]["added"] == ["home", "about"]
     assert diff_site_configs(live, copy.deepcopy(live)) == {"changed": False,
                                                             "summary": ["The draft is the same as the live site."]}
+
+
+def _spacer(i):
+    return {"type": "spacer", "enabled": True, "props": {"height": 10 * i}}
+
+
+def test_sections_without_ids_are_matched_by_type_and_order():
+    live = sample_config()
+    live["pages"][0]["components"] = [
+        {"type": "heroSection", "enabled": True, "props": {"left": {"title": "Hi"}}},
+        _spacer(1), {"type": "textBlock", "enabled": True, "props": {"content": "a"}}, _spacer(2),
+        {"type": "textBlock", "enabled": True, "props": {"content": "b"}}, _spacer(3),
+    ]
+    draft = copy.deepcopy(live)
+    # One spacer inserted at the end of its kind: nothing else shifts.
+    draft["pages"][0]["components"].append(_spacer(4))
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert [s["type"] for s in home["added"]] == ["spacer"]
+    assert "removed" not in home and "changed" not in home and "reordered" not in home
+    assert "matched by type and order" in home["matched_by"]
+    # An inserted id-less section of ANOTHER type never disturbs the rest.
+    draft = copy.deepcopy(live)
+    draft["pages"][0]["components"].insert(1, {"type": "faqSection", "enabled": True, "props": {}})
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert [s["type"] for s in home["added"]] == ["faqSection"] and set(home) == {"added", "matched_by"}
+    # Editing the second text block reports that one only.
+    draft = copy.deepcopy(live)
+    draft["pages"][0]["components"][4]["props"]["content"] = "B"
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert [s["type"] for s in home["changed"]] == ["textBlock"] and set(home) == {"changed", "matched_by"}
+
+
+def test_duplicate_section_ids_are_each_compared():
+    live = sample_config()
+    comps = live["pages"][0]["components"]
+    comps[:] = [{"id": "dup", "type": "textBlock", "enabled": True, "props": {"content": str(i)}} for i in range(3)]
+    draft = copy.deepcopy(live)
+    draft["pages"][0]["components"][0]["props"]["content"] = "first"
+    draft["pages"][0]["components"][2]["props"]["content"] = "third"
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert len(home["changed"]) == 2 and "added" not in home and "removed" not in home
+    assert "repeated ids" in home["matched_by"]
+    draft["pages"][0]["components"].pop()
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert [s["id"] for s in home["removed"]] == ["dup"]
+
+
+def test_sections_with_unique_ids_get_no_matching_note():
+    live = sample_config()
+    draft = copy.deepcopy(live)
+    draft["pages"][0]["components"][1]["props"]["left"]["title"] = "New"
+    home = diff_site_configs(live, draft)["pages"]["changed"][0]["sections"]
+    assert home == {"changed": [{"id": "c-hero", "type": "heroSection", "label": home["changed"][0]["label"]}]}
+
+
+# ── website(action='review') is byte-identical to before review_pages ────
+async def _review_before_refactor(args, ctx_):
+    """website(action='review') exactly as it was before review_pages was split out (frozen copy)."""
+    from app.services.page_quality import review_mode, review_with_audit
+    from app.services.website_data import load_site, stale_note
+    site, err = await load_site(ctx_, args.get("tag_name"))
+    if err:
+        return err
+    gs = site["config"].get("globalSettings") or {}
+    pages = [p for p in site["config"].get("pages") or [] if isinstance(p, dict)]
+    route = str(args.get("page_route") or "").strip()
+    if route:
+        page = website_mod.find_page(site["config"], route)
+        if page is None:
+            return website_mod._err("unknown_page", available=[p.get("route") for p in pages])
+        pages = [page]
+    out = {"tag_name": site["tag_name"], "reviewed": "draft" if site["from_draft"] else "published",
+           "pages": {}, **stale_note(site)}
+    fidelity_arg = website_mod._bool_arg(args.get("fidelity"))
+    any_fidelity = False
+    can_bind = ctx_.may_use("website_edit")
+    for i, page in enumerate(pages):
+        page_type, fidelity = review_mode(page, args.get("page_type"), fidelity_arg)
+        page_type = page_type or ("homepage" if i == 0 and not route else ("course-landing" if "course" in str(page.get("route") or "") else "about"))
+        r = review_with_audit(page, gs, page_type, fidelity=fidelity)
+        entry = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
+                 "issues": [{k: v for k, v in (website_mod._bind_not_remove(i_, page) if can_bind else i_).items()
+                             if k != "weight"} for i_ in r["issues"][:16]]}
+        if fidelity:
+            entry.update({"mode": "fidelity", "page_type": page_type})
+            any_fidelity = True
+        out["pages"][str(page.get("route"))] = entry
+    scores = [v["score"] for v in out["pages"].values()]
+    out["score"] = min(scores) if scores else 0
+    out["bar"] = 85
+    out["passes"] = all(v["passes"] for v in out["pages"].values())
+    out["next"] = ("Fix `fix` items first, then the highest-weight warnings, with update_page ops; re-run review. "
+                   "Tell the admin a page is ready only when it passes.")
+    if any_fidelity:
+        out["next"] += (" Pages in fidelity mode follow a design: fix only what is broken — never add sections, "
+                        "heroes, stats or testimonials the design does not have.")
+    return out
+
+
+def _review_sites():
+    sites = [("sample", sample_config())]
+    if FIXTURE.exists():
+        sites += [("bv", bv_site()), ("bv_design", with_design(bv_site()))]
+    return sites
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("can_bind", [False, True])
+@pytest.mark.parametrize("args", [
+    {}, {"page_route": "home"}, {"page_route": "nope"}, {"fidelity": True}, {"fidelity": "false"},
+    {"page_type": "about"}, {"page_type": "homepage", "fidelity": True},
+])
+async def test_review_output_is_byte_identical_to_before_the_refactor(monkeypatch, args, can_bind):
+    for name, site in _review_sites():
+        draft = copy.deepcopy(site)
+        draft["pages"][-1]["title"] = "Draft"
+        for stale in (False, True):
+            Backend(monkeypatch, site, draft, stale=stale)
+            c = ctx()
+            c.may_use = lambda tool, _v=can_bind: _v
+            if args.get("page_route") == "home" and not any(p.get("route") == "home" for p in site["pages"]):
+                args = {**args, "page_route": site["pages"][0]["route"]}
+            now = await website_mod.execute_website({"action": "review", **args}, c)
+            before = await _review_before_refactor(args, c)
+            # execute_website's own wrapping, unchanged by the refactor.
+            before = json.dumps(before if "action" in before else {"action": "review", **before},
+                                ensure_ascii=False, default=str)
+            assert now == before, (name, stale)

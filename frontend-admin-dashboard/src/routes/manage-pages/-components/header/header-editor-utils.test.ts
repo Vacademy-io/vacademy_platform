@@ -4,6 +4,7 @@ import {
     isUsableHeaderLink,
     keepMegaMenuItems,
     navItemTypePatch,
+    syncNavWithPages,
     toSitePath,
     unknownPatternTokens,
     type HeaderNavItemValue,
@@ -102,6 +103,98 @@ describe('keepMegaMenuItems', () => {
             keepMegaMenuItems([page('Old'), { ...page('Typed'), type: 'link' }], fromPages)
         ).toEqual(fromPages);
         expect(keepMegaMenuItems(undefined, fromPages)).toEqual(fromPages);
+    });
+});
+
+describe('syncNavWithPages', () => {
+    const pages = [
+        { id: 'home', route: 'home', title: 'Home' },
+        { id: 'courses', route: 'courses', title: 'Courses' },
+        { id: 'learning-paths', route: 'learning-paths', title: 'Learning Paths' },
+    ];
+    const mega: HeaderNavItemValue = {
+        label: 'Knowledge Streams',
+        route: '/courses',
+        type: 'megaMenu',
+    };
+    const courses: HeaderNavItemValue = {
+        label: 'All courses',
+        route: 'courses',
+        openInSameTab: true,
+    };
+    const paths: HeaderNavItemValue = { label: 'Paths', route: '/learning-paths', enabled: false };
+    const resources: HeaderNavItemValue = {
+        label: 'Resources',
+        route: 'https://example.org/blogs/',
+    };
+    const filtered: HeaderNavItemValue = { label: 'Shiksha', route: '/courses?stream=shiksha' };
+
+    it('adds the missing page and keeps mega menus, external and filtered links in place', () => {
+        const synced = syncNavWithPages([mega, courses, paths, resources, filtered], pages);
+        expect(synced.map((i) => i.label)).toEqual([
+            'Knowledge Streams',
+            'Home',
+            'All courses',
+            'Paths',
+            'Resources',
+            'Shiksha',
+        ]);
+        // Existing page links are the same objects: custom label and hidden flag survive.
+        expect(synced[2]).toBe(courses);
+        expect(synced[3]).toBe(paths);
+        expect(synced[0]).toBe(mega);
+        expect(synced[4]).toBe(resources);
+        expect(synced[1]).toEqual({ label: 'Home', route: 'homepage', openInSameTab: true });
+    });
+
+    it('drops a visible link to an unpublished page, and matches home by any of its routes', () => {
+        const home: HeaderNavItemValue = { label: 'Start', route: '/' };
+        const draft: HeaderNavItemValue = { label: 'Draft', route: 'learning-paths' };
+        const synced = syncNavWithPages(
+            [home, draft, resources],
+            [...pages.slice(0, 2), { ...pages[2]!, published: false }]
+        );
+        expect(synced.map((i) => i.label)).toEqual(['Start', 'Courses', 'Resources']);
+        expect(synced[0]).toBe(home);
+    });
+
+    it('keeps a link with an empty route where it is and still adds Home', () => {
+        const contact: HeaderNavItemValue = { label: 'Contact', route: '' };
+        const synced = syncNavWithPages([contact, courses], pages.slice(0, 2));
+        expect(synced.map((i) => i.label)).toEqual(['Contact', 'Home', 'All courses']);
+        expect(synced[0]).toBe(contact);
+    });
+
+    it('keeps internal links that are not pages (a blog post, a course)', () => {
+        const post: HeaderNavItemValue = { label: 'Post', route: '/blog/my-post' };
+        const course: HeaderNavItemValue = { label: 'NCLEX', route: 'course/abc' };
+        const synced = syncNavWithPages([post, course, courses], pages.slice(0, 2));
+        expect(synced.map((i) => i.label)).toEqual(['Post', 'NCLEX', 'Home', 'All courses']);
+        expect(synced[0]).toBe(post);
+        expect(synced[1]).toBe(course);
+    });
+
+    it('keeps a hidden link to an unpublished page as it is', () => {
+        const synced = syncNavWithPages(
+            [courses, paths],
+            [...pages.slice(0, 2), { ...pages[2]!, published: false }]
+        );
+        expect(synced.map((i) => i.label)).toEqual(['Home', 'All courses', 'Paths']);
+        expect(synced[2]).toBe(paths);
+    });
+
+    it('builds the plain page list for an empty nav and leaves unpublished pages out', () => {
+        expect(
+            syncNavWithPages(undefined, [
+                ...pages,
+                { id: 'draft', route: 'draft', published: false },
+            ]).map((i) => i.route)
+        ).toEqual(['homepage', 'courses', 'learning-paths']);
+    });
+
+    it('is unchanged when the nav already lists every page', () => {
+        const nav = [mega, { label: 'Home', route: 'homepage' }, courses, paths, resources];
+        expect(syncNavWithPages(nav, pages)).toEqual(nav);
     });
 });
 

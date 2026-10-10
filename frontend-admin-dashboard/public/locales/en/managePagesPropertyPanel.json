@@ -70,7 +70,8 @@
       "motion": "Motion",
       "backToTopButton": "Back to Top Button",
       "mode": "Mode",
-      "compactness": "Compactness"
+      "compactness": "Compactness",
+      "ownPaletteNote": "This site's own palette overrides most preset colours in light mode."
     },
     "fonts": {
       "heading": "Typography",
@@ -265,7 +266,8 @@
     "minimal": "Minimal",
     "slow": "Slow",
     "warn": "Warning",
-    "resource": "Resource"
+    "resource": "Resource",
+    "customValue": "Custom: {{value}}"
   },
   "componentTypes": {
     "heroSection": "Hero Section",
@@ -373,7 +375,10 @@
     "imageFitHint": "Use \"Fit whole image\" when covers are wide banners with text near the edges.",
     "defaultSort": "Default Sort",
     "defaultSortHint": "How courses are ordered when the page opens. Learners can still change it. Pick \"Price: Low to High\" to show free courses first.",
-    "advancedComingSoon": "Advanced filter configuration and cart settings coming soon."
+    "titleWithHero": "Extra heading above the tabs (usually empty)",
+    "titleWithHeroHint": "The page heading visitors see comes from this section's page header (hero). Text here adds a second heading.",
+    "legacyFiltersSummary": "More filters from course data (not used by this design)",
+    "legacyFiltersHint": "This page's sidebar has its own filter groups. Ticking one of these adds an extra group after them."
   },
   "buyRent": {
     "heading": "Buy/Rent Settings",
@@ -400,7 +405,7 @@
     "backgroundColor": "Background Color",
     "textColor": "Text Color",
     "navigationLinks": "Navigation Links",
-    "syncPagesTitle": "Auto-generate from published pages",
+    "syncPagesTitle": "Add and order your published pages. Mega menus, outside links and hidden links stay as they are.",
     "syncPages": "Sync Pages",
     "labelPlaceholder": "Label",
     "route": "Route",
@@ -437,7 +442,11 @@
     "sectionTitlePlaceholder": "e.g. Quick Links",
     "links": "Links",
     "bottomNote": "Bottom Note",
-    "bottomNotePlaceholder": "© 2025 Your Company. All rights reserved."
+    "bottomNotePlaceholder": "© 2025 Your Company. All rights reserved.",
+    "column5": "Column 5",
+    "brandDesignNote": "This footer uses its own design: it always shows four link columns, and the layout and presets do not apply.",
+    "useStandard": "Use a standard footer instead",
+    "useStandardConfirm": "Switch to a standard footer? Your links and text are kept; the layout and presets apply again. Undo brings the brand design back."
   },
   "hero": {
     "heading": "Hero Section Settings",
@@ -484,7 +493,8 @@
     "posterField": "Poster (uploaded video only)",
     "carouselImages": "Carousel Images",
     "carouselImagesHint": "Add 2 or more images to turn the hero media into an auto-playing carousel. With one image it stays a single image; with none it uses the Right Image above.",
-    "slideN": "Slide {{n}}"
+    "slideN": "Slide {{n}}",
+    "eyebrowStyleRule": "Rule (line before the text)"
   },
   "bookDetails": {
     "heading": "Book Details Settings",
@@ -919,7 +929,8 @@
     "numberLabelPlaceholder": "Step number/label",
     "metaPlaceholder": "Meta (e.g. Weeks 1-4)",
     "chipsPlaceholder": "Chips (comma-separated)",
-    "highlightThisStep": "Highlight this step"
+    "highlightThisStep": "Highlight this step",
+    "variantCards": "Cards"
   },
   "documentViewer": {
     "heading": "Document Viewer Settings",
@@ -974,5 +985,21 @@
     "gateHeading": "Ask for details before reading",
     "gateTitlePlaceholder": "Popup title (e.g. Read our free articles)",
     "gateHint": "Pick a list and every article opens only after its form is filled once. The same list on resource cards means one form unlocks both."
+  },
+  "sectionJson": {
+    "button": "Edit as JSON",
+    "buttonHint": "Edit this section's settings as JSON, including values that have no field yet",
+    "title": "Edit this section as JSON",
+    "hint": "Only this section's settings. Apply replaces them in one step; Undo brings the old ones back.",
+    "apply": "Apply",
+    "notObject": "The settings must be one JSON object: { … }.",
+    "errorAt": "Not valid JSON at line {{line}}, column {{column}}: {{message}}",
+    "invalid": "Not valid JSON: {{message}}",
+    "baseLanguageOnly": "Switch to the base language to edit the JSON"
+  },
+  "sectionVersion": {
+    "keptTitle": "New version applied",
+    "keptSettings": "{{count}} settings this version did not include were kept. Use Undo to go back, or open “Edit as JSON” to see them.",
+    "keepsNote": "Also keeps {{count}} settings this version leaves out: {{names}}"
   }
 }

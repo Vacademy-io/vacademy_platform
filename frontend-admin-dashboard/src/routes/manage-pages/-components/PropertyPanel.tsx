@@ -30,6 +30,7 @@ import {
     Sparkle,
     Eye,
     EyeSlash,
+    BracketsCurly,
 } from '@phosphor-icons/react';
 import { useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
@@ -44,16 +45,11 @@ import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
 import { useToast } from '@/hooks/use-toast';
 import { HTML_PAGE_AI_PROMPT } from '../-utils/html-page-prompt';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { listBlogPosts } from '../-services/blog-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
-import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
-import {
-    SUBMIT_CATALOGUE_LEAD_URL,
-    AUDIENCE_CAMPAIGN,
-    GET_INVITE_LIST,
-} from '@/constants/urls';
+import { AUDIENCE_CAMPAIGN, GET_INVITE_LIST } from '@/constants/urls';
 import axios from 'axios';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -64,16 +60,26 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
+import { CampaignPicker, websiteFormFields } from './CampaignPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
+import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
+import { CtaBandFields } from './chrome/CtaBandFields';
+import { FooterBrandFields } from './chrome/FooterBrandFields';
+import { HeroEditorialFields } from './chrome/HeroEditorialFields';
 import { NavItemEditor } from './header/NavItemEditor';
 import { AuthLinkStyleSelect } from './header/AuthLinkStyleSelect';
 import { HeaderDisplayOptions } from './header/HeaderDisplayOptions';
-import { keepMegaMenuItems } from './header/header-editor-utils';
+import { HeaderLookGroup } from './header/HeaderLookGroup';
+import { syncNavWithPages } from './header/header-editor-utils';
 import { LearningPathEditor } from './learning-path/LearningPathEditor';
 import { VisibleWhenEditor } from './settings/VisibleWhenEditor';
 import { CourseLanguagesSettingsCard } from './settings/CourseLanguagesSettingsCard';
+import { CourseFormatsCard } from './settings/CourseFormatsCard';
+import { SitePaletteCard } from './settings/SitePaletteCard';
 import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
+import { SectionJsonDialog } from './SectionJsonDialog';
+import { describeKeptSettings, mergeSectionVersion } from '../-utils/section-edits';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -122,6 +128,8 @@ export const PropertyPanel = () => {
     const { config, updateComponent, updateGlobalSettings, updatePageSeo } = localized;
     // Declared before the early returns below — hooks cannot live behind a branch.
     const [variantsOpen, setVariantsOpen] = useState(false);
+    const [jsonOpen, setJsonOpen] = useState(false);
+    const { toast } = useToast();
 
     if (!config) return null;
 
@@ -143,6 +151,7 @@ export const PropertyPanel = () => {
                 config={config}
                 section={selectedGlobalLayout}
                 updateGlobalSettings={updateGlobalSettings}
+                jsonDisabled={!!localized.locale}
             />
         );
     }
@@ -295,16 +304,34 @@ export const PropertyPanel = () => {
                     component={component}
                     page={{ id: pageId, components: pageComponents }}
                     globalSettings={config.globalSettings as Record<string, any>}
-                    onApply={(next) =>
-                        // A whole-component swap: updateComponent top-level
-                        // spreads, so style must be sent explicitly or the old
-                        // one survives under the new props. Undo covers it.
-                        updateComponent(pageId, component!.id, {
-                            type: next.type,
-                            props: next.props,
-                            style: next.style,
-                        })
-                    }
+                    previewOf={(next) => {
+                        const { patch, kept } = mergeSectionVersion(component!, next);
+                        return { component: { ...component!, ...patch }, kept };
+                    }}
+                    onApply={(next) => {
+                        // The new version replaces what it sets; settings it
+                        // leaves out (a page hero, sidebar, card design… it has
+                        // no field for) are kept, and the admin is told which.
+                        // style is sent explicitly: updateComponent spreads
+                        // top-level keys. Undo covers it.
+                        const { patch, kept } = mergeSectionVersion(component!, next);
+                        updateComponent(pageId, component!.id, patch);
+                        if (kept.length) {
+                            toast({
+                                title: t('sectionVersion.keptTitle'),
+                                description: t('sectionVersion.keptSettings', {
+                                    count: describeKeptSettings(kept).length,
+                                }),
+                            });
+                        }
+                    }}
+                />
+
+                <SectionJsonDialog
+                    open={jsonOpen}
+                    onOpenChange={setJsonOpen}
+                    value={component.props}
+                    onApply={(props) => updateComponent(pageId, component!.id, { props })}
                 />
 
                 <div className="flex items-center justify-between">
@@ -342,21 +369,28 @@ export const PropertyPanel = () => {
                     onChange={(rules) => updateComponent(pageId, component!.id, { visibleWhen: rules })}
                 />
 
-                {/* Copy component */}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-xs"
-                    onClick={() => copyComponent(pageId, component!.id)}
-                >
-                    <Clipboard className="me-1.5 size-3" /> {t('actions.copyToClipboard')}
-                </Button>
+                {/* Copy component / edit its settings as JSON */}
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-xs"
+                        onClick={() => copyComponent(pageId, component!.id)}
+                    >
+                        <Clipboard className="me-1.5 size-3" /> {t('actions.copyToClipboard')}
+                    </Button>
+                    <SectionJsonButton
+                        disabled={!!localized.locale}
+                        onClick={() => setJsonOpen(true)}
+                    />
+                </div>
 
                 {/* Component-specific editors */}
                 <ComponentEditor
                     component={component}
                     pageId={pageId}
                     updateComponent={updateComponent}
+                    siteConfig={config}
                 />
 
                 {/* Universal style editor — spacing, background, border, typography, animation */}
@@ -486,17 +520,41 @@ export const PropertyPanel = () => {
     return <div className="p-8 text-center text-gray-400">{t('selectItemToEdit')}</div>;
 };
 
+/**
+ * Opens the section's settings as JSON. Only in the base language: the panel
+ * shows translated text in another language, and the JSON would save it as
+ * the base text.
+ */
+const SectionJsonButton = ({ disabled, onClick }: { disabled: boolean; onClick: () => void }) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs"
+            onClick={onClick}
+            disabled={disabled}
+            title={disabled ? t('sectionJson.baseLanguageOnly') : t('sectionJson.buttonHint')}
+        >
+            <BracketsCurly className="me-1.5 size-3" /> {t('sectionJson.button')}
+        </Button>
+    );
+};
+
 // Global Layout Editor — edits globalSettings.layout.header or .footer
 const GlobalLayoutEditor = ({
     config,
     section,
     updateGlobalSettings,
+    jsonDisabled,
 }: {
     config: any;
     section: 'header' | 'footer';
     updateGlobalSettings: (updates: any) => void;
+    jsonDisabled: boolean;
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const [jsonOpen, setJsonOpen] = useState(false);
     const layoutData = config.globalSettings?.layout?.[section];
     const props = layoutData?.props || {};
 
@@ -530,6 +588,15 @@ const GlobalLayoutEditor = ({
         updateGlobalSettings({ layout: newLayout });
     };
 
+    // The JSON editor replaces the props outright (a key deleted there is gone).
+    const replaceProps = (nextProps: Record<string, unknown>) =>
+        updateGlobalSettings({
+            layout: {
+                ...config.globalSettings.layout,
+                [section]: { ...layoutData, props: nextProps },
+            },
+        });
+
     return (
         <div className="flex flex-col gap-6 p-4">
             <div className="border-b pb-3">
@@ -559,6 +626,16 @@ const GlobalLayoutEditor = ({
                 <Label>{t('enabled')}</Label>
                 <Switch checked={isEnabled} onCheckedChange={toggleEnabled} />
             </div>
+
+            <div className="flex">
+                <SectionJsonButton disabled={jsonDisabled} onClick={() => setJsonOpen(true)} />
+            </div>
+            <SectionJsonDialog
+                open={jsonOpen}
+                onOpenChange={setJsonOpen}
+                value={props}
+                onApply={replaceProps}
+            />
 
             {isEnabled && (section === 'header' ? (
                 <HeaderEditor
@@ -953,6 +1030,22 @@ const GlobalSettingsEditor = ({
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const gs = config.globalSettings || {};
+    // A site with its own palette (theme.palette) colours its editorial parts
+    // from it: the primary colour is written to the palette as well so both
+    // stay in step. Only a palette that re-points the shared tokens
+    // (applyToTokens) overrides the presets' colours (in light mode), so only
+    // then are the presets greyed out.
+    const palette = gs.theme?.palette;
+    const hasPalette = !!palette && typeof palette === 'object' && !Array.isArray(palette);
+    const paletteOwnsTokens = hasPalette && palette.applyToTokens === true;
+    const setPrimaryColor = (color: string) =>
+        updateGlobalSettings({
+            theme: {
+                ...gs.theme,
+                primaryColor: color,
+                ...(hasPalette ? { palette: { ...palette, primary: color } } : {}),
+            },
+        });
 
     const updateField = (path: string, value: any) => {
         const keys = path.split('.');
@@ -1012,7 +1105,12 @@ const GlobalSettingsEditor = ({
                 {/* Color Presets */}
                 <div className="space-y-2">
                     <Label className="text-xs text-gray-500">{t('global.theme.colorPreset')}</Label>
-                    <div className="grid grid-cols-3 gap-2">
+                    {paletteOwnsTokens && (
+                        <p className="text-caption text-neutral-500">{t('global.theme.ownPaletteNote')}</p>
+                    )}
+                    <div
+                        className={`grid grid-cols-3 gap-2 ${paletteOwnsTokens ? 'opacity-50' : ''}`}
+                    >
                         {(
                             [
                                 { key: 'default', color: '#3B82F6' }, // design-lint-ignore: color-editor swatch/seed value
@@ -1033,6 +1131,7 @@ const GlobalSettingsEditor = ({
                                     key={key}
                                     type="button"
                                     title={label}
+                                    disabled={paletteOwnsTokens}
                                     onClick={() => updateField('theme.preset', key)}
                                     className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 text-caption font-medium transition-all ${
                                         isActive
@@ -1069,7 +1168,7 @@ const GlobalSettingsEditor = ({
                         <input
                             type="color"
                             value={gs.theme?.primaryColor || '#3B82F6'} // design-lint-ignore: color-editor swatch/seed value
-                            onChange={(e) => updateField('theme.primaryColor', e.target.value)}
+                            onChange={(e) => setPrimaryColor(e.target.value)}
                             className="h-8 w-10 cursor-pointer rounded border bg-white p-0.5"
                         />
                         <span className="font-mono text-xs text-gray-500">
@@ -1293,6 +1392,11 @@ const GlobalSettingsEditor = ({
                     </select>
                 </div>
             </div>
+
+            {/* Site palette + content width — only on a site that has its own palette */}
+            {hasPalette && (
+                <SitePaletteCard theme={gs.theme} onThemeChange={(next) => updateField('theme', next)} />
+            )}
 
             {/* Fonts */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
@@ -1672,6 +1776,13 @@ const GlobalSettingsEditor = ({
                 value={gs.courseLanguages}
                 onChange={(next) => updateField('courseLanguages', next)}
             />
+            {gs.courseFormats && typeof gs.courseFormats === 'object' && (
+                <CourseFormatsCard
+                    formats={gs.courseFormats}
+                    order={Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined}
+                    onChange={(next) => updateGlobalSettings(next)}
+                />
+            )}
             <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
 
             {/* Enquiry */}
@@ -1905,7 +2016,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Component-specific editor
-const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
+const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any) => {
     const { type } = component;
 
     switch (type) {
@@ -1953,6 +2064,7 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
                     component={component}
                     pageId={pageId}
                     updateComponent={updateComponent}
+                    siteConfig={siteConfig}
                 />
             );
 
@@ -2366,8 +2478,10 @@ const buildCourseCatalogSortLabels = (t: TFunction): Record<string, string> => (
     Popular: t('bookCatalogue.sort.popular', { defaultValue: 'Popular (most enrolled)' }),
 });
 
-const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
+const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    // Whole-store read on purpose (no selector): render tests mock the store as a plain function.
+    const { config } = useEditorStore();
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2375,6 +2489,16 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
             props: { ...props, [key]: value },
         });
     };
+    const patchProps = (next: Record<string, unknown>) =>
+        updateComponent(pageId, component.id, { props: { ...props, ...next } });
+    const setNested = (key: string, next: Record<string, unknown>) =>
+        patchProps({ [key]: { ...(props[key] && typeof props[key] === 'object' ? props[key] : {}), ...next } });
+
+    // The courses-page design: its heading lives in the hero, and its sidebar
+    // has its own filter groups. The legacy fields below then do something
+    // other than what they seem to, so they are relabelled or tucked away.
+    const heroOn = props.hero?.enabled === true;
+    const ownSidebarFilters = !!props.filterSidebar || !!props.customFilters;
 
     const sortLabels = buildCourseCatalogSortLabels(t);
     const catalogueFilters = [
@@ -2426,6 +2550,16 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
         ]);
     };
 
+    const catalogueFilterBoxes = catalogueFilters.map((filter) => (
+        <label key={filter.id} className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+                checked={selectedFilterIds.has(filter.id)}
+                onCheckedChange={() => toggleCatalogueFilter(filter)}
+            />
+            {filter.label}
+        </label>
+    ));
+
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">{t('bookCatalogue.heading')}</h4>
@@ -2437,11 +2571,14 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <div className="space-y-2">
-                <Label>{t('bookCatalogue.title')}</Label>
+                <Label>{heroOn ? t('bookCatalogue.titleWithHero') : t('bookCatalogue.title')}</Label>
                 <Input
                     value={props.title || ''}
                     onChange={(e) => updateProp('title', e.target.value)}
                 />
+                {heroOn && (
+                    <p className="text-xs text-neutral-500">{t('bookCatalogue.titleWithHeroHint')}</p>
+                )}
             </div>
 
             <div className="flex items-center justify-between">
@@ -2452,27 +2589,27 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
 
-            {component.type === 'courseCatalog' && (
-                <div className="space-y-2 rounded border p-3">
-                    <Label>
-                        {t('bookCatalogue.filterOptions', {
-                            defaultValue: 'Filter options',
-                        })}
-                    </Label>
-                    {catalogueFilters.map((filter) => (
-                        <label
-                            key={filter.id}
-                            className="flex cursor-pointer items-center gap-2 text-sm"
-                        >
-                            <Checkbox
-                                checked={selectedFilterIds.has(filter.id)}
-                                onCheckedChange={() => toggleCatalogueFilter(filter)}
-                            />
-                            {filter.label}
-                        </label>
-                    ))}
-                </div>
-            )}
+            {component.type === 'courseCatalog' &&
+                (ownSidebarFilters ? (
+                    <details className="rounded border p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                            {t('bookCatalogue.legacyFiltersSummary')}
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                            <p className="text-xs text-neutral-500">{t('bookCatalogue.legacyFiltersHint')}</p>
+                            {catalogueFilterBoxes}
+                        </div>
+                    </details>
+                ) : (
+                    <div className="space-y-2 rounded border p-3">
+                        <Label>
+                            {t('bookCatalogue.filterOptions', {
+                                defaultValue: 'Filter options',
+                            })}
+                        </Label>
+                        {catalogueFilterBoxes}
+                    </div>
+                ))}
 
             {/* How a preview image sits in the card's image band. `cover` fills
                 it but crops the edges — which eats the logo/headline on wide
@@ -2521,9 +2658,17 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                 <CatalogDiscoveryEditor component={component} pageId={pageId} updateComponent={updateComponent} />
             )}
 
-            <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                {t('bookCatalogue.advancedComingSoon')}
-            </div>
+            {component.type === 'courseCatalog' && (
+                <CatalogDesignGroups
+                    component={component}
+                    pageId={pageId}
+                    updateComponent={updateComponent}
+                    patch={patchProps}
+                    setNested={setNested}
+                    // The site in the language being edited (Hindi text in Hindi mode).
+                    catalogue={siteConfig ?? config}
+                />
+            )}
         </div>
     );
 };
@@ -2729,20 +2874,11 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     const config = useEditorStore((s) => s.config);
     const updateGlobalSettings = useEditorStore((s) => s.updateGlobalSettings);
 
+    // Adds, removes and orders the PAGE links only: existing page links keep
+    // their label and hidden flag; mega menus, external and filtered links stay.
     const syncNavFromPages = () => {
         if (!config) return;
-        const navItems = config.pages
-            .filter((p) => p.published !== false)
-            .map((p) => {
-                const isHome = p.id === 'home' || p.route === 'homepage' || p.route === '/' || p.route === '';
-                return {
-                    label: p.title || p.route || p.id,
-                    route: isHome ? 'homepage' : p.route,
-                    openInSameTab: true,
-                };
-            });
-        // Mega-menu items are not pages: they keep their place (and config).
-        updateProp('navigation', keepMegaMenuItems(props.navigation, navItems));
+        updateProp('navigation', syncNavWithPages(props.navigation, config.pages));
     };
 
     return (
@@ -2783,6 +2919,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <HeaderDisplayOptions props={props} onChange={updateProp} />
+            <HeaderLookGroup props={props} onChange={updateProp} />
 
 {/* Sticky Header toggle REMOVED (2026-07-29): it wrote
                 globalSettings.stickyHeader, which nothing ever read — the learner
@@ -3073,9 +3210,17 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         setExpandedLink(null);
     };
 
+    const patchProps = (next: Record<string, unknown>) =>
+        updateComponent(pageId, component.id, { props: { ...props, ...next } });
+
+    // The "brand" footer has its own design: it always shows four link
+    // columns and ignores the layout and the presets, so those are hidden.
+    const isBrand = props.variant === 'brand';
     const layout = props.layout || 'four-column';
     // Determine which right sections to show based on layout
-    const rightSectionKeys = layout === 'two-column'
+    const rightSectionKeys = isBrand
+        ? ['rightSection1', 'rightSection2', 'rightSection3', 'rightSection4']
+        : layout === 'two-column'
         ? ['rightSection1']
         : layout === 'three-column'
         ? ['rightSection1', 'rightSection2']
@@ -3085,30 +3230,51 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         rightSection1: t('footer.column2'),
         rightSection2: t('footer.column3'),
         rightSection3: t('footer.column4'),
+        rightSection4: t('footer.column5'),
     };
 
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">{t('footer.heading')}</h4>
 
-            <VariantSwitcher
-                componentType="footer"
-                currentProps={props}
-                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
-            />
+            {isBrand ? (
+                <div className="space-y-2 rounded border bg-gray-50 p-3">
+                    <p className="text-xs text-neutral-600">{t('footer.brandDesignNote')}</p>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs"
+                        onClick={() => {
+                            if (window.confirm(t('footer.useStandardConfirm'))) {
+                                patchProps({ variant: undefined });
+                            }
+                        }}
+                    >
+                        {t('footer.useStandard')}
+                    </Button>
+                </div>
+            ) : (
+                <>
+                    <VariantSwitcher
+                        componentType="footer"
+                        currentProps={props}
+                        onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+                    />
 
-            <div className="space-y-2">
-                <Label>{t('footer.layout')}</Label>
-                <select
-                    className="w-full rounded border px-3 py-2 text-sm"
-                    value={layout}
-                    onChange={(e) => updateProp('layout', e.target.value)}
-                >
-                    <option value="two-column">{t('footer.layoutTwoColumn')}</option>
-                    <option value="three-column">{t('footer.layoutThreeColumn')}</option>
-                    <option value="four-column">{t('footer.layoutFourColumn')}</option>
-                </select>
-            </div>
+                    <div className="space-y-2">
+                        <Label>{t('footer.layout')}</Label>
+                        <select
+                            className="w-full rounded border px-3 py-2 text-sm"
+                            value={layout}
+                            onChange={(e) => updateProp('layout', e.target.value)}
+                        >
+                            <option value="two-column">{t('footer.layoutTwoColumn')}</option>
+                            <option value="three-column">{t('footer.layoutThreeColumn')}</option>
+                            <option value="four-column">{t('footer.layoutFourColumn')}</option>
+                        </select>
+                    </div>
+                </>
+            )}
 
             {/* Left Section */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
@@ -3268,6 +3434,10 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                 );
             })}
 
+            {isBrand && (
+                <FooterBrandFields props={props} updateProp={updateProp} patchProps={patchProps} />
+            )}
+
             {/* Bottom Note */}
             <div className="space-y-2">
                 <Label>{t('footer.bottomNote')}</Label>
@@ -3361,14 +3531,19 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 <Input
                     placeholder={t('hero.eyebrowPlaceholder')}
                     value={props.eyebrow?.text || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                        // Clearing the text keeps the eyebrow's other settings
+                        // (e.g. style 'rule'), so retyping does not turn it into a badge.
+                        const keepsSettings = Object.keys(props.eyebrow || {}).some(
+                            (k) => k !== 'text'
+                        );
                         updateProp(
                             'eyebrow',
-                            e.target.value
+                            e.target.value || keepsSettings
                                 ? { ...(props.eyebrow || {}), text: e.target.value }
-                                : undefined,
-                        )
-                    }
+                                : undefined
+                        );
+                    }}
                 />
                 {props.eyebrow?.text && (
                     <select
@@ -3378,6 +3553,17 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                     >
                         <option value="badge">{t('hero.eyebrowStyleBadge')}</option>
                         <option value="plain">{t('hero.eyebrowStylePlain')}</option>
+                        {/* "rule" (a line before the text) is the editorial hero's look. */}
+                        {(props.variant === 'editorial' || props.eyebrow?.style === 'rule') && (
+                            <option value="rule">{t('hero.eyebrowStyleRule')}</option>
+                        )}
+                        {/* Any other stored style stays selected instead of reading as "Badge". */}
+                        {props.eyebrow?.style &&
+                            !['badge', 'plain', 'rule'].includes(props.eyebrow.style) && (
+                                <option value={props.eyebrow.style}>
+                                    {t('options.customValue', { value: props.eyebrow.style })}
+                                </option>
+                            )}
                     </select>
                 )}
             </div>
@@ -3596,6 +3782,13 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                     placeholder={t('hero.descriptionPlaceholder')}
                 />
             </div>
+
+            <HeroEditorialFields
+                props={props}
+                updateProp={updateProp}
+                patchProps={(next) => updateComponent(pageId, component.id, { props: { ...props, ...next } })}
+                updateLeft={updateLeft}
+            />
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">{t('hero.rightImage')}</h5>
@@ -4316,6 +4509,11 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                     </>
                 )}
             </div>
+            <CtaBandFields
+                props={props}
+                updateProp={updateProp}
+                patchProps={(next) => updateComponent(pageId, component.id, { props: { ...props, ...next } })}
+            />
         </div>
     );
 };
@@ -4700,34 +4898,6 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 /* ─── Spacer Editor ────────────────────────────────────────────────────── */
-/**
- * Campaign (audience list) picker — the shared "where do these leads go?"
- * control for every website capture point. Lists the institute's ACTIVE
- * campaigns from Audience Manager; the empty choice means the auto-provisioned
- * default website-leads list.
- */
-/**
- * Fields a website form list starts with. Richer fields stay in Audience Manager.
- * `phoneRequired` is for the Freebies list, where the phone is what a
- * counsellor calls back on.
- */
-const websiteFormFields = (instituteId: string | null | undefined, phoneRequired = false) => {
-    const mkField = (fieldName: string, fieldType: string, isMandatory: boolean, order: number) => ({
-        instituteId,
-        type: 'AUDIENCE_FORM',
-        groupName: '',
-        individualOrder: order,
-        groupInternalOrder: 0,
-        isMandatory,
-        status: 'ACTIVE',
-        customField: { fieldName, fieldType, defaultValue: '', config: '{}', formOrder: order, isMandatory, status: 'ACTIVE' },
-    });
-    return [
-        mkField('Full Name', 'TEXT', true, 1),
-        mkField('Email', 'TEXT', true, 2),
-        mkField('Phone Number', 'TEXT', phoneRequired, 3),
-    ];
-};
 
 /** Name of the one institute-wide list every freebie form collects into. */
 const FREEBIES_LIST_NAME = 'Freebies';
@@ -4774,203 +4944,6 @@ const useFreebiesList = () => {
         });
         return freebiesListInFlight;
     };
-};
-
-const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
-    value: string;
-    onChange: (id: string, name: string) => void;
-    label?: string;
-    allowEmpty?: boolean;
-}) => {
-    const { t } = useTranslation('managePagesPropertyPanel');
-    const resolvedLabel = label ?? t('campaignPicker.sendResponsesTo');
-    const instituteId = getCurrentInstituteId();
-    const queryClient = useQueryClient();
-    const { data, isLoading } = useQuery({
-        ...handleFetchCampaignsList({ institute_id: instituteId || '', status: 'ACTIVE', page: 0, size: 100 }),
-        enabled: !!instituteId,
-    });
-    const campaigns = ((data?.content || []) as any[])
-        .map((c) => ({ id: c.id || c.audience_id || c.campaign_id, name: c.campaign_name }))
-        .filter((c) => c.id);
-
-    // Inline creation: without it, "connect a form" meant leaving the editor
-    // for Audience Manager, building a campaign + its fields, and finding the
-    // way back — the single most common place a non-technical admin lost the
-    // thread. A new campaign here starts with Name / Email / Phone, which is
-    // what a website enquiry form needs; richer fields stay in Audience Manager.
-    const [creating, setCreating] = useState(false);
-    const [newName, setNewName] = useState('');
-    const createMutation = useMutation({
-        mutationFn: async (campaignName: string) => {
-            const { data: newId } = await axios.post(
-                AUDIENCE_CAMPAIGN,
-                {
-                    institute_id: instituteId,
-                    campaign_name: campaignName,
-                    campaign_type: 'WEBSITE',
-                    campaign_objective: 'LEAD_GENERATION',
-                    description: 'Created from the website builder',
-                    status: 'ACTIVE',
-                    institute_custom_fields: websiteFormFields(instituteId),
-                },
-                { headers: { Authorization: `Bearer ${getTokenFromCookie(TokenKey.accessToken)}` } },
-            );
-            return { id: String(newId).replace(/^"|"$/g, ''), name: campaignName };
-        },
-        onSuccess: (created) => {
-            queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
-            onChange(created.id, created.name);
-            setCreating(false);
-            setNewName('');
-        },
-    });
-
-    return (
-        <div>
-            <Label className="text-xs">{resolvedLabel}</Label>
-            <select
-                className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
-                value={value || ''}
-                onChange={(e) => {
-                    const picked = campaigns.find((c) => c.id === e.target.value);
-                    onChange(e.target.value, picked?.name || '');
-                }}
-            >
-                <option value="">
-                    {isLoading ? t('campaignPicker.loadingCampaigns') : allowEmpty ? t('campaignPicker.defaultWebsiteLeadsList') : t('campaignPicker.selectCampaign')}
-                </option>
-                {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-            </select>
-            {creating ? (
-                <div className="mt-2 space-y-2 rounded border border-primary-200 bg-primary-50 p-2">
-                    <Label className="text-xs">{t('campaignPicker.newCampaignName')}</Label>
-                    <Input
-                        autoFocus
-                        className="mt-1"
-                        placeholder={t('campaignPicker.newCampaignNamePlaceholder')}
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && newName.trim()) createMutation.mutate(newName.trim());
-                            if (e.key === 'Escape') setCreating(false);
-                        }}
-                    />
-                    <p className="text-caption text-gray-500">
-                        {t('campaignPicker.newCampaignHint')}
-                    </p>
-                    <div className="flex gap-1">
-                        <Button size="sm" className="h-7 text-caption" disabled={!newName.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newName.trim())}>
-                            {createMutation.isPending ? t('campaignPicker.creating') : t('campaignPicker.createAndUse')}
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-caption" onClick={() => setCreating(false)}>{t('actions.cancel')}</Button>
-                    </div>
-                    {createMutation.isError && (
-                        <p className="text-caption text-danger-600">{t('campaignPicker.createError')}</p>
-                    )}
-                </div>
-            ) : (
-                <button
-                    type="button"
-                    onClick={() => setCreating(true)}
-                    className="mt-1 text-caption font-medium text-primary-500 hover:underline"
-                >
-                    + {t('campaignPicker.newCampaign')}
-                </button>
-            )}
-            <p className="mt-1 text-caption text-gray-400">
-                {t('campaignPicker.campaignsFromHint')}
-            </p>
-            {value && <CampaignHealth audienceId={value} />}
-        </div>
-    );
-};
-
-/**
- * Proof-of-life under every campaign picker: how many leads this campaign has
- * ever received, when the last one arrived, and a one-click test submission
- * that exercises the REAL public pipeline end-to-end.
- *
- * WHY: capture failures here have historically been silent — the contact form
- * discarded every submission for months while looking perfectly healthy. An
- * admin placing a form must be able to see “it works” without leaving the
- * editor or waiting for a real visitor.
- */
-const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
-    const { t, i18n } = useTranslation('managePagesPropertyPanel');
-    const instituteId = getCurrentInstituteId();
-    const queryClient = useQueryClient();
-    const { data, isLoading } = useQuery({
-        queryKey: ['CAMPAIGN_HEALTH', audienceId],
-        queryFn: async () => {
-            const res = await fetchCampaignLeads({
-                audience_id: audienceId,
-                conversion_status_filter: 'ALL',
-                page: 0,
-                size: 1,
-                sort_by: 'submittedAt',
-                sort_direction: 'DESC',
-            } as any);
-            const rows = (res as any)?.content || [];
-            return {
-                total: (res as any)?.totalElements ?? 0,
-                lastAt: rows[0]?.submitted_at_local as string | undefined,
-            };
-        },
-        enabled: !!audienceId,
-        staleTime: 30_000,
-    });
-
-    const testMutation = useMutation({
-        mutationFn: async () => {
-            // The exact endpoint + shape the live site submits through — if this
-            // round-trips, a visitor's submission will too.
-            const stamp = Date.now();
-            await axios.post(SUBMIT_CATALOGUE_LEAD_URL, {
-                institute_id: instituteId,
-                audience_id: audienceId,
-                full_name: 'TEST LEAD — sent from the page builder',
-                email: `test-lead-${stamp}@test.vacademy.io`,
-                mobile_number: '',
-                source_type: 'TEST_SUBMISSION',
-                source_id: 'builder-test-lead',
-            });
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['CAMPAIGN_HEALTH', audienceId] });
-        },
-    });
-
-    return (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
-            <span className="text-caption text-gray-500">
-                {isLoading
-                    ? t('campaignHealth.checkingSubmissions')
-                    : data?.lastAt
-                      ? t('campaignHealth.leadsReceivedWithLast', {
-                            count: data?.total ?? 0,
-                            date: new Date(data.lastAt).toLocaleDateString(i18n.language),
-                        })
-                      : t('campaignHealth.leadsReceived', { count: data?.total ?? 0 })}
-            </span>
-            <button
-                type="button"
-                onClick={() => testMutation.mutate()}
-                disabled={testMutation.isPending}
-                className="rounded px-2 py-0.5 text-caption font-medium text-primary-500 hover:bg-primary-50 disabled:opacity-50"
-            >
-                {testMutation.isPending
-                    ? t('campaignHealth.sending')
-                    : testMutation.isSuccess
-                      ? t('campaignHealth.testLeadDelivered')
-                      : testMutation.isError
-                        ? t('campaignHealth.failedRetry')
-                        : t('campaignHealth.sendTestLead')}
-            </button>
-        </div>
-    );
 };
 
 /**
@@ -5993,15 +5966,21 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                     <Label className="text-xs">{coursesTerm}</Label>
                     {(props.courseIds || []).map((id: string, i: number) => {
                         const badges = props.courseBadges || {};
+                        // A keystroke that leaves the id as it was (a space, trimmed
+                        // away) writes nothing; courseBadges is only written when a
+                        // ribbon really moves to the new id.
                         const setId = (next: string) => {
                             const ids = [...(props.courseIds || [])];
                             const prevId = ids[i];
+                            if (next === prevId) return;
                             ids[i] = next;
-                            const nextBadges = { ...badges };
-                            if (prevId && prevId !== next && nextBadges[prevId]) {
-                                nextBadges[next] = nextBadges[prevId];
-                                delete nextBadges[prevId];
+                            // '' is a real key here: clearing the field moves the ribbon to ''.
+                            if (prevId === undefined || badges[prevId] === undefined) {
+                                updateProp('courseIds', ids);
+                                return;
                             }
+                            const nextBadges = { ...badges, [next]: badges[prevId] };
+                            delete nextBadges[prevId];
                             updateComponent(pageId, component.id, {
                                 props: { ...props, courseIds: ids, courseBadges: nextBadges },
                             });
@@ -6021,6 +6000,10 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                     <button
                                         onClick={() => {
                                             const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);
+                                            if (!badges[id]) {
+                                                updateProp('courseIds', ids);
+                                                return;
+                                            }
                                             const nextBadges = { ...badges };
                                             delete nextBadges[id];
                                             updateComponent(pageId, component.id, {
@@ -7370,6 +7353,20 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('steps', updated);
     };
 
+    const variant = props.variant || 'plain';
+    const variants = [
+        { key: 'plain', label: optionLabel(t, 'plain') },
+        { key: 'timeline-cards', label: t('steps.variantTimelineCards') },
+        { key: 'alternating', label: t('steps.variantAlternating') },
+        { key: 'cards', label: t('steps.variantCards') },
+    ];
+    // A stored variant this list does not know stays visible as the active one.
+    if (!variants.some((v) => v.key === variant)) {
+        variants.push({ key: variant, label: t('options.customValue', { value: variant }) });
+    }
+    // The cards look has no nodes or connector rail.
+    const isCards = variant === 'cards';
+
     return (
         <div className="space-y-4">
             <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder={t('logoCloud.headerTextPlaceholder')} />
@@ -7385,18 +7382,14 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
             <div>
                 <Label className="text-xs">{t('buttonBlock.variant')}</Label>
-                <div className="flex gap-1 mt-1">
-                    {[
-                        { key: 'plain', label: optionLabel(t, 'plain') },
-                        { key: 'timeline-cards', label: t('steps.variantTimelineCards') },
-                        { key: 'alternating', label: t('steps.variantAlternating') },
-                    ].map((v) => (
-                        <button key={v.key} onClick={() => updateProp('variant', v.key)}
-                            className={`rounded px-2 py-1 text-caption font-medium ${(props.variant || 'plain') === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {variants.map((v) => (
+                        <button key={v.key} onClick={() => updateProp('variant', v.key)} aria-pressed={variant === v.key}
+                            className={`rounded px-2 py-1 text-caption font-medium ${variant === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
                     ))}
                 </div>
             </div>
-            {(props.variant || 'plain') !== 'plain' && (
+            {variant !== 'plain' && !isCards && (
                 <>
                     <div>
                         <Label className="text-xs">{t('steps.nodeStyle')}</Label>
@@ -7413,15 +7406,17 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </>
             )}
-            <div>
-                <Label className="text-xs">{t('steps.connectorStyle')}</Label>
-                <div className="flex gap-1 mt-1">
-                    {['line', 'dashed', 'dots', 'none'].map((s) => (
-                        <button key={s} onClick={() => updateProp('connectorStyle', s)}
-                            className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
-                    ))}
+            {!isCards && (
+                <div>
+                    <Label className="text-xs">{t('steps.connectorStyle')}</Label>
+                    <div className="flex gap-1 mt-1">
+                        {['line', 'dashed', 'dots', 'none'].map((s) => (
+                            <button key={s} onClick={() => updateProp('connectorStyle', s)}
+                                className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
             <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <ColorPickerField label={t('steps.accentColor')} value={props.accentColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('accentColor', c)} />
             <div>

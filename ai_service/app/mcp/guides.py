@@ -10,7 +10,9 @@ resources. Nothing here reads institute data; whether a caller may see it is the
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 from mcp.shared.exceptions import MCPError
 from mcp.types import (
@@ -59,13 +61,27 @@ def list_prompts() -> List[Prompt]:
     ]
 
 
+_FIGMA_PATH_RE = re.compile(r"^/(design|file|proto|board|make)/([A-Za-z0-9]{10,64})(?:/|$)")
+
+
 def _figma_link(raw: Any) -> str:
-    """Only a figma.com https link survives, rebuilt without query parameters other than node-id."""
+    """
+    Only a figma.com https file link survives, rebuilt as
+    https://www.figma.com/<kind>/<file key>[?node-id=…]. The link goes into the
+    prompt verbatim, so nothing free-form survives: no other query parameter and
+    no path text, not even the file-name slug (Figma opens the file without it).
+    """
     from ..services.assistant_tools_website_edit import clean_design_source
     design = clean_design_source(str(raw or "").strip()[:2000]) if raw else None
     if not design or design.get("kind") != "figma" or not design.get("url"):
         return ""
-    return design["url"]
+    m = _FIGMA_PATH_RE.match(urlsplit(design["url"]).path or "")
+    if not m:
+        return ""
+    link = f"https://www.figma.com/{m.group(1)}/{m.group(2)}"
+    if design.get("nodeId"):
+        link += "?node-id=" + design["nodeId"].replace(":", "-")
+    return link
 
 
 def get_prompt(name: str, arguments: Optional[Dict[str, Any]]) -> GetPromptResult:

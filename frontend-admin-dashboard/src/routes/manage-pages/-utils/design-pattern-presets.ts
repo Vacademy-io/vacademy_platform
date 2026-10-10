@@ -5,7 +5,8 @@
  *
  *  - TemplateLibrary recipes ("Editorial catalogue", "Learning paths", "Brand chrome"):
  *    the registry's page recipes, each section's patterns merged onto the editor's
- *    own component template;
+ *    own component template; the chrome recipe changes the header / footer look and
+ *    keeps the admin's own text, links and lists;
  *  - VariantSwitcher looks: a pattern that describes a whole block ("Editorial hero",
  *    "Brand footer") becomes a one-click look whose label is the registry's label.
  *
@@ -106,18 +107,40 @@ const combine = (a: Json, b: Json): Json => {
     return b === undefined ? a : b;
 };
 
-/**
- * Deep-merge `patch` onto `base`. keepBaseLists: a non-empty list already on `base`
- * (the admin's own nav links, footer columns) is kept rather than replaced.
- */
-export const mergeOnto = (base: Json, patch: Json, keepBaseLists = false): Json => {
+/** Deep-merge `patch` onto `base` (objects key by key; anything else is replaced). */
+export const mergeOnto = (base: Json, patch: Json): Json => {
     if (isObject(base) && isObject(patch)) {
         const out: JsonObject = { ...base };
-        for (const [k, v] of Object.entries(patch)) out[k] = mergeOnto(base[k], v, keepBaseLists);
+        for (const [k, v] of Object.entries(patch)) out[k] = mergeOnto(base[k], v);
+        return out;
+    }
+    return patch === undefined ? base : patch;
+};
+
+/**
+ * Keys that set how a block looks rather than what it says: variant, layout, mode…
+ * and any *Style / *Size / *Layout / *Width / *Display / *Variant key (navStyle,
+ * barSize, contentWidth, cartDisplay). Other text keys are the admin's content.
+ */
+const LOOK_KEY = /^(variant|layout|listLayout|mode|style|size|display)$|(Style|Size|Layout|Width|Display|Variant)$/;
+export const isLookKey = (key: string): boolean => LOOK_KEY.test(key);
+
+/**
+ * mergeOnto for site chrome the admin already wrote: a non-empty list already there
+ * (their nav links, footer columns) is kept,
+ * and so is any text they wrote under a content key (a footer column's title, a
+ * newsletter heading) — the pattern's text only fills what is empty. Look keys,
+ * flags and numbers take the pattern's value.
+ */
+export const mergeChromeOnto = (base: Json, patch: Json, key = ''): Json => {
+    if (isObject(base) && isObject(patch)) {
+        const out: JsonObject = { ...base };
+        for (const [k, v] of Object.entries(patch)) out[k] = mergeChromeOnto(base[k], v, k);
         return out;
     }
     if (patch === undefined) return base;
-    if (keepBaseLists && Array.isArray(patch) && Array.isArray(base) && base.length > 0) return base;
+    if (Array.isArray(patch) && Array.isArray(base) && base.length > 0) return base;
+    if (typeof patch === 'string' && !isLookKey(key) && typeof base === 'string' && base.trim()) return base;
     return patch;
 };
 
@@ -142,13 +165,14 @@ const BLOCK_ROOTS = new Set(['props', 'globalSettings.layout.header.props', 'glo
 const LOOK_KEYS = new Set(['style', 'variant', 'layout']);
 
 /**
- * A look without content: top-level plain values, plus nested style / variant /
- * layout keys. Text, links, lists and ids stay as the admin wrote them.
+ * A look without content: top-level flags, numbers and look keys (isLookKey), plus
+ * nested style / variant / layout keys. Text, links, lists and ids stay as the admin
+ * wrote them.
  */
 const lookOf = (minimal: JsonObject): Record<string, any> => {
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(stripPlaceholders(minimal) as JsonObject)) {
-        if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) {
+        if (typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && isLookKey(k))) {
             out[k] = v;
         } else if (isObject(v)) {
             const nested = Object.fromEntries(
@@ -203,11 +227,10 @@ const applyChrome = (recipe: GeneratedRecipe) => (layout: Record<string, any> | 
         const ids = recipe.site.filter((id) => BY_ID.get(id)?.component === kind);
         if (!ids.length) continue;
         const current = next[kind] ?? { ...buildComponentTemplates(t)[kind], id: uuidv4() };
-        next[kind] = {
-            ...current,
-            enabled: current.enabled !== false,
-            props: mergeOnto(current.props ?? {}, patternProps(ids), true),
-        };
+        const props = mergeChromeOnto(current.props ?? {}, patternProps(ids)) as Record<string, any>;
+        // A logo-only bar with no logo would show nothing: keep the site name until a logo is set.
+        if (kind === 'header' && !props.logo) props.logoOnly = current.props?.logoOnly ?? false;
+        next[kind] = { ...current, enabled: current.enabled !== false, props };
     }
     return next;
 };

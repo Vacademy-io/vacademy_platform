@@ -53,6 +53,10 @@ describe('Templates tab: design recipes', () => {
         const card = screen.getByRole('button', { name: /Brand chrome/ });
         expect(card).toHaveTextContent('Sets header & footer');
         fireEvent.click(card);
+        // Asks first: it changes the header and footer of every page.
+        expect(screen.getByText(/changes the header and footer on every page/)).toBeInTheDocument();
+        expect((state().config!.globalSettings.layout as Record<string, any>).footer).toBeUndefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Apply Template' }));
         const config = state().config!;
         expect(config.pages[0]!.components.map((c) => c.id)).toEqual(['old']);
         const layout = config.globalSettings.layout as Record<string, any>;
@@ -61,6 +65,15 @@ describe('Templates tab: design recipes', () => {
         expect(layout.header.props.navigation).toEqual([{ label: 'Home', route: 'home' }]);
         expect(layout.header.props.navStyle).toBe('editorial');
         expect(layout.footer.props.variant).toBe('brand');
+    });
+
+    it('Brand chrome does nothing when the confirm is cancelled', () => {
+        render(<TemplateLibrary />);
+        fireEvent.click(screen.getByRole('button', { name: /Sections/ }));
+        const before = JSON.stringify(state().config);
+        fireEvent.click(screen.getByRole('button', { name: /Brand chrome/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(JSON.stringify(state().config)).toBe(before);
     });
 });
 

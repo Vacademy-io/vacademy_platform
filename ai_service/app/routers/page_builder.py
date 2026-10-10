@@ -1816,6 +1816,33 @@ _PATTERN_CARDS_RULES = (
 )
 
 
+_CARD_IMAGE_PLACEHOLDER = "<image: a PROVIDED IMAGES url, 'gen:<prompt>' when IMAGE GENERATION is on, or empty>"
+_CARD_ROUTE_PLACEHOLDER = "<route: of a page this site has, or an #anchor on this page>"
+
+
+def _composer_card_props(value: Any, key: str = "") -> Any:
+    """
+    A pattern's ``minimal`` props as the composer may use them. The registry's
+    placeholders are written for MCP callers (website(list_media),
+    website_edit(link_lead_form)), tools this composer does not have, and its
+    example routes (/login, /learning-paths) may not exist on this site.
+    """
+    if isinstance(value, dict):
+        return {k: _composer_card_props(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_composer_card_props(v, key) for v in value]
+    if not isinstance(value, str):
+        return value
+    if value.startswith("<") and ("website(" in value or "website_edit(" in value):
+        if "image" in value.lower():
+            return _CARD_IMAGE_PLACEHOLDER
+        name = value[1:].split(":", 1)[0].strip()
+        return f"<{name}: leave empty — the admin picks it in the editor>"
+    if key == "target" and value.startswith("/"):
+        return _CARD_ROUTE_PLACEHOLDER
+    return value
+
+
 def _pattern_cards_block(catalog: Dict[str, Any], vocab_types: set) -> str:
     """Compact pattern cards for the components this page may contain, or "" when the catalog has none."""
     cards = []
@@ -1826,7 +1853,7 @@ def _pattern_cards_block(catalog: Dict[str, Any], vocab_types: set) -> str:
         if component in _PATTERN_CARD_SKIP or component not in vocab_types:
             continue
         card = {"id": p["id"], "component": component, "looks": p.get("looksLike"), "avoid": p.get("avoidWhen"),
-                "props": p.get("minimal")}
+                "props": _composer_card_props(p.get("minimal"))}
         cards.append({k: v for k, v in card.items() if v not in (None, "", [], {})})
     if not cards:
         return ""

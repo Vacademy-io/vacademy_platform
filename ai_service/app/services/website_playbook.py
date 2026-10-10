@@ -184,6 +184,25 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
     },
 ]
 
+def _fidelity_loop_from(reference: str) -> Dict[str, Any]:
+    """The Figma fidelity loop, for a source with no get_metadata (sections measured by eye, or omitted)."""
+    loop = next(s for s in _FIGMA_STEPS if s["step"] == "fidelity_loop")
+    do = list(loop["do"])
+    do[1] = (
+        f"website(action='compare', reference={{asset_url | tiles}}, …) against {reference}; pass sections you "
+        "measured on it (top / height of each band) to pair them, or omit them. Fix the top hints with "
+        "website_edit(update_page)."
+    )
+    return {**loop, "do": do}
+
+
+def _shared(source_steps: tuple, reference: str) -> List[Dict[str, Any]]:
+    return [
+        _fidelity_loop_from(reference) if s["step"] == "fidelity_loop" else s
+        for s in _FIGMA_STEPS if s["step"] in source_steps
+    ]
+
+
 _SCREENSHOT_STEPS: List[Dict[str, Any]] = [
     {
         "step": "collect",
@@ -204,7 +223,7 @@ _SCREENSHOT_STEPS: List[Dict[str, Any]] = [
         ],
         "tools": ["website_edit(create_site)", "website_edit(create_page)"],
     },
-    *[s for s in _FIGMA_STEPS if s["step"] in ("bind", "fidelity_loop", "translations", "finish")],
+    *_shared(("bind", "fidelity_loop", "translations", "finish"), "the screenshot you imported"),
 ]
 
 _URL_STEPS: List[Dict[str, Any]] = [
@@ -228,7 +247,7 @@ _URL_STEPS: List[Dict[str, Any]] = [
         ],
         "tools": ["website_edit(create_site)", "website_edit(create_page)"],
     },
-    *[s for s in _FIGMA_STEPS if s["step"] in ("bind", "fidelity_loop", "translations", "finish")],
+    *_shared(("bind", "fidelity_loop", "translations", "finish"), "the screenshot of the page you imported"),
 ]
 
 _STEPS = {"figma": _FIGMA_STEPS, "screenshot": _SCREENSHOT_STEPS, "url": _URL_STEPS}

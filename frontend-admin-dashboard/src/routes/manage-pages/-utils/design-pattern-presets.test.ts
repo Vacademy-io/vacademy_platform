@@ -3,6 +3,8 @@ import type { TFunction } from 'i18next';
 import generated from './generated/design-patterns.json';
 import {
     buildDesignRecipeTemplates,
+    isLookKey,
+    mergeChromeOnto,
     mergeOnto,
     patternVariantsFor,
     stripPlaceholders,
@@ -50,12 +52,23 @@ describe('stripPlaceholders', () => {
     });
 });
 
-describe('mergeOnto', () => {
-    it('merges objects key by key; keeps the base list only when asked', () => {
-        const base = { a: { x: 1, y: 2 }, nav: [{ label: 'Mine' }] };
-        const patch = { a: { y: 3 }, nav: [{ label: 'Courses' }] };
-        expect(mergeOnto(base, patch)).toEqual({ a: { x: 1, y: 3 }, nav: [{ label: 'Courses' }] });
-        expect(mergeOnto(base, patch, true)).toEqual({ a: { x: 1, y: 3 }, nav: [{ label: 'Mine' }] });
+describe('mergeOnto / mergeChromeOnto', () => {
+    it('merges objects key by key; chrome keeps the base list and the admin text, not the look', () => {
+        const base = { a: { x: 1, y: 2 }, nav: [{ label: 'Mine' }], col: { title: 'Quick Links' }, navStyle: 'plain' };
+        const patch = { a: { y: 3 }, nav: [{ label: 'Courses' }], col: { title: 'Explore' }, navStyle: 'editorial' };
+        expect(mergeOnto(base, patch)).toEqual({ ...patch, a: { x: 1, y: 3 } });
+        expect(mergeChromeOnto(base, patch)).toEqual({
+            a: { x: 1, y: 3 }, nav: [{ label: 'Mine' }], col: { title: 'Quick Links' }, navStyle: 'editorial',
+        });
+        // An empty text or list is filled.
+        expect(mergeChromeOnto({ col: { title: '' }, nav: [] }, patch)).toMatchObject({ col: { title: 'Explore' }, nav: [{ label: 'Courses' }] });
+    });
+
+    it('look keys are the variant / layout family and *Style, *Size, *Width, *Display keys', () => {
+        for (const k of ['variant', 'layout', 'listLayout', 'mode', 'navStyle', 'barSize', 'contentWidth', 'cartDisplay', 'megaMenuStyle']) {
+            expect(isLookKey(k), k).toBe(true);
+        }
+        for (const k of ['title', 'moreTitle', 'heading', 'tagline', 'label', 'route', 'logo']) expect(isLookKey(k), k).toBe(false);
     });
 });
 
@@ -140,7 +153,19 @@ describe('design recipe templates', () => {
         expect(merged.header.props.navigation).toEqual([{ label: 'Home', route: 'home' }]);
         expect(merged.header.props.navStyle).toBe('editorial');
         expect(merged.footer.props.rightSection1.links).toEqual([{ label: 'FAQ', route: 'faq' }]);
+        expect(merged.footer.props.rightSection1.title).toBe('Main');
         expect(merged.footer.props.variant).toBe('brand');
+        // The site has a logo, so the logo-only bar is safe.
+        expect(merged.header.props.logoOnly).toBe(true);
+    });
+
+    it('Brand chrome never hides the site name of a header without a logo', () => {
+        const tpl = recipe('brand-chrome');
+        const noLogo = { header: { id: 'h', type: 'header', enabled: true, props: { title: 'Acme Academy' } } };
+        const merged = tpl.applyLayout!(noLogo, t);
+        expect(merged.header.props.logoOnly).toBe(false);
+        expect(merged.header.props.title).toBe('Acme Academy');
+        expect(tpl.applyLayout!(undefined, t).header.props.logoOnly).toBe(false);
     });
 });
 
@@ -159,6 +184,20 @@ describe('registry looks in the variant switcher', () => {
         expect(header.navigation).toBeUndefined();
         expect(header.logo).toBeUndefined();
         expect(patternVariantsFor('footer')[0]!.props).toEqual({ variant: 'brand', layout: 'four-column' });
+    });
+
+    it('a look never carries the pattern text, even at the top level', () => {
+        expect(patternVariantsFor('learningPath').map((v) => v.props)).toEqual([
+            { mode: 'list', listLayout: 'featured' },
+            { mode: 'list', listLayout: 'featured', showGoals: false, showFeatured: false },
+        ]);
+        for (const type of ['heroSection', 'header', 'footer', 'learningPath', 'ctaBanner', 'stepsProcess']) {
+            for (const v of patternVariantsFor(type)) {
+                for (const [k, value] of Object.entries(v.props)) {
+                    if (typeof value === 'string') expect(isLookKey(k), `${v.id} ${k}`).toBe(true);
+                }
+            }
+        }
     });
 
     it('keeps the editor presets first and unchanged', () => {

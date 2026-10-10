@@ -32,6 +32,7 @@ export const TemplateLibrary = () => {
             // Site chrome (header / footer): merged onto the current layout, pages untouched.
             const layout = template.applyLayout(config.globalSettings?.layout, tTemplates);
             updateConfig({ ...config, globalSettings: { ...config.globalSettings, layout } });
+            setPendingTemplate(null);
             return;
         }
 
@@ -48,8 +49,8 @@ export const TemplateLibrary = () => {
 
     const handleTemplateClick = (template: PageTemplate) => {
         if (!selectedPageId) return;
-        if (template.category === 'page' && !template.applyLayout) {
-            // Warn before replacing all components
+        if (template.category === 'page' || template.applyLayout) {
+            // Warn before replacing all components, or the header / footer of every page
             setPendingTemplate(template);
         } else {
             // Sections just insert — no warning needed
@@ -112,14 +113,15 @@ export const TemplateLibrary = () => {
                 ))}
             </div>
 
-            {/* Confirmation dialog for page templates (they replace all components) */}
+            {/* Confirmation dialog for page templates (they replace all components) and site-chrome ones */}
             <AlertDialog open={!!pendingTemplate} onOpenChange={() => setPendingTemplate(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Apply "{pendingTemplate?.name}" template?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will replace ALL existing components on the current page with the template
-                            components. This action can be undone with Ctrl+Z.
+                            {pendingTemplate?.applyLayout
+                                ? 'This changes the header and footer on every page of the site. Your own text, links and logo are kept. This action can be undone with Ctrl+Z.'
+                                : 'This will replace ALL existing components on the current page with the template components. This action can be undone with Ctrl+Z.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -273,7 +273,7 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "source": {"type": "string", "enum": ["figma", "screenshot", "url"], "description": "playbook: what the design is — a Figma file, screenshots, or an existing website."},
                 "design_source": {
                     "type": "object",
-                    "description": "brief_checklist: the design the site is rebuilt from. The interview then asks only data questions. Never put an access token here.",
+                    "description": "brief_checklist: the design the site is rebuilt from, e.g. {url:'https://www.figma.com/design/…'} — {url} alone is enough, or {kind:'screenshot'}. The interview then asks only data questions. Never put an access token here.",
                     "properties": {
                         "kind": {"type": "string", "enum": ["figma", "screenshot", "url", "other"]},
                         "url": {"type": "string", "description": "https link to the design (a figma.com/design/… URL, or the site to rebuild)."},

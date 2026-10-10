@@ -69,7 +69,8 @@
         "deletedLeadsButton": "हटाई गई लीड्स",
         "viewingDeletedButton": "हटाई गई लीड्स देखी जा रही हैं",
         "exporting": "निर्यात हो रहा है…",
-        "export": "निर्यात करें"
+        "export": "निर्यात करें",
+        "addLead": "नया लीड जोड़ें"
     },
     "chips": {
         "search": "खोज: {{query}}",

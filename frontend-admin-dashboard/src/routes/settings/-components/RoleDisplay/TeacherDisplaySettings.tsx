@@ -28,6 +28,7 @@ import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { LiveClassActionsCard } from './LiveClassActionsCard';
+import { LeadActionsCard } from './LeadActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import {
@@ -1406,6 +1407,10 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                 settings={settings.liveClassActions}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
                 defaultAllowDeletePastSessions={false}
+            />
+            <LeadActionsCard
+                settings={settings.leadActions}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, leadActions: next }))}
             />
             </section>
 

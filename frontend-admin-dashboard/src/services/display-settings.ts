@@ -946,6 +946,12 @@ export function mergeDisplayWithDefaults(
             false,
     };
 
+    // Lead page actions. Off for every role unless the saved blob turns it on.
+    merged.leadActions = {
+        showAddLead:
+            incoming?.leadActions?.showAddLead ?? defaults.leadActions?.showAddLead ?? false,
+    };
+
     // Team-tab role visibility + Org Chart tab visibility. Preserve any
     // explicitly-set keys; consumers treat missing visibleRoles keys as
     // visible (true). orgChartTabVisible defaults to undefined → treated as

@@ -73,7 +73,8 @@
         "deletedLeadsButton": "العملاء المحتملون المحذوفون",
         "viewingDeletedButton": "عرض المحذوفين",
         "exporting": "جارٍ التصدير…",
-        "export": "تصدير"
+        "export": "تصدير",
+        "addLead": "إضافة عميل محتمل"
     },
     "chips": {
         "search": "بحث: {{query}}",

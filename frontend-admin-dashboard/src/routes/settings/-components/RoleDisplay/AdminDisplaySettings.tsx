@@ -44,6 +44,7 @@ import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { LiveClassActionsCard } from './LiveClassActionsCard';
+import { LeadActionsCard } from './LeadActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1397,6 +1398,10 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                 settings={settings.liveClassActions}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
                 defaultAllowDeletePastSessions={true}
+            />
+            <LeadActionsCard
+                settings={settings.leadActions}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, leadActions: next }))}
             />
             </section>
 

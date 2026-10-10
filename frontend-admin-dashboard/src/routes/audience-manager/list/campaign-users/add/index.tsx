@@ -20,6 +20,14 @@ import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFie
 import { Trans, useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import i18n from '@/i18n';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+import {
+    useLeadCounsellorOptions,
+    type CounsellorOption,
+} from '@/hooks/use-lead-counsellor-options';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 
 const NAMESPACE = 'audienceManagerCampaignUsersAdd';
 
@@ -36,6 +44,9 @@ function buildAddResponseSearchSchema(t: TFunction) {
         campaignId: z.string().min(1, t('schema.campaignIdRequired')),
         campaignName: z.string().optional(),
         customFields: z.string().optional(), // JSON string of custom fields
+        // Opened from All Leads → Add New Lead: assign the lead (see handleSubmit)
+        // and go back to All Leads instead of the audience's users list.
+        from: z.enum(['all-leads']).optional(),
     });
 }
 
@@ -62,6 +73,40 @@ interface CustomFieldConfig {
     };
 }
 
+/**
+ * "Assign to counsellor" for an admin adding a lead from All Leads. Its own
+ * component so the roster is only fetched when the picker is actually shown —
+ * the per-audience add flow never mounts it.
+ */
+function CounsellorPicker({
+    value,
+    onChange,
+    disabled,
+}: {
+    value: CounsellorOption | null;
+    onChange: (next: CounsellorOption | null) => void;
+    disabled: boolean;
+}) {
+    const { t } = useTranslation(NAMESPACE);
+    const { options, isLoading } = useLeadCounsellorOptions({ assignable: true });
+
+    return (
+        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-5">
+            <Label className="text-body font-medium text-neutral-700">{t('assign.label')}</Label>
+            <SearchableSelect
+                options={options.map((c) => ({ value: c.id, label: c.full_name }))}
+                value={value?.id ?? ''}
+                onChange={(id) => onChange(options.find((c) => c.id === id) ?? null)}
+                placeholder={isLoading ? t('assign.loading') : t('assign.placeholder')}
+                searchPlaceholder={t('assign.search')}
+                emptyText={t('assign.empty')}
+                disabled={disabled || isLoading}
+            />
+            <p className="text-caption text-neutral-500">{t('assign.hint')}</p>
+        </div>
+    );
+}
+
 export function AddResponsePage() {
     const { t } = useTranslation(NAMESPACE);
     const { t: tSubmitLead } = useTranslation('audienceManagerSubmitAudienceLead');
@@ -75,6 +120,12 @@ export function AddResponsePage() {
     const [formValues, setFormValues] = useState<Record<string, string>>({});
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
+
+    // From All Leads the lead always gets an owner: an admin picks the counsellor,
+    // anyone else (the counsellor filling the form) becomes the owner themselves.
+    const fromAllLeads = search.from === 'all-leads';
+    const canPickCounsellor = fromAllLeads && isAdminForInstitute(instituteId);
+    const [assignedCounsellor, setAssignedCounsellor] = useState<CounsellorOption | null>(null);
 
     useEffect(() => {
         setNavHeading(t('navHeading'));
@@ -223,6 +274,10 @@ export function AddResponsePage() {
     };
 
     const handleBack = () => {
+        if (fromAllLeads) {
+            navigate({ to: '/audience-manager/recent-leads' });
+            return;
+        }
         navigate({
             to: '/audience-manager/list/campaign-users' as any,
             search: {
@@ -343,6 +398,21 @@ export function AddResponsePage() {
                 },
             };
 
+            if (fromAllLeads) {
+                if (canPickCounsellor) {
+                    if (assignedCounsellor) {
+                        payload.counsellor_id = assignedCounsellor.id;
+                        payload.counsellor_name = assignedCounsellor.full_name;
+                    }
+                } else {
+                    const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
+                    if (tokenData?.user) {
+                        payload.counsellor_id = tokenData.user;
+                        payload.counsellor_name = tokenData.fullname;
+                    }
+                }
+            }
+
             // Authenticated twin of the open submit endpoint: the token tells the
             // backend who added this lead, which the "only leads assigned to
             // <ROLE>" audience-access option needs in order to stamp the creator
@@ -354,6 +424,7 @@ export function AddResponsePage() {
 
             // Invalidate the campaign users query to refresh the list
             queryClient.invalidateQueries({ queryKey: ['campaignUsers'] });
+            queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
 
             // Navigate back to the users list
             handleBack();
@@ -465,6 +536,14 @@ export function AddResponsePage() {
                                         />
                                     </div>
                                 ))}
+
+                                {canPickCounsellor && (
+                                    <CounsellorPicker
+                                        value={assignedCounsellor}
+                                        onChange={setAssignedCounsellor}
+                                        disabled={isSubmitting}
+                                    />
+                                )}
 
                                 <div className="mt-2 flex flex-col-reverse items-stretch justify-end gap-3 border-t border-neutral-100 pt-5 sm:flex-row sm:items-center">
                                     <Button

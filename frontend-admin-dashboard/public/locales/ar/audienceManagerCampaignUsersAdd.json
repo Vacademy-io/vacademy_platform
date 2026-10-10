@@ -32,5 +32,13 @@
     "audienceFallbackName": "هذه {{audienceTerm}}",
     "footer": {
         "responsesAppearUnder": "تظهر الردود ضمن <bold>{{audienceName}}</bold> في قائمة {{audienceTerm}} الخاصة بك."
+    },
+    "assign": {
+        "label": "إسناد إلى مستشار",
+        "placeholder": "اختر مستشارًا (اختياري)",
+        "loading": "جارٍ تحميل المستشارين…",
+        "search": "ابحث عن مستشار…",
+        "empty": "لم يتم العثور على مستشار.",
+        "hint": "إذا تُرك فارغًا، يتبع العميل المحتمل التوجيه المعتاد."
     }
 }

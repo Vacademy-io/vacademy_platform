@@ -263,6 +263,10 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
     liveClassActions: {
         allowDeletePastSessions: true,
     },
+    // Off for every role — an institute opts a role in from Display Settings.
+    leadActions: {
+        showAddLead: false,
+    },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

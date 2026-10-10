@@ -86,6 +86,22 @@ def test_brahm_varchas_is_a_catalog_page_and_its_hero_and_stats_count():
     assert not review_with_audit(home, site["globalSettings"], "homepage")["passes"]
 
 
+def test_review_roles_come_from_the_pattern_registry(monkeypatch, tmp_path):
+    from app.services import page_quality
+    parts, whole = page_quality._review_roles()
+    assert dict(parts["courseCatalog"])["hero"] == {"hero", "proof"}     # catalog.hero reviewAs
+    assert "hero" in whole["heroSection"]                                # hero.editorial
+    # No catalog export: the built-in roles keep the review working the same way.
+    page_quality._review_roles.cache_clear()
+    monkeypatch.setattr(page_quality, "_CATALOG_PATH", tmp_path / "missing.json")
+    try:
+        home = bv_site()["pages"][0]
+        r = review_page(home, bv_site()["globalSettings"], "homepage")
+        assert "no-hero" not in _issues(r) and "no-proof" not in _issues(r)
+    finally:
+        page_quality._review_roles.cache_clear()
+
+
 def test_a_catalogue_hero_without_a_title_is_still_flagged():
     page = copy.deepcopy(bv_site()["pages"][0])
     page["components"][0]["props"]["hero"]["title"] = ""

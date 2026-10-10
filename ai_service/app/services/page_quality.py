@@ -22,8 +22,12 @@ Two modes:
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 from .catalogue_summary import CAPTURE_TYPES, heading_of, strip_html, walk_components
 from .page_audit import text_values
@@ -63,29 +67,72 @@ FIDELITY_SKIPPED_CODES = frozenset({
 #: Still worth telling the admin in fidelity mode, never a reason to change the design.
 FIDELITY_ADVISORY_CODES = frozenset({"no-conversion", "hero-no-cta"})
 
-# How the new widgets count in the review. Hardcoded until the design-pattern
-# registry's `reviewAs` (frontend …/-ai/design-patterns.ts) is exported here.
+# How the new widgets count in the review: the design-pattern registry's
+# `reviewAs` (frontend …/-ai/design-patterns.ts, exported into the schema
+# catalog). A pattern whose propPath is a top-level prop (`props.hero`) is a
+# switchable part of its component; one whose propPath is `props` is the
+# component itself. When the part is live (enabled, stats present) stays here.
+_CATALOG_PATH = Path(__file__).resolve().parent.parent / "data" / "catalogue_schema_catalog.json"
+#: Used when the catalog cannot be read: what the registry said when this was written.
+_FALLBACK_PARTS: Dict[str, Tuple[Tuple[str, FrozenSet[str]], ...]] = {
+    "courseCatalog": (("hero", frozenset({"hero", "proof"})),),
+}
+_PROP_PATH_RE = re.compile(r"^props\.([A-Za-z0-9_]+)$")
+
+
+@lru_cache(maxsize=1)
+def _review_roles() -> Tuple[Dict[str, Tuple[Tuple[str, FrozenSet[str]], ...]], Dict[str, FrozenSet[str]]]:
+    """(component type → ((part prop, roles), …), component type → roles of the whole component)."""
+    try:
+        with open(_CATALOG_PATH, "r", encoding="utf-8") as fh:
+            patterns = json.load(fh).get("patterns") or []
+    except Exception as exc:  # noqa: BLE001 — review must not fail on a missing export
+        logging.getLogger(__name__).warning("pattern registry unreadable, using built-in review roles: %s", exc)
+        return _FALLBACK_PARTS, {}
+    parts: Dict[str, Dict[str, set]] = {}
+    whole: Dict[str, set] = {}
+    for p in patterns:
+        if not isinstance(p, dict) or not isinstance(p.get("component"), str):
+            continue
+        roles = {r for r in p.get("reviewAs") or [] if isinstance(r, str)}
+        path = str(p.get("propPath") or "").strip()
+        if path == "props":
+            whole.setdefault(p["component"], set()).update(roles)
+        elif (m := _PROP_PATH_RE.match(path)) and roles:
+            parts.setdefault(p["component"], {}).setdefault(m.group(1), set()).update(roles)
+    return ({t: tuple((k, frozenset(r)) for k, r in ps.items()) for t, ps in parts.items()},
+            {t: frozenset(r) for t, r in whole.items()})
+
+
+def _live_part(comp: Dict[str, Any], role: str) -> Optional[Dict[str, Any]]:
+    """The first switched-on part of ``comp`` the registry says reviews as ``role``."""
+    props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
+    for key, roles in _review_roles()[0].get(str(comp.get("type") or ""), ()):
+        part = props.get(key)
+        if role in roles and isinstance(part, dict) and part.get("enabled") is True:
+            return part
+    return None
 
 
 def _catalog_hero(comp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """courseCatalog.hero when switched on: the catalogue owns the fold."""
     if comp.get("type") != "courseCatalog":
         return None
-    hero = (comp.get("props") or {}).get("hero")
-    return hero if isinstance(hero, dict) and hero.get("enabled") is True else None
+    return _live_part(comp, "hero")
 
 
 def _reviews_as_hero(comp: Dict[str, Any]) -> bool:
     # heroSection in every variant (editorial included); a catalogue with its hero on.
-    return comp.get("type") == "heroSection" or _catalog_hero(comp) is not None
+    return (comp.get("type") == "heroSection" or "hero" in _review_roles()[1].get(str(comp.get("type") or ""), ())
+            or _live_part(comp, "hero") is not None)
 
 
 def _reviews_as_proof(comp: Dict[str, Any]) -> bool:
     """A proof section, or a catalogue hero showing live stats (course and stream counts)."""
     if comp.get("type") in PROOF_TYPES:
         return True
-    hero = _catalog_hero(comp)
-    return bool(hero and isinstance(hero.get("stats"), list) and hero["stats"])
+    part = _live_part(comp, "proof")
+    return bool(part and isinstance(part.get("stats"), list) and part["stats"])
 
 
 def design_source_of(page: Dict[str, Any]) -> Optional[Dict[str, Any]]:

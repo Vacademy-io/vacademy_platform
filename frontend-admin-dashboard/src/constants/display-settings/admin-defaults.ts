@@ -104,6 +104,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         //    breaks enrolment for every course wired to it.
         'lmsConnectionHealth',
         // 1. Navigation shortcuts
+        'assistantLaunchBar',
         'quickActions',
         // 2. KPIs
         'kpiBand',

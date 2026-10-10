@@ -609,7 +609,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                     })}
                 </span>
             </div>
-            <AssistantLaunchBar />
+            {isWidgetVisible('assistantLaunchBar') && <AssistantLaunchBar />}
             {/* Familiar shortcuts remain one click away below the assistant. */}
             {roleBundle.showQuickActions && isWidgetVisible('quickActions') && (
                 <TrackedWidget widgetId="quickActions">

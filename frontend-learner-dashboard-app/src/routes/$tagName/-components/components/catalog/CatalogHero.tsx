@@ -7,6 +7,7 @@ import { CatalogueLink } from "../../CatalogueLink";
 import { useCatalogueTag } from "../../CatalogueTagContext";
 import { RouteMatcher } from "../../../-services/route-matcher";
 import { Breadcrumb, type BreadcrumbItem } from "./Breadcrumb";
+import { isHomePreviewPath, usePreviewPath } from "../../../-utils/preview-path";
 
 /*
  * The Courses page hero (courseCatalog.hero, Figma node 1:69 "Hero + Search"):
@@ -59,7 +60,9 @@ export const isSiteHomePath = (pathname: string, tagName: string): boolean => {
 const HeroBreadcrumb: React.FC<{ items: BreadcrumbItem[]; tagName: string }> = ({ items, tagName }) => {
   const pathname = useLocation({ select: (location) => location.pathname });
   const tag = useCatalogueTag(tagName);
-  if (isSiteHomePath(pathname, tag)) return null;
+  const previewPath = usePreviewPath();
+  const onHome = previewPath !== undefined ? isHomePreviewPath(previewPath) : isSiteHomePath(pathname, tag);
+  if (onHome) return null;
   return (
     <Breadcrumb
       items={items}

@@ -42,6 +42,7 @@ import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
+import { PreviewPathProvider } from "../-utils/preview-path";
 import {
   isEditorMessage,
   isFramed,
@@ -831,6 +832,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
           {/* Legacy page title banner — removed in v2. Page titles are now handled by hero/textBlock components. */}
           {/* Render the matching page (home page by default, or specific slug) */}
+          <PreviewPathProvider value={isPreviewMode ? previewPath : undefined}>
           {catalogueData.pages
             .filter(matchesActivePage)
             .map((page) => (
@@ -849,6 +851,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                 />
               </main>
             ))}
+          </PreviewPathProvider>
 
           {/* Footer from JSON globalSettings */}
           {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (

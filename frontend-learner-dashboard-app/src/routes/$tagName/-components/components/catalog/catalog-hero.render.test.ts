@@ -83,6 +83,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CourseCatalogComponent } from "../CourseCatalogComponent";
 import { QuickFilterBar } from "./QuickFilterBar";
+import { PreviewPathProvider, isHomePreviewPath } from "../../../-utils/preview-path";
 import { isSiteHomePath } from "./CatalogHero";
 import { COUNT_ANNOUNCE_DELAY_MS } from "./CatalogResultsHeader";
 
@@ -280,6 +281,27 @@ describe("courseCatalog.hero: page hero", () => {
     expect(isSiteHomePath("/site/courses", "site")).toBe(false);
     expect(isSiteHomePath("/site/courses/home", "site")).toBe(false);
     expect(isSiteHomePath("/other/home", "site")).toBe(false);
+  });
+
+  it("in the editor preview, follows the shown page's real route instead of the address bar", async () => {
+    // The Website view renders every page at the site root ("/site/") and posts its real route.
+    h.pathname = "/site/";
+    const at = async (previewPath: string) => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      root = createRoot(host);
+      await act(async () => root!.render(e(PreviewPathProvider, { value: previewPath }, element({ hero: HERO }))));
+      await act(tick);
+      await act(tick);
+      return host;
+    };
+    expect(heroOf(await at("courses")).querySelector("nav")).not.toBeNull();
+    unmount();
+    expect(heroOf(await at("")).querySelector("nav")).toBeNull();
+    unmount();
+    expect(heroOf(await at("home")).querySelector("nav")).toBeNull();
+    expect(isHomePreviewPath("/homepage/")).toBe(true);
+    expect(isHomePreviewPath("learning-paths")).toBe(false);
   });
 
   it("carries a section palette (courseCatalog.palette), since it sits outside the section root", async () => {

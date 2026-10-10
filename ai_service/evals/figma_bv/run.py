@@ -13,7 +13,8 @@ directory holding them:
     python -m evals.figma_bv.run --inputs /path/to/dir --json card.json
     python -m evals.figma_bv.run --s3 s3://<private-bucket>/<prefix>    (AWS credentials from the environment)
 
-Exit code 0 when every tier-1 check passes (--check), else 1.
+Exit code 0 when every tier-1 check passes (--check), else 1; 2 when there are no inputs.
+What goes in the private bucket, how to upload it and how CI runs this: README.md.
 """
 from __future__ import annotations
 

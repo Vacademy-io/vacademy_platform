@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
+import { MyButton } from '@/components/design-system/button';
 import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
@@ -546,15 +547,19 @@ export function AddResponsePage() {
                                 )}
 
                                 <div className="mt-2 flex flex-col-reverse items-stretch justify-end gap-3 border-t border-neutral-100 pt-5 sm:flex-row sm:items-center">
-                                    <Button
+                                    <MyButton
                                         type="button"
-                                        variant="outline"
+                                        buttonType="secondary"
                                         onClick={handleBack}
-                                        disabled={isSubmitting}
+                                        disable={isSubmitting}
                                     >
                                         {t('form.cancel')}
-                                    </Button>
-                                    <Button type="submit" disabled={isSubmitting}>
+                                    </MyButton>
+                                    <MyButton
+                                        type="submit"
+                                        buttonType="primary"
+                                        disable={isSubmitting}
+                                    >
                                         {isSubmitting ? (
                                             <>
                                                 <Spinner className="mr-2 size-4 animate-spin" />
@@ -566,7 +571,7 @@ export function AddResponsePage() {
                                                 {t('form.submit')}
                                             </>
                                         )}
-                                    </Button>
+                                    </MyButton>
                                 </div>
                             </form>
                         )}

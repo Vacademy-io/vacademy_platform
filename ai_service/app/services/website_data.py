@@ -10,6 +10,7 @@ imports so the feature modules can import it in any order.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -198,6 +199,13 @@ STALE_DRAFT_NOTE = (
 )
 
 
+def text_sha256(raw: Any) -> Optional[str]:
+    """Hex SHA-256 of a catalogue's JSON text exactly as admin-core stores it (None when it is not text)."""
+    if not isinstance(raw, str):
+        return None
+    return hashlib.sha256(raw.encode("utf-8", "surrogatepass")).hexdigest()
+
+
 def stale_note(site: Dict[str, Any]) -> Dict[str, Any]:
     """``{"stale_draft": …}`` for a read result when the site's draft is older than live, else ``{}``."""
     return {"stale_draft": site["stale_draft"]} if site.get("stale_draft") else {}
@@ -262,6 +270,10 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str], *,
         site["draft_config"] = (config if not stale else _parse_config(draft.get("catalogue_json"))) if draft else None
         # False: the draft could not be read (not "there is none") — the caller must not say "nothing to publish".
         site["draft_read_ok"] = draft_read_ok
+        # SHA-256 of the JSON TEXT as stored (admin-core's publish checks the draft's the same way), so a
+        # website_publish confirm token is bound to exactly the draft and live site that were checked.
+        site["draft_sha256"] = text_sha256(draft.get("catalogue_json")) if draft else None
+        site["live_sha256"] = text_sha256(row.get("catalogue_json"))
         site["revisions"] = {
             "draft_revision_no": (draft or {}).get("revision_no"),
             "draft_started_at": (draft or {}).get("created_at"),
@@ -936,7 +948,7 @@ async def campaign_lead_stats(ctx: ToolContext, audience_id: str, days: Optional
 
 
 __all__ = [
-    "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note",
+    "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note", "text_sha256",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
     "get_draft", "get_draft_checked", "get_history", "load_site", "load_courses", "load_courses_detail", "load_course_inventory", "load_product_pages",
     "product_page_steps", "load_folder_libraries", "list_folder_libraries", "load_library_folders", "load_data_inventory",

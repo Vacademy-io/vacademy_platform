@@ -28,9 +28,19 @@ public class CatalogueRevisionDTOs {
          * (and the AI tools stop refusing it) until the live site moves again.
          */
         private Boolean acknowledgeLive;
+        /**
+         * Only start a NEW draft: refuse (409 DRAFT_EXISTS) when one is open
+         * instead of overwriting it. An MCP rollback sets it, so an admin's
+         * unpublished work is never replaced by an old version.
+         */
+        private Boolean createOnly;
 
         public SaveDraftRequest(String catalogueJson, String source, String aiRunId) {
-            this(catalogueJson, source, aiRunId, null);
+            this(catalogueJson, source, aiRunId, null, null);
+        }
+
+        public SaveDraftRequest(String catalogueJson, String source, String aiRunId, Boolean acknowledgeLive) {
+            this(catalogueJson, source, aiRunId, acknowledgeLive, null);
         }
     }
 

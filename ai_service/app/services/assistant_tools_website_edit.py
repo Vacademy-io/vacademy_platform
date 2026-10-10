@@ -28,7 +28,8 @@ Actions
     import_image      bring a public https image into the media library
     discard_draft     drop the draft, back to what is published
     request_publish   is the draft ready? publish checks + data audit + review + diff vs live +
-                      stale-draft verdict + editor link — READ-ONLY, it never publishes
+                      stale-draft verdict + editor link — READ-ONLY, it never publishes (with the
+                      website_publish capability on, a ready draft also gets a confirm token for it)
 
 Validation is the AI website builder's own (``sanitize_component``,
 ``_sanitize_page``, ``_sanitize_ops``, ``page_audit``) — the deterministic half
@@ -357,7 +358,9 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "- request_publish (tag_name, library_id?): the hand-over check when you think the draft is done. "
             "Runs the pre-publish checks, the data audit and the review (fidelity mode for pages from a design) "
             "and returns ready + blockers, what publishing would change on the live site (diff_vs_live; first_publish "
-            "for a site never published), a stale-draft verdict and editor_url. It NEVER publishes: the admin presses Publish in the editor.\n"
+            "for a site never published), a stale-draft verdict and editor_url. It NEVER publishes: the admin presses Publish in the editor "
+            "(or, when the website_publish tool is enabled and the draft is ready, publish_confirm carries the "
+            "single-use token website_publish needs after the admin says yes).\n"
             "Every result carries editor_url: tell the admin to review and publish there."
         ),
         "parameters": {
@@ -3264,6 +3267,10 @@ async def _action_request_publish(args: Dict[str, Any], ctx: ToolContext) -> Dic
                   "from editor_url.")),
         "note": REQUEST_PUBLISH_NOTE,
     })
+    # A caller with the "Website: publish" capability also gets a single-use
+    # confirm token for this exact draft when it is ready (website_publish).
+    from .assistant_tools_website_publish import attach_publish_confirm
+    attach_publish_confirm(ctx, site, out)
     return out
 
 

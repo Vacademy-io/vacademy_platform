@@ -53,6 +53,11 @@ export interface McpToolCatalogEntry {
     risk?: McpToolRisk | null;
     /** The edit's own name when its area has several. */
     sub_label?: string | null;
+    /**
+     * Turned on one by one (e.g. website publishing): never switched on by the
+     * area's Edit level or the "Turn everything on" preset.
+     */
+    opt_in?: boolean;
 }
 
 /** drafts: nothing goes live · additive: only adds · not_live: courses not live yet · live: learners see it at once. */

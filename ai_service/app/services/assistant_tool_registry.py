@@ -569,8 +569,13 @@ async def _service_json(
     params: Optional[Dict[str, Any]] = None,
     body: Optional[Dict[str, Any]] = None,
     timeout: float = 20.0,
+    error_detail: bool = False,
 ) -> Any:
-    """One JWT-authenticated call to a backend service; returns parsed JSON or an error dict."""
+    """
+    One JWT-authenticated call to a backend service; returns parsed JSON or an error dict.
+    ``error_detail`` also puts the start of a non-200 answer's body in the error dict
+    (``detail``), for callers that tell one 409 from another.
+    """
     import httpx
 
     if not ctx.bearer_token:
@@ -583,6 +588,8 @@ async def _service_json(
             )
         if resp.status_code != 200:
             logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
+            if error_detail:
+                return {"error": "fetch_failed", "status": resp.status_code, "detail": resp.text[:500]}
             return {"error": "fetch_failed", "status": resp.status_code}
         try:
             return resp.json()
@@ -2408,6 +2415,7 @@ async def execute_tool(
 def _load_feature_tools() -> None:
     for module in (
         "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
+        "assistant_tools_website_publish",
         "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",

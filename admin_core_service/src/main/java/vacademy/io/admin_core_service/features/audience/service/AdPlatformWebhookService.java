@@ -209,6 +209,15 @@ public class AdPlatformWebhookService {
             String unroutableCampaign = null;
             for (NormalizedLeadData lead : leads) {
                 // Each campaign can feed its own list; unmapped ones use the catch-all.
+                if (campaignRouteService.autoCreatesLists(connector)) {
+                    try {
+                        campaignRouteService.ensureAutoList(connector, lead.getCampaignId());
+                    } catch (Exception e) {
+                        // Never lose the lead over its list: it falls back to the catch-all.
+                        log.warn("Could not auto-create a list for campaign {} on connector {}: {}",
+                                lead.getCampaignId(), connector.getId(), e.getMessage());
+                    }
+                }
                 AdCampaignRouteService.RouteDecision route =
                         campaignRouteService.decide(connector, lead.getCampaignId());
                 lead.setRoutedAudienceId(route.audienceId());

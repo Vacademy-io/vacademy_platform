@@ -13,8 +13,10 @@ import vacademy.io.admin_core_service.features.audience.dto.CampaignRoutesRespon
 import vacademy.io.admin_core_service.features.audience.dto.MigrateLeadsRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.MigrateLeadsResponseDTO;
 import vacademy.io.admin_core_service.features.audience.entity.AdCampaignRoute;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.repository.AdCampaignRouteRepository;
+import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -22,6 +24,8 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -52,6 +56,14 @@ public class AdCampaignRouteService {
 
     @Autowired
     private AudienceService audienceService;
+
+    @Autowired
+    private FormWebhookConnectorRepository connectorRepository;
+
+    /** Name of an auto-created list until the admin names its campaign. */
+    static String defaultListName(String campaignId) {
+        return "Google campaign " + campaignId;
+    }
 
     /**
      * Where one lead goes. {@code audienceId} is the mapped list, or null for the
@@ -87,9 +99,54 @@ public class AdCampaignRouteService {
         }
     }
 
+    public boolean autoCreatesLists(FormWebhookConnector connector) {
+        return Boolean.TRUE.equals(connector.getAutoCreateCampaignLists());
+    }
+
+    /**
+     * With auto lists on: give a campaign that has no list yet its own list, so this
+     * lead and the campaign's later ones go there. Named after the admin-entered
+     * campaign name, else "Google campaign <id>"; an active list of the main list's
+     * type with exactly that name is reused rather than duplicated. A campaign the
+     * admin routed anywhere (main list included) is left alone. The row is locked,
+     * so two leads of a brand-new campaign create one list, not two.
+     */
+    @Transactional
+    public void ensureAutoList(FormWebhookConnector connector, String campaignId) {
+        if (!autoCreatesLists(connector)
+                || !StringUtils.hasText(campaignId) || !CAMPAIGN_ID.matcher(campaignId).matches()) {
+            return;
+        }
+        routeRepository.ensureRow(UUID.randomUUID().toString(), connector.getId(),
+                connector.getInstituteId(), campaignId, LocalDateTime.now());
+        AdCampaignRoute route = routeRepository.lockByConnectorIdAndCampaignId(connector.getId(), campaignId)
+                .orElse(null);
+        if (route == null || route.getAudienceId() != null) return;
+
+        String name = StringUtils.hasText(route.getCampaignName())
+                ? route.getCampaignName().trim()
+                : defaultListName(campaignId);
+        AudienceDTO main = readMainList(connector);
+        String listId = findSameTypeListByName(connector, main, name)
+                .orElseGet(() -> createListLikeMain(connector, main, name, null, null));
+        route.setAudienceId(listId);
+        routeRepository.save(route);
+        log.info("Campaign {} on connector {} got its own list {} ({})",
+                campaignId, connector.getId(), listId, name);
+    }
+
+    /** Turn automatic per-campaign lists on or off for one connector. */
+    @Transactional
+    public CampaignRoutesResponse setAutoCreateLists(FormWebhookConnector connector, boolean enabled) {
+        connector.setAutoCreateCampaignLists(enabled);
+        connectorRepository.save(connector);
+        return list(connector);
+    }
+
     public CampaignRoutesResponse list(FormWebhookConnector connector) {
         return CampaignRoutesResponse.builder()
                 .mainAudienceId(connector.getAudienceId())
+                .autoCreateLists(autoCreatesLists(connector))
                 .routes(routeRepository.findForConnector(connector.getId()).stream()
                         .map(CampaignRouteDTO::from)
                         .toList())
@@ -108,15 +165,9 @@ public class AdCampaignRouteService {
         String campaign = requireCampaignId(campaignId);
         if (request == null) throw new VacademyException("Choose a list for this campaign");
 
-        String createdAudienceId = null;
-        String target;
-        if (request.getNewList() != null && StringUtils.hasText(request.getNewList().getName())) {
-            createdAudienceId = createListLikeMain(connector, request.getNewList(), user);
-            target = createdAudienceId;
-        } else if (StringUtils.hasText(request.getAudienceId())) {
-            target = request.getAudienceId();
-            requireActiveListOfInstitute(target, connector.getInstituteId());
-        } else {
+        boolean newList = request.getNewList() != null && StringUtils.hasText(request.getNewList().getName());
+        boolean existingList = !newList && StringUtils.hasText(request.getAudienceId());
+        if (!newList && !existingList && request.getCampaignName() == null) {
             throw new VacademyException("Choose a list for this campaign");
         }
 
@@ -127,6 +178,27 @@ public class AdCampaignRouteService {
                         .campaignId(campaign)
                         .addedManually(true)
                         .build());
+        if (request.getCampaignName() != null) {
+            renameCampaign(route, request.getCampaignName());
+        }
+        if (!newList && !existingList) {
+            // Only naming the campaign; where its leads go is unchanged.
+            return CampaignRouteUpdateResponse.builder()
+                    .route(CampaignRouteDTO.from(routeRepository.save(route)))
+                    .build();
+        }
+
+        String createdAudienceId = null;
+        String target;
+        if (newList) {
+            createdAudienceId = createListLikeMain(connector, readMainList(connector),
+                    request.getNewList().getName(), request.getNewList().getCampaignType(), user);
+            target = createdAudienceId;
+        } else {
+            target = request.getAudienceId();
+            requireActiveListOfInstitute(target, connector.getInstituteId());
+        }
+
         String previous = route.getAudienceId() != null ? route.getAudienceId() : connector.getAudienceId();
         route.setAudienceId(target);
         AdCampaignRoute saved = routeRepository.save(route);
@@ -176,26 +248,63 @@ public class AdCampaignRouteService {
     }
 
     /**
+     * Save the admin's name for a campaign (blank clears it). A list this service
+     * auto-created under the placeholder name takes the campaign's name too.
+     */
+    private void renameCampaign(AdCampaignRoute route, String rawName) {
+        String name = rawName.trim();
+        if (name.length() > MAX_LIST_NAME) name = name.substring(0, MAX_LIST_NAME);
+        route.setCampaignName(name.isEmpty() ? null : name);
+        if (name.isEmpty() || route.getAudienceId() == null) return;
+        String placeholder = defaultListName(route.getCampaignId());
+        String newName = name;
+        audienceRepository.findById(route.getAudienceId())
+                .filter(a -> placeholder.equals(a.getCampaignName()))
+                .ifPresent(a -> {
+                    a.setCampaignName(newName);
+                    audienceRepository.save(a);
+                });
+    }
+
+    private AudienceDTO readMainList(FormWebhookConnector connector) {
+        try {
+            return audienceService.getCampaignById(connector.getAudienceId(), connector.getInstituteId());
+        } catch (Exception e) {
+            log.warn("Main list {} of connector {} not readable; creating a bare list: {}",
+                    connector.getAudienceId(), connector.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** An active list of the institute, of the main list's type, with exactly this name. */
+    private Optional<String> findSameTypeListByName(FormWebhookConnector connector, AudienceDTO main, String name) {
+        String type = main != null ? normalizeType(main.getCampaignType()) : "";
+        return audienceRepository.findByInstituteIdAndCampaignNameIgnoreCase(connector.getInstituteId(), name)
+                .stream()
+                .filter(a -> "ACTIVE".equals(a.getStatus()))
+                .filter(a -> normalizeType(a.getCampaignType()).equals(type))
+                .map(Audience::getId)
+                .findFirst();
+    }
+
+    private static String normalizeType(String type) {
+        return type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /**
      * A new list for one campaign, set up like the connector's main list: same list
      * type, admin notification emails and — crucially — the same form fields, since
      * the same Google lead form feeds both. Without the fields, the campaign's form
      * answers would have nowhere to be saved.
      */
-    private String createListLikeMain(FormWebhookConnector connector, CampaignRouteUpdateRequest.NewList newList,
-            CustomUserDetails user) {
-        String name = newList.getName().trim();
+    private String createListLikeMain(FormWebhookConnector connector, AudienceDTO main, String rawName,
+            String campaignType, CustomUserDetails user) {
+        String name = rawName.trim();
         if (name.length() > MAX_LIST_NAME) name = name.substring(0, MAX_LIST_NAME);
-        AudienceDTO main = null;
-        try {
-            main = audienceService.getCampaignById(connector.getAudienceId(), connector.getInstituteId());
-        } catch (Exception e) {
-            log.warn("Main list {} of connector {} not readable; creating a bare list: {}",
-                    connector.getAudienceId(), connector.getId(), e.getMessage());
-        }
         AudienceDTO dto = AudienceDTO.builder()
                 .instituteId(connector.getInstituteId())
                 .campaignName(name)
-                .campaignType(StringUtils.hasText(newList.getCampaignType()) ? newList.getCampaignType()
+                .campaignType(StringUtils.hasText(campaignType) ? campaignType
                         : main != null ? main.getCampaignType() : null)
                 .status("ACTIVE")
                 .toNotify(main != null ? main.getToNotify() : null)

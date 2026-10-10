@@ -146,7 +146,15 @@
             "saved": "Campaign routed to {{list}}",
             "moved": "Existing leads moved: {{count}}",
             "skipped": "Leads not moved (already in that list): {{count}}",
-            "saveError": "Could not save the campaign routing"
+            "saveError": "Could not save the campaign routing",
+            "campaignNamePlaceholder": "Campaign name from Google Ads (optional)",
+            "unnamed": "No name yet",
+            "editName": "Name this campaign",
+            "nameSaved": "Campaign name saved",
+            "autoListsLabel": "Create a list automatically for each new campaign",
+            "autoListsHint": "On a campaign's first lead, it gets its own list with the main list's form fields, named after the campaign (name it here, even before its first lead) or \"Google campaign\" plus its ID until you do. A list of the same type and name is reused. Set up its workflows and counsellors in Audience Manager.",
+            "autoListsOn": "New campaigns will get their own list",
+            "autoListsOff": "New campaigns will go to the main list"
         }
     },
     "meta": {

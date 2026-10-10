@@ -15,6 +15,11 @@ public class CampaignRouteUpdateRequest {
     private NewList newList;
     /** Also move this campaign's existing leads out of the list it fed until now. */
     private boolean moveExistingLeads;
+    /**
+     * The campaign's name from Google Ads. Null leaves it as is; blank clears it.
+     * Sent alone (no list), it only names the campaign.
+     */
+    private String campaignName;
 
     @Data
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

@@ -21,6 +21,7 @@ const api = authenticatedAxiosInstance as unknown as {
     get: ReturnType<typeof vi.fn>;
     put: ReturnType<typeof vi.fn>;
 };
+const routes = copy.google.routes;
 
 const i18n = createInstance();
 void i18n.init({
@@ -59,10 +60,12 @@ const LISTS = [
 
 const ROUTES: CampaignRoutes = {
     main_audience_id: 'aud-main',
+    auto_create_lists: false,
     routes: [
         {
             campaign_id: '22173284076',
             audience_id: null,
+            campaign_name: null,
             lead_count: 4,
             first_lead_at: '2026-10-09T15:52:05',
             last_lead_at: '2026-10-10T06:11:44',
@@ -71,6 +74,7 @@ const ROUTES: CampaignRoutes = {
         {
             campaign_id: '22180441198',
             audience_id: 'aud-pune',
+            campaign_name: 'Maharashtra-ADCT',
             lead_count: 3,
             first_lead_at: '2026-10-09T11:50:45',
             last_lead_at: '2026-10-09T16:58:50',
@@ -79,7 +83,10 @@ const ROUTES: CampaignRoutes = {
     ],
 };
 
-function mount(c: ConnectorListItem | null) {
+function mount(
+    c: ConnectorListItem | null,
+    audiences: Parameters<typeof GoogleSetupDialog>[0]['audiences'] = LISTS
+) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     return render(
         <I18nextProvider i18n={i18n}>
@@ -87,7 +94,7 @@ function mount(c: ConnectorListItem | null) {
                 <GoogleSetupDialog
                     connector={c}
                     audienceName="GoogleAds Leads form"
-                    audiences={LISTS}
+                    audiences={audiences}
                     open
                     onOpenChange={() => {}}
                 />
@@ -164,6 +171,38 @@ describe('GoogleSetupDialog', () => {
         expect(screen.queryByRole('option', { name: 'Closed list' })).toBeNull();
     });
 
+    it("offers only lists of the main list's type, plus a list a campaign already feeds", async () => {
+        mount(connector(), [
+            {
+                id: 'aud-main',
+                name: 'GoogleAds Leads form',
+                status: 'ACTIVE',
+                campaignType: 'GoogleAds Leads form',
+            },
+            {
+                id: 'aud-mp',
+                name: 'MP-CG-PGDCC',
+                status: 'ACTIVE',
+                campaignType: 'GOOGLEADS LEADS FORM',
+            },
+            { id: 'aud-web', name: 'Gujrat-ADCT', status: 'ACTIVE', campaignType: 'WEBSITE' },
+            {
+                id: 'aud-fb',
+                name: 'ADCT Mumbai 21 Feb',
+                status: 'ACTIVE',
+                campaignType: 'Facebook',
+            },
+            { id: 'aud-pune', name: 'Pune MBBS 2027', status: 'ACTIVE', campaignType: 'WEBSITE' },
+        ]);
+        await screen.findByText('22173284076');
+        const names = Array.from(listSelects()[0]!.options).map((o) => o.textContent);
+        expect(names).toContain('MP-CG-PGDCC');
+        // Already routed there, so it stays even though it is a website list.
+        expect(names).toContain('Pune MBBS 2027');
+        expect(names).not.toContain('Gujrat-ADCT');
+        expect(names).not.toContain('ADCT Mumbai 21 Feb');
+    });
+
     it('routes a campaign to an existing list and moves its existing leads', async () => {
         mount(connector());
         await screen.findByText('22173284076');
@@ -214,6 +253,64 @@ describe('GoogleSetupDialog', () => {
         expect(api.put).toHaveBeenCalledWith(
             expect.stringContaining('/campaign-routes/22206499349'),
             { audience_id: 'aud-pune', move_existing_leads: false }
+        );
+    });
+
+    it('turns automatic lists per campaign on for the connector', async () => {
+        api.put.mockResolvedValueOnce({ data: { ...ROUTES, auto_create_lists: true } });
+        mount(connector());
+        const toggle = await screen.findByRole('switch', { name: routes.autoListsLabel });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        fireEvent.click(toggle);
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/connectors/conn-1/campaign-auto-lists'),
+            { enabled: true }
+        );
+        await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'));
+    });
+
+    it('shows and edits a campaign name without changing its list', async () => {
+        mount(connector());
+        expect(await screen.findByText('Maharashtra-ADCT')).toBeTruthy();
+        expect(screen.getByText(routes.unnamed)).toBeTruthy();
+
+        fireEvent.click(screen.getAllByRole('button', { name: routes.editName })[0]!);
+        // The row being named renders before the add-a-campaign row.
+        const input = screen.getAllByPlaceholderText(routes.campaignNamePlaceholder)[0]!;
+        fireEvent.change(input, { target: { value: ' Gujarat-ADCT ' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/campaign-routes/22173284076'),
+            {
+                campaign_name: 'Gujarat-ADCT',
+            }
+        );
+    });
+
+    it('names a campaign before its first lead, with no list yet', async () => {
+        mount(connector());
+        await screen.findByText('22173284076');
+        fireEvent.change(screen.getByPlaceholderText(routes.campaignIdPlaceholder), {
+            target: { value: '22806287191' },
+        });
+        // An id alone is not enough: it needs a list or a name.
+        expect(screen.queryByRole('button', { name: routes.add })).toBeNull();
+        fireEvent.change(screen.getAllByPlaceholderText(routes.campaignNamePlaceholder).at(-1)!, {
+            target: { value: 'Mumbai-Cosmetology' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: routes.add }));
+
+        await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+        expect(api.put).toHaveBeenCalledWith(
+            expect.stringContaining('/campaign-routes/22806287191'),
+            {
+                move_existing_leads: false,
+                campaign_name: 'Mumbai-Cosmetology',
+            }
         );
     });
 });

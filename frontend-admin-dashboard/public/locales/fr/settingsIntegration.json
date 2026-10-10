@@ -146,7 +146,15 @@
             "saved": "Campagne routée vers {{list}}",
             "moved": "Prospects existants déplacés : {{count}}",
             "skipped": "Prospects non déplacés (déjà dans cette liste) : {{count}}",
-            "saveError": "Impossible d'enregistrer le routage de la campagne"
+            "saveError": "Impossible d'enregistrer le routage de la campagne",
+            "campaignNamePlaceholder": "Nom de la campagne dans Google Ads (facultatif)",
+            "unnamed": "Pas encore de nom",
+            "editName": "Nommer cette campagne",
+            "nameSaved": "Nom de la campagne enregistré",
+            "autoListsLabel": "Créer automatiquement une liste pour chaque nouvelle campagne",
+            "autoListsHint": "Au premier lead d'une campagne, elle reçoit sa propre liste avec les champs du formulaire de la liste principale, nommée d'après la campagne (nommez-la ici, même avant son premier lead) ou « Google campaign » suivi de son ID tant qu'elle n'a pas de nom. Une liste du même type et du même nom est réutilisée. Configurez ses workflows et conseillers dans Audience Manager.",
+            "autoListsOn": "Les nouvelles campagnes auront leur propre liste",
+            "autoListsOff": "Les nouvelles campagnes iront dans la liste principale"
         }
     },
     "meta": {

@@ -18,6 +18,8 @@ public class CampaignRouteDTO {
     private String campaignId;
     /** Null = not mapped yet: leads go to the connector's own audience. */
     private String audienceId;
+    /** Admin-entered name, or null. */
+    private String campaignName;
     private int leadCount;
     /** UTC, ISO without offset (the JVM runs in UTC). */
     private String firstLeadAt;
@@ -28,6 +30,7 @@ public class CampaignRouteDTO {
         return CampaignRouteDTO.builder()
                 .campaignId(r.getCampaignId())
                 .audienceId(r.getAudienceId())
+                .campaignName(r.getCampaignName())
                 .leadCount(r.getLeadCount() != null ? r.getLeadCount() : 0)
                 .firstLeadAt(r.getFirstLeadAt() != null ? r.getFirstLeadAt().toString() : null)
                 .lastLeadAt(r.getLastLeadAt() != null ? r.getLastLeadAt().toString() : null)

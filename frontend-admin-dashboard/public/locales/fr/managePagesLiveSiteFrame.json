@@ -1,0 +1,21 @@
+{
+    "frameTitle": "Aperçu du site",
+    "loading": "Chargement du site…",
+    "failed": {
+        "title": "L'aperçu du site n'a pas pu se charger ici.",
+        "hint": "Passez à <b>Editor</b> ci-dessus pour continuer à modifier, ou utilisez <b>View live</b>."
+    },
+    "toolbar": {
+        "select": "Sélectionner",
+        "selectHint": "Cliquez sur un bloc de la page pour le modifier",
+        "browse": "Parcourir",
+        "browseHint": "Utilisez la page comme un visiteur : ouvrez les menus, filtres et onglets. Un lien vers une autre page ouvre cette page ici.",
+        "desktopWidthHint": "Largeur bureau",
+        "widthPx": "{{width}} px",
+        "fit": "Ajuster",
+        "fitHint": "Réduire la page pour qu'elle tienne dans le canevas",
+        "actualSize": "100 %",
+        "actualSizeHint": "Afficher la page à sa taille réelle avec défilement horizontal",
+        "scaledTo": "Affichée à {{percent}} %"
+    }
+}

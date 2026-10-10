@@ -386,7 +386,6 @@ const InvoicesList = ({
             <div className="overflow-hidden rounded-lg border border-neutral-200">
                 <ul className="divide-y divide-neutral-100">
                     {paged.map((inv) => {
-                        const canDownload = !!(inv.pdf_url || inv.pdf_file_id);
                         const status = String(inv.status || '').toUpperCase();
                         const isPending = status === 'PENDING_PAYMENT' || status === 'GENERATED' || status === 'SENT';
                         const isAdminManual = inv.source === 'ADMIN_MANUAL';
@@ -403,6 +402,13 @@ const InvoicesList = ({
                             /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-/i.test(inv.invoice_number || '');
                         // A paid invoice has a live payment behind it; the server refuses those, so the
                         // button is not offered (delete or void the payment first).
+                        // A real invoice can always be rendered: /invoices/{id}/download
+                        // regenerates and stores the PDF when none exists yet. Gating this on
+                        // pdf_file_id hid both buttons for every invoice that had never been
+                        // opened, so the one action that would have created the PDF was the one
+                        // action the row would not offer. Synthetic per-installment rows have no
+                        // invoice behind them, so they still need a stored file.
+                        const canDownload = !isSyntheticRow || !!(inv.pdf_url || inv.pdf_file_id);
                         const canDeleteInvoice =
                             canDeletePayments &&
                             !isSyntheticRow &&

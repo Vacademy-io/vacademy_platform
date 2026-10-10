@@ -42,6 +42,8 @@ const toSlug = (value: string) =>
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 
+const pageLabel = (page: { title?: string; route: string }) => page.title || page.route;
+
 export const PageTabs = () => {
     const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const {
@@ -66,6 +68,12 @@ export const PageTabs = () => {
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
     if (!config) return null;
+
+    // Two pages with the same title ("Courses | Courses") are told apart by route.
+    const labelCounts = new Map<string, number>();
+    config.pages.forEach((p) =>
+        labelCounts.set(pageLabel(p), (labelCounts.get(pageLabel(p)) ?? 0) + 1)
+    );
 
     const slugPreview = toSlug(newPageRoute);
     const isRouteConflict = !!slugPreview && config.pages.some((p) => p.route === slugPreview);
@@ -120,7 +128,16 @@ export const PageTabs = () => {
                             onClick={() => selectPage(page.id)}
                             className="gap-1.5 pr-1"
                         >
-                            {page.title || page.route}
+                            {(labelCounts.get(pageLabel(page)) ?? 0) > 1 ? (
+                                <span className="flex flex-col items-start leading-tight">
+                                    <span>{pageLabel(page)}</span>
+                                    <span className="font-mono text-caption text-gray-400">
+                                        /{(page.route ?? '').replace(/^\//, '')}
+                                    </span>
+                                </span>
+                            ) : (
+                                pageLabel(page)
+                            )}
                         </Button>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>

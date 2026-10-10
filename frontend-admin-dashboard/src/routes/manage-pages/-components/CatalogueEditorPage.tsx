@@ -6,7 +6,12 @@ import {
     getDraftRevision,
     saveDraftRevision,
     publishDraftRevision,
+    discardDraftRevision,
+    getRevisionHistory,
+    type CatalogueRevision,
 } from '../-services/catalogue-service';
+import { getDraftStaleness, needsHistoryForStaleness } from '../-utils/draft-staleness';
+import { StaleDraftBanner, DiscardDraftDialog, StalePublishDialog } from './DraftGuard';
 import { useEditorStore } from '../-stores/editor-store';
 import React, { useEffect, useRef, useState } from 'react';
 import { ComponentLibrary } from './ComponentLibrary';
@@ -30,8 +35,9 @@ import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine, Newspaper, Folders } from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine, Newspaper, Folders, Trash } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
+import { isAxiosError } from 'axios';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
@@ -48,6 +54,7 @@ import { LocalizedEditingBar } from './i18n/LocalizedEditingBar';
 
 export const CatalogueEditorPage = () => {
     const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
+    const { t: tEditor } = useTranslation('managePagesCatalogueEditor');
     const { tagName } = Route.useParams();
     const { page: linkedPageRoute, section: linkedSectionId } = Route.useSearch();
     const instituteId = getCurrentInstituteId();
@@ -134,6 +141,12 @@ export const CatalogueEditorPage = () => {
     const [showHistory, setShowHistory] = useState(false);
     // Pre-publish checks: surfaced once per Publish click, never blocking.
     const [publishIssues, setPublishIssues] = useState<PublishIssue[] | null>(null);
+    // A draft older than the live site: the banner can be dismissed ("Keep my
+    // draft"), but publishing it still asks first and then overrides.
+    const [staleBannerDismissed, setStaleBannerDismissed] = useState(false);
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+    const [showStalePublishConfirm, setShowStalePublishConfirm] = useState(false);
+    const [publishOverridesStale, setPublishOverridesStale] = useState(false);
 
     // Draft/publish model: the editor works on a DRAFT revision; learners keep
     // seeing the last PUBLISHED config until the admin hits Publish.
@@ -152,17 +165,33 @@ export const CatalogueEditorPage = () => {
 
     const isLoading = metaLoading || (!!catalogueId && !draftQuery.isFetched);
 
+    // Older servers do not say whether the draft is stale; the client check
+    // then needs to know when the live site was last published.
+    const revisionsQuery = useQuery({
+        queryKey: ['catalogueRevisions', catalogueId],
+        queryFn: () => getRevisionHistory(catalogueId!),
+        enabled: !!catalogueId && needsHistoryForStaleness(draftQuery.data, meta),
+    });
+    const staleness = getDraftStaleness(draftQuery.data, meta, revisionsQuery.data);
+
+    // Keep the draft cache honest (the save response omits the JSON) so a later
+    // focus refetch doesn't look like fresh server state.
+    const cacheSavedDraft = (savedRevision: CatalogueRevision, savedConfig: CatalogueConfig) =>
+        queryClient.setQueryData<CatalogueRevision | null>(
+            ['catalogueDraft', catalogueId],
+            (prev) => ({
+                ...prev,
+                ...savedRevision,
+                catalogue_json: JSON.stringify(savedConfig),
+            })
+        );
+
     const saveMutation = useMutation({
         mutationFn: (newConfig: CatalogueConfig) => saveDraftRevision(catalogueId!, newConfig),
         onSuccess: (savedRevision, savedConfig) => {
             setSavedConfigJSON(JSON.stringify(savedConfig));
             setHasDraft(true);
-            // Keep the draft cache honest (the save response omits the JSON) so
-            // a later focus refetch doesn't look like fresh server state.
-            queryClient.setQueryData(['catalogueDraft', catalogueId], {
-                ...savedRevision,
-                catalogue_json: JSON.stringify(savedConfig),
-            });
+            cacheSavedDraft(savedRevision, savedConfig);
             toast({ title: 'Draft saved', description: 'Publish when you want learners to see it' });
         },
         onError: (err) => {
@@ -176,10 +205,10 @@ export const CatalogueEditorPage = () => {
     });
 
     const publishMutation = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (overrideStale: boolean) => {
             // Publish always ships what's on screen: persist the draft first
             if (config) await saveDraftRevision(catalogueId!, config);
-            return publishDraftRevision(catalogueId!);
+            return publishDraftRevision(catalogueId!, { overrideStale });
         },
         onSuccess: () => {
             if (config) setSavedConfigJSON(JSON.stringify(config));
@@ -192,10 +221,63 @@ export const CatalogueEditorPage = () => {
             toast({ title: 'Published', description: 'The site is now live with this version' });
         },
         onError: (err) => {
+            // The server knows the live site changed after this draft began.
+            if (isAxiosError(err) && err.response?.status === 409) {
+                setShowStalePublishConfirm(true);
+                return;
+            }
             toast({ title: 'Publish failed', description: 'Please try again', variant: 'destructive' });
             console.error(err);
         },
     });
+
+    // Drop the draft and show the live site, freshly fetched: it may have
+    // changed again since the editor opened.
+    const discardMutation = useMutation({
+        mutationFn: async () => {
+            await discardDraftRevision(catalogueId!);
+            return queryClient.fetchQuery({
+                queryKey: ['catalogueMeta', instituteId, tagName],
+                queryFn: () => getCatalogueMeta(instituteId!, tagName),
+                staleTime: 0,
+            });
+        },
+        onSuccess: (liveMeta) => {
+            setHasDraft(false);
+            setLastAutosaveAt(null);
+            queryClient.setQueryData(['catalogueDraft', catalogueId], null);
+            queryClient.invalidateQueries({ queryKey: ['catalogueRevisions', catalogueId] });
+            try {
+                const parsed = JSON.parse(liveMeta.catalogue_json) as CatalogueConfig;
+                setConfig(parsed);
+                setSavedConfigJSON(JSON.stringify(parsed));
+            } catch (e) {
+                console.error('Failed to parse live catalogue JSON', e);
+            }
+            toast({
+                title: tEditor('draft.discardedTitle'),
+                description: tEditor('draft.discardedBody'),
+            });
+        },
+        onError: (err) => {
+            toast({
+                title: tEditor('draft.discardFailedTitle'),
+                description: tEditor('draft.tryAgain'),
+                variant: 'destructive',
+            });
+            console.error(err);
+        },
+    });
+
+    const startPublish = (overrideStale: boolean) => {
+        const issues = config ? runPublishChecks(config) : [];
+        if (issues.length > 0) {
+            setPublishOverridesStale(overrideStale);
+            setPublishIssues(issues);
+            return;
+        }
+        publishMutation.mutate(overrideStale);
+    };
 
     // Hydrate ONCE per catalogue. Background refetches (window focus,
     // post-publish invalidation) must never re-run setConfig — it resets undo
@@ -209,7 +291,9 @@ export const CatalogueEditorPage = () => {
         try {
             const parsed = JSON.parse(json);
             setConfig(parsed);
-            setSavedConfigJSON(json);
+            // Compare like with like: isDirty uses JSON.stringify(config), and
+            // JSON written elsewhere (Python's ", " separators) differs as text.
+            setSavedConfigJSON(JSON.stringify(parsed));
             setHasDraft(!!draftQuery.data);
             loadedForRef.current = meta.id;
             // Deep link (?page=&section=): land on the page/section that was
@@ -251,19 +335,17 @@ export const CatalogueEditorPage = () => {
     // prompt ate everything since the last manual save.
     useEffect(() => {
         if (!isDirty || !catalogueId || !canWrite || jsonError) return;
-        if (saveMutation.isPending || publishMutation.isPending) return;
+        if (saveMutation.isPending || publishMutation.isPending || discardMutation.isPending) return;
         const t = window.setTimeout(async () => {
             try {
                 setAutosaving(true);
                 const snapshot = config!;
-                const savedRevision = await saveDraftRevision(catalogueId, snapshot);
+                // null source: an AI-made draft stays an AI draft when autosaved.
+                const savedRevision = await saveDraftRevision(catalogueId, snapshot, null);
                 setSavedConfigJSON(JSON.stringify(snapshot));
                 setHasDraft(true);
                 setLastAutosaveAt(new Date());
-                queryClient.setQueryData(['catalogueDraft', catalogueId], {
-                    ...savedRevision,
-                    catalogue_json: JSON.stringify(snapshot),
-                });
+                cacheSavedDraft(savedRevision, snapshot);
             } catch (e) {
                 // Non-fatal by design: the next edit re-arms the timer, and the
                 // manual Save button still surfaces real errors loudly.
@@ -274,7 +356,16 @@ export const CatalogueEditorPage = () => {
         }, 45_000);
         return () => window.clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [config, isDirty, catalogueId, canWrite, jsonError, saveMutation.isPending, publishMutation.isPending]);
+    }, [
+        config,
+        isDirty,
+        catalogueId,
+        canWrite,
+        jsonError,
+        saveMutation.isPending,
+        publishMutation.isPending,
+        discardMutation.isPending,
+    ]);
 
     // Sync JSON text when switching to JSON mode
     useEffect(() => {
@@ -452,18 +543,42 @@ export const CatalogueEditorPage = () => {
                         <Save className="mr-2 size-4" />
                         Save draft
                     </Button>
+                    {(hasDraft || isDirty) && (
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setShowDiscardConfirm(true)}
+                            disabled={
+                                discardMutation.isPending ||
+                                saveMutation.isPending ||
+                                publishMutation.isPending ||
+                                autosaving ||
+                                !canWrite ||
+                                !catalogueId
+                            }
+                            title={tEditor('draft.discardHint')}
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            <Trash className="size-4" />
+                            {tEditor('draft.discard')}
+                        </Button>
+                    )}
                     <Button
                         size="sm"
                         onClick={() => {
-                            const issues = config ? runPublishChecks(config) : [];
-                            if (issues.length > 0) {
-                                setPublishIssues(issues);
+                            if (staleness.stale) {
+                                setShowStalePublishConfirm(true);
                                 return;
                             }
-                            publishMutation.mutate();
+                            startPublish(false);
                         }}
                         disabled={
-                            publishMutation.isPending || saveMutation.isPending || !canWrite || !!jsonError || !catalogueId ||
+                            publishMutation.isPending ||
+                            saveMutation.isPending ||
+                            discardMutation.isPending ||
+                            !canWrite ||
+                            !!jsonError ||
+                            !catalogueId ||
                             (!hasDraft && !isDirty)
                         }
                         title="Make this version live for learners"
@@ -478,12 +593,41 @@ export const CatalogueEditorPage = () => {
                 </div>
             </div>
 
+            {/* The open draft is older than the live site */}
+            {staleness.stale && hasDraft && !staleBannerDismissed && (
+                <StaleDraftBanner
+                    staleness={staleness}
+                    busy={discardMutation.isPending || publishMutation.isPending}
+                    onUseLive={() => discardMutation.mutate()}
+                    onKeepDraft={() => setStaleBannerDismissed(true)}
+                />
+            )}
+            <DiscardDraftDialog
+                open={showDiscardConfirm}
+                onOpenChange={setShowDiscardConfirm}
+                onConfirm={() => {
+                    setShowDiscardConfirm(false);
+                    discardMutation.mutate();
+                }}
+            />
+            <StalePublishDialog
+                open={showStalePublishConfirm}
+                onOpenChange={setShowStalePublishConfirm}
+                onConfirm={() => {
+                    setShowStalePublishConfirm(false);
+                    startPublish(true);
+                }}
+            />
+
             {/* Pre-publish checks — warn, never block */}
             <PublishCheckDialog
                 open={!!publishIssues}
                 onOpenChange={(o) => !o && setPublishIssues(null)}
                 issues={publishIssues || []}
-                onConfirm={() => { setPublishIssues(null); publishMutation.mutate(); }}
+                onConfirm={() => {
+                    setPublishIssues(null);
+                    publishMutation.mutate(publishOverridesStale);
+                }}
                 onJumpTo={(issue) => {
                     if (issue.pageId) selectPage(issue.pageId);
                     if (issue.componentId) selectComponent(issue.componentId);

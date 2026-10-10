@@ -9,6 +9,10 @@ and the model reads one schema. Actions:
     list            every site: status, live URL, draft pending, last published
     get_page        one page's sections in order, with where each block's data comes from
     context         what the AI may link to: courses, product pages, lead campaigns, theme
+                    (detail=true adds course tags / language / format / invites, folder libraries, path steps)
+    data_inventory  the data a design maps onto: courses in detail, tag vocabulary, folder libraries, paths
+    data_audit      the data behind the site's widgets, checked: stream / language / format tags, empty
+                    folders, version groups, paths, authored prices, payment gateways
     analytics       traffic + lead counts for the last N days
     lead_summary    every lead-capture surface on the site and whether it is wired
     audit           the dashboard's pre-publish checks
@@ -53,10 +57,14 @@ from .website_data import (
     campaign_name_map,
     get_draft,
     get_history,
+    invites_by_ids,
     learner_portal_base,
     list_catalogues,
     load_campaigns,
+    load_course_inventory,
     load_courses,
+    list_folder_libraries,
+    load_data_inventory,
     load_folder_libraries,
     load_library_folders,
     load_product_pages,
@@ -72,7 +80,7 @@ WEBSITE_GROUP_KEY = "website_builder"
 
 WEBSITE_ACTIONS = (
     "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
-    "brief_checklist", "schema", "patterns", "list_media", "preview", "strings",
+    "brief_checklist", "schema", "patterns", "list_media", "preview", "strings", "data_inventory", "data_audit",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -153,9 +161,20 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "would see count. fidelity=true asks for that mode explicitly.\n"
             "- preview (tag_name, page_route?, section_id?, viewport?): a screenshot of the DRAFT as the "
             "learner site renders it. Look at it before and after edits.\n"
-            "- context (tag_name?, library_id?): what may be linked on a site — real courses, product pages, lead "
-            "campaigns (with leads received), folder libraries, the site's theme. Use these ids; never invent them. "
-            "With library_id: that library's folders (ids for website_edit bind_data data_kind='folder').\n"
+            "- context (tag_name?, detail?, library_id?): what may be linked on a site — real courses, product pages, "
+            "lead campaigns (with leads received), folder libraries, the site's theme. Use these ids; never invent "
+            "them. With library_id: that library's folders (ids for website_edit bind_data data_kind='folder'). "
+            "detail=true adds "
+            "each course's tags, detected language and format, catalogue flag, default invite and payment vendor, "
+            "the folder libraries (streams → categories → paths) and each product page's steps.\n"
+            "- data_inventory (tag_name?): everything a design's data needs are matched against — courses in "
+            "detail, the tag vocabulary with counts, level names, folder libraries, product pages with steps, "
+            "campaigns and configured payment gateways. Read-only.\n"
+            "- data_audit (tag_name?, library_id?): checks the DATA behind the site's catalogue widgets — courses "
+            "with no stream / language / format tag, folders no course matches, version groups that mix "
+            "languages, unknown or inactive product pages and libraries, courses not on the catalogue, authored "
+            "prices the widgets compute live, paid invites on an unconfigured gateway. Each item has a fix and "
+            "a dashboard link for the admin; run it before telling the admin a site is ready.\n"
             "- analytics (tag_name?, days?): views, visitors, sessions, leads, top pages and sources.\n"
             "- lead_summary (tag_name, days?): every enquiry form / popup on the site, which campaign "
             "it feeds, leads received, and forms wired to nothing.\n"
@@ -190,6 +209,8 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "schema: which page archetype's rules to include. review: judge the page as this type (default: the type it was created as, else what its content says, else by position/route)."},
                 "fidelity": {"type": "boolean", "description": "review: true = the page reproduces a design (taste rules skipped); default: on for pages saved with design_source."},
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
+                "detail": {"type": "boolean", "description": "context: add course tags / language / format / invites, folder libraries and product-page steps."},
+                "library_id": {"type": "string", "description": "data_audit: the folder library to check courses against when the site names none yet."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
                 "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive). patterns: words to match against pattern ids, looks and Figma cues."},
@@ -295,12 +316,14 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         }
     elif err and err.get("error") not in ("no_sites", "tag_required"):
         out["site"] = err
+    if str(args.get("detail")).lower() in ("true", "1"):
+        return await _action_context_detail(args, ctx, out, site)
     out["courses"] = await load_courses(ctx)
     out["product_pages"] = await load_product_pages(ctx)
     out["lead_campaigns"] = await load_campaigns(ctx)
     # Folder libraries (the ids website_edit bind_data takes). Listed only when the
     # institute has some, so a site without them reads exactly as before.
-    libraries = await load_folder_libraries(ctx)
+    libraries = await list_folder_libraries(ctx)
     if libraries:
         out["folder_libraries"] = libraries
         out["folder_libraries_note"] = (
@@ -341,6 +364,93 @@ async def _library_folders_listing(ctx: ToolContext, library_id: str,
     if len(folders) > len(shown):
         out["truncated"] = f"{len(folders) - len(shown)} more folders not listed"
     return out
+
+
+async def _action_context_detail(args: Dict[str, Any], ctx: ToolContext, out: Dict[str, Any],
+                                 site: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    gs = (site or {}).get("config", {}).get("globalSettings") or {}
+    inventory = await load_course_inventory(ctx, gs)
+    out["courses"] = inventory["courses"]
+    if inventory["truncated"]:
+        out["courses_total"] = inventory["total"]
+        out["courses_truncated"] = True
+    out["product_pages"] = await load_product_pages(ctx, with_steps=True)
+    out["folder_libraries"] = await load_folder_libraries(ctx)
+    out["lead_campaigns"] = await load_campaigns(ctx)
+    result = _compact(out, max_items=200, max_str=200)
+    # Guidance is added after the trim so it reaches the model whole.
+    result["rules"] = _CONTEXT_DETAIL_RULES
+    library_id = str(args.get("library_id") or "").strip()
+    if library_id:
+        result["library_folders"] = await _library_folders_listing(ctx, library_id, await list_folder_libraries(ctx))
+    return result
+
+
+_CONTEXT_DETAIL_RULES = (
+    "Only these ids may be placed on a page. language_detected / format_detected follow the learner "
+    "site's own rules (a level name or a tag that is exactly the language; a 'format-<key>' tag or a format "
+    "level) with this site's settings; a course without them has none (format_detected is left out for every "
+    "course when the site authors no courseFormats). A folder's `tag` is the course tag its stream tab / category "
+    "filters by; product-page leaves of a library are its learning paths, `steps` their courses in order. "
+    "courses_truncated = more courses exist than are listed. Run website(action='data_audit') for what is missing."
+)
+
+
+async def _action_data_inventory(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err and err.get("error") not in ("no_sites", "tag_required"):
+        return err
+    from .website_data_audit import site_course_ids
+    config = (site or {}).get("config")
+    gs = (config or {}).get("globalSettings") or {}
+    inventory = await load_data_inventory(ctx, gs, include_course_ids=site_course_ids(config))
+    out: Dict[str, Any] = {}
+    if site:
+        out["site"] = {"tag_name": site["tag_name"], "course_formats": sorted((gs.get("courseFormats") or {}).keys())
+                       if isinstance(gs.get("courseFormats"), dict) else None,
+                       "course_languages": gs.get("courseLanguages"), **stale_note(site)}
+    out.update(inventory)
+    result = _compact(out, max_items=200, max_str=200)
+    # Guidance is added after the trim so it reaches the model whole.
+    result["note"] = (
+        "Read-only. Course facts follow the learner site's rules with this site's settings. `sources` says which "
+        "reads answered: a list from a 'failed' read is unknown, not empty. courses_truncated = more courses exist "
+        "than are listed (the site's own courses always are). Changing this data (tags, folders, product pages, "
+        "gateways) is an admin task in the dashboard — website(action='data_audit') lists what to change, with links."
+    )
+    return result
+
+
+async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .course_builder_data import admin_base
+    from .website_data_audit import audit_site_data, site_course_ids, site_invite_ids
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err and err.get("error") not in ("no_sites",):
+        return err
+    config = (site or {}).get("config")
+    gs = (config or {}).get("globalSettings") or {}
+    inventory = await load_data_inventory(ctx, gs, include_course_ids=site_course_ids(config))
+    invite_rows = invites_by_ids(ctx, site_invite_ids(config))
+    invites: Dict[str, Any] = {}
+    for row in invite_rows or []:
+        key = str(row.get("id"))
+        # One row per active batch link; a row without one only stands in when the invite has none.
+        if key not in invites or (not invites[key].get("package_session_id") and row.get("package_session_id")):
+            invites[key] = row
+    inventory["invites_by_id"] = invites
+    inventory.setdefault("sources", {})["invites"] = "ok" if invite_rows is not None else "failed"
+    library_id = str(args.get("library_id") or "").strip() or None
+    result = audit_site_data(config, inventory, admin_base=admin_base(ctx), library_id=library_id)
+    out: Dict[str, Any] = {
+        "tag_name": (site or {}).get("tag_name"),
+        "checked": ("draft" if site["from_draft"] else "published") if site else "institute data only (no site yet)",
+        **result,
+        "editor_url": site_editor_url(site["tag_name"], ctx=ctx) if site else None,
+        "note": ("These checks read live course, folder and product-page data; the MCP does not change that "
+                 "data. Hand the admin the errors and warnings with their links, then re-run data_audit."),
+        **(stale_note(site) if site else {}),
+    }
+    return {k: v for k, v in out.items() if v is not None}
 
 
 async def _action_analytics(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -979,6 +1089,8 @@ _ACTIONS = {
     "patterns": _action_patterns,
     "list_media": _action_list_media,
     "strings": _action_strings,
+    "data_inventory": _action_data_inventory,
+    "data_audit": _action_data_audit,
 }
 
 

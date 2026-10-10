@@ -60,8 +60,8 @@ from .website_data import (
     _err,
     _is_error,
     get_campaign,
+    list_folder_libraries,
     load_courses,
-    load_folder_libraries,
     load_library_folders,
     load_product_pages,
     load_site,
@@ -2776,7 +2776,7 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     name = ""
     library_id = None
     if kind == "folderLibrary":
-        libraries = await load_folder_libraries(ctx)
+        libraries = await list_folder_libraries(ctx)
         if libraries is None:
             return _err("fetch_failed", message="The institute's folder libraries could not be read; nothing was changed. Try again shortly.")
         lib = next((l for l in libraries if l["id"] == data_id), None)
@@ -2792,7 +2792,7 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         if not library_id:
             return _err("missing_argument", needs=["library_id"],
                         message="This section is not bound to a folder library yet: pass library_id (or bind the library first).")
-        libraries = await load_folder_libraries(ctx)
+        libraries = await list_folder_libraries(ctx)
         if libraries is None:
             return _err("fetch_failed", message="The institute's folder libraries could not be read; nothing was changed. Try again shortly.")
         lib = next((l for l in libraries if l["id"] == library_id), None)

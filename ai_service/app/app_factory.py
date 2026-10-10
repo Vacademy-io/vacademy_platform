@@ -161,6 +161,9 @@ async def _lifespan(app: FastAPI):
             # catalog_data_edit's record of the libraries it created (also lazy).
             from .models.catalog_data_edit import ensure_catalog_data_schema
             ensure_catalog_data_schema(db)
+            # website_publish's single-use confirm tokens (also created lazily on first use).
+            from .models.publish_confirm import ensure_publish_confirm_schema
+            ensure_publish_confirm_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
 

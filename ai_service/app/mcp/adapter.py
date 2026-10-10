@@ -36,6 +36,7 @@ from ..services.assistant_tool_registry import (
 from .access import setting_for_tool_gate
 from .constants import (
     MCP_EXPOSED_TOOLS,
+    MCP_OPT_IN_GROUPS,
     MCP_TOOL_AREAS,
     MCP_TOOL_GROUP_LABELS,
     MCP_TOOL_GROUP_SUMMARIES,
@@ -65,7 +66,9 @@ def _placement(key: str) -> Dict[str, Any]:
     area = MCP_TOOL_AREAS.get(place["area"]) or {"label": MCP_TOOL_GROUP_LABELS.get(key, key), "summary": ""}
     return {"area": place["area"], "area_label": area["label"], "area_summary": area["summary"],
             "area_order": list(MCP_TOOL_AREAS).index(place["area"]) if place["area"] in MCP_TOOL_AREAS else 99,
-            "level": place["level"], "risk": place.get("risk"), "sub_label": place.get("sub_label")}
+            "level": place["level"], "risk": place.get("risk"), "sub_label": place.get("sub_label"),
+            # Turned on one by one: never by the area's Edit level or a preset.
+            "opt_in": key in MCP_OPT_IN_GROUPS}
 
 
 def tool_catalog() -> List[Dict[str, Any]]:
@@ -179,6 +182,7 @@ async def call_tool(
         keys=(),  # embeddings-only; none of the exposed tools need API keys
         bearer_token=platform_token,
         images_as_content=True,  # image fields become ImageContent below
+        via_mcp=True,  # mcp_only tools (design_import, website_publish) run only here
     )
 
     started = time.monotonic()

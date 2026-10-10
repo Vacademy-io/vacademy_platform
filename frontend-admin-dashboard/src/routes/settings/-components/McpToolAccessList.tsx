@@ -63,10 +63,19 @@ export function areaLevel(area: McpToolArea, enabled: string[]): McpAccessLevel 
 /** Risks the Edit level never switches on by itself: the admin opts in to each one. */
 const OPT_IN_RISKS: ReadonlySet<McpToolRisk> = new Set<McpToolRisk>(['live_additive']);
 
-/** The edits the Edit level turns on: all but the opt-in ones (all of them when nothing else is left). */
+/** Turned on one by one: flagged `opt_in` by the server (publishing) or a live-additive edit. */
+export function isOptInEdit(tool: McpToolCatalogEntry): boolean {
+    return Boolean(tool.opt_in) || Boolean(tool.risk && OPT_IN_RISKS.has(tool.risk));
+}
+
+/**
+ * The edits the Edit level turns on: all but the opt-in ones. When an area has only
+ * live-additive edits those are turned on, but never an edit the server flags `opt_in`.
+ */
 export function autoEditKeys(area: McpToolArea): string[] {
-    const auto = area.edits.filter((t) => !(t.risk && OPT_IN_RISKS.has(t.risk)));
-    return (auto.length ? auto : area.edits).map((t) => t.key);
+    const eligible = area.edits.filter((t) => !t.opt_in);
+    const auto = eligible.filter((t) => !isOptInEdit(t));
+    return (auto.length ? auto : eligible).map((t) => t.key);
 }
 
 export function withAreaLevel(
@@ -82,11 +91,33 @@ export function withAreaLevel(
     } else {
         if (area.view) next.add(area.view.key);
         if (level === 'view') editKeys.forEach((k) => next.delete(k));
-        // Moving up to Edit turns the area's edits on; the admin narrows it in the row's details.
-        // Edits that write live data (live_additive) stay off until switched on one by one.
+        // Moving up to Edit turns the area's edits on except the opt-in ones (publishing, and
+        // edits that write live data); the admin narrows it, or adds those, in the row's details.
         else if (!editKeys.some((k) => enabled.includes(k))) autoEditKeys(area).forEach((k) => next.add(k));
     }
     return Array.from(next);
+}
+
+/**
+ * The presets' keys. "Everything" leaves opt-in edits as they are (it never
+ * turns publishing or live-data edits on); "View only" turns every edit off.
+ * `all` is every toggleable key, so a preset replaces exactly those.
+ */
+export function presetKeys(
+    areas: McpToolArea[],
+    enabled: string[]
+): { all: string[]; viewOnly: string[]; everything: string[] } {
+    const toggleable = areas.filter((a) => !a.alwaysOn);
+    const views = toggleable.flatMap((a) => (a.view ? [a.view.key] : []));
+    const edits = toggleable.flatMap((a) => a.edits);
+    return {
+        all: [...views, ...edits.map((t) => t.key)],
+        viewOnly: views,
+        everything: [
+            ...views,
+            ...edits.filter((t) => !isOptInEdit(t) || enabled.includes(t.key)).map((t) => t.key),
+        ],
+    };
 }
 
 /** Edit includes view — older settings could hold an edit with its view off. */
@@ -268,6 +299,14 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                                                     text={t(`tools.risk.${tool.risk}`)}
                                                 />
                                             )}
+                                            {tool.opt_in && (
+                                                <StatusChip
+                                                    status="INFO"
+                                                    textSize="text-caption"
+                                                    showIcon={false}
+                                                    text={t('tools.optIn')}
+                                                />
+                                            )}
                                         </div>
                                         <p className="text-caption text-neutral-600">
                                             {tool.summary || tool.description}
@@ -321,14 +360,10 @@ export function McpAccessPresets({ areas, enabled, onChange }: McpAccessPresetsP
     const toggleable = areas.filter((a) => !a.alwaysOn);
     const on = toggleable.filter((a) => areaLevel(a, enabled) !== 'off').length;
     const editing = toggleable.filter((a) => areaLevel(a, enabled) === 'edit').length;
-    const viewOnly = toggleable.flatMap((a) => (a.view ? [a.view.key] : []));
-    const everything = toggleable.flatMap((a) => [
-        ...(a.view ? [a.view.key] : []),
-        ...a.edits.map((tool) => tool.key),
-    ]);
+    const { all, viewOnly, everything } = presetKeys(areas, enabled);
     // A preset is "current" when the toggleable keys that are on are exactly its keys.
     const same = (keys: string[]) => {
-        const on = enabled.filter((k) => everything.includes(k));
+        const on = enabled.filter((k) => all.includes(k));
         return on.length === keys.length && keys.every((k) => on.includes(k));
     };
     const presets: { key: string; keys: string[] }[] = [
@@ -350,10 +385,7 @@ export function McpAccessPresets({ areas, enabled, onChange }: McpAccessPresetsP
                         // Already in that state: nothing to apply.
                         disable={same(preset.keys)}
                         onClick={() =>
-                            onChange([
-                                ...enabled.filter((k) => !everything.includes(k)),
-                                ...preset.keys,
-                            ])
+                            onChange([...enabled.filter((k) => !all.includes(k)), ...preset.keys])
                         }
                     >
                         {t(`tools.preset.${preset.key}`)}

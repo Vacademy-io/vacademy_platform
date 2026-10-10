@@ -89,9 +89,15 @@ class ToolContext:
     # which a tool must treat as "not allowed".
     gate_setting: Optional[Dict[str, Any]] = None
     gate_checked: bool = False
+    # True only for calls that came in over the MCP server (set by the adapter).
+    # ``mcp_only`` tools refuse every other caller, whatever the settings say.
+    via_mcp: bool = False
 
     def may_use(self, tool_name: str) -> bool:
-        """True iff this caller may also call ``tool_name`` (same AND-gate as execute_tool)."""
+        """True iff this caller may also call ``tool_name`` (same gates as execute_tool)."""
+        spec = ASSISTANT_TOOLS.get(tool_name)
+        if spec is not None and spec.mcp_only and not self.via_mcp:
+            return False
         return self.gate_checked and is_tool_allowed(tool_name, self.principal, self.gate_setting)
 
 
@@ -569,8 +575,13 @@ async def _service_json(
     params: Optional[Dict[str, Any]] = None,
     body: Optional[Dict[str, Any]] = None,
     timeout: float = 20.0,
+    error_detail: bool = False,
 ) -> Any:
-    """One JWT-authenticated call to a backend service; returns parsed JSON or an error dict."""
+    """
+    One JWT-authenticated call to a backend service; returns parsed JSON or an error dict.
+    ``error_detail`` also puts the start of a non-200 answer's body in the error dict
+    (``detail``), for callers that tell one 409 from another.
+    """
     import httpx
 
     if not ctx.bearer_token:
@@ -583,6 +594,8 @@ async def _service_json(
             )
         if resp.status_code != 200:
             logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
+            if error_detail:
+                return {"error": "fetch_failed", "status": resp.status_code, "detail": resp.text[:500]}
             return {"error": "fetch_failed", "status": resp.status_code}
         try:
             return resp.json()
@@ -2353,8 +2366,8 @@ async def execute_tool(
     """
     Dispatch a tool call after re-checking the AND-gate and forcing identity.
 
-    ``in_product`` (the dashboard assistant) also refuses ``mcp_only`` tools:
-    they are never offered there, and a model naming one anyway must not run it.
+    ``mcp_only`` tools run only for MCP callers (``ctx.via_mcp``); ``in_product``
+    (the dashboard assistant) refuses them as well, whatever the context says.
 
     Returns a string tool-result in ALL cases (including denial/errors) — the
     agent loop feeds tool output back to the LLM as a string, so raising here
@@ -2378,13 +2391,15 @@ async def execute_tool(
         })
 
     spec = ASSISTANT_TOOLS[tool_name]
-    if in_product and spec.mcp_only:
-        logger.warning("Assistant denied MCP-only tool '%s' in product (institute=%s)",
-                       tool_name, ctx.principal.institute_id)
+    if spec.mcp_only and (in_product or not ctx.via_mcp):
+        # Never offered outside MCP; refuse a model that names it anyway (e.g. a
+        # settings row that enables the group for the in-product assistant).
+        logger.warning("Assistant refused MCP-only tool '%s' outside MCP for user=%s institute=%s",
+                       tool_name, ctx.principal.user_id, ctx.principal.institute_id)
         return json.dumps({
-            "error": "tool_not_permitted",
+            "error": "tool_not_available",
             "tool": tool_name,
-            "message": "This tool is only available to AI apps connected over MCP. Do not retry.",
+            "message": "This tool is only available to AI apps connected over the MCP server. Do not retry.",
         })
     ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
@@ -2422,6 +2437,7 @@ def _load_feature_tools() -> None:
     for module in (
         "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
         "assistant_tools_catalog_data_edit",
+        "assistant_tools_website_publish",
         "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",

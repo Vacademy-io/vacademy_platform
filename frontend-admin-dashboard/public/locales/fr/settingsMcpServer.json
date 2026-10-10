@@ -45,6 +45,7 @@
         "description": "Choisissez, domaine par domaine, si les applications d'IA peuvent seulement consulter ou aussi modifier. Ouvrez une ligne pour voir précisément ce qu'elle autorise.",
         "empty": "Aucun outil n'est encore disponible sur ce serveur.",
         "alwaysOn": "Toujours actif",
+        "optIn": "Activé séparément",
         "level": {
             "off": "Désactivé",
             "view": "Consulter",

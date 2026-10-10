@@ -16,7 +16,11 @@ import vacademy.io.admin_core_service.features.course_catalogue.repository.Catal
 import vacademy.io.admin_core_service.features.course_catalogue.repository.CourseCatalogueRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -30,14 +34,23 @@ public class CatalogueRevisionService {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /** Error code (message prefix) of the 409 a create-only draft save gets while a draft is open. */
+    public static final String DRAFT_EXISTS = "DRAFT_EXISTS";
+
+    /** Error code (message prefix) of the 409 when the draft is not the one the caller checked. */
+    public static final String DRAFT_CHANGED = "DRAFT_CHANGED";
+
+    /** Error code (message prefix) of the 409 when a checked-draft publish arrives while the stale guard is off. */
+    public static final String STALE_GUARD_OFF = "STALE_GUARD_OFF";
+
     /**
-     * Refuse (409) to publish a draft older than the live site. Off until the
-     * editor that handles the 409 (discard / override confirm) is deployed —
-     * the older editor can only retry, so it would be stuck. Env:
-     * CATALOGUE_PUBLISH_STALEGUARD_ENABLED=true. The stale flag on getDraft is
-     * reported either way.
+     * Refuse (409) to publish a draft older than the live site. On by default:
+     * the editor handles the 409 (Use the live site / Keep my draft / publish
+     * anyway), and MCP publishing relies on it. Env override
+     * CATALOGUE_PUBLISH_STALEGUARD_ENABLED=false turns it off. The stale flag
+     * on getDraft is reported either way.
      */
-    @Value("${catalogue.publish.stale-guard.enabled:false}")
+    @Value("${catalogue.publish.stale-guard.enabled:true}")
     private boolean staleGuardEnabled;
 
     @Autowired
@@ -86,6 +99,10 @@ public class CatalogueRevisionService {
         Optional<CatalogueRevision> open = revisionRepository
                 .findFirstByCatalogueIdAndStatusOrderByRevisionNoDescIdDesc(catalogueId,
                         CatalogueRevisionStatusEnum.DRAFT.name());
+        if (Boolean.TRUE.equals(request.getCreateOnly()) && open.isPresent()) {
+            throw new VacademyException(HttpStatus.CONFLICT, DRAFT_EXISTS + ": the site has an unpublished draft (v"
+                    + open.get().getRevisionNo() + "). Nothing was saved; publish or discard it first.");
+        }
         // "Keep my draft" on a stale draft: start it again from now, so its
         // staleness is measured against the live site the editor has seen.
         // The old row is retired; its content goes on in the new one.
@@ -132,10 +149,38 @@ public class CatalogueRevisionService {
     @Transactional
     public RevisionResponse publish(String catalogueId, String userId, boolean overrideStale,
                                     Integer expectedLiveRevisionNo) {
+        return publish(catalogueId, userId, overrideStale, expectedLiveRevisionNo, null);
+    }
+
+    /**
+     * As above; expectedDraftSha256 (hex SHA-256 of the draft's catalogue_json
+     * exactly as stored) refuses with 409 DRAFT_CHANGED when the open draft is
+     * no longer the one the caller checked — an autosave or another editor
+     * changed it in between. Checked under the catalogue row lock, whatever
+     * overrideStale says. Null skips the check (the editor's call).
+     *
+     * A checked-draft publish (the MCP one) relies on the stale guard, so while
+     * the guard is turned off it is refused with 409 STALE_GUARD_OFF instead of
+     * publishing unguarded. The editor's publish (no hash) is unaffected.
+     */
+    @Transactional
+    public RevisionResponse publish(String catalogueId, String userId, boolean overrideStale,
+                                    Integer expectedLiveRevisionNo, String expectedDraftSha256) {
         CourseCatalogue catalogue = requireCatalogue(catalogueId);
 
         CatalogueRevision draft = findDraft(catalogueId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.BAD_REQUEST, "No draft to publish"));
+
+        if (expectedDraftSha256 != null && !expectedDraftSha256.isBlank()
+                && !expectedDraftSha256.trim().equalsIgnoreCase(sha256Hex(draft.getCatalogueJson()))) {
+            throw new VacademyException(HttpStatus.CONFLICT, DRAFT_CHANGED
+                    + ": the draft changed after it was checked. Nothing was published; check the draft again.");
+        }
+        if (expectedDraftSha256 != null && !expectedDraftSha256.isBlank() && !staleGuardEnabled) {
+            throw new VacademyException(HttpStatus.CONFLICT, STALE_GUARD_OFF
+                    + ": the publish stale guard is turned off on this server, so a checked draft cannot be "
+                    + "published from here. Nothing was published; publish from the editor.");
+        }
 
         if (staleGuardEnabled && !overrideStale) {
             CatalogueRevision live = findLive(catalogueId).orElse(null);
@@ -264,6 +309,17 @@ public class CatalogueRevisionService {
                         draft.getCatalogueId(), CatalogueRevisionStatusEnum.PUBLISHED.name(), draft.getCreatedAt())
                 .map(base -> !sameJson(base.getCatalogueJson(), liveJson))
                 .orElse(true);
+    }
+
+    /** Lower-case hex SHA-256 of the UTF-8 text ("" for null). */
+    static String sha256Hex(String text) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest((text == null ? "" : text).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
 
     static boolean sameJson(String a, String b) {

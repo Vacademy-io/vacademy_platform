@@ -128,11 +128,17 @@ public class CourseCatalogueController {
     public ResponseEntity<RevisionResponse> publishDraft(@RequestAttribute("user") CustomUserDetails userDetails,
                                                          @RequestParam("catalogueId") String catalogueId,
                                                          @RequestParam(value = "overrideStale", defaultValue = "false") boolean overrideStale,
-                                                         @RequestParam(value = "expectedLiveRevisionNo", required = false) Integer expectedLiveRevisionNo) {
+                                                         @RequestParam(value = "expectedLiveRevisionNo", required = false) Integer expectedLiveRevisionNo,
+                                                         @RequestParam(value = "expectedDraftSha256", required = false) String expectedDraftSha256) {
         requireCatalogueAccess(userDetails, catalogueId);
-        // 409 DRAFT_OLDER_THAN_LIVE when the draft would undo a newer live change
+        // 409 DRAFT_OLDER_THAN_LIVE when the draft would undo a newer live change;
+        // 409 DRAFT_CHANGED when the draft is not the one the caller checked (MCP publish)
+        if (expectedDraftSha256 == null) {
+            return ResponseEntity.ok(revisionService.publish(catalogueId, userDetails.getUserId(),
+                    overrideStale, expectedLiveRevisionNo));
+        }
         return ResponseEntity.ok(revisionService.publish(catalogueId, userDetails.getUserId(),
-                overrideStale, expectedLiveRevisionNo));
+                overrideStale, expectedLiveRevisionNo, expectedDraftSha256));
     }
 
     @PostMapping("/revision/discard-draft")

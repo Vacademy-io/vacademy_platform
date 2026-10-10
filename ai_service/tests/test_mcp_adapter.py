@@ -46,6 +46,7 @@ def test_exposed_set_is_the_documented_one():
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
         "whoami", "get_institute_overview", "website", "website_edit", "design_import", "catalog_data_edit",
+        "website_publish",
         "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit",
@@ -230,3 +231,29 @@ def test_design_import_is_its_own_opt_in_draft_capability():
     # The website view tool keeps its own catalogue row and read-only hint.
     website = next(c for c in adapter.tool_catalog() if c["name"] == "website")
     assert website["key"] == "website_builder" and "Figma" not in website["summary"]
+
+
+def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has():
+    """Off for every existing connection (website view, edit, Figma import) and unconfigured servers."""
+    for enabled in (["website_builder"], ["website_builder", "website_builder_edits"],
+                    ["website_builder", "website_builder_edits", "design_import"]):
+        assert "website_publish" not in [t.name for t in adapter.list_tools_for(principal(), setting(enabled))]
+    assert "website_publish" not in [
+        t.name for t in adapter.list_tools_for(principal(), normalize_setting({"enabled": True}))]
+    tool = next(t for t in adapter.list_tools_for(principal(), setting(["website_publish"])) if t.name == "website_publish")
+    assert tool.annotations.read_only_hint is False and tool.annotations.destructive_hint is True
+    assert set(tool.input_schema["properties"]["action"]["enum"]) == {"publish", "rollback"}
+    entry = next(c for c in adapter.tool_catalog() if c["name"] == "website_publish")
+    assert (entry["area"], entry["level"], entry["risk"]) == ("website", "edit", "live")
+    assert entry["opt_in"] is True and entry["label"] == "Website: publish" and entry["sub_label"]
+    # Every other group keeps the area's Edit level / presets behaviour.
+    assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == ["website_data_edits", "website_publish"]
+    spec = ASSISTANT_TOOLS["website_publish"]
+    assert spec.mcp_only and not spec.default_enabled and not spec.default_roles and spec.mode == "WRITE"
+    assert "LIVE" in MCP_ALLOWED_WRITE_TOOLS["website_publish"]
+
+
+def test_website_publish_is_never_offered_to_the_in_product_assistant():
+    from app.services.assistant_tool_registry import build_offered_tools
+    offered = build_offered_tools(principal(), {"enabled_tools": ["website_publish", "website_builder_edits"]})
+    assert "website_publish" not in [s["function"]["name"] for s in offered]

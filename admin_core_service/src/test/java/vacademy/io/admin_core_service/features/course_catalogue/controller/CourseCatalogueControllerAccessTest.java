@@ -98,7 +98,8 @@ class CourseCatalogueControllerAccessTest {
                 () -> controller.updateCatalogue(user, CATALOGUE, new CourseCatalogueRequest()),
                 () -> controller.getDraft(user, CATALOGUE),
                 () -> controller.saveDraft(user, CATALOGUE, new SaveDraftRequest("{}", "MANUAL", null)),
-                () -> controller.publishDraft(user, CATALOGUE, true, null),
+                () -> controller.publishDraft(user, CATALOGUE, true, null, null),
+                () -> controller.publishDraft(user, CATALOGUE, false, 3, "abc123"),
                 () -> controller.discardDraft(user, CATALOGUE),
                 () -> controller.getRevisionHistory(user, CATALOGUE),
                 () -> controller.getRevision(user, "rev-1"));
@@ -113,6 +114,7 @@ class CourseCatalogueControllerAccessTest {
         verifyNoInteractions(catalogueManager);
         verify(revisionService).catalogueIdOf("rev-1");
         verify(revisionService, never()).publish(any(), any(), anyBoolean(), any());
+        verify(revisionService, never()).publish(any(), any(), anyBoolean(), any(), any());
     }
 
     @Test
@@ -124,6 +126,8 @@ class CourseCatalogueControllerAccessTest {
             call.execute();
         }
         verify(revisionService).publish(CATALOGUE, "u-1", true, null);
+        // The checked draft's hash reaches the service (MCP publish).
+        verify(revisionService).publish(CATALOGUE, "u-1", false, 3, "abc123");
         verify(revisionService).discardDraft(CATALOGUE);
     }
 
@@ -143,6 +147,7 @@ class CourseCatalogueControllerAccessTest {
         }
         verifyNoInteractions(catalogueManager);
         verify(revisionService, never()).publish(any(), any(), anyBoolean(), any());
+        verify(revisionService, never()).publish(any(), any(), anyBoolean(), any(), any());
         verify(revisionService, never()).discardDraft(any());
     }
 
@@ -166,7 +171,7 @@ class CourseCatalogueControllerAccessTest {
     @Test
     void unknownCatalogueIs404() {
         VacademyException ex = assertThrows(VacademyException.class,
-                () -> controller.publishDraft(adminOf(OWNER), "missing", false, null));
+                () -> controller.publishDraft(adminOf(OWNER), "missing", false, null, null));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
     }
 }

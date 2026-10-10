@@ -7,6 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.features.course_catalogue.dtos.CatalogueRevisionDTOs.RevisionResponse;
@@ -269,6 +270,89 @@ class CatalogueRevisionStaleDraftTest {
         assertTrue(revisions.getDraft(CATALOGUE).orElseThrow().getLiveChangedSinceDraft());
         assertEquals("PUBLISHED", revisions.publish(CATALOGUE, "editor", false, 1).getStatus());
         assertEquals(DRAFT, catalogue.getCatalogueJson());
+    }
+
+    /** The guard is on unless the env turns it off (CATALOGUE_PUBLISH_STALEGUARD_ENABLED=false). */
+    @Test
+    void staleGuardIsOnByDefault() throws NoSuchFieldException {
+        Value value = CatalogueRevisionService.class.getDeclaredField("staleGuardEnabled").getAnnotation(Value.class);
+        assertEquals("${catalogue.publish.stale-guard.enabled:true}", value.value());
+    }
+
+    /** MCP publish: the draft must still be the one request_publish checked. */
+    @Test
+    void publishRefusesADraftThatChangedAfterItWasChecked() {
+        saveDraft(DRAFT);
+        String checked = CatalogueRevisionService.sha256Hex(DRAFT);
+        saveDraft("{\"pages\":[{\"route\":\"home\",\"title\":\"Autosaved later\"}]}");
+
+        VacademyException ex = assertThrows(VacademyException.class,
+                () -> revisions.publish(CATALOGUE, "mcp", false, 1, checked));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().startsWith(CatalogueRevisionService.DRAFT_CHANGED));
+        assertEquals(LIVE, catalogue.getCatalogueJson());
+        // Even overrideStale does not skip it: the caller asked for THAT draft.
+        assertThrows(VacademyException.class, () -> revisions.publish(CATALOGUE, "mcp", true, 1, checked));
+        assertEquals("DRAFT", revisions.getDraft(CATALOGUE).orElseThrow().getStatus());
+    }
+
+    @Test
+    void publishWithTheCheckedDraftHashPublishes() {
+        saveDraft(DRAFT);
+        String checked = CatalogueRevisionService.sha256Hex(DRAFT).toUpperCase();
+
+        RevisionResponse published = revisions.publish(CATALOGUE, "mcp", false, 1, checked);
+        assertEquals("PUBLISHED", published.getStatus());
+        assertEquals(DRAFT, catalogue.getCatalogueJson());
+    }
+
+    /** MCP publish never goes out unguarded: with the guard off a checked-draft publish is refused. */
+    @Test
+    void checkedDraftPublishIsRefusedWhileTheGuardIsOff() {
+        ReflectionTestUtils.setField(revisions, "staleGuardEnabled", false);
+        saveDraft(DRAFT);
+        String checked = CatalogueRevisionService.sha256Hex(DRAFT);
+
+        VacademyException ex = assertThrows(VacademyException.class,
+                () -> revisions.publish(CATALOGUE, "mcp", false, 1, checked));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().startsWith(CatalogueRevisionService.STALE_GUARD_OFF));
+        assertThrows(VacademyException.class, () -> revisions.publish(CATALOGUE, "mcp", true, 1, checked));
+        assertEquals(LIVE, catalogue.getCatalogueJson());
+        assertEquals("DRAFT", revisions.getDraft(CATALOGUE).orElseThrow().getStatus());
+
+        // The editor's publish (no hash) keeps working with the guard off.
+        RevisionResponse published = revisions.publish(CATALOGUE, "editor", false, 1);
+        assertEquals("PUBLISHED", published.getStatus());
+        assertEquals(DRAFT, catalogue.getCatalogueJson());
+    }
+
+    /** MCP rollback: a create-only save never overwrites an open draft. */
+    @Test
+    void createOnlySaveRefusesWhileADraftIsOpen() {
+        saveDraft(DRAFT);
+        VacademyException ex = assertThrows(VacademyException.class, () -> revisions.saveDraft(CATALOGUE,
+                new SaveDraftRequest(NEWER_LIVE, "MCP_ROLLBACK", null, null, true), "mcp"));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().startsWith(CatalogueRevisionService.DRAFT_EXISTS));
+        assertEquals(DRAFT, revisions.getDraft(CATALOGUE).orElseThrow().getCatalogueJson());
+
+        revisions.discardDraft(CATALOGUE);
+        RevisionResponse created = revisions.saveDraft(CATALOGUE,
+                new SaveDraftRequest(NEWER_LIVE, "MCP_ROLLBACK", null, null, true), "mcp");
+        assertEquals("DRAFT", created.getStatus());
+        assertEquals("MCP_ROLLBACK", created.getSource());
+        assertEquals(NEWER_LIVE, revisions.getDraft(CATALOGUE).orElseThrow().getCatalogueJson());
+    }
+
+    @Test
+    void draftHashIsTheHexSha256OfTheStoredText() {
+        assertEquals("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                CatalogueRevisionService.sha256Hex(""));
+        assertEquals(CatalogueRevisionService.sha256Hex(null), CatalogueRevisionService.sha256Hex(""));
+        // Python: hashlib.sha256('{"t":"ह"}'.encode()).hexdigest()
+        assertEquals("ec2e1df5452d10827908d861661f6e0b80dcf08282026dd835f539d4674bc187",
+                CatalogueRevisionService.sha256Hex("{\"t\":\"\u0939\"}"));
     }
 
     /** "Keep my draft": the draft is re-based on the live site the editor has seen. */

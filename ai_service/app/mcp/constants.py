@@ -34,6 +34,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
     "design_import",        # WRITE: a Figma design the AI app read itself → site plan; save_draft = website_edit drafts
     "catalog_data_edit",    # WRITE: additive live data — HIDDEN folders, appended course tags, DRAFT product pages
+    "website_publish",      # WRITE (live): publish a checked draft / roll back — two-step confirm token, opt-in only
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
@@ -51,6 +52,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #: when nothing it does can destroy or publish anything: it writes DRAFTS the
 #: admin publishes from the dashboard, or it only ADDS records. Live edits that
 #: change or remove existing data (learner edits, announcements) stay off.
+#: The one exception is website_publish (product decision 2026-10-10): it
+#: publishes, so it carries its own confirm — a single-use token from a check
+#: the admin was shown less than 10 minutes earlier, bound to that exact
+#: state — and its group is opt-in only (MCP_OPT_IN_GROUPS).
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": (
         "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
@@ -67,6 +72,13 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "plan_token (10 minutes, refused when the data changed); a shown folder changes only while no live site "
         "uses its library; the store sync never switches a course off; activating a product page and invite "
         "payment vendors stay admin clicks"
+    ),
+    "website_publish": (
+        "LIVE, two-step confirmed: publish needs a single-use confirm_token from website_edit(request_publish) "
+        "less than 10 minutes earlier on the same draft (id + JSON hash) and live revision, and admin-core "
+        "refuses a draft older than live (409, never overrideStale); rollback republishes an earlier PUBLISHED "
+        "revision through a new draft + publish with the same token rule and refuses while a draft is open. "
+        "Nothing is deleted: every version stays in the history"
     ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
@@ -98,6 +110,7 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "website_builder_edits": "Website: edit drafts",
     "design_import": "Website: import Figma designs",
     "website_data_edits": "Website: set up course data",
+    "website_publish": "Website: publish",
     "audience_forms": "Lead forms: view",
     "audience_forms_edits": "Lead forms: edit",
     "workflows": "Automations: view",
@@ -138,6 +151,13 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "renames or hides anything; activating a product page and payment settings stay with you. These are "
         "live records, not drafts: tags added to live courses change the site's filters at once, and courses "
         "added to an active store page are on sale at once. Uses no AI credits."
+    ),
+    "website_publish": (
+        "Let the connected AI app publish a website draft, or roll the live site back to an earlier published "
+        "version, after you say yes in the chat. Changes go live at once. Each publish needs a fresh check of that "
+        "exact draft from the last 10 minutes; a draft older than the live site, or edited after the check, is "
+        "refused, and a rollback never overwrites an unpublished draft. Every version stays in the history. "
+        "Needs 'Build and edit pages' for the check. Turned on separately."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."
@@ -219,6 +239,7 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "design_import": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Import Figma designs"},
     "website_data_edits": {"area": "website", "level": "edit", "risk": "live_additive",
                            "sub_label": "Set up folders, course tags and product pages"},
+    "website_publish": {"area": "website", "level": "edit", "risk": "live", "sub_label": "Publish and roll back"},
     "audience_forms": {"area": "lead_forms", "level": "view"},
     "audience_forms_edits": {"area": "lead_forms", "level": "edit", "risk": "additive",
                              "sub_label": "Create campaigns and add fields"},
@@ -232,6 +253,11 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "course_invite_edits": {"area": "courses", "level": "edit", "risk": "live",
                             "sub_label": "Invite links, pricing and enrolment forms"},
 }
+
+#: Groups an admin turns on ONE BY ONE: the settings page never switches them
+#: on with their area's Edit level or the "Turn everything on" preset (the
+#: catalogue marks them ``opt_in``). Off for every existing institute.
+MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.
@@ -302,6 +328,7 @@ __all__ = [
     "MCP_TOOL_GROUP_SUMMARIES",
     "MCP_TOOL_AREAS",
     "MCP_TOOL_PLACEMENT",
+    "MCP_OPT_IN_GROUPS",
     "LEARNER_ROLES",
     "DEFAULT_ALLOWED_ROLES",
     "MCP_SCOPE_READ",

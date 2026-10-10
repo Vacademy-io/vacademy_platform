@@ -54,7 +54,7 @@ def stored(db):
 
 def ctx(db, institute="inst-1"):
     p = PinnedPrincipal(user_id="user-1", institute_id=institute, roles=["ADMIN"], permissions=[], is_root_user=False)
-    return ToolContext(db=db, principal=p, keys=(), bearer_token="jwt")
+    return ToolContext(db=db, principal=p, keys=(), bearer_token="jwt", via_mcp=True)  # MCP-only tool
 
 
 async def call(db, args, setting=VIEW, institute="inst-1"):

@@ -52,7 +52,7 @@ class _Db:
 
 
 def ctx():
-    return ToolContext(db=_Db(), principal=principal(), keys=(), bearer_token="jwt")
+    return ToolContext(db=_Db(), principal=principal(), keys=(), bearer_token="jwt", via_mcp=True)  # MCP-only tool
 
 
 # ── a small admin-core ───────────────────────────────────────────────────
@@ -608,12 +608,15 @@ def test_created_records_are_per_institute(monkeypatch):
 def test_data_reads_point_at_the_tool_only_when_this_caller_has_it():
     from app.services.assistant_tools_website import _data_change_advice
 
-    def gated(enabled):
+    def gated(enabled, via_mcp=True):
         return ToolContext(db=_Db(), principal=principal(), keys=(), bearer_token="jwt",
-                           gate_setting={"enabled_tools": enabled, "role_overrides": {}}, gate_checked=True)
+                           gate_setting={"enabled_tools": enabled, "role_overrides": {}}, gate_checked=True,
+                           via_mcp=via_mcp)
     with_tool = _data_change_advice(gated(["website_builder", "website_data_edits"]))
     without = _data_change_advice(gated(["website_builder"]))
     assert "catalog_data_edit" in with_tool and "dry run first" in with_tool
+    # MCP-only: the in-product assistant is never pointed at it, whatever the settings say.
+    assert "catalog_data_edit" not in _data_change_advice(gated(["website_builder", "website_data_edits"], False))
     assert "catalog_data_edit" not in without and "admin task in the dashboard" in without
     assert "catalog_data_edit" not in _data_change_advice(ctx()), "an unchecked gate never advertises the tool"
 
@@ -782,4 +785,7 @@ async def test_in_product_dispatch_refuses_mcp_only_tools(backend):
     via_mcp = json.loads(await execute_tool("catalog_data_edit", dict(args), ctx(), gate))
     assert via_mcp["dry_run"] is True
     in_product = json.loads(await execute_tool("catalog_data_edit", dict(args), ctx(), gate, in_product=True))
-    assert in_product["error"] == "tool_not_permitted" and "MCP" in in_product["message"]
+    assert in_product["error"] == "tool_not_available" and "MCP" in in_product["message"]
+    not_mcp = ToolContext(db=_Db(), principal=principal(), keys=(), bearer_token="jwt")
+    outside = json.loads(await execute_tool("catalog_data_edit", dict(args), not_mcp, gate))
+    assert outside["error"] == "tool_not_available"

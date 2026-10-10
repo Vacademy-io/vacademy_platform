@@ -565,19 +565,6 @@
             "unavailable": "Not open for enrolment yet"
         },
         "priceLoading": "Loading price",
-        "ebook": {
-            "badge": "PDF",
-            "folderPath": "Folder",
-            "buyNow": "Buy now",
-            "getFree": "Get it free",
-            "perkPdf": "PDF eBook",
-            "perkInstant": "Instant access after payment",
-            "perkRead": "Read on the web and in the app",
-            "aboutTitle": "About this PDF",
-            "moreFrom": "More from {{folder}}",
-            "learnTitle": "What you'll learn",
-            "audienceTitle": "Who is this for"
-        },
         "siteCart": {
             "addToCart": "Add to cart",
             "added": "Added to your cart",

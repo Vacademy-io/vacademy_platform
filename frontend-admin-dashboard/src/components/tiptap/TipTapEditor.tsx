@@ -883,10 +883,12 @@ export function TipTapEditor({
     }
   }, [value, editor]);
 
-  // Sync editable prop changes
+  // Sync editable prop changes. emitUpdate=false: the default fires onUpdate on
+  // mount, which flags isInternalChange and makes the sync above drop content
+  // loaded right after mount (a saved blog post reopened empty).
   useEffect(() => {
     if (editor) {
-      editor.setEditable(editable);
+      editor.setEditable(editable, false);
     }
   }, [editor, editable]);
 

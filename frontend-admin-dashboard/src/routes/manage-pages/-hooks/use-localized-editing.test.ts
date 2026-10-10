@@ -1335,4 +1335,35 @@ describe('decideLocalizedEdit — card texts under render and format-keyed label
         );
         expect(d).toEqual({ kind: 'commit', base, translations: { Animation: 'लघु फ़िल्म' } });
     });
+
+    it('removing a card label entry in हिन्दी is refused: its text is shared by other fields', () => {
+        const config = catalogConfig();
+        const cat = config.pages[0]!.components[2]!;
+        cat.props.render.card.formatLabels = { video: 'Video' };
+        const base = cat.props;
+        const view = buildLocalizedView(config, 'hi')!.pages[0]!.components[2]!.props;
+        expect(view.render.card.formatLabels.video).toBe('वीडियो');
+        const card = { ...view.render.card, formatLabels: {} };
+        const d = decideLocalizedEdit(
+            base,
+            view,
+            { ...view, render: { ...view.render, card } },
+            reverseDictionary(HI_CARDS)
+        );
+        // Not { Video: '' }: that would drop the हिन्दी of every "Video" on the site.
+        expect(d).toEqual({ kind: 'blocked', reason: 'structure' });
+    });
+
+    it('an item added together with a new card text in हिन्दी is refused, not written to English', () => {
+        const { base, view, reverse } = setup(2);
+        const edited = {
+            ...view,
+            items: ['new'],
+            render: { ...view.render, card: { ...view.render.card, freeLabel: 'मुफ़्त' } },
+        };
+        expect(decideLocalizedEdit(base, view, edited, reverse)).toEqual({
+            kind: 'blocked',
+            reason: 'emptySource',
+        });
+    });
 });

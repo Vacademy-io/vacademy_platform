@@ -27,10 +27,12 @@ import { languageName } from '../../-hooks/use-localized-editing';
 import {
     batchForTranslation,
     collectSiteStringEntries,
+    collectSiteStrings,
     isKeptAsBase,
     keepAsBase,
     mergeAiTranslations,
     setTranslation,
+    type CardTextKind,
     type SiteStringLocation,
 } from './site-strings';
 import {
@@ -50,7 +52,22 @@ interface Row {
     location?: SiteStringLocation;
 }
 
-/** 'Home › Course Catalog › render › card › ctaLabels › paid', in the builder's language. */
+/** A course grid's card text, named in the builder's language. */
+const cardTextName = (kind: CardTextKind, t: TFunction): string =>
+    ({
+        formatLabel: t('location.card.formatLabel', { defaultValue: 'Format label' }),
+        buttonLabel: t('location.card.buttonLabel', { defaultValue: 'Button label' }),
+        freeLabel: t('location.card.freeLabel', { defaultValue: 'Free label' }),
+        courseDescription: t('location.card.courseDescription', {
+            defaultValue: 'Course description',
+        }),
+        loadMore: t('location.card.loadMore', { defaultValue: 'Load more button' }),
+        courseCount: t('location.card.courseCount', { defaultValue: 'Course count' }),
+        gridHeading: t('location.card.gridHeading', { defaultValue: 'Grid heading' }),
+        sortLabel: t('location.card.sortLabel', { defaultValue: 'Sort label' }),
+    })[kind];
+
+/** 'Home › Course Catalog › Format label · video', in the builder's language. */
 const locationLabel = (location: SiteStringLocation, t: TFunction): string => {
     const area = {
         header: t('location.header', { defaultValue: 'Header' }),
@@ -60,10 +77,13 @@ const locationLabel = (location: SiteStringLocation, t: TFunction): string => {
         settings: t('location.settings', { defaultValue: 'Site settings' }),
         page: undefined,
     }[location.area];
+    const field = location.cardText
+        ? [cardTextName(location.cardText, t), location.field].filter(Boolean).join(' · ')
+        : location.field;
     const parts =
         location.area === 'header' || location.area === 'footer' || location.area === 'settings'
-            ? [area, location.field]
-            : [location.page, area, location.section, location.field];
+            ? [area, field]
+            : [location.page, area, location.section, field];
     return parts.filter(Boolean).join(' › ');
 };
 
@@ -81,6 +101,9 @@ interface AiRun {
 }
 
 const PAGE_SIZE = 50;
+
+/** A text cut to fit a confirm prompt. */
+const shortText = (text: string): string => (text.length > 80 ? `${text.slice(0, 79)}…` : text);
 
 /**
  * Which site the editor store holds. The store is shared by every site, and
@@ -167,6 +190,12 @@ export const TranslationsPanel = ({
     const dict = i18n?.strings?.[locale];
     const siteEntries = useMemo(() => collectSiteStringEntries(config), [config]);
     const siteStrings = useMemo(() => siteEntries.map((e) => e.text), [siteEntries]);
+    // Texts of hidden sections, unpublished pages and switched-off settings:
+    // their translations are parked, not unused.
+    const parkedStrings = useMemo(
+        () => collectSiteStrings(config, { includeHidden: true }),
+        [config]
+    );
 
     // "Other entries" needs the live texts too: it lists what neither tab has.
     const liveEnabled = open && tab !== 'site' && !!instituteId;
@@ -201,16 +230,20 @@ export const TranslationsPanel = ({
             ...(productPages.data || []),
         ]).filter((t) => !inSite.has(t.source));
     }, [siteStrings, courses.data, folders.data, productPages.data]);
+    const liveLoading = courses.isLoading || folders.isLoading || productPages.isLoading;
+    const liveErrors = [courses, folders, productPages].filter((q) => q.isError);
+    // Without every live text, a course's translation would look unused:
+    // list no other entries until all of them have loaded.
+    const otherUnknown = !instituteId || liveErrors.length > 0;
     // Dictionary entries no tab lists: text added by hand, or left behind
     // after its page text changed. Kept editable, and Clear deletes them.
     const otherRows: Row[] = useMemo(() => {
-        const listed = new Set([...siteStrings, ...liveRows.map((r) => r.source)]);
+        if (otherUnknown) return [];
+        const listed = new Set([...parkedStrings, ...liveRows.map((r) => r.source)]);
         return Object.keys(dict || {})
             .filter((source) => !listed.has(source))
             .map((source) => ({ source }));
-    }, [dict, siteStrings, liveRows]);
-    const liveLoading = courses.isLoading || folders.isLoading || productPages.isLoading;
-    const liveErrors = [courses, folders, productPages].filter((q) => q.isError);
+    }, [dict, parkedStrings, liveRows, otherUnknown]);
 
     const rows = tab === 'site' ? siteRows : tab === 'live' ? liveRows : otherRows;
     const isMissing = (source: string) => !dict || !dict[source];
@@ -430,7 +463,7 @@ export const TranslationsPanel = ({
                         <p className="text-caption text-gray-500">
                             {t('other.hint', {
                                 defaultValue:
-                                    'Translations no page text or course uses any more, or added by hand. Edit them here, or Clear to delete them.',
+                                    "Translations not found on the site's pages, settings, courses, folders or product pages — left behind after a text changed, or added by hand. Some may still be used somewhere else, so check before you Clear them.",
                             })}
                         </p>
                     )}
@@ -451,7 +484,7 @@ export const TranslationsPanel = ({
                         </p>
                     ) : (
                         <>
-                            {tab === 'live' && liveErrors.length > 0 && (
+                            {tab !== 'site' && liveErrors.length > 0 && (
                                 <div className="flex items-center justify-between gap-2 rounded-md border border-warning-200 bg-warning-50 p-2 text-sm text-warning-700">
                                     <span>Some live data could not be loaded.</span>
                                     <MyButton
@@ -463,7 +496,14 @@ export const TranslationsPanel = ({
                                     </MyButton>
                                 </div>
                             )}
-                            {shown.length === 0 ? (
+                            {tab === 'other' && otherUnknown ? (
+                                <p className="rounded-md border border-dashed border-neutral-200 p-6 text-center text-sm text-gray-500">
+                                    {t('other.waiting', {
+                                        defaultValue:
+                                            'Other entries are listed only after courses, folders and product pages have loaded, so a translation still in use never looks unused.',
+                                    })}
+                                </p>
+                            ) : shown.length === 0 ? (
                                 <p className="rounded-md border border-dashed border-neutral-200 p-6 text-center text-sm text-gray-500">
                                     {rows.length === 0
                                         ? tab === 'site'
@@ -494,6 +534,15 @@ export const TranslationsPanel = ({
                                             baseName={baseName}
                                             translation={dict?.[row.source] || ''}
                                             kept={isKeptAsBase(dict, row.source)}
+                                            confirmClear={
+                                                tab === 'other'
+                                                    ? t('other.confirmClear', {
+                                                          defaultValue:
+                                                              'Delete this translation? “{{text}}” was not found on the site, but it may still be used somewhere the builder cannot see.',
+                                                          text: shortText(row.source),
+                                                      })
+                                                    : undefined
+                                            }
                                         />
                                     ))}
                                 </ul>
@@ -587,6 +636,7 @@ const TranslationRow = ({
     baseName,
     translation,
     kept,
+    confirmClear,
 }: {
     row: Row;
     location?: string;
@@ -595,6 +645,8 @@ const TranslationRow = ({
     baseName: string;
     translation: string;
     kept: boolean;
+    /** Asked before Clear deletes the entry (Other entries). */
+    confirmClear?: string;
 }) => {
     const [draft, setDraft] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -720,9 +772,10 @@ const TranslationRow = ({
                         buttonType="text"
                         scale="small"
                         className="gap-1"
-                        onClick={() =>
-                            writeDictionary(locale, (d) => setTranslation(d, row.source, ''))
-                        }
+                        onClick={() => {
+                            if (confirmClear && !window.confirm(confirmClear)) return;
+                            writeDictionary(locale, (d) => setTranslation(d, row.source, ''));
+                        }}
                     >
                         <ArrowCounterClockwise className="size-3" /> Clear
                     </MyButton>

@@ -399,15 +399,18 @@ const withValueAt = (value: unknown, path: TextPath, next: unknown): unknown => 
     return obj;
 };
 
+/** A text of `render`; `entry` marks one entry of a map (formatLabels.video). */
+type RenderText = { path: string[]; text: string; entry?: boolean };
+
 /** Every string (translatable or not) at a text position of `render`. */
-const renderStrings = (render: unknown): Array<{ path: string[]; text: string }> => {
-    const out: Array<{ path: string[]; text: string }> = [];
+const renderStrings = (render: unknown): RenderText[] => {
+    const out: RenderText[] = [];
     for (const { path, map } of RENDER_TEXTS) {
         const value = valueAt(render, path);
         if (map) {
             if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
             for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-                if (typeof v === 'string') out.push({ path: [...path, k], text: v });
+                if (typeof v === 'string') out.push({ path: [...path, k], text: v, entry: true });
             }
         } else if (typeof value === 'string') {
             out.push({ path, text: value });
@@ -418,7 +421,9 @@ const renderStrings = (render: unknown): Array<{ path: string[]; text: string }>
 
 /** The translatable texts of a course grid's `render` (card labels, Load more, grid heading), with their paths. */
 export const renderTextEntries = (render: unknown): Array<{ path: string[]; text: string }> =>
-    renderStrings(render).filter((e) => isTranslatable(e.text, undefined));
+    renderStrings(render)
+        .filter((e) => isTranslatable(e.text, undefined))
+        .map(({ path, text }) => ({ path, text }));
 
 /** `render` with its texts translated; the same reference when nothing changes. */
 export const localizeRenderTexts = <T>(render: T, dict: TranslationDictionary | undefined): T => {
@@ -431,14 +436,15 @@ export const localizeRenderTexts = <T>(render: T, dict: TranslationDictionary | 
     return out as T;
 };
 
-export type RenderEditProblem = 'emptySource' | 'sharedData';
+export type RenderEditProblem = 'emptySource' | 'sharedData' | 'structure';
 
 /**
  * Splits an edit of `render` made in another language (see applyLocalizedEdit):
  * a changed text becomes a translation of its base text, which stays; every
  * other setting is applied as edited. `problem` names an edit the dictionary
- * cannot hold (text typed where the base has none, prose over a data value);
- * the builder refuses those before they get here.
+ * cannot hold (text typed where the base has none, prose over a data value, a
+ * map entry removed — its text is a dictionary key other fields share, and
+ * the entry is gone in every language); the builder refuses those.
  */
 export const splitRenderEdit = (
     base: unknown,
@@ -452,16 +458,18 @@ export const splitRenderEdit = (
     const put = (path: string[], value: unknown) => {
         if (valueAt(render, path) !== value) render = withValueAt(render, path, value);
     };
-    const paths = new Map<string, string[]>();
+    const paths = new Map<string, RenderText>();
     for (const value of [base, localized, edited]) {
-        for (const { path } of renderStrings(value)) paths.set(path.join('\u0000'), path);
+        for (const text of renderStrings(value)) paths.set(text.path.join('\u0000'), text);
     }
-    for (const path of paths.values()) {
+    for (const { path, entry } of paths.values()) {
         const after = valueAt(edited, path);
         const before = valueAt(localized, path);
         const baseText = valueAt(base, path);
         if (after === before) {
             put(path, baseText);
+        } else if (entry && after === undefined && typeof baseText === 'string') {
+            problem = 'structure';
         } else if (typeof baseText === 'string' && isTranslatable(baseText, undefined)) {
             translations[baseText] = typeof after === 'string' && after !== baseText ? after : '';
             put(path, baseText);
@@ -489,6 +497,8 @@ export interface LocalizedEditResult<T> {
     base: T;
     /** Dictionary changes: source → translation ('' = remove the translation). */
     translations: Record<string, string>;
+    /** Set when a course grid's `render` edit cannot be split (see splitRenderEdit): do not save it. */
+    problem?: RenderEditProblem;
 }
 
 /**
@@ -506,6 +516,7 @@ export interface LocalizedEditResult<T> {
  */
 export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): LocalizedEditResult<T> => {
     const translations: Record<string, string> = {};
+    let problem: RenderEditProblem | undefined;
 
     const rebuild = (
         b: unknown,
@@ -518,6 +529,7 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
         if (isRenderKey(key)) {
             const split = splitRenderEdit(b, before, after);
             Object.assign(translations, split.translations);
+            problem = problem ?? split.problem;
             return split.render;
         }
         if (isOpaqueKey(key)) return after;
@@ -556,7 +568,8 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
         return after;
     };
 
-    return { base: rebuild(base, localized, edited) as T, translations };
+    const next = rebuild(base, localized, edited) as T;
+    return problem ? { base: next, translations, problem } : { base: next, translations };
 };
 
 /** Applies translation changes from applyLocalizedEdit ('' removes an entry). */

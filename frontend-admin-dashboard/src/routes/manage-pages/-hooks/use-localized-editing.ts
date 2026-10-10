@@ -365,7 +365,14 @@ const setIn = <T>(value: T, path: Path, next: unknown): T => {
     return obj as T;
 };
 
-type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'matchedValue' | 'other';
+type LeafKind =
+    | 'text'
+    | 'textClear'
+    | 'emptySource'
+    | 'sharedData'
+    | 'matchedValue'
+    | 'structure'
+    | 'other';
 
 /**
  * The only values that may land in a text field that is EMPTY in the base
@@ -672,6 +679,9 @@ export const decideLocalizedEdit = <T>(
         // Duplicated items take their base item's text first.
         const prepared = baseCopiesOfDuplicates(base, view, edited, undefined) as T;
         const result = applyLocalizedEdit(base, view, prepared);
+        // Text typed into a course grid's settings along with the new item
+        // has no base text: it would land in the base as is.
+        if (result.problem) return { kind: 'blocked', reason: result.problem };
         if (Object.keys(result.translations).length > 0) return { kind: 'blocked', reason: 'bulk' };
         return {
             kind: 'commit',
@@ -700,9 +710,12 @@ export const decideLocalizedEdit = <T>(
         return { kind: 'blocked', reason: 'sharedData' };
     }
     // Text typed into a course grid's settings with no base text (or over a
-    // data value) never reaches the base, whatever else the edit changes.
+    // data value), or a label entry removed there, never reaches the base,
+    // whatever else the edit changes.
     const renderProblem = classified.find(
-        (c) => isRenderKey(c.leaf.key) && (c.kind === 'emptySource' || c.kind === 'sharedData')
+        (c) =>
+            isRenderKey(c.leaf.key) &&
+            (c.kind === 'emptySource' || c.kind === 'sharedData' || c.kind === 'structure')
     );
     if (renderProblem) {
         return { kind: 'blocked', reason: renderProblem.kind as LocalizedBlockReason };

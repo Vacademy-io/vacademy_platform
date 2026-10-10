@@ -793,8 +793,18 @@ describe('texts the site shows through its dictionary outside the walked props',
             area: 'page',
             page: 'Courses',
             section: 'Course Catalog',
-            field: 'render › card › ctaLabels › paid',
+            cardText: 'buttonLabel',
+            field: 'paid',
         });
+        // A course description is named as one, without the course id.
+        expect(byText.get('The Vedic science of conception.')).toEqual({
+            area: 'page',
+            page: 'Courses',
+            section: 'Course Catalog',
+            cardText: 'courseDescription',
+        });
+        expect(byText.get('Load more')).toMatchObject({ cardText: 'loadMore' });
+        expect(byText.get('Load more')).not.toHaveProperty('field');
         expect(byText.get('Short film / Animation')).toEqual({
             area: 'settings',
             field: 'courseFormats › animation',
@@ -804,5 +814,45 @@ describe('texts the site shows through its dictionary outside the walked props',
             text: 'Smart Academy',
             location: { area: 'header', section: 'Header', field: 'title' },
         });
+    });
+});
+
+describe('sections a page has more than once, and texts the site does not show right now', () => {
+    const page = () =>
+        ({
+            pages: [
+                {
+                    id: 'paths',
+                    route: 'paths',
+                    title: 'Learning Paths',
+                    components: [
+                        { id: 'a', type: 'ctaBanner', enabled: true, props: { title: 'Start today' } },
+                        { id: 'h', type: 'heroSection', enabled: true, props: { title: 'Paths' } },
+                        { id: 'b', type: 'ctaBanner', enabled: true, props: { title: 'Talk to us' } },
+                        { id: 'c', type: 'ctaBanner', enabled: false, props: { title: 'Hidden offer' } },
+                    ],
+                },
+                { id: 'draft', route: 'draft', title: 'Draft page', published: false, components: [] },
+            ],
+            globalSettings: {
+                whatsapp: { enabled: false, message: 'Hi there' },
+                courseFinder: { enabled: false, stepLabels: { goal: 'Your goal' } },
+            },
+        }) as unknown as CatalogueConfig;
+
+    it('numbers a section type that appears more than once on a page', () => {
+        const byText = new Map(collectSiteStringEntries(page()).map((e) => [e.text, e.location]));
+        expect(byText.get('Start today')?.section).toBe('CTA Banner #1');
+        expect(byText.get('Talk to us')?.section).toBe('CTA Banner #2');
+        expect(byText.get('Paths')?.section).toBe('Hero Section');
+    });
+
+    it('includeHidden adds hidden sections, unpublished titles and switched-off settings', () => {
+        const shown = collectSiteStrings(page());
+        const all = collectSiteStrings(page(), { includeHidden: true });
+        for (const parked of ['Hidden offer', 'Draft page', 'Hi there', 'Your goal']) {
+            expect(shown).not.toContain(parked);
+            expect(all).toContain(parked);
+        }
     });
 });

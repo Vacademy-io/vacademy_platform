@@ -94,11 +94,23 @@ export interface SiteStringLocation {
     area: 'header' | 'footer' | 'page' | 'pageTitle' | 'seo' | 'settings';
     /** The page's title (or route): page, pageTitle and seo texts. */
     page?: string;
-    /** The section's name ('Course Catalog'). */
+    /** The section's name ('Course Catalog', or 'CTA Banner #2' when a page has several). */
     section?: string;
-    /** The field inside the section or the settings ('hero › stats #2 › label'). */
+    /** A course grid's card text: what it is, named by the panel ('Format label'). */
+    cardText?: CardTextKind;
+    /** The field inside the section or the settings ('hero › stats #2 › label'); with cardText, its key ('video'). */
     field?: string;
 }
+
+export type CardTextKind =
+    | 'formatLabel'
+    | 'buttonLabel'
+    | 'freeLabel'
+    | 'courseDescription'
+    | 'loadMore'
+    | 'courseCount'
+    | 'gridHeading'
+    | 'sortLabel';
 
 export interface SiteString {
     text: string;
@@ -121,28 +133,51 @@ const fieldName = (path: (string | number)[]): string =>
         }, [])
         .join(' › ');
 
+/** The texts of a course grid's `render` (see renderTextEntries), by path. */
+const CARD_TEXT_KINDS: Record<string, CardTextKind> = {
+    'card.formatLabels': 'formatLabel',
+    'card.ctaLabels': 'buttonLabel',
+    'card.freeLabel': 'freeLabel',
+    'card.descriptions': 'courseDescription',
+    'pagination.loadMoreLabel': 'loadMore',
+    'pagination.countLabel': 'courseCount',
+    'gridHeading.title': 'gridHeading',
+    'gridHeading.sortLabels': 'sortLabel',
+};
+
+/** Where a card text sits, in words: { cardText: 'formatLabel', field: 'video' }. Course ids are left out. */
+const cardTextLocation = (path: string[]): Pick<SiteStringLocation, 'cardText' | 'field'> => {
+    const cardText = CARD_TEXT_KINDS[path.slice(0, 2).join('.')];
+    if (!cardText) return { field: fieldName(path) };
+    const key = path[2];
+    return key && cardText !== 'courseDescription' ? { cardText, field: key } : { cardText };
+};
+
 const visitComponent = (
     c: Component | null | undefined,
     add: AddText,
-    where: SiteStringLocation
+    where: SiteStringLocation,
+    includeHidden = false,
+    section = componentLabel(c?.type ?? '')
 ): void => {
-    if (!c || typeof c !== 'object' || c.enabled === false) return;
+    if (!c || typeof c !== 'object' || (c.enabled === false && !includeHidden)) return;
     if (!c.props || typeof c.props !== 'object') return;
-    const section = componentLabel(c.type);
     visitTranslatableStrings(withoutInternalKeys(withoutFieldNames(c)), (text, path) =>
         add(text, { ...where, section, field: fieldName(path) })
     );
     // A course grid's card labels, Load more and grid heading sit under the
     // opaque `render`; the site still shows them through the dictionary.
     for (const { path, text } of renderTextEntries(c.props.render)) {
-        add(text, { ...where, section, field: fieldName(['render', ...path]) });
+        add(text, { ...where, section, ...cardTextLocation(path) });
     }
     // Column children sit under the opaque `slots` key: walk them as sections.
     const slots = c.props.slots;
     if (Array.isArray(slots)) {
         for (const slot of slots) {
             if (!Array.isArray(slot)) continue;
-            for (const child of slot) visitComponent(child as Component, add, where);
+            for (const child of slot) {
+                visitComponent(child as Component, add, where, includeHidden);
+            }
         }
     }
 };
@@ -186,8 +221,21 @@ const pushShownText = (value: unknown, add: AddText, location: SiteStringLocatio
 const isRecord = (v: unknown): v is Record<string, unknown> =>
     !!v && typeof v === 'object' && !Array.isArray(v);
 
-/** Distinct translatable texts of the site in reading order (header, pages, footer, settings), each with where it is first shown. Hidden sections are skipped. */
-export const collectSiteStringEntries = (config: SiteConfig): SiteString[] => {
+export interface CollectOptions {
+    /**
+     * Also the texts the site does not show right now: hidden sections,
+     * unpublished page titles and switched-off settings (WhatsApp, Course
+     * Finder…). Their translations are parked, not unused — they come back
+     * with the section or setting.
+     */
+    includeHidden?: boolean;
+}
+
+/** Distinct translatable texts of the site in reading order (header, pages, footer, settings), each with where it is first shown. Hidden sections are skipped unless `includeHidden`. */
+export const collectSiteStringEntries = (
+    config: SiteConfig,
+    { includeHidden = false }: CollectOptions = {}
+): SiteString[] => {
     const out: SiteString[] = [];
     const seen = new Set<string>();
     const add: AddText = (text, location) => {
@@ -198,28 +246,46 @@ export const collectSiteStringEntries = (config: SiteConfig): SiteString[] => {
     if (!config) return out;
     const gs = config.globalSettings as Record<string, any> | undefined;
     const layout = gs?.layout;
-    visitComponent(layout?.header, add, { area: 'header' });
+    const shown = (enabled: unknown) => includeHidden || !!enabled;
+    visitComponent(layout?.header, add, { area: 'header' }, includeHidden);
     for (const page of config.pages || []) {
         const name = page?.title?.trim() || page?.route || page?.id;
         // The title band of a page and the header's site search show the
         // title of every published page.
-        if (page && page.published !== false) {
+        if (page && (page.published !== false || includeHidden)) {
             pushShownText(page.title, add, { area: 'pageTitle', page: name });
         }
-        for (const c of page?.components || [])
-            visitComponent(c, add, { area: 'page', page: name });
+        // A page with three CTA Banners names them 'CTA Banner #1', '#2', '#3'.
+        const sections = (page?.components || []).filter(
+            (c) => c && (includeHidden || c.enabled !== false)
+        );
+        const labels = sections.map((c) => componentLabel(c.type));
+        const seenLabels = new Map<string, number>();
+        sections.forEach((c, i) => {
+            const label = labels[i]!;
+            const n = (seenLabels.get(label) ?? 0) + 1;
+            seenLabels.set(label, n);
+            const repeated = labels.indexOf(label) !== labels.lastIndexOf(label);
+            visitComponent(
+                c,
+                add,
+                { area: 'page', page: name },
+                includeHidden,
+                repeated ? `${label} #${n}` : label
+            );
+        });
         if (page?.seo) {
             visitTranslatableStrings(page.seo, (text, path) =>
                 add(text, { area: 'seo', page: name, field: fieldName(path) })
             );
         }
     }
-    visitComponent(layout?.footer, add, { area: 'footer' });
+    visitComponent(layout?.footer, add, { area: 'footer' }, includeHidden);
     // Course language names and chips: the language filter, card chips,
     // course page picker and cart lines (the built-in English / Hindi pair
     // when the site keeps no list of its own).
-    if (gs?.courseLanguages?.enabled) {
-        for (const lang of effectiveCourseLanguages(gs.courseLanguages)) {
+    if (shown(gs?.courseLanguages?.enabled)) {
+        for (const lang of effectiveCourseLanguages(gs?.courseLanguages)) {
             const field = 'courseLanguages';
             pushShownText(lang?.label, add, { area: 'settings', field });
             pushShownText(lang?.chip, add, { area: 'settings', field });
@@ -244,9 +310,9 @@ export const collectSiteStringEntries = (config: SiteConfig): SiteString[] => {
             pushShownText(word, add, { area: 'settings', field: `naming › ${key}` });
         }
     }
-    if (gs?.whatsapp?.enabled !== false) collectSettingsTexts(gs?.whatsapp, add, 'whatsapp');
+    if (shown(gs?.whatsapp?.enabled !== false)) collectSettingsTexts(gs?.whatsapp, add, 'whatsapp');
     const stepLabels = gs?.courseFinder?.stepLabels;
-    if (gs?.courseFinder?.enabled && stepLabels) {
+    if (shown(gs?.courseFinder?.enabled) && stepLabels) {
         for (const [key, v] of Object.entries(stepLabels)) {
             if (typeof v === 'string' && v.trim()) {
                 add(v, { area: 'settings', field: `courseFinder › ${key}` });
@@ -257,20 +323,20 @@ export const collectSiteStringEntries = (config: SiteConfig): SiteString[] => {
     // catalogue.introPage); only its slide captions are translated there —
     // its buttons show the app's own labels.
     const intro = config.introPage ?? gs?.introPage;
-    if (intro?.enabled && Array.isArray(intro.imageSlider?.images)) {
+    if (shown(intro?.enabled) && Array.isArray(intro?.imageSlider?.images)) {
         for (const image of intro.imageSlider.images) {
             pushShownText(image?.caption, add, { area: 'settings', field: 'introPage' });
         }
     }
-    if (gs?.leadCollection?.enabled) {
-        collectSettingsTexts(gs.leadCollection?.fields, add, 'leadCollection');
+    if (shown(gs?.leadCollection?.enabled)) {
+        collectSettingsTexts(gs?.leadCollection?.fields, add, 'leadCollection');
     }
     return out;
 };
 
-/** Distinct translatable texts of the site, in reading order (header, pages, footer). Hidden sections are skipped. */
-export const collectSiteStrings = (config: SiteConfig): string[] =>
-    collectSiteStringEntries(config).map((entry) => entry.text);
+/** Distinct translatable texts of the site, in reading order (header, pages, footer). Hidden sections are skipped unless `includeHidden`. */
+export const collectSiteStrings = (config: SiteConfig, options?: CollectOptions): string[] =>
+    collectSiteStringEntries(config, options).map((entry) => entry.text);
 
 export interface Coverage {
     total: number;

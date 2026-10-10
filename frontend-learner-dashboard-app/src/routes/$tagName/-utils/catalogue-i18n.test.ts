@@ -447,10 +447,21 @@ describe("texts inside a course grid's opaque render", () => {
 
   it("clearing a translated label clears the translation; text typed where English has none is a problem", () => {
     const view = localizeRenderTexts(render, HI_RENDER);
-    const cleared = splitRenderEdit(render, view, { ...view, card: { ...view.card, ctaLabels: {} } });
+    const cleared = splitRenderEdit(render, view, { ...view, card: { ...view.card, ctaLabels: { paid: "" } } });
     expect(cleared.translations).toEqual({ "View course": "" });
     expect((cleared.render as typeof render).card.ctaLabels).toEqual({ paid: "View course" });
+    expect(cleared.problem).toBeUndefined();
     const typed = splitRenderEdit(render, view, { ...view, card: { ...view.card, descriptions: { ...view.card.descriptions, "pkg-2": "नया विवरण" } } });
     expect(typed.problem).toBe("emptySource");
+  });
+
+  it("removing a label entry is a structure problem: no shared translation is cleared", () => {
+    const view = localizeRenderTexts(render, HI_RENDER);
+    const removed = splitRenderEdit(render, view, { ...view, card: { ...view.card, formatLabels: { ebook: "E-book" } } });
+    expect(removed.problem).toBe("structure");
+    expect(removed.translations).toEqual({});
+    const edit = applyLocalizedEdit({ render }, { render: view }, { render: { ...view, card: { ...view.card, ctaLabels: {} } } });
+    expect(edit.problem).toBe("structure");
+    expect(edit.translations).toEqual({});
   });
 });

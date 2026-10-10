@@ -57,6 +57,7 @@ from .website_data import (
     learner_portal_base,
     list_catalogues,
     load_campaigns,
+    load_course_inventory,
     load_courses,
     load_data_inventory,
     load_folder_libraries,
@@ -288,52 +289,73 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
 async def _action_context_detail(args: Dict[str, Any], ctx: ToolContext, out: Dict[str, Any],
                                  site: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     gs = (site or {}).get("config", {}).get("globalSettings") or {}
-    out["courses"] = await load_courses(ctx, detail=True, global_settings=gs)
+    inventory = await load_course_inventory(ctx, gs)
+    out["courses"] = inventory["courses"]
+    if inventory["truncated"]:
+        out["courses_total"] = inventory["total"]
+        out["courses_truncated"] = True
     out["product_pages"] = await load_product_pages(ctx, with_steps=True)
     out["folder_libraries"] = await load_folder_libraries(ctx)
     out["lead_campaigns"] = await load_campaigns(ctx)
-    out["rules"] = (
-        "Only these ids may be placed on a page. language_detected / format_detected follow the learner "
-        "site's own rules (a level name or a tag that is exactly the language; a 'format-<key>' tag or a format "
-        "level) with this site's settings; a course without them has none (format_detected is left out for every "
-        "course when the site authors no courseFormats). A folder's `tag` is the course tag its stream tab / category "
-        "filters by; product-page leaves of a library are its learning paths, `steps` their courses in order. "
-        "Run website(action='data_audit') for what is missing."
-    )
-    return _compact(out, max_items=200, max_str=200)
+    result = _compact(out, max_items=200, max_str=200)
+    # Guidance is added after the trim so it reaches the model whole.
+    result["rules"] = _CONTEXT_DETAIL_RULES
+    return result
+
+
+_CONTEXT_DETAIL_RULES = (
+    "Only these ids may be placed on a page. language_detected / format_detected follow the learner "
+    "site's own rules (a level name or a tag that is exactly the language; a 'format-<key>' tag or a format "
+    "level) with this site's settings; a course without them has none (format_detected is left out for every "
+    "course when the site authors no courseFormats). A folder's `tag` is the course tag its stream tab / category "
+    "filters by; product-page leaves of a library are its learning paths, `steps` their courses in order. "
+    "courses_truncated = more courses exist than are listed. Run website(action='data_audit') for what is missing."
+)
 
 
 async def _action_data_inventory(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     site, err = await load_site(ctx, args.get("tag_name"))
     if err and err.get("error") not in ("no_sites", "tag_required"):
         return err
-    gs = (site or {}).get("config", {}).get("globalSettings") or {}
-    inventory = await load_data_inventory(ctx, gs)
+    from .website_data_audit import site_course_ids
+    config = (site or {}).get("config")
+    gs = (config or {}).get("globalSettings") or {}
+    inventory = await load_data_inventory(ctx, gs, include_course_ids=site_course_ids(config))
     out: Dict[str, Any] = {}
     if site:
         out["site"] = {"tag_name": site["tag_name"], "course_formats": sorted((gs.get("courseFormats") or {}).keys())
                        if isinstance(gs.get("courseFormats"), dict) else None,
                        "course_languages": gs.get("courseLanguages"), **stale_note(site)}
     out.update(inventory)
-    out["note"] = ("Read-only. Course facts follow the learner site's rules with this site's settings. Changing "
-                   "this data (tags, folders, product pages, gateways) is an admin task in the dashboard — "
-                   "website(action='data_audit') lists what to change, with links.")
-    return _compact(out, max_items=200, max_str=200)
+    result = _compact(out, max_items=200, max_str=200)
+    # Guidance is added after the trim so it reaches the model whole.
+    result["note"] = (
+        "Read-only. Course facts follow the learner site's rules with this site's settings. `sources` says which "
+        "reads answered: a list from a 'failed' read is unknown, not empty. courses_truncated = more courses exist "
+        "than are listed (the site's own courses always are). Changing this data (tags, folders, product pages, "
+        "gateways) is an admin task in the dashboard — website(action='data_audit') lists what to change, with links."
+    )
+    return result
 
 
 async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     from .course_builder_data import admin_base
-    from .website_data_audit import audit_site_data, site_invite_ids
+    from .website_data_audit import audit_site_data, site_course_ids, site_invite_ids
     site, err = await load_site(ctx, args.get("tag_name"))
     if err and err.get("error") not in ("no_sites",):
         return err
     config = (site or {}).get("config")
     gs = (config or {}).get("globalSettings") or {}
-    inventory = await load_data_inventory(ctx, gs)
+    inventory = await load_data_inventory(ctx, gs, include_course_ids=site_course_ids(config))
+    invite_rows = invites_by_ids(ctx, site_invite_ids(config))
     invites: Dict[str, Any] = {}
-    for row in invites_by_ids(ctx, site_invite_ids(config)):
-        invites.setdefault(str(row.get("id")), row)
+    for row in invite_rows or []:
+        key = str(row.get("id"))
+        # One row per active batch link; a row without one only stands in when the invite has none.
+        if key not in invites or (not invites[key].get("package_session_id") and row.get("package_session_id")):
+            invites[key] = row
     inventory["invites_by_id"] = invites
+    inventory.setdefault("sources", {})["invites"] = "ok" if invite_rows is not None else "failed"
     library_id = str(args.get("library_id") or "").strip() or None
     result = audit_site_data(config, inventory, admin_base=admin_base(ctx), library_id=library_id)
     out: Dict[str, Any] = {

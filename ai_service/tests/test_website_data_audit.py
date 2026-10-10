@@ -315,6 +315,13 @@ def _mapping_rows(rows):
 
 class _FakeDb:
     """Answers the inventory's SQL: the institute's courses with their batches, and the invites."""
+    course_rows = [
+        {"id": "course-1", "name": "NEET 2027", "status": "ACTIVE", "tags": "english,format-live",
+         "published": True, "package_session_id": "ps-1", "level_name": "Class 12", "session_name": "2027"},
+        {"id": "course-3", "name": "Hidden course", "status": "ACTIVE", "tags": "hindi",
+         "published": False, "package_session_id": "ps-3", "level_name": "default", "session_name": "default"},
+    ]
+
     def __init__(self):
         self.queries = []
 
@@ -323,12 +330,10 @@ class _FakeDb:
         self.queries.append((sql, params))
         if "FROM package p" in sql and "package_institute" in sql:
             assert params["inst"] == "inst-1"
-            return SimpleNamespace(fetchall=lambda: _mapping_rows([
-                {"id": "course-1", "name": "NEET 2027", "status": "ACTIVE", "tags": "english,format-live",
-                 "published": True, "package_session_id": "ps-1", "level_name": "Class 12", "session_name": "2027"},
-                {"id": "course-3", "name": "Hidden course", "status": "ACTIVE", "tags": "hindi",
-                 "published": False, "package_session_id": "ps-3", "level_name": "default", "session_name": "default"},
-            ]))
+            rows = [r for r in self.course_rows if "ANY(:ids)" not in sql or r["id"] in params["ids"]]
+            if "COUNT(DISTINCT p.id)" in sql:
+                return SimpleNamespace(fetchall=lambda: _mapping_rows([{"total": len({r["id"] for r in rows})}]))
+            return SimpleNamespace(fetchall=lambda: _mapping_rows(rows[:params["lim"]]))
         if "FROM enroll_invite ei" in sql:
             assert params["inst"] == "inst-1"
             if "ei.tag = 'DEFAULT'" in sql:
@@ -415,7 +420,7 @@ def backend(monkeypatch):
     monkeypatch.setattr(website_data, "_admin_core_json", fake_admin_core(calls))
     monkeypatch.setattr(website_mod, "_admin_core_json", fake_admin_core(calls))
 
-    async def vendors(ctx_):
+    async def vendors(ctx_, strict=False):
         return [{"vendor": "RAZORPAY", "vendor_id": "rzp"}]
     monkeypatch.setattr(course_builder_data, "payment_vendors", vendors)
     return calls
@@ -507,3 +512,272 @@ async def test_new_actions_are_in_the_schema_and_read_only():
     actions = website_mod.WEBSITE_SCHEMA["function"]["parameters"]["properties"]["action"]["enum"]
     assert "data_inventory" in actions and "data_audit" in actions
     assert website_mod.WEBSITE_TOOLS["website"].mode == "READ"
+
+
+# ── a read that failed is not data ───────────────────────────────────────
+def test_a_failed_gateway_read_is_not_none_configured():
+    result = audit_site_data(load_fixture(), bv_inventory(payment_vendors=[], sources={"payment_vendors": "failed"}),
+                             admin_base=ADMIN)
+    assert not checks(result, "invite_vendor_unconfigured")
+    [gap] = checks(result, "inventory_unavailable")
+    assert gap["source"] == "payment_vendors" and gap["skipped_checks"] == ["invite_vendor_unconfigured"]
+    assert "unknown, not absent" in gap["message"]
+
+
+def test_a_failed_library_and_product_page_read_reports_no_unknown_ids():
+    result = audit_site_data(load_fixture(), bv_inventory(
+        folder_libraries=[], product_pages=[], sources={"folder_libraries": "failed", "product_pages": "failed"}),
+        admin_base=ADMIN)
+    assert not [i for i in result["issues"] if i["check"] in ("unknown_library", "unknown_product_page")]
+    gaps = {i["source"]: i["skipped_checks"] for i in checks(result, "inventory_unavailable")}
+    assert gaps == {"folder_libraries": ["unknown_library"], "product_pages": ["unknown_product_page"]}
+
+
+def test_an_unreadable_folder_tree_skips_the_stream_checks():
+    lib = bv_library()
+    lib.pop("roots")
+    lib["tree_error"] = "The folder tree could not be read."
+    result = audit_site_data(load_fixture(), bv_inventory(folder_libraries=[lib],
+                                                          sources={"folder_libraries": "partial"}), admin_base=ADMIN)
+    assert result["summary"]["streams"] == 0
+    assert not checks(result, "course_no_stream") and not checks(result, "folder_without_courses")
+    [gap] = checks(result, "inventory_unavailable")
+    assert any("Knowledge Streams" in c for c in gap["skipped_checks"])
+
+
+def test_a_failed_course_sql_read_does_not_call_unpublished_courses_unknown():
+    # The search lists published courses only: Rajaswala (not on the catalogue) is missing, not foreign.
+    inv = bv_inventory(sources={"courses_sql": "failed", "catalogue_search": "ok"})
+    inv["courses"] = [c for c in inv["courses"] if c["id"] != RAJASWALA]
+    result = audit_site_data(load_fixture(), inv, admin_base=ADMIN)
+    assert not checks(result, "unknown_course") and not checks(result, "unknown_invite")
+    [gap] = [i for i in checks(result, "inventory_unavailable") if i["source"] == "courses_sql"]
+    assert "unknown_course" in gap["skipped_checks"]
+
+
+def test_when_every_course_read_failed_no_folder_is_called_empty():
+    result = audit_site_data(load_fixture(), bv_inventory(
+        courses=[], sources={"courses_sql": "failed", "catalogue_search": "failed"}), admin_base=ADMIN)
+    assert not [i for i in result["issues"] if i["check"] in (
+        "folder_without_courses", "filter_option_empty", "popular_chip_empty", "unknown_course")]
+    assert {i["source"] for i in checks(result, "inventory_unavailable")} >= {"courses", "courses_sql"}
+
+
+def test_a_cut_course_list_turns_no_course_matches_into_info():
+    result = audit_site_data(load_fixture(), bv_inventory(courses_truncated=True, courses_total=450), admin_base=ADMIN)
+    [empty] = checks(result, "folder_without_courses")
+    assert empty["severity"] == "info" and "23 of 450 courses" in empty["message"]
+    assert all(i["severity"] == "info" for i in checks(result, "filter_option_empty"))
+    assert result["summary"]["courses_truncated"] is True
+
+
+def test_an_unknown_library_id_argument_is_reported():
+    result = audit_site_data(None, bv_inventory(), admin_base=ADMIN, library_id="lib-typo")
+    [issue] = checks(result, "unknown_library")
+    assert issue["path"] == "library_id" and "'lib-typo'" in issue["message"] and issue["severity"] == "error"
+    ok = audit_site_data(None, bv_inventory(), admin_base=ADMIN, library_id=LIBRARY_ID)
+    assert not checks(ok, "unknown_library") and ok["summary"]["streams"] == 6
+
+
+def test_rs_dot_prices_read_as_rupees():
+    site = copy.deepcopy(load_fixture())
+    for page in site["pages"]:
+        for comp in page["components"]:
+            for sec in comp.get("props", {}).get("columnSections") or []:
+                for slide in sec.get("slides") or []:
+                    slide["cta"]["price"] = "Rs. 1,001"
+    assert not checks(audit_site_data(site, bv_inventory(), admin_base=ADMIN), "authored_price_stale")
+    from app.services.website_data_audit import _amount
+    assert _amount("Rs.251") == 251.0 and _amount("Rs. 1,001.50") == 1001.5 and _amount("₹ 51") == 51.0
+    assert _amount("free") is None
+
+
+def test_a_path_from_another_library_is_not_in_the_sections_library():
+    site = copy.deepcopy(load_fixture())
+    paths = site["pages"][2]["components"][1]["props"]
+    other = {"id": "lib-2", "name": "Other", "roots": [
+        {"id": "p-x", "node_type": "PRODUCT_PAGE", "product_page_code": "elsewhere", "status": "ACTIVE"}]}
+    inv = bv_inventory(folder_libraries=[bv_library(), other])
+    inv["product_pages"].append({"id": "pp-x", "code": "elsewhere", "name": "Elsewhere", "status": "ACTIVE",
+                                 "steps": [{"step": 1}]})
+    paths["featured"]["code"] = "elsewhere"
+    [issue] = checks(audit_site_data(site, inv, admin_base=ADMIN), "path_not_in_library")
+    assert issue["where"]["path"] == "props.featured.code" and "Elsewhere" in issue["message"]
+
+
+def test_an_invite_with_no_active_batch_is_named_as_such():
+    inv = bv_inventory(invites_by_id={RAJASWALA_INVITE: {"id": RAJASWALA_INVITE, "name": "Rajaswala",
+                                                         "package_session_id": None}})
+    result = audit_site_data(load_fixture(), inv, admin_base=ADMIN)
+    assert not checks(result, "unknown_invite")
+    [issue] = checks(result, "invite_no_active_batch")
+    assert "has no active batch" in issue["message"]
+
+
+# ── the loaders, failing and partial ─────────────────────────────────────
+@pytest.mark.asyncio
+async def test_data_audit_with_failed_vendor_and_library_reads(backend, monkeypatch):
+    base = fake_admin_core(backend)
+
+    async def flaky(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/folder-library/libraries"):
+            return {"error": "fetch_failed", "status": 503}
+        return await base(ctx_, method, path, params=params, body=body, timeout=timeout)
+    monkeypatch.setattr(website_data, "_admin_core_json", flaky)
+
+    async def no_vendors(ctx_, strict=False):
+        return None if strict else []
+    monkeypatch.setattr(course_builder_data, "payment_vendors", no_vendors)
+    out = json.loads(await website_mod.execute_website({"action": "data_audit"}, ctx()))
+    found = {i["check"] for i in out["issues"]}
+    # NEET 2027 is sold through Stripe, but the gateway list did not load: no verdict on it.
+    assert "invite_vendor_unconfigured" not in found
+    assert "unknown_library" not in found                  # lib-1 exists; the list just did not load
+    gaps = {i["source"] for i in out["issues"] if i["check"] == "inventory_unavailable"}
+    assert gaps == {"payment_vendors", "folder_libraries"}
+
+    inv = json.loads(await website_mod.execute_website({"action": "data_inventory"}, ctx()))
+    assert inv["sources"]["payment_vendors"] == "failed" and inv["sources"]["folder_libraries"] == "failed"
+    assert inv["sources"]["courses_sql"] == "ok" and inv["courses_truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_data_audit_with_a_failed_course_sql_read(backend, monkeypatch):
+    class NoSql(_FakeDb):
+        def execute(self, stmt, params=None):
+            if "FROM package p" in str(stmt) or "FROM enroll_invite" in str(stmt):
+                raise RuntimeError("connection reset")
+            return super().execute(stmt, params)
+    site = copy.deepcopy(SITE)
+    site["pages"][0]["components"].append({"id": "cta", "type": "ctaBanner", "props": {"courseId": "course-3"}})
+    row = {**CATALOGUE_ROW, "catalogue_json": json.dumps(site)}
+    base = fake_admin_core(backend)
+
+    async def with_site(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/course-catalogue/institute/get-all"):
+            return [row]
+        if path.endswith("/course-catalogue/institute/get/by-tag"):
+            return row
+        return await base(ctx_, method, path, params=params, body=body, timeout=timeout)
+    monkeypatch.setattr(website_data, "_admin_core_json", with_site)
+    monkeypatch.setattr(website_mod, "_admin_core_json", with_site)
+    out = json.loads(await website_mod.execute_website({"action": "data_audit"}, ctx(NoSql())))
+    # course-3 is real but unpublished; the search alone cannot see it.
+    assert not [i for i in out["issues"] if i["check"] == "unknown_course"]
+    [gap] = [i for i in out["issues"] if i["check"] == "inventory_unavailable"]
+    assert gap["source"] == "courses_sql"
+    assert gap["skipped_checks"] == ["unknown_course", "invite_vendor_unconfigured"]
+
+
+@pytest.mark.asyncio
+async def test_a_referenced_course_past_the_cap_is_still_listed(backend):
+    db = _FakeDb()
+    inv = await website_data.load_course_inventory(ctx(db), {}, limit=1, include_ids=["course-3"])
+    ids = [c["id"] for c in inv["courses"]]
+    assert "course-3" in ids and len(ids) == 1                # the site's course wins the one slot
+    assert inv["truncated"] is True and inv["total"] == 3     # course-1, course-2 (search), course-3
+    scoped = [p for sql, p in db.queries if "ANY(:ids)" in sql and "FROM package p" in sql]
+    assert scoped and scoped[0]["ids"] == ["course-3"] and scoped[0]["inst"] == "inst-1"
+    full = await website_data.load_course_inventory(ctx(), {})
+    assert full["truncated"] is False and full["total"] == 3 and full["sources"]["courses_sql"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_guidance_strings_reach_the_model_whole(backend):
+    detail = json.loads(await website_mod.execute_website({"action": "context", "detail": True}, ctx()))
+    assert detail["rules"].endswith("Run website(action='data_audit') for what is missing.")
+    assert "steps` their courses in order" in detail["rules"]
+    inv = json.loads(await website_mod.execute_website({"action": "data_inventory"}, ctx()))
+    assert inv["note"].endswith("lists what to change, with links.")
+
+
+# ── load_data_inventory over the Brahm Varchas shapes ────────────────────
+def _bv_raw_tree():
+    def raw(node):
+        out = {k: v for k, v in node.items() if k not in ("key", "tag", "children")}
+        out["children"] = [raw(c) for c in node.get("children") or []]
+        return out
+    lib = bv_library()
+    return {"library": {"id": LIBRARY_ID, "institute_id": "inst-1", "name": lib["name"]},
+            "roots": [raw(n) for n in lib["roots"]]}
+
+
+class _BvDb(_FakeDb):
+    """The Brahm Varchas courses and DEFAULT invites as the SQL read returns them."""
+    course_rows = [
+        {"id": cid, "name": name, "status": "ACTIVE", "tags": tags, "published": published,
+         "package_session_id": f"ps-{cid[:8]}", "level_name": level or "default", "session_name": "default"}
+        for cid, name, published, level, tags, *_ in BV_COURSES
+    ]
+
+    def execute(self, stmt, params=None):
+        sql = str(stmt)
+        if "FROM enroll_invite ei" in sql and "ei.tag = 'DEFAULT'" in sql:
+            self.queries.append((sql, params))
+            return SimpleNamespace(fetchall=lambda: _mapping_rows([
+                {"package_session_id": f"ps-{cid[:8]}", "id": f"inv-{cid[:8]}", "vendor": vendor,
+                 "payment_type": ptype, "price": price, "currency": "INR", "tag": "DEFAULT"}
+                for cid, _n, _p, _l, _t, vendor, ptype, price in BV_COURSES]))
+        if "FROM enroll_invite ei" in sql:
+            self.queries.append((sql, params))
+            return SimpleNamespace(fetchall=lambda: _mapping_rows([
+                {"package_session_id": f"ps-{RAJASWALA[:8]}", "id": RAJASWALA_INVITE, "vendor": "RAZORPAY",
+                 "payment_type": "ONE_TIME", "price": 1001.0, "currency": "INR", "tag": None}]))
+        return super().execute(stmt, params)
+
+
+@pytest.mark.asyncio
+async def test_load_data_inventory_over_the_brahm_varchas_shapes_finds_the_same_issues(monkeypatch):
+    site = load_fixture()
+    row = {"id": "cat-bv", "tag_name": "bv", "status": "ACTIVE", "is_default": True,
+           "catalogue_json": json.dumps(site)}
+    published = {cid: (price, level) for cid, _n, pub, level, _t, _v, _p, price in BV_COURSES if pub}
+
+    async def bv_core(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/course-catalogue/institute/get-all"):
+            return [row]
+        if path.endswith("/course-catalogue/institute/get/by-tag"):
+            return row
+        if path.endswith("/revision/draft"):
+            return {"error": "fetch_failed", "status": 204}
+        if path.endswith("/packages/v2/search"):
+            return {"content": [{"id": cid, "package_name": name, "level_name": level or "default",
+                                 "package_session_id": f"ps-{cid[:8]}", "min_plan_actual_price": price,
+                                 "currency": "INR", "comma_separeted_tags": tags,
+                                 "is_course_published_to_catalaouge": True}
+                                for cid, name, _p, level, tags, _v, _t, price in BV_COURSES if cid in published]}
+        if path.endswith("/product-page/get-all"):
+            return [{"id": p["id"], "code": p["code"], "name": p["name"], "status": p["status"],
+                     "institute_id": "inst-1",
+                     "mappings": [{"package_id": s.get("course_id"), "display_order": s["step"], "status": "ACTIVE"}
+                                  for s in p["steps"]]}
+                    for p in bv_inventory()["product_pages"]]
+        if path.endswith("/folder-library/libraries"):
+            return [{"id": LIBRARY_ID, "institute_id": "inst-1", "name": "Knowledge Streams"}]
+        if path.endswith("/folder-library/tree"):
+            return _bv_raw_tree()
+        if path.endswith("/audience/campaigns"):
+            return {"content": []}
+        raise AssertionError(f"unexpected call {method} {path}")
+    monkeypatch.setattr(website_data, "_admin_core_json", bv_core)
+    monkeypatch.setattr(website_mod, "_admin_core_json", bv_core)
+
+    async def vendors(ctx_, strict=False):
+        return [{"vendor": "RAZORPAY"}]
+    monkeypatch.setattr(course_builder_data, "payment_vendors", vendors)
+
+    out = json.loads(await website_mod.execute_website({"action": "data_audit", "tag_name": "bv"}, ctx(_BvDb())))
+    by_check = {}
+    for i in out["issues"]:
+        by_check.setdefault(i["check"], []).append(i)
+    hand = audit_site_data(site, bv_inventory(), admin_base=ADMIN)       # the hand-built inventory, same site
+    hand_checks = {}
+    for i in hand["issues"]:
+        hand_checks.setdefault(i["check"], []).append(i)
+    assert [i["course"]["name"] for i in by_check["course_no_stream"]] == ["Gita Natyam"]
+    assert len(by_check["invite_vendor_unconfigured"]) == 10
+    assert [i["folder"]["slug"] for i in by_check["folder_without_courses"]] == ["rajaswala"]
+    assert by_check["course_not_on_catalogue"][0]["course"]["id"] == RAJASWALA
+    assert "inventory_unavailable" not in by_check and "unknown_course" not in by_check
+    assert {k: len(v) for k, v in by_check.items()} == {k: len(v) for k, v in hand_checks.items()}
+    assert out["summary"]["streams"] == 6 and "courses_truncated" not in out["summary"]

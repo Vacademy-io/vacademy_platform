@@ -14,6 +14,12 @@ each — the MCP never writes this data itself.
 
 Severities: ``error`` = visibly broken or cannot be bought; ``warning`` = a
 widget shows less than the design expects; ``info`` = worth knowing.
+
+A read that failed is not data: when the inventory's ``sources`` marks a read
+``failed`` (or ``partial``), the checks that need it are skipped and one
+``inventory_unavailable`` item says so — a gateway list that did not load is
+not "no gateway configured". When ``courses_truncated`` is set, "no course
+matches" findings drop to ``info`` (a course past the cut may match).
 """
 from __future__ import annotations
 
@@ -32,6 +38,17 @@ _MAX_ISSUES = 80
 #: A literal amount in authored text ("₹251", "Rs. 1,001", "$20", "INR 500").
 _PRICE_LITERAL = re.compile(r"(₹|rs\.?\s*|inr\s*|\$|€|£)\s*\d", re.IGNORECASE)
 _FREE_TYPES = {"FREE"}
+_AMOUNT = re.compile(r"\d[\d,]*(?:\.\d+)?")
+#: What each inventory ``sources`` key read, for the inventory_unavailable message.
+_SOURCE_LABELS = {
+    "courses_sql": "institute's full course list (only catalogue courses were read)",
+    "courses": "course list",
+    "folder_libraries": "folder libraries",
+    "product_pages": "product pages",
+    "payment_vendors": "list of configured payment gateways",
+    "invites": "invites the site names",
+    "course_invites": "courses' default invites",
+}
 
 
 def _issue(check: str, severity: str, message: str, fix: str, **extra: Any) -> Dict[str, Any]:
@@ -116,8 +133,28 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
     pages = {str(p["code"]): p for p in inventory.get("product_pages") or [] if isinstance(p, dict) and p.get("code")}
     vendors = {str(v).upper() for v in inventory.get("payment_vendors") or [] if v}
     invites_by_id = {str(k): v for k, v in (inventory.get("invites_by_id") or {}).items()}
-    sql_available = any(c.get("status") for c in courses)
+    sources = inventory.get("sources") if isinstance(inventory.get("sources"), dict) else {}
+    # Hand-built inventories carry no `sources`: a course status means the SQL read answered.
+    sql_available = (sources["courses_sql"] == "ok") if "courses_sql" in sources else any(c.get("status") for c in courses)
+    courses_known = sql_available or sources.get("catalogue_search", "ok") == "ok"
+    libraries_status = sources.get("folder_libraries", "ok")
+    pages_ok = sources.get("product_pages", "ok") == "ok"
+    vendors_ok = sources.get("payment_vendors", "ok") == "ok"
+    invites_ok = sql_available and sources.get("invites", "ok") == "ok"
+    truncated = bool(inventory.get("courses_truncated"))
     issues: List[Dict[str, Any]] = []
+    skipped: Dict[str, List[str]] = {}         # source → checks it could not run
+
+    def skip(source: str, check: str) -> None:
+        if check not in skipped.setdefault(source, []):
+            skipped[source].append(check)
+
+    def none_match_severity(severity: str) -> str:
+        """A 'matches no course' finding is only a guess when the course list was cut."""
+        return "info" if truncated else severity
+
+    cut_note = (f" (the inventory lists {len(courses)} of {inventory.get('courses_total') or 'more'} courses, "
+                "so a course past the cut may match)") if truncated else ""
 
     def course_ref(c: Dict[str, Any]) -> Dict[str, Any]:
         return {"id": c.get("id"), "name": c.get("name")}
@@ -168,18 +205,37 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
     # Unknown ids — another institute's, deleted, or invented.
     for cid, where, _r, _k in course_refs:
         if cid not in by_id and not cid.startswith("<"):
+            if not sql_available:
+                skip("courses_sql", "unknown_course")
+                continue
             issues.append(_issue("unknown_course", "error",
                                  f"'{cid}' is not one of this institute's courses.",
                                  "Use an id from website(action='data_inventory').", where=where))
+    lib_refs_checked = libraries_status == "ok"
     for lid, where in library_refs:
         if lid not in libraries:
+            if not lib_refs_checked:
+                skip("folder_libraries", "unknown_library")
+                continue
             issues.append(_issue("unknown_library", "error",
                                  f"Folder library '{lid}' does not exist in this institute.",
                                  "Use a library id from website(action='data_inventory') → folder_libraries.",
                                  where=where, link=links.folders))
+    if library_id and str(library_id) not in libraries:
+        if lib_refs_checked:
+            issues.append(_issue("unknown_library", "error",
+                                 f"The library_id argument '{library_id}' is not one of this institute's folder "
+                                 "libraries, so no stream checks ran against it.",
+                                 "Pass a library id from website(action='data_inventory') → folder_libraries.",
+                                 path="library_id", link=links.folders))
+        else:
+            skip("folder_libraries", "unknown_library")
     seen_pages: Set[str] = set()
     for code, where in page_refs:
         page = pages.get(code)
+        if page is None and not pages_ok:
+            skip("product_pages", "unknown_product_page")
+            continue
         if page is None:
             issues.append(_issue("unknown_product_page", "error",
                                  f"Product page '{code}' does not exist in this institute.",
@@ -210,6 +266,9 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
         collect(lib.get("roots"))
     for fid, where in folder_refs:
         if fid not in all_node_ids:
+            if libraries_status != "ok":
+                skip("folder_libraries", "unknown_folder")
+                continue
             issues.append(_issue("unknown_folder", "error", f"Folder '{fid}' is not in any of this institute's libraries.",
                                  "Use a folder id from data_inventory → folder_libraries.", where=where, link=links.folders))
 
@@ -255,6 +314,10 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
         stream_library_id = next(iter(libraries))
     streams: List[Dict[str, Any]] = []
     library = libraries.get(stream_library_id or "")
+    if library is not None and (library.get("tree_error") or library.get("tree_truncated")):
+        skip("folder_libraries", f"stream / category checks on library '{library.get('name') or library.get('id')}'")
+        library = None
+        stream_items = None
     if library is not None:
         streams = streams_from_folder_tree(public_folder_tree(library.get("roots")))
     elif stream_items:
@@ -285,13 +348,17 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                 n = sum(1 for c in on_catalogue if any(t in tagset(c) for t in node["tags"]))
                 label = node.get("subtitle") or node.get("title") or node.get("slug")
                 if n == 0 and not node.get("coming_soon"):
+                    if not courses_known:
+                        skip("courses", "folder_without_courses")
+                        continue
                     off = [c.get("name") for c in courses if c not in on_catalogue
                            and any(t in tagset(c) for t in node["tags"])]
                     issues.append(_issue(
-                        "folder_without_courses", "warning",
+                        "folder_without_courses", none_match_severity("warning"),
                         f"The {kind} '{label}' (tag '{', '.join(node['tags'][:3])}') matches no course on the catalogue, "
                         "so its tab / category is empty"
-                        + (f" ({', '.join(map(str, off[:3]))} carries the tag but is not on the catalogue)." if off else "."),
+                        + (f" ({', '.join(map(str, off[:3]))} carries the tag but is not on the catalogue)" if off else "")
+                        + cut_note + ".",
                         "Tag the courses that belong to it, publish them to the catalogue, or mark the folder 'coming soon'.",
                         folder={"id": node.get("id"), "slug": node.get("slug")}, link=links.folders))
                 elif n and node.get("coming_soon"):
@@ -312,12 +379,13 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                     f"{n.get('product_page_status')}, so visitors do not see it.",
                     "Activate its product page, or remove it from the library.",
                     link=links.product_page(n.get("product_page_id"))))
-    path_codes = {str(n.get("product_page_code")) for lib in libraries.values() for n in _iter_nodes(lib.get("roots"))
-                  if n.get("node_type") == "PRODUCT_PAGE" and n.get("product_page_code")}
     for route, comp in learning_paths:
         props = comp.get("props") or {}
-        if not _text(props.get("libraryId")):
-            continue
+        section_lib = libraries.get(_text(props.get("libraryId")))
+        if section_lib is None or section_lib.get("tree_error") or section_lib.get("tree_truncated"):
+            continue           # unknown library: reported above; unreadable tree: nothing to compare with
+        path_codes = {str(n.get("product_page_code")) for n in _iter_nodes(section_lib.get("roots"))
+                      if n.get("node_type") == "PRODUCT_PAGE" and n.get("product_page_code")}
         refs = [("props.featured.code", (props.get("featured") or {}).get("code"))] + [
             (f"props.pathExtras[{i}].code", (x or {}).get("code")) for i, x in enumerate(props.get("pathExtras") or [])
             if isinstance(x, dict)]
@@ -363,6 +431,9 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
             seen_langs: Dict[str, str] = {}
             for cid in ids:
                 c = by_id.get(cid)
+                if c is None and not sql_available:
+                    skip("courses_sql", "unknown_course")
+                    continue
                 if c is None:
                     issues.append(_issue("unknown_course", "error", f"'{cid}' is not one of this institute's courses.",
                                          "Use an id from website(action='data_inventory').", path=path))
@@ -403,9 +474,9 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                     course=course_ref(c), link=links.course(c["id"])))
         empty = [f["label"] for f in formats["list"]
                  if not any(f["key"] in (c.get("format_detected") or []) for c in on_catalogue)]
-        if empty:
+        if empty and courses_known:
             issues.append(_issue("format_without_courses", "info",
-                                 f"No course has these formats yet, so they show 0: {', '.join(empty)}.",
+                                 f"No course has these formats yet, so they show 0: {', '.join(empty)}{cut_note}.",
                                  "Fine if intended (the Figma greys them out); otherwise tag the courses.",
                                  path="globalSettings.courseFormats"))
     for route, comp in catalogs:
@@ -421,11 +492,13 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                     continue
                 n = sum(1 for c in on_catalogue if tags & tagset(c)
                         or levels & {lv.lower() for lv in c.get("levels") or []})
-                if n == 0:
+                if n == 0 and not courses_known:
+                    skip("courses", "filter_option_empty")
+                elif n == 0:
                     issues.append(_issue(
-                        "filter_option_empty", "warning",
+                        "filter_option_empty", none_match_severity("warning"),
                         f"Filter '{flt.get('label') or flt.get('id')}' → '{opt.get('label')}' matches no course "
-                        f"(tags {', '.join(sorted(tags)) or '—'}), so ticking it shows nothing.",
+                        f"(tags {', '.join(sorted(tags)) or '—'}), so ticking it shows nothing{cut_note}.",
                         "Tag the courses it is for, or remove the option.",
                         where=_where(route, comp, f"props.customFilters[{fi}].options[{oi}]")))
 
@@ -450,10 +523,12 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                                          where=where, link=links.folders))
                     continue
                 n = sum(1 for c in on_catalogue if any(t in tagset(c) for t in target["tags"]))
-                if n == 0:
-                    issues.append(_issue("popular_chip_empty", "warning",
+                if n == 0 and not courses_known:
+                    skip("courses", "popular_chip_empty")
+                elif n == 0:
+                    issues.append(_issue("popular_chip_empty", none_match_severity("warning"),
                                          f"Popular chip '{chip.get('label')}' opens '{target.get('subtitle') or target.get('slug')}', "
-                                         "which has no course on the catalogue.",
+                                         f"which has no course on the catalogue{cut_note}.",
                                          "Tag its courses or point the chip at a stream that has some.", where=where))
             elif _text(chip.get("quickFilterId")) and chip["quickFilterId"] not in qf_ids:
                 issues.append(_issue("popular_chip_broken", "warning",
@@ -481,10 +556,21 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                 base = f"props.columnSections[{si}].slides[{li}]"
                 cta = slide.get("cta") if isinstance(slide.get("cta"), dict) else {}
                 live = _live_price(cta, by_id, invites_by_id)
-                if _text(cta.get("enrollInviteId")) and sql_available and cta["enrollInviteId"].strip() not in invites_by_id:
+                invite_id = _text(cta.get("enrollInviteId"))
+                invite = invites_by_id.get(invite_id)
+                if invite_id and not invites_ok:
+                    skip("invites", "unknown_invite")
+                elif invite_id and invite is None:
                     issues.append(_issue("unknown_invite", "error",
-                                         f"Invite '{cta['enrollInviteId']}' is not one of this institute's invites.",
+                                         f"Invite '{invite_id}' is not one of this institute's invites.",
                                          "Use the course's default invite (data_inventory → courses[].default_invite_id).",
+                                         where=_where(route, comp, f"{base}.cta.enrollInviteId")))
+                elif invite_id and "package_session_id" in invite and not invite.get("package_session_id"):
+                    issues.append(_issue("invite_no_active_batch", "error",
+                                         f"Invite '{invite.get('name') or invite_id}' has no active batch, so the "
+                                         "button cannot enrol anyone through it.",
+                                         "An admin links the invite to the course's batch (Invite settings), or use the "
+                                         "course's default invite (data_inventory → courses[].default_invite_id).",
                                          where=_where(route, comp, f"{base}.cta.enrollInviteId")))
                 authored = _text(cta.get("price"))
                 if authored and live is not None and _amount(authored) is not None and _amount(authored) != live:
@@ -523,7 +609,7 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                     "Remove the number; keep kind + label.", where=_where(route, comp, f"props.hero.stats[{si}]")))
 
     # ── payment gateways ──
-    for c in on_catalogue:
+    for c in on_catalogue if vendors_ok else []:
         vendor = str(c.get("vendor") or "").upper()
         paid = str(c.get("payment_type") or "").upper() not in _FREE_TYPES and (c.get("price") or 0) > 0
         if not vendor or not paid:
@@ -538,12 +624,26 @@ def audit_site_data(config: Optional[Dict[str, Any]], inventory: Dict[str, Any],
                 f"{vendor} under Settings → Payment gateways.",
                 course=course_ref(c), invite_id=c.get("default_invite_id"), link=links.gateways))
 
+    if not vendors_ok and any(c.get("vendor") for c in on_catalogue):
+        skip("payment_vendors", "invite_vendor_unconfigured")
+    elif on_catalogue and not sql_available:
+        skip("courses_sql", "invite_vendor_unconfigured")       # the courses' invites come from the same read
+    elif on_catalogue and sources.get("course_invites", "ok") != "ok":
+        skip("course_invites", "invite_vendor_unconfigured")
+    for source, skipped_checks in skipped.items():
+        issues.append(_issue(
+            "inventory_unavailable", "warning",
+            f"The {_SOURCE_LABELS.get(source, source)} could not be read, so these checks did not run: "
+            f"{', '.join(skipped_checks)}. Missing data here is unknown, not absent.",
+            "Re-run data_audit; if it persists, check the item in the dashboard by hand.",
+            source=source, skipped_checks=skipped_checks))
+
     issues = _merge_repeats(issues)
     issues.sort(key=lambda i: _SEVERITY_ORDER.get(i["severity"], 3))
     counts = {s: sum(1 for i in issues if i["severity"] == s) for s in ("error", "warning", "info")}
     return {
         "summary": {**counts, "courses_checked": len(courses), "on_catalogue": len(on_catalogue),
-                    "streams": len(streams)},
+                    "streams": len(streams), **({"courses_truncated": True} if truncated else {})},
         "issues": issues[:_MAX_ISSUES],
         "truncated": max(0, len(issues) - _MAX_ISSUES) or None,
         "library": ({"id": library.get("id"), "name": library.get("name")} if library else None),
@@ -576,9 +676,10 @@ def _iter_nodes(nodes: Any) -> Iterator[Dict[str, Any]]:
 
 
 def _amount(text: str) -> Optional[float]:
-    digits = re.sub(r"[^\d.]", "", text.replace(",", ""))
+    """The first number in a price ("Rs. 1,001" → 1001.0); the currency prefix and its dot are skipped."""
+    m = _AMOUNT.search(text)
     try:
-        return float(digits) if digits else None
+        return float(m.group(0).replace(",", "")) if m else None
     except ValueError:
         return None
 
@@ -597,6 +698,28 @@ def _live_price(cta: Dict[str, Any], by_id: Dict[str, Dict[str, Any]],
     return None
 
 
+def site_course_ids(config: Optional[Dict[str, Any]]) -> List[str]:
+    """Every course id a site names (courseIds / courseId anywhere, version groups) — read even past the cap."""
+    cfg = config if isinstance(config, dict) else {}
+    out: List[str] = []
+
+    def add(v: Any) -> None:
+        if _text(v) and not v.strip().startswith("<") and v.strip() not in out:
+            out.append(v.strip())
+    for _route, comp in _sections(cfg):
+        for _p, key, value, _parent in _walk(comp.get("props") or {}, "props"):
+            if key == "courseIds" and isinstance(value, list):
+                for v in value:
+                    add(v)
+            elif key == "courseId":
+                add(value)
+    langs = ((cfg.get("globalSettings") or {}).get("courseLanguages") or {})
+    for group in (langs.get("versionGroups") if isinstance(langs, dict) else None) or []:
+        for v in group if isinstance(group, list) else []:
+            add(v)
+    return out
+
+
 def site_invite_ids(config: Optional[Dict[str, Any]]) -> List[str]:
     """Every enrollInviteId a site names (the action reads those invites before auditing)."""
     out: List[str] = []
@@ -607,4 +730,4 @@ def site_invite_ids(config: Optional[Dict[str, Any]]) -> List[str]:
     return out
 
 
-__all__ = ["audit_site_data", "site_invite_ids"]
+__all__ = ["audit_site_data", "site_course_ids", "site_invite_ids"]

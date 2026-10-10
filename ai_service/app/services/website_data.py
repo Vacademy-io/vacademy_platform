@@ -241,8 +241,9 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
 
 
 # ── context loaders ──────────────────────────────────────────────────────
-async def _catalogue_search_rows(ctx: ToolContext, size: int) -> List[Dict[str, Any]]:
-    """The learner catalogue's own search: one row per (course, level, session), published courses only."""
+async def _catalogue_search(ctx: ToolContext, size: int) -> Optional[List[Dict[str, Any]]]:
+    """The learner catalogue's own search: one row per (course, level, session), published courses only.
+    None when the search could not be read (an empty list is a real answer)."""
     data = await _admin_core_json(
         ctx, "POST", "/admin-core-service/open/packages/v2/search",
         params={"instituteId": ctx.principal.institute_id, "page": 0, "size": size, "sort": "createdAt,desc"},
@@ -250,8 +251,14 @@ async def _catalogue_search_rows(ctx: ToolContext, size: int) -> List[Dict[str, 
               "min_percentage_completed": 0, "max_percentage_completed": 0},
         timeout=30.0,
     )
+    if _is_error(data):
+        return None
     items = data.get("content") if isinstance(data, dict) else data
-    return [c for c in items if isinstance(c, dict)] if isinstance(items, list) else []
+    return [c for c in items if isinstance(c, dict)] if isinstance(items, list) else None
+
+
+async def _catalogue_search_rows(ctx: ToolContext, size: int) -> List[Dict[str, Any]]:
+    return await _catalogue_search(ctx, size) or []
 
 
 async def load_courses(ctx: ToolContext, limit: int = _MAX_COURSES, *, detail: bool = False,
@@ -311,6 +318,11 @@ async def load_product_pages(ctx: ToolContext, with_steps: bool = False) -> List
     its ACTIVE course mappings in display order (``steps``) — the steps a
     learning path shows, with the price each one is sold at.
     """
+    return (await _load_product_pages(ctx, with_steps))[0]
+
+
+async def _load_product_pages(ctx: ToolContext, with_steps: bool) -> Tuple[List[Dict[str, Any]], bool]:
+    """(pages, read ok) — ok is False when admin-core could not answer."""
     data = await _admin_core_json(
         ctx, "GET", "/admin-core-service/v1/product-page/get-all",
         params={"instituteId": ctx.principal.institute_id},
@@ -330,7 +342,7 @@ async def load_product_pages(ctx: ToolContext, with_steps: bool = False) -> List
             if p.get("vendor"):
                 entry["vendor"] = p.get("vendor")
         out.append(entry)
-    return out
+    return out, isinstance(data, list)
 
 
 def product_page_steps(page: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -364,14 +376,24 @@ async def load_folder_libraries(ctx: ToolContext, with_tree: bool = True) -> Lis
     paths (product-page leaves). Each node carries its raw fields plus the
     effective ``key`` (slug) and ``tag`` the learner site filters courses by.
     Admin reads: HIDDEN nodes and DRAFT product pages are included and marked.
+    A library whose tree could not be read carries ``tree_error``; one cut at
+    the node budget carries ``tree_truncated``.
     """
+    return (await _load_folder_libraries(ctx, with_tree))[0]
+
+
+async def _load_folder_libraries(ctx: ToolContext, with_tree: bool = True) -> Tuple[List[Dict[str, Any]], str]:
+    """(libraries, "ok" | "partial" | "failed"): partial = some tree unread or cut, or libraries past the cap."""
     inst = ctx.principal.institute_id
     data = await _admin_core_json(
         ctx, "GET", "/admin-core-service/v1/folder-library/libraries", params={"instituteId": inst},
     )
+    if not isinstance(data, list):
+        return [], "failed"
+    status = "partial" if len(data) > _MAX_FOLDER_LIBRARIES else "ok"
     libraries: List[Dict[str, Any]] = []
-    budget = [_MAX_FOLDER_NODES]
-    for lib in (data if isinstance(data, list) else [])[:_MAX_FOLDER_LIBRARIES]:
+    budget = [_MAX_FOLDER_NODES, 0]      # [nodes left, nodes dropped]
+    for lib in data[:_MAX_FOLDER_LIBRARIES]:
         if not isinstance(lib, dict) or not lib.get("id"):
             continue
         if lib.get("institute_id") and str(lib["institute_id"]) != inst:
@@ -386,11 +408,16 @@ async def load_folder_libraries(ctx: ToolContext, with_tree: bool = True) -> Lis
                 owner = (tree.get("library") or {}).get("institute_id") if isinstance(tree.get("library"), dict) else None
                 if owner and str(owner) != inst:
                     continue
+                dropped_before = budget[1]
                 entry["roots"] = _folder_nodes(tree.get("roots"), budget)
+                if budget[1] > dropped_before:
+                    entry["tree_truncated"] = True
+                    status = "partial"
             else:
                 entry["tree_error"] = "The folder tree could not be read."
+                status = "partial"
         libraries.append(entry)
-    return libraries
+    return libraries, status
 
 
 _FOLDER_NODE_KEYS = (
@@ -403,7 +430,10 @@ def _folder_nodes(nodes: Any, budget: List[int], depth: int = 0) -> List[Dict[st
     from .catalogue_course_rules import folder_course_tag, folder_slug
     out: List[Dict[str, Any]] = []
     for n in nodes if isinstance(nodes, list) else []:
-        if not isinstance(n, dict) or budget[0] <= 0:
+        if not isinstance(n, dict):
+            continue
+        if budget[0] <= 0:
+            budget[1] += 1          # dropped: the tree as returned is incomplete
             continue
         budget[0] -= 1
         node = {k: n.get(k) for k in _FOLDER_NODE_KEYS if n.get(k) not in (None, "")}
@@ -414,6 +444,8 @@ def _folder_nodes(nodes: Any, budget: List[int], depth: int = 0) -> List[Dict[st
             children = _folder_nodes(n.get("children"), budget, depth + 1)
             if children:
                 node["children"] = children
+        elif n.get("children"):
+            budget[1] += 1
         out.append(node)
     return out
 
@@ -428,19 +460,29 @@ JOIN package_institute pi ON pi.package_id = p.id
 LEFT JOIN package_session ps ON ps.package_id = p.id AND ps.status = 'ACTIVE'
 LEFT JOIN level l ON l.id = ps.level_id
 LEFT JOIN session s ON s.id = ps.session_id
-WHERE pi.institute_id = :inst AND p.status IN ('ACTIVE', 'DRAFT', 'IN_REVIEW')
+WHERE pi.institute_id = :inst AND p.status IN ('ACTIVE', 'DRAFT', 'IN_REVIEW'){scope}
 ORDER BY p.created_at DESC, ps.created_at ASC
 LIMIT :lim
 """
 
-_DETAIL_INVITES_SQL = """
+_DETAIL_COURSE_COUNT_SQL = """
+SELECT COUNT(DISTINCT p.id) AS total
+FROM package p
+JOIN package_institute pi ON pi.package_id = p.id
+WHERE pi.institute_id = :inst AND p.status IN ('ACTIVE', 'DRAFT', 'IN_REVIEW')
+"""
+
+_INVITE_COLUMNS = """
 SELECT b.package_session_id, ei.id, ei.name, ei.tag, ei.vendor, ei.status, po.type AS payment_type,
        (SELECT MIN(pp.actual_price) FROM payment_plan pp
          WHERE pp.payment_option_id = po.id AND pp.status = 'ACTIVE') AS price,
        (SELECT MIN(pp.currency) FROM payment_plan pp
          WHERE pp.payment_option_id = po.id AND pp.status = 'ACTIVE') AS currency
 FROM enroll_invite ei
-JOIN package_session_learner_invitation_to_payment_option b
+"""
+
+#: Invites with an ACTIVE batch link (what a catalogue card enrols through).
+_DETAIL_INVITES_SQL = _INVITE_COLUMNS + """JOIN package_session_learner_invitation_to_payment_option b
      ON b.enroll_invite_id = ei.id AND b.status = 'ACTIVE'
 LEFT JOIN payment_option po ON po.id = b.payment_option_id
 WHERE ei.institute_id = :inst AND ei.status <> 'DELETED'
@@ -449,27 +491,56 @@ ORDER BY ei.created_at DESC
 LIMIT 1000
 """
 
+#: Invites by id, with or without an active batch link (``package_session_id`` NULL = none).
+_INVITES_BY_ID_SQL = _INVITE_COLUMNS + """LEFT JOIN package_session_learner_invitation_to_payment_option b
+     ON b.enroll_invite_id = ei.id AND b.status = 'ACTIVE'
+LEFT JOIN payment_option po ON po.id = b.payment_option_id
+WHERE ei.institute_id = :inst AND ei.status <> 'DELETED'
+  AND ei.id = ANY(:ids)
+ORDER BY ei.created_at DESC
+LIMIT 1000
+"""
+
+
+def _sql_rows_checked(ctx: ToolContext, sql: str, params: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    """Rows, or None when the read failed (the session is rolled back so later reads still work)."""
+    try:
+        result = ctx.db.execute(text(sql), params)
+        return [dict(r._mapping) for r in result.fetchall()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("website data query failed: %s", exc)
+        try:
+            ctx.db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
 
 def _sql_rows(ctx: ToolContext, sql: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
-    from .course_builder_data import _rows
-    return _rows(ctx, sql, params)
+    return _sql_rows_checked(ctx, sql, params) or []
 
 
-def invites_by_ids(ctx: ToolContext, invite_ids: List[str]) -> List[Dict[str, Any]]:
-    """Invites of THIS institute among ``invite_ids``, one row per (invite, batch) link."""
+def invites_by_ids(ctx: ToolContext, invite_ids: List[str]) -> Optional[List[Dict[str, Any]]]:
+    """
+    Invites of THIS institute among ``invite_ids``, one row per (invite, active
+    batch) link and one row with ``package_session_id`` None for an invite with
+    no active batch. None when the read failed.
+    """
     ids = sorted({str(i) for i in invite_ids if i})
     if not ids:
         return []
-    return _sql_rows(ctx, _DETAIL_INVITES_SQL.format(scope="ei.id = ANY(:ids)"),
-                     {"inst": ctx.principal.institute_id, "ids": ids})
+    return _sql_rows_checked(ctx, _INVITES_BY_ID_SQL, {"inst": ctx.principal.institute_id, "ids": ids})
 
 
-def _default_invites(ctx: ToolContext, package_session_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-    """package_session_id → its DEFAULT invite (the one a catalogue card enrols through)."""
+def _default_invites(ctx: ToolContext, package_session_ids: List[str]) -> Optional[Dict[str, Dict[str, Any]]]:
+    """package_session_id → its DEFAULT invite (the one a catalogue card enrols through); None if unreadable."""
     if not package_session_ids:
         return {}
-    rows = _sql_rows(ctx, _DETAIL_INVITES_SQL.format(scope="ei.tag = 'DEFAULT' AND b.package_session_id = ANY(:ps)"),
-                     {"inst": ctx.principal.institute_id, "ps": sorted(set(package_session_ids))})
+    rows = _sql_rows_checked(
+        ctx, _DETAIL_INVITES_SQL.format(scope="ei.tag = 'DEFAULT' AND b.package_session_id = ANY(:ps)"),
+        {"inst": ctx.principal.institute_id, "ps": sorted(set(package_session_ids))})
+    if rows is None:
+        return None
     out: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         out.setdefault(str(r.get("package_session_id")), r)
@@ -497,11 +568,25 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
     that is exactly a language), ``format_detected`` (course-format.ts, only
     when the site authors courseFormats), ``published_to_catalogue``,
     ``default_invite_id`` and its payment ``vendor`` / ``payment_type`` / price.
+    The list stops at ``limit``; ``load_course_inventory`` says whether it did.
+    """
+    return (await load_course_inventory(ctx, global_settings, limit=limit))["courses"]
+
+
+async def load_course_inventory(ctx: ToolContext, global_settings: Optional[Dict[str, Any]] = None,
+                                limit: int = _MAX_DETAIL_COURSES,
+                                include_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    ``{"courses", "total", "truncated", "sources"}`` — the courses of
+    ``load_courses_detail``, plus how complete the list is.
 
     Merges the learner search (what the site renders) with an institute-scoped
     SQL read (courses NOT on the catalogue, tags, invites). When the SQL read
     is unavailable the search alone is used and ``published_to_catalogue`` is
-    true for every row (the search lists published courses only).
+    true for every row (the search lists published courses only); ``sources``
+    then says ``courses_sql: failed`` so a caller does not read a missing
+    course as one that does not exist. ``include_ids`` (the courses a site
+    names) are always read and always kept, even past ``limit``'s cut.
     """
     from .catalogue_course_rules import (
         card_format_keys, course_languages_of, language_of_row, resolve_course_formats,
@@ -509,6 +594,7 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
     gs = global_settings if isinstance(global_settings, dict) else {}
     languages = course_languages_of(gs.get("courseLanguages"))
     formats = resolve_course_formats(gs)
+    inst = ctx.principal.institute_id
 
     courses: Dict[str, Dict[str, Any]] = {}
 
@@ -519,7 +605,8 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
             "in_search": False,
         })
 
-    for row in await _catalogue_search_rows(ctx, _MAX_DETAIL_SEARCH_ROWS):
+    search_rows = await _catalogue_search(ctx, _MAX_DETAIL_SEARCH_ROWS)
+    for row in search_rows or []:
         if not row.get("id"):
             continue
         e = entry_for(str(row["id"]), row.get("package_name"))
@@ -538,8 +625,15 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
             e["price"], e["currency"] = price, row.get("currency")
         e["search_invite"] = e["search_invite"] or row.get("enroll_invite_id")
 
-    sql_rows = _sql_rows(ctx, _DETAIL_COURSES_SQL, {"inst": ctx.principal.institute_id, "lim": limit * 4})
-    for row in sql_rows:
+    lim = limit * 4
+    sql_rows = _sql_rows_checked(ctx, _DETAIL_COURSES_SQL.format(scope=""), {"inst": inst, "lim": lim})
+    wanted = sorted({str(i).strip() for i in include_ids or [] if str(i or "").strip()})
+    if sql_rows is not None and wanted:
+        # The site's own courses, wherever they fall in the institute's list.
+        extra = _sql_rows_checked(ctx, _DETAIL_COURSES_SQL.format(scope=" AND p.id = ANY(:ids)"),
+                                  {"inst": inst, "ids": wanted, "lim": len(wanted) * 20})
+        sql_rows = None if extra is None else sql_rows + extra
+    for row in sql_rows or []:
         if not row.get("id"):
             continue
         e = entry_for(str(row["id"]), row.get("name"))
@@ -553,14 +647,28 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
             e["batches"].append({"package_session_id": ps_id, "level_name": row.get("level_name"),
                                  "session_name": row.get("session_name")})
 
-    invites = _default_invites(ctx, [b["package_session_id"] for e in courses.values()
-                                     for b in e["batches"] if b.get("package_session_id")]) if sql_rows else {}
+    # Keep the site's courses, then fill up to ``limit`` in list order.
+    keep = {cid for cid in wanted if cid in courses}
+    room = max(0, limit - len(keep))
+    kept: List[Dict[str, Any]] = []
+    for cid, e in courses.items():
+        if cid in keep:
+            kept.append(e)
+        elif room > 0:
+            kept.append(e)
+            room -= 1
+
+    invites: Optional[Dict[str, Dict[str, Any]]] = {}
+    if sql_rows:
+        invites = _default_invites(ctx, [b["package_session_id"] for e in kept
+                                         for b in e["batches"] if b.get("package_session_id")])
 
     out: List[Dict[str, Any]] = []
-    for e in list(courses.values())[:limit]:
+    for e in kept:
         tags = _tag_list(e["tags"])
         tag_str = ",".join(tags)
-        rows = [{"level_name": b.get("level_name"), "comma_separeted_tags": tag_str} for b in e["batches"]]             or [{"comma_separeted_tags": tag_str}]
+        rows = ([{"level_name": b.get("level_name"), "comma_separeted_tags": tag_str} for b in e["batches"]]
+                or [{"comma_separeted_tags": tag_str}])
         langs: List[str] = []
         for r in rows:
             lang = language_of_row(r, languages)
@@ -573,7 +681,7 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
                 levels.append(level)
         default = None
         for b in e["batches"]:
-            default = invites.get(str(b.get("package_session_id")))
+            default = (invites or {}).get(str(b.get("package_session_id")))
             if default:
                 break
         price = e["price"]
@@ -600,17 +708,42 @@ async def load_courses_detail(ctx: ToolContext, global_settings: Optional[Dict[s
             "type": e["type"],
         }
         out.append({k: v for k, v in item.items() if v is not None})
-    return out
+
+    # How complete the list is: the institute's own count when it can be read,
+    # else what the capped reads saw (a read that hit its cap may have more).
+    total = len(courses)
+    capped = (search_rows is not None and len(search_rows) >= _MAX_DETAIL_SEARCH_ROWS) or (
+        sql_rows is not None and len(sql_rows) >= lim)
+    if sql_rows is not None:
+        count = _sql_rows_checked(ctx, _DETAIL_COURSE_COUNT_SQL, {"inst": inst})
+        if count and _num(count[0].get("total")) is not None:
+            total = max(total, int(_num(count[0].get("total")) or 0))
+            capped = False
+    sources = {
+        "catalogue_search": "ok" if search_rows is not None else "failed",
+        "courses_sql": "ok" if sql_rows is not None else "failed",
+    }
+    if sql_rows:
+        sources["course_invites"] = "ok" if invites is not None else "failed"
+    return {"courses": out, "total": total, "truncated": total > len(out) or capped, "sources": sources}
 
 
-async def load_data_inventory(ctx: ToolContext, global_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def load_data_inventory(ctx: ToolContext, global_settings: Optional[Dict[str, Any]] = None,
+                              include_course_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Everything a design's data needs are checked against: courses in detail,
     the tag vocabulary and level names, folder libraries, product pages with
     steps, lead campaigns and the configured payment gateways.
+
+    ``sources`` says which reads answered (``ok``), answered in part
+    (``partial``) or failed (``failed``): an empty list from a failed read is
+    NOT "the institute has none". ``courses_truncated`` / ``courses_total``
+    say whether ``courses`` stops short of every course; the ids in
+    ``include_course_ids`` (what a site names) are always listed.
     """
     from .course_builder_data import payment_vendors
-    courses = await load_courses_detail(ctx, global_settings)
+    inv = await load_course_inventory(ctx, global_settings, include_ids=include_course_ids)
+    courses = inv["courses"]
     tag_counts: Dict[str, int] = {}
     level_counts: Dict[str, int] = {}
     for c in courses:
@@ -618,16 +751,26 @@ async def load_data_inventory(ctx: ToolContext, global_settings: Optional[Dict[s
             tag_counts[t] = tag_counts.get(t, 0) + 1
         for lv in c.get("levels") or []:
             level_counts[lv] = level_counts.get(lv, 0) + 1
-    vendors = await payment_vendors(ctx)
+    vendors = await payment_vendors(ctx, strict=True)
+    libraries, libraries_status = await _load_folder_libraries(ctx)
+    pages, pages_ok = await _load_product_pages(ctx, with_steps=True)
     return {
         "courses": courses,
+        "courses_total": inv["total"],
+        "courses_truncated": inv["truncated"],
         "tag_vocabulary": [{"tag": t, "courses": n} for t, n in sorted(tag_counts.items(), key=lambda kv: (-kv[1], kv[0]))],
         "level_names": [{"level": lv, "courses": n} for lv, n in sorted(level_counts.items(), key=lambda kv: (-kv[1], kv[0]))],
-        "folder_libraries": await load_folder_libraries(ctx),
-        "product_pages": await load_product_pages(ctx, with_steps=True),
+        "folder_libraries": libraries,
+        "product_pages": pages,
         "lead_campaigns": [{"id": c.get("id"), "name": c.get("name"), "status": c.get("status")}
                            for c in await load_campaigns(ctx, status=None, with_counts=False)],
-        "payment_vendors": sorted({str(v.get("vendor") or "").upper() for v in vendors if v.get("vendor")}),
+        "payment_vendors": sorted({str(v.get("vendor") or "").upper() for v in vendors or [] if v.get("vendor")}),
+        "sources": {
+            **inv["sources"],
+            "folder_libraries": libraries_status,
+            "product_pages": "ok" if pages_ok else "failed",
+            "payment_vendors": "ok" if vendors is not None else "failed",
+        },
     }
 
 
@@ -713,7 +856,7 @@ async def campaign_lead_stats(ctx: ToolContext, audience_id: str, days: Optional
 __all__ = [
     "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
-    "get_draft", "get_history", "load_site", "load_courses", "load_courses_detail", "load_product_pages",
+    "get_draft", "get_history", "load_site", "load_courses", "load_courses_detail", "load_course_inventory", "load_product_pages",
     "product_page_steps", "load_folder_libraries", "load_data_inventory", "invites_by_ids",
     "load_campaigns", "campaign_lead_stats", "get_campaign", "campaign_name_map",
 ]

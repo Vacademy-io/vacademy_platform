@@ -473,13 +473,19 @@ def custom_fields_by_keys(ctx: ToolContext, keys: List[str]) -> Dict[str, Dict[s
     return out
 
 
-async def payment_vendors(ctx: ToolContext) -> List[Dict[str, str]]:
-    """Active payment gateways of the institute (empty = none configured)."""
+async def payment_vendors(ctx: ToolContext, *, strict: bool = False) -> Optional[List[Dict[str, str]]]:
+    """
+    Active payment gateways of the institute (empty = none configured).
+    ``strict=True`` returns None when the list could not be read, so a caller
+    can tell "none configured" from "unknown".
+    """
     data = await admin_core(
         ctx, "GET", "/admin-core-service/open/v1/institute/payment-setting/vendors",
         params={"instituteId": ctx.principal.institute_id},
     )
-    return [v for v in data if isinstance(v, dict)] if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return None if strict else []
+    return [v for v in data if isinstance(v, dict)]
 
 
 # ── media-service upload (PDF slides need a media file id) ───────────────

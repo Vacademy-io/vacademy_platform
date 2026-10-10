@@ -83,8 +83,12 @@ _FIGMA_STEPS: List[Dict[str, Any]] = [
             "Download every asset the frames use in this session (Figma asset URLs expire after 7 days) and import only "
             "the ones the pages need with website_edit(import_image) — up to 16 URLs per call; large PNGs are "
             "downscaled for you. Keep the returned urls: they are the ONLY image urls a page may use.",
+            "If the design_import tool is enabled for this connection, send the raw get_metadata XML (and any "
+            "get_design_context code you read) to design_import(action='plan'): it drafts the tokens, map_sections "
+            "and data steps below for you. Check its output against those steps instead of redoing them by hand.",
         ],
-        "tools": ["Figma get_metadata / get_screenshot / get_design_context (your own Figma MCP)", "website_edit(import_image)"],
+        "tools": ["Figma get_metadata / get_screenshot / get_design_context (your own Figma MCP)", "website_edit(import_image)",
+                  "design_import(plan) when enabled"],
     },
     {
         "step": "tokens",

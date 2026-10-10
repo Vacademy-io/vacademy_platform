@@ -112,8 +112,15 @@ def test_playbook_names_only_actions_that_exist(source):
     assert site and edit
     assert site <= set(website_mod.WEBSITE_ACTIONS), site - set(website_mod.WEBSITE_ACTIONS)
     assert edit <= set(WEBSITE_EDIT_ACTIONS), edit - set(WEBSITE_EDIT_ACTIONS)
-    for missing in ("design_import", "catalog_data_edit", "request_publish"):
+    for missing in ("catalog_data_edit",):
         assert missing not in text
+    # design_import is opt-in per connection: the playbook may only point at it as "when enabled".
+    from app.services.assistant_tools_design_import import DESIGN_IMPORT_ACTIONS
+
+    named = set(re.findall(r"\bdesign_import\((?:action=')?([a-z_]+)", text))
+    assert named <= set(DESIGN_IMPORT_ACTIONS), named - set(DESIGN_IMPORT_ACTIONS)
+    if source == "figma":
+        assert "design_import(plan) when enabled" in text
 
 
 def test_playbook_is_honest_about_what_is_not_here():

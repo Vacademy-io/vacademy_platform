@@ -177,7 +177,7 @@ class AssistantAgentService:
             setting = load_assistant_tools_setting(db, principal.institute_id)
         groups: Dict[str, Dict[str, Any]] = {}
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 g = groups.setdefault(spec.key(), {"key": spec.key(), "mode": spec.mode, "tools": []})
                 g["tools"].append(spec.name)
                 if spec.mode == "WRITE":
@@ -573,7 +573,7 @@ class AssistantAgentService:
         # schema when denied, so without this the model can't know they exist).
         enabled_groups: set = set()
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 enabled_groups.add(spec.key())
         all_groups = list(GROUP_LABELS.keys())
         have = [GROUP_LABELS[g] for g in all_groups if g in enabled_groups]

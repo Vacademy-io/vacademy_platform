@@ -118,6 +118,9 @@ class ToolSpec:
     # assistant/MCP at all, and not offered as a toggle. Reserved for tools that
     # reveal nothing beyond the caller's own identity (whoami).
     always_allowed: bool = False
+    # Exposed only over MCP (an AI app with its own tools, e.g. Figma reads):
+    # never offered to the in-product assistant's model.
+    mcp_only: bool = False
 
     def key(self) -> str:
         return self.setting_key or self.name
@@ -2335,7 +2338,7 @@ def build_offered_tools(
     return [
         spec.schema
         for spec in ASSISTANT_TOOLS.values()
-        if is_tool_allowed(spec.name, principal, setting)
+        if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting)
     ]
 
 
@@ -2404,7 +2407,8 @@ async def execute_tool(
 # ──────────────────────────────────────────────────────────────────────────
 def _load_feature_tools() -> None:
     for module in (
-        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
+        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
+        "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
         "assistant_tools_course_invites",

@@ -45,7 +45,8 @@ def test_exposed_set_is_the_documented_one():
     # One tool per feature (with an `action` argument), so the settings tab has
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
-        "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
+        "whoami", "get_institute_overview", "website", "website_edit", "design_import",
+        "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit",
     )
@@ -213,3 +214,19 @@ async def test_disabled_tool_call_is_denied_by_the_registry_gate():
     )
     assert result.is_error is True
     assert "tool_not_permitted" in result.content[0].text
+
+
+def test_design_import_is_its_own_opt_in_draft_capability():
+    """Off for every existing connection (website view or edit): an admin turns it on; never read-only."""
+    for enabled in (["website_builder"], ["website_builder", "website_builder_edits"]):
+        assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), setting(enabled))]
+    assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), normalize_setting({"enabled": True}))]
+    tool = next(t for t in adapter.list_tools_for(principal(), setting(["design_import"])) if t.name == "design_import")
+    assert tool.annotations.read_only_hint is False and tool.annotations.destructive_hint is True
+    assert set(tool.input_schema["properties"]["action"]["enum"]) == {"plan", "save_draft"}
+    entry = next(c for c in adapter.tool_catalog() if c["name"] == "design_import")
+    assert (entry["area"], entry["level"], entry["risk"]) == ("website", "edit", "drafts")
+    assert entry["label"] == "Website: import Figma designs" and entry["sub_label"]
+    # The website view tool keeps its own catalogue row and read-only hint.
+    website = next(c for c in adapter.tool_catalog() if c["name"] == "website")
+    assert website["key"] == "website_builder" and "Figma" not in website["summary"]

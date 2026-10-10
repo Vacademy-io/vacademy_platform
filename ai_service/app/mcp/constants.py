@@ -32,6 +32,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "get_institute_overview",
     "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
+    "design_import",        # WRITE: a Figma design the AI app read itself → site plan; save_draft = website_edit drafts
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
@@ -51,6 +52,11 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #: change or remove existing data (learner edits, announcements) stay off.
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
+    "design_import": (
+        "draft-only: plan parses the Figma results the caller sends and stores them 24 h for this institute "
+        "(its own table, never served elsewhere); save_draft saves a DRAFT through website_edit's create_site / "
+        "create_page and also needs website_edit's group"
+    ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
         "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "
@@ -79,6 +85,7 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "institute_overview": "Institute stats",
     "website_builder": "Website: view",
     "website_builder_edits": "Website: edit drafts",
+    "design_import": "Website: import Figma designs",
     "audience_forms": "Lead forms: view",
     "audience_forms_edits": "Lead forms: edit",
     "workflows": "Automations: view",
@@ -106,6 +113,11 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "colours and fonts, course formats and languages, translations, wire forms to lead campaigns "
         "and sections to folder libraries or product pages. Every change is saved as a draft; nothing "
         "goes live until you publish it in Manage Pages. Uses no AI credits."
+    ),
+    "design_import": (
+        "Let the connected AI app turn a Figma design it read with its own Figma tools into a site plan "
+        "(colours, fonts, sections, the data it needs) and save it as a DRAFT site. The design files it sends "
+        "are kept 24 hours for this institute only. Saving also needs 'Build and edit pages'. Uses no AI credits."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."
@@ -180,6 +192,7 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "institute_overview": {"area": "institute", "level": "view"},
     "website_builder": {"area": "website", "level": "view"},
     "website_builder_edits": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Build and edit pages"},
+    "design_import": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Import Figma designs"},
     "audience_forms": {"area": "lead_forms", "level": "view"},
     "audience_forms_edits": {"area": "lead_forms", "level": "edit", "risk": "additive",
                              "sub_label": "Create campaigns and add fields"},

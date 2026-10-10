@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnec
 import vacademy.io.admin_core_service.features.audience.repository.AdCampaignRouteRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.service.AdCampaignRouteService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -55,6 +56,7 @@ class AdCampaignRouteServiceTest {
         ReflectionTestUtils.setField(service, "audienceRepository", audiences);
         ReflectionTestUtils.setField(service, "audienceResponseRepository", responses);
         ReflectionTestUtils.setField(service, "audienceService", audienceService);
+        ReflectionTestUtils.setField(service, "connectorRepository", mock(FormWebhookConnectorRepository.class));
         when(routes.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         connector.setId("conn-1");
@@ -219,5 +221,123 @@ class AdCampaignRouteServiceTest {
         routed("aud-pune", 0);
         service.delete(connector, CAMPAIGN);
         verify(routes).delete(any());
+    }
+
+    // ── Automatic list per new campaign ──────────────────────────────────────
+
+    private void autoListsOn(AdCampaignRoute lockedRow, String mainType) {
+        connector.setAutoCreateCampaignLists(true);
+        when(routes.lockByConnectorIdAndCampaignId("conn-1", CAMPAIGN)).thenReturn(Optional.ofNullable(lockedRow));
+        when(audienceService.getCampaignById(MAIN, "inst-1")).thenReturn(AudienceDTO.builder()
+                .campaignType(mainType).toNotify("admin@i2can.in").instituteCustomFields(List.of()).build());
+        when(audiences.findByInstituteIdAndCampaignNameIgnoreCase(eq("inst-1"), any())).thenReturn(List.of());
+        when(audienceService.createCampaign(any())).thenReturn("aud-new");
+    }
+
+    private static AdCampaignRoute unmappedRow(String name) {
+        return AdCampaignRoute.builder().connectorId("conn-1").instituteId("inst-1")
+                .campaignId(CAMPAIGN).campaignName(name).leadCount(0).build();
+    }
+
+    @Test
+    void autoListsAreOffByDefaultSoNothingChanges() {
+        service.ensureAutoList(connector, CAMPAIGN);
+        assertFalse(service.autoCreatesLists(connector));
+        verifyNoInteractions(routes, audienceService);
+    }
+
+    @Test
+    void aNewCampaignGetsAListNamedAfterItWithTheMainListsFields() {
+        AdCampaignRoute row = unmappedRow("Gujarat-ADCT");
+        autoListsOn(row, "GoogleAds Leads form");
+
+        service.ensureAutoList(connector, CAMPAIGN);
+
+        ArgumentCaptor<AudienceDTO> created = ArgumentCaptor.forClass(AudienceDTO.class);
+        verify(audienceService).createCampaign(created.capture());
+        assertEquals("Gujarat-ADCT", created.getValue().getCampaignName());
+        assertEquals("GoogleAds Leads form", created.getValue().getCampaignType());
+        assertNotNull(created.getValue().getInstituteCustomFields());
+        assertEquals("aud-new", row.getAudienceId());
+        verify(routes).ensureRow(any(), eq("conn-1"), eq("inst-1"), eq(CAMPAIGN), any());
+        verify(routes).save(row);
+    }
+
+    @Test
+    void anUnnamedCampaignsListIsNamedByItsId() {
+        autoListsOn(unmappedRow(null), "GoogleAds Leads form");
+        service.ensureAutoList(connector, CAMPAIGN);
+        ArgumentCaptor<AudienceDTO> created = ArgumentCaptor.forClass(AudienceDTO.class);
+        verify(audienceService).createCampaign(created.capture());
+        assertEquals("Google campaign " + CAMPAIGN, created.getValue().getCampaignName());
+    }
+
+    @Test
+    void anActiveListOfTheSameTypeAndNameIsReusedNotDuplicated() {
+        AdCampaignRoute row = unmappedRow("MP-CG-PGDCC");
+        autoListsOn(row, "GoogleAds Leads form");
+        Audience website = new Audience();
+        website.setId("aud-web");
+        website.setStatus("ACTIVE");
+        website.setCampaignType("WEBSITE");
+        Audience google = new Audience();
+        google.setId("aud-mp");
+        google.setStatus("ACTIVE");
+        google.setCampaignType("GOOGLEADS LEADS FORM");
+        when(audiences.findByInstituteIdAndCampaignNameIgnoreCase("inst-1", "MP-CG-PGDCC"))
+                .thenReturn(List.of(website, google));
+
+        service.ensureAutoList(connector, CAMPAIGN);
+
+        assertEquals("aud-mp", row.getAudienceId());
+        verify(audienceService, never()).createCampaign(any());
+    }
+
+    @Test
+    void aCampaignTheAdminAlreadyRoutedIsLeftAlone() {
+        AdCampaignRoute row = unmappedRow("Gujarat-ADCT");
+        row.setAudienceId(MAIN);
+        autoListsOn(row, "GoogleAds Leads form");
+
+        service.ensureAutoList(connector, CAMPAIGN);
+
+        assertEquals(MAIN, row.getAudienceId());
+        verify(audienceService, never()).createCampaign(any());
+        verify(routes, never()).save(any());
+    }
+
+    @Test
+    void namingACampaignAloneKeepsItsRoutingAndRenamesItsPlaceholderList() {
+        routed("aud-auto", 2);
+        Audience auto = new Audience();
+        auto.setId("aud-auto");
+        auto.setCampaignName("Google campaign " + CAMPAIGN);
+        when(audiences.findById("aud-auto")).thenReturn(Optional.of(auto));
+        CampaignRouteUpdateRequest r = new CampaignRouteUpdateRequest();
+        r.setCampaignName("  Gujarat-ADCT ");
+
+        CampaignRouteUpdateResponse res = service.update(connector, CAMPAIGN, r, user);
+
+        assertEquals("Gujarat-ADCT", res.getRoute().getCampaignName());
+        assertEquals("aud-auto", res.getRoute().getAudienceId());
+        assertEquals("Gujarat-ADCT", auto.getCampaignName());
+        verify(audienceService, never()).createCampaign(any());
+        verify(audienceService, never()).migrateLeads(any(), any());
+    }
+
+    @Test
+    void aListTheAdminNamedThemselvesIsNotRenamed() {
+        routed("aud-pune", 2);
+        CampaignRouteUpdateRequest r = new CampaignRouteUpdateRequest();
+        r.setCampaignName("Gujarat-ADCT");
+        service.update(connector, CAMPAIGN, r, user);
+        verify(audiences, never()).save(any());
+    }
+
+    @Test
+    void anEmptyRequestStillAsksForAList() {
+        routed(null, 3);
+        assertThrows(VacademyException.class,
+                () -> service.update(connector, CAMPAIGN, new CampaignRouteUpdateRequest(), user));
     }
 }

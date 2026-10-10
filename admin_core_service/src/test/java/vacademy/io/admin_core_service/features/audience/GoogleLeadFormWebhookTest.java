@@ -237,6 +237,26 @@ class GoogleLeadFormWebhookTest {
         }
 
         @Test
+        void autoListsOffNeverTouchesTheCampaignsList() {
+            service.handleGoogleWebhook(KEY, payload(KEY, false));
+            verify(routes, never()).ensureAutoList(any(), any());
+            verify(audienceService).submitLeadFromFormWebhook(eq(AUDIENCE), any(), eq("GOOGLE_LEAD_ADS"));
+        }
+
+        /** Auto lists on: the campaign's list is made before routing, and a failure there never loses the lead. */
+        @Test
+        void aFailedAutoListStillSavesTheLeadToTheCatchAll() {
+            when(routes.autoCreatesLists(any())).thenReturn(true);
+            doThrow(new RuntimeException("db down")).when(routes).ensureAutoList(any(), any());
+
+            assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, false)).status());
+
+            verify(routes).ensureAutoList(any(), eq("21345678901"));
+            verify(audienceService).submitLeadFromFormWebhook(eq(AUDIENCE), any(), eq("GOOGLE_LEAD_ADS"));
+            verify(routes).recordLead(any(), eq("21345678901"));
+        }
+
+        @Test
         void aFailedLeadIsNotCountedForItsCampaign() {
             when(audienceService.submitLeadFromFormWebhook(any(), any(), any()))
                     .thenThrow(new VacademyException("boom"));

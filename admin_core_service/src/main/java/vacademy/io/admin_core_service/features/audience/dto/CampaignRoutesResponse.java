@@ -19,4 +19,6 @@ public class CampaignRoutesResponse {
     /** The connector's own audience: where unmapped campaigns' leads go (the catch-all). */
     private String mainAudienceId;
     private List<CampaignRouteDTO> routes;
+    /** New campaigns get their own list on their first lead. */
+    private boolean autoCreateLists;
 }

@@ -853,6 +853,22 @@ public class MetaOAuthController {
         return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
+    /** Turn "a new list for each new campaign" on or off for a Google connector. */
+    @PutMapping("/connectors/{connectorId}/campaign-auto-lists")
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "UPDATE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'changed automatic lead lists per Google campaign'")
+    public ResponseEntity<CampaignRoutesResponse> setCampaignAutoLists(
+            @PathVariable String connectorId,
+            @RequestBody Map<String, Boolean> body,
+            @RequestAttribute("user") CustomUserDetails user) {
+        FormWebhookConnector connector = loadGoogleConnectorForStaff(connectorId, user);
+        boolean enabled = body != null && Boolean.TRUE.equals(body.get("enabled"));
+        return ResponseEntity.ok(campaignRouteService.setAutoCreateLists(connector, enabled));
+    }
+
     private FormWebhookConnector loadGoogleConnectorForStaff(String connectorId, CustomUserDetails user) {
         FormWebhookConnector connector = loadConnectorForStaff(connectorId, user);
         if (!"GOOGLE_LEAD_ADS".equals(connector.getVendor())) {

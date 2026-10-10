@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.audience.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +19,26 @@ import java.util.Optional;
 public interface AdCampaignRouteRepository extends JpaRepository<AdCampaignRoute, String> {
 
     Optional<AdCampaignRoute> findByConnectorIdAndCampaignId(String connectorId, String campaignId);
+
+    /** The row locked for update, so two leads of a new campaign can't both create its list. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM AdCampaignRoute r WHERE r.connectorId = :connectorId AND r.campaignId = :campaignId")
+    Optional<AdCampaignRoute> lockByConnectorIdAndCampaignId(@Param("connectorId") String connectorId,
+                                                            @Param("campaignId") String campaignId);
+
+    /** Create the (connector, campaign) row if missing, without counting a lead. */
+    @Modifying
+    @Query(value = """
+            INSERT INTO ad_campaign_route (id, connector_id, institute_id, campaign_id, lead_count,
+                                           added_manually, created_at, updated_at)
+            VALUES (:id, :connectorId, :instituteId, :campaignId, 0, FALSE, :now, :now)
+            ON CONFLICT (connector_id, campaign_id) DO NOTHING
+            """, nativeQuery = true)
+    void ensureRow(@Param("id") String id,
+                   @Param("connectorId") String connectorId,
+                   @Param("instituteId") String instituteId,
+                   @Param("campaignId") String campaignId,
+                   @Param("now") LocalDateTime now);
 
     /** Newest activity first; manually added rows with no lead yet sort last. */
     @Query(value = "SELECT * FROM ad_campaign_route WHERE connector_id = :connectorId "

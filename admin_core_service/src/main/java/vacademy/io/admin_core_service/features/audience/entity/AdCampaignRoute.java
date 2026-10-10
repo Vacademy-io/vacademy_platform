@@ -40,6 +40,10 @@ public class AdCampaignRoute {
     @Column(name = "audience_id")
     private String audienceId;
 
+    /** Admin-entered campaign name (Google's webhook sends only the id). Names the auto-created list. */
+    @Column(name = "campaign_name")
+    private String campaignName;
+
     @Column(name = "lead_count", nullable = false)
     @Builder.Default
     private Integer leadCount = 0;

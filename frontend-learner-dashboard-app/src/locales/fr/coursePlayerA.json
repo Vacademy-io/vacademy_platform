@@ -48,6 +48,8 @@
     "seoDescription": "Découvrez nos {{courses}} et inscrivez-vous en ligne.",
     "seoDescriptionWithInstitute": "Découvrez nos {{courses}} et inscrivez-vous en ligne chez {{institute}}.",
     "skipToMainContent": "Passer au contenu principal",
+    "previewRibbon": "Aperçu",
+    "previewFormNotSent": "Les formulaires ne sont pas envoyés dans l'aperçu",
     "backToTop": "Retour en haut"
   },
   "courseStructureDetails": {
@@ -184,6 +186,7 @@
     "paymentFailedFallback": "Échec du paiement"
   },
   "jsonRenderer": {
+    "hiddenBlock": "Masqué : {{label}}",
     "video": "Vidéo",
     "noVideoUrlConfigured": "Aucune URL vidéo configurée",
     "play": "Lecture",

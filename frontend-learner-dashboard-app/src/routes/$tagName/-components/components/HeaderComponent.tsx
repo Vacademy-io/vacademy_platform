@@ -86,6 +86,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
   showSearch?: boolean;
   /** हिन्दी | EN switch, when the site has more than one language. */
   showLanguageSwitcher?: boolean;
+  /** Editor preview only: the real route of the page shown at the site root
+   *  ("" = home), so the right nav item is marked active. */
+  previewPath?: string;
 } & HeaderChromeProps> = ({
   navigation = [],
   authLinks = [],
@@ -100,6 +103,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   activeStyle,
   showSearch,
   showLanguageSwitcher,
+  previewPath,
   barSize,
   contentWidth,
   navStyle,
@@ -421,8 +425,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
       if (RouteMatcher.isExternalLink(route)) return false;
       // "Whatever follows the catalogue base": the segment after "/<tag>", or
       // the first segment when this catalogue is mounted at the host's root.
+      // The editor preview shows every page at the root, so it names the page.
       const currentRoute = RouteMatcher.normalizeRoute(
-        RouteMatcher.segmentsAfterBase(location.pathname, effectiveTagName)[0] || ''
+        (previewPath !== undefined
+          ? previewPath.split('/').filter(Boolean)[0]
+          : RouteMatcher.segmentsAfterBase(location.pathname, effectiveTagName)[0]) || ''
       );
       const target = RouteMatcher.normalizeRoute(route || '');
       const targetIsHome = target === '' || target === 'home';

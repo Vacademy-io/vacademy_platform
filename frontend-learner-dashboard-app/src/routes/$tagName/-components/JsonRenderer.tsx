@@ -17,6 +17,7 @@ import {
   type ComponentStyle,
 } from "../-utils/style-utils";
 import { SectionDecorations, hasDecorations } from "../-utils/catalogue-decorations";
+import { blockTypeLabel } from "../-utils/preview-bridge";
 import { CatalogueLink } from "./CatalogueLink";
 import PhoneInput from "react-phone-input-2";
 // Same stylesheet every other phone field in the app imports. Mixing this with
@@ -98,8 +99,15 @@ interface JsonRendererProps {
   courseData?: any; // Course data for dynamic content
   catalogueData?: CourseCatalogueData; // Full catalogue data for route matching
   isPreviewMode?: boolean; // When true, shows component selection UI for admin editor
+  /** Preview "Browse" mode: the page is clickable as on the live site and
+   *  clicking no longer selects blocks. */
+  previewInteractive?: boolean;
+  /** Preview only: the real route of the page shown as the root page, for the
+   *  header's active nav item. */
+  previewPath?: string;
   selectedComponentId?: string | null; // Currently selected component to highlight
-  onComponentClick?: (componentId: string, pageId: string) => void; // Callback for component click in preview mode
+  /** Preview click on a block; parentId is set for a block inside a column or tab. */
+  onComponentClick?: (componentId: string, pageId: string, parentId?: string) => void;
 }
 
 export const JsonRenderer: React.FC<JsonRendererProps> = ({
@@ -110,6 +118,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   courseData,
   catalogueData,
   isPreviewMode = false,
+  previewInteractive = false,
+  previewPath,
   selectedComponentId = null,
   onComponentClick,
 }) => {
@@ -133,16 +143,40 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       element
     );
 
+  /** Builder preview only: a block that can be picked on its own. */
+  const previewFrame = (component: { id: string; style?: any }, element: React.ReactNode, parentId?: string) => (
+    <PreviewBlockFrame
+      key={component.id}
+      id={component.id}
+      sticky={component.style?.sticky}
+      selected={component.id === selectedComponentId}
+      interactive={previewInteractive}
+      onSelect={() => onComponentClick?.(component.id, page.id, parentId)}
+    >
+      {element}
+    </PreviewBlockFrame>
+  );
+
   /** Slot-child rendering (columnLayout columns, accordion/tab slots): same
    *  ComponentStyle treatment as top-level components — children previously
-   *  went through bare renderComponent and silently lost their style. */
-  const renderChild = (child: any): React.ReactNode => {
+   *  went through bare renderComponent and silently lost their style.
+   *  In the builder preview each child is pickable on its own (parentId = the
+   *  column layout or tabs block holding it). */
+  const renderChild = (child: any, parentId?: string): React.ReactNode => {
     const rendered = renderComponent(child);
-    if (!rendered) return null;
+    if (!rendered) {
+      return isPreviewMode && child?.enabled === false
+        ? previewFrame(child, <HiddenBlockStrip type={child.type} />, parentId)
+        : null;
+    }
+    const styled = renderStyledChild(child, rendered);
+    return withVisibleWhen(child, isPreviewMode ? previewFrame(child, styled, parentId) : styled);
+  };
+
+  const renderStyledChild = (child: any, rendered: React.ReactNode): React.ReactNode => {
     const hasStyle = child.style && Object.keys(child.style).length > 0;
-    if (!hasStyle) return withVisibleWhen(child, <React.Fragment key={child.id}>{rendered}</React.Fragment>);
-    return withVisibleWhen(
-      child,
+    if (!hasStyle) return <React.Fragment key={child.id}>{rendered}</React.Fragment>;
+    return (
       <ComponentStyleWrapper
         key={child.id}
         component={child}
@@ -216,6 +250,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             // The untranslated props, for logic that keys on authored labels
             // or links (which button opens the lead form, and so on).
             baseProps={baseProps}
+            previewPath={previewPath}
           />
         );
       case "banner":
@@ -319,6 +354,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             baseFields={baseProps?.fields}
             instituteId={instituteId}
             tagName={tagName}
+            isPreviewMode={isPreviewMode}
           />
         );
       case "teamSection":
@@ -335,7 +371,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           <TabsAccordionRenderer
             key={id}
             {...props}
-            renderSlot={(comps: any[]) => comps.map(renderChild)}
+            renderSlot={(comps: any[]) => comps.map((child) => renderChild(child, id))}
           />
         );
       case "trustChip":
@@ -394,7 +430,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "buttonBlock":
         return <ButtonBlockRenderer key={id} {...props} />;
       case "newsletterSignup":
-        return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
+        return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} isPreviewMode={isPreviewMode} />;
       case "stepsProcess":
         // variant "cards" (opt-in): one row of numbered cards.
         return props?.variant === "cards" ? <StepsCards key={id} {...props} /> : <StepsProcessRenderer key={id} {...props} />;
@@ -532,7 +568,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
                   alignSelf: slotComponents.some((c: any) => c?.style?.sticky?.enabled) ? 'stretch' : undefined,
                 }}
               >
-                {slotComponents.map((child: any) => renderChild(child))}
+                {slotComponents.map((child: any) => renderChild(child, id))}
               </div>
             ))}
           </div>
@@ -558,7 +594,12 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   /** One top-level section inside its style / preview wrapper. */
   const renderTopLevel = (component: Page["components"][number]) => {
     const rendered = renderComponent(component);
-    if (!rendered) return null;
+    if (!rendered) {
+      // Switched off in the editor: visitors see nothing, the preview a strip.
+      return isPreviewMode && component.enabled === false
+        ? previewFrame(component, <HiddenBlockStrip type={component.type} />)
+        : null;
+    }
 
     const componentStyle = buildComponentStyle(component.style);
     const responsiveCSS = buildResponsiveCSS(component.id, component.style);
@@ -572,15 +613,19 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
       const outerStyle = shellStyles ? shellStyles.canvasStyle : componentStyle;
       const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
+      // Select mode: clicks land on this wrapper (nested blocks opt back in).
+      const contentPointerEvents = previewInteractive ? undefined : ('none' as const);
       return (
         <div
           key={component.id}
           id={component.anchorId || undefined}
           data-component-id={component.id}
           data-cid={component.id}
-          onClick={() => onComponentClick?.(component.id, page.id)}
-          className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
-          style={{ cursor: 'pointer', ...outerStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
+          // Browse mode: the section behaves as on the live site (same
+          // markup, so open menus and tabs keep their state across modes).
+          onClick={previewInteractive ? undefined : () => onComponentClick?.(component.id, page.id)}
+          className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : previewInteractive ? '' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
+          style={{ cursor: previewInteractive ? undefined : 'pointer', ...outerStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
         >
           {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
           {hasOverlay && (
@@ -590,13 +635,13 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           <div
             style={
               shellStyles
-                ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
-                : { pointerEvents: 'none', position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
+                ? { ...shellStyles.contentStyle, pointerEvents: contentPointerEvents, position: 'relative', zIndex: 1 }
+                : { pointerEvents: contentPointerEvents, position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
             }
           >
             {rendered}
           </div>
-          {isSelected && (
+          {isSelected && !previewInteractive && (
             <div className="absolute top-0 start-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-ee-md font-medium select-none">
               {component.type}
             </div>
@@ -627,6 +672,56 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       data-page-id={page.id}
     >
       {page.components.map((component) => withVisibleWhen(component, renderTopLevel(component)))}
+    </div>
+  );
+};
+
+/**
+ * Builder preview only: wraps a block inside a column or tab (or a hidden
+ * block) so a click picks that block rather than the section around it. The
+ * section's content is click-through in Select mode, so this frame opts back
+ * in and keeps its own content inert. Browse mode leaves clicks alone.
+ */
+const PreviewBlockFrame: React.FC<{
+  id: string;
+  /** The block's sticky rail: the frame sticks in its place (the block's own
+   *  sticky has no room to move inside a frame its own height). */
+  sticky?: { enabled?: boolean; top?: number };
+  selected: boolean;
+  interactive: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}> = ({ id, sticky, selected, interactive, onSelect, children }) => (
+  <div
+    data-cid={id}
+    style={sticky?.enabled ? { position: 'sticky', top: `${sticky.top ?? 88}px` } : undefined}
+    onClick={
+      interactive
+        ? undefined
+        : (event) => {
+            event.stopPropagation();
+            onSelect();
+          }
+    }
+    className={`${interactive ? '' : 'pointer-events-auto cursor-pointer'} ${
+      selected
+        ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
+        : interactive
+          ? ''
+          : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
+    }`}
+  >
+    <div className={interactive ? undefined : 'pointer-events-none'}>{children}</div>
+  </div>
+);
+
+/** Builder preview only: a block switched off in the editor, dimmed and
+ *  labelled so it can still be found and picked. Visitors never see it. */
+const HiddenBlockStrip: React.FC<{ type: string }> = ({ type }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <div className="mx-auto my-2 max-w-5xl rounded-catalogue-md border border-dashed border-catalogue-border px-4 py-3 text-center text-sm text-catalogue-text-muted opacity-70">
+      {t("jsonRenderer.hiddenBlock", { label: blockTypeLabel(type) })}
     </div>
   );
 };
@@ -883,7 +978,7 @@ const extractLeadIdentity = (fields: any[], formData: Record<string, string>) =>
   return { email, phone, fullName, rest };
 };
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], baseFields, submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], baseFields, submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName, isPreviewMode }) => {
   const { t } = useTranslation("coursePlayerA");
   // The authored fields, index-paired with the shown ones (a translation
   // keeps the list's order). Answers are keyed, and the visitor's email /
@@ -921,6 +1016,8 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The editor preview never creates a lead (the page shell says so too).
+    if (isPreviewMode) return;
     setError('');
     // Spam verdicts show the success state — never tell a bot it was caught.
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
@@ -2070,7 +2167,7 @@ const ButtonBlockRenderer: React.FC<any> = ({ text, url = '#', target = '_self',
 
 /* ─── Newsletter Signup ────────────────────────────────────────────────── */
 
-const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder, buttonText, layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName }) => {
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder, buttonText, layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName, isPreviewMode }) => {
   const { t } = useTranslation("coursePlayerA");
   // HISTORY: previously set the success flag with no network call — every
   // subscription was silently discarded. Now submits through the catalogue-lead
@@ -2088,7 +2185,11 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
         {submitted ? (
           <p className="text-lg font-medium text-green-600">{successMessage || t("jsonRenderer.newsletterSuccessDefault")}</p>
         ) : (
-          <form onSubmit={handleSubmit} className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}>
+          <form
+            // The editor preview never creates a lead.
+            onSubmit={isPreviewMode ? (e) => e.preventDefault() : handleSubmit}
+            className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}
+          >
             <input
               type="email"
               required

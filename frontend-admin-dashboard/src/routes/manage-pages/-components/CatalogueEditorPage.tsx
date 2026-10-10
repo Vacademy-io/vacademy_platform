@@ -874,7 +874,7 @@ export const CatalogueEditorPage = () => {
                         {/* Center — Direct-DOM canvas + page tabs */}
                         <div className="flex flex-1 flex-col overflow-hidden">
                             <div className="flex-1 overflow-hidden">
-                                <CanvasRenderer tagName={tagName} />
+                                <CanvasRenderer tagName={tagName} liveConfigJson={meta?.catalogue_json} />
                             </div>
                             {/* Bottom — Page Tabs */}
                             <div className="h-12 shrink-0 border-t bg-white">

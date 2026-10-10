@@ -31,6 +31,7 @@ of that feature, without its composer.
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
@@ -105,8 +106,6 @@ FONT_STACKS: Dict[str, str] = {
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 _MAX_OPS = 40
-_MAX_IMPORT_BYTES = 6_000_000
-_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg"}
 
 #: A fresh site's global settings — the dashboard's default template, minus the
 #: sample header/footer (the composer supplies those when a theme is proposed).
@@ -237,8 +236,12 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "- link_lead_form (tag_name, page_route, section_id, audience_id): send a form or popup button's "
             "enquiries to a lead campaign. Ids ONLY from website(action='context') / audience_forms.\n"
             "- set_seo (tag_name, page_route, meta_title?, meta_description?).\n"
-            "- import_image (url, kind, caption?): copy a public https image into the media library so it "
-            "can be placed. Images on pages must come from list_media or import_image — never invent URLs.\n"
+            "- import_image (url | urls (max 16) | data_base64 + file_name, kind, caption?): copy a public https "
+            "image (up to 25 MB; big ones are downscaled to WebP, 2400 px) or a base64 file (up to 10 MB) into "
+            "the media library so it can be placed. Returns url + sha256; the same file imported twice returns "
+            "the copy already hosted. Figma MCP asset links (https://www.figma.com/api/mcp/asset/…) expire in "
+            "7 days — import them in the same session. SVGs are sanitised. Images on pages must come from "
+            "list_media or import_image — never invent URLs.\n"
             "- discard_draft (tag_name): throw the draft away — the undo for everything above.\n"
             "Every result carries editor_url: tell the admin to review and publish there."
         ),
@@ -268,8 +271,10 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "section_type": {"type": "string", "description": "Block type, e.g. testimonialSection, faqSection, courseShowcase, leadForm."},
                 "after_section_id": {"type": "string"},
                 "props": {"type": "object", "description": "add_section: prop overrides for the new block."},
-                "url": {"type": "string", "description": "import_image: public https image URL."},
-                "urls": {"type": "array", "items": {"type": "string"}, "description": "import_image: several public https image URLs at once (max 8)."},
+                "url": {"type": "string", "description": "import_image: public https image URL (incl. Figma MCP asset links)."},
+                "urls": {"type": "array", "items": {"type": "string"}, "description": "import_image: several public https image URLs at once (max 16)."},
+                "data_base64": {"type": "string", "description": "import_image: the image file itself, base64 or a data: URL (max 10 MB) — for local files / design exports."},
+                "file_name": {"type": "string", "description": "import_image with data_base64: the file's name (for the media library)."},
                 "kind": {"type": "string", "enum": list(IMAGE_KINDS)},
                 "caption": {"type": "string"},
                 "source": {"type": "string", "enum": ["all", "showcase", "product_page"]},
@@ -775,15 +780,25 @@ def _is_institute_asset(url: Any) -> bool:
     return host in allowed_hosts or host.endswith(".amazonaws.com") or host.endswith(".cloudfront.net")
 
 
-_IMAGE_PROP_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail", "url", "ogimage"}
+# Keys the sanitiser does NOT treat as image keys but whose institute URLs may
+# still be placed: mediaShowcase media[].url / style.backgroundLayers[].url
+# (checked by their own rules there). Everything else comes from the shared
+# page_builder.is_image_key / is_image_list_key, so the allow-list can never
+# drift from the stripper again (it did: `imageUrl` was stripped on every
+# MCP-authored stream icon because only the stripper knew the key).
+_EXTRA_IMAGE_PROP_KEYS = {"url"}
 
 
 def _asset_urls_in(node: Any, out: set) -> set:
     """Every image-ish URL in a tree that is one of OUR assets (the allow-list for the sanitiser)."""
+    from ..routers.page_builder import is_image_key, is_image_list_key
     if isinstance(node, dict):
         for k, v in node.items():
-            if isinstance(v, str) and k.lower() in _IMAGE_PROP_KEYS and _is_institute_asset(v):
+            if isinstance(v, str) and (is_image_key(k) or str(k).lower() in _EXTRA_IMAGE_PROP_KEYS) and _is_institute_asset(v):
                 out.add(v)
+            elif isinstance(v, list) and is_image_list_key(k):
+                out.update(u for u in v if isinstance(u, str) and _is_institute_asset(u))
+                _asset_urls_in(v, out)
             else:
                 _asset_urls_in(v, out)
     elif isinstance(node, list):
@@ -1336,53 +1351,195 @@ async def _action_set_site_settings(args: Dict[str, Any], ctx: ToolContext) -> D
                    settings=summarize_global_settings(config["globalSettings"]))
 
 
+_MAX_IMPORT_URLS = 16
+_IMPORT_CONCURRENCY = 3
+#: Images being validated in worker threads at once, across every request on
+#: this pod. The memory-heavy part (decoding a source that must be shrunk) is
+#: further limited to website_image_import.DECODE_SLOTS (1) inside the thread.
+_IMPORT_SLOTS = asyncio.Semaphore(_IMPORT_CONCURRENCY)
+_MEDIA_ORIGIN = "website_import_image"
+
+
+def _figma_url_problem(url: str) -> Optional[str]:
+    """Figma links that are NOT images get a useful refusal instead of a fetch.
+
+    Only the remote Figma MCP's asset links (https://www.figma.com/api/mcp/asset/…)
+    are files; a /design/ or /file/ link is the editor (a sign-in page to us), and
+    the desktop MCP's http://localhost:3845/assets/… links live on the caller's
+    machine."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except ValueError:
+        return None
+    if host in ("localhost", "127.0.0.1") and port == 3845:
+        return ("That is a Figma desktop link on your own computer; this server cannot reach it. "
+                "Send the file as data_base64 (with file_name) instead.")
+    if host == "figma.com" or host.endswith(".figma.com"):
+        if not parts.path.startswith("/api/mcp/asset/"):
+            return ("That is a Figma page, not an image. Use the asset URLs from the Figma MCP "
+                    "(https://www.figma.com/api/mcp/asset/…), or export the image and send it as data_base64.")
+    return None
+
+
+def _is_figma_asset(url: str) -> bool:
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (host == "figma.com" or host.endswith(".figma.com")) and parts.path.startswith("/api/mcp/asset/")
+
+
 async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    urls = [u for u in (args.get("urls") or []) if isinstance(u, str) and u.strip()][:8]
-    if urls:
-        results = []
-        for u in urls:
-            results.append(await _import_one_image({**args, "url": u}, ctx))
-        return {"imported": [r for r in results if not r.get("error")], "failed": [r for r in results if r.get("error")],
-                "next": "Use the returned urls in the page (hero right.image, imageBlock, gallery)."}
-    if err := _require(args, "import_image", "url"):
+    raw_urls = [u for u in (args.get("urls") or []) if isinstance(u, str) and u.strip()]
+    if args.get("data_base64") and (raw_urls or str(args.get("url") or "").strip()):
+        # One source per call: silently ignoring one of them lost an image.
+        return _err("bad_request", message="Send either url / urls or data_base64 (with file_name), not both — "
+                                           "import the base64 file in its own call.")
+    if raw_urls:
+        urls = raw_urls[:_MAX_IMPORT_URLS]
+        gate = asyncio.Semaphore(_IMPORT_CONCURRENCY)
+
+        async def _one(u: str) -> Dict[str, Any]:
+            async with gate:
+                res = await _import_one_image({**args, "url": u, "data_base64": None}, ctx)
+                return res if not res.get("error") else {**res, "source": u}
+
+        results = await asyncio.gather(*[_one(u) for u in urls])
+        out: Dict[str, Any] = {
+            "imported": [r for r in results if not r.get("error")], "failed": [r for r in results if r.get("error")],
+            "next": "Use the returned urls in the page (hero right.image, imageBlock, gallery).",
+        }
+        if len(raw_urls) > len(urls):
+            out["skipped"] = raw_urls[len(urls):]
+            out["note"] = f"At most {_MAX_IMPORT_URLS} images per call — send the skipped ones in another call."
+        return out
+    if not args.get("data_base64") and (err := _require(args, "import_image", "url")):
         return err
     return await _import_one_image(args, ctx)
 
 
 async def _import_one_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    url = str(args["url"]).strip()
-    if not url.lower().startswith("https://"):
-        return _err("bad_request", message="Only https image URLs can be imported.")
-    from ..routers.page_builder import _is_public_http_host
-    if not _is_public_http_host(url):
-        return _err("bad_request", message="That address is not a public website.")
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, max_redirects=3) as client:
-            resp = await client.get(url, headers={"User-Agent": "VacademyImageImport/1.0"})
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("import_image fetch failed for %s: %s", url, exc)
-        return _err("fetch_failed", message="The image could not be downloaded.")
-    if resp.status_code != 200 or not resp.content:
-        return _err("fetch_failed", message=f"The image could not be downloaded (HTTP {resp.status_code}).")
-    if len(resp.content) > _MAX_IMPORT_BYTES:
-        return _err("too_large", message="Images over 6 MB cannot be imported.")
-    ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
-    ext = _IMAGE_TYPES.get(ctype)
-    if not ext:
-        return _err("not_an_image", message=f"Unsupported content type '{ctype or 'unknown'}'.")
+    from .safe_http import SafeFetchError, safe_fetch
+    from .website_image_import import (
+        MAX_SOURCE_BYTES, ImageImportError, decode_base64_image, prepare_image,
+    )
+
+    source: Optional[str] = None
+    declared = ""
+    if args.get("data_base64"):
+        try:
+            raw = decode_base64_image(str(args["data_base64"]))
+        except ImageImportError as exc:
+            return _err(exc.code, message=exc.message)
+        file_name = str(args.get("file_name") or "").strip()[:200] or None
+    else:
+        url = str(args.get("url") or "").strip()
+        if not url.lower().startswith("https://"):
+            return _err("bad_request", message=_figma_url_problem(url) or "Only https image URLs can be imported.")
+        if problem := _figma_url_problem(url):
+            return _err("bad_request", message=problem)
+        try:
+            fetched = await safe_fetch(url, max_bytes=MAX_SOURCE_BYTES, headers={"User-Agent": "VacademyImageImport/1.0"})
+        except SafeFetchError as exc:
+            if exc.code in ("blocked_host", "blocked_address", "bad_url"):
+                return _err("bad_request", message="That address is not a public website." if exc.code != "bad_url" else exc.message)
+            if exc.code == "too_large":
+                return _err("too_large", message=f"Images over {MAX_SOURCE_BYTES // 1_000_000} MB cannot be imported.")
+            logger.warning("import_image fetch failed for %s: %s", url[:200], exc.code)
+            return _err("fetch_failed", message="The image could not be downloaded.")
+        if fetched.status_code != 200 or not fetched.content:
+            return _err("fetch_failed", message=f"The image could not be downloaded (HTTP {fetched.status_code}).")
+        raw, declared, source, file_name = fetched.content, fetched.content_type, url, None
+
     kind = args.get("kind") if args.get("kind") in IMAGE_KINDS else "photo"
     try:
-        from .s3_service import S3Service
-        key = f"page-builder/imports/{kind}-{uuid.uuid4().hex}.{ext}"
-        stored = S3Service().upload_file_content(resp.content, f"{kind}.{ext}", s3_key=key, content_type=ctype)
+        async with _IMPORT_SLOTS:
+            prepared = await asyncio.to_thread(prepare_image, raw, declared)
+    except ImageImportError as exc:
+        return _err(exc.code, message=exc.message)
+    del raw
+
+    # The same file imported again (a Figma asset re-read in a later session)
+    # returns the copy we already host instead of storing a duplicate.
+    existing = await asyncio.to_thread(_find_imported_media, ctx.principal.institute_id, prepared.sha256)
+    if existing:
+        stored, deduplicated = existing, True
+    else:
+        deduplicated = False
+        try:
+            from .s3_service import S3Service
+            key = f"page-builder/imports/{_s3_safe(ctx.principal.institute_id)}/{kind}-{uuid.uuid4().hex}.{prepared.ext}"
+            stored = await asyncio.to_thread(
+                S3Service().upload_file_content, prepared.data, f"{kind}.{prepared.ext}",
+                s3_key=key, content_type=prepared.content_type,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("import_image upload failed: %s", exc)
+            stored = None
+        if not stored:
+            return _err("upload_failed", message="The image was downloaded but could not be stored.")
+        await asyncio.to_thread(_record_imported_media, ctx, stored, source, prepared, kind, args.get("caption"), file_name)
+
+    out: Dict[str, Any] = {
+        "url": stored, "source": source or (f"upload:{file_name}" if file_name else "upload"), "kind": kind,
+        "caption": args.get("caption"), "bytes": len(prepared.data), "original_bytes": prepared.original_bytes,
+        "sha256": prepared.sha256, "content_type": prepared.content_type,
+        "width": prepared.width, "height": prepared.height,
+        "next": "Use this url in the page JSON (hero right.image, imageBlock, gallery) or set_layout (header logo).",
+    }
+    if prepared.resized:
+        out["resized"] = f"Downscaled to {prepared.width}x{prepared.height} WebP (from {prepared.original_bytes:,} bytes)."
+    if deduplicated:
+        out["deduplicated"] = True
+    if source and _is_figma_asset(source):
+        out["figma_asset"] = True
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _s3_safe(value: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(value or ""))[:64] or "unknown"
+
+
+def _find_imported_media(institute_id: str, sha256: str) -> Optional[str]:
+    """URL of an image this tool already imported for the institute with these exact source bytes."""
+    try:
+        from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+        row = EditorMediaAssetRepository().find_by_metadata(institute_id, origin=_MEDIA_ORIGIN, sha256=sha256)
+        return row.url if row is not None and _is_institute_asset(row.url) else None
+    except Exception as exc:  # noqa: BLE001 — the library is a convenience, never a reason to fail
+        logger.info("import_image dedup lookup skipped: %s", exc)
+        return None
+
+
+def _record_imported_media(ctx: ToolContext, url: str, source: Optional[str], prepared: Any, kind: str,
+                           caption: Any, file_name: Optional[str]) -> None:
+    """Add the import to the institute's editor media library (best effort)."""
+    try:
+        from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+        EditorMediaAssetRepository().create(
+            institute_id=ctx.principal.institute_id,
+            url=url,
+            kind="image",
+            source="upload",
+            source_url=source,
+            width=prepared.width,
+            height=prepared.height,
+            created_by_user_id=ctx.principal.user_id,
+            tags=["website", kind],
+            metadata={
+                "origin": _MEDIA_ORIGIN, "sha256": prepared.sha256, "content_type": prepared.content_type,
+                "bytes": len(prepared.data), "original_bytes": prepared.original_bytes,
+                **({"caption": str(caption)[:300]} if caption else {}),
+                **({"file_name": file_name} if file_name else {}),
+            },
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("import_image upload failed: %s", exc)
-        stored = None
-    if not stored:
-        return _err("upload_failed", message="The image was downloaded but could not be stored.")
-    return {"url": stored, "source": url, "kind": kind, "caption": args.get("caption"), "bytes": len(resp.content),
-            "next": "Use this url in the page JSON (hero right.image, imageBlock, gallery) or set_layout (header logo)."}
+        logger.info("import_image media-library record skipped: %s", exc)
 
 
 async def _action_set_courses(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

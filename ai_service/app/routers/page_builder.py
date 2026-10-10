@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 import base64
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -64,6 +65,28 @@ _IMAGE_KEYS = {
     "thumbnail", "icontype_image", "imageurl",
 }
 _IMAGE_LIST_KEYS = {"avatars", "imagecollage", "images"}
+# Newer widgets name their art after what it is (filterSidebar.promo.screenImage,
+# heroSection coverImage, previewImageUrl…). A fixed key list let those slip past
+# BOTH the stripper here and the MCP's allow-list, so a model could hotlink any
+# URL through them. Any key ending in one of these is an image key too.
+_IMAGE_KEY_SUFFIXES = ("image", "imageurl", "src")
+
+
+def is_image_key(key: Any) -> bool:
+    """A prop key whose string value is an image URL (allow-list-keep).
+
+    THE shared rule: page_builder's stripper and the MCP's asset allow-list
+    (assistant_tools_website_edit._asset_urls_in) both call this, so a key can
+    never be stripped on one side and unrecognised on the other."""
+    if not isinstance(key, str):
+        return False
+    lk = key.lower()
+    return lk in _IMAGE_KEYS or lk.endswith(_IMAGE_KEY_SUFFIXES)
+
+
+def is_image_list_key(key: Any) -> bool:
+    """A prop key holding a list of image URLs (string items are allow-list-keep)."""
+    return isinstance(key, str) and key.lower() in _IMAGE_LIST_KEYS
 
 # Hostile URL schemes — browsers strip embedded control chars/whitespace before
 # parsing a scheme, so "java\tscript:" still fires; normalize first.
@@ -324,19 +347,21 @@ def _is_public_http_host(target: str) -> bool:
     """SSRF guard shared by site-import and image-inlining: only public
     http(s) hosts — blocks localhost / .local / private / link-local ranges."""
     try:
-        import ipaddress
         import socket
         from urllib.parse import urlparse
+
+        from ..services.safe_http import host_is_blocked_name, is_public_address
         if not target.startswith(("http://", "https://")):
             return False
         host = (urlparse(target).hostname or "").lower()
-        if not host or host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+        if host_is_blocked_name(host):
             return False
-        for info in socket.getaddrinfo(host, None):
-            ip = ipaddress.ip_address(info[4][0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-                return False
-        return True
+        # Same address rules as safe_fetch (adds CGNAT, NAT64 and v4-mapped
+        # private addresses to the old private/loopback/link-local list). This
+        # is only a PRE-check for callers that cannot pin the connection
+        # (Playwright); anything we download ourselves goes through safe_fetch.
+        infos = socket.getaddrinfo(host, None)
+        return bool(infos) and all(is_public_address(info[4][0]) for info in infos)
     except Exception:  # noqa: BLE001 — guard failure = treat as non-public
         return False
 
@@ -400,16 +425,28 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
     presigned/short-lived or served with non-image content types, which
     providers reject. SSRF-guarded. Returns (data_url, None) on success or
     (None, reason) on failure."""
+    from ..services.safe_http import WEB_PORTS, SafeFetchError, safe_fetch
     if not isinstance(url, str) or not _is_public_http_host(url):
         return None, "blocked non-public host"
     try:
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
-            resp = await client.get(url)
+        # Pinned to the validated address, every redirect hop re-checked, body
+        # capped while streaming (the pre-check above alone could be rebound).
+        try:
+            resp = await safe_fetch(
+                url, max_bytes=_MAX_INLINE_IMAGE_BYTES, timeout=12.0, total_timeout=30.0, allow_http=True,
+                allowed_ports=WEB_PORTS,  # the old fetch took any port; keep :8080 / :8443 working
+            )
+        except SafeFetchError as exc:
+            if exc.code == "too_large":
+                return None, "bad size (over limit)"
+            if exc.code in ("blocked_host", "blocked_address"):
+                return None, "blocked non-public host"
+            return None, f"fetch error: {exc.code}"
         if resp.status_code != 200:
             return None, f"http {resp.status_code}"
-        if not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
+        if not resp.content:
             return None, f"bad size {len(resp.content)}"
-        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        ctype = resp.content_type
         if not ctype.startswith("image/"):
             head = resp.content[:12]
             if head.startswith(b"\x89PNG"):
@@ -1909,13 +1946,13 @@ def clean_urls(node: Any, allowed_urls: set, warnings: List[str]) -> Any:
             lk = k.lower()
             # Image keys: pure allowlist-keep — empty, or exactly a provided
             # URL; everything else (data:, //host, HTTP, hallucinated) stripped.
-            if lk in _IMAGE_KEYS and isinstance(v, str):
+            if is_image_key(k) and isinstance(v, str):
                 if v and v not in allowed_urls:
                     warnings.append(f"Stripped unknown image URL from '{k}'")
                     out[k] = ""
                 else:
                     out[k] = v
-            elif lk in _IMAGE_LIST_KEYS and isinstance(v, list):
+            elif is_image_list_key(k) and isinstance(v, list):
                 kept = [u for u in v if not (isinstance(u, str) and u and u not in allowed_urls)]
                 if len(kept) != len(v):
                     warnings.append(f"Stripped unknown image URL(s) from '{k}'")
@@ -2291,7 +2328,104 @@ def coerce_hex_color(value: Any) -> Optional[str]:
     return None
 
 
-def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+# globalSettings.theme.palette: named hex colours + applyToTokens. The renderer
+# reads 16 known names (catalogue-palette.ts PALETTE_KEYS) and accepts #rgb or
+# #rrggbb in any case; the editor's palette card also shows other authored
+# names, so any identifier-like key with a hex value is kept AS AUTHORED (no
+# re-casing — a round trip must not rewrite the admin's values).
+_PALETTE_HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+_PALETTE_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
+_PALETTE_MAX_KEYS = 40
+# globalSettings.theme.contentMaxWidth: px of content, the range the renderer
+# honours (resolveContentMaxWidth).
+_CONTENT_MAX_WIDTH_RANGE = (320, 2400)
+
+
+def _clean_palette(raw: Any) -> Dict[str, Any]:
+    """The valid entries of a palette object ({} for anything else)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if len(out) >= _PALETTE_MAX_KEYS:
+            break
+        if key == "applyToTokens":
+            if isinstance(value, bool):
+                out[key] = value
+        elif isinstance(key, str) and _PALETTE_KEY_RE.match(key) and isinstance(value, str):
+            v = value.strip()
+            if _PALETTE_HEX_RE.match(v):
+                out[key] = v
+    return out
+
+
+def _clean_content_max_width(raw: Any) -> Optional[int]:
+    """A content width in px the renderer honours, else None.
+
+    Same rule as resolveContentMaxWidth (and the editor's palette card): round,
+    then 320–2400 or nothing. NOT a clamp — the renderer ignores 3000 and
+    shows the default width, so clamping it to 2400 would visibly narrow the
+    page on an unrelated edit."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = float(raw.strip())
+        except ValueError:
+            return None
+    if not isinstance(raw, (int, float)) or raw != raw or raw in (float("inf"), float("-inf")):
+        return None
+    px = int(math.floor(raw + 0.5))  # Math.round, not banker's rounding
+    lo, hi = _CONTENT_MAX_WIDTH_RANGE
+    return px if lo <= px <= hi else None
+
+
+def _carry_theme_extras(
+    theme_in: Dict[str, Any], base_theme: Dict[str, Any], allow_new: bool = True
+) -> Dict[str, Any]:
+    """theme.palette / theme.contentMaxWidth for the clamp's output.
+
+    Incoming wins over base, per colour for the palette (so "change the accent"
+    keeps the other 15). An explicit null clears the key, the same contract as
+    primaryColor; a null colour inside an incoming palette removes that colour.
+
+    `allow_new=False` is for input that is the MODEL's own proposal (unpinned
+    generation, the chrome assistant): it may edit a palette / width the site
+    already has, but never add one to a site that has none — both are opt-in."""
+    out: Dict[str, Any] = {}
+
+    base_palette = _clean_palette(base_theme.get("palette"))
+    if "palette" in theme_in and theme_in.get("palette") is None:
+        palette: Dict[str, Any] = {}
+    else:
+        palette = dict(base_palette)
+        incoming = theme_in.get("palette")
+        if not allow_new and not base_palette:
+            incoming = None
+        if isinstance(incoming, dict):
+            for key, value in incoming.items():
+                if value is None:
+                    palette.pop(key, None)
+            palette.update(_clean_palette(incoming))
+    if palette:
+        out["palette"] = palette
+
+    base_width = _clean_content_max_width(base_theme.get("contentMaxWidth"))
+    if "contentMaxWidth" in theme_in and (allow_new or base_width is not None or theme_in.get("contentMaxWidth") is None):
+        width = _clean_content_max_width(theme_in.get("contentMaxWidth"))
+        if width is None and theme_in.get("contentMaxWidth") is not None:
+            # Junk from the model: keep the site's own width rather than drop it.
+            width = base_width
+    else:
+        width = base_width
+    if width is not None:
+        out["contentMaxWidth"] = width
+    return out
+
+
+def _coerce_global_settings(
+    raw: Any, base: Optional[Dict[str, Any]] = None, *, model_proposed: bool = False
+) -> Optional[Dict[str, Any]]:
     """Clamp the model's globalSettings to valid values (the theme presets,
     atmospheres, fonts, etc. the renderers actually support). Font label OR a
     known stack maps to a stack; anything else falls back to Inter.
@@ -2300,7 +2434,11 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
     back to the base instead of to a hardcoded default — required by the chrome
     editor, whose prompt says "include ONLY the keys you actually changed": with
     no base, "switch the theme to ocean" also reset atmosphere, heading scale,
-    radius and the brand color to defaults."""
+    radius and the brand color to defaults.
+
+    `model_proposed=True` marks `raw` as the model's own output (not the
+    caller's pinned settings): it may then change a palette / content width
+    the base already has, but cannot introduce either."""
     if not isinstance(raw, dict):
         return None
     theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
@@ -2354,6 +2492,15 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
             theme_out["primaryColor"] = primary
     elif coerce_hex_color(base_theme.get("primaryColor")):
         theme_out["primaryColor"] = coerce_hex_color(base_theme.get("primaryColor"))
+
+    # Opt-in site palette + content width (learner -utils/catalogue-palette.ts).
+    # The clamp above rebuilds `theme` from scratch, so these were silently
+    # DROPPED by every path that runs it: the wizard's pinned theme (applied
+    # over the site's theme) and the chrome assistant's merge both wiped a
+    # 16-colour palette on "add a page" or "make the corners sharper". Carry
+    # them through (incoming wins, base fills in), validated the way the
+    # renderer reads them; a site without either still gets neither.
+    theme_out.update(_carry_theme_extras(theme_in, base_theme, allow_new=not model_proposed))
 
     return {
         "theme": theme_out,
@@ -2587,7 +2734,9 @@ def _sanitize_page(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
 
-    global_settings = _coerce_global_settings(data.get("globalSettings")) if isinstance(data, dict) else None
+    global_settings = (
+        _coerce_global_settings(data.get("globalSettings"), model_proposed=True) if isinstance(data, dict) else None
+    )
     page = data.get("page") if isinstance(data, dict) else None
     if page is None and isinstance(data, dict) and "components" in data:
         page = data  # model returned the page object directly
@@ -3104,6 +3253,10 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
     # with image generation off the model reached for the only URL it had and
     # put the whole template sheet in the hero. Keep it out of the allowlist.
     allowed_urls = ({i.url for i in req.images} - (mockup_urls or set())) | (extra_allowed or set())
+    # Images ALREADY on the page are trusted (the variants endpoint uses the
+    # same rule): a patch that re-sends a section's object — say the whole
+    # filterSidebar with its promo.screenImage — must not blank its own art.
+    allowed_urls |= _collect_page_image_urls(req.page, set()) - (mockup_urls or set())
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
@@ -3366,10 +3519,9 @@ def _collect_page_image_urls(node: Any, out: set, depth: int = 0) -> set:
         return out
     if isinstance(node, dict):
         for k, v in node.items():
-            lk = k.lower()
-            if lk in _IMAGE_KEYS and isinstance(v, str) and v:
+            if is_image_key(k) and isinstance(v, str) and v:
                 out.add(v)
-            elif lk in _IMAGE_LIST_KEYS and isinstance(v, list):
+            elif is_image_list_key(k) and isinstance(v, list):
                 out.update(u for u in v if isinstance(u, str) and u)
             else:
                 _collect_page_image_urls(v, out, depth + 1)
@@ -4483,7 +4635,7 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
     # wiped the brand color, because the clamp defaults every absent key.
     theme_like = {k: v for k, v in proposed.items() if k in _CHROME_WRITABLE_KEYS}
     if theme_like:
-        coerced = _coerce_global_settings(theme_like, base=merged)
+        coerced = _coerce_global_settings(theme_like, base=merged, model_proposed=True)
         if coerced:
             for k in _CHROME_WRITABLE_KEYS:
                 if k in theme_like and k in coerced:
@@ -4499,8 +4651,10 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
             props_in = section_in.get("props")
             if not isinstance(props_in, dict):
                 continue
-            # Strings get the same hostile-content scrub as page props.
-            cleaned = clean_urls(props_in, set(), warnings)
+            # Strings get the same hostile-content scrub as page props. Images
+            # already in the site's chrome stay allowed (a model that echoes the
+            # logo back must not blank it); any other URL is stripped.
+            cleaned = clean_urls(props_in, _collect_page_image_urls(current.get("layout") if isinstance(current, dict) else None, set()), warnings)
             existing = merged["layout"].get(section)
             if isinstance(existing, dict):
                 merged["layout"][section] = {

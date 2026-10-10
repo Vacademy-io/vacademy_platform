@@ -526,24 +526,28 @@ async def fetch_public_file(url: str, *, max_bytes: int, allowed_types: Dict[str
     Download a public https file (SSRF-guarded like the website importer).
     Returns (bytes, content_type, ext) or an error dict.
     """
-    import httpx
+    from .safe_http import WEB_PORTS, SafeFetchError, safe_fetch
 
     if not str(url or "").lower().startswith("https://"):
         return err("bad_request", message="Only public https URLs can be imported.")
-    from ..routers.page_builder import _is_public_http_host
-    if not _is_public_http_host(url):
-        return err("bad_request", message="That address is not a public website.")
+    # safe_fetch re-validates every redirect hop and pins the connection to the
+    # checked address (the old follow_redirects=True fetched a 302 to a private
+    # address, and a second DNS lookup could be rebound).
     try:
-        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True, max_redirects=3) as client:
-            resp = await client.get(url, headers={"User-Agent": "VacademyCourseImport/1.0"})
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("course import fetch failed for %s: %s", url, exc)
+        resp = await safe_fetch(
+            url, max_bytes=max_bytes, timeout=45.0, total_timeout=90.0, allowed_ports=WEB_PORTS,
+            headers={"User-Agent": "VacademyCourseImport/1.0"},
+        )
+    except SafeFetchError as exc:
+        if exc.code in ("blocked_host", "blocked_address", "bad_url"):
+            return err("bad_request", message="That address is not a public website.")
+        if exc.code == "too_large":
+            return err("too_large", message=f"Files over {max_bytes // 1_000_000} MB cannot be imported.")
+        logger.warning("course import fetch failed for %s: %s", url[:200], exc.code)
         return err("fetch_failed", message="The file could not be downloaded.")
     if resp.status_code != 200 or not resp.content:
         return err("fetch_failed", message=f"The file could not be downloaded (HTTP {resp.status_code}).")
-    if len(resp.content) > max_bytes:
-        return err("too_large", message=f"Files over {max_bytes // 1_000_000} MB cannot be imported.")
-    ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+    ctype = resp.content_type
     if ctype not in allowed_types and resp.content[:5] == b"%PDF-" and "application/pdf" in allowed_types:
         ctype = "application/pdf"  # servers often send octet-stream for PDFs
     ext = allowed_types.get(ctype)

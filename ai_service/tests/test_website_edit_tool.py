@@ -304,21 +304,13 @@ async def test_a_fresh_draft_is_still_edited_and_saved_compactly(backend, monkey
 async def test_import_image_refuses_non_https_and_non_images(backend, monkeypatch):
     out = await run({"action": "import_image", "url": "http://example.com/a.png"})
     assert out["error"] == "bad_request"
-    from app.routers import page_builder as pb
-    monkeypatch.setattr(pb, "_is_public_http_host", lambda u: True)
-
-    class _Resp:
-        status_code = 200
-        content = b"hello"
-        headers = {"content-type": "text/html"}
-
-    class _Client:
-        def __init__(self, *a, **k): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
-        async def get(self, url, headers=None): return _Resp()
+    # The download goes through safe_fetch (pinned, per-hop validated).
     import httpx
-    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    from app.services import safe_http
+
+    async def _fetch(url, **kw):
+        return safe_http.FetchResult(url=url, status_code=200, headers=httpx.Headers({"content-type": "text/html"}), content=b"hello")
+    monkeypatch.setattr(safe_http, "safe_fetch", _fetch)
     out = await run({"action": "import_image", "url": "https://example.com/a.png"})
     assert out["error"] == "not_an_image"
 

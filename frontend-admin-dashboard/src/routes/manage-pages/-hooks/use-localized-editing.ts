@@ -43,11 +43,14 @@ import {
     applyLocalizedEdit,
     baseLocaleOf,
     collectTranslatableStrings,
+    isRenderKey,
     isTextKey,
-    keyInItemOf,
     localesOf,
     localizeDeep,
+    localizeRenderTexts,
     looksLikeData,
+    objectChildKey,
+    splitRenderEdit,
     type CatalogueI18nSettings,
     type CatalogueLocale,
     type TranslationDictionary,
@@ -101,10 +104,16 @@ const localizeComponents = (list: Component[], dict: TranslationDictionary): Com
     return changed ? out : list;
 };
 
-/** A section's props localized; column children (props.slots, opaque to localizeDeep) one by one. */
+/**
+ * A section's props localized; column children (props.slots, opaque to
+ * localizeDeep) one by one, and the texts of a course grid's opaque `render`
+ * (card labels, Load more…) so their fields read in the language edited.
+ */
 const localizeComponent = (c: Component, dict: TranslationDictionary): Component => {
     if (!c || typeof c !== 'object' || !c.props || typeof c.props !== 'object') return c;
-    const props = localizeDeep(c.props, dict);
+    let props = localizeDeep(c.props, dict);
+    const render = localizeRenderTexts(c.props.render, dict);
+    if (render !== c.props.render) props = { ...props, render };
     let nextProps = props;
     const slots = c.props.slots;
     if (Array.isArray(slots)) {
@@ -238,7 +247,7 @@ const childKeyOf = (key: Key): Key =>
  * Walks view → edited. Returns false when the STRUCTURE changed (an item added,
  * removed or moved, an object appearing or disappearing); otherwise collects
  * every changed leaf value. Opaque values count as one leaf. Keys inside list
- * items are resolved the way catalogue-i18n judges them (keyInItemOf), so an
+ * items are resolved the way catalogue-i18n judges them (objectChildKey), so an
  * announcement's tag pill is text here exactly as it is on the site.
  */
 const diffShape = (
@@ -273,7 +282,9 @@ const diffShape = (
         const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
         for (const k of keys) {
             if (after[k] === before[k]) continue;
-            if (!diffShape(before[k], after[k], keyInItemOf(k, itemOf), [...path, k], out)) {
+            if (
+                !diffShape(before[k], after[k], objectChildKey(k, key, itemOf), [...path, k], out)
+            ) {
                 return false;
             }
         }
@@ -315,7 +326,7 @@ const scanStructure = (
     }
     if (isPlainObject(before) && isPlainObject(after)) {
         for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
-            scanStructure(before[k], after[k], k, [...path, k], info);
+            scanStructure(before[k], after[k], objectChildKey(k, key), [...path, k], info);
         }
         return;
     }
@@ -354,7 +365,14 @@ const setIn = <T>(value: T, path: Path, next: unknown): T => {
     return obj as T;
 };
 
-type LeafKind = 'text' | 'textClear' | 'emptySource' | 'sharedData' | 'matchedValue' | 'other';
+type LeafKind =
+    | 'text'
+    | 'textClear'
+    | 'emptySource'
+    | 'sharedData'
+    | 'matchedValue'
+    | 'structure'
+    | 'other';
 
 /**
  * The only values that may land in a text field that is EMPTY in the base
@@ -384,7 +402,7 @@ const collectTypedText = (value: unknown, key: Key, out: string[] = [], itemOf?:
         value.forEach((v) => collectTypedText(v, childKey, out, key));
     } else if (isPlainObject(value)) {
         for (const [k, v] of Object.entries(value)) {
-            collectTypedText(v, keyInItemOf(k, itemOf), out);
+            collectTypedText(v, objectChildKey(k, key, itemOf), out);
         }
     }
     return out;
@@ -418,6 +436,13 @@ const changesMatchedValue = (key: Key, baseValue: unknown, after: unknown): bool
 
 const classifyLeaf = (leaf: LeafChange, baseValue: unknown): LeafKind => {
     const { key, before, after } = leaf;
+    if (isRenderKey(key)) {
+        // A course grid's settings: its texts (card labels, Load more…) are
+        // translated like any field, everything else in it is shared.
+        const split = splitRenderEdit(baseValue, before, after);
+        if (split.problem) return split.problem;
+        return Object.keys(split.translations).length > 0 ? 'text' : 'other';
+    }
     if (isOpaqueKey(key)) return 'other';
     const translatableBase =
         typeof before === 'string' &&
@@ -504,7 +529,7 @@ const delocalizeIntroduced = <T>(
             let changed = false;
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(value)) {
-                const n = walk(v, keyInItemOf(k, itemOf));
+                const n = walk(v, objectChildKey(k, key, itemOf));
                 if (n !== v) changed = true;
                 out[k] = n;
             }
@@ -604,7 +629,7 @@ const baseCopiesOfDuplicates = (
         let changed = false;
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(edited)) {
-            const next = baseCopiesOfDuplicates(baseObj[k], view[k], v, k);
+            const next = baseCopiesOfDuplicates(baseObj[k], view[k], v, objectChildKey(k, key));
             if (next !== v) changed = true;
             out[k] = next;
         }
@@ -654,6 +679,9 @@ export const decideLocalizedEdit = <T>(
         // Duplicated items take their base item's text first.
         const prepared = baseCopiesOfDuplicates(base, view, edited, undefined) as T;
         const result = applyLocalizedEdit(base, view, prepared);
+        // Text typed into a course grid's settings along with the new item
+        // has no base text: it would land in the base as is.
+        if (result.problem) return { kind: 'blocked', reason: result.problem };
         if (Object.keys(result.translations).length > 0) return { kind: 'blocked', reason: 'bulk' };
         return {
             kind: 'commit',
@@ -681,6 +709,17 @@ export const decideLocalizedEdit = <T>(
     if (classified.some((c) => c.kind === 'matchedValue')) {
         return { kind: 'blocked', reason: 'sharedData' };
     }
+    // Text typed into a course grid's settings with no base text (or over a
+    // data value), or a label entry removed there, never reaches the base,
+    // whatever else the edit changes.
+    const renderProblem = classified.find(
+        (c) =>
+            isRenderKey(c.leaf.key) &&
+            (c.kind === 'emptySource' || c.kind === 'sharedData' || c.kind === 'structure')
+    );
+    if (renderProblem) {
+        return { kind: 'blocked', reason: renderProblem.kind as LocalizedBlockReason };
+    }
 
     if (classified.length === 1) {
         const only = classified[0]!;
@@ -694,7 +733,14 @@ export const decideLocalizedEdit = <T>(
         // (base) text everywhere it touches, it is just a base edit.
         if (texts.every((c) => c.leaf.before === c.baseValue)) {
             let nextBase = base;
-            for (const c of classified) nextBase = setIn(nextBase, c.leaf.path, c.leaf.after);
+            for (const c of classified) {
+                // Settings in a translated `render` keep its base texts.
+                const value =
+                    isRenderKey(c.leaf.key) && c.kind === 'other'
+                        ? splitRenderEdit(c.baseValue, c.leaf.before, c.leaf.after).render
+                        : c.leaf.after;
+                nextBase = setIn(nextBase, c.leaf.path, value);
+            }
             return {
                 kind: 'commit',
                 base: delocalizeIntroduced(base, nextBase, reverse),

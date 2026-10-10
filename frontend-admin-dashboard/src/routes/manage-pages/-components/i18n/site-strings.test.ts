@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogueConfig } from '../../-types/editor-types';
 import {
     batchForTranslation,
+    collectSiteStringEntries,
     collectSiteStrings,
     coverageOf,
     isKeptAsBase,
@@ -694,5 +695,164 @@ describe('site-settings texts the learner translates', () => {
             translated: 0,
             missing: ['Welcome to Gurukul'],
         });
+    });
+});
+
+describe('texts the site shows through its dictionary outside the walked props', () => {
+    const catalogSite = () =>
+        ({
+            pages: [
+                {
+                    id: 'courses',
+                    route: 'courses',
+                    title: 'Courses',
+                    components: [
+                        {
+                            id: 'cat',
+                            type: 'courseCatalog',
+                            enabled: true,
+                            props: {
+                                filterSidebar: { order: ['priceRange', 'Levels'] },
+                                columnSections: [
+                                    {
+                                        title: 'Spotlight',
+                                        slides: [
+                                            {
+                                                title: 'Menstrual care',
+                                                titleNative: 'रजस्वला परिचर्या',
+                                                steps: [{ label: 'Fee', meta: '{price}' }],
+                                            },
+                                        ],
+                                    },
+                                ],
+                                render: {
+                                    cardFields: ['package_name'],
+                                    cardStyle: 'editorial',
+                                    card: {
+                                        formatLabels: { video: 'Video', animation: 'Short film' },
+                                        freeCtaByFormat: { video: 'watch' },
+                                        ctaLabels: { paid: 'View course' },
+                                        freeLabel: 'Free',
+                                        descriptions: { 'pkg-1': 'The Vedic science of conception.' },
+                                    },
+                                    pagination: { mode: 'loadMore', loadMoreLabel: 'Load more' },
+                                    gridHeading: { title: 'All courses', sortLabels: { Popular: 'Most popular' } },
+                                },
+                            },
+                        },
+                    ],
+                },
+            ],
+            globalSettings: {
+                naming: { level: 'Format', coursePlural: ' Programmes ' },
+                courseFormats: {
+                    video: { label: 'Video' },
+                    animation: { label: 'Short film / Animation', levels: ['Short Film'] },
+                    broken: 'not a format',
+                },
+            },
+        }) as unknown as CatalogueConfig;
+
+    it("collects a course grid's card texts, the course formats' labels and the catalogue's own words", () => {
+        expect(collectSiteStrings(catalogSite())).toEqual([
+            'Courses',
+            'Spotlight',
+            'Menstrual care',
+            'Fee',
+            'Video',
+            'Short film',
+            'View course',
+            'Free',
+            'The Vedic science of conception.',
+            'Load more',
+            'All courses',
+            'Most popular',
+            'Short film / Animation',
+            'Format',
+            'Programmes',
+        ]);
+    });
+
+    it('leaves out ids, group order, native titles, placeholders, level names and card settings', () => {
+        const strings = collectSiteStrings(catalogSite());
+        for (const data of ['priceRange', 'Levels', 'रजस्वला परिचर्या', '{price}', 'Short Film', 'watch', 'editorial', 'loadMore', 'not a format']) {
+            expect(strings).not.toContain(data);
+        }
+    });
+
+    it('says where each text is first shown: page › section › field, or the site settings', () => {
+        const byText = new Map(collectSiteStringEntries(catalogSite()).map((e) => [e.text, e.location]));
+        expect(byText.get('Courses')).toEqual({ area: 'pageTitle', page: 'Courses' });
+        expect(byText.get('Menstrual care')).toEqual({
+            area: 'page',
+            page: 'Courses',
+            section: 'Course Catalog',
+            field: 'columnSections #1 › slides #1 › title',
+        });
+        expect(byText.get('View course')).toEqual({
+            area: 'page',
+            page: 'Courses',
+            section: 'Course Catalog',
+            cardText: 'buttonLabel',
+            field: 'paid',
+        });
+        // A course description is named as one, without the course id.
+        expect(byText.get('The Vedic science of conception.')).toEqual({
+            area: 'page',
+            page: 'Courses',
+            section: 'Course Catalog',
+            cardText: 'courseDescription',
+        });
+        expect(byText.get('Load more')).toMatchObject({ cardText: 'loadMore' });
+        expect(byText.get('Load more')).not.toHaveProperty('field');
+        expect(byText.get('Short film / Animation')).toEqual({
+            area: 'settings',
+            field: 'courseFormats › animation',
+        });
+        expect(byText.get('Format')).toEqual({ area: 'settings', field: 'naming › level' });
+        expect(collectSiteStringEntries(site())[0]).toEqual({
+            text: 'Smart Academy',
+            location: { area: 'header', section: 'Header', field: 'title' },
+        });
+    });
+});
+
+describe('sections a page has more than once, and texts the site does not show right now', () => {
+    const page = () =>
+        ({
+            pages: [
+                {
+                    id: 'paths',
+                    route: 'paths',
+                    title: 'Learning Paths',
+                    components: [
+                        { id: 'a', type: 'ctaBanner', enabled: true, props: { title: 'Start today' } },
+                        { id: 'h', type: 'heroSection', enabled: true, props: { title: 'Paths' } },
+                        { id: 'b', type: 'ctaBanner', enabled: true, props: { title: 'Talk to us' } },
+                        { id: 'c', type: 'ctaBanner', enabled: false, props: { title: 'Hidden offer' } },
+                    ],
+                },
+                { id: 'draft', route: 'draft', title: 'Draft page', published: false, components: [] },
+            ],
+            globalSettings: {
+                whatsapp: { enabled: false, message: 'Hi there' },
+                courseFinder: { enabled: false, stepLabels: { goal: 'Your goal' } },
+            },
+        }) as unknown as CatalogueConfig;
+
+    it('numbers a section type that appears more than once on a page', () => {
+        const byText = new Map(collectSiteStringEntries(page()).map((e) => [e.text, e.location]));
+        expect(byText.get('Start today')?.section).toBe('CTA Banner #1');
+        expect(byText.get('Talk to us')?.section).toBe('CTA Banner #2');
+        expect(byText.get('Paths')?.section).toBe('Hero Section');
+    });
+
+    it('includeHidden adds hidden sections, unpublished titles and switched-off settings', () => {
+        const shown = collectSiteStrings(page());
+        const all = collectSiteStrings(page(), { includeHidden: true });
+        for (const parked of ['Hidden offer', 'Draft page', 'Hi there', 'Your goal']) {
+            expect(shown).not.toContain(parked);
+            expect(all).toContain(parked);
+        }
     });
 });

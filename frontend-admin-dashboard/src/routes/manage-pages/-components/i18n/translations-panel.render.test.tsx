@@ -15,9 +15,11 @@ vi.mock('../../-services/ai-page-service', () => ({
     translateSiteStrings: (...args: unknown[]) => translateSiteStrings(...args),
 }));
 vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst-1' }));
+/** What every live query (courses, folders, product pages) returns; a test may make them fail. */
+let liveQuery = { data: [] as unknown[], isLoading: false, isError: false };
 vi.mock('@tanstack/react-query', async (orig) => ({
     ...(await orig<Record<string, unknown>>()),
-    useQuery: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+    useQuery: () => ({ ...liveQuery, refetch: vi.fn() }),
 }));
 
 const load = (hi: Record<string, string> = {}) =>
@@ -244,5 +246,59 @@ describe('TranslationsPanel', () => {
         });
         await settle(() => pending.resolve(aiResult({ NEET: 'नीट' })));
         expect(hi()).toEqual({});
+    });
+});
+
+describe('TranslationsPanel — where a text is and entries no tab lists', () => {
+    beforeEach(() => {
+        translateSiteStrings.mockReset();
+        liveQuery = { data: [], isLoading: false, isError: false };
+        load({ 'Learn the Indian way': 'भारतीय तरीके से सीखें', 'Old banner text': 'पुराना बैनर' });
+    });
+
+    it('shows under each page text where it is: page › section › field', () => {
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        expect(screen.getByText('home › Hero Section › buttonText')).toBeInTheDocument();
+    });
+
+    it('lists a translation no page text uses under Other entries, where Clear deletes it', () => {
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        expect(screen.queryByText('Old banner text')).not.toBeInTheDocument();
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Other entries' }), { button: 0 });
+        expect(screen.getByText('Old banner text')).toBeInTheDocument();
+        expect(screen.queryByText('Learn the Indian way')).not.toBeInTheDocument();
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+        fireEvent.click(screen.getByRole('button', { name: /Clear/ }));
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(hi()['Old banner text']).toBe('पुराना बैनर');
+        confirm.mockReturnValueOnce(true);
+        fireEvent.click(screen.getByRole('button', { name: /Clear/ }));
+        expect(hi()['Old banner text']).toBeUndefined();
+        expect(hi()['Learn the Indian way']).toBe('भारतीय तरीके से सीखें');
+        confirm.mockRestore();
+    });
+
+    it('lists no other entries while live data failed to load: a course translation must not look unused', () => {
+        liveQuery = { data: [], isLoading: false, isError: true };
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Other entries' }), { button: 0 });
+        expect(screen.getByText('Some live data could not be loaded.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+        expect(screen.getByText(/listed only after courses, folders and product pages/)).toBeInTheDocument();
+        expect(screen.queryByText('Old banner text')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Clear/ })).not.toBeInTheDocument();
+    });
+
+    it('keeps the translation of a hidden section out of Other entries', () => {
+        act(() =>
+            useEditorStore.getState().updateComponent('home', 'h', {
+                props: { ...base(), title: 'Old banner text' },
+                enabled: false,
+            })
+        );
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Other entries' }), { button: 0 });
+        expect(screen.queryByText('Old banner text')).not.toBeInTheDocument();
     });
 });

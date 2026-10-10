@@ -7,8 +7,11 @@ import {
   keyInItemOf,
   localesOf,
   localizeDeep,
+  localizeRenderTexts,
   mergeTranslations,
+  renderTextEntries,
   resolveSiteLocale,
+  splitRenderEdit,
   translateText,
   translationCoverage,
 } from "./catalogue-i18n";
@@ -333,5 +336,132 @@ describe("applyLocalizedEdit", () => {
     expect(mergeTranslations(HI, cleared.translations)).not.toHaveProperty("Education");
     const same = applyLocalizedEdit(base, localized, { ...localized, title: "Education" });
     expect(same.translations).toEqual({ Education: "" });
+  });
+});
+
+describe("maps whose values are always text (formatLabels, ctaLabels, sortLabels, descriptions)", () => {
+  const HI_FORMATS = { Video: "वीडियो", Animation: "एनिमेशन", "E-book": "ई-पुस्तक" };
+  const props = { formatLabels: { video: "Video", animation: "Animation", ebook: "E-book" } };
+
+  it("collects and localizes every label, whatever its key ('video' is a data key, 'animation' an opaque one)", () => {
+    expect(collectTranslatableStrings(props)).toEqual(["Video", "Animation", "E-book"]);
+    expect(localizeDeep(props, HI_FORMATS)).toEqual({ formatLabels: { video: "वीडियो", animation: "एनिमेशन", ebook: "ई-पुस्तक" } });
+  });
+
+  it("a Hindi edit of formatLabels.video is a translation; the English base keeps 'Video'", () => {
+    const localized = localizeDeep(props, HI_FORMATS);
+    const edit = applyLocalizedEdit(props, localized, { formatLabels: { ...localized.formatLabels, video: "वीडियो देखें" } });
+    expect(edit.base).toEqual(props);
+    expect(edit.translations).toEqual({ Video: "वीडियो देखें" });
+  });
+
+  it("still skips data values inside the map", () => {
+    expect(collectTranslatableStrings({ ctaLabels: { paid: "View course", link: "https://x.org" } })).toEqual(["View course"]);
+  });
+});
+
+describe("values that are the same in every language", () => {
+  it("a sidebar's group order, a CTA rule's formats and category slugs are never collected", () => {
+    const props = {
+      filterSidebar: { order: ["priceRange", "Levels"] },
+      columnSections: [{ ctaRules: [{ formats: ["Video", "eBook"], label: "Watch now" }] }],
+      comingSoon: { categorySlugs: ["Vedic Maths"] },
+    };
+    expect(collectTranslatableStrings(props)).toEqual(["Watch now"]);
+  });
+
+  it("a title in its own script (titleNative) and a placeholder-only text ('{price}') are data", () => {
+    const props = { slides: [{ title: "Menstrual care", titleNative: "रजस्वला परिचर्या", steps: [{ label: "Fee", meta: "{price}" }, { meta: "{{count}}" }] }] };
+    expect(collectTranslatableStrings(props)).toEqual(["Menstrual care", "Fee"]);
+    expect(collectTranslatableStrings({ countLabel: "Showing {{shown}} of {{total}}" })).toEqual(["Showing {{shown}} of {{total}}"]);
+  });
+});
+
+describe("texts inside a course grid's opaque render", () => {
+  const render = {
+    layout: "grid",
+    cardFields: ["package_name", "price"],
+    cardStyle: "editorial",
+    styles: { backgroundColor: "var(--surface)" },
+    card: {
+      streamLabel: "subtitle",
+      formatLabels: { video: "Video", ebook: "E-book" },
+      freeCtaByFormat: { video: "watch" },
+      ctaLabels: { paid: "View course" },
+      freeLabel: "Free",
+      descriptions: { "pkg-1": "The Vedic science of conception." },
+      colors: { divider: "var(--line)" },
+    },
+    pagination: { mode: "loadMore", pageSize: 9, loadMoreLabel: "Load more", countLabel: "Showing {{shown}} of {{total}}" },
+    gridHeading: { title: "All courses", showSort: true, sortLabels: { Popular: "Sorted by most popular" } },
+  };
+  const HI_RENDER = { "View course": "पाठ्यक्रम देखें", Video: "वीडियो", "Load more": "और देखें" };
+
+  it("lists the card labels, descriptions, Load more texts and grid heading — never settings", () => {
+    expect(renderTextEntries(render)).toEqual([
+      { path: ["card", "formatLabels", "video"], text: "Video" },
+      { path: ["card", "formatLabels", "ebook"], text: "E-book" },
+      { path: ["card", "ctaLabels", "paid"], text: "View course" },
+      { path: ["card", "freeLabel"], text: "Free" },
+      { path: ["card", "descriptions", "pkg-1"], text: "The Vedic science of conception." },
+      { path: ["pagination", "loadMoreLabel"], text: "Load more" },
+      { path: ["pagination", "countLabel"], text: "Showing {{shown}} of {{total}}" },
+      { path: ["gridHeading", "title"], text: "All courses" },
+      { path: ["gridHeading", "sortLabels", "Popular"], text: "Sorted by most popular" },
+    ]);
+    expect(renderTextEntries(undefined)).toEqual([]);
+  });
+
+  it("stays opaque to the site's localizer (the site shows these through its dictionary itself)", () => {
+    const props = { render };
+    expect(localizeDeep(props, HI_RENDER)).toBe(props);
+    expect(collectTranslatableStrings(props)).toEqual([]);
+  });
+
+  it("localizeRenderTexts translates only the texts, and returns the same object when nothing is translated", () => {
+    const shown = localizeRenderTexts(render, HI_RENDER);
+    expect(shown.card.ctaLabels.paid).toBe("पाठ्यक्रम देखें");
+    expect(shown.card.formatLabels).toEqual({ video: "वीडियो", ebook: "E-book" });
+    expect(shown.pagination).toEqual({ ...render.pagination, loadMoreLabel: "और देखें" });
+    expect(shown.card.freeCtaByFormat).toBe(render.card.freeCtaByFormat);
+    expect(render.card.ctaLabels.paid).toBe("View course");
+    expect(localizeRenderTexts(render, { Nothing: "कुछ नहीं" })).toBe(render);
+  });
+
+  it("a Hindi edit of a card text is saved as a translation, never over the English base", () => {
+    const base = { title: "All courses", render: { card: { ctaLabels: { paid: "View course" } } } };
+    const localized = localizeDeep(base, HI_RENDER);
+    const edit = applyLocalizedEdit(base, localized, { ...localized, render: { card: { ctaLabels: { paid: "कोर्स देखें" } } } });
+    expect(edit.base).toEqual(base);
+    expect(edit.translations).toEqual({ "View course": "कोर्स देखें" });
+  });
+
+  it("a settings change in a translated render keeps the English texts and applies the setting", () => {
+    const view = localizeRenderTexts(render, HI_RENDER);
+    const edited = { ...view, pagination: { ...view.pagination, pageSize: 12 } };
+    const split = splitRenderEdit(render, view, edited);
+    expect(split.render).toEqual({ ...render, pagination: { ...render.pagination, pageSize: 12 } });
+    expect(split.translations).toEqual({});
+    expect(split.problem).toBeUndefined();
+  });
+
+  it("clearing a translated label clears the translation; text typed where English has none is a problem", () => {
+    const view = localizeRenderTexts(render, HI_RENDER);
+    const cleared = splitRenderEdit(render, view, { ...view, card: { ...view.card, ctaLabels: { paid: "" } } });
+    expect(cleared.translations).toEqual({ "View course": "" });
+    expect((cleared.render as typeof render).card.ctaLabels).toEqual({ paid: "View course" });
+    expect(cleared.problem).toBeUndefined();
+    const typed = splitRenderEdit(render, view, { ...view, card: { ...view.card, descriptions: { ...view.card.descriptions, "pkg-2": "नया विवरण" } } });
+    expect(typed.problem).toBe("emptySource");
+  });
+
+  it("removing a label entry is a structure problem: no shared translation is cleared", () => {
+    const view = localizeRenderTexts(render, HI_RENDER);
+    const removed = splitRenderEdit(render, view, { ...view, card: { ...view.card, formatLabels: { ebook: "E-book" } } });
+    expect(removed.problem).toBe("structure");
+    expect(removed.translations).toEqual({});
+    const edit = applyLocalizedEdit({ render }, { render: view }, { render: { ...view, card: { ...view.card, ctaLabels: {} } } });
+    expect(edit.problem).toBe("structure");
+    expect(edit.translations).toEqual({});
   });
 });

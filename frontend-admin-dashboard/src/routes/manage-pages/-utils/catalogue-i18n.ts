@@ -76,6 +76,10 @@ const NON_TEXT_KEYS = new Set(
         // Course level names a customFilters option matches by ('eBook', 'Short Film'):
         // looked up raw, in every language.
         'levels',
+        // The same in every language: a title shown in its own script
+        // (spotlight titleNative), the sidebar's group order (legacy ids such
+        // as 'priceRange') and a CTA rule's course-format keys.
+        'titlenative', 'order', 'formats',
     ].map((k) => k.toLowerCase())
 );
 
@@ -98,6 +102,15 @@ const TEXT_KEYS_IN_ITEMS_OF = new Map<string, ReadonlySet<string>>([
 const TEXT_KEY_EXCEPTIONS = new Set(['ctalabelpattern', 'categoriesheading'].map((k) => k.toLowerCase()));
 
 /**
+ * Maps whose every value is visitor-facing copy, whatever its key: format
+ * labels ({ video: 'Video', animation: 'Animation' }), CTA labels, sort notes
+ * and per-course descriptions. Their keys are format, sort or package ids that
+ * would otherwise be judged as names ('video' is a link-like key,
+ * 'animation' an opaque one).
+ */
+const TEXT_MAP_KEYS = new Set(['formatlabels', 'ctalabels', 'sortlabels', 'descriptions']);
+
+/**
  * Keys whose whole VALUE is configuration, never shown as text — not even the
  * strings nested inside it (a style object, a visibility rule whose 'true'
  * must not become 'सत्य', nested slot sections that are localized on their own).
@@ -110,7 +123,7 @@ const OPAQUE_KEYS = new Set(
 
 /** camelCase / snake_case endings that mark a non-text key (backgroundColor, productPageCode, image_url, defaultSort…). */
 const NON_TEXT_SUFFIX =
-    /(Id|Ids|Url|URL|Uri|Href|Route|Routes|Color|Colour|Code|Src|Slug|Key|Css|Class|ClassName|Image|Images|Logo|Icon|Font|Mode|Type|Style|Layout|Align|Position|Width|Widths|Height|Size|Variant|Target|Action|Email|Phone|Date|Time|Pattern|Preset|Shape|Animation|Ratio|Fit|Format|Currency|Locale|Lang|Tag|Tags|Param|Path|Sort|Tone|Speed|Scale|Radius|Effect|Fr|Fields|Value|Weight|Family|Platform|Category|Anchor|Display|Padding|Margin|Gap|Columns)$|_(id|ids|url|uri|href|route|color|colour|code|src|slug|key|css|class|image|logo|icon|font|mode|type|style|layout|align|date|time|currency|locale|lang|tag|tags|path|sort|value|fields|category)$/;
+    /(Id|Ids|Url|URL|Uri|Href|Route|Routes|Color|Colour|Code|Src|Slug|Slugs|Key|Css|Class|ClassName|Image|Images|Logo|Icon|Font|Mode|Type|Style|Layout|Align|Position|Width|Widths|Height|Size|Variant|Target|Action|Email|Phone|Date|Time|Pattern|Preset|Shape|Animation|Ratio|Fit|Format|Currency|Locale|Lang|Tag|Tags|Param|Path|Sort|Tone|Speed|Scale|Radius|Effect|Fr|Fields|Value|Weight|Family|Platform|Category|Anchor|Display|Padding|Margin|Gap|Columns)$|_(id|ids|url|uri|href|route|color|colour|code|src|slug|slugs|key|css|class|image|logo|icon|font|mode|type|style|layout|align|date|time|currency|locale|lang|tag|tags|path|sort|value|fields|category)$/;
 
 /** Is a string stored under `key` prose (worth translating)? */
 export const isTextKey = (key: string | number | undefined): boolean => {
@@ -135,6 +148,25 @@ export const keyInItemOf = (key: string, itemOf: string | number | undefined): s
         ? undefined
         : key;
 
+/**
+ * The key a value stored under `k` of an object is judged by. `parentKey` is
+ * the object's own key, `itemOf` the list the object is an item of. Children
+ * of a text map (formatLabels…) are plain text; everything else goes through
+ * keyInItemOf. Every walker resolves object keys through this.
+ */
+export const objectChildKey = (
+    k: string,
+    parentKey: string | number | undefined,
+    itemOf?: string | number
+): string | undefined =>
+    typeof parentKey === 'string' && TEXT_MAP_KEYS.has(parentKey.toLowerCase())
+        ? undefined
+        : keyInItemOf(k, itemOf);
+
+/** A course grid's `render` settings: opaque, except for the texts listed in RENDER_TEXTS. */
+export const isRenderKey = (key: string | number | undefined): boolean =>
+    typeof key === 'string' && key.toLowerCase() === 'render';
+
 /** A value under `key` that must be left exactly as is, nested strings included. */
 const isOpaqueKey = (key: string | number | undefined): boolean =>
     typeof key === 'string' && OPAQUE_KEYS.has(key.toLowerCase());
@@ -148,6 +180,8 @@ const isOpaqueKey = (key: string | number | undefined): boolean =>
 export const looksLikeData = (s: string): boolean => {
     const t = s.trim();
     if (!t) return true;
+    // Only placeholders ('{price}', '{{count}}'): filled in by the site.
+    if (/^(\{\{?\s*[\w.]+\s*\}?\})+$/.test(t)) return true;
     if (/^(https?:|mailto:|tel:|data:|\/\/|\/|#[0-9a-f]{3,8}$|rgba?\(|hsla?\(|var\()/i.test(t)) return true;
     if (/^[a-z0-9]+([-_.][a-z0-9]+)*$/.test(t)) return true;
     return /^[\d\s.,:;%+\-–—/×x*₹$€£¥()]+$/.test(t);
@@ -256,13 +290,50 @@ export const localizeDeep = <T>(
         let changed = false;
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-            const next = localizeDeep(v, dict, keyInItemOf(k, itemOf));
+            const next = localizeDeep(v, dict, objectChildKey(k, key, itemOf));
             if (next !== v) changed = true;
             out[k] = next;
         }
         return (changed ? out : value) as T;
     }
     return value;
+};
+
+type TextPath = (string | number)[];
+
+/**
+ * Calls `visit` with every translatable string under `value` and where it sits
+ * (keys and indexes from `value`). The renderer, the collector and the editor
+ * judge the same strings: opaque keys are skipped, keys resolve through
+ * objectChildKey.
+ */
+export const visitTranslatableStrings = (
+    value: unknown,
+    visit: (text: string, path: TextPath) => void,
+    key?: string | number,
+    itemOf?: string | number,
+    path: TextPath = []
+): void => {
+    if (isOpaqueKey(key)) return;
+    if (typeof value === 'string') {
+        if (isTranslatable(value, key)) visit(value, path);
+        return;
+    }
+    if (Array.isArray(value)) {
+        const inherited = typeof key === 'string' && !isTextKey(key) ? key : undefined;
+        value.forEach((item, i) =>
+            visitTranslatableStrings(item, visit, inherited, key, [...path, i])
+        );
+        return;
+    }
+    if (value && typeof value === 'object') {
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            visitTranslatableStrings(v, visit, objectChildKey(k, key, itemOf), undefined, [
+                ...path,
+                k,
+            ]);
+        }
+    }
 };
 
 /** Every distinct translatable string under `value`, in first-seen order (for AI translation and coverage). */
@@ -273,25 +344,141 @@ export const collectTranslatableStrings = (
     key?: string | number,
     itemOf?: string | number
 ): string[] => {
-    if (isOpaqueKey(key)) return out;
-    if (typeof value === 'string') {
-        if (isTranslatable(value, key) && !seen.has(value)) {
-            seen.add(value);
-            out.push(value);
-        }
-        return out;
+    visitTranslatableStrings(
+        value,
+        (text) => {
+            if (seen.has(text)) return;
+            seen.add(text);
+            out.push(text);
+        },
+        key,
+        itemOf
+    );
+    return out;
+};
+
+/* ── texts inside a catalogue's opaque `render` ─────────────────────── */
+
+/**
+ * `render` (a course grid's card, pagination and grid-heading settings) stays
+ * opaque to localizeDeep: the site shows these few texts through its
+ * dictionary itself. They are listed here so the builder can still collect,
+ * show and translate them. Map entries (formatLabels.video) are one text each.
+ */
+const RENDER_TEXTS: Array<{ path: string[]; map?: boolean }> = [
+    { path: ['card', 'formatLabels'], map: true },
+    { path: ['card', 'ctaLabels'], map: true },
+    { path: ['card', 'freeLabel'] },
+    { path: ['card', 'descriptions'], map: true },
+    { path: ['pagination', 'loadMoreLabel'] },
+    { path: ['pagination', 'countLabel'] },
+    { path: ['gridHeading', 'title'] },
+    { path: ['gridHeading', 'sortLabels'], map: true },
+];
+
+const valueAt = (value: unknown, path: TextPath): unknown => {
+    let cur = value;
+    for (const step of path) {
+        if (!cur || typeof cur !== 'object') return undefined;
+        cur = (cur as Record<string | number, unknown>)[step];
     }
-    if (Array.isArray(value)) {
-        const inherited = typeof key === 'string' && !isTextKey(key) ? key : undefined;
-        for (const item of value) collectTranslatableStrings(item, out, seen, inherited, key);
-        return out;
-    }
-    if (value && typeof value === 'object') {
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-            collectTranslatableStrings(v, out, seen, keyInItemOf(k, itemOf));
+    return cur;
+};
+
+/** Immutable set; `undefined` deletes the key. Creates objects on the way. */
+const withValueAt = (value: unknown, path: TextPath, next: unknown): unknown => {
+    if (path.length === 0) return next;
+    const [head, ...rest] = path as [string | number, ...TextPath];
+    const obj: Record<string | number, unknown> =
+        value && typeof value === 'object' && !Array.isArray(value)
+            ? { ...(value as Record<string, unknown>) }
+            : {};
+    const child = withValueAt(obj[head], rest, next);
+    if (child === undefined) delete obj[head];
+    else obj[head] = child;
+    return obj;
+};
+
+/** A text of `render`; `entry` marks one entry of a map (formatLabels.video). */
+type RenderText = { path: string[]; text: string; entry?: boolean };
+
+/** Every string (translatable or not) at a text position of `render`. */
+const renderStrings = (render: unknown): RenderText[] => {
+    const out: RenderText[] = [];
+    for (const { path, map } of RENDER_TEXTS) {
+        const value = valueAt(render, path);
+        if (map) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+            for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+                if (typeof v === 'string') out.push({ path: [...path, k], text: v, entry: true });
+            }
+        } else if (typeof value === 'string') {
+            out.push({ path, text: value });
         }
     }
     return out;
+};
+
+/** The translatable texts of a course grid's `render` (card labels, Load more, grid heading), with their paths. */
+export const renderTextEntries = (render: unknown): Array<{ path: string[]; text: string }> =>
+    renderStrings(render)
+        .filter((e) => isTranslatable(e.text, undefined))
+        .map(({ path, text }) => ({ path, text }));
+
+/** `render` with its texts translated; the same reference when nothing changes. */
+export const localizeRenderTexts = <T>(render: T, dict: TranslationDictionary | undefined): T => {
+    if (!dict) return render;
+    let out: unknown = render;
+    for (const { path, text } of renderTextEntries(render)) {
+        const shown = translateText(text, dict);
+        if (shown !== text) out = withValueAt(out, path, shown);
+    }
+    return out as T;
+};
+
+export type RenderEditProblem = 'emptySource' | 'sharedData' | 'structure';
+
+/**
+ * Splits an edit of `render` made in another language (see applyLocalizedEdit):
+ * a changed text becomes a translation of its base text, which stays; every
+ * other setting is applied as edited. `problem` names an edit the dictionary
+ * cannot hold (text typed where the base has none, prose over a data value, a
+ * map entry removed — its text is a dictionary key other fields share, and
+ * the entry is gone in every language); the builder refuses those.
+ */
+export const splitRenderEdit = (
+    base: unknown,
+    localized: unknown,
+    edited: unknown
+): { render: unknown; translations: Record<string, string>; problem?: RenderEditProblem } => {
+    const translations: Record<string, string> = {};
+    if (!edited || typeof edited !== 'object') return { render: edited, translations };
+    let problem: RenderEditProblem | undefined;
+    let render: unknown = edited;
+    const put = (path: string[], value: unknown) => {
+        if (valueAt(render, path) !== value) render = withValueAt(render, path, value);
+    };
+    const paths = new Map<string, RenderText>();
+    for (const value of [base, localized, edited]) {
+        for (const text of renderStrings(value)) paths.set(text.path.join('\u0000'), text);
+    }
+    for (const { path, entry } of paths.values()) {
+        const after = valueAt(edited, path);
+        const before = valueAt(localized, path);
+        const baseText = valueAt(base, path);
+        if (after === before) {
+            put(path, baseText);
+        } else if (entry && after === undefined && typeof baseText === 'string') {
+            problem = 'structure';
+        } else if (typeof baseText === 'string' && isTranslatable(baseText, undefined)) {
+            translations[baseText] = typeof after === 'string' && after !== baseText ? after : '';
+            put(path, baseText);
+        } else if (typeof after === 'string' && after.trim()) {
+            if (typeof baseText !== 'string' || !baseText.trim()) problem = 'emptySource';
+            else if (!looksLikeData(after)) problem = 'sharedData';
+        }
+    }
+    return { render, translations, problem };
 };
 
 /** How much of `sources` has a translation in `dict`. */
@@ -310,6 +497,8 @@ export interface LocalizedEditResult<T> {
     base: T;
     /** Dictionary changes: source → translation ('' = remove the translation). */
     translations: Record<string, string>;
+    /** Set when a course grid's `render` edit cannot be split (see splitRenderEdit): do not save it. */
+    problem?: RenderEditProblem;
 }
 
 /**
@@ -327,6 +516,7 @@ export interface LocalizedEditResult<T> {
  */
 export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): LocalizedEditResult<T> => {
     const translations: Record<string, string> = {};
+    let problem: RenderEditProblem | undefined;
 
     const rebuild = (
         b: unknown,
@@ -336,6 +526,12 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
         itemOf?: string | number
     ): unknown => {
         if (after === before) return b === undefined ? after : b;
+        if (isRenderKey(key)) {
+            const split = splitRenderEdit(b, before, after);
+            Object.assign(translations, split.translations);
+            problem = problem ?? split.problem;
+            return split.render;
+        }
         if (isOpaqueKey(key)) return after;
         if (typeof after === 'string') {
             if (typeof before === 'string' && typeof b === 'string' && isTranslatable(b, key)) {
@@ -365,14 +561,15 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
                 before && typeof before === 'object' && !Array.isArray(before) ? (before as Record<string, unknown>) : {};
             const out: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(after as Record<string, unknown>)) {
-                out[k] = rebuild(bObj[k], beforeObj[k], v, keyInItemOf(k, itemOf));
+                out[k] = rebuild(bObj[k], beforeObj[k], v, objectChildKey(k, key, itemOf));
             }
             return out;
         }
         return after;
     };
 
-    return { base: rebuild(base, localized, edited) as T, translations };
+    const next = rebuild(base, localized, edited) as T;
+    return problem ? { base: next, translations, problem } : { base: next, translations };
 };
 
 /** Applies translation changes from applyLocalizedEdit ('' removes an entry). */

@@ -4,6 +4,8 @@ import { CatalogueTagContext } from "../-components/CatalogueTagContext";
 import { retainSiteLanguage } from "../-utils/catalogue-route-search";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
 import { CourseSubPage } from "../-components/CourseSubPage";
+import { RootMountedSegment } from "../-components/RootMountedSegment";
+import { getCachedRootCatalogueTag } from "@/services/domain-routing";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -106,11 +108,28 @@ function RouteComponent() {
       return <DashboardLoader />;
     }
     // If no institute ID after loading, pass empty string (subpage will handle it)
-    return (
+    const subPage = (
       <CatalogueTagContext.Provider value={resolvedTagName}>
         <CourseSubPage tagName={resolvedTagName} page={resolvedCourseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />
       </CatalogueTagContext.Provider>
     );
+    // Root-mounted host: "/blog/<post-slug>" matches THIS route, not $pageSlug,
+    // so read the first segment as a root-catalogue page first (as $pageSlug
+    // does); only when the root catalogue has no such page is it another tag.
+    const rootTag = getCachedRootCatalogueTag();
+    if (rootTag && domainRouting.instituteId && !RouteMatcher.isRootMounted(resolvedTagName)) {
+      return (
+        <RootMountedSegment
+          rootTag={rootTag}
+          segment={resolvedTagName}
+          instituteId={domainRouting.instituteId}
+          instituteThemeCode={domainRouting.instituteThemeCode}
+          fallback={subPage}
+          pageOnly
+        />
+      );
+    }
+    return subPage;
   }
 
   // Show loading while domain routing is resolving

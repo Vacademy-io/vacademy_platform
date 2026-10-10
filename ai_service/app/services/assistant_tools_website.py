@@ -13,6 +13,8 @@ and the model reads one schema. Actions:
     lead_summary    every lead-capture surface on the site and whether it is wired
     audit           the dashboard's pre-publish checks
     brief_checklist the interview an AI should run before generating a site
+    schema          the component contract (+ header/footer chrome, site-settings contract, pattern index)
+    patterns        design patterns: what a look is called, its minimal and full JSON, what it needs
     list_media      images the caller has uploaded (for logos / photos)
 
 Identity is pinned by ``execute_tool``; every ``tag_name`` is resolved against
@@ -67,7 +69,7 @@ WEBSITE_GROUP_KEY = "website_builder"
 
 WEBSITE_ACTIONS = (
     "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
-    "brief_checklist", "schema", "list_media", "preview",
+    "brief_checklist", "schema", "patterns", "list_media", "preview",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -158,7 +160,14 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "known, and the available presets/fonts/design languages.\n"
             "- schema (page_type?, section_types?): the component contract you compose pages in — the "
             "block types with what each does, design rules, the archetype for a page type, and full "
-            "example props for the section_types you name. Read it before website_edit(create_page).\n"
+            "example props for the section_types you name, the header/footer contract (`chrome`, written with "
+            "set_layout), the opt-in site-settings contract and an index of design patterns. Read it before "
+            "website_edit(create_page).\n"
+            "- patterns (ids?, component?, query?): design patterns — named opt-in looks (catalogue hero, icon stream "
+            "tabs, editorial sidebar/cards, CTA bands, brand footer, palette…) with what each looks like, Figma cues, "
+            "the data it needs, and its minimal and full JSON. Use it to match a design (Figma frame, screenshot) to "
+            "components. Replace each text <placeholder> with your own copy or a list_media image; leave every id path "
+            "(`bound`) EMPTY and wire it afterwards (link_lead_form, or the admin in the editor).\n"
             "- list_media (kind?, limit?): images the admin has uploaded, ranked with hero-worthy landscape "
             "photos first — the ONLY images (besides import_image) a page may use.\n"
             "tag_name is the site's name from `list`; when the institute has one site it may be omitted."
@@ -174,7 +183,9 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
-                "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive)."},
+                "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive). patterns: words to match against pattern ids, looks and Figma cues."},
+                "ids": {"type": "array", "items": {"type": "string"}, "description": "patterns: pattern ids to return in full (e.g. ['catalog.hero','cta.band']); up to 20 per call."},
+                "component": {"type": "string", "description": "patterns: only patterns of this block type (courseCatalog, ctaBanner, header, footer, globalSettings…)."},
                 "section_id": {"type": "string", "description": "preview: screenshot only this section."},
                 "viewport": {"type": "string", "enum": ["desktop", "mobile"], "description": "preview: default desktop (1280px); mobile is 390px."},
                 "kind": {"type": "string", "description": "list_media: 'logo', 'photo' or 'any'."},
@@ -548,12 +559,17 @@ def _load_schema(page_type: Optional[str], section_types: List[str]) -> Dict[str
         if not ctype or ctype in _SCHEMA_OMIT_TYPES:
             continue
         props = c.get("exampleProps") or {}
-        components.append({
+        entry = {
             "type": ctype,
             "label": COMPONENT_LABELS.get(ctype, ctype),
             "what": c.get("capabilities") or "",
             "props": sorted(props.keys())[:24],
-        })
+        }
+        # The catalog's notes on live data, when to use a block and the htmlBlock rules.
+        for key in _SCHEMA_NOTE_KEYS:
+            if c.get(key):
+                entry[key] = c[key]
+        components.append(entry)
         if ctype in wanted:
             examples[ctype] = props
     from .assistant_tools_website_edit import HTML_PAGE_CONTRACT
@@ -573,10 +589,165 @@ def _load_schema(page_type: Optional[str], section_types: List[str]) -> Dict[str
             "Give each op a short `note`."
         ),
     }
+    chrome = _schema_chrome(catalog)
+    if chrome:
+        out["chrome"] = chrome
+    if catalog.get("globalSettingsContract"):
+        out["globalSettingsContract"] = {
+            **catalog["globalSettingsContract"],
+            "writable_now": _SETTINGS_WRITABLE_NOTE,
+        }
+    if catalog.get("patterns"):
+        # Ids only, grouped by block type: the looks, cues and JSON come from the `patterns` action.
+        grouped: Dict[str, List[str]] = {}
+        for p in catalog["patterns"]:
+            if isinstance(p, dict) and p.get("id"):
+                grouped.setdefault(str(p.get("component")), []).append(p["id"])
+        out["patterns"] = grouped
+        out["patterns_hint"] = (
+            "Opt-in design patterns by block type. website(action='patterns') lists what each looks like; "
+            "website(action='patterns', ids=[…]) returns its minimal and full JSON."
+        )
     if page_type:
         out["archetype"] = {"page_type": page_type, "rules": _ARCHETYPE_RULES.get(page_type) or _LOCAL_ARCHETYPE_RULES.get(page_type)}
     if not wanted:
         out["hint"] = "Pass section_types=[…] to get full example props for the blocks you will use."
+    return out
+
+
+#: Catalog component notes the schema passes through (they exist only on some blocks).
+_SCHEMA_NOTE_KEYS = ("usage", "dataBound", "escapeHatch")
+
+_SETTINGS_WRITABLE_NOTE = (
+    "website_edit(set_theme) / set_site_settings write only the fields their own schemas list. A contract field "
+    "they do not list can be set by the admin in Manage Pages → Settings — say so instead of putting it in page props."
+)
+
+
+def _schema_chrome(catalog: Dict[str, Any]) -> Dict[str, Any]:
+    """Header + footer contract (not page sections: website_edit(set_layout) writes them)."""
+    out: Dict[str, Any] = {}
+    for kind, contract in (catalog.get("chrome") or {}).items():
+        if not isinstance(contract, dict):
+            continue
+        out[kind] = {
+            "where": contract.get("where"),
+            "how": contract.get("howToWrite"),
+            "fields": {k: f"{v.get('type')} — {v.get('description')}" for k, v in (contract.get("fields") or {}).items() if isinstance(v, dict)},
+            "patterns": contract.get("patterns") or [],
+        }
+    return out
+
+
+def _pattern_index_entry(p: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": p.get("id"), "component": p.get("component"), "looks_like": p.get("looksLike")}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# patterns
+# ──────────────────────────────────────────────────────────────────────────
+#: Matches beyond this come back without their minimal/full JSON (ask by id).
+_PATTERN_FULL_LIMIT = 6
+#: Patterns returned in full per call: at least the largest recipe (pages + site settings).
+_PATTERN_MAX_IDS = 20
+
+_PATTERN_RULES = (
+    "Patterns are OPT-IN looks: use one only when the design shows it. Several catalogue patterns combine into ONE "
+    "courseCatalog section: DEEP-merge their minimal objects (merge nested objects such as hero, filterSidebar, render "
+    "key by key; concatenate arrays such as columnSections, quickFilters, customFilters) — a shallow merge drops keys. "
+    "Text in <angle brackets> is a placeholder: replace it with your own copy from the brief, images from list_media / "
+    "import_image, or leave the prop empty — never invent numbers the widgets compute live, or image URLs. IDS: every "
+    "path a pattern lists in `bound` holds an id of this institute's records (campaign, folder library, product page, "
+    "course). create_page / update_page / set_layout do NOT check those ids, so leave every bound path EMPTY when you "
+    "write the JSON — never paste an id there, not even one from website(context). Afterwards wire a section's form or "
+    "button to a campaign with website_edit(link_lead_form) (it checks the campaign is this institute's and ACTIVE), "
+    "and tell the admin which folder library, product page, course or campaign to pick in the editor for the rest "
+    "(header mega menu, footer newsletter, learning paths, spotlight, secondary buttons, site cart). `full` is the "
+    "published Brahm Varchas site with its ids, links and names replaced; copy its shape, not its words or links. "
+    "header/footer patterns go through website_edit(set_layout); globalSettings patterns are site settings."
+)
+
+
+def _pattern_detail(p: Dict[str, Any], with_json: bool) -> Dict[str, Any]:
+    keys = ("id", "component", "propPath", "looksLike", "figmaCues", "useWhen", "avoidWhen", "requires", "bound",
+            "i18n", "reviewAs", "pitfalls")
+    out = {k: p.get(k) for k in keys if p.get(k) not in (None, "", [])}
+    if with_json:
+        out["minimal"] = p.get("minimal")
+        if p.get("full") is not None:
+            out["full"] = p["full"]
+            out["full_source"] = p.get("fullSource")
+    return out
+
+
+async def _action_patterns(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .assistant_tools_website_edit import authoring_catalog
+    catalog = authoring_catalog()
+    patterns = [p for p in catalog.get("patterns") or [] if isinstance(p, dict) and p.get("id")]
+    raw_ids = args.get("ids")
+    raw_ids = [raw_ids] if isinstance(raw_ids, str) else raw_ids if isinstance(raw_ids, list) else []
+    asked = list(dict.fromkeys(i.strip() for i in raw_ids if isinstance(i, str) and i.strip()))
+    ids, skipped = asked[:_PATTERN_MAX_IDS], asked[_PATTERN_MAX_IDS:]
+    components = sorted({str(p.get("component")) for p in patterns})
+    component_raw = str(args.get("component") or "").strip()
+    # Block types are camelCase; accept any casing of a known one.
+    component = next((c for c in components if c.lower() == component_raw.lower()), component_raw)
+    words = [w for w in str(args.get("query") or "").lower().split() if w]
+    recipes = [{"id": r.get("id"), "name": r.get("name"), "description": r.get("description")}
+               for r in catalog.get("recipes") or [] if isinstance(r, dict)]
+
+    if not (ids or component or words):
+        return {
+            "patterns": [_pattern_index_entry(p) for p in patterns],
+            "count": len(patterns),
+            "recipes": recipes,
+            "rules": _PATTERN_RULES,
+            "hint": "Pass ids=[…] for a pattern's minimal and full JSON, or component= / query= to narrow the list.",
+        }
+
+    by_id = {p["id"]: p for p in patterns}
+    matches: List[Dict[str, Any]] = []
+    if ids:
+        matches = [by_id[i] for i in ids if i in by_id]
+    else:
+        for p in patterns:
+            if component and p.get("component") != component:
+                continue
+            if words:
+                hay = " ".join([str(p.get("id")), str(p.get("looksLike")), " ".join(p.get("figmaCues") or []),
+                                str(p.get("useWhen"))]).lower()
+                if not all(w in hay for w in words):
+                    continue
+            matches.append(p)
+    with_json = bool(ids) or len(matches) <= _PATTERN_FULL_LIMIT
+    out: Dict[str, Any] = {
+        "patterns": [_pattern_detail(p, with_json) for p in matches],
+        "count": len(matches),
+        "rules": _PATTERN_RULES,
+    }
+    unknown = [i for i in ids if i not in by_id]
+    if unknown:
+        out["unknown_ids"] = unknown
+        out["available_ids"] = sorted(by_id)
+    if skipped:
+        out["skipped_ids"] = skipped
+        out["truncated"] = True
+    if ids and (component_raw or words):
+        out["ignored_filters"] = [k for k, v in (("component", component_raw), ("query", words)) if v]
+    if component_raw and not ids and component not in components:
+        out["unknown_component"] = component_raw
+        out["available_components"] = components
+    hints = []
+    if skipped:
+        hints.append(f"Only the first {_PATTERN_MAX_IDS} ids are returned per call: call again with ids={skipped}.")
+    if out.get("ignored_filters"):
+        hints.append("component / query are ignored when ids are given.")
+    if not with_json:
+        hints.append(f"{len(matches)} matches: pass ids=[…] (up to {_PATTERN_MAX_IDS}) for their minimal and full JSON.")
+    if not matches and not unknown:
+        hints.append("Nothing matched. Call website(action='patterns') with no filter for the full index.")
+    if hints:
+        out["hint"] = " ".join(hints)
     return out
 
 
@@ -686,6 +857,7 @@ _ACTIONS = {
     "preview": _action_preview,
     "brief_checklist": _action_brief_checklist,
     "schema": _action_schema,
+    "patterns": _action_patterns,
     "list_media": _action_list_media,
 }
 

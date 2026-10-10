@@ -458,7 +458,9 @@ export const applyOps = (config: CatalogueConfig, pageId: string, ops: EditOp[])
                             if (value === null) delete merged[key];
                             else merged[key] = value;
                         }
-                        gs.theme.palette = merged;
+                        // No colour left: applyToTokens alone means nothing (same as the MCP's apply_ops).
+                        if (Object.keys(merged).some((key) => key !== 'applyToTokens')) gs.theme.palette = merged;
+                        else delete gs.theme.palette;
                     }
                 }
                 break;

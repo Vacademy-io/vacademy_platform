@@ -162,6 +162,8 @@ def fake_admin_core(calls):
             return CAMPAIGN
         if "/open/v1/audience/campaign/" in path:
             return {"error": "fetch_failed", "status": 404}
+        if path.endswith("/folder-library/libraries"):
+            return []                                    # an institute without folder libraries
         if path.endswith("/catalogue-analytics/summary"):
             return {"views": 120, "visitors": 80, "sessions": 90, "leads": 4,
                     "daily": [{"day": "2026-09-14", "views": 60, "visitors": 40}],
@@ -340,6 +342,8 @@ async def test_context_returns_only_real_ids(admin_core):
     camp = out["lead_campaigns"][0]
     assert camp["id"] == "camp-1" and camp["leads_received"] == 12
     assert out["site"]["settings"]["theme"]["preset"] == "ocean"
+    # No folder libraries: the context reads exactly as it did before they were listed.
+    assert set(out) == {"action", "site", "courses", "product_pages", "lead_campaigns", "rules"}
 
 
 @pytest.mark.asyncio

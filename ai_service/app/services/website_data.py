@@ -301,6 +301,43 @@ async def load_product_pages(ctx: ToolContext) -> List[Dict[str, Any]]:
     return out
 
 
+async def load_folder_libraries(ctx: ToolContext) -> Optional[List[Dict[str, Any]]]:
+    """The institute's folder libraries (id, name, node count) — the admin's own read.
+    None when they cannot be read (so an outage is never reported as "no such library")."""
+    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/libraries",
+                                  params={"instituteId": ctx.principal.institute_id})
+    if _is_error(data) or not isinstance(data, list):
+        return None
+    out = []
+    for lib in data:
+        if not isinstance(lib, dict) or not lib.get("id"):
+            continue
+        if str(lib.get("institute_id") or ctx.principal.institute_id) != ctx.principal.institute_id:
+            continue
+        out.append({"id": str(lib["id"]), "name": lib.get("name") or "", "node_count": lib.get("node_count")})
+    return out
+
+
+async def load_library_folders(ctx: ToolContext, library_id: str) -> Optional[List[Dict[str, Any]]]:
+    """Every FOLDER node of one library (flattened, with depth), or None when the tree cannot be read."""
+    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/tree",
+                                  params={"instituteId": ctx.principal.institute_id, "libraryId": library_id})
+    if not isinstance(data, dict) or _is_error(data):
+        return None
+    out: List[Dict[str, Any]] = []
+
+    def walk(nodes: Any, depth: int) -> None:
+        for n in nodes if isinstance(nodes, list) else []:
+            if not isinstance(n, dict) or depth > 8:
+                continue
+            if str(n.get("node_type") or "FOLDER").upper() == "FOLDER" and n.get("id"):
+                out.append({"id": str(n["id"]), "title": n.get("title") or "", "slug": n.get("slug"),
+                            "depth": depth, "status": n.get("status")})
+            walk(n.get("children"), depth + 1)
+    walk(data.get("roots"), 0)
+    return out
+
+
 async def load_campaigns(ctx: ToolContext, status: Optional[str] = "ACTIVE", with_counts: bool = True) -> List[Dict[str, Any]]:
     """Lead campaigns (Audience Manager) with leads received / last lead for the first N."""
     body: Dict[str, Any] = {"institute_id": ctx.principal.institute_id}
@@ -384,6 +421,7 @@ __all__ = [
     "NO_PORTAL_DOMAIN_NOTE", "STALE_DRAFT_NOTE", "stale_note",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
     "get_draft", "get_history", "load_site", "load_courses", "load_product_pages",
+    "load_folder_libraries", "load_library_folders",
     "load_campaigns", "campaign_lead_stats", "get_campaign", "campaign_name_map",
 ]
 

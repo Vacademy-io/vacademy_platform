@@ -37,7 +37,10 @@ from app.services.assistant_tools_website_edit import (  # noqa: E402
 from app.services.catalogue_summary import summarize_global_settings  # noqa: E402
 from app.services.page_audit import audit_component, audit_page  # noqa: E402
 
-from test_website_tools import _FakeDb, ctx, fake_admin_core, sample_config  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from app.services.assistant_tool_registry import ToolContext, execute_tool  # noqa: E402
+from test_website_tools import _FakeDb, fake_admin_core, principal, sample_config  # noqa: E402
 
 _FIXTURE = (Path(__file__).resolve().parents[2]
             / "frontend-admin-dashboard/src/routes/manage-pages/-components/__fixtures__/brahm-varchas-site.json")
@@ -66,6 +69,28 @@ def bv_palette_args():
 
 
 # ── backend stand-in ─────────────────────────────────────────────────────
+#: The shared DB's course ownership (package ⋈ package_institute) for inst-1.
+_DB = {"owned": set(), "fail": False, "queries": 0}
+
+
+class _CourseDb(_FakeDb):
+    def execute(self, stmt, params=None):
+        if "package_institute" in str(stmt):
+            _DB["queries"] += 1
+            if _DB["fail"]:
+                raise RuntimeError("db down")
+            assert params["inst"] == "inst-1"
+            return SimpleNamespace(fetchall=lambda: [(i,) for i in params["ids"] if i in _DB["owned"]])
+        return super().execute(stmt, params)
+
+    def rollback(self):
+        pass
+
+
+def ctx(roles=("ADMIN",)):
+    return ToolContext(db=_CourseDb(), principal=principal(roles), keys=(), bearer_token="jwt")
+
+
 class _Site:
     def __init__(self, config):
         self.config = config
@@ -77,6 +102,9 @@ def site_backend(monkeypatch):
     """A one-site institute whose site config each test picks (sample_config by default)."""
     site = _Site(sample_config())
     calls = []
+    # Owned courses include one the public catalogue search does not return (hidden / past its page).
+    _DB.update(owned=set(bv_course_ids() if _FIXTURE.exists() else []) | {"course-1", "hidden-course"},
+               fail=False, queries=0)
     base = fake_admin_core(calls)
     course_rows = [{"id": cid, "package_name": f"Course {i}", "level_name": "default", "package_session_id": f"ps-{i}"}
                    for i, cid in enumerate(bv_course_ids() if _FIXTURE.exists() else [])]
@@ -508,6 +536,8 @@ def test_audit_says_bind_to_an_editor_and_remove_to_the_composer():
     assert all("Remove this component" in i["hint"] for i in audit_page(page, None) if i["code"].endswith("unbound"))
 
 
+
+
 @pytest.mark.asyncio
 async def test_mcp_results_say_bind_not_remove(site_backend):
     site_backend.config = _bindable_site()
@@ -515,7 +545,151 @@ async def test_mcp_results_say_bind_not_remove(site_backend):
         {"id": "paths", "type": "learningPath", "props": {"mode": "list", "title": "Learning paths"}}]}})
     unbound = [i for i in out["design_issues"] if i["code"] == "path-unbound"]
     assert unbound and "bind_data" in unbound[0]["fix"] and "Remove this" not in unbound[0]["fix"]
-    out = await read({"action": "review", "tag_name": "main-site", "page_route": "about"})
-    issues = out["pages"]["about"]["issues"]
-    fixes = [i["fix"] for i in issues if i["code"] in ("path-unbound", "folders-unbound")]
-    assert fixes and all("bind_data" in f for f in fixes)
+    assert "page_route='paths'" in unbound[0]["fix"] and "folder_libraries" in unbound[0]["fix"]
+
+    async def review(groups):
+        setting = {"enabled_tools": list(groups), "role_overrides": {}}
+        return json.loads(await execute_tool("website", {"action": "review", "tag_name": "main-site", "page_route": "about"},
+                                             ctx(), setting))
+    # A caller who can edit drafts is told to bind, on the right page…
+    out = await review(["website_builder", "website_builder_edits"])
+    fixes = [i["fix"] for i in out["pages"]["about"]["issues"] if i["code"] in ("path-unbound", "folders-unbound")]
+    assert fixes and all("bind_data" in f and "page_route='about'" in f for f in fixes)
+    # …a read-only caller keeps exactly the review it had before.
+    read_only = await review(["website_builder"])
+    plain = await read({"action": "review", "tag_name": "main-site", "page_route": "about"})
+    assert read_only == plain
+    assert not any("bind_data" in json.dumps(i) for i in read_only["pages"]["about"]["issues"])
+
+
+@pytest.mark.asyncio
+async def test_context_lists_folder_libraries_and_a_librarys_folders(site_backend):
+    out = await read({"action": "context", "tag_name": "main-site"})
+    assert out["folder_libraries"] == [{"id": LIB, "name": "Knowledge Streams", "node_count": 30}]   # not the foreign one
+    assert "library_id" in out["folder_libraries_note"]
+    out = await read({"action": "context", "tag_name": "main-site", "library_id": LIB})
+    folders = out["library_folders"]["folders"]
+    assert [(f["id"], f["depth"]) for f in folders] == [(FOLDER, 0), ("folder-vedas", 1)]     # folders only
+    out = await read({"action": "context", "tag_name": "main-site", "library_id": FOREIGN_LIB})
+    assert out["library_folders"]["error"] == "unknown_library"
+
+
+@pytest.mark.asyncio
+async def test_library_outage_is_fetch_failed_not_unknown_library(site_backend, monkeypatch):
+    site_backend.config = _bindable_site()
+    inner = website_data._admin_core_json
+
+    async def _down(ctx_, method, path, **kw):
+        if path.endswith("/folder-library/libraries"):
+            return {"error": "fetch_failed", "status": 503}
+        return await inner(ctx_, method, path, **kw)
+    monkeypatch.setattr(website_data, "_admin_core_json", _down)
+    out = await run({"action": "bind_data", "tag_name": "main-site", "section_id": "folders",
+                     "data_kind": "folderLibrary", "data_id": LIB})
+    assert out["error"] == "fetch_failed"
+    out = await run({"action": "bind_data", "tag_name": "main-site", "section_id": "folders",
+                     "data_kind": "folder", "data_id": FOLDER, "library_id": LIB})
+    assert out["error"] == "fetch_failed"
+    out = await read({"action": "context", "tag_name": "main-site"})
+    assert out["folder_libraries"]["error"] == "fetch_failed"
+    assert site_backend.saved == []
+
+
+@pytest.mark.asyncio
+async def test_bind_finds_the_section_on_any_page_without_page_route(site_backend):
+    site_backend.config = _bindable_site()
+    out = await run({"action": "bind_data", "tag_name": "main-site", "section_id": "folders",
+                     "data_kind": "folderLibrary", "data_id": LIB})
+    assert out["saved_as"] == "draft" and out["page_route"] == "about"
+    assert site_backend.saved[-1]["pages"][1]["components"][3]["props"]["libraryId"] == LIB
+    out = await run({"action": "bind_data", "tag_name": "main-site", "section_id": "nope",
+                     "data_kind": "folderLibrary", "data_id": LIB})
+    assert out["error"] == "unknown_section"
+    assert {"page_route": "about", "section_id": "folders", "type": "folderBrowser"} in out["sections"]
+    cfg = _bindable_site()
+    cfg["pages"][0]["components"].append({"id": "folders", "type": "folderBrowser", "props": {}})
+    site_backend.config = cfg
+    out = await run({"action": "bind_data", "tag_name": "main-site", "section_id": "folders",
+                     "data_kind": "folderLibrary", "data_id": LIB})
+    assert out["error"] == "ambiguous_section" and out["pages"] == ["home", "about"]
+    assert len(site_backend.saved) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_path_never_creates_objects(site_backend):
+    site_backend.config = _bindable_site()
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "home", "section_id": "c-hero",
+                     "data_kind": "productPage", "data_id": "7pc4tl", "path": "a.b.c.d.e.f.productPageCode"})
+    assert out["error"] == "no_target"
+    assert site_backend.saved == []
+    # An object the section already has is fine.
+    site_backend.config["pages"][0]["components"][1]["props"]["offer"] = {"title": "Store"}
+    out = await run({"action": "bind_data", "tag_name": "main-site", "page_route": "home", "section_id": "c-hero",
+                     "data_kind": "productPage", "data_id": "7pc4tl", "path": "offer.productPageCode"})
+    assert out["saved_as"] == "draft"
+    assert site_backend.saved[-1]["pages"][0]["components"][1]["props"]["offer"] == {
+        "title": "Store", "productPageCode": "7pc4tl", "productPageName": STORE["name"]}
+
+
+@pytest.mark.asyncio
+async def test_apply_to_tokens_alone_on_a_site_without_a_palette_is_refused(site_backend):
+    out = await run({"action": "set_theme", "tag_name": "main-site", "theme": {"palette": {"apply_to_tokens": True}}})
+    assert out["error"] == "bad_request" and "no palette colours" in out["message"]
+    assert site_backend.saved == []
+    site_backend.config["globalSettings"].setdefault("theme", {})["palette"] = {"primary": "#883000"}
+    out = await run({"action": "set_theme", "tag_name": "main-site", "theme": {"palette": {"apply_to_tokens": True}}})
+    assert site_backend.saved[-1]["globalSettings"]["theme"]["palette"] == {"primary": "#883000", "applyToTokens": True}
+
+
+def test_apply_ops_drops_a_palette_with_no_colour_like_the_dashboard():
+    cfg = sample_config()
+    cfg["globalSettings"].pop("theme", None)
+    out = apply_ops(cfg, "p-home", [{"op": "updateGlobalSettings", "patch": {"theme": {"palette": {"applyToTokens": True}}}}])
+    assert "palette" not in out["globalSettings"]["theme"]
+    out = apply_ops(cfg, "p-home", [{"op": "updateGlobalSettings", "patch": {"theme": {"preset": "rose"}}}])
+    assert out["globalSettings"]["theme"] == {"preset": "rose"}           # no palette: as before
+
+
+@needs_fixture
+@pytest.mark.asyncio
+async def test_version_groups_are_checked_against_the_admins_courses_not_the_public_search(site_backend):
+    ids = bv_course_ids()
+    out = await run({"action": "set_catalog_settings", "tag_name": "main-site", "catalog_settings": {
+        "course_languages": {"version_groups": [[ids[0], "hidden-course"]]}}})
+    assert out["saved_as"] == "draft", out                      # hidden from the catalogue, still the institute's
+    assert _DB["queries"] == 1
+    _DB["fail"] = True
+    out = await run({"action": "set_catalog_settings", "tag_name": "main-site", "catalog_settings": {
+        "course_languages": {"version_groups": [[ids[0], ids[1]]]}}})
+    assert out["error"] == "fetch_failed" and "not this institute" not in out["message"]
+    assert len(site_backend.saved) == 1
+
+
+def test_a_format_key_is_removed_or_replaced_whatever_case_it_was_saved_in():
+    gs = {"courseFormats": {"Ebook": {"label": "E-books"}, "video": {"label": "Video"}}}
+    patch, problems, _ = catalog_settings_patch({"course_formats": {"ebook": None}}, gs, None, None)
+    assert problems == []
+    assert merge_global_settings(gs, patch)["courseFormats"] == {"video": {"label": "Video"}}
+    patch, problems, _ = catalog_settings_patch({"course_formats": {"EBOOK": {"label": "Books"}}}, gs, None, None)
+    assert merge_global_settings(gs, patch)["courseFormats"] == {"video": {"label": "Video"}, "ebook": {"label": "Books"}}
+
+
+def test_long_rich_texts_up_to_the_dashboards_cap_can_be_saved():
+    source = "<p>" + "Vedic knowledge " * 600 + "</p>"                  # ~9.6k characters, like a long rich-text section
+    out, report = merge_translations({}, {source: "<p>" + "वैदिक ज्ञान " * 600 + "</p>"})
+    assert report["added"] == 1 and source in out
+    _, report = merge_translations({}, {"x" * 30001: "y"})
+    assert report["skipped"]
+
+
+@pytest.mark.asyncio
+async def test_an_over_cap_dictionary_from_the_dashboard_can_still_shrink(site_backend):
+    big = {f"Text {i}": f"पाठ {i}" for i in range(3005)}             # built in the dashboard, past the MCP's cap
+    site_backend.config["globalSettings"]["i18n"] = {"enabled": True, "defaultLocale": "en", "strings": {"hi": dict(big)}}
+    out = await run({"action": "set_translations", "tag_name": "main-site", "locale": "hi", "strings": {"Text 1": None}})
+    assert out["saved_as"] == "draft" and out["changes"]["removed"] == 1
+    out = await run({"action": "set_translations", "tag_name": "main-site", "locale": "hi", "strings": {"Text 2": "पा"}})
+    assert out["saved_as"] == "draft"                              # shorter: does not grow it
+    out = await run({"action": "set_translations", "tag_name": "main-site", "locale": "hi", "strings": {"New": "नया"}})
+    assert out["error"] == "too_large"
+    assert len(site_backend.saved) == 2

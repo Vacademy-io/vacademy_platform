@@ -60,6 +60,8 @@ from .website_data import (
     _is_error,
     get_campaign,
     load_courses,
+    load_folder_libraries,
+    load_library_folders,
     load_product_pages,
     load_site,
     resolve_tag,
@@ -307,7 +309,10 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "library_id?): bind live data instead of removing a section the audit flags as unbound — a "
             "folder library (folderBrowser, learningPath list, courseCatalog stream tabs, header mega menu), "
             "a folder (folderBrowser start folder, learningPath folder) or a product page code "
-            "(learningPath, productPageOffer). Ids are checked against the institute's own data.\n"
+            "(learningPath, productPageOffer). Ids are checked against the institute's own data: library ids "
+            "from website(action='context') folder_libraries, folder ids from website(action='context', "
+            "library_id=…), product page codes from website(action='context'). Without page_route the section is "
+            "found on whichever page has it.\n"
             "- set_site_settings (tag_name, site_settings): sticky header, back-to-top, density, audience, "
             "site-wide lead popup, site-level SEO (keywords, organization).\n"
             "- set_courses (tag_name, page_route, section_id, source: all|showcase|product_page, mode?, "
@@ -365,9 +370,9 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "enable": {"type": "boolean", "description": "set_translations: true offers the language on the site (switcher on); false turns the switcher off."},
                 "locale_label": {"type": "string", "description": "set_translations: what the language switcher shows, e.g. 'हिन्दी'."},
                 "data_kind": {"type": "string", "enum": ["folderLibrary", "folder", "productPage"], "description": "bind_data: what to bind."},
-                "data_id": {"type": "string", "description": "bind_data: the library id, folder id or product page CODE."},
+                "data_id": {"type": "string", "description": "bind_data: the library id, folder id or product page CODE (from website(action='context'))."},
                 "nav_index": {"type": "integer", "description": "bind_data on the header: which navigation item (0-based) becomes the mega menu."},
-                "path": {"type": "string", "description": "bind_data: an explicit prop path for the id, e.g. columnSections[1].productPageCode."},
+                "path": {"type": "string", "description": "bind_data: an explicit prop path for the id inside an object the section already has, e.g. columnSections[1].productPageCode."},
                 "library_id": {"type": "string", "description": "bind_data data_kind=folder: the folder's library when the section has none yet."},
             },
             "required": ["action"],
@@ -733,8 +738,12 @@ def apply_ops(config: Dict[str, Any], page_id: str, ops: List[Dict[str, Any]]) -
         elif kind == "updateGlobalSettings" and isinstance(op.get("patch"), dict):
             gs = clone.setdefault("globalSettings", {})
             for k, v in op["patch"].items():
-                if isinstance(v, dict) and isinstance(gs.get(k), dict):
-                    gs[k] = _merge_theme(gs[k], v) if k == "theme" else {**gs[k], **v}
+                if k == "theme" and isinstance(v, dict):
+                    # Same as the dashboard's applyOps: palette merged key by key, and a
+                    # palette left with no colour (applyToTokens alone) is dropped.
+                    gs[k] = _merge_theme(gs[k] if isinstance(gs.get(k), dict) else {}, v)
+                elif isinstance(v, dict) and isinstance(gs.get(k), dict):
+                    gs[k] = {**gs[k], **v}
                 else:
                     gs[k] = v
         page["components"] = comps
@@ -1516,6 +1525,8 @@ async def _action_set_theme(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         return err
     config = copy.deepcopy(site["config"])
     config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, patch)
+    if refusal := _palette_noop(patch, config["globalSettings"], accepted):
+        return refusal
     revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
@@ -1524,6 +1535,22 @@ async def _action_set_theme(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         extra["warnings"] = notes
     return _result(ctx, site, config, revision, "Updated the site's theme.",
                    settings=summarize_global_settings(config["globalSettings"]), **extra)
+
+
+def _palette_noop(patch: Dict[str, Any], gs_after: Dict[str, Any], accepted: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    ``palette: {apply_to_tokens: true}`` on a site with no palette colours stores
+    nothing (applyToTokens alone means nothing) — say so instead of reporting a
+    theme change that did not happen.
+    """
+    palette = (patch.get("theme") or {}).get("palette")
+    if not isinstance(palette, dict) or palette.get("applyToTokens") is not True:
+        return None
+    if any(palette.get(k) for k in PALETTE_KEYS) or isinstance((gs_after.get("theme") or {}).get("palette"), dict):
+        return None
+    return _err("bad_request", message=("Nothing was changed: this site has no palette colours, so apply_to_tokens has "
+                                        "nothing to apply. Send the colours in the same call, e.g. palette: {primary: "
+                                        "'#rrggbb', …, apply_to_tokens: true}."), accepted=accepted)
 
 
 def _font_notes(gs: Dict[str, Any]) -> List[str]:
@@ -1854,6 +1881,11 @@ def catalog_settings_patch(si: Any, gs: Dict[str, Any], course_ids: Optional[set
                 if not _FORMAT_KEY_RE.match(key):
                     problems.append(f"Format key '{key_in}' must be a slug (a-z, 0-9, -; at most 32).")
                     continue
+                # The site renders format keys case-insensitively: a key saved as 'Ebook' (by hand
+                # or an import) IS 'ebook', so it is removed / replaced whatever its case.
+                for stored in current_formats:
+                    if stored != key and str(stored).strip().lower() == key:
+                        out[stored] = None
                 if fmt is None:
                     out[key] = None
                     formats_after.pop(key, None)
@@ -2013,6 +2045,36 @@ def catalog_settings_patch(si: Any, gs: Dict[str, Any], course_ids: Optional[set
     return patch, problems, notes
 
 
+_OWNED_COURSES_SQL = """
+SELECT p.id FROM package p
+JOIN package_institute pi ON pi.package_id = p.id
+WHERE pi.institute_id = :inst AND p.id IN :ids AND p.status <> 'DELETED'
+"""
+
+
+def owned_course_ids(ctx: ToolContext, ids: set) -> Optional[set]:
+    """
+    Which of ``ids`` are this institute's courses (any status but deleted, listed
+    in the learner catalogue or not) — the admin's view, not the public search.
+    None when the lookup failed, so an outage is never reported as "not yours".
+    """
+    from sqlalchemy import bindparam, text
+    wanted = sorted(i for i in ids if i)[: _MAX_VERSION_GROUPS * _MAX_GROUP_SIZE]
+    if not wanted:
+        return set()
+    try:
+        stmt = text(_OWNED_COURSES_SQL).bindparams(bindparam("ids", expanding=True))
+        rows = ctx.db.execute(stmt, {"inst": ctx.principal.institute_id, "ids": wanted}).fetchall()
+        return {str(r[0]) for r in rows}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course ownership lookup failed: %s", exc)
+        try:
+            ctx.db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
 async def _action_set_catalog_settings(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     if err := _require(args, "set_catalog_settings", "catalog_settings"):
         return err
@@ -2025,8 +2087,12 @@ async def _action_set_catalog_settings(args: Dict[str, Any], ctx: ToolContext) -
     config = copy.deepcopy(site["config"])
     gs = config.get("globalSettings") or {}
     course_ids: Optional[set] = None
-    if isinstance(si.get("course_languages"), dict) and si["course_languages"].get("version_groups"):
-        course_ids = {str(c.get("id")) for c in await load_courses(ctx, limit=500) if c.get("id")}
+    groups = si["course_languages"].get("version_groups") if isinstance(si.get("course_languages"), dict) else None
+    if groups:
+        wanted = {str(x).strip() for g in groups if isinstance(g, list) for x in g}
+        course_ids = owned_course_ids(ctx, wanted)
+        if course_ids is None:
+            return _err("fetch_failed", message="The institute's courses could not be checked right now; nothing was changed. Try again shortly.")
     pages = await load_product_pages(ctx) if isinstance(si.get("site_cart"), dict) and si["site_cart"].get("enabled") else None
     patch, problems, notes = catalog_settings_patch(si, gs, course_ids, pages)
     if problems:
@@ -2046,8 +2112,10 @@ async def _action_set_catalog_settings(args: Dict[str, Any], ctx: ToolContext) -
 _MAX_TRANSLATIONS = 3000
 _MAX_TRANSLATION_BYTES = 120_000
 _MAX_CHANGES_PER_CALL = 1500
-_MAX_SOURCE_CHARS = 5000
-_MAX_TRANSLATION_CHARS = 5000
+#: Same as the dashboard's Translations panel (site-strings.ts DEFAULT_BATCH_LIMITS.maxStringChars):
+#: a text it translates can be saved here too.
+_MAX_SOURCE_CHARS = 30000
+_MAX_TRANSLATION_CHARS = 30000
 #: What the language switcher shows by default (admin i18n/locales.ts LOCALE_LABELS).
 LOCALE_LABELS = {
     "en": "English", "ar": "العربية", "hi": "हिन्दी", "ta": "தமிழ்", "te": "తెలుగు", "bn": "বাংলা", "mr": "मराठी",
@@ -2126,9 +2194,13 @@ async def _action_set_translations(args: Dict[str, Any], ctx: ToolContext) -> Di
     if locale == base:
         return _err("base_locale", message=f"'{locale}' is this site's base language: its texts are edited on the pages.")
     strings_all = i18n.get("strings") if isinstance(i18n.get("strings"), dict) else {}
-    merged, report = merge_translations(strings_all.get(locale), changes)
+    current = strings_all.get(locale) if isinstance(strings_all.get(locale), dict) else {}
+    merged, report = merge_translations(current, changes)
     size = len(json.dumps(merged, ensure_ascii=False).encode("utf-8"))
-    if len(merged) > _MAX_TRANSLATIONS or size > _MAX_TRANSLATION_BYTES:
+    # A dictionary built in the dashboard may already be past the caps: any change
+    # that does not grow it (a removal, a shorter translation) is still allowed.
+    grows = len(merged) > len(current) or size > len(json.dumps(current, ensure_ascii=False).encode("utf-8"))
+    if (len(merged) > _MAX_TRANSLATIONS or size > _MAX_TRANSLATION_BYTES) and grows:
         return _err("too_large", message=(f"Nothing was changed: the '{locale}' dictionary would hold {len(merged)} texts "
                                           f"({size // 1000} KB); the limit is {_MAX_TRANSLATIONS} texts and "
                                           f"{_MAX_TRANSLATION_BYTES // 1000} KB."))
@@ -2181,40 +2253,6 @@ _BIND_KEY = {"folderLibrary": "libraryId", "folder": ("rootFolderId", "folderId"
 _BIND_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[\d{1,3}\]|\.[A-Za-z_][A-Za-z0-9_]*){0,7}$")
 
 
-async def load_folder_libraries(ctx: ToolContext) -> List[Dict[str, Any]]:
-    """The institute's folder libraries (id, name, node count) — the admin's own read."""
-    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/libraries",
-                                  params={"instituteId": ctx.principal.institute_id})
-    out = []
-    for lib in data if isinstance(data, list) else []:
-        if not isinstance(lib, dict) or not lib.get("id"):
-            continue
-        if str(lib.get("institute_id") or ctx.principal.institute_id) != ctx.principal.institute_id:
-            continue
-        out.append({"id": str(lib["id"]), "name": lib.get("name") or "", "node_count": lib.get("node_count")})
-    return out
-
-
-async def _library_folders(ctx: ToolContext, library_id: str) -> Optional[List[Dict[str, Any]]]:
-    """Every FOLDER node of one library (flattened, with depth), or None when the tree cannot be read."""
-    data = await _admin_core_json(ctx, "GET", "/admin-core-service/v1/folder-library/tree",
-                                  params={"instituteId": ctx.principal.institute_id, "libraryId": library_id})
-    if not isinstance(data, dict) or _is_error(data):
-        return None
-    out: List[Dict[str, Any]] = []
-
-    def walk(nodes: Any, depth: int) -> None:
-        for n in nodes if isinstance(nodes, list) else []:
-            if not isinstance(n, dict) or depth > 8:
-                continue
-            if str(n.get("node_type") or "FOLDER").upper() == "FOLDER" and n.get("id"):
-                out.append({"id": str(n["id"]), "title": n.get("title") or "", "slug": n.get("slug"),
-                            "depth": depth, "status": n.get("status")})
-            walk(n.get("children"), depth + 1)
-    walk(data.get("roots"), 0)
-    return out
-
-
 def _bind_target(comp: Dict[str, Any], kind: str, path: Optional[str], nav_index: Optional[int]) -> Tuple[Optional[str], Optional[str]]:
     """``(props path to the id, None)`` for a component and kind, or ``(None, reason)``."""
     ctype = comp.get("type")
@@ -2264,8 +2302,9 @@ def _get_path(props: Dict[str, Any], path: str) -> Any:
     return node
 
 
-def _set_existing_path(props: Dict[str, Any], path: str, value: Any) -> bool:
-    """Set a props path; objects are created on the way, list items must exist. False when it cannot be reached."""
+def _set_existing_path(props: Dict[str, Any], path: str, value: Any, create: bool = True) -> bool:
+    """Set a props path; list items must exist, and objects on the way are created only when ``create``
+    (the known binding places). False when it cannot be reached."""
     parts = [k or int(i) for k, i in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]", path)]
     node: Any = props
     for step, nxt in zip(parts[:-1], parts[1:]):
@@ -2277,7 +2316,7 @@ def _set_existing_path(props: Dict[str, Any], path: str, value: Any) -> bool:
             if not isinstance(node, dict):
                 return False
             if not isinstance(node.get(step), (dict, list)):
-                if isinstance(nxt, int):
+                if isinstance(nxt, int) or not create:
                     return False
                 node[step] = {}
             node = node[step]
@@ -2286,6 +2325,43 @@ def _set_existing_path(props: Dict[str, Any], path: str, value: Any) -> bool:
         return False
     node[last] = value
     return True
+
+
+#: Section types that show live data a binding feeds (listed when a section id is not found).
+_BINDABLE_TYPES = ("folderBrowser", "learningPath", "courseCatalog", "productPageOffer")
+
+
+def _find_bind_section(config: Dict[str, Any], section_id: str, page_route: Any):
+    """``(page, component, None)`` for a section, or ``(None, None, error)``. Without ``page_route`` the
+    section is looked for on every page; a page is asked for only when the id is on several."""
+    pages = [p for p in config.get("pages") or [] if isinstance(p, dict)]
+    if str(page_route or "").strip():
+        page = find_page(config, page_route)
+        if page is None:
+            return None, None, _err("unknown_page", available=[p.get("route") for p in pages])
+        comp = find_component(page, section_id)
+        if comp is None:
+            return None, None, _err("unknown_section", message=f"No section '{section_id}' on page '{page.get('route')}'.",
+                                    sections=_bindable_sections(pages))
+        return page, comp, None
+    hits = [(p, c) for p in pages if (c := find_component(p, section_id)) is not None]
+    if len(hits) == 1:
+        return hits[0][0], hits[0][1], None
+    if hits:
+        return None, None, _err("ambiguous_section", message=f"Section '{section_id}' is on several pages: pass page_route.",
+                                pages=[p.get("route") for p, _ in hits])
+    return None, None, _err("unknown_section", message=f"No section '{section_id}' on any page of this site.",
+                            sections=_bindable_sections(pages))
+
+
+def _bindable_sections(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    from .catalogue_summary import walk_components
+    out = []
+    for p in pages:
+        for c in walk_components(p.get("components") or []):
+            if isinstance(c, dict) and c.get("type") in _BINDABLE_TYPES:
+                out.append({"page_route": p.get("route"), "section_id": c.get("id"), "type": c.get("type")})
+    return out[:40]
 
 
 async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -2308,12 +2384,9 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         if not isinstance(comp, dict):
             return _err("unknown_section", message=f"This site has no {section_id}; create it with set_layout first.")
     else:
-        page = find_page(config, args.get("page_route"))
-        if page is None:
-            return _err("unknown_page", available=[p.get("route") for p in config.get("pages") or []])
-        comp = find_component(page, section_id)
-        if comp is None:
-            return _err("unknown_section", message="No section with that id on this page.")
+        page, comp, refusal = _find_bind_section(config, section_id, args.get("page_route"))
+        if refusal:
+            return refusal
     props = comp.setdefault("props", {})
     target, reason = _bind_target(comp, kind, path, nav_index)
     if target is None:
@@ -2325,6 +2398,8 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     library_id = None
     if kind == "folderLibrary":
         libraries = await load_folder_libraries(ctx)
+        if libraries is None:
+            return _err("fetch_failed", message="The institute's folder libraries could not be read; nothing was changed. Try again shortly.")
         lib = next((l for l in libraries if l["id"] == data_id), None)
         if lib is None:
             return _err("unknown_library", message="No folder library with that id for this institute.",
@@ -2338,10 +2413,14 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         if not library_id:
             return _err("missing_argument", needs=["library_id"],
                         message="This section is not bound to a folder library yet: pass library_id (or bind the library first).")
-        lib = next((l for l in await load_folder_libraries(ctx) if l["id"] == library_id), None)
+        libraries = await load_folder_libraries(ctx)
+        if libraries is None:
+            return _err("fetch_failed", message="The institute's folder libraries could not be read; nothing was changed. Try again shortly.")
+        lib = next((l for l in libraries if l["id"] == library_id), None)
         if lib is None:
-            return _err("unknown_library", message="No folder library with that id for this institute.")
-        folders = await _library_folders(ctx, library_id)
+            return _err("unknown_library", message="No folder library with that id for this institute.",
+                        available=[{"id": l["id"], "name": l["name"]} for l in libraries][:20])
+        folders = await load_library_folders(ctx, library_id)
         if folders is None:
             return _err("fetch_failed", message="The folder library could not be read.")
         folder = next((f for f in folders if f["id"] == data_id), None)
@@ -2361,8 +2440,10 @@ async def _action_bind_data(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
     ctype = comp.get("type")
     container_path = target.rsplit(".", 1)[0] if "." in target else ""
     before = _get_path(props, target)
-    if not _set_existing_path(props, target, data_id):
-        return _err("no_target", message=f"props.{target} cannot be reached on this section (a list item is missing).")
+    if not _set_existing_path(props, target, data_id, create=not path):
+        return _err("no_target", message=(f"props.{target} cannot be reached on this section: "
+                                          + ("the object or list item it belongs to does not exist." if path
+                                             else "a list item is missing.")))
     container = _get_path(props, container_path) if container_path else props
     if name_key and isinstance(container, dict):
         container[name_key] = name

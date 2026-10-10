@@ -41,6 +41,17 @@ describe('applyOps updateGlobalSettings', () => {
         });
     });
 
+    it('drops a palette left with no colour, like the MCP apply_ops', () => {
+        const base = config({ preset: 'default' });
+        expect(
+            themeAfter(base, [{ op: 'updateGlobalSettings', patch: { theme: { palette: { applyToTokens: true } } } }])
+        ).toEqual({ preset: 'default' });
+        const coloured = config({ palette: { text: 'ink-1', applyToTokens: true } });
+        expect(
+            themeAfter(coloured, [{ op: 'updateGlobalSettings', patch: { theme: { palette: { text: null } } } }])
+        ).toEqual({});
+    });
+
     it('does not change the config it was given', () => {
         const base = config({ palette: { text: 'ink-1' } });
         themeAfter(base, [{ op: 'updateGlobalSettings', patch: { theme: { palette: { text: 'ink-0' } } } }]);

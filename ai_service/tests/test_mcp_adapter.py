@@ -136,8 +136,7 @@ def test_catalog_places_every_tool_in_an_area_with_one_view_and_risk_rated_edits
         if c["level"] == "edit":
             assert c["risk"] in ("drafts", "additive", "not_live", "live") and c["sub_label"]
     for area in {c["area"] for c in catalog}:
-        # One view TOGGLE per area: several view tools may share it (website + design_import).
-        assert len({c["key"] for c in catalog if c["area"] == area and c["level"] == "view"}) == 1, area
+        assert sum(1 for c in catalog if c["area"] == area and c["level"] == "view") == 1, area
     invites = next(c for c in catalog if c["key"] == "course_invite_edits")
     assert invites["area"] == "courses" and invites["risk"] == "live"
 
@@ -217,13 +216,17 @@ async def test_disabled_tool_call_is_denied_by_the_registry_gate():
     assert "tool_not_permitted" in result.content[0].text
 
 
-def test_design_import_rides_the_website_view_toggle_and_is_not_read_only():
-    """design_import plans from what the caller sends (view), but save_draft writes a draft: never read-only."""
-    view = adapter.list_tools_for(principal(), setting(["website_builder"]))
-    tool = next(t for t in view if t.name == "design_import")
+def test_design_import_is_its_own_opt_in_draft_capability():
+    """Off for every existing connection (website view or edit): an admin turns it on; never read-only."""
+    for enabled in (["website_builder"], ["website_builder", "website_builder_edits"]):
+        assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), setting(enabled))]
+    assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), normalize_setting({"enabled": True}))]
+    tool = next(t for t in adapter.list_tools_for(principal(), setting(["design_import"])) if t.name == "design_import")
     assert tool.annotations.read_only_hint is False and tool.annotations.destructive_hint is True
     assert set(tool.input_schema["properties"]["action"]["enum"]) == {"plan", "save_draft"}
-    assert "design_import" not in [t.name for t in adapter.list_tools_for(principal(), setting(["website_builder_edits"]))]
-    assert "design_import" in MCP_ALLOWED_WRITE_TOOLS
-    # The website tool itself keeps its read-only hint.
-    assert next(t for t in view if t.name == "website").annotations.read_only_hint is True
+    entry = next(c for c in adapter.tool_catalog() if c["name"] == "design_import")
+    assert (entry["area"], entry["level"], entry["risk"]) == ("website", "edit", "drafts")
+    assert entry["label"] == "Website: import Figma designs" and entry["sub_label"]
+    # The website view tool keeps its own catalogue row and read-only hint.
+    website = next(c for c in adapter.tool_catalog() if c["name"] == "website")
+    assert website["key"] == "website_builder" and "Figma" not in website["summary"]

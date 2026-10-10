@@ -2001,6 +2001,14 @@ def _fill_header(props: Dict[str, Any], b: Band, routes: Dict[str, str], menu: D
     btn_nodes = {id(x) for bn, _ in btns for x in bn.walk()}
     nav = [n for n in (container.texts() if container is not None else [])
            if _words(_t(n)) <= 3 and not _LANG_TOGGLE_RE.match(_t(n))]
+    if container is None:
+        # A flat bar (the nav texts sit straight in the band, no list layer):
+        # its short texts minus the buttons and a wordmark at the far left.
+        flat = sorted((n for n in b.text_nodes if id(n) not in btn_nodes and _words(_t(n)) <= 3 and n.h <= 26
+                       and not _LANG_TOGGLE_RE.match(_t(n))), key=lambda n: n.x)
+        if flat and flat[0].x < b.frame.w * 0.2:
+            flat = flat[1:]
+        nav = flat[:12] if len(flat) >= 2 else []
     nav_ids = {id(n) for n in nav}
     items = []
     for n in nav:
@@ -2029,6 +2037,28 @@ def _fill_header(props: Dict[str, Any], b: Band, routes: Dict[str, str], menu: D
              if lbl and not _LANG_TOGGLE_RE.match(lbl) and lbl.lower() not in routes][:2]
     if auth:
         props["authLinks"] = auth[:3]
+
+
+def _chrome_unsure(props: Dict[str, Any], confidence: Any, kind: str) -> Optional[str]:
+    """Why a detected header / footer should NOT replace the site's default one, else None."""
+    try:
+        conf = float(confidence or 0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    if conf < LOW_CONFIDENCE:
+        return f"Low confidence ({conf:.2f}) that this band is the site {kind}: compare with the frame, then set it " \
+               "with website_edit(action='set_layout')."
+    if kind == "header" and not [i for i in props.get("navigation") or [] if isinstance(i, dict) and i.get("label")]:
+        return "No navigation was read from the bar, so the site's default header is kept: add the menu items and " \
+               "set it with website_edit(action='set_layout')."
+    if kind == "footer":
+        left = props.get("leftSection") if isinstance(props.get("leftSection"), dict) else {}
+        links = [ln for k, v in props.items() if k.startswith("rightSection") and isinstance(v, dict)
+                 for ln in v.get("links") or [] if isinstance(ln, dict) and ln.get("label")]
+        if not (left.get("title") or left.get("text") or links or props.get("bottomNote")):
+            return "No text or links were read from the footer, so the site's default footer is kept: fill it and " \
+                   "set it with website_edit(action='set_layout')."
+    return None
 
 
 def _fill_footer(props: Dict[str, Any], b: Band) -> None:
@@ -2614,10 +2644,22 @@ def plan_design(*, metadata_xml: Sequence[str], design_code: Sequence[Dict[str, 
     site_json_draft: Dict[str, Any] = {"theme": theme_argument(tokens), "pages": [
         {"route": p["route"], "title": p["title"], "components": p["components"],
          "design_source": {"kind": "figma", "node_id": p["frame"], "frame": p["frame_name"]}} for p in pages]}
+    # The draft's header / footer REPLACE the site's defaults on create_site, so
+    # an unsure or empty one (no navigation, no links or text) stays out of it:
+    # the plan still reports it under chrome for the caller to finish by hand.
     if header:
-        site_json_draft["header"] = header
+        why = _chrome_unsure(header["props"], (header_band[1] or {}).get("confidence"), "header")
+        if why:
+            chrome["header"]["not_in_draft"] = why
+        else:
+            site_json_draft["header"] = header
     if footer:
-        site_json_draft["footer"] = footer
+        why = _chrome_unsure(footer["props"], max((mm.get("confidence") or 0 for mm in footer_band[1]), default=0),
+                             "footer")
+        if why:
+            chrome["footer"]["not_in_draft"] = why
+        else:
+            site_json_draft["footer"] = footer
     site_settings_calls = _settings_calls(data_needs, tokens)
 
     return {

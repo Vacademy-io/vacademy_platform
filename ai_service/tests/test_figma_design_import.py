@@ -285,6 +285,42 @@ def test_unmatched_band_is_reported_not_guessed():
     assert any("matches no pattern" in w for w in out["warnings"])
 
 
+def _landing(nav):
+    """A generic landing page: a flat top bar (texts straight in the bar), a hero, a testimonials band."""
+    bar = _f(2, 0, 0, 1440, 80, _t(3, "Acme", 40, 20, 80, 30),
+             *[_t(4 + i, label, 600 + 70 * i, 30, 60, 20) for i, label in enumerate(nav)])
+    hero = _f(10, 0, 80, 1440, 600, _t(11, "Learn faster with Acme today", 144, 200, 600, 80),
+              _t(12, "We help students learn things in many different ways every day", 144, 300, 600, 60),
+              _button(13, "Get started", 144, 400))
+    quotes = _f(20, 0, 680, 1440, 400, _t(21, "What students say", 144, 40, 400, 40))
+    return ('<canvas id="0:1" name="p" x="0" y="0" width="0" height="0">'
+            + _f(1, 0, 0, 1440, 1080, bar, hero, quotes, name="Desktop") + "</canvas>")
+
+
+def _plan_xml(xml):
+    return fdi.plan_design(metadata_xml=[xml], design_code=[], variables=None, frame_ids=None,
+                           patterns=PATTERNS, font_stacks=FONT_STACKS)
+
+
+def test_a_flat_nav_bar_still_gives_the_header_its_menu():
+    out = _plan_xml(_landing(["Home", "About", "Contact"]))
+    header = out["site_json_draft"]["header"]
+    assert [i["label"] for i in header["props"]["navigation"]] == ["Home", "About", "Contact"]   # not the wordmark
+
+
+def test_an_unsure_or_empty_header_never_replaces_the_sites_default():
+    """create_site replaces the default header with the draft's: an empty one would drop the site's menu."""
+    out = _plan_xml(_landing(["Home", "About", "Contact"]))
+    header = out["site_json_draft"]["header"]
+    assert fdi._chrome_unsure(header["props"], 0.9, "header") is None
+    assert "No navigation" in fdi._chrome_unsure({**header["props"], "navigation": []}, 0.9, "header")
+    assert "Low confidence" in fdi._chrome_unsure(header["props"], 0.4, "header")
+    assert "No text or links" in fdi._chrome_unsure({"leftSection": {"title": ""}, "rightSection1": {"links": []}},
+                                                     0.9, "footer")
+    full = plan()["site_json_draft"]                                   # a clear header + footer stay in the draft
+    assert full["header"]["props"]["navigation"] and full["footer"]["props"]["leftSection"]["title"]
+
+
 def test_frame_ids_limit_the_plan():
     out = plan(frame_ids=["9:999"])
     assert any("None of frame_ids" in w for w in out["warnings"])

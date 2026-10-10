@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -45,6 +46,10 @@ def _dumps(value: Any) -> Optional[str]:
 #: design payload (design_import) is client artwork and would bloat
 #: mcp_tool_call_log on the primary.
 _AUDIT_DIGEST_KEYS = frozenset({"data_base64", "metadata_xml", "design_code"})
+#: Argument NAMES that would carry a credential (a tool refuses them, but the
+#: call is still logged): only "redacted" is kept — not even a hash, which a
+#: guessable password would not survive.
+_AUDIT_SECRET_KEY_RE = re.compile(r"(token|secret|password|api[_-]?key|authorization|bearer|cookie|^pat$)", re.I)
 #: Largest args_json kept whole; bigger calls keep their small top-level values
 #: (action, ids, names) and a size + hash for the rest.
 _AUDIT_ARGS_MAX_CHARS = 64_000
@@ -57,14 +62,22 @@ def _digest(value: Any) -> Dict[str, Any]:
     return {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
+def _redact_audit_item(key: Any, value: Any, depth: int) -> Any:
+    if value is None:
+        return None
+    # A flag such as apply_to_tokens (bool / number) carries no secret: kept.
+    if isinstance(key, str) and _AUDIT_SECRET_KEY_RE.search(key) and not isinstance(value, (bool, int, float)):
+        return "[redacted]"
+    if key in _AUDIT_DIGEST_KEYS:
+        return _digest(value)
+    return _redact_audit(value, depth + 1)
+
+
 def _redact_audit(value: Any, depth: int = 0) -> Any:
     if depth > 20:
         return _digest(value)
     if isinstance(value, dict):
-        return {
-            k: (_digest(v) if k in _AUDIT_DIGEST_KEYS and v is not None else _redact_audit(v, depth + 1))
-            for k, v in value.items()
-        }
+        return {k: _redact_audit_item(k, v, depth) for k, v in value.items()}
     if isinstance(value, list):
         return [_redact_audit(v, depth + 1) for v in value]
     return value

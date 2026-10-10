@@ -20,8 +20,10 @@ Actions:
                 design_source per page — a DRAFT, gated exactly like
                 website_edit (the "Website: edit drafts" capability).
 
-The tool is in the "Website: view" group: planning reads nothing but what the
-caller sends. Identity is pinned by ``execute_tool``.
+The tool has its own settings group ("Website: import Figma designs", an edit
+capability of the Website area, off until an admin turns it on) and is
+MCP-only: the in-product assistant cannot read Figma, so it is never offered
+there. Identity is pinned by ``execute_tool``.
 """
 from __future__ import annotations
 
@@ -40,8 +42,9 @@ from .website_data import _err
 logger = logging.getLogger(__name__)
 
 DESIGN_IMPORT_TOOL_NAME = "design_import"
-#: Same settings group as the `website` tool: planning only reads what the caller sends.
-DESIGN_IMPORT_GROUP_KEY = "website_builder"
+#: Its own settings group: off for every existing institute and connection until
+#: an admin turns it on (it stores uploads, and save_draft writes a draft).
+DESIGN_IMPORT_GROUP_KEY = "design_import"
 DESIGN_IMPORT_ACTIONS = ("plan", "save_draft")
 DESIGN_SOURCES = ("client", "figma_url")
 
@@ -55,9 +58,6 @@ MAX_FRAME_IDS = 40
 #: Live imports kept per institute; the oldest go first.
 MAX_IMPORTS_PER_INSTITUTE = 20
 IMPORT_TTL = timedelta(hours=24)
-#: ai_task row type. Listed in ai_task_repository._INTERNAL_TASK_TYPES, so it
-#: never shows in the AI task history.
-IMPORT_TASK_TYPE = "DESIGN_IMPORT"
 
 _IMPORT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _NODE_ID_RE = re.compile(r"^I?\d+[:-]\d+(;\d+:\d+)*$")
@@ -148,8 +148,12 @@ DESIGN_IMPORT_SCHEMA: Dict[str, Any] = {
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Upload storage: ai_task rows (type DESIGN_IMPORT), institute-scoped, 24 h
+# Upload storage: mcp_design_import_part (one row per uploaded part),
+# institute-scoped, 24 h. Never ai_task: its /task-status/* routes have no auth.
 # ──────────────────────────────────────────────────────────────────────────
+_schema_ready = False
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -164,53 +168,88 @@ def _payload_bytes(payload: Dict[str, Any]) -> int:
     return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
 
+def _ensure_schema(ctx: ToolContext) -> None:
+    global _schema_ready
+    if not _schema_ready:
+        from ..models.design_import import ensure_design_import_schema
+        _schema_ready = ensure_design_import_schema(ctx.db)
+
+
+def _purge_expired(ctx: ToolContext) -> None:
+    """Drop EVERY institute's expired imports (one indexed bulk DELETE), so the
+    24 h promise holds without a scheduler and without anyone re-reading them."""
+    from ..models.design_import import DesignImportPart
+    (ctx.db.query(DesignImportPart).filter(DesignImportPart.expires_at <= _now())
+     .delete(synchronize_session=False))
+    ctx.db.commit()
+
+
+def _merge_parts(parts: List[Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"v": 1, "metadata_xml": [], "design_code": [], "variables": {}, "frame_ids": []}
+    for part in parts:
+        try:
+            chunk = json.loads(part.payload or "{}")
+        except ValueError:
+            continue
+        payload["metadata_xml"].extend(chunk.get("metadata_xml") or [])
+        payload["design_code"].extend(chunk.get("design_code") or [])
+        payload["variables"].update(chunk.get("variables") or {})
+        payload["frame_ids"] = list(dict.fromkeys(payload["frame_ids"] + (chunk.get("frame_ids") or [])))
+        if chunk.get("design_url"):
+            payload["design_url"] = chunk["design_url"]
+    payload["frame_ids"] = payload["frame_ids"][:MAX_FRAME_IDS]
+    return payload
+
+
 def _load_import(ctx: ToolContext, import_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """(payload, row) of this institute's live import, else (None, None). Expired rows are removed."""
-    from ..models.ai_task import AiTask
-    row = ctx.db.get(AiTask, import_id)
-    if row is None or row.task_type != IMPORT_TASK_TYPE or row.institute_id != ctx.principal.institute_id:
+    """(payload, meta) of this institute's live import, else (None, None)."""
+    from ..models.design_import import DesignImportPart
+    _ensure_schema(ctx)
+    parts = (ctx.db.query(DesignImportPart)
+             .filter(DesignImportPart.institute_id == ctx.principal.institute_id,
+                     DesignImportPart.import_id == import_id,
+                     DesignImportPart.expires_at > _now())
+             .order_by(DesignImportPart.created_at, DesignImportPart.id).all())
+    if not parts:
         return None, None
-    if _aware(row.created_at) + IMPORT_TTL <= _now():
-        ctx.db.delete(row)
-        ctx.db.commit()
-        return None, None
-    try:
-        payload = json.loads(row.result_json or "{}")
-    except ValueError:
-        return None, None
-    return payload, {"row": row, "created_at": _aware(row.created_at)}
+    return _merge_parts(parts), {"created_at": _aware(parts[0].created_at),
+                                 "expires_at": _aware(parts[0].expires_at), "parts": len(parts)}
 
 
-def _save_import(ctx: ToolContext, import_id: Optional[str], payload: Dict[str, Any]) -> Tuple[str, datetime]:
-    from ..models.ai_task import AiTask, AiTaskStatus
-    text = json.dumps(payload, ensure_ascii=False)
-    if import_id:
-        row = ctx.db.get(AiTask, import_id)
-        row.result_json = text
-        row.updated_at = _now()
-        ctx.db.commit()
-        return import_id, _aware(row.created_at)
-    _sweep(ctx)
-    new_id = uuid.uuid4().hex
+def _save_part(ctx: ToolContext, import_id: Optional[str], expires_at: Optional[datetime],
+               chunk: Dict[str, Any]) -> Tuple[str, datetime]:
+    """INSERT one part (a new import when import_id is None); (import_id, expires_at)."""
+    from ..models.design_import import DesignImportPart
+    _ensure_schema(ctx)
+    _purge_expired(ctx)
     created = _now()
-    ctx.db.add(AiTask(id=new_id, task_type=IMPORT_TASK_TYPE, status=AiTaskStatus.COMPLETED.value,
-                      institute_id=ctx.principal.institute_id, result_json=text, task_name="Figma design import",
-                      input_type="FIGMA_CLIENT", created_at=created, updated_at=created))
+    if not import_id:
+        _cap_imports(ctx)
+        import_id, expires_at = uuid.uuid4().hex, created + IMPORT_TTL
+    text = json.dumps(chunk, ensure_ascii=False)
+    ctx.db.add(DesignImportPart(id=uuid.uuid4().hex, import_id=import_id, institute_id=ctx.principal.institute_id,
+                                created_by=ctx.principal.user_id, payload=text, bytes=len(text.encode("utf-8")),
+                                created_at=created, expires_at=expires_at))
     ctx.db.commit()
-    return new_id, created
+    return import_id, expires_at
 
 
-def _sweep(ctx: ToolContext) -> None:
-    """Drop this institute's expired imports, and the oldest beyond the per-institute cap."""
-    from ..models.ai_task import AiTask
-    rows = (ctx.db.query(AiTask)
-            .filter(AiTask.institute_id == ctx.principal.institute_id, AiTask.task_type == IMPORT_TASK_TYPE)
-            .order_by(AiTask.created_at.desc()).all())
-    cutoff = _now() - IMPORT_TTL
-    for i, row in enumerate(rows):
-        if _aware(row.created_at) <= cutoff or i >= MAX_IMPORTS_PER_INSTITUTE - 1:
-            ctx.db.delete(row)
-    ctx.db.commit()
+def _cap_imports(ctx: ToolContext) -> None:
+    """Keep at most MAX_IMPORTS_PER_INSTITUTE - 1 live imports before a new one: the
+    oldest go first. Reads ids and dates only, never the payloads."""
+    from sqlalchemy import func
+    from ..models.design_import import DesignImportPart
+    rows = (ctx.db.query(DesignImportPart.import_id, func.min(DesignImportPart.created_at))
+            .filter(DesignImportPart.institute_id == ctx.principal.institute_id)
+            .group_by(DesignImportPart.import_id)
+            .order_by(func.min(DesignImportPart.created_at).desc()).all())
+    drop = [r[0] for r in rows[MAX_IMPORTS_PER_INSTITUTE - 1:]]
+    if drop:
+        (ctx.db.query(DesignImportPart)
+         .filter(DesignImportPart.institute_id == ctx.principal.institute_id,
+                 DesignImportPart.import_id.in_(drop))
+         .delete(synchronize_session=False))
+        ctx.db.commit()
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -222,7 +261,7 @@ def _secret_args(args: Dict[str, Any]) -> List[str]:
 
 def _clean_chunk(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """This call's design payload, validated; (chunk, error)."""
-    chunk: Dict[str, Any] = {"metadata_xml": [], "design_code": [], "variables": {}, "frame_ids": []}
+    chunk: Dict[str, Any] = {"metadata_xml": [], "design_code": [], "variables": {}, "frame_ids": [], "warnings": []}
     xml = args.get("metadata_xml")
     if xml is not None:
         if not isinstance(xml, str):
@@ -259,6 +298,9 @@ def _clean_chunk(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Option
     if frames is not None:
         if not isinstance(frames, list):
             return None, _err("bad_request", message="frame_ids must be a list of node ids.")
+        if len(frames) > MAX_FRAME_IDS:
+            chunk["warnings"].append(f"frame_ids: only the first {MAX_FRAME_IDS} of {len(frames)} are used; plan the "
+                                     "rest in another import.")
         for f in frames[:MAX_FRAME_IDS]:
             f = str(f).strip()
             if not _NODE_ID_RE.match(f):
@@ -273,10 +315,17 @@ def _clean_chunk(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Option
 
 
 def _merge(payload: Dict[str, Any], chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Add this call's part to the import so far (in memory) and check the caps."""
     payload.setdefault("metadata_xml", []).extend(chunk["metadata_xml"])
     payload.setdefault("design_code", []).extend(chunk["design_code"])
     payload.setdefault("variables", {}).update(chunk["variables"])
-    payload["frame_ids"] = list(dict.fromkeys((payload.get("frame_ids") or []) + chunk["frame_ids"]))[:MAX_FRAME_IDS]
+    frames = list(dict.fromkeys((payload.get("frame_ids") or []) + chunk["frame_ids"]))
+    if len(frames) > MAX_FRAME_IDS and not chunk["warnings"]:
+        chunk["warnings"].append(f"frame_ids: this import now names {len(frames)} frames; only the first "
+                                 f"{MAX_FRAME_IDS} are planned.")
+    payload["frame_ids"] = frames[:MAX_FRAME_IDS]
+    if chunk.get("design_url"):
+        payload["design_url"] = chunk["design_url"]
     if len(payload["metadata_xml"]) > MAX_METADATA_DOCS:
         return _err("too_large", message=f"At most {MAX_METADATA_DOCS} metadata_xml documents per import.")
     if len(payload["design_code"]) > MAX_CODE_ENTRIES:
@@ -342,25 +391,33 @@ async def _action_plan(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
         return err
     import_id = str(args.get("import_id") or "").strip().lower() or None
     link = _design_link(args.get("url"))
+    expires_at: Optional[datetime] = None
     if import_id:
         if not _IMPORT_ID_RE.match(import_id):
             return _err("bad_request", message="import_id is the 32-character id an earlier plan call returned.")
-        payload, meta = _load_import(ctx, import_id)
+        try:
+            payload, meta = _load_import(ctx, import_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("design_import: reading the upload failed: %r", exc)
+            ctx.db.rollback()
+            return _err("storage_failed", message="The design could not be read; try again.")
         if payload is None:
             return _err("import_not_found", message="That import does not exist for this institute or is over 24 h "
                                                     "old: send the Figma results again without import_id.")
+        expires_at = meta["expires_at"]
     else:
-        payload = {"v": 1, "created_by": ctx.principal.user_id}
+        payload = {"v": 1}
         if not (chunk["metadata_xml"] or chunk["design_code"]):
             return _err("missing_argument", action="plan", needs=["metadata_xml", "design_code"],
                         message="Send get_metadata's XML (metadata_xml) and get_design_context's code per frame "
                                 "(design_code) from your Figma tools.")
     if link:
-        payload["design_url"] = link["url"]
+        chunk["design_url"] = link["url"]
     if (err := _merge(payload, chunk)) is not None:
         return err
+    upload_warnings = chunk.pop("warnings")
     try:
-        stored_id, created = _save_import(ctx, import_id, payload)
+        stored_id, expires_at = _save_part(ctx, import_id, expires_at, chunk)
     except Exception as exc:  # noqa: BLE001 — storage is needed for chunking and save_draft
         logger.warning("design_import: storing the upload failed: %r", exc)
         try:
@@ -370,9 +427,11 @@ async def _action_plan(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
         return _err("storage_failed", message="The design could not be stored; try again.")
     out: Dict[str, Any] = {
         "import_id": stored_id,
-        "expires_at": (created + IMPORT_TTL).isoformat(timespec="seconds"),
+        "expires_at": expires_at.isoformat(timespec="seconds"),
         "received": _received(payload),
     }
+    if upload_warnings:
+        out["warnings"] = list(upload_warnings)
     if args.get("upload_only") is True:
         out["next"] = "Send the remaining parts with this import_id; the last call without upload_only returns the plan."
         return out
@@ -382,6 +441,8 @@ async def _action_plan(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
     except DesignImportError as exc:
         return _err(exc.code, message=exc.message, import_id=stored_id)
     out.update(_for_caller(plan))
+    if upload_warnings:
+        out["warnings"] = list(upload_warnings) + list(plan.get("warnings") or [])
     if payload.get("design_url"):
         out["design_url"] = payload["design_url"]
     out["rules"] = PLAN_RULES
@@ -396,6 +457,9 @@ def _page_design_source(page: Dict[str, Any], design_url: Optional[str]) -> Opti
     if not ds:
         return None
     out = {k: ds[k] for k in ("kind", "node_id", "frame") if ds.get(k)}
+    # website_edit accepts the camelCase spelling too: never drop the frame link.
+    if not out.get("node_id") and ds.get("nodeId"):
+        out["node_id"] = ds["nodeId"]
     if design_url:
         out["url"] = design_url
     return out
@@ -422,7 +486,12 @@ async def _action_save_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
     tag_name = str(args.get("tag_name") or "").strip()
     if bool(new_site) == bool(tag_name):
         return _err("missing_argument", action="save_draft", needs=["new_site_name or tag_name (one of them)"])
-    payload, _meta = _load_import(ctx, import_id)
+    try:
+        payload, _meta = _load_import(ctx, import_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("design_import: reading the upload failed: %r", exc)
+        ctx.db.rollback()
+        return _err("storage_failed", message="The design could not be read; try again.")
     if payload is None:
         return _err("import_not_found", message="That import does not exist for this institute or is over 24 h old.")
     try:
@@ -533,11 +602,12 @@ DESIGN_IMPORT_TOOLS: Dict[str, ToolSpec] = {
         required_permission=None,
         setting_key=DESIGN_IMPORT_GROUP_KEY,
         default_enabled=False,
-        # Off in the in-product assistant until an admin configures it: it is
-        # for AI apps that read Figma themselves (the MCP).
         default_roles=None,
-        phase=2,
-        mode="READ",
+        # For AI apps that read Figma themselves: never offered in the in-product
+        # assistant, which has no Figma tools.
+        mcp_only=True,
+        phase=3,
+        mode="WRITE",
     ),
 }
 
@@ -552,5 +622,5 @@ _register()
 
 __all__ = [
     "DESIGN_IMPORT_TOOLS", "DESIGN_IMPORT_TOOL_NAME", "DESIGN_IMPORT_GROUP_KEY", "DESIGN_IMPORT_ACTIONS",
-    "DESIGN_IMPORT_SCHEMA", "IMPORT_TASK_TYPE", "execute_design_import",
+    "DESIGN_IMPORT_SCHEMA", "execute_design_import",
 ]

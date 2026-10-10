@@ -32,7 +32,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "get_institute_overview",
     "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
-    "design_import",        # READ:  a Figma design the AI app read itself → site plan; save_draft goes through website_edit's gate
+    "design_import",        # WRITE: a Figma design the AI app read itself → site plan; save_draft = website_edit drafts
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
@@ -52,12 +52,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #: change or remove existing data (learner edits, announcements) stay off.
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
-    # In the "Website: view" group because `plan` only reads what the caller sends;
-    # listed here because `save_draft` writes — through website_edit's own
-    # create_site / create_page and only when the caller also holds website_edit.
     "design_import": (
-        "plan is read-only (parses the Figma results the caller sends; stores them 24 h for this institute); "
-        "save_draft saves a DRAFT through website_edit create_site / create_page and needs website_edit's group"
+        "draft-only: plan parses the Figma results the caller sends and stores them 24 h for this institute "
+        "(its own table, never served elsewhere); save_draft saves a DRAFT through website_edit's create_site / "
+        "create_page and also needs website_edit's group"
     ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
@@ -87,6 +85,7 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "institute_overview": "Institute stats",
     "website_builder": "Website: view",
     "website_builder_edits": "Website: edit drafts",
+    "design_import": "Website: import Figma designs",
     "audience_forms": "Lead forms: view",
     "audience_forms_edits": "Lead forms: edit",
     "workflows": "Automations: view",
@@ -107,14 +106,18 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "institute_overview": "The institute's profile (name, logo, theme, terminology), outstanding fees, classes live now and active learner counts.",
     "website_builder": (
         "See the institute's websites: pages and what each section shows, traffic, lead-capture "
-        "health, pre-publish checks, and the interview an AI runs before building a site. Also turns a "
-        "Figma design the AI app read itself into a site plan (colours, sections, the data it needs)."
+        "health, pre-publish checks, and the interview an AI runs before building a site."
     ),
     "website_builder_edits": (
         "Let the connected AI app build and change websites — compose pages, edit sections, set "
         "colours and fonts, course formats and languages, translations, wire forms to lead campaigns "
         "and sections to folder libraries or product pages. Every change is saved as a draft; nothing "
         "goes live until you publish it in Manage Pages. Uses no AI credits."
+    ),
+    "design_import": (
+        "Let the connected AI app turn a Figma design it read with its own Figma tools into a site plan "
+        "(colours, fonts, sections, the data it needs) and save it as a DRAFT site. The design files it sends "
+        "are kept 24 hours for this institute only. Saving also needs 'Build and edit pages'. Uses no AI credits."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."
@@ -189,6 +192,7 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "institute_overview": {"area": "institute", "level": "view"},
     "website_builder": {"area": "website", "level": "view"},
     "website_builder_edits": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Build and edit pages"},
+    "design_import": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Import Figma designs"},
     "audience_forms": {"area": "lead_forms", "level": "view"},
     "audience_forms_edits": {"area": "lead_forms", "level": "edit", "risk": "additive",
                              "sub_label": "Create campaigns and add fields"},

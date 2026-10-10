@@ -1,8 +1,11 @@
 """
 design_import end to end through the registry gate, with a real (SQLite)
-ai_task table for the 24 h uploads: client payloads only (figma_url is refused),
-no credentials accepted, chunked uploads under one import_id, institute
-scoping, expiry, size caps, and save_draft going through website_edit's own
+mcp_design_import_part table for the 24 h uploads: client payloads only
+(figma_url is refused), no credentials accepted, chunked uploads under one
+import_id (parallel parts never lost), institute scoping, expiry (purged for
+every institute), size caps, uploads never reachable through ai_task's
+unauthenticated /task-status routes, the tool's own opt-in group (never in the
+in-product assistant), and save_draft going through website_edit's own
 create_site / create_page — only for callers who hold website_edit.
 """
 import json
@@ -18,6 +21,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from app.models.ai_task import AiTask  # noqa: E402
+from app.models.design_import import DesignImportPart  # noqa: E402
 from app.schemas.auth import PinnedPrincipal  # noqa: E402
 from app.services import assistant_tools_design_import as di  # noqa: E402
 from app.services import assistant_tools_website_edit as edit_mod  # noqa: E402
@@ -25,17 +29,27 @@ from app.services.assistant_tool_registry import ToolContext, execute_tool  # no
 
 from test_figma_design_import import design_code, design_xml  # noqa: E402
 
-VIEW = {"enabled_tools": ["website_builder"]}
-EDIT = {"enabled_tools": ["website_builder", "website_builder_edits"]}
+VIEW = {"enabled_tools": ["design_import"]}                      # the tool's own group, without website_edit
+EDIT = {"enabled_tools": ["design_import", "website_builder", "website_builder_edits"]}
 
 
 @pytest.fixture
-def db(tmp_path):
+def db(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'ai.db'}", connect_args={"check_same_thread": False})
     AiTask.metadata.create_all(engine, tables=[AiTask.__table__])
+    monkeypatch.setattr(di, "_schema_ready", False)      # the tool creates its own table on first use
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     yield session
     session.close()
+
+
+def parts(db, import_id=None):
+    q = db.query(DesignImportPart)
+    return q.filter(DesignImportPart.import_id == import_id).all() if import_id else q.all()
+
+
+def stored(db):
+    return {r.import_id for r in parts(db)}
 
 
 def ctx(db, institute="inst-1"):
@@ -71,8 +85,10 @@ async def test_credentials_are_refused_and_never_echoed(db, key):
 
 
 @pytest.mark.asyncio
-async def test_the_tool_needs_the_website_view_group(db):
-    out = await call(db, payload(), setting={"enabled_tools": ["website_builder_edits"]})
+@pytest.mark.parametrize("enabled", [["website_builder"], ["website_builder", "website_builder_edits"]])
+async def test_the_tool_needs_its_own_group_not_the_website_ones(db, enabled):
+    """Existing connections (website view / edit) do not get it: an admin turns it on."""
+    out = await call(db, payload(), setting={"enabled_tools": enabled})
     assert out["error"] == "tool_not_permitted"
 
 
@@ -87,8 +103,9 @@ async def test_plan_stores_the_upload_for_this_institute_and_returns_the_plan(db
     assert out["site_json_draft"]["pages"][0]["components"]
     assert out["design_url"] == "https://www.figma.com/design/AbCdEfGhIjKl/Site?node-id=9-1"   # share token dropped
     assert "DESIGN DATA" in out["rules"]
-    row = db.get(AiTask, out["import_id"])
-    assert row.task_type == "DESIGN_IMPORT" and row.institute_id == "inst-1"
+    (row,) = parts(db, out["import_id"])
+    assert row.institute_id == "inst-1" and row.created_by == "user-1" and row.bytes > 0
+    assert db.query(AiTask).count() == 0                               # never an ai_task row
 
 
 @pytest.mark.asyncio
@@ -101,13 +118,35 @@ async def test_chunked_upload_plans_from_every_part(db):
     assert out["received"] == {**out["received"], "metadata_xml_documents": 1, "design_code_entries": 1}
     assert out["tokens"]["palette"]["text"] == "#1B1B1B"        # colours from part 2, sections from part 1
     assert out["sections"]
+    assert len(parts(db, first["import_id"])) == 2 and out["expires_at"] == first["expires_at"]
+
+
+@pytest.mark.asyncio
+async def test_parallel_parts_of_one_import_are_all_kept(db):
+    """AI apps send tool calls in parallel: each part is its own row, so none is lost."""
+    import asyncio
+    first = await call(db, {"action": "plan", "source": "client", "metadata_xml": design_xml(), "upload_only": True})
+    more = [{"action": "plan", "source": "client", "import_id": first["import_id"], "upload_only": True,
+             "design_code": [{"node_id": f"9:{i}", "code": design_code()}]} for i in range(1, 4)]
+    await asyncio.gather(*(call(db, a) for a in more))
+    payload_, _ = di._load_import(ctx(db), first["import_id"])
+    assert sorted(c["node_id"] for c in payload_["design_code"]) == ["9:1", "9:2", "9:3"]
+
+
+@pytest.mark.asyncio
+async def test_too_many_frame_ids_are_reported_not_silently_dropped(db, monkeypatch):
+    monkeypatch.setattr(di, "MAX_FRAME_IDS", 2)
+    out = await call(db, payload(frame_ids=["9:1", "9:2", "9:3"], upload_only=True))
+    assert "only the first 2 of 3" in out["warnings"][0]
 
 
 @pytest.mark.asyncio
 async def test_another_institute_cannot_read_an_import(db):
     out = await call(db, payload())
-    other = await call(db, {"action": "plan", "source": "client", "import_id": out["import_id"]}, institute="inst-2")
+    other = await call(db, {"action": "plan", "source": "client", "import_id": out["import_id"],
+                            "design_code": [{"node_id": "9:2", "code": "<div/>"}]}, institute="inst-2")
     assert other["error"] == "import_not_found"
+    assert len(parts(db, out["import_id"])) == 1                       # nothing added to another's import
     saved = await call(db, {"action": "save_draft", "import_id": out["import_id"], "new_site_name": "x"},
                        setting=EDIT, institute="inst-2")
     assert saved["error"] == "import_not_found"
@@ -116,20 +155,30 @@ async def test_another_institute_cannot_read_an_import(db):
 @pytest.mark.asyncio
 async def test_imports_expire_after_24_hours(db):
     out = await call(db, payload())
-    row = db.get(AiTask, out["import_id"])
-    row.created_at = row.created_at - timedelta(hours=25)
+    for row in parts(db, out["import_id"]):
+        row.expires_at = row.expires_at - timedelta(hours=25)
     db.commit()
     again = await call(db, {"action": "plan", "source": "client", "import_id": out["import_id"]})
     assert again["error"] == "import_not_found"
-    assert db.get(AiTask, out["import_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_expired_imports_of_every_institute_are_purged_by_any_new_upload(db):
+    """The 24 h promise holds without a scheduler and without the owner coming back."""
+    old = await call(db, payload(), institute="inst-quiet")
+    for row in parts(db, old["import_id"]):
+        row.expires_at = row.expires_at - timedelta(hours=25)
+    db.commit()
+    new = await call(db, payload(upload_only=True), institute="inst-1")
+    assert stored(db) == {new["import_id"]}
 
 
 @pytest.mark.asyncio
 async def test_each_institute_keeps_a_bounded_number_of_imports(db, monkeypatch):
     monkeypatch.setattr(di, "MAX_IMPORTS_PER_INSTITUTE", 3)
-    ids = [(await call(db, payload()))["import_id"] for _ in range(5)]
-    left = {r.id for r in db.query(AiTask).all()}
-    assert left == set(ids[-3:])
+    ids = [(await call(db, payload(upload_only=True)))["import_id"] for _ in range(5)]
+    other = (await call(db, payload(upload_only=True), institute="inst-2"))["import_id"]
+    assert stored(db) == set(ids[-3:]) | {other}
 
 
 @pytest.mark.asyncio
@@ -227,6 +276,17 @@ async def test_save_draft_into_an_existing_site_adds_pages_and_leaves_its_chrome
 
 
 @pytest.mark.asyncio
+async def test_save_draft_keeps_a_camel_case_node_id_of_a_corrected_page(db, writes):
+    out = await call(db, payload())
+    corrected = {"pages": [{"route": "courses", "title": "Courses", "components": [],
+                            "design_source": {"kind": "figma", "nodeId": "9:1", "frame": "Courses"}}]}
+    saved = await call(db, {"action": "save_draft", "import_id": out["import_id"], "new_site_name": "Acme",
+                            "site_json": corrected}, setting=EDIT)
+    assert "error" not in saved, saved
+    assert writes["sites"][0]["pages"][0]["design_source"]["node_id"] == "9:1"
+
+
+@pytest.mark.asyncio
 async def test_save_draft_argument_checks(db, writes):
     out = await call(db, payload())
     both = await call(db, {"action": "save_draft", "import_id": out["import_id"], "new_site_name": "a", "tag_name": "b"},
@@ -249,14 +309,37 @@ async def test_a_failed_save_is_reported(db, monkeypatch):
 
 
 # ── side effects elsewhere ───────────────────────────────────────────────
-def test_uploads_stay_out_of_the_ai_task_history(db):
-    from app.repositories.ai_task_repository import AiTaskRepository
-    db.add(AiTask(id="a" * 32, task_type="DESIGN_IMPORT", status="COMPLETED", institute_id="inst-1", result_json="{}"))
-    db.add(AiTask(id="b" * 32, task_type="LECTURE_PLANNER", status="COMPLETED", institute_id="inst-1"))
-    db.commit()
-    repo = AiTaskRepository(db)
-    assert [t.id for t in repo.list_by_institute("inst-1")] == ["b" * 32]
-    assert [t.id for t in repo.list_parentless("inst-1")] == ["b" * 32]
+@pytest.mark.asyncio
+async def test_uploads_are_not_reachable_through_the_unauthenticated_task_status_routes(db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.db import db_dependency
+    from app.routers import ai_task_status
+
+    out = await call(db, payload())
+    app = FastAPI()
+    app.include_router(ai_task_status.router)
+    app.dependency_overrides[db_dependency] = lambda: db
+    client = TestClient(app)
+    for task_type in ("DESIGN_IMPORT", None):
+        params = {"instituteId": "inst-1", **({"taskType": task_type} if task_type else {})}
+        listed = client.get("/task-status/get-all", params=params)
+        assert listed.status_code == 200 and listed.json() == []
+    assert client.get("/task-status/get-raw-result", params={"taskId": out["import_id"]}).status_code == 404
+    assert client.get("/task-status/get-status", params={"taskId": out["import_id"]}).status_code == 404
+
+
+def test_the_in_product_assistant_never_offers_design_import():
+    """MCP-only: the default in-product offer is what it was, and enabling the key there changes nothing."""
+    from app.services.assistant_tool_registry import ASSISTANT_TOOLS, build_offered_tools
+    p = PinnedPrincipal(user_id="u", institute_id="i", roles=["ADMIN"], permissions=[], is_root_user=False)
+    offered = [t["function"]["name"] for t in build_offered_tools(p, None)]
+    assert "design_import" not in offered and "website" in offered
+    expected = [n for n, spec in ASSISTANT_TOOLS.items()
+                if n != "design_import" and (spec.default_enabled or "ADMIN" in (spec.default_roles or []))]
+    assert sorted(offered) == sorted(expected)
+    on = [t["function"]["name"] for t in build_offered_tools(p, {"enabled_tools": ["design_import", "website_builder"]})]
+    assert "design_import" not in on and "website" in on
 
 
 def test_design_payloads_are_digested_in_the_mcp_audit_log():
@@ -265,3 +348,14 @@ def test_design_payloads_are_digested_in_the_mcp_audit_log():
                                                    "design_code": [{"code": "abc"}]}))
     assert logged["action"] == "plan"
     assert set(logged["metadata_xml"]) == {"bytes", "sha256"} and set(logged["design_code"]) == {"bytes", "sha256"}
+
+
+def test_refused_credentials_never_reach_the_mcp_audit_log():
+    from app.mcp import repository as repo_mod
+    logged = json.loads(repo_mod._audit_args_json({"action": "plan", "figma_token": "figd_SECRET123",
+                                                   "nested": {"Authorization": "Bearer x"}, "apply_to_tokens": True}))
+    assert "figd_SECRET123" not in json.dumps(logged) and "Bearer x" not in json.dumps(logged)
+    assert logged["figma_token"] == "[redacted]" and logged["nested"]["Authorization"] == "[redacted]"
+    assert logged["apply_to_tokens"] is True and logged["action"] == "plan"
+    for key in ("figma_token", "access_token", "api_key", "Authorization", "pat", "client_secret", "password"):
+        assert bool(repo_mod._AUDIT_SECRET_KEY_RE.search(key)) == bool(di._SECRET_ARG_RE.search(key)) is True, key

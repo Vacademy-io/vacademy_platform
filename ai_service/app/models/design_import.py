@@ -15,8 +15,10 @@ import carries the import's ``expires_at`` (copied from its first part), so a
 bulk ``DELETE ... WHERE expires_at <= now()`` drops whole imports, never half
 of one.
 
-Created at startup (idempotent) and again lazily on first use, like the other
-ai_service-owned tables (tutor_demo_grant, file_conversion, ...).
+The admin_core Flyway migration V561__mcp_design_import_part.sql is the source
+of truth for the schema; keep this model identical to it. ai_service also
+creates the table at startup (idempotent) and again lazily on first use, so it
+runs standalone in local development.
 """
 from __future__ import annotations
 

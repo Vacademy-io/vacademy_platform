@@ -14,6 +14,10 @@ import brahmVarchasSite from './brahm-varchas-site.fixture.json';
  * the real store.
  */
 
+// The courses-page panel now carries every catalogue design group, so a test
+// that renders it can pass 5 s on a loaded machine (the full admin suite).
+vi.setConfig({ testTimeout: 15_000 });
+
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
     Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,

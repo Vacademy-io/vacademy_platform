@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react';
+import { useRef, useState, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Plus, Trash } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
     FORMAT_TAG_PREFIX,
+    MAX_COURSE_FORMATS,
     addFormat,
+    carryLabelTranslations,
     formatDef,
     formatLabel,
     moveFormat,
@@ -30,10 +32,26 @@ export interface CourseFormatsCardProps {
      * courseFormatOrder) in one edit; keys left out are not touched.
      */
     onChange: (next: CourseFormatsEdit) => void;
+    /** globalSettings.i18n: a rename copies the old name's translations to the new name. */
+    i18n?: unknown;
+    /**
+     * Editing another site language: names are the base text, so they are
+     * shown read-only here (translated in Translations) and nothing is added.
+     */
+    readOnlyNames?: boolean;
 }
 
 const strings = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [];
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** True when some language has at least one translation. */
+const hasTranslations = (i18n: unknown): boolean =>
+    isObject(i18n) &&
+    isObject(i18n.strings) &&
+    Object.values(i18n.strings).some((d) => isObject(d) && Object.keys(d).length > 0);
 
 /**
  * Global Settings → Course formats ("E-books", "Live sessions"…), shown on
@@ -42,9 +60,18 @@ const strings = (v: unknown): string[] =>
  * (shown, not edited here). A course joins a format through its
  * `format-<id>` tag, so adding one reminds the editor to tag the courses.
  */
-export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, onChange }) => {
+export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({
+    formats,
+    order,
+    onChange,
+    i18n,
+    readOnlyNames = false,
+}) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const ids = orderedFormatIds(formats, order);
+    // The name a field had when it was focused; its translations are copied
+    // to the name it has on blur (each keystroke is saved, only the last counts).
+    const renameFrom = useRef('');
     const [newLabel, setNewLabel] = useState('');
     const [newId, setNewId] = useState('');
     const [idTouched, setIdTouched] = useState(false);
@@ -61,8 +88,19 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
         if (edit) onChange(edit);
     };
 
+    const carryTranslations = (newName: string) => {
+        const next = carryLabelTranslations(i18n, renameFrom.current, newName);
+        if (next) onChange({ i18n: next });
+    };
+
+    const remove = (formatId: string, name: string) => {
+        const tag = `${FORMAT_TAG_PREFIX}${formatId}`;
+        if (!window.confirm(t('global.courseFormats.confirmRemove', { name, tag }))) return;
+        onChange(removeFormat(formats, order, formatId));
+    };
+
     const add = () => {
-        if (issue) return;
+        if (issue || readOnlyNames) return;
         onChange(addFormat(formats, order, id, newLabel));
         setAdded({ id, label: newLabel.trim() });
         setNewLabel('');
@@ -74,6 +112,17 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
         <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <h4 className="font-medium text-neutral-700">{t('global.courseFormats.heading')}</h4>
             <p className="text-caption text-neutral-500">{t('global.courseFormats.hint')}</p>
+            {readOnlyNames ? (
+                <p className="text-caption text-neutral-600">
+                    {t('global.courseFormats.namesInTranslations')}
+                </p>
+            ) : (
+                hasTranslations(i18n) && (
+                    <p className="text-caption text-neutral-500">
+                        {t('global.courseFormats.renameHint')}
+                    </p>
+                )
+            )}
 
             {ids.map((formatId, i) => {
                 const def = formatDef(formats, formatId);
@@ -114,7 +163,7 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
                                     aria-label={t('global.courseFormats.remove', {
                                         name: label || formatId,
                                     })}
-                                    onClick={() => onChange(removeFormat(formats, order, formatId))}
+                                    onClick={() => remove(formatId, label || formatId)}
                                     className="rounded p-1 text-neutral-400 hover:bg-danger-50 hover:text-danger-600"
                                 >
                                     <Trash className="size-3.5" />
@@ -128,8 +177,14 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
                             <Input
                                 id={`${rowId}-label`}
                                 value={label}
+                                readOnly={readOnlyNames}
+                                onFocus={(e) => (renameFrom.current = e.currentTarget.value)}
                                 onChange={(e) =>
+                                    !readOnlyNames &&
                                     onChange(setFormatLabel(formats, formatId, e.target.value))
+                                }
+                                onBlur={(e) =>
+                                    !readOnlyNames && carryTranslations(e.currentTarget.value)
                                 }
                             />
                             {!label.trim() && (
@@ -170,6 +225,7 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
                         <Input
                             id="course-format-new-label"
                             value={newLabel}
+                            disabled={readOnlyNames}
                             onChange={(e) => setNewLabel(e.target.value)}
                             placeholder={t('global.courseFormats.namePlaceholder')}
                         />
@@ -181,6 +237,7 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
                         <Input
                             id="course-format-new-id"
                             value={id}
+                            disabled={readOnlyNames}
                             onChange={(e) => {
                                 setIdTouched(true);
                                 setNewId(sanitizeFormatId(e.target.value));
@@ -190,12 +247,17 @@ export const CourseFormatsCard: FC<CourseFormatsCardProps> = ({ formats, order, 
                         />
                     </div>
                 </div>
-                {showIssue && (
+                {showIssue && !readOnlyNames && (
                     <p className="text-caption text-danger-600">
-                        {t(`global.courseFormats.issue.${issue}`)}
+                        {t(`global.courseFormats.issue.${issue}`, { max: MAX_COURSE_FORMATS })}
                     </p>
                 )}
-                <MyButton buttonType="secondary" scale="small" disable={!!issue} onClick={add}>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    disable={!!issue || readOnlyNames}
+                    onClick={add}
+                >
                     <Plus className="size-3.5" /> {t('global.courseFormats.add')}
                 </MyButton>
             </div>

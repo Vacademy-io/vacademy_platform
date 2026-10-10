@@ -15,9 +15,14 @@ export type CourseFormats = Record<string, unknown>;
 export interface CourseFormatsEdit {
     courseFormats?: CourseFormats;
     courseFormatOrder?: string[];
+    /** globalSettings.i18n, when a rename carries the name's translations along. */
+    i18n?: Record<string, unknown>;
 }
 
-/** The learner reads at most this many formats. */
+/**
+ * The learner reads at most this many formats. The card counts every stored
+ * entry (a malformed or unnamed one too), so it may stop a little earlier.
+ */
 export const MAX_COURSE_FORMATS = 30;
 export const FORMAT_TAG_PREFIX = 'format-';
 
@@ -115,7 +120,7 @@ export const newFormatIssue = (
     return null;
 };
 
-/** Adds a format last; an existing order list gets it last too. */
+/** Adds a format last; an existing order list gets it last too (a stale entry for the same id is dropped). */
 export const addFormat = (
     formats: CourseFormats,
     order: string[] | undefined,
@@ -125,6 +130,37 @@ export const addFormat = (
     const edit: CourseFormatsEdit = {
         courseFormats: { ...formats, [id]: { label: label.trim() } },
     };
-    if (order) edit.courseFormatOrder = [...order, id];
+    if (order) {
+        edit.courseFormatOrder = [
+            ...order.filter((k) => typeof k !== 'string' || norm(k) !== norm(id)),
+            id,
+        ];
+    }
     return edit;
+};
+
+/**
+ * After a rename: the site shows a format's name in another language by
+ * looking up the exact base name, so each language's translation of the old
+ * name is copied to the new one (unless it already has its own). The old
+ * entry stays, as other text may use it. Null when nothing changes.
+ */
+export const carryLabelTranslations = (
+    i18n: unknown,
+    oldLabel: string,
+    newLabel: string
+): Record<string, unknown> | null => {
+    const from = oldLabel.trim();
+    const to = newLabel.trim();
+    if (!from || !to || from === to || !isObject(i18n) || !isObject(i18n.strings)) return null;
+    const strings: Record<string, unknown> = { ...i18n.strings };
+    let changed = false;
+    for (const [locale, dict] of Object.entries(i18n.strings)) {
+        if (!isObject(dict)) continue;
+        const translation = dict[from];
+        if (typeof translation !== 'string' || !translation || dict[to]) continue;
+        strings[locale] = { ...dict, [to]: translation };
+        changed = true;
+    }
+    return changed ? { ...i18n, strings } : null;
 };

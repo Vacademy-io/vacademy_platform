@@ -33,7 +33,7 @@ describe('SitePaletteCard', () => {
         expect(screen.getByText('global.palette.keys.text')).toBeInTheDocument();
         expect(screen.getByText('global.palette.keys.outline')).toBeInTheDocument();
         expect(colourInput('global.palette.keys.cream')).toHaveValue(GS.theme.palette.cream);
-        expect(screen.getByLabelText('global.palette.contentWidth')).toHaveValue(1152);
+        expect(screen.getByLabelText('global.palette.contentWidth')).toHaveValue('1152');
         expect(onThemeChange).not.toHaveBeenCalled();
     });
 
@@ -85,6 +85,28 @@ describe('SitePaletteCard', () => {
         expect(onThemeChange).toHaveBeenLastCalledWith(withoutWidth);
     });
 
+    it('content width stored as text reads like the learner, and a bad entry is not saved', () => {
+        const theme = { ...clone(GS.theme), contentMaxWidth: '1152' };
+        const onThemeChange = vi.fn();
+        render(<SitePaletteCard theme={theme} onThemeChange={onThemeChange} />);
+        const width = screen.getByLabelText('global.palette.contentWidth');
+        expect(width).toHaveValue('1152');
+        fireEvent.blur(width);
+        fireEvent.change(width, { target: { value: '-' } });
+        fireEvent.blur(width);
+        expect(onThemeChange).not.toHaveBeenCalled();
+    });
+
+    it('a theme with a width but no palette shows only the width', () => {
+        const onThemeChange = vi.fn();
+        render(
+            <SitePaletteCard theme={{ contentMaxWidth: 1152.4 }} onThemeChange={onThemeChange} />
+        );
+        expect(screen.getByLabelText('global.palette.contentWidth')).toHaveValue('1152');
+        expect(screen.queryByText('global.palette.heading')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('global.palette.applyToTokens')).not.toBeInTheDocument();
+    });
+
     it('"Use these colours everywhere" toggles palette.applyToTokens only', () => {
         const theme = clone(GS.theme);
         const onThemeChange = vi.fn();
@@ -121,6 +143,56 @@ describe('CourseFormatsCard', () => {
         });
     });
 
+    it('renaming carries the Hindi translation to the new name when the field is left', () => {
+        const i18n = { ...clone(GS.i18n), strings: { hi: { 'E-books': 'ई-पुस्तकें' } } };
+        const onChange = vi.fn();
+        const { rerender } = render(
+            <CourseFormatsCard
+                formats={formats()}
+                order={order()}
+                onChange={onChange}
+                i18n={i18n}
+            />
+        );
+        expect(screen.getByText('global.courseFormats.renameHint')).toBeInTheDocument();
+        const name = screen.getByDisplayValue('E-books');
+        fireEvent.focus(name);
+        fireEvent.change(name, { target: { value: 'E-Books' } });
+        const renamed = onChange.mock.calls[0][0].courseFormats;
+        rerender(
+            <CourseFormatsCard formats={renamed} order={order()} onChange={onChange} i18n={i18n} />
+        );
+        fireEvent.blur(name);
+        expect(onChange).toHaveBeenLastCalledWith({
+            i18n: {
+                ...i18n,
+                strings: { hi: { 'E-books': 'ई-पुस्तकें', 'E-Books': 'ई-पुस्तकें' } },
+            },
+        });
+    });
+
+    it('editing in Hindi: names are read-only, nothing can be added, and nothing is written', () => {
+        const onChange = vi.fn();
+        render(
+            <CourseFormatsCard
+                formats={formats()}
+                order={order()}
+                onChange={onChange}
+                i18n={GS.i18n}
+                readOnlyNames
+            />
+        );
+        expect(screen.getByText('global.courseFormats.namesInTranslations')).toBeInTheDocument();
+        const name = screen.getByDisplayValue('E-books');
+        expect(name).toHaveAttribute('readonly');
+        fireEvent.focus(name);
+        fireEvent.change(name, { target: { value: 'ई-पुस्तकें' } });
+        fireEvent.blur(name);
+        expect(screen.getAllByLabelText('global.courseFormats.name').at(-1)).toBeDisabled();
+        expect(screen.getByRole('button', { name: /global.courseFormats.add$/ })).toBeDisabled();
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
     it('moving a format writes only the order', () => {
         const onChange = vi.fn();
         render(<CourseFormatsCard formats={formats()} order={order()} onChange={onChange} />);
@@ -129,10 +201,24 @@ describe('CourseFormatsCard', () => {
         expect(onChange).toHaveBeenCalledWith({ courseFormatOrder: [second, first, ...rest] });
     });
 
+    it('removing a format asks first, naming its tag; cancelling keeps it', () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const onChange = vi.fn();
+        render(<CourseFormatsCard formats={formats()} order={order()} onChange={onChange} />);
+        fireEvent.click(screen.getByLabelText('global.courseFormats.remove {"name":"E-books"}'));
+        expect(confirm).toHaveBeenCalledWith(
+            'global.courseFormats.confirmRemove {"name":"E-books","tag":"format-ebook"}'
+        );
+        expect(onChange).not.toHaveBeenCalled();
+        confirm.mockRestore();
+    });
+
     it('removing a format drops it from the formats and the order', () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
         const onChange = vi.fn();
         render(<CourseFormatsCard formats={formats()} order={order()} onChange={onChange} />);
         fireEvent.click(screen.getByLabelText('global.courseFormats.remove {"name":"Audio Book"}'));
+        confirm.mockRestore();
         const rest = formats();
         delete rest.audiobook;
         expect(onChange).toHaveBeenCalledWith({
@@ -178,11 +264,11 @@ describe('CourseFormatsCard', () => {
         fireEvent.change(screen.getAllByLabelText('global.courseFormats.name').at(-1)!, {
             target: { value: 'पॉडकास्ट' },
         });
-        expect(screen.getByText('global.courseFormats.issue.noId')).toBeInTheDocument();
+        expect(screen.getByText(/global.courseFormats.issue.noId/)).toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('global.courseFormats.id'), {
             target: { value: 'Live' },
         });
-        expect(screen.getByText('global.courseFormats.issue.taken')).toBeInTheDocument();
+        expect(screen.getByText(/global.courseFormats.issue.taken/)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /global.courseFormats.add$/ })).toBeDisabled();
     });
 });

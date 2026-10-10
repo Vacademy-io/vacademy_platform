@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     addFormat,
+    carryLabelTranslations,
     moveFormat,
     newFormatIssue,
     orderedFormatIds,
@@ -51,6 +52,33 @@ describe('course formats helpers', () => {
             'ebook',
             'pdf',
         ]);
+    });
+
+    it('adding an id that is already in the order (a stale entry) puts it last, once', () => {
+        expect(
+            addFormat(FORMATS, ['ebook', 'Podcast', 'live'], 'podcast', 'Podcast').courseFormatOrder
+        ).toEqual(['ebook', 'live', 'podcast']);
+    });
+
+    it('a rename copies each language’s translation to the new name, keeping the old entry', () => {
+        const i18n = {
+            defaultLocale: 'en',
+            strings: { hi: { 'E-books': 'ई-पुस्तकें' }, fr: { Video: 'Vidéo' } },
+        };
+        expect(carryLabelTranslations(i18n, 'E-books', ' E-Books ')).toEqual({
+            defaultLocale: 'en',
+            strings: {
+                hi: { 'E-books': 'ई-पुस्तकें', 'E-Books': 'ई-पुस्तकें' },
+                fr: { Video: 'Vidéo' },
+            },
+        });
+        // Nothing to carry, or the new name already has its own translation.
+        expect(carryLabelTranslations(i18n, 'Live sessions', 'Live')).toBeNull();
+        expect(carryLabelTranslations(i18n, 'E-books', 'E-books')).toBeNull();
+        expect(
+            carryLabelTranslations({ strings: { hi: { A: 'क', B: 'ख' } } }, 'A', 'B')
+        ).toBeNull();
+        expect(carryLabelTranslations(undefined, 'E-books', 'Books')).toBeNull();
     });
 
     it('suggests an id from the name and checks it', () => {

@@ -140,6 +140,7 @@ export const PropertyPanel = () => {
             <GlobalSettingsEditor
                 config={localized.baseConfig}
                 updateGlobalSettings={storeUpdateGlobalSettings}
+                editingLocale={localized.locale}
             />
         );
     }
@@ -1019,9 +1020,12 @@ const SeoListField = ({
 const GlobalSettingsEditor = ({
     config,
     updateGlobalSettings,
+    editingLocale,
 }: {
     config: any;
     updateGlobalSettings: (updates: any) => void;
+    /** The non-base language being edited, or null: base texts are then read-only. */
+    editingLocale: string | null;
 }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const gs = config.globalSettings || {};
@@ -1030,6 +1034,8 @@ const GlobalSettingsEditor = ({
     // colour is written to the palette as well so both stay in step.
     const palette = gs.theme?.palette;
     const hasPalette = !!palette && typeof palette === 'object' && !Array.isArray(palette);
+    // The palette card also carries the content width, so a site with only a width gets it too.
+    const hasThemeCard = hasPalette || gs.theme?.contentMaxWidth !== undefined;
     const setPrimaryColor = (color: string) =>
         updateGlobalSettings({
             theme: {
@@ -1383,8 +1389,8 @@ const GlobalSettingsEditor = ({
                 </div>
             </div>
 
-            {/* Site palette + content width — only on a site that has its own palette */}
-            {hasPalette && (
+            {/* Site palette + content width — only on a site that has its own palette or width */}
+            {hasThemeCard && (
                 <SitePaletteCard theme={gs.theme} onThemeChange={(next) => updateField('theme', next)} />
             )}
 
@@ -1766,12 +1772,18 @@ const GlobalSettingsEditor = ({
                 value={gs.courseLanguages}
                 onChange={(next) => updateField('courseLanguages', next)}
             />
-            {gs.courseFormats && typeof gs.courseFormats === 'object' && (
-                <CourseFormatsCard
-                    formats={gs.courseFormats}
-                    order={Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined}
-                    onChange={(next) => updateGlobalSettings(next)}
-                />
+            {gs.courseFormats &&
+                typeof gs.courseFormats === 'object' &&
+                !Array.isArray(gs.courseFormats) && (
+                    <CourseFormatsCard
+                        formats={gs.courseFormats}
+                        order={
+                            Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined
+                        }
+                        onChange={(next) => updateGlobalSettings(next)}
+                        i18n={gs.i18n}
+                        readOnlyNames={!!editingLocale}
+                    />
             )}
             <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
 

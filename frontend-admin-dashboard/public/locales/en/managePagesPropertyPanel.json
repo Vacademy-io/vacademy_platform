@@ -208,12 +208,15 @@
     "courseFormats": {
       "heading": "Course formats",
       "hint": "Formats such as E-books or Live sessions show on course cards and in the Format filter. A course gets a format from its tag format-<id>.",
+      "namesInTranslations": "Format names are translated in Languages → Translations. Switch the editor to the base language to rename or add a format.",
+      "renameHint": "Renaming a format copies its translations to the new name. Check them in Languages → Translations.",
       "name": "Name",
       "id": "ID",
       "namePlaceholder": "Audio book",
       "moveUp": "Move up",
       "moveDown": "Move down",
       "remove": "Remove {{name}}",
+      "confirmRemove": "Remove “{{name}}”? Courses tagged {{tag}} will no longer show this format, and its matching settings are lost.",
       "noNameWarning": "A format with no name is hidden on the site.",
       "alsoMatches": "Also matches: {{list}}",
       "addHeading": "Add a format",
@@ -223,7 +226,7 @@
         "noId": "Type an ID in English letters or digits.",
         "badId": "The ID must start with a letter or digit and use only a-z, 0-9 and dashes.",
         "taken": "A format with this ID already exists.",
-        "tooMany": "The site shows at most 30 formats. Remove one to add another."
+        "tooMany": "The site shows at most {{max}} formats. Remove one to add another."
       }
     }
   },

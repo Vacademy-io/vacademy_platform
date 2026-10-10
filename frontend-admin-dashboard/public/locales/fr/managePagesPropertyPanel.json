@@ -208,12 +208,15 @@
     "courseFormats": {
       "heading": "Formats de cours",
       "hint": "Les formats comme E-books ou Sessions en direct s’affichent sur les cartes de cours et dans le filtre Format. Un cours reçoit un format grâce à son tag format-<id>.",
+      "namesInTranslations": "Les noms des formats se traduisent dans Languages → Translations. Passez l’éditeur à la langue de base pour renommer ou ajouter un format.",
+      "renameHint": "Renommer un format copie ses traductions vers le nouveau nom. Vérifiez-les dans Languages → Translations.",
       "name": "Nom",
       "id": "ID",
       "namePlaceholder": "Livre audio",
       "moveUp": "Monter",
       "moveDown": "Descendre",
       "remove": "Supprimer {{name}}",
+      "confirmRemove": "Supprimer « {{name}} » ? Les cours avec le tag {{tag}} n’afficheront plus ce format, et ses réglages de correspondance seront perdus.",
       "noNameWarning": "Un format sans nom est masqué sur le site.",
       "alsoMatches": "Correspond aussi à : {{list}}",
       "addHeading": "Ajouter un format",
@@ -223,7 +226,7 @@
         "noId": "Saisissez un ID en lettres latines ou chiffres.",
         "badId": "L’ID doit commencer par une lettre ou un chiffre et n’utiliser que a-z, 0-9 et des tirets.",
         "taken": "Un format avec cet ID existe déjà.",
-        "tooMany": "Le site affiche au plus 30 formats. Supprimez-en un pour en ajouter un autre."
+        "tooMany": "Le site affiche au plus {{max}} formats. Supprimez-en un pour en ajouter un autre."
       }
     }
   },

@@ -9,7 +9,10 @@ import { ColorPickerField } from '../ColorPickerField';
 type Theme = Record<string, unknown>;
 
 export interface SitePaletteCardProps {
-    /** globalSettings.theme; it has a `palette` object (the card is only mounted then). */
+    /**
+     * globalSettings.theme; it has a `palette` object or a `contentMaxWidth`
+     * (the card is only mounted then). Without a palette only the width shows.
+     */
     theme: Theme;
     /** Replaces globalSettings.theme with `next`; spread `theme` to keep its other keys. */
     onThemeChange: (next: Theme) => void;
@@ -49,6 +52,12 @@ export const paletteColorKeys = (palette: Record<string, unknown>): string[] => 
     return [...known, ...set.filter((k) => !known.includes(k))];
 };
 
+/** The stored width as the learner reads it ("1152" and 1152.4 → 1152); '' when unset or unreadable. */
+export const storedContentWidth = (raw: unknown): string => {
+    const n = typeof raw === 'string' && raw.trim() ? Number(raw) : raw;
+    return typeof n === 'number' && Number.isFinite(n) ? String(Math.round(n)) : '';
+};
+
 /** "1152" → 1152; null when not a whole number in range. '' → undefined (use the default width). */
 export const parseContentWidth = (text: string): number | undefined | null => {
     const trimmed = text.trim();
@@ -60,15 +69,15 @@ export const parseContentWidth = (text: string): number | undefined | null => {
 
 /**
  * Global Settings → the site's own colours (theme.palette) and content width
- * (theme.contentMaxWidth). Mounted only when theme.palette exists. Each edit
+ * (theme.contentMaxWidth). Mounted when either exists. Each edit
  * changes one key and keeps the rest of the theme and palette; the brand
  * colour also writes theme.primaryColor, so buttons and the palette agree.
  */
 export const SitePaletteCard: FC<SitePaletteCardProps> = ({ theme, onThemeChange }) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const hasPalette = isObject(theme.palette);
     const palette = isObject(theme.palette) ? theme.palette : {};
-    const storedWidth =
-        typeof theme.contentMaxWidth === 'number' ? String(theme.contentMaxWidth) : '';
+    const storedWidth = storedContentWidth(theme.contentMaxWidth);
     const [widthText, setWidthText] = useState(storedWidth);
     useEffect(() => setWidthText(storedWidth), [storedWidth]);
     const widthInvalid = parseContentWidth(widthText) === null;
@@ -91,52 +100,60 @@ export const SitePaletteCard: FC<SitePaletteCardProps> = ({ theme, onThemeChange
 
     return (
         <div className="space-y-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-            <div className="space-y-1">
-                <h4 className="font-medium text-neutral-700">{t('global.palette.heading')}</h4>
-                <p className="text-caption text-neutral-500">{t('global.palette.hint')}</p>
-            </div>
+            {hasPalette && (
+                <>
+                    <div className="space-y-1">
+                        <h4 className="font-medium text-neutral-700">
+                            {t('global.palette.heading')}
+                        </h4>
+                        <p className="text-caption text-neutral-500">{t('global.palette.hint')}</p>
+                    </div>
 
-            <div className="grid grid-cols-1 gap-3">
-                {paletteColorKeys(palette).map((key) => (
-                    <ColorPickerField
-                        key={key}
-                        label={
-                            (PALETTE_KEYS as readonly string[]).includes(key)
-                                ? t(`global.palette.keys.${key}`)
-                                : t('global.palette.otherKey', { key })
-                        }
-                        value={String(palette[key])}
-                        onChange={(c) => setColor(key, c)}
-                    />
-                ))}
-            </div>
+                    <div className="grid grid-cols-1 gap-3">
+                        {paletteColorKeys(palette).map((key) => (
+                            <ColorPickerField
+                                key={key}
+                                label={
+                                    (PALETTE_KEYS as readonly string[]).includes(key)
+                                        ? t(`global.palette.keys.${key}`)
+                                        : t('global.palette.otherKey', { key })
+                                }
+                                value={String(palette[key])}
+                                onChange={(c) => setColor(key, c)}
+                            />
+                        ))}
+                    </div>
 
-            <div className="flex items-start justify-between gap-3">
-                <div>
-                    <Label htmlFor="site-palette-apply">{t('global.palette.applyToTokens')}</Label>
-                    <p className="text-caption text-neutral-500">
-                        {t('global.palette.applyToTokensHint')}
-                    </p>
-                </div>
-                <Switch
-                    id="site-palette-apply"
-                    checked={palette.applyToTokens === true}
-                    onCheckedChange={(c) =>
-                        onThemeChange({ ...theme, palette: { ...palette, applyToTokens: c } })
-                    }
-                />
-            </div>
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <Label htmlFor="site-palette-apply">
+                                {t('global.palette.applyToTokens')}
+                            </Label>
+                            <p className="text-caption text-neutral-500">
+                                {t('global.palette.applyToTokensHint')}
+                            </p>
+                        </div>
+                        <Switch
+                            id="site-palette-apply"
+                            checked={palette.applyToTokens === true}
+                            onCheckedChange={(c) =>
+                                onThemeChange({
+                                    ...theme,
+                                    palette: { ...palette, applyToTokens: c },
+                                })
+                            }
+                        />
+                    </div>
+                </>
+            )}
 
             <div className="space-y-1">
                 <Label htmlFor="site-content-width">{t('global.palette.contentWidth')}</Label>
                 <div className="flex items-center gap-2">
                     <Input
                         id="site-content-width"
-                        type="number"
+                        type="text"
                         inputMode="numeric"
-                        min={CONTENT_WIDTH_MIN}
-                        max={CONTENT_WIDTH_MAX}
-                        step={1}
                         value={widthText}
                         placeholder={t('global.palette.contentWidthDefault')}
                         onChange={(e) => setWidthText(e.target.value)}

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LearningPathEditor } from './LearningPathEditor';
 import { featuredPathSiblings, syncSharedPathProps } from './learning-path-shared';
 import { useEditorStore } from '../../-stores/editor-store';
+import { useLocalizedEditing } from '../../-hooks/use-localized-editing';
 import type { CatalogueConfig, Component, LearningPathProps } from '../../-types/editor-types';
 import brahmVarchasSite from '../brahm-varchas-site.fixture.json';
 
@@ -68,16 +69,41 @@ const sectionOf = (id: string, config = useEditorStore.getState().config!) =>
     config.pages.find((p) => p.id === 'learning-paths')!.components.find((c) => c.id === id)!;
 const propsOf = (id: string) => sectionOf(id).props as LearningPathProps;
 
-/** The editor as the panel mounts it: on the store's section, writing through the store. */
+/**
+ * The editor as PropertyPanel mounts it: on the section of the (localized)
+ * view, writing through the localized-editing wrapper.
+ */
 const Panel = ({ id }: { id: string }) => {
-    const component = useEditorStore((s) => sectionOf(id, s.config!));
-    const updateComponent = useEditorStore((s) => s.updateComponent);
-    return <LearningPathEditor component={component} pageId="learning-paths" updateComponent={updateComponent} />;
+    const store = useEditorStore();
+    const localized = useLocalizedEditing({
+        config: store.config,
+        editingLocale: store.editingLocale,
+        commitLocalizedEdit: store.commitLocalizedEdit,
+        updateComponent: store.updateComponent,
+        updateGlobalSettings: store.updateGlobalSettings,
+        updatePageSeo: store.updatePageSeo,
+        getLatestConfig: () => useEditorStore.getState().config,
+    });
+    return (
+        <LearningPathEditor
+            component={sectionOf(id, localized.config!)}
+            pageId="learning-paths"
+            updateComponent={localized.updateComponent}
+        />
+    );
 };
 const renderSection = (id: string) => render(<Panel id={id} />);
 
 const without = (props: object, ...keys: string[]) =>
     Object.fromEntries(Object.entries(props).filter(([k]) => !keys.includes(k)));
+/** The fixture with some props of one learning-paths section changed. */
+const withProps = (id: string, change: (props: LearningPathProps) => LearningPathProps) => {
+    const config = fixture();
+    const section = config.pages.find((p) => p.id === 'learning-paths')!.components.find((c) => c.id === id)!;
+    section.props = change(section.props as LearningPathProps);
+    useEditorStore.getState().setConfig(config);
+};
+const hiStrings = () => useEditorStore.getState().config!.globalSettings.i18n?.strings?.hi || {};
 
 beforeEach(() => {
     useEditorStore.getState().setConfig(fixture());
@@ -153,12 +179,115 @@ describe('LearningPathEditor featured layout (Brahm Varchas)', () => {
         expect(screen.queryByRole('textbox', { name: 'more.title' })).not.toBeInTheDocument();
     });
 
-    it('in another language, a base change (featured path) still reaches the copy', () => {
-        useEditorStore.getState().setEditingLocale('hi');
-        renderSection('paths');
+    it('keeps a featured image the editor has no field for, on the other section too', () => {
+        withProps('paths', (p) => ({ ...p, featured: { ...p.featured, image: 'hero.jpg' } }));
+        renderSection('paths-more');
+        fireEvent.change(screen.getByRole('textbox', { name: 'featured.badge' }), { target: { value: 'Start here' } });
         fireEvent.change(screen.getByRole('combobox', { name: 'featured.path' }), { target: { value: '92ogt2' } });
-        expect(propsOf('paths').featured?.code).toBe('92ogt2');
-        expect(propsOf('paths-more').featured?.code).toBe('92ogt2');
+        expect(propsOf('paths').featured).toEqual({ code: '92ogt2', badge: 'Start here', image: 'hero.jpg' });
+        // "The first path" drops the code only.
+        fireEvent.change(screen.getByRole('combobox', { name: 'featured.path' }), { target: { value: '' } });
+        expect(propsOf('paths').featured).toEqual({ badge: 'Start here', image: 'hero.jpg' });
+        expect(propsOf('paths-more').featured).toEqual({ badge: 'Start here' });
+    });
+
+    it('warns before replacing copies that already differ', () => {
+        withProps('paths-more', (p) => ({ ...p, goals: p.goals!.slice(0, 2) }));
+        renderSection('paths');
+        expect(screen.getByText('featured.differsGoals')).toBeInTheDocument();
+        expect(screen.queryByText('featured.differsFeatured')).not.toBeInTheDocument();
+        fireEvent.change(screen.getAllByRole('textbox', { name: 'goals.label' })[0]!, { target: { value: 'Raise my children' } });
+        expect(propsOf('paths-more').goals).toEqual(propsOf('paths').goals);
+        expect(screen.queryByText('featured.differsGoals')).not.toBeInTheDocument();
+    });
+
+    it('marks a goal the site leaves out until it has chip text and a link key', () => {
+        renderSection('paths');
+        expect(screen.queryByText('goals.hiddenUntilFilled')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'goals.add' }));
+        expect(screen.getAllByText('goals.hiddenUntilFilled')).toHaveLength(1);
+    });
+
+    it('offers only the paths the section lists: not from coming-soon folders, only from the chosen folder', () => {
+        const tree = queryData.FOLDER_LIBRARY_TREE as { roots: { id: string; coming_soon?: boolean }[] };
+        tree.roots.find((r) => r.id === 's3')!.coming_soon = true;
+        try {
+            const view = renderSection('paths');
+            const options = () =>
+                within(screen.getByRole('combobox', { name: 'featured.path' }))
+                    .getAllByRole('option')
+                    .map((o) => o.textContent);
+            expect(options()).not.toContain('India of temples');
+            view.unmount();
+            withProps('paths', (p) => ({ ...p, folderId: 's4', featured: { code: 'forbvy' } }));
+            renderSection('paths');
+            expect(options()).toEqual(['featured.pathFirst', 'featured.pathOutside', 'First steps in Scriptures']);
+            expect(screen.getByText('featured.pathOutsideWarning')).toBeInTheDocument();
+        } finally {
+            delete tree.roots.find((r) => r.id === 's3')!.coming_soon;
+        }
+    });
+
+    it('stream folders without a slug can be picked by the key the site derives', () => {
+        const tree = queryData.FOLDER_LIBRARY_TREE as { roots: { id: string; slug?: string; subtitle?: string }[] };
+        const virtue = tree.roots.find((r) => r.id === 's2')!;
+        const health = tree.roots.find((r) => r.id === 's1')!;
+        virtue.slug = '';
+        health.slug = '';
+        health.subtitle = 'Swasthya';
+        try {
+            renderSection('paths');
+            const firstGoal = screen.getAllByRole('group', { name: 'goals.streams' })[0]!;
+            // Title "Virtue" → "virtue"; subtitle "Swasthya" wins over the title.
+            fireEvent.click(within(firstGoal).getByRole('button', { name: 'Virtue' }));
+            fireEvent.click(within(firstGoal).getByRole('button', { name: 'Health' }));
+            expect(propsOf('paths').goals![0]!.tags).toEqual(['dharma', 'virtue', 'swasthya']);
+        } finally {
+            virtue.slug = 'dharma';
+            health.slug = 'swasthya';
+            delete health.subtitle;
+        }
+    });
+
+    describe('in another language (as PropertyPanel edits it)', () => {
+        beforeEach(() => useEditorStore.getState().setEditingLocale('hi'));
+
+        it('a translated badge is a dictionary entry: the English text stays in both sections', () => {
+            renderSection('paths');
+            const historyIndex = useEditorStore.getState().historyIndex;
+            fireEvent.change(screen.getByRole('textbox', { name: 'featured.badge' }), {
+                target: { value: 'सबसे लोकप्रिय पथ' },
+            });
+            expect(hiStrings()['Most popular path']).toBe('सबसे लोकप्रिय पथ');
+            for (const id of ['paths', 'paths-more']) {
+                expect(propsOf(id).featured).toEqual({ code: 'forbvy', badge: 'Most popular path' });
+            }
+            expect(useEditorStore.getState().historyIndex).toBe(historyIndex + 1);
+            expect(screen.getByRole('textbox', { name: 'featured.badge' })).toHaveValue('सबसे लोकप्रिय पथ');
+        });
+
+        it('a featured path change reaches the copy, and one Undo reverts both', () => {
+            renderSection('paths');
+            const historyIndex = useEditorStore.getState().historyIndex;
+            fireEvent.change(screen.getByRole('combobox', { name: 'featured.path' }), { target: { value: '92ogt2' } });
+            expect(propsOf('paths').featured?.code).toBe('92ogt2');
+            expect(propsOf('paths-more').featured?.code).toBe('92ogt2');
+            expect(useEditorStore.getState().historyIndex).toBe(historyIndex + 1);
+
+            useEditorStore.getState().undo();
+            expect(propsOf('paths').featured?.code).toBe('forbvy');
+            expect(propsOf('paths-more').featured?.code).toBe('forbvy');
+        });
+
+        it('a refused edit copies nothing to the other section', () => {
+            withProps('paths', (p) => ({ ...p, featured: { code: 'forbvy' } }));
+            useEditorStore.getState().setEditingLocale('hi');
+            renderSection('paths');
+            // No English badge to translate: refused.
+            fireEvent.change(screen.getByRole('textbox', { name: 'featured.badge' }), { target: { value: 'नया' } });
+            expect(propsOf('paths').featured).toEqual({ code: 'forbvy' });
+            expect(propsOf('paths-more').featured).toEqual({ code: 'forbvy', badge: 'Most popular path' });
+        });
     });
 
     it('a section reading the other through sharedWith shows a note instead of a copy to edit', () => {
@@ -169,6 +298,8 @@ describe('LearningPathEditor featured layout (Brahm Varchas)', () => {
         renderSection('paths-more');
         expect(screen.getByText('featured.sharedFrom')).toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: 'featured.path' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'featured.sharedFromOpen' }));
+        expect(useEditorStore.getState().selectedComponentId).toBe('paths');
     });
 });
 
@@ -214,6 +345,15 @@ describe('syncSharedPathProps', () => {
         expect(d).toBe(config.pages[0]!.components[3]);
         expect(e).toBe(config.pages[0]!.components[4]);
         expect(a).toBe(config.pages[0]!.components[0]);
+    });
+
+    it('copies a featured sub-key into the sibling\'s own featured', () => {
+        const config = page([
+            lp('a', { ...base, featured: { badge: 'New' } }),
+            lp('b', { ...base, featured: { code: 'y', badge: 'Old', image: 'b.jpg' } }),
+        ]);
+        const next = syncSharedPathProps(config, 'p', 'a', ['featured.badge', 'featured.code']);
+        expect(next.pages[0]!.components[1]!.props.featured).toEqual({ badge: 'New', image: 'b.jpg' });
     });
 
     it('returns the same config when the copies already match', () => {

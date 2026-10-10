@@ -57,6 +57,12 @@ interface EditorState {
     updateConfig: (newConfig: CatalogueConfig) => void;
     /** Base change + dictionary entries in ONE set and ONE history entry. */
     commitLocalizedEdit: (edit: LocalizedEditCommit) => void;
+    /**
+     * Replaces the config of the edit just made, without a new undo step: a
+     * follow-up that belongs to it (e.g. copying it to a sibling section), so
+     * one Undo reverts both.
+     */
+    amendLastEdit: (newConfig: CatalogueConfig) => void;
     updateComponent: (pageId: string, componentId: string, updates: Partial<Component>) => void;
     updateGlobalSettings: (updates: any) => void;
     reorderComponents: (pageId: string, newComponents: Component[]) => void;
@@ -204,6 +210,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     setEditingLocale: (locale) => set({ editingLocale: locale || null }),
 
     updateConfig: (newConfig) => set((state) => pushToHistory(state, newConfig)),
+
+    amendLastEdit: (newConfig) =>
+        set((state) => {
+            if (state.historyIndex < 0) return pushToHistory(state, newConfig);
+            const history = [...state.history.slice(0, state.historyIndex), JSON.parse(JSON.stringify(newConfig))];
+            return { config: newConfig, history, historyIndex: history.length - 1 };
+        }),
 
     commitLocalizedEdit: (edit) =>
         set((state) => {

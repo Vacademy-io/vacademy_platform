@@ -12,6 +12,7 @@ import { useFolderLibraryStore } from '../../-stores/folder-library-store';
 import { useEditorStore } from '../../-stores/editor-store';
 import { activeEditingLocale } from '../../-hooks/use-localized-editing';
 import {
+    findNode,
     flattenFolders,
     folderLibrariesQueryKey,
     folderTreeQueryKey,
@@ -26,7 +27,9 @@ import { TextField, Toggle } from './learning-path-fields';
 import { LearningPathFeaturedFields } from './LearningPathFeaturedFields';
 import {
     featuredPathSiblings,
+    findPathSection,
     isFeaturedPathList,
+    sharedPathDifferences,
     sharedPathSource,
     syncSharedPathProps,
     withSectionProps,
@@ -47,15 +50,26 @@ interface LearningPathEditorProps {
     updateComponent: (pageId: string, componentId: string, patch: { props: LearningPathProps }) => void;
 }
 
-/** Codes of the product pages anywhere in a library tree. */
-const libraryPageCodes = (roots: FolderNode[]): Set<string> => {
+/**
+ * Codes of the paths the section lists, as the site collects them: under the
+ * chosen folder (or the whole library), never inside a coming-soon folder.
+ */
+const libraryPageCodes = (roots: FolderNode[], folderId: string | undefined): Set<string> => {
     const codes = new Set<string>();
     const walk = (nodes: FolderNode[]) =>
         nodes.forEach((n) => {
-            if (n.node_type === 'PRODUCT_PAGE' && n.product_page_code) codes.add(n.product_page_code);
-            walk(Array.isArray(n.children) ? n.children : []);
+            if (n.node_type === 'PRODUCT_PAGE') {
+                const code = (n.product_page_code || '').trim();
+                if (code) codes.add(code);
+            } else if (!n.coming_soon) {
+                walk(Array.isArray(n.children) ? n.children : []);
+            }
         });
-    walk(roots);
+    if (!folderId) walk(roots);
+    else {
+        const start = findNode(roots, folderId);
+        if (start && start.node_type === 'FOLDER' && !start.coming_soon) walk(start.children || []);
+    }
     return codes;
 };
 
@@ -105,17 +119,24 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
     const wireLibrary = (id: string, name: string) => patch({ libraryId: id, libraryName: name, folderId: '' });
 
     // Featured layout: the product pages in the library are the paths it can feature.
-    const libraryCodes = roots ? libraryPageCodes(roots) : null;
+    const libraryCodes = roots ? libraryPageCodes(roots, props.folderId) : null;
     const pageComponents = useEditorStore((s) => s.config?.pages.find((p) => p.id === pageId)?.components);
     const siblings = featuredLayout ? featuredPathSiblings(pageComponents, component) : [];
-    const sharedFrom = featuredLayout ? sharedPathSource(pageComponents, props) : null;
+    const differs = siblings.length ? sharedPathDifferences(pageComponents, component.id) : [];
+    const source = featuredLayout ? sharedPathSource(pageComponents, props) : null;
+    const sharedFrom = source
+        ? {
+              title: (source.props as LearningPathProps).title?.trim() || '',
+              position: findPathSection(pageComponents, source.id)?.position ?? 0,
+              select: () => useEditorStore.getState().selectComponent(source.id),
+          }
+        : null;
     /**
      * Goals and the featured path: also copied to sibling sections that keep
      * their own copy, so a page split over two sections stays consistent.
      */
-    const patchShared = (next: Partial<LearningPathProps>) => {
+    const patchShared = (next: Partial<LearningPathProps>, keys: string[] = Object.keys(next)) => {
         if (!siblings.length) return patch(next);
-        const keys = Object.keys(next);
         const store = useEditorStore.getState();
         if (store.config && !activeEditingLocale(store.config.globalSettings?.i18n, store.editingLocale)) {
             // Base language: the section and its copies in one undoable edit.
@@ -124,12 +145,14 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
             return;
         }
         // Another language: a text edit is a translation (shared by every
-        // copy); copy whatever the edit changed in the base.
+        // copy); copy whatever the edit changed in the base, in the same undo
+        // step. A refused edit changed nothing, so nothing is copied.
+        const before = store.config;
         patch(next);
         const latest = useEditorStore.getState().config;
-        if (!latest) return;
+        if (!latest || latest === before) return;
         const synced = syncSharedPathProps(latest, pageId, component.id, keys);
-        if (synced !== latest) useEditorStore.getState().updateConfig(synced);
+        if (synced !== latest) useEditorStore.getState().amendLastEdit(synced);
     };
     // The featured layout draws the title above the goal chips only.
     const showTitle = !featuredLayout || props.showGoals !== false;
@@ -304,7 +327,8 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
                             patch={patch}
                             patchShared={patchShared}
                             siblingCount={siblings.length}
-                            sharedFrom={sharedFrom ? sharedFrom.id : null}
+                            siblingDiffers={differs}
+                            sharedFrom={sharedFrom}
                         />
                     )}
                 </div>

@@ -9,15 +9,21 @@
         "showFeatured": "Parcours à la une",
         "showGrid": "Autres parcours",
         "showGridHint": "Tous les autres parcours, en cartes.",
-        "sharedFrom": "Les objectifs et le parcours à la une viennent de la section « {{id}} » de cette page. Modifiez-les là-bas.",
+        "sharedFrom": "Les objectifs et le parcours à la une viennent de la section « {{name}} » de cette page. Modifiez-les là-bas.",
         "syncNote": "Les objectifs et le parcours à la une sont aussi copiés dans les autres sections de parcours de cette page qui affichent cette bibliothèque ({{count}}).",
         "path": "Parcours à la une",
         "pathFirst": "Le premier parcours (par défaut)",
         "pathLoading": "Chargement des pages produit…",
         "pathOutside": "{{value}} (hors de cette bibliothèque)",
-        "pathOutsideWarning": "Cette page produit n’est pas dans la bibliothèque : le site met donc le premier parcours à la une. Choisissez-en une autre.",
+        "pathOutsideWarning": "Cette section ne liste pas cette page produit (hors de la bibliothèque ou du dossier choisi, ou dans un dossier « bientôt disponible ») : le site met donc le premier parcours à la une. Choisissez-en une autre.",
         "badge": "Badge du parcours à la une",
-        "badgePlaceholder": "Parcours le plus populaire"
+        "badgePlaceholder": "Parcours le plus populaire",
+        "sharedFromOpen": "Ouvrir cette section",
+        "sectionNumber": "section {{n}}",
+        "differsFeatured": "L’autre section met en avant un autre parcours ou badge. Les modifier ici remplace sa copie.",
+        "differsGoals": "L’autre section a des objectifs différents. Modifier les objectifs ici remplace les siens.",
+        "statusDraft": "brouillon",
+        "statusInactive": "inactive"
     },
     "goals": {
         "title": "Puces d’objectif",
@@ -31,7 +37,8 @@
         "customTag": "Personnalisé : {{value}}",
         "noStreams": "La bibliothèque n’a encore aucun dossier de filière à choisir.",
         "remove": "Supprimer l’objectif",
-        "add": "Ajouter un objectif"
+        "add": "Ajouter un objectif",
+        "hiddenUntilFilled": "Masqué sur le site tant qu’il n’a pas de texte de puce et de clé de lien."
     },
     "more": {
         "title": "Titre des autres parcours",

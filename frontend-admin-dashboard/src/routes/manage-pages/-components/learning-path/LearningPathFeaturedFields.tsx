@@ -5,7 +5,7 @@ import { MyButton } from '@/components/design-system/button';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { FolderNode } from '../../-services/folder-library-service';
-import { nodeLabel } from '../../-services/folder-library-service';
+import { folderCourseTag, nodeLabel } from '../../-services/folder-library-service';
 import type { LearningPathGoal, LearningPathProps } from '../../-types/editor-types';
 import type { ProductPageResponse } from '../../product-pages/-types/product-page-types';
 import { TextField, Toggle } from './learning-path-fields';
@@ -27,15 +27,18 @@ interface LearningPathFeaturedFieldsProps {
     pages: Pick<ProductPageResponse, 'id' | 'code' | 'name' | 'status'>[];
     pagesLoading: boolean;
     patch: (next: Partial<LearningPathProps>) => void;
-    patchShared: (next: Partial<LearningPathProps>) => void;
+    /** `keys` names what to copy when it is less than `next` (e.g. 'featured.badge'). */
+    patchShared: (next: Partial<LearningPathProps>, keys?: string[]) => void;
     /** Other sections that keep a copy of the goals and featured path. */
     siblingCount: number;
+    /** Parts a sibling holds differently: the first edit here replaces its copy. */
+    siblingDiffers: ('goals' | 'featured')[];
     /** The section `sharedWith` names, when it exists: goals and featured path are edited there. */
-    sharedFrom: string | null;
+    sharedFrom: { title: string; position: number; select: () => void } | null;
 }
 
 /** The tag a goal matches a stream folder by (as the site reads it). */
-const folderTag = (node: FolderNode) => (node.course_tag || node.slug || '').trim().toLowerCase();
+const folderTag = (node: FolderNode) => folderCourseTag(node).toLowerCase();
 
 const newGoalKey = (goals: LearningPathGoal[]) => {
     const used = new Set(goals.map((g) => g.key));
@@ -53,6 +56,7 @@ export const LearningPathFeaturedFields = ({
     patch,
     patchShared,
     siblingCount,
+    siblingDiffers,
     sharedFrom,
 }: LearningPathFeaturedFieldsProps) => {
     const { t } = useTranslation('managePagesLearningPath');
@@ -69,8 +73,14 @@ export const LearningPathFeaturedFields = ({
     const outside = !!code && !known && !pagesLoading && !!libraryCodes;
     const pickFeatured = (next: string) => {
         const { code: _drop, ...rest } = featured;
-        patchShared({ featured: next ? { ...rest, code: next } : rest });
+        patchShared({ featured: next ? { ...rest, code: next } : rest }, ['featured.code']);
     };
+    const statusLabel = (status: string) =>
+        status === 'DRAFT'
+            ? t('featured.statusDraft')
+            : status === 'INACTIVE'
+              ? t('featured.statusInactive')
+              : String(status).toLowerCase();
 
     const streams = folders.filter((f) => f.depth === 0 && folderTag(f.node)).map((f) => f.node);
     const setGoal = (index: number, next: Partial<LearningPathGoal>) =>
@@ -98,15 +108,28 @@ export const LearningPathFeaturedFields = ({
             />
 
             {sharedFrom ? (
-                <p className="rounded border border-neutral-200 bg-neutral-50 p-2 text-caption text-neutral-600">
-                    {t('featured.sharedFrom', { id: sharedFrom })}
-                </p>
+                <div className="space-y-2 rounded border border-neutral-200 bg-neutral-50 p-2 text-caption text-neutral-600">
+                    <p>
+                        {t('featured.sharedFrom', {
+                            name: sharedFrom.title || t('featured.sectionNumber', { n: sharedFrom.position }),
+                        })}
+                    </p>
+                    <MyButton buttonType="secondary" scale="small" onClick={sharedFrom.select}>
+                        {t('featured.sharedFromOpen')}
+                    </MyButton>
+                </div>
             ) : (
                 <>
                     {siblingCount > 0 && (
                         <p className="rounded border border-primary-100 bg-primary-50 p-2 text-caption text-neutral-600">
                             {t('featured.syncNote', { count: siblingCount })}
                         </p>
+                    )}
+                    {siblingDiffers.includes('featured') && (
+                        <p className="text-caption text-warning-600">{t('featured.differsFeatured')}</p>
+                    )}
+                    {siblingDiffers.includes('goals') && (
+                        <p className="text-caption text-warning-600">{t('featured.differsGoals')}</p>
                     )}
 
                     <div className="space-y-2">
@@ -126,7 +149,7 @@ export const LearningPathFeaturedFields = ({
                             {options.map((p) => (
                                 <option key={p.id} value={p.code}>
                                     {p.name}
-                                    {p.status !== 'ACTIVE' ? ` (${String(p.status).toLowerCase()})` : ''}
+                                    {p.status !== 'ACTIVE' ? ` (${statusLabel(p.status)})` : ''}
                                 </option>
                             ))}
                         </select>
@@ -135,7 +158,7 @@ export const LearningPathFeaturedFields = ({
                             label={t('featured.badge')}
                             value={featured.badge || ''}
                             placeholder={t('featured.badgePlaceholder')}
-                            onChange={(v) => patchShared({ featured: { ...featured, badge: v } })}
+                            onChange={(v) => patchShared({ featured: { ...featured, badge: v } }, ['featured.badge'])}
                         />
                     </div>
 
@@ -151,8 +174,11 @@ export const LearningPathFeaturedFields = ({
                         {goals.map((goal, index) => {
                             const tags = Array.isArray(goal.tags) ? goal.tags : [];
                             const unknown = tags.filter((tag) => !streams.some((s) => folderTag(s) === tag));
+                            // The site leaves out a goal without chip text or link key.
+                            const hidden = !(goal.label || '').trim() || !(goal.key || '').trim();
                             return (
                                 <div key={index} className="space-y-2 rounded border border-neutral-200 p-2">
+                                    {hidden && <p className="text-caption text-warning-600">{t('goals.hiddenUntilFilled')}</p>}
                                     <TextField
                                         label={t('goals.label')}
                                         value={goal.label || ''}

@@ -9,15 +9,21 @@
         "showFeatured": "Featured path",
         "showGrid": "More learning paths",
         "showGridHint": "Every other path, as cards.",
-        "sharedFrom": "Goals and the featured path come from the section “{{id}}” on this page. Edit them there.",
+        "sharedFrom": "Goals and the featured path come from the section “{{name}}” on this page. Edit them there.",
         "syncNote": "Goals and the featured path are also copied to the other learning-path sections on this page that list this library ({{count}}).",
         "path": "Featured path",
         "pathFirst": "The first path (default)",
         "pathLoading": "Loading product pages…",
         "pathOutside": "{{value}} (not in this library)",
-        "pathOutsideWarning": "This product page is not in the library, so the site features the first path instead. Pick another.",
+        "pathOutsideWarning": "This section does not list this product page (it is outside the library or the chosen folder, or in a coming-soon folder), so the site features the first path instead. Pick another.",
         "badge": "Badge on the featured path",
-        "badgePlaceholder": "Most popular path"
+        "badgePlaceholder": "Most popular path",
+        "sharedFromOpen": "Open that section",
+        "sectionNumber": "section {{n}}",
+        "differsFeatured": "The other section features a different path or badge. Changing them here replaces its copy.",
+        "differsGoals": "The other section has different goals. Editing goals here replaces its goals.",
+        "statusDraft": "draft",
+        "statusInactive": "inactive"
     },
     "goals": {
         "title": "Goal chips",
@@ -31,7 +37,8 @@
         "customTag": "Custom: {{value}}",
         "noStreams": "The library has no stream folders to pick from yet.",
         "remove": "Remove goal",
-        "add": "Add a goal"
+        "add": "Add a goal",
+        "hiddenUntilFilled": "Hidden on the site until it has chip text and a link key."
     },
     "more": {
         "title": "Heading of the other paths",

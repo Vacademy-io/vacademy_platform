@@ -11,7 +11,11 @@ import type { CatalogueConfig, Component, LearningPathProps } from '../../-types
  * editor copies what it changes to every such sibling.
  */
 
-/** The keys the editor copies between sibling sections. */
+/**
+ * The keys the editor copies between sibling sections. `featured` is copied
+ * per sub-key ('featured.code', 'featured.badge'): the editor has no field for
+ * the rest of it (e.g. `featured.image`), which each section keeps.
+ */
 export const SHARED_PATH_KEYS = ['goals', 'allGoalsLabel', 'featured'] as const;
 
 type Section = Pick<Component, 'id' | 'type' | 'props'>;
@@ -58,6 +62,43 @@ export const featuredPathSiblings = (components: unknown, self: { id: string; pr
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+const asObject = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+/** The section with this id on the page (column children included), and its 1-based position. */
+export const findPathSection = (components: unknown, id: string): { section: Section; position: number } | null => {
+    let hit: { section: Section; position: number } | null = null;
+    let position = 0;
+    eachSection(components, (c) => {
+        position += 1;
+        if (!hit && c.id === id) hit = { section: c, position };
+    });
+    return hit;
+};
+
+/** What the editor copies: goals (+ the first chip) and the featured path (+ its badge). */
+const goalsOf = (p: LearningPathProps) => [Array.isArray(p.goals) ? p.goals : [], p.allGoalsLabel || ''];
+const featuredOf = (p: LearningPathProps) => {
+    const f = asObject(p.featured);
+    return [f.code || '', f.badge || ''];
+};
+
+/**
+ * Which copied parts a sibling holds differently from this section ('goals',
+ * 'featured'). The first edit here replaces the sibling's copy, so the panel
+ * warns before it does.
+ */
+export const sharedPathDifferences = (components: unknown, selfId: string): ('goals' | 'featured')[] => {
+    const self = findPathSection(components, selfId)?.section;
+    if (!self) return [];
+    const props = self.props as LearningPathProps;
+    const siblings = featuredPathSiblings(components, { id: selfId, props }).map((s) => s.props as LearningPathProps);
+    const out: ('goals' | 'featured')[] = [];
+    if (siblings.some((p) => !same(goalsOf(p), goalsOf(props)))) out.push('goals');
+    if (siblings.some((p) => !same(featuredOf(p), featuredOf(props)))) out.push('featured');
+    return out;
+};
+
 const mapSections = (components: Component[], fn: (c: Component) => Component): Component[] => {
     let changed = false;
     const next = components.map((c) => {
@@ -95,8 +136,9 @@ export const withSectionProps = (
 
 /**
  * Copies `keys` of section `sourceId` to its siblings (a key the source does
- * not have is removed from them). Every other prop of a sibling is kept.
- * Returns `config` itself when the siblings already match.
+ * not have is removed from them). A key 'featured.code' copies that one
+ * sub-key into the sibling's own `featured`. Every other prop of a sibling is
+ * kept. Returns `config` itself when the siblings already match.
  */
 export const syncSharedPathProps = (
     config: CatalogueConfig,
@@ -112,18 +154,31 @@ export const syncSharedPathProps = (
     if (!source) return config;
     const from = (source as Section).props as LearningPathProps;
     const siblingIds = new Set(featuredPathSiblings(page?.components, { id: sourceId, props: from }).map((s) => s.id));
-    const shared = keys.filter((k) => (SHARED_PATH_KEYS as readonly string[]).includes(k));
+    const shared = keys.filter((k) => (SHARED_PATH_KEYS as readonly string[]).includes(k.split('.')[0]!));
     if (!siblingIds.size || !shared.length) return config;
+    // Sets (or, for undefined, removes) `key` of `target`; false when it already matched.
+    const put = (target: Record<string, unknown>, key: string, value: unknown) => {
+        if (same(target[key], value)) return false;
+        if (value === undefined) delete target[key];
+        else target[key] = JSON.parse(JSON.stringify(value));
+        return true;
+    };
     return mapPage(config, pageId, (c) => {
         if (!siblingIds.has(c.id)) return c;
         const props: Record<string, unknown> = { ...c.props };
         let changed = false;
         for (const key of shared) {
-            const value = (from as Record<string, unknown>)[key];
-            if (same(props[key], value)) continue;
-            changed = true;
-            if (value === undefined) delete props[key];
-            else props[key] = JSON.parse(JSON.stringify(value));
+            const [head, sub] = key.split('.') as [string, string | undefined];
+            const value = (from as Record<string, unknown>)[head];
+            if (!sub) {
+                changed = put(props, head, value) || changed;
+                continue;
+            }
+            const own = { ...asObject(props[head]) };
+            if (put(own, sub, asObject(value)[sub])) {
+                props[head] = own;
+                changed = true;
+            }
         }
         return changed ? { ...c, props } : c;
     });

@@ -178,6 +178,7 @@ async def call_tool(
         principal=principal,
         keys=(),  # embeddings-only; none of the exposed tools need API keys
         bearer_token=platform_token,
+        images_as_content=True,  # image fields become ImageContent below
     )
 
     started = time.monotonic()
@@ -205,12 +206,18 @@ async def call_tool(
         )
 
     # A tool may hand back a rendered image (website preview): send it as image
-    # content so the model can SEE it, with the rest of the result as text.
-    if isinstance(payload, dict) and isinstance(payload.get("image_png_base64"), str):
-        image = payload.pop("image_png_base64")
+    # content so the model can SEE it, with the rest of the result as text. A
+    # tall page comes as several tiles (`images_base64`, top to bottom).
+    if isinstance(payload, dict) and (
+        isinstance(payload.get("image_png_base64"), str) or isinstance(payload.get("images_base64"), list)
+    ):
+        images = []
+        if isinstance(payload.get("image_png_base64"), str):
+            images.append(payload.pop("image_png_base64"))
+        images.extend(i for i in payload.pop("images_base64", None) or [] if isinstance(i, str) and i)
         return CallToolResult(
             content=[
-                ImageContent(type="image", data=image, mime_type="image/jpeg"),
+                *(ImageContent(type="image", data=image, mime_type="image/jpeg") for image in images),
                 TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, default=str)),
             ],
             is_error=not ok,

@@ -1914,6 +1914,8 @@ async def _import_one_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
         deduplicated = False
         try:
             from .s3_service import S3Service
+            # Under the institute, so website(action='compare') can tell this institute's
+            # imports from another's (it reads a reference image only from its own).
             key = f"page-builder/imports/{_s3_safe(ctx.principal.institute_id)}/{kind}-{uuid.uuid4().hex}.{prepared.ext}"
             stored = await asyncio.to_thread(
                 S3Service().upload_file_content, prepared.data, f"{kind}.{prepared.ext}",

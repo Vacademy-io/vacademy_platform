@@ -9,6 +9,10 @@ and the model reads one schema. Actions:
     list            every site: status, live URL, draft pending, last published
     get_page        one page's sections in order, with where each block's data comes from
     context         what the AI may link to: courses, product pages, lead campaigns, theme
+                    (detail=true adds course tags / language / format / invites, folder libraries, path steps)
+    data_inventory  the data a design maps onto: courses in detail, tag vocabulary, folder libraries, paths
+    data_audit      the data behind the site's widgets, checked: stream / language / format tags, empty
+                    folders, version groups, paths, authored prices, payment gateways
     analytics       traffic + lead counts for the last N days
     lead_summary    every lead-capture surface on the site and whether it is wired
     audit           the dashboard's pre-publish checks
@@ -49,10 +53,13 @@ from .website_data import (
     campaign_name_map,
     get_draft,
     get_history,
+    invites_by_ids,
     learner_portal_base,
     list_catalogues,
     load_campaigns,
     load_courses,
+    load_data_inventory,
+    load_folder_libraries,
     load_product_pages,
     load_site,
     site_editor_url,
@@ -66,7 +73,7 @@ WEBSITE_GROUP_KEY = "website_builder"
 
 WEBSITE_ACTIONS = (
     "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
-    "brief_checklist", "schema", "list_media", "preview",
+    "brief_checklist", "schema", "list_media", "preview", "data_inventory", "data_audit",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -133,8 +140,18 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "the admin a page is ready.\n"
             "- preview (tag_name, page_route?, section_id?, viewport?): a screenshot of the DRAFT as the "
             "learner site renders it. Look at it before and after edits.\n"
-            "- context (tag_name?): what may be linked on a site — real courses, product pages, lead "
-            "campaigns (with leads received), the site's theme. Use these ids; never invent them.\n"
+            "- context (tag_name?, detail?): what may be linked on a site — real courses, product pages, lead "
+            "campaigns (with leads received), the site's theme. Use these ids; never invent them. detail=true adds "
+            "each course's tags, detected language and format, catalogue flag, default invite and payment vendor, "
+            "the folder libraries (streams → categories → paths) and each product page's steps.\n"
+            "- data_inventory (tag_name?): everything a design's data needs are matched against — courses in "
+            "detail, the tag vocabulary with counts, level names, folder libraries, product pages with steps, "
+            "campaigns and configured payment gateways. Read-only.\n"
+            "- data_audit (tag_name?, library_id?): checks the DATA behind the site's catalogue widgets — courses "
+            "with no stream / language / format tag, folders no course matches, version groups that mix "
+            "languages, unknown or inactive product pages and libraries, courses not on the catalogue, authored "
+            "prices the widgets compute live, paid invites on an unconfigured gateway. Each item has a fix and "
+            "a dashboard link for the admin; run it before telling the admin a site is ready.\n"
             "- analytics (tag_name?, days?): views, visitors, sessions, leads, top pages and sources.\n"
             "- lead_summary (tag_name, days?): every enquiry form / popup on the site, which campaign "
             "it feeds, leads received, and forms wired to nothing.\n"
@@ -158,6 +175,8 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "page_route": {"type": "string", "description": "Page route within the site, e.g. 'home', 'about', 'admissions'. Defaults to the first page."},
                 "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "schema: which page archetype's rules to include."},
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
+                "detail": {"type": "boolean", "description": "context: add course tags / language / format / invites, folder libraries and product-page steps."},
+                "library_id": {"type": "string", "description": "data_audit: the folder library to check courses against when the site names none yet."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
                 "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive)."},
@@ -253,6 +272,8 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         }
     elif err and err.get("error") not in ("no_sites", "tag_required"):
         out["site"] = err
+    if str(args.get("detail")).lower() in ("true", "1"):
+        return await _action_context_detail(args, ctx, out, site)
     out["courses"] = await load_courses(ctx)
     out["product_pages"] = await load_product_pages(ctx)
     out["lead_campaigns"] = await load_campaigns(ctx)
@@ -262,6 +283,69 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         "page offer needs a product page code. Forms need a lead campaign id."
     )
     return _compact(out, max_items=60, max_str=200)
+
+
+async def _action_context_detail(args: Dict[str, Any], ctx: ToolContext, out: Dict[str, Any],
+                                 site: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    gs = (site or {}).get("config", {}).get("globalSettings") or {}
+    out["courses"] = await load_courses(ctx, detail=True, global_settings=gs)
+    out["product_pages"] = await load_product_pages(ctx, with_steps=True)
+    out["folder_libraries"] = await load_folder_libraries(ctx)
+    out["lead_campaigns"] = await load_campaigns(ctx)
+    out["rules"] = (
+        "Only these ids may be placed on a page. language_detected / format_detected follow the learner "
+        "site's own rules (a level name or a tag that is exactly the language; a 'format-<key>' tag or a format "
+        "level) with this site's settings; a course without them has none (format_detected is left out for every "
+        "course when the site authors no courseFormats). A folder's `tag` is the course tag its stream tab / category "
+        "filters by; product-page leaves of a library are its learning paths, `steps` their courses in order. "
+        "Run website(action='data_audit') for what is missing."
+    )
+    return _compact(out, max_items=200, max_str=200)
+
+
+async def _action_data_inventory(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err and err.get("error") not in ("no_sites", "tag_required"):
+        return err
+    gs = (site or {}).get("config", {}).get("globalSettings") or {}
+    inventory = await load_data_inventory(ctx, gs)
+    out: Dict[str, Any] = {}
+    if site:
+        out["site"] = {"tag_name": site["tag_name"], "course_formats": sorted((gs.get("courseFormats") or {}).keys())
+                       if isinstance(gs.get("courseFormats"), dict) else None,
+                       "course_languages": gs.get("courseLanguages"), **stale_note(site)}
+    out.update(inventory)
+    out["note"] = ("Read-only. Course facts follow the learner site's rules with this site's settings. Changing "
+                   "this data (tags, folders, product pages, gateways) is an admin task in the dashboard — "
+                   "website(action='data_audit') lists what to change, with links.")
+    return _compact(out, max_items=200, max_str=200)
+
+
+async def _action_data_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .course_builder_data import admin_base
+    from .website_data_audit import audit_site_data, site_invite_ids
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err and err.get("error") not in ("no_sites",):
+        return err
+    config = (site or {}).get("config")
+    gs = (config or {}).get("globalSettings") or {}
+    inventory = await load_data_inventory(ctx, gs)
+    invites: Dict[str, Any] = {}
+    for row in invites_by_ids(ctx, site_invite_ids(config)):
+        invites.setdefault(str(row.get("id")), row)
+    inventory["invites_by_id"] = invites
+    library_id = str(args.get("library_id") or "").strip() or None
+    result = audit_site_data(config, inventory, admin_base=admin_base(ctx), library_id=library_id)
+    out: Dict[str, Any] = {
+        "tag_name": (site or {}).get("tag_name"),
+        "checked": ("draft" if site["from_draft"] else "published") if site else "institute data only (no site yet)",
+        **result,
+        "editor_url": site_editor_url(site["tag_name"], ctx=ctx) if site else None,
+        "note": ("These checks read live course, folder and product-page data; the MCP does not change that "
+                 "data. Hand the admin the errors and warnings with their links, then re-run data_audit."),
+        **(stale_note(site) if site else {}),
+    }
+    return {k: v for k, v in out.items() if v is not None}
 
 
 async def _action_analytics(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -601,6 +685,8 @@ _ACTIONS = {
     "brief_checklist": _action_brief_checklist,
     "schema": _action_schema,
     "list_media": _action_list_media,
+    "data_inventory": _action_data_inventory,
+    "data_audit": _action_data_audit,
 }
 
 

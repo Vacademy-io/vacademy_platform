@@ -412,17 +412,33 @@ const widthToFr = (w?: string): string => {
 
 // ─── Structural components ────────────────────────────────────────────────────
 
-/** True for a light #rgb / #rrggbb colour; false for dark or unreadable values. */
-const isLightHex = (colour: string): boolean => {
-    const hex = colour.trim().replace(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i, '#$1$1$2$2$3$3');
-    return /^#[0-9a-f]{6}$/i.test(hex) && !isHexDark(hex);
+/** #rrggbb for a lower-case #rgb(a), #rrggbb(aa) or rgb()/rgba() colour ('' otherwise; alpha ignored). */
+const toHex6 = (c: string): string => {
+    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])[0-9a-f]?$/.exec(c);
+    if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+    const long = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/.exec(c);
+    if (long) return `#${long[1]}`;
+    const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(c);
+    if (!rgb) return '';
+    return `#${rgb
+        .slice(1, 4)
+        .map((n) => Math.min(255, Number(n)).toString(16).padStart(2, '0'))
+        .join('')}`;
+};
+
+/** True for a light colour; false for dark or unreadable values. */
+const isLightColour = (colour: unknown): boolean => {
+    const c = typeof colour === 'string' ? colour.trim().toLowerCase() : '';
+    if (c === 'white') return true;
+    const hex = toHex6(c);
+    return hex !== '' && !isHexDark(hex);
 };
 
 const HeaderPreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     const bg = props.backgroundColor || '#4F46E5';  // design-lint-ignore: page-builder default color
     // No authored text colour: ink that reads on the bar (a white bar got white text).
-    const fg = props.textColor || (isLightHex(bg) ? '#1A1A1A' : '#FFFFFF');  // design-lint-ignore: page-builder default color
+    const fg = props.textColor || (isLightColour(bg) ? '#1A1A1A' : '#FFFFFF');  // design-lint-ignore: page-builder default color
     // The button chip inverts the bar: bar-coloured text on a text-coloured pill.
     const chipStyle = { color: bg, backgroundColor: fg };
     return (

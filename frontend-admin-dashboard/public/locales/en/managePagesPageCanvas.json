@@ -5,6 +5,16 @@
         "structure": "Structure",
         "structureTitle": "Every block of this page as a list — reorder them or pick one to edit"
     },
+    "toolbar": {
+        "desktop": "Desktop",
+        "tablet": "Tablet (768px)",
+        "mobile": "Mobile (375px)",
+        "untitled": "Untitled",
+        "viewLive": "View live",
+        "viewLiveDraft": "View live (draft)",
+        "viewLiveTitle": "View the live page",
+        "unpublishedTitle": "This page is unpublished — visitors won’t see it yet"
+    },
     "structure": {
         "intro": "The blocks of this page, top to bottom. Click a block to edit it; drag it by its handle to move it. Switch to Website to see the page as visitors do.",
         "noPage": "Select a page from the bottom bar to start editing",

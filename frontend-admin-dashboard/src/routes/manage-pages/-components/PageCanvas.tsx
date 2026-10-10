@@ -211,7 +211,9 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
         setOverIndex(null);
     };
 
-    const rowDragProps = (blockId: string, index: number) => ({
+    // Every row is a drop target; only the handle starts a drag, so dragging a
+    // block inside a column never drags its whole column layout.
+    const rowDropProps = (index: number) => ({
         onDragOver: (e: DragEvent) => {
             if (!draggingId) return;
             e.preventDefault();
@@ -224,9 +226,16 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
             moveBlock(draggingId, index);
             endDrag();
         },
+    });
+
+    const handleDragProps = (blockId: string) => ({
+        draggable: true,
         onDragStart: (e: DragEvent) => {
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', blockId);
+            // Show the whole row under the pointer, not just the handle.
+            const row = rowRefs.current.get(blockId);
+            if (row) e.dataTransfer.setDragImage?.(row, 16, 16);
             setDraggingId(blockId);
         },
         onDragEnd: endDrag,
@@ -235,6 +244,7 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
     const onHandleKey = (e: KeyboardEvent, index: number, blockId: string) => {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
         e.preventDefault();
+        // The handle keeps focus: React refocuses it after moving its row.
         moveBlock(blockId, e.key === 'ArrowUp' ? index - 1 : index + 1);
     };
 
@@ -282,8 +292,7 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                                 else rowRefs.current.delete(block.id);
                             }}
                             data-block-id={block.id}
-                            draggable
-                            {...rowDragProps(block.id, index)}
+                            {...rowDropProps(index)}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 selectComponent(block.id);
@@ -296,10 +305,11 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                         >
                             <div className="flex items-center gap-2">
                                 {/* A span, not a <button>: Firefox will not start a
-                                    drag from a button inside a draggable row. */}
+                                    drag from a button. */}
                                 <span
                                     role="button"
                                     tabIndex={0}
+                                    {...handleDragProps(block.id)}
                                     className="flex shrink-0 cursor-grab items-center rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 active:cursor-grabbing"
                                     aria-label={t('structure.dragHandle', {
                                         name: componentLabel(block.type),
@@ -315,7 +325,17 @@ export const PageCanvas = ({ dropRef, isDropOver }: PageCanvasProps) => {
                                 <span className="w-5 shrink-0 text-center text-caption text-neutral-400">
                                     {index + 1}
                                 </span>
-                                <BlockText component={block} summary={summary} />
+                                {/* A real button, so the keyboard can open the block too. */}
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        selectComponent(block.id);
+                                    }}
+                                    className="flex min-w-0 flex-1 rounded text-start"
+                                >
+                                    <BlockText component={block} summary={summary} />
+                                </button>
                             </div>
                             {slots && (
                                 <div

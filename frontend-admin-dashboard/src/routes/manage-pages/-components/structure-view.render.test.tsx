@@ -178,7 +178,13 @@ describe('Structure view (Brahm Varchas)', () => {
         renderCanvas();
 
         const [first, , third] = rows();
-        fireEvent.dragStart(first!, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } });
+        // Only the handle drags: the row itself (and a block in a column) does not.
+        expect(first!.hasAttribute('draggable')).toBe(false);
+        const handle = within(first!).getByRole('button', { name: /^Move / });
+        expect(handle.getAttribute('draggable')).toBe('true');
+        fireEvent.dragStart(handle, {
+            dataTransfer: { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: '' },
+        });
         fireEvent.dragOver(third!, { dataTransfer: { dropEffect: '' } });
         fireEvent.drop(third!, { dataTransfer: {} });
 
@@ -209,6 +215,50 @@ describe('Structure view (Brahm Varchas)', () => {
             key: 'ArrowUp',
         });
         expect(useEditorStore.getState().history.length).toBe(historyLength);
+    });
+
+    it('the handle keeps focus, so ↓ can be pressed again and again', () => {
+        loadSite(site(), 'learning-paths');
+        const before = pageBlocks('learning-paths').map((c) => c.id);
+        renderCanvas();
+        // Like Chrome: moving a node that holds focus blurs it (happy-dom keeps
+        // it). React restores the focus after the commit, which this guards.
+        const blurIfFocused = (node: Node) => {
+            if (node.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+        };
+        const { insertBefore, appendChild } = Element.prototype;
+        const moves = [
+            vi.spyOn(Element.prototype, 'insertBefore').mockImplementation(function <T extends Node>(
+                this: Node,
+                node: T,
+                ref: Node | null
+            ) {
+                blurIfFocused(node);
+                return insertBefore.call(this, node, ref) as T;
+            }),
+            vi.spyOn(Element.prototype, 'appendChild').mockImplementation(function <T extends Node>(
+                this: Node,
+                node: T
+            ) {
+                blurIfFocused(node);
+                return appendChild.call(this, node) as T;
+            }),
+        ];
+        const handle = within(rows()[0]!).getByRole('button', { name: /^Move / });
+        act(() => handle.focus());
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(handle);
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+        expect(pageBlocks('learning-paths').map((c) => c.id)).toEqual(moveItem(before, 0, 2));
+        expect(document.activeElement).toBe(handle);
+        moves.forEach((spy) => spy.mockRestore());
+    });
+
+    it('each row has a button that opens the block (reachable by keyboard)', () => {
+        loadSite(site(), 'courses');
+        renderCanvas();
+        fireEvent.click(within(rows()[1]!).getByRole('button', { name: /^CTA Banner/ }));
+        expect(useEditorStore.getState().selectedComponentId).toBe('courses-not-sure');
     });
 
     it('editing in Hindi shows Hindi headings but reorders the English blocks untouched', () => {
@@ -285,6 +335,30 @@ describe('look-alike previews still used by other screens', () => {
         expect(screen.getByText('Home').style.color.toUpperCase()).toBe(WHITE);
     });
 
+    it('reads named, rgb() and 8-digit colours too', () => {
+        for (const backgroundColor of ['white', 'rgb(255, 255, 255)', '#FFFFFFFF']) {
+            const { unmount } = render(
+                <>
+                    {renderComponentPreview({
+                        type: 'header',
+                        props: { backgroundColor, navigation: [{ label: 'Home' }] },
+                    })}
+                </>
+            );
+            expect(screen.getByText('Home').style.color.toUpperCase()).toBe(INK);
+            unmount();
+        }
+        render(
+            <>
+                {renderComponentPreview({
+                    type: 'header',
+                    props: { backgroundColor: 'rgba(10, 20, 40, 0.9)', navigation: [{ label: 'Home' }] },
+                })}
+            </>
+        );
+        expect(screen.getByText('Home').style.color.toUpperCase()).toBe(WHITE);
+    });
+
     it('an authored text colour always wins', () => {
         const props = { ...header().props, textColor: AUTHORED };
         render(<>{renderComponentPreview({ type: 'header', props })}</>);
@@ -335,6 +409,12 @@ describe('block-summary helpers', () => {
     it('catalogFeatures is empty for a catalogue with no opt-ins', () => {
         expect(catalogFeatures({ title: 'x', streams: { enabled: false } })).toEqual([]);
         expect(catalogFeatures({ streams: { enabled: true } })).toEqual([{ key: 'streamTabs' }]);
+        // The site draws the sidebar for the editorial variant only.
+        expect(catalogFeatures({ filterSidebar: {} })).toEqual([]);
+        expect(catalogFeatures({ filterSidebar: { promo: { title: 'x' } } })).toEqual([]);
+        expect(catalogFeatures({ filterSidebar: { variant: 'editorial' } })).toEqual([
+            { key: 'filterSidebar' },
+        ]);
     });
 
     it('moveItem returns null when nothing moves', () => {

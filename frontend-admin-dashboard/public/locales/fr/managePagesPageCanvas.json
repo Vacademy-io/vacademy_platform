@@ -5,6 +5,16 @@
         "structure": "Structure",
         "structureTitle": "Tous les blocs de cette page sous forme de liste — réorganisez-les ou choisissez-en un à modifier"
     },
+    "toolbar": {
+        "desktop": "Ordinateur",
+        "tablet": "Tablette (768px)",
+        "mobile": "Mobile (375px)",
+        "untitled": "Sans titre",
+        "viewLive": "Voir en ligne",
+        "viewLiveDraft": "Voir en ligne (brouillon)",
+        "viewLiveTitle": "Voir la page en ligne",
+        "unpublishedTitle": "Cette page n’est pas publiée — les visiteurs ne la voient pas encore"
+    },
     "structure": {
         "intro": "Les blocs de cette page, de haut en bas. Cliquez sur un bloc pour le modifier ; faites-le glisser par sa poignée pour le déplacer. Passez à Site web pour voir la page comme les visiteurs.",
         "noPage": "Sélectionnez une page dans la barre du bas pour commencer",

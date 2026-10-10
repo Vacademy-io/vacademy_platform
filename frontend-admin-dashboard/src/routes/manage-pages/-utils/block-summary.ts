@@ -86,7 +86,8 @@ export const catalogFeatures = (props: unknown): CatalogFeature[] => {
     if (streams?.enabled === true) {
         features.push({ key: streams.variant === 'icons' ? 'streamIcons' : 'streamTabs' });
     }
-    if (asProps(p.filterSidebar)) features.push({ key: 'filterSidebar' });
+    // The site draws the sidebar only for the editorial variant (resolveFilterSidebar).
+    if (asProps(p.filterSidebar)?.variant === 'editorial') features.push({ key: 'filterSidebar' });
     if (Array.isArray(p.columnSections) && p.columnSections.length > 0) {
         features.push({ key: 'highlightedRows', count: p.columnSections.length });
     }

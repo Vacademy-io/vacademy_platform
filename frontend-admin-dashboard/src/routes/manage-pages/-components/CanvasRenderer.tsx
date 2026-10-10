@@ -93,7 +93,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                 size="sm"
                                 className="size-8 p-0"
                                 onClick={() => setViewport('desktop')}
-                                title="Desktop"
+                                title={t('toolbar.desktop')}
                             >
                                 <Monitor className="size-4" />
                             </Button>
@@ -102,7 +102,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                 size="sm"
                                 className="size-8 p-0"
                                 onClick={() => setViewport('tablet')}
-                                title="Tablet (768px)"
+                                title={t('toolbar.tablet')}
                             >
                                 <DeviceTablet className="size-4" />
                             </Button>
@@ -111,7 +111,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                 size="sm"
                                 className="size-8 p-0"
                                 onClick={() => setViewport('mobile')}
-                                title="Mobile (375px)"
+                                title={t('toolbar.mobile')}
                             >
                                 <DeviceMobile className="size-4" />
                             </Button>
@@ -144,8 +144,8 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
 
                     {page && (
                         <span className="text-xs text-catalogue-text-muted">
-                            {page.title || page.route || 'Untitled'} ·{' '}
-                            {page.components.length} component{page.components.length !== 1 ? 's' : ''}
+                            {page.title || page.route || t('toolbar.untitled')} ·{' '}
+                            {t('structure.blockCount', { count: page.components.length })}
                         </span>
                     )}
                 </div>
@@ -155,12 +155,12 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     variant="ghost"
                     size="sm"
                     asChild
-                    title={isPageUnpublished ? 'This page is unpublished — visitors won\'t see it yet' : 'View live page'}
+                    title={isPageUnpublished ? t('toolbar.unpublishedTitle') : t('toolbar.viewLiveTitle')}
                     className={isPageUnpublished ? 'text-yellow-600 hover:text-yellow-700' : ''}
                 >
                     <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                        <ArrowSquareOut className="mr-1 size-4" />
-                        {isPageUnpublished ? 'View live (draft)' : 'View live'}
+                        <ArrowSquareOut className="me-1 size-4" />
+                        {isPageUnpublished ? t('toolbar.viewLiveDraft') : t('toolbar.viewLive')}
                     </a>
                 </Button>
             </div>

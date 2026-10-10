@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     BookOpen, Brain, Briefcase, Certificate, ChartLineUp, ChatsCircle, Check,
     Clock, Code, Globe, GraduationCap, Lightbulb, Medal, Rocket, ShieldCheck,
@@ -13,6 +14,7 @@ import {
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
 import { isHexDark } from '../-utils/style-engine';
+import { catalogFeatures } from '../-utils/block-summary';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
@@ -410,10 +412,19 @@ const widthToFr = (w?: string): string => {
 
 // ─── Structural components ────────────────────────────────────────────────────
 
+/** True for a light #rgb / #rrggbb colour; false for dark or unreadable values. */
+const isLightHex = (colour: string): boolean => {
+    const hex = colour.trim().replace(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i, '#$1$1$2$2$3$3');
+    return /^#[0-9a-f]{6}$/i.test(hex) && !isHexDark(hex);
+};
+
 const HeaderPreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     const bg = props.backgroundColor || '#4F46E5';  // design-lint-ignore: page-builder default color
-    const fg = props.textColor || '#FFFFFF';  // design-lint-ignore: page-builder default color
+    // No authored text colour: ink that reads on the bar (a white bar got white text).
+    const fg = props.textColor || (isLightHex(bg) ? '#1A1A1A' : '#FFFFFF');  // design-lint-ignore: page-builder default color
+    // The button chip inverts the bar: bar-coloured text on a text-coloured pill.
+    const chipStyle = { color: bg, backgroundColor: fg };
     return (
         <header className="flex items-center justify-between px-6 py-3 shadow-sm" style={{ backgroundColor: bg }}>
             <div className="flex items-center gap-3">
@@ -434,12 +445,12 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
             </nav>
             <div className="flex items-center gap-2">
                 {props.ctaButton?.enabled && (
-                    <span className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold shadow-sm" style={{ color: bg }}>
+                    <span className="rounded-lg px-4 py-1.5 text-xs font-semibold shadow-sm" style={chipStyle}>
                         {props.ctaButton.text || t('header.getStarted')}
                     </span>
                 )}
                 {!props.ctaButton?.enabled && (props.authLinks || []).slice(0, 1).map((link: any, i: number) => (
-                    <span key={i} className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold" style={{ color: bg }}>
+                    <span key={i} className="rounded-lg px-4 py-1.5 text-xs font-semibold" style={chipStyle}>
                         {link.label}
                     </span>
                 ))}
@@ -1183,6 +1194,14 @@ const GalleryPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+/** "Hero · Stream icons · Filter sidebar · 2 highlighted rows · Editorial cards";
+ *  '' for a catalogue using none of the opt-in features. `t` must be bound to
+ *  the managePagesComponentPreviews namespace. */
+export const describeCatalogFeatures = (props: unknown, t: TFunction): string =>
+    catalogFeatures(props)
+        .map((feature) => t(`catalogFeatures.${feature.key}`, { count: feature.count }))
+        .join(' · ');
+
 // ─── Data-driven placeholder ──────────────────────────────────────────────────
 
 const DataPlaceholder: React.FC<{ label: string; description?: string }> = ({ label, description }) => {
@@ -1287,7 +1306,10 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return (
                 <DataPlaceholder
                     label={t('dispatcher.courseCatalogLabel')}
-                    description={t('dispatcher.courseCatalogDesc', { title: props.title || t('dispatcher.ourCoursesDefault') })}
+                    description={
+                        describeCatalogFeatures(props, t) ||
+                        t('dispatcher.courseCatalogDesc', { title: props.title || t('dispatcher.ourCoursesDefault') })
+                    }
                 />
             );
         case 'bookCatalogue':

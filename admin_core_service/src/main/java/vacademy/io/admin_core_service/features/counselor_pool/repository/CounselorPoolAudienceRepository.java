@@ -44,6 +44,13 @@ public interface CounselorPoolAudienceRepository extends JpaRepository<Counselor
     @Query("SELECT cpa FROM CounselorPoolAudience cpa WHERE cpa.audienceId = :audienceId")
     Optional<CounselorPoolAudience> findByAudienceIdForUpdate(@Param("audienceId") String audienceId);
 
+    /**
+     * The pool's most recent assignment across ALL its lists — the pool-wide
+     * round-robin pointer. Without it every low-volume list rotates on its own
+     * and each list's first lead lands on the same top-of-order counselor.
+     */
+    Optional<CounselorPoolAudience> findFirstByPoolIdAndLastAssignedAtIsNotNullOrderByLastAssignedAtDesc(String poolId);
+
     /** Cleanly update the rotation pointer after picking a counselor. */
     @Modifying
     @Query("UPDATE CounselorPoolAudience cpa " +

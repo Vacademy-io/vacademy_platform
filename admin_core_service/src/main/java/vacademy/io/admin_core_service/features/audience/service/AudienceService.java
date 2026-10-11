@@ -5318,6 +5318,17 @@ public class AudienceService {
                     audienceId);
         }
 
+        // 3a. Initial lead score (real-time), after custom fields so the completeness factor
+        // sees them — same as every other intake path. This is also what creates the user's
+        // lead profile; without it a webhook lead that the pool doesn't assign has no profile,
+        // so its status, interest level and owner all render blank until someone opens it.
+        try {
+            leadScoringService.calculateAndSaveScore(savedResponse.getId(), savedResponse.getAudienceId(),
+                    instituteId, savedResponse.getSourceType(), savedResponse.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Form webhook lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
+        }
+
         // 3b. Pool auto-assignment. Webhook leads (Facebook/Meta Lead Ads, Google Lead Forms,
         // Zoho, etc.) carry no counsellor, so absent a repeat-lead policy this routes purely
         // through the campaign's counselor pool. Runs before the workflow trigger so

@@ -1965,7 +1965,8 @@ public class PaymentLogService {
                     .enrollInvite(null)
                     .paymentOption(paymentOptionDTO)
                     .paymentPlanDTO(paymentPlanDTO)
-                    .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
+                    .enrollInvite(
+                            userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().toEnrollInviteDTO() : null)
                     .build();
         }
 

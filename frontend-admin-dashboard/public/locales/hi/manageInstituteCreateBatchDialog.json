@@ -17,5 +17,9 @@
     },
     "dialog": {
         "heading": "{{batchTerm}} बनाएं - चरण {{step}}: {{title}}"
+    },
+    "review": {
+        "batchName": "{{batchTerm}} का नाम",
+        "batchNameHint": "वैकल्पिक। खाली छोड़ने पर लेवल और कोर्स का नाम दिखेगा।"
     }
 }

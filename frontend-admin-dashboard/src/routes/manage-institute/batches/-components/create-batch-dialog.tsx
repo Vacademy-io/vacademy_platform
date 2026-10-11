@@ -1,4 +1,5 @@
 import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
 import {
     Dialog,
     DialogClose,
@@ -48,6 +49,9 @@ interface FormData {
     selectedLevelDuration: number | null;
     duplicateStudyMaterials: boolean;
     selectedDuplicateSession: { id: string; name: string } | null;
+
+    // Review step. Optional: blank = the batch shows as level + course name.
+    batchName: string;
 }
 
 const DEFAULT_VALUES: FormData = {
@@ -61,7 +65,10 @@ const DEFAULT_VALUES: FormData = {
     selectedLevelDuration: null,
     duplicateStudyMaterials: false,
     selectedDuplicateSession: null,
+    batchName: '',
 };
+
+const BATCH_NAME_MAX_LENGTH = 255;
 
 const REVIEW_STEP = 3;
 
@@ -147,18 +154,37 @@ const ReviewRow = ({
 
 const ReviewStep = () => {
     const { t } = useTranslation('manageInstituteCreateBatchDialog');
-    const { getValues } = useFormContext<FormData>();
+    const { getValues, watch, setValue } = useFormContext<FormData>();
     const values = getValues();
+    const batchName = watch('batchName');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const sessionTerm = getTerminology(ContentTerms.Session, SystemTerms.Session);
     const levelTerm = getTerminology(ContentTerms.Level, SystemTerms.Level);
+    const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
     const startDate = values.selectedStartDate ? dayjs(values.selectedStartDate) : null;
+    // What the card shows when no name is given (mirrors the batches query).
+    const fallbackName = [values.selectedLevel?.name, values.selectedCourse?.name]
+        .filter(Boolean)
+        .join(' ');
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-1">
                 <p className="text-title font-semibold text-neutral-800">{t('review.title')}</p>
                 <p className="text-body text-neutral-500">{t('review.subtitle')}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <MyInput
+                    inputType="text"
+                    label={t('review.batchName', { batchTerm })}
+                    input={batchName}
+                    onChangeFunction={(e) => setValue('batchName', e.target.value)}
+                    inputPlaceholder={fallbackName}
+                    maxLength={BATCH_NAME_MAX_LENGTH}
+                    size="large"
+                    className="w-full sm:w-full"
+                />
+                <span className="text-caption text-neutral-500">{t('review.batchNameHint')}</span>
             </div>
             <div className="flex flex-col divide-y divide-neutral-100 rounded-xl border border-neutral-200 p-5">
                 <ReviewRow
@@ -330,6 +356,7 @@ export const CreateBatchDialog = ({
                 duration_in_days: data.selectedLevelDuration || null,
                 thumbnail_id: null,
                 package_id: data.selectedCourse?.id || '',
+                batch_name: data.batchName.trim() || undefined,
             };
 
             const sessionData = {

@@ -244,6 +244,9 @@ public class SessionService {
         packageSession.setStatus(PackageSessionStatusEnum.ACTIVE.name());
         packageSession.setStartTime(startDate);
         packageSession.setGroup(group);
+        if (StringUtils.hasText(levelDTO.getBatchName())) {
+            packageSession.setName(levelDTO.getBatchName().trim());
+        }
         packageSessionRepository.save(packageSession);
         defaultEnrollInviteService.createDefaultEnrollInvite(packageSession,instituteId);
         // If this level contains subgroups, create child package sessions under this parent.

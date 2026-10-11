@@ -11,8 +11,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
@@ -65,6 +67,9 @@ public class LeadScoringService {
 
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
+    private AudienceRepository audienceRepository;
 
     @Autowired
     private EnquiryRepository enquiryRepository;
@@ -276,6 +281,14 @@ public class LeadScoringService {
             }
         } catch (Exception e) {
             logger.error("Error getting institute for recalculation", e);
+        }
+
+        // Never scored yet (an intake path that skipped scoring): take the institute from
+        // the lead's list, so a recalculation can create the first score instead of no-oping.
+        if (instituteId == null && StringUtils.hasText(response.getAudienceId())) {
+            instituteId = audienceRepository.findById(response.getAudienceId())
+                    .map(Audience::getInstituteId)
+                    .orElse(null);
         }
 
         if (instituteId == null) {

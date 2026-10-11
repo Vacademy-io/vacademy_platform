@@ -134,6 +134,8 @@ public class PackageService {
                     filterDTO.getPackageSessionIds(),
                     effectiveFilter,
                     filterDTO.getSessionIds(),
+                    filterDTO.getLevelIds(),
+                    filterDTO.getTag(),
                     pageable);
         } else {
             return packageRepository.getCatalogPackageDetail(

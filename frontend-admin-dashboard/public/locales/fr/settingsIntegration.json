@@ -294,5 +294,28 @@
             "revoked": "Clé API révoquée",
             "revokeFailed": "Impossible de révoquer la clé API."
         }
+    },
+    "loginLinks": {
+        "title": "Liens de connexion",
+        "description": "Liens qui connectent un apprenant sans mot de passe, comme /go/<username>, /subscriptions/<username> et les liens de cours en direct. Protégez-les avec un code qui expire.",
+        "requireLabel": "Exiger un code de connexion sur chaque lien",
+        "requireHint": "Désactivé (par défaut) : les liens fonctionnent avec un simple identifiant, comme toujours, et tout ?lc=<code> est ignoré. Activé : un lien doit porter un ?lc=<code> valide, et les liens avec identifiant seul cessent de fonctionner. Activez-le seulement quand chaque système qui envoie des liens ajoute le code.",
+        "requireOnToast": "Les liens de connexion exigent désormais un code.",
+        "requireOffToast": "Les liens avec identifiant seul fonctionnent à nouveau.",
+        "policyLoadError": "Impossible de charger ce paramètre. Actualisez pour réessayer.",
+        "policySaveFailed": "Impossible d'enregistrer le paramètre.",
+        "keysTitle": "Clés pour vos propres systèmes",
+        "keysDescription": "Le serveur de votre site ou CRM utilise une clé pour obtenir un code de connexion pour un apprenant, puis ajoute ?lc=<code> à n'importe quel lien du portail. Gardez les clés sur votre serveur ; ne les mettez jamais dans une page web ou une application.",
+        "createButton": "Créer une clé",
+        "empty": "Aucune clé pour l'instant. Vous n'en avez besoin que si vos propres systèmes envoient des liens.",
+        "formHeading": "Créer une clé de liens de connexion",
+        "namePlaceholder": "ex. Site de l'école",
+        "formHint": "Laissez la date d'expiration vide pour une clé qui n'expire pas.",
+        "issuedUsage": "Votre serveur envoie la clé dans l'en-tête X-API-Key :",
+        "issuedThen": "La réponse contient un code. Ajoutez ?lc=<code> au lien de l'apprenant. Les codes durent au plus 30 jours.",
+        "confirmTitle": "Exiger un code de connexion ?",
+        "confirmDescription": "Tout lien contenant seulement un identifiant cesse immédiatement de fonctionner pour vos apprenants, y compris les messages déjà envoyés. Vérifiez d'abord que chaque système qui envoie des liens ajoute un code.",
+        "confirmCancel": "Annuler",
+        "confirmAction": "Activer"
     }
 }

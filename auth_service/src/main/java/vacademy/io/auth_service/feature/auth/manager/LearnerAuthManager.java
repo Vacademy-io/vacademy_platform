@@ -32,6 +32,7 @@ import vacademy.io.auth_service.feature.notification.service.NotificationService
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
 import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
 import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
+import vacademy.io.auth_service.feature.login_link.service.LoginCodeService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.InstituteChoice;
@@ -95,6 +96,9 @@ public class LearnerAuthManager {
 
         @Autowired
         private InstitutePolicyService institutePolicyService;
+
+        @Autowired
+        private LoginCodeService loginCodeService;
 
         @Value("${admin.core.service.base_url}")
         private String adminCoreServiceBaseUrl;
@@ -715,16 +719,43 @@ public class LearnerAuthManager {
          * - Only works for users with STUDENT role in the specified institute (if
          * provided)
          * 
-         * @param username    The user's username (required)
+         * <p>Login codes ({@code ?lc=} on the link, see LoginCodeService) are used only for an
+         * institute that has switched on "require login code" (institute_login_link_policy,
+         * off by default). There the code alone decides: valid = signed in, anything else =
+         * 401, and the emergency flag is not consulted. The username and institute, when sent,
+         * must match the code's.
+         *
+         * <p>Everywhere else (the default) a code is ignored and the original username-only
+         * behaviour applies. Without a code, a user who belongs to an institute with the switch
+         * on gets 401.
+         *
+         * @param username    The user's username (required unless a code is sent)
          * @param instituteId The institute ID (optional - if null, looks up by username
          *                    only)
+         * @param code        Login code from the link (optional)
          * @param requestIP   The request IP address for logging
          * @return JwtResponseDto with access and refresh tokens
          */
-        public JwtResponseDto loginByUsernameTrusted(String username, String instituteId, String requestIP) {
+        public JwtResponseDto loginByUsernameTrusted(String username, String instituteId, String code,
+                        String requestIP) {
                 // Log all attempts for security audit
-                log.warn("TRUSTED_LOGIN_ATTEMPT: username={}, instituteId={}, IP={}",
-                                username, instituteId, requestIP);
+                log.warn("TRUSTED_LOGIN_ATTEMPT: username={}, instituteId={}, withCode={}, IP={}",
+                                username, instituteId, code != null && !code.isBlank(), requestIP);
+
+                boolean codeEnforced = code != null && !code.isBlank()
+                                && loginCodeService.instituteOf(code).map(loginCodeService::requiresCode).orElse(false);
+                if (codeEnforced) {
+                        User codeUser = loginCodeService.redeem(code, username, instituteId, requestIP)
+                                        .orElseThrow(() -> {
+                                                log.warn("TRUSTED_LOGIN_DENIED: invalid login code. username={}, instituteId={}, IP={}",
+                                                                username, instituteId, requestIP);
+                                                return new VacademyException(HttpStatus.UNAUTHORIZED,
+                                                                "This login link is invalid or has expired.");
+                                        });
+                        log.warn("TRUSTED_LOGIN_SUCCESS: User {} (id={}) logged in via login code from IP {}",
+                                        codeUser.getUsername(), codeUser.getId(), requestIP);
+                        return issueTrustedLoginTokens(codeUser);
+                }
 
                 // Check if feature is enabled
                 if (!trustedLoginEnabled) {
@@ -760,10 +791,21 @@ public class LearnerAuthManager {
                                         });
                 }
 
+                if (loginCodeService.anyInstituteRequiresCode(user.getId(), instituteId)) {
+                        log.warn("TRUSTED_LOGIN_DENIED: login code required. username={}, instituteId={}, IP={}",
+                                        username, instituteId, requestIP);
+                        throw new VacademyException(HttpStatus.UNAUTHORIZED,
+                                        "This login link is invalid or has expired.");
+                }
+
                 // Log successful login for audit
                 log.warn("TRUSTED_LOGIN_SUCCESS: User {} (id={}) logged in via trusted endpoint from IP {}",
                                 username, user.getId(), requestIP);
 
+                return issueTrustedLoginTokens(user);
+        }
+
+        private JwtResponseDto issueTrustedLoginTokens(User user) {
                 // Delete existing refresh tokens (same as regular login)
                 refreshTokenService.deleteAllRefreshToken(user);
 

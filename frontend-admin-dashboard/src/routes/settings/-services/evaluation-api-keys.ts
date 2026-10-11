@@ -303,8 +303,9 @@ export function buildIssueKeyPayload(
 export const fetchEvaluationApiKeys = async (
     instituteId: string
 ): Promise<EvaluationApiKeyList> => {
+    // product: the same table also holds login-links keys (Settings → Login links).
     const response = await authenticatedAxiosInstance.get(EVALUATION_API_KEYS_URL, {
-        params: { instituteId },
+        params: { instituteId, product: 'evaluation' },
     });
     return normalizeApiKeyList(response.data);
 };

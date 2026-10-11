@@ -24,6 +24,9 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.auth_service.feature.institute_oauth.service.InstituteOAuthClientService;
+import vacademy.io.auth_service.feature.login_link.auth.AdminCoreLoginLinksKeyVerifier;
+import vacademy.io.auth_service.feature.login_link.controller.LoginCodeOpenController;
+import vacademy.io.common.auth.apikey.ApiKeyAuthFilter;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
@@ -127,6 +130,9 @@ public class ApplicationSecurityConfig {
     @Autowired
     private OriginInstituteResolver originInstituteResolver;
 
+    @Autowired
+    private AdminCoreLoginLinksKeyVerifier loginLinksKeyVerifier;
+
     /**
      * Security filter chain for OAuth2 flows - Sessions enabled for OAuth2 state
      * management.
@@ -187,6 +193,15 @@ public class ApplicationSecurityConfig {
     @Bean
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // Institute API key (vak_login_…) on the login-code mint route only. Built here, not a
+        // bean: a Filter bean is registered by Spring Boot for every path, outside this chain.
+        ApiKeyAuthFilter loginLinksKeyFilter = new ApiKeyAuthFilter(loginLinksKeyVerifier,
+                ApiKeyAuthFilter.Settings.builder()
+                        .pathPrefixes(java.util.List.of(LoginCodeOpenController.PATH))
+                        .requiredKeyPathPrefixes(java.util.List.of(LoginCodeOpenController.PATH))
+                        .requiredProduct("login_links")
+                        .build());
+
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
@@ -206,6 +221,7 @@ public class ApplicationSecurityConfig {
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(loginLinksKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(jsonAuthEntryPoint)
                         .accessDeniedHandler(jsonAuthEntryPoint));

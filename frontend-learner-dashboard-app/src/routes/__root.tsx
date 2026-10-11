@@ -954,6 +954,60 @@ export const Route = createRootRouteWithContext<{
       }
     }
 
+    // Login code from a passwordless link (?lc=<code>), minted by our services or
+    // an institute's own server (auth-service login-codes). Works on any route:
+    // exchange it for tokens, then reload the same URL without it. The backend
+    // honours a code only for an institute that has switched on "require a login
+    // code" (off by default). Otherwise, or if the code fails, it is dropped and
+    // the route behaves exactly as it would without one: the username routes fall
+    // back to their own trusted-login form (which shows "link expired" once the
+    // institute requires a code).
+    const loginCode = urlParams.get("lc");
+    if (loginCode && typeof window !== "undefined" && !(urlAccessToken && urlRefreshToken)) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("lc");
+      const cleanPath = `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`;
+      try {
+        const { default: axios } = await import("axios");
+        const { LOGIN_BY_USERNAME_TRUSTED } = await import("@/constants/urls");
+        const response = await axios.post(LOGIN_BY_USERNAME_TRUSTED, {
+          code: loginCode,
+        });
+        const accessToken: string | undefined = response.data?.accessToken;
+        const refreshToken: string | undefined = response.data?.refreshToken;
+        if (accessToken && refreshToken) {
+          const { performFullAuthCycle } =
+            await import("@/services/auth-cycle-service");
+          const { getTokenDecodedData } =
+            await import("@/lib/auth/sessionUtility");
+          const { pickLoginInstituteId } =
+            await import("@/lib/auth/pick-login-institute");
+          const decoded = getTokenDecodedData(accessToken);
+          const instituteId =
+            (await pickLoginInstituteId(
+              decoded?.authorities,
+              decoded?.user,
+              urlParams.get("instituteId"),
+            )) ||
+            (decoded?.authorities && Object.keys(decoded.authorities)[0]);
+          if (instituteId) {
+            await performFullAuthCycle({ accessToken, refreshToken }, instituteId);
+            await Preferences.set({
+              key: "selectedInstituteId",
+              value: instituteId,
+            });
+            console.log("[__root] Login code accepted, reloading:", cleanPath);
+            window.location.replace(`${window.location.origin}${cleanPath}`);
+            throw redirect({ to: cleanUrl.pathname as never });
+          }
+        }
+      } catch (error) {
+        if (error instanceof Response) throw error;
+        console.warn("[__root] Login code was not accepted:", error);
+      }
+      window.history.replaceState(window.history.state, "", cleanPath);
+    }
+
     // Reader-mode guard: on native iOS (always) or a reader-mode institute,
     // marketplace + external-payment routes must never render (Apple 3.1.1).
     // Runs before the public-route bypass because those routes are "public".

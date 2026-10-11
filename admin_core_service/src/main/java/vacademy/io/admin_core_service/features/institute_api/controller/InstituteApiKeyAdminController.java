@@ -57,13 +57,17 @@ public class InstituteApiKeyAdminController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(issuedView(issued));
     }
 
-    /** List the institute's keys: metadata only, never the key or its hash. */
+    /**
+     * List the institute's keys: metadata only, never the key or its hash. {@code ?product=}
+     * narrows to one product (evaluation | login_links); omitted = every key.
+     */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> list(
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "product", required = false) String product,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.requireInstituteAdmin(user, instituteId);
-        return ResponseEntity.ok(keyService.list(instituteId).stream()
+        return ResponseEntity.ok(keyService.list(instituteId, product).stream()
                 .map(InstituteApiAccessService::keyView)
                 .toList());
     }

@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 public final class ApiKeySecrets {
 
     public static final String EVALUATION_KEY_PREFIX = "vak_eval_";
+    public static final String LOGIN_LINKS_KEY_PREFIX = "vak_login_";
     static final int RANDOM_BYTES = 24;
     static final int DISPLAY_PREFIX_LENGTH = 16;
 
@@ -30,9 +31,18 @@ public final class ApiKeySecrets {
 
     /** A new evaluation key in plaintext. Show it once; never store it. */
     public static String newEvaluationKey() {
+        return newKey(EVALUATION_KEY_PREFIX);
+    }
+
+    /** A new login-links key ({@code vak_login_<48 hex>}) in plaintext. Show it once; never store it. */
+    public static String newLoginLinksKey() {
+        return newKey(LOGIN_LINKS_KEY_PREFIX);
+    }
+
+    private static String newKey(String prefix) {
         byte[] rnd = new byte[RANDOM_BYTES];
         RANDOM.nextBytes(rnd);
-        return EVALUATION_KEY_PREFIX + HexFormat.of().formatHex(rnd);
+        return prefix + HexFormat.of().formatHex(rnd);
     }
 
     /** Lowercase hex SHA-256 of the key's UTF-8 bytes (64 chars). */

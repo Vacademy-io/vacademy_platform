@@ -207,6 +207,14 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
           }
         } catch (error) {
           console.error("Trusted login failed:", error);
+          // 401 = the institute requires a login code (?lc=) and this link has
+          // none, or its code expired. The root route already tried any code.
+          if (axios.isAxiosError(error) && error.response?.status === 401) {
+            toast.error(t("liveClass.loginForm.toast.linkExpired"), {
+              description: t("liveClass.loginForm.toast.linkExpiredDescription"),
+            });
+            return;
+          }
           toast.error(t("liveClass.loginForm.toast.loginFailedLater"), {
             description: t("liveClass.loginForm.toast.emailServiceUnavailable"),
           });

@@ -300,6 +300,8 @@
                 "emailServiceUnavailable": "Le service de messagerie est temporairement indisponible.",
                 "invalidUserData": "Données utilisateur invalides reçues",
                 "loggingIn": "Connexion en cours...",
+                "linkExpired": "Ce lien de connexion a expiré",
+                "linkExpiredDescription": "Demandez un nouveau lien, ou connectez-vous avec votre identifiant et votre mot de passe.",
                 "loginFailedLater": "Échec de la connexion. Veuillez réessayer plus tard.",
                 "loginFailedRetry": "Échec de la connexion. Veuillez réessayer.",
                 "loginSuccessTitle": "Connexion réussie ! Redirection...",

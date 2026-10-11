@@ -296,6 +296,8 @@
                 "emailServiceUnavailable": "Email service is temporarily unavailable.",
                 "invalidUserData": "Invalid user data received",
                 "loggingIn": "Logging in...",
+                "linkExpired": "This login link has expired",
+                "linkExpiredDescription": "Ask for a new link, or sign in with your username and password.",
                 "loginFailedLater": "Login failed. Please try again later.",
                 "loginFailedRetry": "Login failed. Please try again.",
                 "loginSuccessTitle": "Login successful! Redirecting...",

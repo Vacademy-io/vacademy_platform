@@ -166,6 +166,19 @@ function fieldIcon(fieldKey: string, fieldName: string, type: string): ReactNode
     return <TextAa {...props} />;
 }
 
+// Standard system field keys that always represent a phone number with country code.
+// Custom user-created fields with fieldType "number" must NOT be coerced into a phone
+// picker just because their name contains "phone" — only these exact keys are promoted.
+const SYSTEM_PHONE_KEYS = new Set(['phone_number', 'mobile_number']);
+
+const normalizeFieldType = (field: CustomFieldConfig): string => {
+    const normalized = (field.fieldType || 'text').toLowerCase();
+    if (normalized === 'phone' || normalized === 'tel') return 'phone';
+    if (normalized === 'textfield') return 'text';
+    if (SYSTEM_PHONE_KEYS.has((field.fieldKey || '').toLowerCase())) return 'phone';
+    return normalized;
+};
+
 export function AddResponsePage() {
     const { t } = useTranslation(NAMESPACE);
     const { t: tSubmitLead } = useTranslation('audienceManagerSubmitAudienceLead');
@@ -330,21 +343,35 @@ export function AddResponsePage() {
     const loadingFields = !!instituteId && fieldsPending && !fieldsError;
 
     // Initialize form values with default values, then the searched phone / email
-    // into the first field of that kind — the same field extractUserInfo reads back.
+    // (Check Lead) into a field of that kind — one extractUserInfo reads back. Only
+    // typed inputs qualify: a dropdown named "Mobile App" must not get a number.
+    // A real phone / email field wins over a text one whose name merely matches.
     useEffect(() => {
         const initialValues: Record<string, string> = {};
         customFields.forEach((field) => {
             initialValues[field.id] = field.defaultValue || '';
         });
-        const prefill = (value: string | undefined, matches: (text: string) => boolean) => {
+        const prefill = (
+            value: string | undefined,
+            preferredType: string,
+            matches: (text: string) => boolean
+        ) => {
             if (!value) return;
-            const field = customFields.find(
-                (f) => matches(f.fieldKey.toLowerCase()) || matches(f.fieldName.toLowerCase())
+            const candidates = customFields.filter(
+                (f) =>
+                    [preferredType, 'text'].includes(normalizeFieldType(f)) &&
+                    (matches(f.fieldKey.toLowerCase()) || matches(f.fieldName.toLowerCase()))
             );
+            const field =
+                candidates.find((f) => normalizeFieldType(f) === preferredType) ?? candidates[0];
             if (field && !initialValues[field.id]) initialValues[field.id] = value;
         };
-        prefill(search.prefillEmail, (text) => text.includes('email'));
-        prefill(search.prefillPhone, (text) => text.includes('phone') || text.includes('mobile'));
+        prefill(search.prefillEmail, 'email', (text) => text.includes('email'));
+        prefill(
+            search.prefillPhone,
+            'phone',
+            (text) => text.includes('phone') || text.includes('mobile')
+        );
         setFormValues(initialValues);
     }, [customFields, search.prefillEmail, search.prefillPhone]);
 
@@ -515,19 +542,6 @@ export function AddResponsePage() {
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    // Standard system field keys that always represent a phone number with country code.
-    // Custom user-created fields with fieldType "number" must NOT be coerced into a phone
-    // picker just because their name contains "phone" — only these exact keys are promoted.
-    const SYSTEM_PHONE_KEYS = new Set(['phone_number', 'mobile_number']);
-
-    const normalizeFieldType = (field: CustomFieldConfig): string => {
-        const normalized = (field.fieldType || 'text').toLowerCase();
-        if (normalized === 'phone' || normalized === 'tel') return 'phone';
-        if (normalized === 'textfield') return 'text';
-        if (SYSTEM_PHONE_KEYS.has((field.fieldKey || '').toLowerCase())) return 'phone';
-        return normalized;
     };
 
     const audienceTerm = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);

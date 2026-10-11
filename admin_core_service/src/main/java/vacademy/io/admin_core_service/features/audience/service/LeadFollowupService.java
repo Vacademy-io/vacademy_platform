@@ -28,8 +28,11 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityCounsellorRecorder;
 import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityAction;
@@ -137,12 +140,17 @@ public class LeadFollowupService {
      * manager view); pure admins get the whole institute. An explicit
      * {@code counsellorUserId} narrows to that one user — validated against
      * the caller's scope when the caller is scoped.
+     *
+     * <p>{@code excludeLeadStatus} (comma-separated status keys) drops follow-ups
+     * whose lead sits in one of those statuses — LOST for institutes that keep
+     * lost leads in their own tab.
      */
     @Transactional(readOnly = true)
-    public List<LeadFollowupDto> myPending(CustomUserDetails user, String instituteId, String counsellorUserId) {
+    public List<LeadFollowupDto> myPending(CustomUserDetails user, String instituteId, String counsellorUserId,
+                                           String excludeLeadStatus) {
         if (instituteId == null || instituteId.isBlank()) {
-            return withLeadInfo(leadFollowupRepository
-                    .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId())
+            return withLeadInfo(withoutLeadStatuses(leadFollowupRepository
+                    .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId()), excludeLeadStatus)
                     .stream()
                     .map(LeadFollowupDto::from)
                     .collect(Collectors.toList()));
@@ -168,7 +176,7 @@ public class LeadFollowupService {
             rows = leadFollowupRepository
                     .findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(instituteId);
         }
-        return withLeadInfo(rows.stream()
+        return withLeadInfo(withoutLeadStatuses(rows, excludeLeadStatus).stream()
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList()));
     }
@@ -271,6 +279,39 @@ public class LeadFollowupService {
      * identity on the auth user instead, so a second auth-service batch fills
      * the gaps. Failures leave the fields null rather than failing the list.
      */
+    /**
+     * Drops follow-ups whose lead's current status key is in {@code excludeLeadStatus}
+     * (comma-separated). Blank keeps everything; a lead with no status is always kept,
+     * same as the leads list's lead_status_exclude_id.
+     */
+    private List<LeadFollowup> withoutLeadStatuses(List<LeadFollowup> rows, String excludeLeadStatus) {
+        if (excludeLeadStatus == null || excludeLeadStatus.isBlank() || rows.isEmpty()) return rows;
+        Set<String> keys = Arrays.stream(excludeLeadStatus.split(","))
+                .map(String::trim)
+                .filter(k -> !k.isEmpty())
+                .collect(Collectors.toSet());
+        if (keys.isEmpty()) return rows;
+        List<String> responseIds = rows.stream()
+                .map(LeadFollowup::getAudienceResponseId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (responseIds.isEmpty()) return rows;
+        Map<String, String> statusIdByResponse = audienceResponseRepository.findAllById(responseIds).stream()
+                .filter(ar -> ar.getLeadStatusId() != null)
+                .collect(Collectors.toMap(AudienceResponse::getId, AudienceResponse::getLeadStatusId, (a, b) -> a));
+        if (statusIdByResponse.isEmpty()) return rows;
+        Set<String> excludedStatusIds = leadStatusRepository
+                .findAllById(new HashSet<>(statusIdByResponse.values())).stream()
+                .filter(st -> keys.contains(st.getStatusKey()))
+                .map(vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId)
+                .collect(Collectors.toSet());
+        if (excludedStatusIds.isEmpty()) return rows;
+        return rows.stream()
+                .filter(f -> !excludedStatusIds.contains(statusIdByResponse.get(f.getAudienceResponseId())))
+                .collect(Collectors.toList());
+    }
+
     private List<LeadFollowupDto> withLeadInfo(List<LeadFollowupDto> dtos) {
         List<String> responseIds = dtos.stream()
                 .map(LeadFollowupDto::getAudienceResponseId)

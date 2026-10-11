@@ -46,7 +46,7 @@ import { useCustomFieldSetup } from '../../list/-hooks/useCustomFieldSetup';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { LOST_STATUS_KEY, useLeadSettings, withLostExcluded } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import {
@@ -733,11 +733,16 @@ const RecentLeadsContent = ({
     // Enrolled sentinels are conversion filters, not status keys, so they never invert.
     const leadStatusId =
         !statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
-    const leadStatusExcludeId =
-        statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
     // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
     // place they can be seen, and the only way to restore one from the UI.
     const [showDeleted, setShowDeleted] = useState(false);
+    // LEAD_SETTING.hideLostInAllLeads: lost leads show only in a view that picks LOST (the
+    // "Discarded Leads" sub-tab) and in the Deleted view; every other view leaves them out.
+    const picksLost = !statusExclude && customStatusKeys.includes(LOST_STATUS_KEY);
+    const leadStatusExcludeId = withLostExcluded(
+        statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined,
+        leadSettings.hideLostInAllLeads && !picksLost && !showDeleted
+    );
     // The unfiltered "All leads" view hides converted leads only when the institute turned on
     // LEAD_SETTING.hideConvertedInAllLeads. Picking a specific status (including the
     // institute's CONVERTED one) and the Deleted view always get every lead.
@@ -1710,10 +1715,19 @@ const RecentLeadsContent = ({
                                       },
                                   ]
                                 : []),
-                            ...leadStatusFilterOptions.map((s) => ({
-                                value: s.status_key,
-                                label: s.label,
-                            })),
+                            // Lost has its own tab when hideLostInAllLeads is on, so the
+                            // other views don't offer it (kept while it is the active pick).
+                            ...leadStatusFilterOptions
+                                .filter(
+                                    (s) =>
+                                        !leadSettings.hideLostInAllLeads ||
+                                        s.status_key !== LOST_STATUS_KEY ||
+                                        leadStatusFilters.includes(LOST_STATUS_KEY)
+                                )
+                                .map((s) => ({
+                                    value: s.status_key,
+                                    label: s.label,
+                                })),
                         ]}
                         selected={leadStatusFilters}
                         onChange={handleLeadStatusChange}

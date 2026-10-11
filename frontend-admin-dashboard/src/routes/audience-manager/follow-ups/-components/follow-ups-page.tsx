@@ -42,7 +42,7 @@ import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadSettings, withLostExcluded } from '@/hooks/use-lead-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
@@ -383,12 +383,21 @@ const FollowUpsContent = () => {
             assigned_counselor_id: effectiveCounsellorId,
             // A converted lead is no longer a pending follow-up.
             conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
+            // Nor is a lost one, when the institute keeps those in their own tab.
+            lead_status_exclude_id: withLostExcluded(undefined, leadSettings.hideLostInAllLeads),
             search_query: appliedSearch || undefined,
             follow_up_pending: true,
             ...audienceParams,
             utm_filters: utmFiltersPayload,
         }),
-        [instituteId, effectiveCounsellorId, appliedSearch, audienceParams, utmFiltersPayload]
+        [
+            instituteId,
+            effectiveCounsellorId,
+            appliedSearch,
+            audienceParams,
+            utmFiltersPayload,
+            leadSettings.hideLostInAllLeads,
+        ]
     );
 
     // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used

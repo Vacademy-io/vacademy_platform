@@ -31,7 +31,9 @@
         "description": "Choose whether converted leads appear in the unfiltered \"All leads\" view of Recent Leads and lead lists. You can still see them by picking \"Enrolled / Converted\" or your converted status in the Lead Status filter, or on the Lead Board.",
         "hideConverted": "Hide converted leads from All leads",
         "showConvertedFilter": "Offer \"Enrolled / Converted\" in the Lead Status filter",
-        "showConvertedFilterHint": "This is the built-in option that finds leads enrolled into a course. Turn it off if your own converted status already covers it — most institutes have one, and the two sit next to each other looking almost identical."
+        "showConvertedFilterHint": "This is the built-in option that finds leads enrolled into a course. Turn it off if your own converted status already covers it — most institutes have one, and the two sit next to each other looking almost identical.",
+        "hideLost": "Keep lost leads only in their own tab",
+        "hideLostHint": "Lost leads disappear from every lead list, the Follow-ups queue, the Lead Board and follow-up reminders. They show only where the Lost status is picked, such as a \"Discarded Leads\" sidebar tab."
     },
     "weightsCard": {
         "title": "Scoring Weights",

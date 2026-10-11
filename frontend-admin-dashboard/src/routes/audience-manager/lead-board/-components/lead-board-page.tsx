@@ -32,7 +32,7 @@ import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-lis
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { LOST_STATUS_KEY, useLeadSettings } from '@/hooks/use-lead-settings';
 import { NO_STATUS_KEY, useLeadStatuses, type LeadStatus } from '@/hooks/use-lead-statuses';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
@@ -301,6 +301,8 @@ const LeadBoardContent = () => {
     const orderedStatuses = useMemo(() => {
         const catalog = [...leadStatusCatalog]
             .filter((s) => s.is_active)
+            // Lost leads have their own tab when the institute turned on hideLostInAllLeads.
+            .filter((s) => !leadSettings.hideLostInAllLeads || s.status_key !== LOST_STATUS_KEY)
             .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
         if (catalog.length === 0) return catalog;
         // Synthetic first column: leads that were never staged (no lead_status_id
@@ -318,7 +320,7 @@ const LeadBoardContent = () => {
             is_system: true,
         };
         return [noStatusColumn, ...catalog];
-    }, [leadStatusCatalog, t]);
+    }, [leadStatusCatalog, leadSettings.hideLostInAllLeads, t]);
     const visibleStatuses = useMemo(
         () => orderedStatuses.filter((s) => !hiddenColumns.has(s.status_key)),
         [orderedStatuses, hiddenColumns]

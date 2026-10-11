@@ -80,6 +80,8 @@ export interface CampaignLeadsRequest {
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;
+    // Status keys to leave out, comma-separated (LOST when hideLostInAllLeads is on).
+    lead_status_exclude_id?: string;
     // Per-custom-field filters. Each entry narrows the result to responses
     // whose custom_field_values row matches ({field_id, one of values}). Within
     // an entry the values are OR-combined; across entries the backend
@@ -136,6 +138,7 @@ export const fetchCampaignLeads = async (
                 search_query: payload.search_query,
                 lead_tier: payload.lead_tier,
                 lead_status_id: payload.lead_status_id,
+                lead_status_exclude_id: payload.lead_status_exclude_id,
                 custom_field_filters: payload.custom_field_filters,
                 utm_filters: payload.utm_filters,
                 conversion_status_filter: payload.conversion_status_filter,
@@ -181,6 +184,7 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             // without this the key wouldn't change and React Query would serve
             // the cached list — the status filter would fire no request.
             payload.lead_status_id ?? '',
+            payload.lead_status_exclude_id ?? '',
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
             payload.call_history_filter ?? '',
             payload.sla_filter ?? '',

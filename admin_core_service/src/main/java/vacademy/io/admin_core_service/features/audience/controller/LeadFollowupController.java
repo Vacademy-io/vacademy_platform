@@ -47,13 +47,16 @@ public class LeadFollowupController {
      * With {@code instituteId}: hierarchy-scoped callers get the manager view
      * (own + counsellor-role reports'); pure admins get the institute, and
      * {@code counsellorUserId} narrows to one user (scope-validated).
+     * {@code excludeLeadStatus} (comma-separated status keys) leaves out
+     * follow-ups on leads in those statuses.
      */
     @GetMapping("/my-pending")
     public ResponseEntity<List<LeadFollowupDto>> myPending(
             @RequestParam(value = "instituteId", required = false) String instituteId,
             @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
+            @RequestParam(value = "excludeLeadStatus", required = false) String excludeLeadStatus,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(leadFollowupService.myPending(user, instituteId, counsellorUserId));
+        return ResponseEntity.ok(leadFollowupService.myPending(user, instituteId, counsellorUserId, excludeLeadStatus));
     }
 
     /**

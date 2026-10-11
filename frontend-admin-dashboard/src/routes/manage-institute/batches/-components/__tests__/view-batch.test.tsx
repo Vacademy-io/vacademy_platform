@@ -8,7 +8,7 @@
  * to the batch with no filter shown for it, and the Batch filter looked empty.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { BatchType } from '@/routes/manage-institute/batches/-types/manage-batches-types';
 
 const navigate = vi.fn();
@@ -26,9 +26,20 @@ vi.mock('@/routes/manage-institute/batches/-services/delete-batches', () => ({
     useDeleteBatches: () => ({ mutate: vi.fn() }),
 }));
 
-// Opens the whole manual-enrol wizard; the card only needs it to render.
-vi.mock('@/components/common/students/enroll-manually/enroll-manually-button', () => ({
-    EnrollManuallyButton: () => <button type="button">Enroll</button>,
+// The enroll wizard itself is not under test; record what the card opens it with.
+const enrollDialog = vi.fn();
+vi.mock(
+    '@/routes/manage-students/students-list/-components/enroll-bulk/bulk-assign-dialog/BulkAssignDialog',
+    () => ({
+        BulkAssignDialog: (props: { open: boolean; initialPackageSessionId?: string }) => {
+            enrollDialog(props);
+            return props.open ? <div>enroll wizard</div> : null;
+        },
+    })
+);
+
+vi.mock('@tanstack/react-query', () => ({
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
 vi.mock('@/components/common/layout-container/sidebar/utils', () => ({
@@ -87,5 +98,19 @@ describe('View Batch', () => {
     it('shows the invite code the backend returned', () => {
         renderCard();
         expect(screen.getByText('1uq33p')).toBeInTheDocument();
+    });
+});
+
+describe('Enroll on a batch card', () => {
+    it('opens the current enroll wizard with this batch picked', () => {
+        renderCard();
+        expect(screen.queryByText('enroll wizard')).toBeNull();
+
+        fireEvent.click(screen.getByText('batchCard.enrollButton'));
+
+        expect(screen.getByText('enroll wizard')).toBeInTheDocument();
+        expect(enrollDialog).toHaveBeenLastCalledWith(
+            expect.objectContaining({ open: true, initialPackageSessionId: 'ps-adct-pun' })
+        );
     });
 });

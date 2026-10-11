@@ -26,6 +26,10 @@ interface AddLeadDialogProps {
     /** Institute's naming for "Campaign Type" and "Audience List". */
     campaignTypeTerm: string;
     audienceTerm: string;
+    /** The page the form returns to once the lead is saved. */
+    from?: 'all-leads' | 'lead-lookup';
+    /** Check Lead → the phone / email just searched, so it isn't typed twice. */
+    prefill?: { phone?: string; email?: string };
 }
 
 // Audiences saved without a campaign type still need a way in.
@@ -36,7 +40,8 @@ const NO_TYPE_VALUE = '__no_type__';
  * then continue to that audience's own add-lead form
  * (/audience-manager/list/campaign-users/add) with `from=all-leads`, which is
  * what makes the form assign the lead (to the counsellor filling it, or to the
- * counsellor an admin picks) and return here afterwards.
+ * counsellor an admin picks) and return here afterwards. Check Lead opens the
+ * same dialog with `from=lead-lookup` and the number / address it just searched.
  *
  * Only ACTIVE audiences are offered — the submit endpoint rejects any other.
  */
@@ -47,6 +52,8 @@ export const AddLeadDialog = ({
     isLoading,
     campaignTypeTerm,
     audienceTerm,
+    from = 'all-leads',
+    prefill,
 }: AddLeadDialogProps) => {
     const { t } = useTranslation('audienceManagerAddLeadDialog');
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
@@ -103,7 +110,9 @@ export const AddLeadDialog = ({
             search: {
                 campaignId: selectedAudience.id,
                 campaignName: selectedAudience.name,
-                from: 'all-leads',
+                from,
+                prefillPhone: prefill?.phone || undefined,
+                prefillEmail: prefill?.email || undefined,
             },
         });
     };

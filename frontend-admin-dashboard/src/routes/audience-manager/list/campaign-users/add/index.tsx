@@ -63,9 +63,12 @@ function buildAddResponseSearchSchema(t: TFunction) {
         campaignId: z.string().min(1, t('schema.campaignIdRequired')),
         campaignName: z.string().optional(),
         customFields: z.string().optional(), // JSON string of custom fields
-        // Opened from All Leads → Add New Lead: assign the lead (see handleSubmit)
-        // and go back to All Leads instead of the audience's users list.
-        from: z.enum(['all-leads']).optional(),
+        // Opened from All Leads / Check Lead → Add New Lead: assign the lead (see
+        // handleSubmit) and go back to that page instead of the audience's users list.
+        from: z.enum(['all-leads', 'lead-lookup']).optional(),
+        // Check Lead hands over the number / address it just searched for.
+        prefillPhone: z.string().optional(),
+        prefillEmail: z.string().optional(),
     });
 }
 
@@ -177,10 +180,11 @@ export function AddResponsePage() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
 
-    // From All Leads the lead always gets an owner: an admin picks the counsellor,
-    // anyone else (the counsellor filling the form) becomes the owner themselves.
-    // From a list, an admin may pick one too; left empty, the usual routing applies.
-    const fromAllLeads = search.from === 'all-leads';
+    // From All Leads (or Check Lead) the lead always gets an owner: an admin picks
+    // the counsellor, anyone else (the counsellor filling the form) becomes the owner
+    // themselves. From a list, an admin may pick one too; left empty, the usual
+    // routing applies.
+    const fromAllLeads = search.from === 'all-leads' || search.from === 'lead-lookup';
     const canPickCounsellor = isAdminForInstitute(instituteId);
     const [assignedCounsellor, setAssignedCounsellor] = useState<CounsellorOption | null>(null);
 
@@ -325,20 +329,34 @@ export function AddResponsePage() {
     }, [search.customFields, fetchedFields, fieldsError, instituteId]);
     const loadingFields = !!instituteId && fieldsPending && !fieldsError;
 
-    // Initialize form values with default values
+    // Initialize form values with default values, then the searched phone / email
+    // into the first field of that kind — the same field extractUserInfo reads back.
     useEffect(() => {
         const initialValues: Record<string, string> = {};
         customFields.forEach((field) => {
             initialValues[field.id] = field.defaultValue || '';
         });
+        const prefill = (value: string | undefined, matches: (text: string) => boolean) => {
+            if (!value) return;
+            const field = customFields.find(
+                (f) => matches(f.fieldKey.toLowerCase()) || matches(f.fieldName.toLowerCase())
+            );
+            if (field && !initialValues[field.id]) initialValues[field.id] = value;
+        };
+        prefill(search.prefillEmail, (text) => text.includes('email'));
+        prefill(search.prefillPhone, (text) => text.includes('phone') || text.includes('mobile'));
         setFormValues(initialValues);
-    }, [customFields]);
+    }, [customFields, search.prefillEmail, search.prefillPhone]);
 
     const handleInputChange = (fieldId: string, value: string) => {
         setFormValues((prev) => ({ ...prev, [fieldId]: value }));
     };
 
     const handleBack = () => {
+        if (search.from === 'lead-lookup') {
+            navigate({ to: '/audience-manager/lead-lookup' });
+            return;
+        }
         if (fromAllLeads) {
             navigate({ to: '/audience-manager/recent-leads' });
             return;

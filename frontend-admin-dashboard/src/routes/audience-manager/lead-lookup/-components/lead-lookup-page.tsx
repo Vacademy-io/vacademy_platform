@@ -21,10 +21,13 @@
  * It shows whatever the institute chose to share and nothing else; the backend
  * omits the rest entirely, so there is no hidden payload to read. ADMIN-role
  * users get every field — they aren't scoped out of lead data elsewhere either.
+ *
+ * No match offers "Add New Lead" — the same dialog as All Leads, behind the same
+ * Lead Actions switch, carrying the searched phone / email into the form.
  */
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { MagnifyingGlass, Prohibit, CheckCircle } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { MagnifyingGlass, Prohibit, CheckCircle, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -36,6 +39,9 @@ import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { getInstituteId } from '@/constants/helper';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { LeadEmptyState } from '@/components/shared/leads';
+import { useLeadActionVisibility } from '@/lib/display-settings/lead-actions';
+import { AddLeadDialog } from '../../recent-leads/-components/add-lead-dialog';
+import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
 import {
     guessLookupMode,
     lookupLead,
@@ -53,19 +59,47 @@ export function LeadLookupPage() {
     const [mode, setMode] = useState<LookupMode>('phone');
     const [term, setTerm] = useState('');
     const [result, setResult] = useState<LeadLookupResult | null>(null);
+    // What the shown result was searched with — the box may have been edited since.
+    const [searched, setSearched] = useState<{ mode: LookupMode; term: string } | null>(null);
+    const { canAddLead } = useLeadActionVisibility();
+    const [addLeadOpen, setAddLeadOpen] = useState(false);
 
     const { mutate: search, isPending } = useMutation({
-        mutationFn: () => lookupLead({ instituteId, ...lookupParamsFor(mode, term) }),
-        onSuccess: setResult,
+        mutationFn: (q: { mode: LookupMode; term: string }) =>
+            lookupLead({ instituteId, ...lookupParamsFor(q.mode, q.term) }),
+        onSuccess: (data, q) => {
+            setResult(data);
+            setSearched(q);
+        },
         onError: () => toast.error('Could not check this lead — try again'),
     });
+
+    // Same query (and cache) as All Leads' Add New Lead; only fetched once a
+    // search came back empty and this role may add a lead.
+    const showAddLead = canAddLead && result?.found === false;
+    const audiencesQuery = useQuery({
+        ...handleFetchCampaignsList({ institute_id: instituteId, page: 0, size: 200 }),
+        enabled: showAddLead && !!instituteId,
+    });
+    const audienceOptions = useMemo(
+        () =>
+            (audiencesQuery.data?.content ?? [])
+                .map((c) => ({
+                    id: c.id || c.campaign_id || c.audience_id || '',
+                    name: c.campaign_name || 'Untitled',
+                    campaignType: c.campaign_type,
+                    status: c.status,
+                }))
+                .filter((opt) => opt.id !== ''),
+        [audiencesQuery.data]
+    );
 
     const complete = isTermCompleteFor(mode, term);
     const copy = LOOKUP_MODE_COPY[mode];
     const submit = () => {
         if (!complete || isPending) return;
         setResult(null);
-        search();
+        search({ mode, term: term.trim() });
     };
 
     // Phone and email are always on. Name only for a counsellor, and only where
@@ -184,14 +218,24 @@ export function LeadLookupPage() {
 
             {result && !result.found && (
                 <Card className="max-w-xl border-neutral-200">
-                    <CardContent className="flex items-start gap-3 py-5">
+                    <CardContent className="flex flex-wrap items-start gap-3 py-5">
                         <MagnifyingGlass className="mt-0.5 size-5 shrink-0 text-neutral-400" />
-                        <div>
+                        <div className="flex-1">
                             <p className="font-medium text-neutral-700">Not in the system</p>
                             <p className="text-body text-neutral-500">
                                 No lead matches this {copy.label.toLowerCase()}.
                             </p>
                         </div>
+                        {showAddLead && (
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                onClick={() => setAddLeadOpen(true)}
+                            >
+                                <Plus className="size-4" weight="bold" />
+                                Add New Lead
+                            </MyButton>
+                        )}
                     </CardContent>
                 </Card>
             )}
@@ -230,6 +274,22 @@ export function LeadLookupPage() {
                         </p>
                     </CardContent>
                 </Card>
+            )}
+
+            {showAddLead && (
+                <AddLeadDialog
+                    open={addLeadOpen}
+                    onOpenChange={setAddLeadOpen}
+                    audiences={audienceOptions}
+                    isLoading={audiencesQuery.isLoading}
+                    campaignTypeTerm={terminology.campaignType}
+                    audienceTerm={terminology.leadSource}
+                    from="lead-lookup"
+                    prefill={{
+                        phone: searched?.mode === 'phone' ? searched.term : undefined,
+                        email: searched?.mode === 'email' ? searched.term : undefined,
+                    }}
+                />
             )}
         </div>
     );

@@ -49,6 +49,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InstituteApiKeyService {
 
     public static final String PRODUCT_EVALUATION = "evaluation";
+    /**
+     * Keys an institute's own server uses to mint learner login codes (auth_service
+     * {@code POST /auth-service/open/v1/login-codes}). Self-serve: an institute admin may issue
+     * one without platform staff enabling anything, so no {@code institute_api_access} row is
+     * needed and verify reports access as enabled.
+     */
+    public static final String PRODUCT_LOGIN_LINKS = "login_links";
+    public static final String SCOPE_LOGIN_LINKS_CREATE = "login_links:create";
+    public static final Set<String> PRODUCTS = Set.of(PRODUCT_EVALUATION, PRODUCT_LOGIN_LINKS);
     public static final int MAX_ACTIVE_KEYS_PER_INSTITUTE = 50;
     public static final int MAX_NAME_LENGTH = 120;
     static final long LAST_USED_WRITE_INTERVAL_MS = 60_000L;
@@ -89,21 +98,25 @@ public class InstituteApiKeyService {
             throw new VacademyException(HttpStatus.UNAUTHORIZED, "User authentication required");
         }
         IssueApiKeyRequest body = request == null ? new IssueApiKeyRequest() : request;
+        String product = normalizeProduct(body.getProduct());
+        boolean loginLinks = PRODUCT_LOGIN_LINKS.equals(product);
         String name = normalizeName(body.getName());
-        List<String> scopes = normalizeScopes(body.getScopes());
+        List<String> scopes = loginLinks ? List.of(SCOPE_LOGIN_LINKS_CREATE) : normalizeScopes(body.getScopes());
         Instant now = clock.instant();
         Instant expiresAt = parseExpiry(body.getExpiresAt(), now);
-        Integer dailyCopyCap = body.getDailyCopyCap();
+        Integer dailyCopyCap = loginLinks ? null : body.getDailyCopyCap();
         if (dailyCopyCap != null && dailyCopyCap < 1) {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "daily_copy_cap must be at least 1 (or omitted).");
         }
 
-        // Row lock on the access row: serialises concurrent issues for this institute
-        // (so the cap below holds) and reads the current enabled flag.
-        InstituteApiAccess access = accessRepository.findForUpdate(instituteId, PRODUCT_EVALUATION).orElse(null);
-        if (access == null || !access.isEnabled()) {
-            throw new VacademyException(HttpStatus.FORBIDDEN,
-                    "The Evaluation API is not enabled for this institute. Contact Vacademy to enable it.");
+        if (!loginLinks) {
+            // Row lock on the access row: serialises concurrent issues for this institute
+            // (so the cap below holds) and reads the current enabled flag.
+            InstituteApiAccess access = accessRepository.findForUpdate(instituteId, PRODUCT_EVALUATION).orElse(null);
+            if (access == null || !access.isEnabled()) {
+                throw new VacademyException(HttpStatus.FORBIDDEN,
+                        "The Evaluation API is not enabled for this institute. Contact Vacademy to enable it.");
+            }
         }
         if (keyRepository.countUsable(instituteId, now) >= MAX_ACTIVE_KEYS_PER_INSTITUTE) {
             throw new VacademyException(HttpStatus.CONFLICT,
@@ -111,14 +124,14 @@ public class InstituteApiKeyService {
                             + "). Revoke some first.");
         }
 
-        String plaintext = ApiKeySecrets.newEvaluationKey();
+        String plaintext = loginLinks ? ApiKeySecrets.newLoginLinksKey() : ApiKeySecrets.newEvaluationKey();
         InstituteApiKey key = InstituteApiKey.builder()
                 .id(UUID.randomUUID().toString())
                 .instituteId(instituteId)
                 .name(name)
                 .keyPrefix(ApiKeySecrets.displayPrefix(plaintext))
                 .keyHash(ApiKeySecrets.sha256Hex(plaintext))
-                .products(new String[]{PRODUCT_EVALUATION})
+                .products(new String[]{product})
                 .scopes(scopes.toArray(new String[0]))
                 .dailyCopyCap(dailyCopyCap)
                 .status(InstituteApiKey.STATUS_ACTIVE)
@@ -132,6 +145,7 @@ public class InstituteApiKeyService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("key_prefix", key.getKeyPrefix());
         payload.put("name", name);
+        payload.put("product", product);
         payload.put("scopes", scopes);
         payload.put("expires_at", expiresAt == null ? null : expiresAt.toString());
         payload.put("daily_copy_cap", dailyCopyCap);
@@ -148,8 +162,19 @@ public class InstituteApiKeyService {
     /** Every key of the institute, newest first. Rows carry the hash; never return them raw. */
     @Transactional(readOnly = true)
     public List<InstituteApiKey> list(String instituteId) {
+        return list(instituteId, null);
+    }
+
+    /** The institute's keys for one product (null or blank = every product), newest first. */
+    @Transactional(readOnly = true)
+    public List<InstituteApiKey> list(String instituteId, String product) {
         requireInstituteId(instituteId);
-        return keyRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId);
+        List<InstituteApiKey> all = keyRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId);
+        if (isBlank(product)) {
+            return all;
+        }
+        String wanted = normalizeProduct(product);
+        return all.stream().filter(k -> asList(k.getProducts()).contains(wanted)).toList();
     }
 
     // ── Revoke ───────────────────────────────────────────────────────────────
@@ -221,14 +246,23 @@ public class InstituteApiKeyService {
             return Optional.empty();
         }
         InstituteApiKey key = found.get();
+        stampLastUsed(key.getId(), now, clientIp);
+        if (asList(key.getProducts()).contains(PRODUCT_LOGIN_LINKS)) {
+            // Self-serve product: no institute_api_access row; a usable key is all it takes.
+            return Optional.of(toVerifyResponse(key, null, true));
+        }
         InstituteApiAccess access = accessRepository
                 .findByInstituteIdAndProduct(key.getInstituteId(), PRODUCT_EVALUATION)
                 .orElse(null);
-        stampLastUsed(key.getId(), now, clientIp);
         return Optional.of(toVerifyResponse(key, access));
     }
 
     static ApiKeyVerifyResponse toVerifyResponse(InstituteApiKey key, InstituteApiAccess accessOrNull) {
+        return toVerifyResponse(key, accessOrNull, accessOrNull != null && accessOrNull.isEnabled());
+    }
+
+    static ApiKeyVerifyResponse toVerifyResponse(InstituteApiKey key, InstituteApiAccess accessOrNull,
+            boolean accessEnabled) {
         InstituteApiAccess access = accessOrNull != null
                 ? accessOrNull
                 : InstituteApiAccess.defaults(key.getInstituteId(), PRODUCT_EVALUATION);
@@ -250,7 +284,7 @@ public class InstituteApiKeyService {
                 access.getTypedLaneCap(),
                 access.getCreditLimit(),
                 access.isFireWorkflowEvents(),
-                accessOrNull != null && accessOrNull.isEnabled());
+                accessEnabled);
     }
 
     /** Best effort: a failed stamp never fails the verify. */
@@ -295,6 +329,18 @@ public class InstituteApiKeyService {
                     "name must be at most " + MAX_NAME_LENGTH + " characters.");
         }
         return name;
+    }
+
+    /** Blank = evaluation, so callers written before login_links existed keep issuing evaluation keys. */
+    static String normalizeProduct(String raw) {
+        if (isBlank(raw)) {
+            return PRODUCT_EVALUATION;
+        }
+        String product = raw.trim().toLowerCase(Locale.ROOT);
+        if (!PRODUCTS.contains(product)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Unknown product: " + raw + ". Allowed: " + PRODUCTS);
+        }
+        return product;
     }
 
     static List<String> normalizeScopes(List<String> raw) {

@@ -293,5 +293,28 @@
             "revoked": "API key revoked",
             "revokeFailed": "Could not revoke the API key."
         }
+    },
+    "loginLinks": {
+        "title": "Login links",
+        "description": "Links that sign a learner in without a password, such as /go/<username>, /subscriptions/<username> and live-class links. Protect them with a code that expires.",
+        "requireLabel": "Require a login code on every link",
+        "requireHint": "Off (default): links work with just a username, as they always have, and any ?lc=<code> is ignored. On: a link must carry a valid ?lc=<code>, and username-only links stop working. Turn this on only after every system that sends learner links adds the code.",
+        "requireOnToast": "Login links now need a code.",
+        "requireOffToast": "Username-only links work again.",
+        "policyLoadError": "Could not load this setting. Refresh to try again.",
+        "policySaveFailed": "Could not save the setting.",
+        "keysTitle": "Keys for your own systems",
+        "keysDescription": "Your website or CRM server uses a key to get a login code for one learner, then adds ?lc=<code> to any learner-portal link. Keep keys on your server; never put one in a web page or app.",
+        "createButton": "Create key",
+        "empty": "No keys yet. You need one only if your own systems send learner links.",
+        "formHeading": "Create login-links key",
+        "namePlaceholder": "e.g. School website",
+        "formHint": "Leave the expiry empty for a key that does not expire.",
+        "issuedUsage": "Your server sends the key in the X-API-Key header:",
+        "issuedThen": "The response has a code. Add ?lc=<code> to the learner's link. Codes last up to 30 days.",
+        "confirmTitle": "Require a login code?",
+        "confirmDescription": "Every link that has only a username stops working for your learners straight away, including messages already sent. Check that every system that sends links adds a code first.",
+        "confirmCancel": "Cancel",
+        "confirmAction": "Turn on"
     }
 }

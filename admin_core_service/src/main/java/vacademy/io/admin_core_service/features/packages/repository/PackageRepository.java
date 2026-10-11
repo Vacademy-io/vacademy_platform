@@ -1033,6 +1033,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     )
                 )
                 AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                AND (
+                    :#{#tags == null || #tags.isEmpty()} = true
+                    OR EXISTS (
+                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                        WHERE tag ILIKE ANY (array[:#{#tags}])
+                    )
+                )
 
             GROUP BY
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -1090,6 +1098,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 )
                             )
                             AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                            AND (
+                                :#{#tags == null || #tags.isEmpty()} = true
+                                OR EXISTS (
+                                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                                    WHERE tag ILIKE ANY (array[:#{#tags}])
+                                )
+                            )
                         """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("name") String name,
@@ -1109,6 +1125,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("packageSessionFilter") String packageSessionFilter,
             @Param("sessionIds") List<String> sessionIds,
+            @Param("levelIds") List<String> levelIds,
+            @Param("tags") List<String> tags,
             Pageable pageable);
 
     @Query(value = """

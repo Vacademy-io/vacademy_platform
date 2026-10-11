@@ -63,9 +63,12 @@ function buildAddResponseSearchSchema(t: TFunction) {
         campaignId: z.string().min(1, t('schema.campaignIdRequired')),
         campaignName: z.string().optional(),
         customFields: z.string().optional(), // JSON string of custom fields
-        // Opened from All Leads → Add New Lead: assign the lead (see handleSubmit)
-        // and go back to All Leads instead of the audience's users list.
-        from: z.enum(['all-leads']).optional(),
+        // Opened from All Leads / Check Lead → Add New Lead: assign the lead (see
+        // handleSubmit) and go back to that page instead of the audience's users list.
+        from: z.enum(['all-leads', 'lead-lookup']).optional(),
+        // Check Lead hands over the number / address it just searched for.
+        prefillPhone: z.string().optional(),
+        prefillEmail: z.string().optional(),
     });
 }
 
@@ -163,6 +166,19 @@ function fieldIcon(fieldKey: string, fieldName: string, type: string): ReactNode
     return <TextAa {...props} />;
 }
 
+// Standard system field keys that always represent a phone number with country code.
+// Custom user-created fields with fieldType "number" must NOT be coerced into a phone
+// picker just because their name contains "phone" — only these exact keys are promoted.
+const SYSTEM_PHONE_KEYS = new Set(['phone_number', 'mobile_number']);
+
+const normalizeFieldType = (field: CustomFieldConfig): string => {
+    const normalized = (field.fieldType || 'text').toLowerCase();
+    if (normalized === 'phone' || normalized === 'tel') return 'phone';
+    if (normalized === 'textfield') return 'text';
+    if (SYSTEM_PHONE_KEYS.has((field.fieldKey || '').toLowerCase())) return 'phone';
+    return normalized;
+};
+
 export function AddResponsePage() {
     const { t } = useTranslation(NAMESPACE);
     const { t: tSubmitLead } = useTranslation('audienceManagerSubmitAudienceLead');
@@ -177,10 +193,11 @@ export function AddResponsePage() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
 
-    // From All Leads the lead always gets an owner: an admin picks the counsellor,
-    // anyone else (the counsellor filling the form) becomes the owner themselves.
-    // From a list, an admin may pick one too; left empty, the usual routing applies.
-    const fromAllLeads = search.from === 'all-leads';
+    // From All Leads (or Check Lead) the lead always gets an owner: an admin picks
+    // the counsellor, anyone else (the counsellor filling the form) becomes the owner
+    // themselves. From a list, an admin may pick one too; left empty, the usual
+    // routing applies.
+    const fromAllLeads = search.from === 'all-leads' || search.from === 'lead-lookup';
     const canPickCounsellor = isAdminForInstitute(instituteId);
     const [assignedCounsellor, setAssignedCounsellor] = useState<CounsellorOption | null>(null);
 
@@ -325,20 +342,48 @@ export function AddResponsePage() {
     }, [search.customFields, fetchedFields, fieldsError, instituteId]);
     const loadingFields = !!instituteId && fieldsPending && !fieldsError;
 
-    // Initialize form values with default values
+    // Initialize form values with default values, then the searched phone / email
+    // (Check Lead) into a field of that kind — one extractUserInfo reads back. Only
+    // typed inputs qualify: a dropdown named "Mobile App" must not get a number.
+    // A real phone / email field wins over a text one whose name merely matches.
     useEffect(() => {
         const initialValues: Record<string, string> = {};
         customFields.forEach((field) => {
             initialValues[field.id] = field.defaultValue || '';
         });
+        const prefill = (
+            value: string | undefined,
+            preferredType: string,
+            matches: (text: string) => boolean
+        ) => {
+            if (!value) return;
+            const candidates = customFields.filter(
+                (f) =>
+                    [preferredType, 'text'].includes(normalizeFieldType(f)) &&
+                    (matches(f.fieldKey.toLowerCase()) || matches(f.fieldName.toLowerCase()))
+            );
+            const field =
+                candidates.find((f) => normalizeFieldType(f) === preferredType) ?? candidates[0];
+            if (field && !initialValues[field.id]) initialValues[field.id] = value;
+        };
+        prefill(search.prefillEmail, 'email', (text) => text.includes('email'));
+        prefill(
+            search.prefillPhone,
+            'phone',
+            (text) => text.includes('phone') || text.includes('mobile')
+        );
         setFormValues(initialValues);
-    }, [customFields]);
+    }, [customFields, search.prefillEmail, search.prefillPhone]);
 
     const handleInputChange = (fieldId: string, value: string) => {
         setFormValues((prev) => ({ ...prev, [fieldId]: value }));
     };
 
     const handleBack = () => {
+        if (search.from === 'lead-lookup') {
+            navigate({ to: '/audience-manager/lead-lookup' });
+            return;
+        }
         if (fromAllLeads) {
             navigate({ to: '/audience-manager/recent-leads' });
             return;
@@ -497,19 +542,6 @@ export function AddResponsePage() {
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    // Standard system field keys that always represent a phone number with country code.
-    // Custom user-created fields with fieldType "number" must NOT be coerced into a phone
-    // picker just because their name contains "phone" — only these exact keys are promoted.
-    const SYSTEM_PHONE_KEYS = new Set(['phone_number', 'mobile_number']);
-
-    const normalizeFieldType = (field: CustomFieldConfig): string => {
-        const normalized = (field.fieldType || 'text').toLowerCase();
-        if (normalized === 'phone' || normalized === 'tel') return 'phone';
-        if (normalized === 'textfield') return 'text';
-        if (SYSTEM_PHONE_KEYS.has((field.fieldKey || '').toLowerCase())) return 'phone';
-        return normalized;
     };
 
     const audienceTerm = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);

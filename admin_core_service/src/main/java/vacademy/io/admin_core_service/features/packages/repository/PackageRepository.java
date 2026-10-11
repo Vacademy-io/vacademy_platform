@@ -164,6 +164,26 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     List<String> findAllDistinctTagsByInstituteId(@Param("instituteId") String instituteId);
 
     /**
+     * Tags of every non-deleted course of the institute, published to the catalogue or not.
+     * The admin Courses filter and the course form's tag picker read this: an institute whose
+     * courses are all unpublished got an empty list from the catalogue-only query above, so
+     * tags it had set on its courses could never be filtered on or re-picked.
+     */
+    @Query(value = """
+            SELECT DISTINCT TRIM(t.tag)
+            FROM package_institute pi
+            JOIN package p ON pi.package_id = p.id
+            CROSS JOIN LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS t(tag)
+            WHERE pi.institute_id = :instituteId
+            AND p.status != 'DELETED'
+            AND p.comma_separated_tags IS NOT NULL
+            AND p.comma_separated_tags != ''
+            AND TRIM(t.tag) != ''
+            ORDER BY 1 ASC
+            """, nativeQuery = true)
+    List<String> findAllDistinctAdminTagsByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
      * Distinct learners actively enrolled in each catalogue course of ONE institute: the input
      * of the public popularity ranks ({@code CatalogPopularityService}, cached 10 minutes per
      * institute and read on the replica). Courses nobody is enrolled in return no row.

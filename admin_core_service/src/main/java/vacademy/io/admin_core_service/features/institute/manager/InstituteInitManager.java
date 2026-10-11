@@ -176,10 +176,15 @@ public class InstituteInitManager {
                 String instId = institute.getId();
                 List<String> activeStatuses = List.of(PackageSessionStatusEnum.ACTIVE.name());
 
-                // Trace tags lookup
-                dto.setTags(PerformanceTracer.traceDbQuery(
-                                "packageRepository.findAllDistinctTagsByInstituteId",
-                                () -> packageRepository.findAllDistinctTagsByInstituteId(instId)));
+                // Trace tags lookup. Admin callers see the tags of unpublished courses too;
+                // the public catalogue keeps seeing only published ones.
+                dto.setTags(includePrivateFields
+                                ? PerformanceTracer.traceDbQuery(
+                                                "packageRepository.findAllDistinctAdminTagsByInstituteId",
+                                                () -> packageRepository.findAllDistinctAdminTagsByInstituteId(instId))
+                                : PerformanceTracer.traceDbQuery(
+                                                "packageRepository.findAllDistinctTagsByInstituteId",
+                                                () -> packageRepository.findAllDistinctTagsByInstituteId(instId)));
 
                 // Trace sessions lookup
                 dto.setSessions(PerformanceTracer.traceDbQuery(
@@ -273,7 +278,8 @@ public class InstituteInitManager {
                 String instId = institute.getId();
                 List<String> activeStatuses = List.of(PackageSessionStatusEnum.ACTIVE.name());
 
-                idto.setTags(packageRepository.findAllDistinctTagsByInstituteId(instId));
+                // Only the authenticated admin setup endpoints build this DTO.
+                idto.setTags(packageRepository.findAllDistinctAdminTagsByInstituteId(instId));
                 idto.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(instId, activeStatuses)
                                 .stream().map(LevelDTO::new).toList());
                 idto.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(instId)

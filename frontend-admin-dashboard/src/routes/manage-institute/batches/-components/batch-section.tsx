@@ -18,7 +18,8 @@ import {
     Users,
 } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { EnrollManuallyButton } from '@/components/common/students/enroll-manually/enroll-manually-button';
+import { BulkAssignDialog } from '@/routes/manage-students/students-list/-components/enroll-bulk/bulk-assign-dialog/BulkAssignDialog';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDeleteBatches } from '@/routes/manage-institute/batches/-services/delete-batches';
 import { toast } from 'sonner';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
@@ -209,16 +210,44 @@ const InviteCode = ({ batch, onCopy }: { batch: BatchType; onCopy: () => void })
     );
 };
 
-const enrollTrigger = (label: string, className?: string) => (
-    <MyButton
-        buttonType="text"
-        scale="medium"
-        className={cn('gap-1.5 !text-neutral-700 hover:!text-primary-500', className)}
-    >
-        <Plus size={16} />
-        {label}
-    </MyButton>
-);
+/**
+ * Opens the same enroll wizard as the learner list, with this batch already
+ * picked. It used to open the old manual-enrol form, which knew nothing of
+ * the batch it was clicked on.
+ */
+const BatchEnrollButton = ({
+    batch,
+    label,
+    className,
+}: {
+    batch: BatchType;
+    label: string;
+    className?: string;
+}) => {
+    const [open, setOpen] = useState(false);
+    const queryClient = useQueryClient();
+
+    return (
+        <>
+            <MyButton
+                buttonType="text"
+                scale="medium"
+                onClick={() => setOpen(true)}
+                className={cn('gap-1.5 !text-neutral-700 hover:!text-primary-500', className)}
+            >
+                <Plus size={16} />
+                {label}
+            </MyButton>
+            <BulkAssignDialog
+                open={open}
+                onOpenChange={setOpen}
+                initialPackageSessionId={batch.package_session_id}
+                // Learner counts on the cards come from this query.
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['GET_BATCHES'] })}
+            />
+        </>
+    );
+};
 
 const BatchCard = ({ batch }: { batch: BatchType }) => {
     const { t } = useTranslation('manageInstituteBatchSection');
@@ -249,11 +278,10 @@ const BatchCard = ({ batch }: { batch: BatchType }) => {
                     </div>
                 </div>
                 <div className="mt-auto grid grid-cols-2 gap-3 border-t border-neutral-100 p-4">
-                    <EnrollManuallyButton
-                        triggerButton={enrollTrigger(
-                            t('batchCard.enrollButton', { term: learnerTerm }),
-                            'w-full'
-                        )}
+                    <BatchEnrollButton
+                        batch={batch}
+                        label={t('batchCard.enrollButton', { term: learnerTerm })}
+                        className="w-full"
                     />
                     <MyButton
                         buttonType="secondary"
@@ -303,9 +331,7 @@ const BatchRow = ({ batch }: { batch: BatchType }) => {
                     {start?.isValid() ? start.format('DD MMM YYYY') : '—'}
                 </p>
                 <div className="flex items-center justify-end gap-1 md:col-span-2">
-                    <EnrollManuallyButton
-                        triggerButton={enrollTrigger(t('batchCard.enrollShort'))}
-                    />
+                    <BatchEnrollButton batch={batch} label={t('batchCard.enrollShort')} />
                     <MyButton
                         buttonType="text"
                         scale="medium"

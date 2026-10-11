@@ -372,12 +372,14 @@ export const CreateBatchDialog = ({
         methods.handleSubmit((data) => {
             const levelChosen = hasLevel(data);
             const sessionChosen = hasSession(data);
-            // The default level is shared by every institute: send no name, or
-            // the backend renames it to whatever is sent.
+            const newLevel = levelChosen && data.levelCreationType === 'new';
+            // A name only for a new level: the backend renames an existing level
+            // to whatever name is sent, and the default level is shared by every
+            // institute.
             const levelData = {
                 id: levelChosen ? data.selectedLevel?.id || '' : DEFAULT_LEVEL_ID,
-                new_level: levelChosen && data.levelCreationType === 'new',
-                level_name: levelChosen ? data.selectedLevel?.name || '' : '',
+                new_level: newLevel,
+                level_name: newLevel ? data.selectedLevel?.name || '' : '',
                 duration_in_days: levelChosen ? data.selectedLevelDuration || null : null,
                 thumbnail_id: null,
                 package_id: data.selectedCourse?.id || '',

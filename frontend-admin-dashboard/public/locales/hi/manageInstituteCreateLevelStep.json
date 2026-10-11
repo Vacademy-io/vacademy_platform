@@ -12,7 +12,8 @@
         "searchLevel": "{{term}} खोजें…",
         "noLevelsYet": "दोबारा उपयोग करने के लिए कोई {{term}} नहीं — नीचे नया जोड़ें।",
         "searchSession": "{{term}} खोजें…",
-        "noOtherSessions": "सामग्री कॉपी करने के लिए कोई दूसरा {{term}} नहीं है।"
+        "noOtherSessions": "सामग्री कॉपी करने के लिए कोई दूसरा {{term}} नहीं है।",
+        "optionalHint": "वैकल्पिक। छोड़ने पर डिफ़ॉल्ट {{term}} लगेगा।"
     },
     "validation": {
         "pleaseSelectLevel": "कृपया एक स्तर चुनें",

@@ -102,6 +102,9 @@ export const CreateSessionStep = () => {
                 <p className="text-body text-neutral-500">
                     {t('subtitle', { session: sessionLower })}
                 </p>
+                <p className="text-caption text-neutral-500">
+                    {t('optionalHint', { session: sessionLower })}
+                </p>
             </div>
 
             <FormField
@@ -157,12 +160,10 @@ export const CreateSessionStep = () => {
                 <FormField
                     control={form.control}
                     name="selectedSession"
-                    rules={{ required: t('validation.selectSession') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-subtitle font-semibold text-neutral-700">
-                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}{' '}
-                                <span className="text-danger-500">*</span>
+                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}
                             </FormLabel>
                             <FormControl>
                                 <BatchItemSelect

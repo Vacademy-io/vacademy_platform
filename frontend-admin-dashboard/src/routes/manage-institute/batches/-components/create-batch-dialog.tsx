@@ -32,6 +32,7 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import dayjs from 'dayjs';
+import { DEFAULT_LEVEL_ID, DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
 
 interface FormData {
     // Course step
@@ -69,6 +70,14 @@ const DEFAULT_VALUES: FormData = {
 };
 
 const BATCH_NAME_MAX_LENGTH = 255;
+
+// Session and level are optional; skipping either lands on the shared default.
+const hasSession = (values: FormData) =>
+    values.sessionCreationType === 'new'
+        ? !!values.selectedSession?.name
+        : !!values.selectedSession?.id;
+const hasLevel = (values: FormData) =>
+    values.levelCreationType === 'new' ? !!values.selectedLevel?.name : !!values.selectedLevel?.id;
 
 const REVIEW_STEP = 3;
 
@@ -162,8 +171,13 @@ const ReviewStep = () => {
     const levelTerm = getTerminology(ContentTerms.Level, SystemTerms.Level);
     const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
     const startDate = values.selectedStartDate ? dayjs(values.selectedStartDate) : null;
+    const sessionChosen = hasSession(values);
+    const levelChosen = hasLevel(values);
     // What the card shows when no name is given (mirrors the batches query).
-    const fallbackName = [values.selectedLevel?.name, values.selectedCourse?.name]
+    const fallbackName = [
+        levelChosen ? values.selectedLevel?.name : 'default',
+        values.selectedCourse?.name,
+    ]
         .filter(Boolean)
         .join(' ');
 
@@ -195,24 +209,34 @@ const ReviewStep = () => {
                 <ReviewRow
                     icon={<CalendarCheck size={20} />}
                     label={sessionTerm}
-                    value={values.selectedSession?.name ?? ''}
+                    value={
+                        sessionChosen
+                            ? values.selectedSession?.name ?? ''
+                            : t('review.defaultValue')
+                    }
                     hint={
-                        values.sessionCreationType === 'new' && startDate?.isValid()
+                        sessionChosen &&
+                        values.sessionCreationType === 'new' &&
+                        startDate?.isValid()
                             ? t('review.startsOn', { date: startDate.format('DD MMM YYYY') })
                             : null
                     }
-                    isNew={values.sessionCreationType === 'new'}
+                    isNew={sessionChosen && values.sessionCreationType === 'new'}
                 />
                 <ReviewRow
                     icon={<Stack size={20} />}
                     label={levelTerm}
-                    value={values.selectedLevel?.name ?? ''}
+                    value={
+                        levelChosen ? values.selectedLevel?.name ?? '' : t('review.defaultValue')
+                    }
                     hint={
-                        values.levelCreationType === 'new' && values.selectedLevelDuration
+                        levelChosen &&
+                        values.levelCreationType === 'new' &&
+                        values.selectedLevelDuration
                             ? t('review.duration', { count: values.selectedLevelDuration })
                             : null
                     }
-                    isNew={values.levelCreationType === 'new'}
+                    isNew={levelChosen && values.levelCreationType === 'new'}
                 />
                 {values.duplicateStudyMaterials && values.selectedDuplicateSession && (
                     <ReviewRow
@@ -266,9 +290,10 @@ export const CreateBatchDialog = ({
             }
             if (await methods.trigger(['courseCreationType', 'selectedCourse'])) setCurrentStep(1);
         } else if (currentStep === 1) {
+            // A new session needs both a name and a date; neither = the default session.
             if (
                 values.sessionCreationType === 'new' &&
-                (!values.selectedSession?.name || !values.selectedStartDate)
+                !!values.selectedSession?.name !== !!values.selectedStartDate
             ) {
                 toast.error(t('validation.sessionDetails'));
                 return;
@@ -276,10 +301,6 @@ export const CreateBatchDialog = ({
             if (await methods.trigger(['sessionCreationType', 'selectedSession']))
                 setCurrentStep(2);
         } else if (currentStep === 2) {
-            if (values.levelCreationType === 'new' && !values.selectedLevel?.name) {
-                toast.error(t('validation.levelName'));
-                return;
-            }
             if (await methods.trigger(['selectedLevel', 'selectedDuplicateSession']))
                 setCurrentStep(REVIEW_STEP);
         }
@@ -349,21 +370,25 @@ export const CreateBatchDialog = ({
 
     const submit = () => {
         methods.handleSubmit((data) => {
+            const levelChosen = hasLevel(data);
+            const sessionChosen = hasSession(data);
+            // The default level is shared by every institute: send no name, or
+            // the backend renames it to whatever is sent.
             const levelData = {
-                id: data.selectedLevel?.id || '',
-                new_level: data.levelCreationType === 'new',
-                level_name: data.selectedLevel?.name || '',
-                duration_in_days: data.selectedLevelDuration || null,
+                id: levelChosen ? data.selectedLevel?.id || '' : DEFAULT_LEVEL_ID,
+                new_level: levelChosen && data.levelCreationType === 'new',
+                level_name: levelChosen ? data.selectedLevel?.name || '' : '',
+                duration_in_days: levelChosen ? data.selectedLevelDuration || null : null,
                 thumbnail_id: null,
                 package_id: data.selectedCourse?.id || '',
                 batch_name: data.batchName.trim() || undefined,
             };
 
             const sessionData = {
-                id: data.selectedSession?.id || '',
-                new_session: data.sessionCreationType === 'new',
-                session_name: data.selectedSession?.name || '',
-                start_date: data.selectedStartDate || '',
+                id: sessionChosen ? data.selectedSession?.id || '' : DEFAULT_SESSION_ID,
+                new_session: sessionChosen && data.sessionCreationType === 'new',
+                session_name: sessionChosen ? data.selectedSession?.name || '' : '',
+                start_date: sessionChosen ? data.selectedStartDate || '' : '',
                 levels: [levelData],
                 status: 'ACTIVE',
                 duplicate_from_session_id: data.duplicateStudyMaterials
@@ -391,8 +416,8 @@ export const CreateBatchDialog = ({
                 duplicateFromSession: data.duplicateStudyMaterials,
                 duplicationSessionId: data.selectedDuplicateSession?.id || '',
                 courseId: data.selectedCourse?.id || '',
-                levelId: data.selectedLevel?.id || '',
-                sessionId: data.selectedSession?.id || '',
+                levelId: levelData.id,
+                sessionId: sessionData.id,
             });
         })();
     };

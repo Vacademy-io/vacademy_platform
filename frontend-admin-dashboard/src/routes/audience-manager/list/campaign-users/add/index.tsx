@@ -116,10 +116,6 @@ function CounsellorPicker({
                 <span className="font-normal text-neutral-500">{t('assign.optional')}</span>
             </Label>
             <div className="relative">
-                <User
-                    size={18}
-                    className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-500"
-                />
                 <SearchableSelect
                     options={options.map((c) => ({ value: c.id, label: c.full_name }))}
                     value={value?.id ?? ''}
@@ -129,6 +125,10 @@ function CounsellorPicker({
                     emptyText={t('assign.empty')}
                     disabled={disabled || isLoading}
                     triggerClassName="h-10 pl-10"
+                />
+                <User
+                    size={18}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
                 />
             </div>
             <div className="flex items-start gap-2 rounded-md border border-info-100 bg-info-50 px-3 py-2.5">

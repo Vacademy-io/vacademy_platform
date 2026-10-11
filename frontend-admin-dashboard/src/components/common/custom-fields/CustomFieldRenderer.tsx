@@ -130,11 +130,13 @@ export const CustomFieldRenderer = ({
     // 'textfield' is the legacy alias AddCustomFieldDialog still reports for 'text'.
     const withLeadingIcon = (control: ReactNode) =>
         leadingIcon ? (
+            // No z-index on the icon and it comes after the control: it paints over its own
+            // input but stays under any popup (e.g. the phone field's country list).
             <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex -translate-y-1/2 text-neutral-500">
+                {control}
+                <span className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 text-neutral-500">
                     {leadingIcon}
                 </span>
-                {control}
             </div>
         ) : (
             control

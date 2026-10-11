@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
+import { DEFAULT_LEVEL_ID, DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
 
 export const CreateLevelStep = () => {
     const { t } = useTranslation('manageInstituteCreateLevelStep');
@@ -68,6 +68,21 @@ export const CreateLevelStep = () => {
             form.setValue('levelCreationType', 'new');
         }
     }, [levelList, form]);
+
+    // When the course already uses the default level, start with it picked.
+    const selectedCourseId = watch('selectedCourse')?.id;
+    useEffect(() => {
+        if (watch('levelCreationType') !== 'existing' || watch('selectedLevel')) return;
+        const courseUsesDefault =
+            !!selectedCourseId &&
+            getLevelsFromPackage({ courseId: selectedCourseId }).some(
+                (level) => level.id === DEFAULT_LEVEL_ID
+            );
+        const defaultLevel = levelList.find((level) => level.id === DEFAULT_LEVEL_ID);
+        if (courseUsesDefault && defaultLevel) {
+            form.setValue('selectedLevel', { id: defaultLevel.id, name: defaultLevel.name });
+        }
+    }, [levelList, selectedCourseId, watch('levelCreationType')]);
 
     // Copying needs to find the new batch by course + session + level, which is
     // only unambiguous when no batch has that combination yet.

@@ -38,11 +38,15 @@ const batches = [
         level: { id: 'DEFAULT', level_name: 'default' },
     },
 ];
+// What the chosen course itself runs; each test sets it.
+let courseSessions: Array<{ id: string; name: string }> = [];
+let courseLevels: Array<{ id: string; name: string }> = [];
 vi.mock('@/stores/students/students-list/useInstituteDetailsStore', () => ({
     useInstituteDetailsStore: () => ({
         instituteDetails: { batches_for_sessions: batches },
-        getSessionFromPackage: () => [],
-        getLevelsFromPackage: () => [{ id: 'DEFAULT', name: 'default' }],
+        getSessionFromPackage: () => courseSessions,
+        getLevelsFromPackage: (params?: { courseId?: string }) =>
+            params?.courseId ? courseLevels : [{ id: 'DEFAULT', name: 'default' }],
         getPackageSessionId: ({ courseId, sessionId, levelId }: Record<string, string>) =>
             courseId === 'c1' && sessionId === 'DEFAULT' && levelId === 'DEFAULT' ? 'ps-1' : null,
     }),
@@ -70,7 +74,11 @@ const sentLevelAndSession = () => {
 };
 
 describe('CreateBatchDialog — optional session and level', () => {
-    beforeEach(() => mutate.mockClear());
+    beforeEach(() => {
+        mutate.mockClear();
+        courseSessions = [];
+        courseLevels = [];
+    });
 
     it('creates on the default session and level when both are skipped', async () => {
         renderDialog();
@@ -99,5 +107,28 @@ describe('CreateBatchDialog — optional session and level', () => {
 
         // "Select existing" is enabled, not forced over to "Create new".
         expect(screen.getByRole('radio', { name: /form.selectExisting/ })).not.toBeDisabled();
+    });
+
+    it('starts with the default session and level picked when the course uses them', async () => {
+        courseSessions = [{ id: 'DEFAULT', name: 'DEFAULT' }];
+        courseLevels = [{ id: 'DEFAULT', name: 'default' }];
+        renderDialog();
+        next();
+        await screen.findByText('optionalHint');
+        expect(screen.getByText('DEFAULT')).toBeInTheDocument();
+        next();
+        await screen.findByText('form.optionalHint');
+        expect(screen.getByText('default')).toBeInTheDocument();
+        next();
+        await screen.findByText('review.title');
+
+        expect(screen.queryByText('review.defaultValue')).toBeNull();
+        fireEvent.click(screen.getByText('trigger.createBatch'));
+        await vi.waitFor(() => expect(mutate).toHaveBeenCalled());
+
+        const { session, level } = sentLevelAndSession();
+        expect(session).toMatchObject({ id: 'DEFAULT', new_session: false });
+        // Picked, but still sent without a name so the shared level is never renamed.
+        expect(level).toMatchObject({ id: 'DEFAULT', new_level: false, level_name: '' });
     });
 });

@@ -15,6 +15,7 @@ import { CalendarCheck, Plus, X } from '@phosphor-icons/react';
 import { Session } from '@/components/common/study-library/add-course/add-course-form';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
 
 export const CreateSessionStep = () => {
     const { t } = useTranslation('manageInstituteCreateSessionStep');
@@ -73,6 +74,15 @@ export const CreateSessionStep = () => {
             form.setValue('sessionCreationType', 'new');
         }
     }, [sessionList.length]);
+
+    // When the course already runs the default session, start with it picked.
+    useEffect(() => {
+        if (watch('sessionCreationType') !== 'existing' || watch('selectedSession')) return;
+        const defaultSession = sessionList.find((session) => session.id === DEFAULT_SESSION_ID);
+        if (defaultSession) {
+            form.setValue('selectedSession', { id: defaultSession.id, name: defaultSession.name });
+        }
+    }, [sessionList, watch('sessionCreationType')]);
 
     const handleAddSession = (sessionName: string, startDate: string) => {
         setAddedSession({ name: sessionName.trim(), startDate });

@@ -108,12 +108,6 @@ export interface LeadSettingsConfig {
      * that keep their own CONVERTED status see two near-identical options without this.
      */
     showConvertedFilterOption: boolean;
-    /**
-     * When true, LOST leads appear only in a view that asks for the LOST status (the
-     * "Discarded Leads" sub-tab). Every other lead list, the Follow-ups queue, the Lead
-     * Board and the follow-up reminders leave them out. Off by default.
-     */
-    hideLostInAllLeads: boolean;
 
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
@@ -247,7 +241,6 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
-    hideLostInAllLeads: false,
     followUpFields: {
         enabled: false,
         studentResponses: [],
@@ -411,23 +404,6 @@ async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
  * @param options.skip  Set to true in contexts where lead settings are irrelevant
  *                      (e.g. learner portal). Skips the network request.
  */
-/** status_key of the system "Lost" status. Seeded for every institute; only the label varies. */
-export const LOST_STATUS_KEY = 'LOST';
-
-/**
- * The `lead_status_exclude_id` value for a lead request, with LOST added when the
- * institute keeps lost leads out of every list but their own (hideLostInAllLeads).
- * `excluded` is the comma list the view already excludes, if any.
- */
-export function withLostExcluded(
-    excluded: string | undefined,
-    hideLost: boolean
-): string | undefined {
-    if (!hideLost) return excluded;
-    const keys = excluded ? excluded.split(',') : [];
-    return keys.includes(LOST_STATUS_KEY) ? excluded : [...keys, LOST_STATUS_KEY].join(',');
-}
-
 export function useLeadSettings(options?: { skip?: boolean }): LeadSettingsConfig & {
     isLoading: boolean;
 } {

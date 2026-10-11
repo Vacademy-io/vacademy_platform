@@ -51,8 +51,6 @@ export interface LeadSettingsData {
     /** Hide converted leads from the unfiltered "All leads" view (Recent Leads + Lead List). */
     hideConvertedInAllLeads: boolean;
     showConvertedFilterOption: boolean;
-    /** Show LOST leads only where the Lost status is picked (a "Discarded Leads" tab). */
-    hideLostInAllLeads: boolean;
     /**
      * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
@@ -75,7 +73,6 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
-    hideLostInAllLeads: false,
     labels: {},
 };
 
@@ -345,19 +342,6 @@ function ConfigSection({
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 {t('allLeadsCard.showConvertedFilterHint')}
-                            </p>
-                            <div className="flex items-center gap-3">
-                                <Switch
-                                    id="hideLostInAllLeads"
-                                    checked={settings.hideLostInAllLeads}
-                                    onCheckedChange={(v) => update({ hideLostInAllLeads: v })}
-                                />
-                                <Label htmlFor="hideLostInAllLeads" className="cursor-pointer">
-                                    {t('allLeadsCard.hideLost')}
-                                </Label>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                {t('allLeadsCard.hideLostHint')}
                             </p>
                         </CardContent>
                     </Card>

@@ -67,7 +67,7 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CallAllWithAiButton } from './call-all-ai-button';
-import { LOST_STATUS_KEY, useLeadSettings, withLostExcluded } from '@/hooks/use-lead-settings';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
@@ -467,11 +467,6 @@ const CampaignUsersContent = ({
             search_query: appliedSearch || undefined,
             lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
             lead_status_id: customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined,
-            // Lost leads live only in the view that picks LOST (hideLostInAllLeads).
-            lead_status_exclude_id: withLostExcluded(
-                undefined,
-                leadSettings.hideLostInAllLeads && !customStatusKeys.includes(LOST_STATUS_KEY)
-            ),
             // Unfiltered view hides converted leads only when the institute turned on
             // LEAD_SETTING.hideConvertedInAllLeads; a picked status always gets every lead.
             conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE) ||
@@ -507,7 +502,6 @@ const CampaignUsersContent = ({
         utmFiltersPayload,
         callHistoryFilter,
         leadSettings.hideConvertedInAllLeads,
-        leadSettings.hideLostInAllLeads,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
         ALL_CONVERTED_VALUE,
@@ -1212,18 +1206,10 @@ const CampaignUsersContent = ({
                                       },
                                   ]
                                 : []),
-                            // Lost has its own tab when hideLostInAllLeads is on.
-                            ...leadStatusFilterOptions
-                                .filter(
-                                    (s) =>
-                                        !leadSettings.hideLostInAllLeads ||
-                                        s.status_key !== LOST_STATUS_KEY ||
-                                        leadStatusFilters.includes(LOST_STATUS_KEY)
-                                )
-                                .map((s) => ({
-                                    value: s.status_key,
-                                    label: s.label,
-                                })),
+                            ...leadStatusFilterOptions.map((s) => ({
+                                value: s.status_key,
+                                label: s.label,
+                            })),
                         ]}
                         selected={leadStatusFilters}
                         onChange={handleLeadStatusChange}

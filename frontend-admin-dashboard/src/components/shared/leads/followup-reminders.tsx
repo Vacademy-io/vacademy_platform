@@ -45,7 +45,6 @@ import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { MY_PENDING_LEAD_FOLLOWUPS, UPDATE_LEAD_FOLLOWUP } from '@/constants/urls';
 import { CompleteFollowUpPopover } from './complete-followup-popover';
-import { useLeadSettings, withLostExcluded } from '@/hooks/use-lead-settings';
 import { getUserId } from '@/utils/userDetails';
 import { cn, parseHtmlToString } from '@/lib/utils';
 
@@ -66,10 +65,8 @@ export interface PendingFollowup {
     lead_user_id: string | null;
 }
 
-async function fetchMyPendingFollowups(excludeLeadStatus?: string): Promise<PendingFollowup[]> {
-    const { data } = await authenticatedAxiosInstance.get(MY_PENDING_LEAD_FOLLOWUPS, {
-        params: { excludeLeadStatus },
-    });
+async function fetchMyPendingFollowups(): Promise<PendingFollowup[]> {
+    const { data } = await authenticatedAxiosInstance.get(MY_PENDING_LEAD_FOLLOWUPS);
     return Array.isArray(data) ? data : [];
 }
 
@@ -126,15 +123,11 @@ export function useDueFollowupReminders(): DueFollowupReminders {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const userId = getUserId();
     const [tick, setTick] = useState(0);
-    // Lost leads stay out of the reminders when the institute keeps them in their
-    // own tab. Waits for the setting so a lost lead never pops up in between.
-    const leadSettings = useLeadSettings();
-    const excludeLeadStatus = withLostExcluded(undefined, leadSettings.hideLostInAllLeads);
 
     const query = useQuery({
-        queryKey: ['my-pending-followups', userId, excludeLeadStatus],
-        queryFn: () => fetchMyPendingFollowups(excludeLeadStatus),
-        enabled: !!accessToken && !!userId && !leadSettings.isLoading,
+        queryKey: ['my-pending-followups', userId],
+        queryFn: fetchMyPendingFollowups,
+        enabled: !!accessToken && !!userId,
         refetchInterval: POLL_MS,
         staleTime: 30_000,
         retry: false,

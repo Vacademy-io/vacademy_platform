@@ -6,9 +6,26 @@ import { Helmet } from 'react-helmet';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
-import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/react';
+import {
+    ArrowLeft,
+    Bank,
+    CaretCircleDown,
+    EnvelopeSimple,
+    FileText,
+    GraduationCap,
+    Hash,
+    Info,
+    LinkSimple,
+    MapPin,
+    PaperPlaneTilt,
+    Spinner,
+    TextAa,
+    User,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { submitAudienceLeadAsAdmin, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -19,6 +36,7 @@ import { BASE_URL } from '@/constants/urls';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { Trans, useTranslation } from 'react-i18next';
+import type { ReactNode } from 'react';
 import type { TFunction } from 'i18next';
 import i18n from '@/i18n';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
@@ -92,20 +110,57 @@ function CounsellorPicker({
     const { options, isLoading } = useLeadCounsellorOptions({ assignable: true });
 
     return (
-        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-5">
-            <Label className="text-body font-medium text-neutral-700">{t('assign.label')}</Label>
-            <SearchableSelect
-                options={options.map((c) => ({ value: c.id, label: c.full_name }))}
-                value={value?.id ?? ''}
-                onChange={(id) => onChange(options.find((c) => c.id === id) ?? null)}
-                placeholder={isLoading ? t('assign.loading') : t('assign.placeholder')}
-                searchPlaceholder={t('assign.search')}
-                emptyText={t('assign.empty')}
-                disabled={disabled || isLoading}
-            />
-            <p className="text-caption text-neutral-500">{t('assign.hint')}</p>
+        <div className="flex flex-col gap-2 md:col-span-2">
+            <Label className="text-body font-medium text-neutral-700">
+                {t('assign.label')}{' '}
+                <span className="font-normal text-neutral-500">{t('assign.optional')}</span>
+            </Label>
+            <div className="relative">
+                <User
+                    size={18}
+                    className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-500"
+                />
+                <SearchableSelect
+                    options={options.map((c) => ({ value: c.id, label: c.full_name }))}
+                    value={value?.id ?? ''}
+                    onChange={(id) => onChange(options.find((c) => c.id === id) ?? null)}
+                    placeholder={isLoading ? t('assign.loading') : t('assign.placeholder')}
+                    searchPlaceholder={t('assign.search')}
+                    emptyText={t('assign.empty')}
+                    disabled={disabled || isLoading}
+                    triggerClassName="h-10 pl-10"
+                />
+            </div>
+            <div className="flex items-start gap-2 rounded-md border border-info-100 bg-info-50 px-3 py-2.5">
+                <Info size={18} weight="fill" className="mt-px shrink-0 text-info-500" />
+                <p className="text-caption text-neutral-600">{t('assign.hint')}</p>
+            </div>
         </div>
     );
+}
+
+/** Field types that need the full row: long text, option lists and uploads. */
+const FULL_WIDTH_TYPES = new Set(['textarea', 'checkbox', 'radio', 'multi_select', 'file']);
+
+/**
+ * The icon shown inside a field, picked from what the field holds. Phone and date
+ * controls draw their own (flag, calendar), so they get none.
+ */
+function fieldIcon(fieldKey: string, fieldName: string, type: string): ReactNode {
+    const key = `${fieldKey} ${fieldName}`.toLowerCase();
+    const props = { size: 18 } as const;
+    if (type === 'phone' || type === 'date') return null;
+    if (key.includes('email')) return <EnvelopeSimple {...props} />;
+    if (key.includes('course') || key.includes('applied_for')) return <GraduationCap {...props} />;
+    if (key.includes('branch') || key.includes('centre') || key.includes('center'))
+        return <Bank {...props} />;
+    if (key.includes('city') || key.includes('address') || key.includes('location'))
+        return <MapPin {...props} />;
+    if (key.includes('name')) return <User {...props} />;
+    if (type === 'dropdown') return <CaretCircleDown {...props} />;
+    if (type === 'number') return <Hash {...props} />;
+    if (type === 'url') return <LinkSimple {...props} />;
+    return <TextAa {...props} />;
 }
 
 export function AddResponsePage() {
@@ -124,16 +179,24 @@ export function AddResponsePage() {
 
     // From All Leads the lead always gets an owner: an admin picks the counsellor,
     // anyone else (the counsellor filling the form) becomes the owner themselves.
+    // From a list, an admin may pick one too; left empty, the usual routing applies.
     const fromAllLeads = search.from === 'all-leads';
-    const canPickCounsellor = fromAllLeads && isAdminForInstitute(instituteId);
+    const canPickCounsellor = isAdminForInstitute(instituteId);
     const [assignedCounsellor, setAssignedCounsellor] = useState<CounsellorOption | null>(null);
 
     useEffect(() => {
         setNavHeading(t('navHeading'));
     }, [setNavHeading, t]);
 
-    // Fetch custom fields from backend if not in URL params
-    const { data: fetchedFields } = useQuery({
+    // The list's live form, always. The copy some entry points pass in the URL is a
+    // snapshot of the list screen's data: it can lack the per-form order (fields then
+    // render out of sequence) and still carry fields removed since. It is only the
+    // fallback when this request fails.
+    const {
+        data: fetchedFields,
+        isError: fieldsError,
+        isPending: fieldsPending,
+    } = useQuery({
         queryKey: ['campaign-custom-fields', search.campaignId, instituteId],
         queryFn: async () => {
             if (!instituteId || !search.campaignId) return [];
@@ -143,7 +206,7 @@ export function AddResponsePage() {
             );
             return Array.isArray(response?.data) ? response.data : [];
         },
-        enabled: !search.customFields && !!instituteId && !!search.campaignId,
+        enabled: !!instituteId && !!search.campaignId,
         staleTime: 60000,
     });
 
@@ -245,9 +308,12 @@ export function AddResponsePage() {
             .sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0));
     };
 
-    // Parse custom fields from URL params OR from API fetch
+    // Live fields first; the URL copy only when the request failed or cannot run.
     const customFields = useMemo<CustomFieldConfig[]>(() => {
-        if (search.customFields) {
+        if (fetchedFields && fetchedFields.length > 0) {
+            return parseFields(fetchedFields);
+        }
+        if ((fieldsError || !instituteId) && search.customFields) {
             try {
                 const parsed = JSON.parse(search.customFields);
                 if (Array.isArray(parsed)) return parseFields(parsed);
@@ -255,11 +321,9 @@ export function AddResponsePage() {
                 console.error('Error parsing custom fields:', error);
             }
         }
-        if (fetchedFields && fetchedFields.length > 0) {
-            return parseFields(fetchedFields);
-        }
         return [];
-    }, [search.customFields, fetchedFields]);
+    }, [search.customFields, fetchedFields, fieldsError, instituteId]);
+    const loadingFields = !!instituteId && fieldsPending && !fieldsError;
 
     // Initialize form values with default values
     useEffect(() => {
@@ -399,18 +463,16 @@ export function AddResponsePage() {
                 },
             };
 
-            if (fromAllLeads) {
-                if (canPickCounsellor) {
-                    if (assignedCounsellor) {
-                        payload.counsellor_id = assignedCounsellor.id;
-                        payload.counsellor_name = assignedCounsellor.full_name;
-                    }
-                } else {
-                    const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
-                    if (tokenData?.user) {
-                        payload.counsellor_id = tokenData.user;
-                        payload.counsellor_name = tokenData.fullname;
-                    }
+            if (canPickCounsellor) {
+                if (assignedCounsellor) {
+                    payload.counsellor_id = assignedCounsellor.id;
+                    payload.counsellor_name = assignedCounsellor.full_name;
+                }
+            } else if (fromAllLeads) {
+                const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
+                if (tokenData?.user) {
+                    payload.counsellor_id = tokenData.user;
+                    payload.counsellor_name = tokenData.fullname;
                 }
             }
 
@@ -451,8 +513,6 @@ export function AddResponsePage() {
     };
 
     const audienceTerm = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
-    const audienceName =
-        search.campaignName || t('audienceFallbackName', { audienceTerm: audienceTerm.toLowerCase() });
     const mandatoryCount = customFields.filter((f) => f.isMandatory).length;
 
     return (
@@ -461,82 +521,117 @@ export function AddResponsePage() {
                 <title>{t('helmet.title', { name: search.campaignName || audienceTerm })}</title>
                 <meta name="description" content={t('helmet.description')} />
             </Helmet>
-            <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 py-2">
-                <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit">
-                    <ArrowLeft className="mr-2 size-4" />
-                    {t('backButton', { audienceTerm })}
-                </Button>
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 py-2">
+                <div className="flex flex-col gap-3">
+                    <Button variant="ghost" size="sm" onClick={handleBack} className="-ml-3 w-fit">
+                        <ArrowLeft className="mr-2 size-4" />
+                        {t('backButton', { audienceTerm })}
+                    </Button>
+                    <div className="flex flex-col gap-1">
+                        <h1 className="text-h2 font-semibold text-neutral-900">
+                            {t('navHeading')}
+                        </h1>
+                        <p className="text-body text-neutral-600">{t('header.description')}</p>
+                    </div>
+                </div>
 
                 <Card className="overflow-hidden border-neutral-200 shadow-sm">
-                    <div className="border-b border-neutral-200 bg-primary-50/40 px-6 py-5">
-                        <div className="flex items-start gap-3">
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-600">
-                                <UsersThree size={20} weight="duotone" />
+                    <div className="p-4 sm:p-6">
+                        <div className="flex flex-col gap-4 rounded-lg bg-primary-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-4">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-600">
+                                    <UsersThree size={24} weight="duotone" />
+                                </div>
+                                <div className="flex min-w-0 flex-col gap-1">
+                                    <p className="text-caption font-semibold uppercase tracking-wide text-primary-600">
+                                        {audienceTerm}
+                                    </p>
+                                    <h2 className="break-words text-h3 font-semibold text-neutral-900">
+                                        {search.campaignName || audienceTerm}
+                                    </h2>
+                                    <p className="text-body text-neutral-600">
+                                        {t('header.cardDescription', {
+                                            audienceTerm: audienceTerm.toLowerCase(),
+                                        })}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="flex flex-1 flex-col gap-1">
-                                <p className="text-caption font-medium uppercase tracking-wide text-primary-600">
-                                    {audienceTerm}
-                                </p>
-                                <h2 className="text-h3 font-semibold text-neutral-900">
-                                    {search.campaignName || audienceTerm}
-                                </h2>
-                                <p className="text-body text-neutral-600">
-                                    {t('header.description')}
-                                </p>
-                            </div>
+                            {mandatoryCount > 0 && (
+                                <div className="flex shrink-0 items-center gap-2 text-caption text-neutral-600">
+                                    <FileText size={20} className="text-neutral-500" />
+                                    <span>
+                                        <Trans
+                                            t={t}
+                                            i18nKey="form.requiredHint"
+                                            components={{
+                                                star: <span className="text-danger-600" />,
+                                            }}
+                                        />
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <CardContent className="p-6">
-                        {customFields.length === 0 ? (
-                            <div className="flex flex-col items-center gap-2 py-10 text-center text-neutral-500">
-                                <p className="font-medium text-neutral-700">
-                                    {t('emptyState.title', { audienceTerm: audienceTerm.toLowerCase() })}
-                                </p>
-                                <p className="text-sm">{t('emptyState.hint')}</p>
-                            </div>
-                        ) : (
-                            <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    handleSubmit();
-                                }}
-                                className="flex flex-col gap-5"
-                            >
-                                <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-                                    <h3 className="text-subtitle font-semibold text-neutral-900">
-                                        {t('form.sectionTitle')}
-                                    </h3>
-                                    {mandatoryCount > 0 && (
-                                        <span className="text-caption text-neutral-500">
-                                            <span className="text-danger-600">*</span>{' '}
-                                            {t('form.requiredFields')}
-                                        </span>
-                                    )}
-                                </div>
 
-                                {customFields.map((field) => (
-                                    <div key={field.id} className="flex flex-col gap-2">
-                                        <Label
-                                            htmlFor={field.id}
-                                            className="flex items-center gap-1 text-body font-medium text-neutral-700"
-                                        >
-                                            {field.fieldName}
-                                            {field.isMandatory && (
-                                                <span className="text-danger-600">*</span>
+                    {loadingFields ? (
+                        <div className="flex items-center justify-center gap-2 px-6 pb-10 pt-4 text-body text-neutral-500">
+                            <Spinner className="size-4 animate-spin" />
+                            {t('form.loadingFields')}
+                        </div>
+                    ) : customFields.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 px-6 pb-10 pt-4 text-center text-neutral-500">
+                            <p className="font-medium text-neutral-700">
+                                {t('emptyState.title', {
+                                    audienceTerm: audienceTerm.toLowerCase(),
+                                })}
+                            </p>
+                            <p className="text-sm">{t('emptyState.hint')}</p>
+                        </div>
+                    ) : (
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                handleSubmit();
+                            }}
+                        >
+                            <div className="grid grid-cols-1 gap-x-8 gap-y-5 px-4 pb-6 sm:px-6 md:grid-cols-2">
+                                {customFields.map((field) => {
+                                    const type = normalizeFieldType(field);
+                                    return (
+                                        <div
+                                            key={field.id}
+                                            className={cn(
+                                                'flex min-w-0 flex-col gap-2',
+                                                FULL_WIDTH_TYPES.has(type) && 'md:col-span-2'
                                             )}
-                                        </Label>
-                                        <CustomFieldRenderer
-                                            type={normalizeFieldType(field)}
-                                            name={field.fieldName}
-                                            value={formValues[field.id] || ''}
-                                            onChange={(val) => handleInputChange(field.id, val)}
-                                            options={field.options}
-                                            required={field.isMandatory}
-                                            disabled={isSubmitting}
-                                            config={field.fileConfig}
-                                        />
-                                    </div>
-                                ))}
+                                        >
+                                            <Label
+                                                htmlFor={field.id}
+                                                className="flex items-center gap-1 text-body font-medium text-neutral-700"
+                                            >
+                                                {field.fieldName}
+                                                {field.isMandatory && (
+                                                    <span className="text-danger-600">*</span>
+                                                )}
+                                            </Label>
+                                            <CustomFieldRenderer
+                                                type={type}
+                                                name={field.fieldName}
+                                                value={formValues[field.id] || ''}
+                                                onChange={(val) => handleInputChange(field.id, val)}
+                                                options={field.options}
+                                                required={field.isMandatory}
+                                                disabled={isSubmitting}
+                                                config={field.fileConfig}
+                                                leadingIcon={fieldIcon(
+                                                    field.fieldKey,
+                                                    field.fieldName,
+                                                    type
+                                                )}
+                                            />
+                                        </div>
+                                    );
+                                })}
 
                                 {canPickCounsellor && (
                                     <CounsellorPicker
@@ -545,47 +640,40 @@ export function AddResponsePage() {
                                         disabled={isSubmitting}
                                     />
                                 )}
+                            </div>
 
-                                <div className="mt-2 flex flex-col-reverse items-stretch justify-end gap-3 border-t border-neutral-100 pt-5 sm:flex-row sm:items-center">
-                                    <MyButton
-                                        type="button"
-                                        buttonType="secondary"
-                                        onClick={handleBack}
-                                        disable={isSubmitting}
-                                    >
-                                        {t('form.cancel')}
-                                    </MyButton>
-                                    <MyButton
-                                        type="submit"
-                                        buttonType="primary"
-                                        disable={isSubmitting}
-                                    >
-                                        {isSubmitting ? (
-                                            <>
-                                                <Spinner className="mr-2 size-4 animate-spin" />
-                                                {t('form.submitting')}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <PaperPlaneTilt className="mr-2 size-4" />
-                                                {t('form.submit')}
-                                            </>
-                                        )}
-                                    </MyButton>
-                                </div>
-                            </form>
-                        )}
-                    </CardContent>
+                            <div className="mx-4 flex flex-col-reverse items-stretch justify-end gap-3 border-t border-neutral-200 py-5 sm:mx-6 sm:flex-row sm:items-center">
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="large"
+                                    onClick={handleBack}
+                                    disable={isSubmitting}
+                                >
+                                    {t('form.cancel')}
+                                </MyButton>
+                                <MyButton
+                                    type="submit"
+                                    buttonType="primary"
+                                    scale="large"
+                                    disable={isSubmitting}
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <Spinner className="mr-2 size-4 animate-spin" />
+                                            {t('form.submitting')}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <PaperPlaneTilt className="mr-2 size-4" />
+                                            {t('form.submit')}
+                                        </>
+                                    )}
+                                </MyButton>
+                            </div>
+                        </form>
+                    )}
                 </Card>
-
-                <p className="text-center text-caption text-neutral-500">
-                    <Trans
-                        t={t}
-                        i18nKey="footer.responsesAppearUnder"
-                        values={{ audienceName, audienceTerm }}
-                        components={{ bold: <span className="font-medium" /> }}
-                    />
-                </p>
             </div>
         </LayoutContainer>
     );

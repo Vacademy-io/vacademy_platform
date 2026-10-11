@@ -1655,16 +1655,28 @@ const RecentLeadsContent = ({
         <div className="flex w-full flex-col gap-4">
             {/* Heading — while a (re)filtered query is in flight there is no count yet;
                 a spinner avoids flashing a misleading "0 Leads". */}
-            <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
-                {isLoading ? (
-                    <>
-                        <CircleNotch className="size-5 animate-spin text-neutral-400" />
-                        {t('heading.loading')}
-                    </>
-                ) : (
-                    t('heading.leadsCount', { count: totalElements })
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
+                    {isLoading ? (
+                        <>
+                            <CircleNotch className="size-5 animate-spin text-neutral-400" />
+                            {t('heading.loading')}
+                        </>
+                    ) : (
+                        t('heading.leadsCount', { count: totalElements })
+                    )}
+                </h1>
+                {canAddLead && !showDeleted && (
+                    <MyButton
+                        buttonType="primary"
+                        scale="large"
+                        onClick={() => setAddLeadOpen(true)}
+                    >
+                        <Plus className="size-4" weight="bold" />
+                        {t('toolbar.addLead')}
+                    </MyButton>
                 )}
-            </h1>
+            </div>
 
             {/* Toolbar — left filters, right actions (search lives in its own row below) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1910,12 +1922,6 @@ const RecentLeadsContent = ({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                    {canAddLead && !showDeleted && (
-                        <Button size="sm" className="h-10" onClick={() => setAddLeadOpen(true)}>
-                            <Plus className="mr-1.5 size-4" />
-                            {t('toolbar.addLead')}
-                        </Button>
-                    )}
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.LeadSettings}
                         label={t('toolbar.leadSettings')}

@@ -32,7 +32,10 @@
         "duration_one": "{{count}} day",
         "duration_other": "{{count}} days",
         "copyFrom": "Copy study material from",
-        "inviteNote": "An invite link is created with the batch, so you can start enrolling right away."
+        "inviteNote": "An invite link is created with the batch, so you can start enrolling right away.",
+        "batchName": "{{batchTerm}} name",
+        "batchNameHint": "Optional. Leave it blank to show the level and course name.",
+        "defaultValue": "Default"
     },
     "validation": {
         "createCourseFirst": "Create the course first — it is picked here once saved.",

@@ -12,5 +12,6 @@
     "title": "Choose {{session}}",
     "subtitle": "Pick the {{session}} this batch runs in, or start a fresh one.",
     "selectExistingHint": "Use a {{session}} this course already runs",
-    "createNewHint": "Start a fresh {{session}} with its own start date"
+    "createNewHint": "Start a fresh {{session}} with its own start date",
+    "optionalHint": "Optional. Skip it to use the default {{session}}."
 }

@@ -13,10 +13,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
 
 export const CreateLevelStep = () => {
     const { t } = useTranslation('manageInstituteCreateLevelStep');
-    const { getLevelsFromPackage, instituteDetails, getSessionFromPackage } =
+    const { getLevelsFromPackage, instituteDetails, getSessionFromPackage, getPackageSessionId } =
         useInstituteDetailsStore();
     const [newLevelName, setNewLevelName] = useState('');
     const [newLevelDuration, setNewLevelDuration] = useState<number | null>(null);
@@ -27,16 +28,15 @@ export const CreateLevelStep = () => {
     const form = useFormContext();
     const { watch } = form;
 
+    /**
+     * Every level of the institute. The level already used by this course and
+     * session used to be dropped, so an institute with a single level had
+     * nothing to pick and was forced to create one. A batch now has its own
+     * name, so several batches can share the same course, session and level.
+     */
     useEffect(() => {
-        const allLevels = getLevelsFromPackage();
-        //pass the selected courseId and sessionId
-        const levelToRemove = getLevelsFromPackage({
-            courseId: form.watch('selectedCourse')?.id || '',
-            sessionId: form.watch('selectedSession')?.id || '',
-        });
-        const requiredLevelList = allLevels.filter((level) => level.id != levelToRemove[0]?.id);
-        setLevelList(requiredLevelList);
-    }, [instituteDetails, form.watch('selectedCourse'), form.watch('selectedSession')]);
+        setLevelList(getLevelsFromPackage());
+    }, [instituteDetails]);
 
     useEffect(() => {
         // Get all sessions except the currently selected one
@@ -69,9 +69,21 @@ export const CreateLevelStep = () => {
         }
     }, [levelList, form]);
 
+    // Copying needs to find the new batch by course + session + level, which is
+    // only unambiguous when no batch has that combination yet.
+    const selectedLevelId = watch('selectedLevel')?.id;
+    const comboHasBatch =
+        !!selectedLevelId &&
+        !!getPackageSessionId({
+            courseId: watch('selectedCourse')?.id || '',
+            sessionId: watch('selectedSession')?.id || DEFAULT_SESSION_ID,
+            levelId: selectedLevelId,
+        });
     const shouldShowDuplicateOption =
         watch('courseCreationType') !== 'new' &&
         watch('levelCreationType') !== 'new' &&
+        !!selectedLevelId &&
+        !comboHasBatch &&
         sessionList.length > 0;
 
     const levelTerm = getTerminology(ContentTerms.Level, SystemTerms.Level);
@@ -85,6 +97,9 @@ export const CreateLevelStep = () => {
                 </p>
                 <p className="text-body text-neutral-500">
                     {t('form.subtitle', { term: levelLower })}
+                </p>
+                <p className="text-caption text-neutral-500">
+                    {t('form.optionalHint', { term: levelLower })}
                 </p>
             </div>
 
@@ -136,12 +151,10 @@ export const CreateLevelStep = () => {
                 <FormField
                     control={form.control}
                     name="selectedLevel"
-                    rules={{ required: t('validation.pleaseSelectLevel') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-subtitle font-semibold text-neutral-700">
-                                {getTerminology(ContentTerms.Level, SystemTerms.Level)}{' '}
-                                <span className="text-danger-500">*</span>
+                                {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                             </FormLabel>
                             <FormControl>
                                 <BatchItemSelect

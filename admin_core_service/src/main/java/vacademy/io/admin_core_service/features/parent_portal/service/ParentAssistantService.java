@@ -21,6 +21,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDetailDT
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionAttendanceOnlyModeService;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -81,6 +82,7 @@ public class ParentAssistantService {
     private final AssessmentServiceClient assessmentServiceClient;
     private final LearnerReportService learnerReportService;
     private final GetLiveSessionService getLiveSessionService;
+    private final LiveSessionAttendanceOnlyModeService attendanceOnlyModeService;
     private final CertificateReadService certificateReadService;
     private final LeaderboardService leaderboardService;
     private final AiServiceCompletionClient aiServiceCompletionClient;
@@ -171,7 +173,8 @@ public class ParentAssistantService {
         }
 
         // Upcoming classes — "does my child have class tomorrow?"
-        if (primaryBatch != null) {
+        // Skipped for attendance-only institutes, whose classes are never shown.
+        if (primaryBatch != null && !attendanceOnlyModeService.isEnabled(child.instituteId())) {
             try {
                 List<GroupedSessionsByDateDTO> groups = getLiveSessionService
                         .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller);

@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRes
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionAttendanceOnlyModeService;
 import vacademy.io.admin_core_service.features.live_session.service.LiveSessionVisibilityService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
@@ -30,6 +31,7 @@ public class GetSessionsListController {
     private final GetSessionByIdService getSessionByIdService;
     private final LearnerPastSessionService learnerPastSessionService;
     private final LiveSessionVisibilityService visibilityService;
+    private final LiveSessionAttendanceOnlyModeService attendanceOnlyModeService;
 
     @GetMapping("/live")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
@@ -64,6 +66,11 @@ public class GetSessionsListController {
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
             @RequestAttribute("user") CustomUserDetails user) {
+        // Checked outside the cached service call so flipping the setting
+        // takes effect without waiting out the 2-minute server cache.
+        if (attendanceOnlyModeService.hidesLearnerSessions(batchId, instituteId)) {
+            return ResponseEntity.ok(List.of());
+        }
         return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
                 batchId, userId, instituteId, page, size, startDate, endDate, user));
     }

@@ -99,7 +99,8 @@ def test_plan_shots_uses_lesson_prompt_and_fills_missing_layouts():
     system = seen[0][0]["content"]
     assert "LESSON PACING" in system and "Cap shot count at 12" not in system
     layouts = [s["teacher_layout"] for s in out["shots"]]
-    assert layouts[0] == "presenter" and layouts[-1] == "presenter"   # hook + recap
+    assert layouts[0] == "presenter"                                  # hook
+    assert layouts[-1] == "side"                                      # recap needs the wider board
     assert layouts[2] == "corner"                                     # dense board
     assert layouts[1] == "side"
     assert len(seen) == 1   # no concept-conformance re-plan for lessons

@@ -18,7 +18,7 @@ Layouts, landscape 1920x1080 (portrait maps side/presenter to a bottom band):
   board      no teacher on screen
   corner     teacher cut out in the bottom-right corner over the board
   side       teacher panel on the right third, board on the left two thirds
-  presenter  teacher panel on the right half — intros, recaps, "why it matters"
+  presenter  teacher panel on the right half — the hook and "why it matters" moments
 """
 from __future__ import annotations
 
@@ -167,9 +167,10 @@ def planner_user_block(plan: Dict[str, Any], *, target_duration_s: float, portra
                 "TEACHER ON SCREEN: a real teacher (talking head) appears beside the board. On EVERY shot "
                 "set `teacher_layout` to one of:\n"
                 "  - \"presenter\": teacher fills half the frame; the board shows only a title / one key line. "
-                "Use for the hook, the recap, and short motivational or 'why it matters' moments.\n"
+                "Use ONLY for the hook and short motivational or 'why it matters' moments — never for lists, "
+                "recaps, steps or diagrams (the board half is too narrow).\n"
                 "  - \"side\": teacher panel takes " + ("the bottom third" if portrait else "the right third")
-                + "; the board uses the rest. Default for concept explanations.\n"
+                + "; the board uses the rest. Default for concept explanations and the recap.\n"
                 "  - \"corner\": teacher is small in the bottom-right corner; the board gets almost the whole "
                 "frame. Use for dense boards — derivations, worked-example steps, diagrams, data.\n"
                 "  - \"board\": no teacher. Use rarely — only for a full-frame diagram that needs every pixel.\n"
@@ -189,7 +190,9 @@ def default_layout_for(shot: Dict[str, Any], idx: int, n: int, plan: Dict[str, A
     if fixed != "auto":
         return fixed
     role = str(shot.get("intent_role") or "").lower()
-    if idx == 0 or idx == n - 1 or role in ("hook", "close", "cta", "recap", "summary"):
+    # Presenter leaves a half-frame board — fine for a hook's one line, too
+    # narrow for a recap list (a prod recap collapsed to one-letter columns).
+    if idx == 0 or role == "hook":
         return "presenter"
     if str(shot.get("shot_type") or "").upper() in _DENSE_TYPES:
         return "corner"

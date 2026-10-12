@@ -313,7 +313,7 @@
                 "board": "Tableau seul — enseignant masqué"
             },
             "help": {
-                "auto": "Introduction et récapitulatif avec l’enseignant en grand, explications à côté du tableau, étapes denses avec l’enseignant dans le coin.",
+                "auto": "Introduction avec l’enseignant en grand, explications et récapitulatif à côté du tableau, étapes denses avec l’enseignant dans le coin.",
                 "presenter": "L’enseignant occupe la moitié de l’image ; le tableau montre un titre et une ligne clé.",
                 "side": "Le tableau occupe les deux tiers de l’image ; l’enseignant est dans un panneau à droite.",
                 "corner": "Le tableau occupe presque toute l’image ; l’enseignant est petit en bas à droite.",

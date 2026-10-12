@@ -312,7 +312,7 @@
                 "board": "Board only — teacher hidden"
             },
             "help": {
-                "auto": "Intro and recap with the teacher large, explanations beside the board, dense steps with the teacher in the corner.",
+                "auto": "Intro with the teacher large, explanations and recap beside the board, dense steps with the teacher in the corner.",
                 "presenter": "The teacher takes half the frame; the board shows a title and one key line.",
                 "side": "The board uses two thirds of the frame; the teacher stands in a panel on the right.",
                 "corner": "The board gets almost the whole frame; the teacher is small in the bottom-right corner.",

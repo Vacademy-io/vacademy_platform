@@ -12519,6 +12519,23 @@ class VideoGenerationPipeline:
 
         return record
 
+    def _lesson_canvas(self, shot: Optional[Dict[str, Any]]) -> Tuple[int, int]:
+        """Canvas a shot is laid out on: the board area for lesson side /
+        presenter sections (lesson_mode.fit_shots_to_board), else the frame.
+        QA screenshots use it so they judge the layout the viewer gets."""
+        w = int(getattr(self, "video_width", 1920) or 1920)
+        h = int(getattr(self, "video_height", 1080) or 1080)
+        if getattr(self, "_lesson_plan", None) and isinstance(shot, dict):
+            try:
+                import lesson_mode as _lm_c
+                if (shot.get("teacher_layout") in _lm_c.BOARD_RESIZED_LAYOUTS
+                        and _lm_c.has_teacher(self._lesson_plan)):
+                    area = _lm_c.board_area(shot["teacher_layout"], w, h)
+                    return int(area["w"]), int(area["h"])
+            except Exception:
+                pass
+        return w, h
+
     def _lint_shot_bbox(
         self,
         *,
@@ -12584,8 +12601,9 @@ class VideoGenerationPipeline:
 
         self._emit_shot_substage(shot_idx, "bbox_lint", "Bounding-box check…")
         timestamps = self._bbox_lint_pick_timestamps(duration_s)
-        canvas_w = int(getattr(self, "video_width", 1920))
-        canvas_h = int(getattr(self, "video_height", 1080))
+        # Lesson side/presenter shots ship on the board area, not the full
+        # frame — check overflow at the size the viewer actually sees.
+        canvas_w, canvas_h = self._lesson_canvas(shot)
         bg = str(
             shot.get("background")
             or shot.get("bg")
@@ -13308,8 +13326,8 @@ class VideoGenerationPipeline:
                 # LLM var(--brand-*), which would be unresolved without it, and
                 # the finishing layer must be visible to the reviewer.
                 html=self._ensure_fonts(html),
-                width=int(getattr(self, "video_width", 1920)),
-                height=int(getattr(self, "video_height", 1080)),
+                width=self._lesson_canvas(shot)[0],
+                height=self._lesson_canvas(shot)[1],
                 timestamps=timestamps,
                 background=str(
                     shot.get("background")
@@ -13534,8 +13552,8 @@ class VideoGenerationPipeline:
                     try:
                         frames2 = client.take_shot_screenshots(
                             html=self._ensure_fonts(candidate),
-                            width=int(getattr(self, "video_width", 1920)),
-                            height=int(getattr(self, "video_height", 1080)),
+                            width=self._lesson_canvas(shot)[0],
+                            height=self._lesson_canvas(shot)[1],
                             timestamps=timestamps,
                             background=str(
                     shot.get("background")
@@ -26278,8 +26296,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         )
                         _fr = client.take_shot_screenshots(
                             html=self._ensure_fonts(_judge_html),
-                            width=int(getattr(self, "video_width", 1920)),
-                            height=int(getattr(self, "video_height", 1080)),
+                            width=self._lesson_canvas(shot)[0],
+                            height=self._lesson_canvas(shot)[1],
                             timestamps=[_mid_t],
                             background=_bg,
                         )

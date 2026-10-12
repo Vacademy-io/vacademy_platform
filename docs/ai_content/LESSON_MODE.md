@@ -67,7 +67,9 @@ The panel colour is derived from the run's board palette.
 **Board canvas.** For `side` / `presenter` runs the shot's timeline box is resized to the board area
 (`lesson_mode.fit_shots_to_board`) and the per-shot prompt says the canvas is that size, so
 `#shot-root` (100% × 100%, overflow hidden) lays out beside the teacher instead of running under the
-panel. `corner` keeps the full frame.
+panel. `corner` keeps the full frame. The QA screenshots (bbox lint, vision review, best-of-N judge)
+use the same board canvas (`_lesson_canvas`), so they judge the layout the viewer gets. `presenter`
+is for the hook / short "why it matters" moments only — a 960 px board is too narrow for lists.
 
 **Captions.** Each teacher entry carries `entry_meta.caption_box`; while it is on screen
 `generate_video.py` re-centres the caption pill on the board side (landscape) or lifts it above the

@@ -255,6 +255,7 @@ def preview_video_cost(
         review_mode=payload.review_mode,
         attachments_count=payload.attachments_count,
         host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
+        lesson=(payload.lesson.model_dump() if getattr(payload, "lesson", None) else None),
         ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
         ai_video_audio_enabled=bool(getattr(payload, "ai_video_audio_enabled", False)),
         dialogue_scenes_enabled=bool(getattr(payload, "dialogue_scenes_enabled", False)),
@@ -433,6 +434,7 @@ async def generate_video_external(
                         cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
+                        lesson=getattr(p, "lesson", None),
                         brand_kit_id=getattr(p, "brand_kit_id", None),
                         # Per-video overrides (palette/intro/outro/watermark/system_prompt)
                         # that layer on top of the resolved kit. One-shot — not persisted

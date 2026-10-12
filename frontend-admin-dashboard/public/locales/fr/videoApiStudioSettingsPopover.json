@@ -287,5 +287,47 @@
         "title": "Réglages de génération",
         "resetToDefaults": "Réinitialiser les réglages",
         "resetTitle": "Réinitialise tous les réglages par défaut (le texte et les pièces jointes sont conservés)"
+    },
+    "lesson": {
+        "toggle": {
+            "label": "Mode leçon",
+            "helper": "Enseignez comme en classe : rythme de leçon, voix d’enseignant et, en option, un enseignant à côté du tableau."
+        },
+        "teacher": {
+            "label": "Enseignant à l’écran",
+            "loading": "Chargement des enseignants…",
+            "none": "Aucun enseignant",
+            "noneHelper": "Tableau seul — la leçon est narrée, personne à l’écran",
+            "stock": "Enseignant standard",
+            "yours": "Votre enseignant",
+            "empty": "Aucun avatar d’enseignant pour l’instant. Ajoutez-en un dans les réglages du tuteur IA (Teacher presence).",
+            "cost": "L’enseignant coûte 8 crédits par minute de vidéo."
+        },
+        "layout": {
+            "label": "Disposition de l’enseignant",
+            "options": {
+                "auto": "Auto — selon la section",
+                "presenter": "Présentateur — tiers droit, pour l’intro",
+                "side": "Panneau latéral — fin, quart droit",
+                "corner": "Coin — petite découpe, en bas à droite",
+                "bubble": "Bulle — ronde, en bas à droite",
+                "board": "Tableau seul — enseignant masqué"
+            },
+            "help": {
+                "auto": "Introduction avec l’enseignant en grand, explications et récapitulatif à côté du tableau, étapes denses avec l’enseignant dans le coin.",
+                "presenter": "L’enseignant est dans un panneau sur le tiers droit ; le tableau montre un titre et une ligne clé.",
+                "side": "Le tableau occupe les trois quarts de l’image ; l’enseignant est dans un panneau fin à droite.",
+                "corner": "Le tableau occupe toute l’image ; l’enseignant est une petite découpe en bas à droite.",
+                "bubble": "Le tableau occupe toute l’image ; l’enseignant apparaît dans une bulle ronde en bas à droite.",
+                "board": "Pas d’enseignant à l’écran ; la narration reste celle d’un enseignant."
+            }
+        },
+        "subject": {
+            "label": "Matière (facultatif)",
+            "placeholder": "p. ex. Mathématiques, Physique, Biologie"
+        },
+        "workedExample": "Inclure un exemple résolu",
+        "recap": "Terminer par un récapitulatif",
+        "hostDisabled": "Le mode leçon a son propre enseignant, l’animateur à l’écran est donc désactivé. Désactivez le mode leçon dans l’onglet Sortie pour utiliser un animateur."
     }
 }

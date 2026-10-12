@@ -1564,9 +1564,17 @@ class RenderWorker:
             if max_gap <= 2.0 and kts:
                 return src_path  # dense enough — seeks are cheap already
             out = src_path.with_name(src_path.stem + "_seekable.mp4")
+            # CRF 18 + a 12-frame GOP turned a 37 MB Pexels 1080p clip into
+            # 80-110 MB (13 Mbit/s), and Chrome's page crashed mounting it
+            # ("Target page, context or browser has been closed" before the
+            # first frame) — every retry of that render failed the same way.
+            # Reproduced on the worker 2026-10-12: CRF 26 (29 MB) and CRF 23
+            # capped at 6 Mbit/s (39 MB) render fine. Stock footage is a
+            # background bed; 6 Mbit/s at 1080p is plenty.
             subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-i", str(src_path),
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                 "-maxrate", "6M", "-bufsize", "12M",
                  "-g", "12", "-keyint_min", "12", "-sc_threshold", "0",
                  "-pix_fmt", "yuv420p", "-movflags", "+faststart",
                  "-c:a", "copy", str(out)],

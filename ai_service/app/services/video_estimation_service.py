@@ -246,6 +246,9 @@ def estimate_video_generation(
     review_mode: bool,
     attachments_count: int,
     host: Optional[Dict[str, Any]] = None,
+    # Lesson mode (schemas.LessonConfig dump). With a teacher, adds the
+    # Spatius teacher row — charged as a fixed 8 credits per started minute.
+    lesson: Optional[Dict[str, Any]] = None,
     # Opt-in: when True (and tier is ultra/super_ultra) the estimator adds
     # an AI video upper-bound row to the breakdown so the pre-submit
     # preview surfaces the worst-case Veo spend. Mirrors the runtime
@@ -396,6 +399,18 @@ def estimate_video_generation(
                 host_extra_image_count = max(1, int(approx_seconds / 6.0))
                 host_extra_image_usd = host_extra_image_count * image_unit
 
+    # Lesson teacher (Spatius Video API): same fixed rate the pipeline charges
+    # (lesson_teacher.PLATFORM_CREDITS_PER_MINUTE = 8, 1 credit = $0.01).
+    lesson_cost_row: Optional[Dict[str, Any]] = None
+    if isinstance(lesson, dict) and lesson.get("enabled", True) and (lesson.get("teacher") or {}).get("avatar_id"):
+        _lesson_minutes = max(1, int(-(-_duration_seconds_from_band(duration_band) // 60)))
+        lesson_cost_row = {
+            "component": "Lesson teacher (Spatius avatar)",
+            "detail": f"~{_lesson_minutes} min of teacher video · 8 credits per minute",
+            "cost_usd": round(_lesson_minutes * 0.08, 4),
+            "credits": float(_lesson_minutes * 8),
+        }
+
     def _components(
         d_in: int, d_out: int, s_in: int, s_out: int, imgs: int
     ) -> List[Dict[str, Any]]:
@@ -443,6 +458,8 @@ def estimate_video_generation(
                 "cost_usd": round(bg_usd, 4),
                 "credits": float(_credits_from_usd("video", bg_usd, rate_ratio)),
             })
+        if lesson_cost_row:
+            rows.append(dict(lesson_cost_row))
         # Host (avatar) cost — appended last so the FE can render it as a
         # distinct line item below the standard breakdown.
         if host_cost_row:

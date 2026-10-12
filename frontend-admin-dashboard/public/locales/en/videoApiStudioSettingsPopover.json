@@ -286,5 +286,47 @@
         "title": "Generation settings",
         "resetToDefaults": "Reset to defaults",
         "resetTitle": "Reset all settings to defaults (prompt and attachments are kept)"
+    },
+    "lesson": {
+        "toggle": {
+            "label": "Lesson mode",
+            "helper": "Teach it like a class: lesson pacing, a teacher’s voice, and an optional teacher beside the board."
+        },
+        "teacher": {
+            "label": "Teacher on screen",
+            "loading": "Loading teachers…",
+            "none": "No teacher",
+            "noneHelper": "Board only — the lesson is narrated, no one on screen",
+            "stock": "Stock teacher",
+            "yours": "Your teacher",
+            "empty": "No teacher avatars yet. Add one under AI tutor settings (Teacher presence).",
+            "cost": "The teacher costs 8 credits per minute of video."
+        },
+        "layout": {
+            "label": "Teacher layout",
+            "options": {
+                "auto": "Auto — changes by section",
+                "presenter": "Presenter — right third, for intros",
+                "side": "Side panel — slim, right quarter",
+                "corner": "Corner — small cut-out, bottom right",
+                "bubble": "Bubble — round, bottom right",
+                "board": "Board only — teacher hidden"
+            },
+            "help": {
+                "auto": "Intro with the teacher large, explanations and recap beside the board, dense steps with the teacher in the corner.",
+                "presenter": "The teacher stands in a panel on the right third; the board shows a title and one key line.",
+                "side": "The board uses three quarters of the frame; the teacher stands in a slim panel on the right.",
+                "corner": "The board gets the whole frame; the teacher is a small cut-out in the bottom-right corner.",
+                "bubble": "The board gets the whole frame; the teacher appears in a round bubble in the bottom-right corner.",
+                "board": "No teacher on screen; the narration still sounds like a teacher."
+            }
+        },
+        "subject": {
+            "label": "Subject (optional)",
+            "placeholder": "e.g. Mathematics, Physics, Biology"
+        },
+        "workedExample": "Include a worked example",
+        "recap": "End with a recap",
+        "hostDisabled": "Lesson mode has its own teacher, so the on-screen host is off. Turn off Lesson mode on the Output tab to use a host."
     }
 }

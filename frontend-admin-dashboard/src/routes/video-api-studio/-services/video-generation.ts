@@ -554,6 +554,25 @@ export interface HostRawConfig {
     input_video_ids: string[];
 }
 
+/** Where the lesson teacher sits. `auto` lets the planner pick per section. */
+export type LessonLayout = 'auto' | 'corner' | 'bubble' | 'side' | 'presenter' | 'board';
+
+/**
+ * Lesson mode — an education video taught by a teacher at a board: lesson
+ * pacing (6-20 s sections, hook → concepts → worked example → recap), a
+ * teacher's narration and, with `teacher`, a Spatius avatar beside the board.
+ * Not combinable with `host`.
+ */
+export interface LessonConfig {
+    enabled: boolean;
+    /** Spatius avatar from GET /tutor/options `avatars`. Omit for a board-only lesson. */
+    teacher?: { avatar_id: string; name?: string; title?: string };
+    layout?: LessonLayout;
+    subject?: string;
+    include_worked_example?: boolean;
+    include_recap?: boolean;
+}
+
 export interface HostConfig {
     type: HostType;
     /** Percentage of shots showing host on screen (0-100). Narration audio always plays. */
@@ -698,6 +717,8 @@ export interface GenerateVideoRequest {
     routing_overrides?: RoutingOverrides;
     /** Optional on-screen host (narrator). Available on ultra / super_ultra only; rejected at the API edge on lower tiers. */
     host?: HostConfig;
+    /** Lesson mode (education videos with a teacher at a board). Mutually exclusive with `host`. */
+    lesson?: LessonConfig;
     /**
      * Vimotion brand_kit.id — when set, the kit's palette/fonts/layout/intro/outro/watermark
      * REPLACE the institute-wide style/branding for this run (no merge). Server resolves
@@ -3253,6 +3274,8 @@ export interface VideoCostPreviewRequest {
     attachments_count: number;
     /** Optional on-screen host. Adds avatar synthesis cost lines on ultra+ tiers. */
     host?: HostConfig;
+    /** Lesson mode — with a teacher, adds the Spatius teacher cost row (8 credits/min). */
+    lesson?: LessonConfig;
     /** When true (ultra+ only), the estimator adds an AI video (Veo)
      *  upper-bound row to the breakdown. Mirrors the runtime flag. */
     ai_video_enabled?: boolean;

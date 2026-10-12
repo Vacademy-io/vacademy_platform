@@ -1601,8 +1601,45 @@ def _extract_json_blob(raw: str) -> Any:
                 
         # Move on to the next potential '{' character if this one didn't work out
         start_idx = text.find('{', start_idx + 1)
-                
+
+    # 4. Last resort for shot objects: models sometimes leave RAW double quotes
+    # inside the "html" string (narration quoted in a /* timeline */ comment),
+    # which no JSON parser can recover. When "html" is the last key, its value
+    # runs from `"html": "` to the final quote before the closing brace.
+    _repaired = _repair_trailing_html_field(text)
+    if _repaired is not None:
+        return _repaired
+
     raise ValueError(f"Could not parse JSON from response. Raw output:\n{raw}")
+
+
+_JSON_ESCAPE = re.compile(r'\\(u[0-9a-fA-F]{4}|["\\/bfnrt])')
+_JSON_ESCAPE_MAP = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+
+def _repair_trailing_html_field(text: str) -> Optional[Dict[str, Any]]:
+    m = re.search(r'"html"\s*:\s*"', text)
+    if not m:
+        return None
+    end = text.rfind('"')
+    if end <= m.end() or not text[end + 1:].strip().startswith("}"):
+        return None
+    body = text[m.end():end]
+    html = _JSON_ESCAPE.sub(
+        lambda e: chr(int(e.group(1)[1:], 16)) if e.group(1).startswith("u") else _JSON_ESCAPE_MAP[e.group(1)],
+        body,
+    )
+    if "<" not in html:
+        return None
+    head = text[text.find("{"):m.start()].rstrip().rstrip(",")
+    try:
+        meta = json.loads(head + "}", strict=False) if head.startswith("{") else {}
+    except json.JSONDecodeError:
+        meta = {}
+    if not isinstance(meta, dict):
+        meta = {}
+    meta["html"] = html
+    return meta
 
 
 class OpenRouterClient:

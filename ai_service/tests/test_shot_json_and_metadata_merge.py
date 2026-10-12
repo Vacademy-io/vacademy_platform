@@ -22,9 +22,15 @@ _SERVICE = os.path.join(_HERE, "..", "app", "services", "video_generation_servic
 def _load_extract():
     src = open(_PIPELINE, encoding="utf-8").read()
     tree = ast.parse(src)
-    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_extract_json_blob")
-    ns = {"json": json, "re": re, "Any": object}
-    exec(compile(ast.Module(body=[fn], type_ignores=[]), _PIPELINE, "exec"), ns)
+    keep = {"_extract_json_blob", "_repair_trailing_html_field", "_JSON_ESCAPE", "_JSON_ESCAPE_MAP"}
+    nodes = [
+        n for n in tree.body
+        if (isinstance(n, ast.FunctionDef) and n.name in keep)
+        or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in keep for t in n.targets))
+    ]
+    import typing
+    ns = {"json": json, "re": re, "Any": typing.Any, "Optional": typing.Optional, "Dict": typing.Dict}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), _PIPELINE, "exec"), ns)
     return ns["_extract_json_blob"]
 
 
@@ -47,3 +53,16 @@ def test_coverage_gate_merges_instead_of_replacing_metadata():
     src = open(_SERVICE, encoding="utf-8").read()
     assert 'update_metadata(\n                                    video_id, {"shot_coverage": _cov}' not in src
     assert '_emeta_cov["shot_coverage"] = _cov' in src
+
+
+def test_raw_double_quotes_inside_the_trailing_html_are_repaired():
+    """2026-10-12 lesson: a /* timeline */ comment quoted the narration with raw
+    double quotes — invalid JSON even with strict=False — and the shot failed
+    3 attempts and shipped a fallback card."""
+    extract = _load_extract()
+    raw = ('{\n  "offsetSeconds": 0,\n  "durationSeconds": 11.7,\n  "z": 10,\n  "html": '
+           '"<div id=\\"shot-root\\">Rule</div><script>/* TIMELINE\n   0.10s Title ("Another key rule...")\n*/\n'
+           'gsap.to(\'#t\',{opacity:1});</script>"}')
+    data = extract(raw)
+    assert data["durationSeconds"] == 11.7 and data["z"] == 10
+    assert data["html"].startswith('<div id="shot-root">') and '("Another key rule...")' in data["html"]

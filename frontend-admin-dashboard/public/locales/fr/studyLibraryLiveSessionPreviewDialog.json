@@ -81,5 +81,9 @@
         "multiple_one": "En confirmant, le système crée {{count}} session et applique les paramètres d'accès et de notification à chacune.",
         "multiple_many": "En confirmant, le système crée {{count}} sessions et applique les paramètres d'accès et de notification à chacune.",
         "multiple_other": "En confirmant, le système crée {{count}} sessions et applique les paramètres d'accès et de notification à chacune."
+    },
+    "attendanceOnly": {
+        "title": "Non visible par les apprenants — présence uniquement",
+        "description": "Les apprenants ne verront pas ce cours en direct et ne recevront aucune notification à son sujet. Il est créé uniquement pour marquer la présence ; les apprenants verront seulement leur présence."
     }
 }

@@ -75,5 +75,9 @@
         "single": "By confirming, the system creates this live class and applies access & notification settings.",
         "multiple_one": "By confirming, the system creates {{count}} session and applies access & notification settings to each.",
         "multiple_other": "By confirming, the system creates {{count}} sessions and applies access & notification settings to each."
+    },
+    "attendanceOnly": {
+        "title": "Not visible to learners — attendance only",
+        "description": "Learners will not see this live class or get any notification about it. It is created only to mark attendance; learners will see just their attendance."
     }
 }

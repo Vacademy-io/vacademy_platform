@@ -17,6 +17,7 @@ import {
     MonitorPlay,
     PlugsConnected,
     UserCheck,
+    EyeSlash,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -482,6 +483,33 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                                     </div>
                                 )}
                         </div>
+                </CardContent>
+            </Card>
+
+            {/* Attendance-only mode: classes exist only to record offline
+                attendance, so learners see their attendance but no classes. */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <EyeSlash size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">{t('attendanceOnly.title')}</CardTitle>
+                        <CardDescription>{t('attendanceOnly.description')}</CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title={t('attendanceOnly.toggleTitle')}
+                        description={t('attendanceOnly.toggleDescription')}
+                        checked={settings.attendanceOnlyMode}
+                        onChange={(v) => togglePrimitive('attendanceOnlyMode', v)}
+                    />
+                    {settings.attendanceOnlyMode && (
+                        <div className="mt-1 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-caption text-warning-700">
+                            {t('attendanceOnly.onWarning')}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

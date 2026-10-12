@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAcce
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.EffectiveAccess;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.Mode;
 import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
+import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
+import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -39,6 +41,7 @@ class LeadCreatorAttributionServiceTest {
 
     private AudienceRoleAccessService roleAccessService;
     private AudienceRepository audienceRepository;
+    private CounselorPoolAudienceRepository poolAudienceRepository;
     private LeadCreatorAttributionService service;
     private CustomUserDetails caller;
 
@@ -46,7 +49,9 @@ class LeadCreatorAttributionServiceTest {
     void setUp() {
         roleAccessService = mock(AudienceRoleAccessService.class);
         audienceRepository = mock(AudienceRepository.class);
-        service = new LeadCreatorAttributionService(roleAccessService, audienceRepository);
+        poolAudienceRepository = mock(CounselorPoolAudienceRepository.class);
+        when(poolAudienceRepository.findByAudienceId(anyString())).thenReturn(Optional.empty());
+        service = new LeadCreatorAttributionService(roleAccessService, audienceRepository, poolAudienceRepository);
 
         caller = mock(CustomUserDetails.class);
         when(caller.getUserId()).thenReturn(CALLER);
@@ -84,6 +89,19 @@ class LeadCreatorAttributionServiceTest {
         service.applyCreatorAsCounsellor(dto, caller);
 
         assertEquals("someone-else", dto.getCounsellorId());
+    }
+
+    /** A pool-routed list keeps the pool as the sole owner of routing — no creator stamp. */
+    @Test
+    void doesNothingOnAListACounsellorPoolRoutes() {
+        withAccess(Mode.AUDIENCE_LIST, true);
+        when(poolAudienceRepository.findByAudienceId(AUDIENCE))
+                .thenReturn(Optional.of(new CounselorPoolAudience()));
+        SubmitLeadRequestDTO dto = row(null);
+
+        service.applyCreatorAsCounsellor(dto, caller);
+
+        assertNull(dto.getCounsellorId());
     }
 
     /** Without the opt-in the lead stays unowned, so the normal pipeline decides. */

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceRoleAccessDto;
-import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolRepository;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -60,10 +59,7 @@ import java.util.stream.Collectors;
  *       {@code assigned_only}, which narrows the granted lists to the leads
  *       the caller is the assigned counsellor of. It is honoured only when
  *       EVERY matched {@code AUDIENCE_LIST} rule sets it (most-permissive
- *       wins, as above) AND the institute has no counsellor pool configured
- *       under Leads &rarr; Settings &rarr; Pools — a pool already owns lead
- *       ownership, so the two would fight. See
- *       {@link #assignedOnlyApplies(java.util.List, String)}.</li>
+ *       wins, as above). See {@link #assignedOnlyApplies(java.util.List)}.</li>
  * </ul>
  */
 @Service
@@ -73,20 +69,11 @@ public class AudienceRoleAccessService {
 
     private final InstituteSettingService instituteSettingService;
 
-    /**
-     * Only read to answer "does this institute run a counsellor pool?" — the gate
-     * on the AUDIENCE_LIST assigned-only option (see
-     * {@link #assignedOnlyApplies(List, String)}).
-     */
-    private final CounselorPoolRepository counselorPoolRepository;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
-    public AudienceRoleAccessService(InstituteSettingService instituteSettingService,
-            CounselorPoolRepository counselorPoolRepository) {
+    public AudienceRoleAccessService(InstituteSettingService instituteSettingService) {
         this.instituteSettingService = instituteSettingService;
-        this.counselorPoolRepository = counselorPoolRepository;
     }
 
     public enum Mode { DEFAULT, COUNSELOR, AUDIENCE_LIST }
@@ -101,11 +88,8 @@ public class AudienceRoleAccessService {
         /**
          * {@link Mode#AUDIENCE_LIST} only: narrow the granted lists further to
          * leads this caller is the assigned counsellor of, and stamp them as the
-         * counsellor on leads they add by hand.
-         *
-         * <p>Already gated here — it is only ever {@code true} when the institute
-         * has NO counsellor pool configured (Leads &rarr; Settings &rarr; Pools).
-         * Consumers can use it as-is without re-checking.
+         * counsellor on leads they add by hand (that stamping is skipped on lists
+         * a counsellor pool routes — see {@code LeadCreatorAttributionService}).
          */
         private boolean assignedOnly;
 
@@ -188,7 +172,7 @@ public class AudienceRoleAccessService {
                     }
                 }
             }
-            boolean assignedOnly = assignedOnlyApplies(matched, instituteId);
+            boolean assignedOnly = assignedOnlyApplies(matched);
             logger.info("[audienceRoleAccess] resolved → AUDIENCE_LIST allowedIds={} assignedOnly={}",
                     union, assignedOnly);
             // Empty list = lock the user out entirely (admin-set restriction).
@@ -245,59 +229,23 @@ public class AudienceRoleAccessService {
      * Does the AUDIENCE_LIST "only leads assigned to this role" narrowing apply
      * for this caller?
      *
-     * <p>Two conditions, both required:
-     * <ol>
-     *   <li><b>Every</b> matched AUDIENCE_LIST config opts in. Same
-     *       most-permissive-wins rule the mode resolution uses: a caller who
-     *       also holds a role granted the whole list keeps the whole list.
-     *       (A matched COUNSELOR config is not consulted — the mode resolution
-     *       has already collapsed it into AUDIENCE_LIST, and COUNSELOR is itself
-     *       an assigned-only rule, so the narrowing agrees with it.)</li>
-     *   <li>The institute has no counsellor pool (Leads &rarr; Settings &rarr;
-     *       Pools). A pool already owns lead ownership — it routes each new lead
-     *       by rotation/shift — so stamping the creator instead would fight the
-     *       pool and skew its distribution, and hiding pool-routed leads from
-     *       everyone but their assignee would quietly shrink each counsellor's
-     *       list. While a pool exists the option stays inert and the role sees
-     *       every lead in its granted lists, exactly as before.</li>
-     * </ol>
+     * <p><b>Every</b> matched AUDIENCE_LIST config must opt in. Same
+     * most-permissive-wins rule the mode resolution uses: a caller who also
+     * holds a role granted the whole list keeps the whole list. (A matched
+     * COUNSELOR config is not consulted — the mode resolution has already
+     * collapsed it into AUDIENCE_LIST, and COUNSELOR is itself an assigned-only
+     * rule, so the narrowing agrees with it.)
      *
-     * <p>A repository failure falls back to "a pool might exist" → inert, which
-     * is the non-destructive direction: the role keeps the visibility it had.
+     * <p>Deliberately NOT gated on the institute running a counsellor pool. It
+     * used to be, which left the setting saved but silently off the moment a
+     * pool was created — every unassigned lead then showed to every counsellor.
+     * A pool decides who owns a lead; this decides who can see it, and the two
+     * agree: the pool's assignee sees it, nobody else does.
      */
-    private boolean assignedOnlyApplies(List<AudienceRoleAccessDto.RoleAccessConfig> matched,
-            String instituteId) {
-        boolean allOptIn = matched.stream()
+    private boolean assignedOnlyApplies(List<AudienceRoleAccessDto.RoleAccessConfig> matched) {
+        return matched.stream()
                 .filter(c -> normalizeMode(c.getMode()) == Mode.AUDIENCE_LIST)
                 .allMatch(c -> Boolean.TRUE.equals(c.getAssignedOnly()));
-        if (!allOptIn) {
-            return false;
-        }
-        if (instituteHasCounsellorPool(instituteId)) {
-            logger.info("[audienceRoleAccess] assignedOnly configured but institute {} has a counsellor pool → inert",
-                    instituteId);
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * True when the institute has at least one counsellor pool row. Kept private
-     * on purpose: every consumer of the gate should read the already-gated
-     * {@link EffectiveAccess#isAssignedOnly()} rather than re-deriving the rule,
-     * so the two can never drift apart.
-     */
-    private boolean instituteHasCounsellorPool(String instituteId) {
-        if (instituteId == null || instituteId.isBlank()) {
-            return false;
-        }
-        try {
-            return counselorPoolRepository.existsByInstituteId(instituteId);
-        } catch (Exception e) {
-            logger.warn("[audienceRoleAccess] counsellor-pool lookup failed for institute {}: {} → treating as present",
-                    instituteId, e.getMessage());
-            return true;
-        }
     }
 
     private AudienceRoleAccessDto readConfig(String instituteId) {

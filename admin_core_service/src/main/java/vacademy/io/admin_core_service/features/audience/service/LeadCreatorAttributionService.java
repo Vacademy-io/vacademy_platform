@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.EffectiveAccess;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.Mode;
+import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 /**
@@ -32,10 +33,9 @@ import vacademy.io.common.auth.model.CustomUserDetails;
  * form, Meta/Google webhooks — has no creator to attribute and is untouched.
  *
  * <p>Never overrides an explicit counsellor on the request: a chosen owner is
- * a stronger signal than the default. And because it reads
- * {@link EffectiveAccess#isAssignedOnly()}, it inherits that flag's pool gate —
- * an institute running a counsellor pool keeps the pool as the sole owner of
- * lead routing.
+ * a stronger signal than the default. And it stays out of lists a counsellor
+ * pool routes: there the pool is the sole owner of lead routing, and stamping
+ * the creator would skew its rotation.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,6 +45,7 @@ public class LeadCreatorAttributionService {
 
     private final AudienceRoleAccessService audienceRoleAccessService;
     private final AudienceRepository audienceRepository;
+    private final CounselorPoolAudienceRepository counselorPoolAudienceRepository;
 
     /**
      * Mutates {@code requestDTO} in place, setting {@code counsellorId} to the
@@ -105,9 +106,7 @@ public class LeadCreatorAttributionService {
 
     /**
      * Does the institute behind this audience have the caller's role configured
-     * as AUDIENCE_LIST + assigned-only? Reading
-     * {@link EffectiveAccess#isAssignedOnly()} inherits that flag's counsellor-pool
-     * gate for free.
+     * as AUDIENCE_LIST + assigned-only, on a list no counsellor pool routes?
      */
     private boolean creatorAssignmentApplies(String audienceId, CustomUserDetails user) {
         if (user == null || !StringUtils.hasText(user.getUserId())) {
@@ -121,7 +120,8 @@ public class LeadCreatorAttributionService {
                 return false;
             }
             EffectiveAccess access = audienceRoleAccessService.resolveForCaller(user, instituteId);
-            boolean applies = access.getMode() == Mode.AUDIENCE_LIST && access.isAssignedOnly();
+            boolean applies = access.getMode() == Mode.AUDIENCE_LIST && access.isAssignedOnly()
+                    && counselorPoolAudienceRepository.findByAudienceId(audienceId).isEmpty();
             if (applies) {
                 logger.info("[leadCreatorAttribution] creator {} will own new leads on audience {}",
                         user.getUserId(), audienceId);

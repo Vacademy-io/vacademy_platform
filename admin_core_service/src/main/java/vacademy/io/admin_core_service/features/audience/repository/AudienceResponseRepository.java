@@ -2179,6 +2179,53 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10,
                         @Param("excludeResponseId") String excludeResponseId);
 
+        /**
+         * Owner of the most recent OTHER lead with this phone (same match rules as the
+         * dedup exists-queries above), for the repeat-lead SAME_AS_PREVIOUS policy.
+         * Blank {@code audienceIdsCsv} = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findPreviousCounsellorIdByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
+
+        /** Email twin of {@link #findPreviousCounsellorIdByPhoneLast10}. */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(:email))
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findPreviousCounsellorIdByEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**

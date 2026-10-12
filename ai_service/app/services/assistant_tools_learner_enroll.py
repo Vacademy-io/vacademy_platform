@@ -18,7 +18,7 @@ Safety (MCP has no confirm card):
 * admin-core does not check that an invite belongs to the institute or the
   batch, so every invite is checked here against this institute's invites of
   that batch (bare SUB_ORG invites refused, as the dashboard hides them);
-* existing user_ids must be learners of this institute;
+* existing learner_ids must be learners of this institute;
 * batches sold to organisations (is_org_associated) are refused — they need
   the sub-org step, which is dashboard-only for now;
 * notify / send-credentials are refused when Course Settings hide them.
@@ -48,6 +48,8 @@ MAX_LEARNERS = 200
 MAX_COURSES = 10
 _MAX_RESULT_ROWS = 60
 GENDERS = ("MALE", "FEMALE", "OTHER")
+#: The enroll_template's sample row — a value copied from it is never a real learner's.
+_SAMPLE_VALUES = {"student@example.com", "919876543210", "9876543210"}
 _ROW_KEYS = {k for k, _, _ in TEMPLATE_COLUMNS}
 #: Plain profile columns copied onto NewUserDTO as-is.
 _TEXT_KEYS = ("full_name", "username", "password", "address_line", "pin_code", "city", "region",
@@ -68,7 +70,7 @@ ENROLL_SCHEMA: Dict[str, Any] = {
             "- preview (learners and/or csv, courses, options?): checks everything and runs a dry run. Nothing is "
             "saved. Returns the per-learner outcome and a confirm_token (valid 15 min).\n"
             "- enroll (same arguments + confirm_token): does it. Changed arguments need a new preview.\n"
-            "learners: [{user_id} (an existing learner, from learners(action='find')) | a new-learner row using the "
+            "learners: [{learner_id} (an existing learner, from learners(action='find')) | a new-learner row using the "
             "enroll_template columns, e.g. {full_name, email, mobile_number, …, custom_fields?: {label: value}}] "
             f"(max {MAX_LEARNERS}). csv: the filled-in template as CSV text (header row first). A row whose email / "
             "mobile already belongs to a learner of this institute enrols that learner and leaves their profile "
@@ -90,7 +92,7 @@ ENROLL_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(ENROLL_ACTIONS)},
                 "learners": {"type": "array", "items": {"type": "object"},
-                             "description": "[{user_id}] for existing learners and/or new-learner rows."},
+                             "description": "[{learner_id}] for existing learners and/or new-learner rows."},
                 "csv": {"type": "string", "description": "The filled-in enroll_template as CSV text."},
                 "courses": {"type": "array", "items": {"type": "object"},
                             "description": "[{course_id, batch_id?, invite_id?, access_days?}]"},
@@ -209,6 +211,10 @@ def _new_user(row: Dict[str, Any], label: str, identifier: str, fields: List[Dic
 
     email, phone, name = val("email").lower(), val("mobile_number"), val("full_name")
     start = len(problems)
+    samples = [k for k, v in (("email", email), ("mobile_number", ld.digits(phone))) if v and v in _SAMPLE_VALUES]
+    if samples:
+        problems.append(f"{label}: {', '.join(samples)} is the template's sample value — use the learner's real "
+                        "details, or leave it out (never fill in a value the admin did not give).")
     if identifier == "PHONE" and not phone:
         problems.append(f"{label}: mobile_number is required.")
     if identifier != "PHONE" and not email:
@@ -254,7 +260,7 @@ def _new_user(row: Dict[str, Any], label: str, identifier: str, fields: List[Dic
             elif str(raw or "").strip():
                 values.append({"custom_field_id": f["field_id"], "value": str(raw).strip()})
     unknown = [k for k in row if k not in _ROW_KEYS and not str(k).startswith("cf_")
-               and k not in ("custom_fields", "user_id")]
+               and k not in ("custom_fields", "user_id", "learner_id")]
     if unknown:
         problems.append(f"{label}: unknown column(s) {', '.join(sorted(map(str, unknown)))} — use the "
                         "enroll_template columns.")
@@ -280,9 +286,13 @@ async def _resolve_learners(ctx: ToolContext, args: Dict[str, Any]) -> Tuple[Dic
     entries: List[Tuple[str, Dict[str, Any]]] = []
     for i, item in enumerate(args.get("learners") or []):
         if isinstance(item, str):
-            item = {"user_id": item}
+            item = {"learner_id": item}
         if isinstance(item, dict):
-            entries.append((f"learner {i + 1}", {str(k).strip().lower(): v for k, v in item.items()}))
+            entry = {str(k).strip().lower(): v for k, v in item.items()}
+            # learner_id is the documented key; a nested user_id (not touched by the tool runner) is accepted too.
+            if entry.get("learner_id") and not entry.get("user_id"):
+                entry["user_id"] = entry["learner_id"]
+            entries.append((f"learner {i + 1}", entry))
     rows, csv_problem = _csv_rows(args.get("csv"))
     if csv_problem:
         return {}, _err("invalid_csv", message=csv_problem)
@@ -341,7 +351,7 @@ async def _resolve_learners(ctx: ToolContext, args: Dict[str, Any]) -> Tuple[Dic
             user_ids.append(hit["user_id"])
             known[hit["user_id"]] = {"user_id": hit["user_id"], "full_name": hit.get("full_name"),
                                      "email": user.get("email")}
-            matched.append({"row": label, "learner": hit.get("full_name"), "user_id": hit["user_id"]})
+            matched.append({"row": label, "learner": hit.get("full_name"), "learner_id": hit["user_id"]})
         else:
             new_users.append(user)
     first_paid = next((u["payment_date"] for u in new_users if u.get("payment_date")), None)
@@ -511,7 +521,12 @@ async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         "dry_run": True,
         "courses": [c["view"] for c in context["courses"]],
         "learners": {"existing": len(learners["user_ids"]), "new_accounts": len(learners["new_users"]),
-                     "matched_existing": learners["matched"] or None},
+                     "matched_existing": learners["matched"] or None,
+                     # Exactly what will be sent for each new learner — show it, so nothing the admin did not
+                     # give (a phone number, say) slips in unnoticed.
+                     "new_learner_details": [
+                         {k: u.get(k) for k in ("full_name", "email", "mobile_number", "username") if u.get(k)}
+                         for u in learners["new_users"][:50]] or None},
         "options": body["options"],
         **report,
     }
@@ -522,6 +537,11 @@ async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
                        "learner_enroll(action='enroll') with the SAME arguments and this confirm_token.")
     else:
         out["next"] = "Nobody would be enrolled (all skipped or failed) — tell the admin why; there is nothing to confirm."
+    if learners["new_users"]:
+        out["accounts_note"] = (
+            "A 'new' learner whose email (or mobile) already has a Vacademy account — from a website form, an OTP "
+            "sign-up or another institute — is enrolled with THAT account and keeps its own details (name, phone). "
+            "If it has no password yet, one is created after enrolling.")
     out["emails"] = await _emails(ctx, body, context)
     out["credentials_file"] = ("a private download link with every enrolled learner's username and password will be "
                                "created after enrolling" if context["credentials_file"] else "not requested")
@@ -545,9 +565,57 @@ async def _action_enroll(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
     report = _report(response, body, context)
     out: Dict[str, Any] = {"done": True, **report,
                            "manage_url": f"{cbd.admin_base(ctx)}/manage-students/students-list"}
+    enrolled = _enrolled_ids(response)
+    logins, set_for = await _ensure_passwords(ctx, enrolled)
+    if set_for:
+        out["passwords_set"] = (f"{len(set_for)} learner(s) had an account with no password (an existing Vacademy "
+                                "account, e.g. from a website form or OTP sign-up), so a password was created for "
+                                "them" + (" — it is in the credentials file." if context["credentials_file"]
+                                          else ". Share it from Manage Learners → Send credentials."))
     if context["credentials_file"]:
-        out["credentials_file"] = await _credentials_file(ctx, response, body, context)
+        out["credentials_file"] = await _credentials_file(ctx, response, body, context, logins)
     return out
+
+
+def _enrolled_ids(response: Dict[str, Any]) -> List[str]:
+    return list(dict.fromkeys(r["user_id"] for r in response.get("results") or []
+                              if r.get("status") == "SUCCESS" and r.get("user_id")))
+
+
+def new_password() -> str:
+    """10 characters, letters + digits, no look-alikes (0/O, 1/l/I) — easy to type from a CSV."""
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(10))
+        if any(c.isdigit() for c in pw) and any(c.isupper() for c in pw) and any(c.islower() for c in pw):
+            return pw
+
+
+async def _ensure_passwords(ctx: ToolContext, user_ids: List[str]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """
+    Every enrolled learner must be able to sign in. auth-service generates a password only for a brand-new
+    account; an email / mobile that already had a Vacademy account (website form, OTP sign-up, another
+    institute) is reused as is — and may have NO password. Those get one here, through auth-service's own
+    update-password with the admin's token. A learner who already has a password is never touched.
+    Returns (logins after the change, ids that got a password).
+    """
+    if not user_ids:
+        return {}, []
+    logins = await ld.login_credentials(ctx, user_ids)
+    set_for: List[str] = []
+    for uid, login in logins.items():
+        if (login or {}).get("password"):
+            continue
+        password = new_password()
+        saved = await ld.auth_call(ctx, "POST", "/auth-service/v1/user-operation/update-password",
+                                   body={"user_id": uid, "password": password})
+        if cbd.is_error(saved):
+            logger.warning("could not set a password for enrolled learner %s: %s", uid, saved.get("message"))
+            continue
+        logins[uid] = {**(login or {}), "password": password}
+        set_for.append(uid)
+    return logins, set_for
 
 
 # ── credentials file ─────────────────────────────────────────────────────
@@ -571,7 +639,8 @@ def credentials_csv(rows: List[Dict[str, Any]]) -> str:
 
 
 async def _credentials_file(ctx: ToolContext, response: Dict[str, Any], body: Dict[str, Any],
-                            context: Dict[str, Any]) -> Dict[str, Any]:
+                            context: Dict[str, Any],
+                            logins: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     The enrolled learners' logins as a link-only CSV (services/file_exports.py). The passwords are read
     from auth-service with the admin's own token and go straight into the encrypted file — they are
@@ -589,7 +658,8 @@ async def _credentials_file(ctx: ToolContext, response: Dict[str, Any], body: Di
         return {"status": "not_created", "message": "Nobody was enrolled, so there are no logins to export."}
     ids = list(courses_by_user)
     profiles = ld.learners_by_ids(ctx, ids)
-    logins = await ld.login_credentials(ctx, ids)
+    if logins is None:
+        logins = await ld.login_credentials(ctx, ids)
     existing = set(body.get("user_ids") or [])
     emails = {str(r.get("user_id")): r.get("user_email") for r in response.get("results") or []}
     rows = []

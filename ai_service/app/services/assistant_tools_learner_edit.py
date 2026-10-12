@@ -62,7 +62,7 @@ EDIT_SCHEMA: Dict[str, Any] = {
             "state, PIN code, parents' names / phones / emails, school, and the institute's custom fields. Email "
             "and username can never be changed here. First find the learner with learners(action='find') — when "
             "several match, show them (name, email, phone, courses) and ask which one; never guess. Then:\n"
-            "- preview (user_id, changes?: {field: new value}, password?, custom_fields?: {label or field_id: "
+            "- preview (learner_id, changes?: {field: new value}, password?, custom_fields?: {label or field_id: "
             "value}): checks the change and shows each field's current → new value. Nothing is saved. Returns a "
             "confirm_token (valid 15 min).\n"
             "- apply (same arguments + confirm_token, send_credentials_via?: [EMAIL, WHATSAPP] — after a password "
@@ -76,14 +76,16 @@ EDIT_SCHEMA: Dict[str, Any] = {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": list(EDIT_ACTIONS)},
-                "user_id": {"type": "string", "description": "The learner's user_id (from learners(action='find'))."},
+                # NOT `user_id`: the tool runner overwrites a top-level user_id with the CALLER's id, which
+                # would point every edit at the admin's own account.
+                "learner_id": {"type": "string", "description": "The learner's learner_id (from learners(action='find'))."},
                 "changes": {"type": "object", "description": "{field: new value} — only the fields to change."},
                 "password": {"type": "string", "description": "A new login password."},
                 "custom_fields": {"type": "object", "description": "{label or field_id: value}."},
                 "send_credentials_via": {"type": "array", "items": {"type": "string", "enum": list(_CHANNELS)}},
                 "confirm_token": {"type": "string", "description": "apply: the token preview returned."},
             },
-            "required": ["action", "user_id"],
+            "required": ["action", "learner_id"],
         },
     },
 }
@@ -113,9 +115,9 @@ def _same(a: Any, b: Any) -> bool:
 
 async def _build(ctx: ToolContext, args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[Dict[str, Any]]]:
     """(the change to apply, report context, problem)."""
-    learner = ld.learner_profile(ctx, args.get("user_id"))
+    learner = ld.learner_profile(ctx, args.get("learner_id"))
     if not learner:
-        return None, {}, _err("unknown_learner", message="No learner of this institute has that user_id. Use "
+        return None, {}, _err("unknown_learner", message="No learner of this institute has that learner_id. Use "
                                                          "learners(action='find').")
     raw = args.get("changes") if isinstance(args.get("changes"), dict) else {}
     raw = {str(k).strip().lower(): v for k, v in raw.items()}
@@ -262,7 +264,7 @@ def _profile_request(change: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _who(learner: Dict[str, Any]) -> Dict[str, Any]:
-    return {"user_id": learner["user_id"], "full_name": learner.get("full_name"), "email": learner.get("email"),
+    return {"learner_id": learner["user_id"], "full_name": learner.get("full_name"), "email": learner.get("email"),
             "mobile_number": learner.get("mobile_number")}
 
 

@@ -2442,6 +2442,7 @@ def _load_feature_tools() -> None:
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
         "assistant_tools_course_invites",
+        "assistant_tools_course_structure",
         "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
     ):
         try:

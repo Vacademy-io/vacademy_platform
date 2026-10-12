@@ -240,7 +240,7 @@ async def test_template_matches_the_dashboard_columns(backend, identifier, requi
 
 # ── learner_enroll ───────────────────────────────────────────────────────
 async def test_preview_sends_the_dashboard_request_then_enroll_repeats_it_for_real(backend):
-    args = {"learners": [{"user_id": "u-sarthak"}, NEW_ROW],
+    args = {"learners": [{"learner_id": "u-sarthak"}, NEW_ROW],
             "courses": [{"course_id": "course-1"}, {"course_id": "course-2", "invite_id": "inv-2", "access_days": 30}],
             "options": {"send_welcome_email": True}}
     out = await enroll({"action": "preview", **args})
@@ -266,10 +266,10 @@ async def test_preview_sends_the_dashboard_request_then_enroll_repeats_it_for_re
 
 
 async def test_enroll_needs_the_token_of_the_identical_preview(backend):
-    args = {"learners": [{"user_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
+    args = {"learners": [{"learner_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
     assert (await enroll({"action": "enroll", **args}))["error"] == "confirm_required"
     token = (await enroll({"action": "preview", **args}))["confirm_token"]
-    changed = {**args, "learners": [{"user_id": "u-sarthak"}, {"user_id": "u-sarthak2"}]}
+    changed = {**args, "learners": [{"learner_id": "u-sarthak"}, {"learner_id": "u-sarthak2"}]}
     assert (await enroll({"action": "enroll", **changed, "confirm_token": token}))["error"] == "confirm_token_mismatch"
     assert (await enroll({"action": "enroll", **args, "confirm_token": "123.abc"}))["error"] == "confirm_token_expired"
     # Another admin cannot replay it either.
@@ -279,7 +279,7 @@ async def test_enroll_needs_the_token_of_the_identical_preview(backend):
 
 
 async def test_expired_token_is_refused(backend, monkeypatch):
-    args = {"learners": [{"user_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
+    args = {"learners": [{"learner_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
     token = (await enroll({"action": "preview", **args}))["confirm_token"]
     real_time = time.time
     monkeypatch.setattr(ld.time, "time", lambda: real_time() + ld.CONFIRM_TTL_SECONDS + 5)
@@ -287,7 +287,7 @@ async def test_expired_token_is_refused(backend, monkeypatch):
 
 
 async def test_several_invites_need_a_choice_and_foreign_or_hidden_invites_are_refused(backend):
-    base = {"action": "preview", "learners": [{"user_id": "u-sarthak"}]}
+    base = {"action": "preview", "learners": [{"learner_id": "u-sarthak"}]}
     out = await enroll({**base, "courses": [{"course_id": "course-2"}]})
     assert out["error"] == "choose_invite" and {i["invite_id"] for i in out["invites"]} == {"inv-2", "inv-2b"}
     for bad in ("inv-suborg", "inv-old", "inv-1", "inv-other-institute"):
@@ -297,7 +297,7 @@ async def test_several_invites_need_a_choice_and_foreign_or_hidden_invites_are_r
 
 
 async def test_multi_batch_course_needs_a_batch_and_org_batches_are_refused(backend):
-    base = {"action": "preview", "learners": [{"user_id": "u-sarthak"}]}
+    base = {"action": "preview", "learners": [{"learner_id": "u-sarthak"}]}
     assert (await enroll({**base, "courses": [{"course_id": "course-multi"}]}))["error"] == "choose_batch"
     ok = await enroll({**base, "courses": [{"course_id": "course-multi", "batch_id": "ps-m2"}]})
     assert ok["courses"][0]["invite"]["invite_id"] == "inv-m2"
@@ -346,7 +346,7 @@ async def test_phone_institutes_need_mobile_not_email(backend):
 async def test_rows_for_existing_learners_enrol_them_by_id(backend):
     out = await enroll({"action": "preview", "courses": [{"course_id": "course-1"}],
                         "learners": [{"full_name": "Sarthak R", "email": "SARTHAK@x.com"}, NEW_ROW]})
-    assert out["learners"]["matched_existing"][0]["user_id"] == "u-sarthak"
+    assert out["learners"]["matched_existing"][0]["learner_id"] == "u-sarthak"
     body = backend.assign_calls()[0]["body"]
     assert body["user_ids"] == ["u-sarthak"] and [u["email"] for u in body["new_users"]] == ["asha@x.com"]
 
@@ -360,7 +360,7 @@ async def test_unknown_user_ids_and_duplicate_rows_are_refused(backend):
 
 
 async def test_re_enroll_and_disabled_notifications_are_refused(backend):
-    base = {"action": "preview", "learners": [{"user_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
+    base = {"action": "preview", "learners": [{"learner_id": "u-sarthak"}], "courses": [{"course_id": "course-1"}]}
     assert (await enroll({**base, "options": {"duplicate_handling": "RE_ENROLL"}}))["error"] == "invalid_option"
     backend.toggles["send_credentials"] = False
     with_new = {**base, "learners": [NEW_ROW]}
@@ -371,7 +371,7 @@ async def test_re_enroll_and_disabled_notifications_are_refused(backend):
 
 async def test_nothing_to_enrol_gives_no_token(backend):
     backend.dry_run_outcome = "SKIPPED"
-    out = await enroll({"action": "preview", "learners": [{"user_id": "u-sarthak"}],
+    out = await enroll({"action": "preview", "learners": [{"learner_id": "u-sarthak"}],
                         "courses": [{"course_id": "course-1"}]})
     assert "confirm_token" not in out and out["summary"]["skipped"] == 1
 
@@ -388,7 +388,7 @@ def _profile_calls(b):
 
 
 async def test_edit_previews_before_after_then_sends_only_the_change(backend):
-    args = {"user_id": "u-sarthak", "changes": {"phone": "+91 99999 11111", "city": "Pune", "full_name": "Sarthak R."}}
+    args = {"learner_id": "u-sarthak", "changes": {"phone": "+91 99999 11111", "city": "Pune", "full_name": "Sarthak R."}}
     out = await edit({"action": "preview", **args})
     rows = {r["field"]: r for r in out["changes"]}
     assert rows["mobile_number"]["from"] == "+91 98765 43210" and rows["mobile_number"]["to"] == "+91 99999 11111"
@@ -405,7 +405,7 @@ async def test_edit_previews_before_after_then_sends_only_the_change(backend):
 
 async def test_parent_only_edit_still_names_the_learner(backend):
     """Without user_details.id admin-core would write onto the CALLER's own profile."""
-    args = {"user_id": "u-sarthak", "changes": {"fathers_name": "Mr Rao"}}
+    args = {"learner_id": "u-sarthak", "changes": {"fathers_name": "Mr Rao"}}
     token = (await edit({"action": "preview", **args}))["confirm_token"]
     await edit({"action": "apply", **args, "confirm_token": token})
     body = _profile_calls(backend)[0]["body"]
@@ -415,12 +415,12 @@ async def test_parent_only_edit_still_names_the_learner(backend):
 
 @pytest.mark.parametrize("field", ["email", "username"])
 async def test_email_and_username_are_locked(backend, field):
-    out = await edit({"action": "preview", "user_id": "u-sarthak", "changes": {field: "new@x.com"}})
+    out = await edit({"action": "preview", "learner_id": "u-sarthak", "changes": {field: "new@x.com"}})
     assert out["error"] == "field_locked"
 
 
 async def test_password_goes_through_auth_and_is_never_echoed(backend):
-    args = {"user_id": "u-sarthak", "password": "S3cret-pass", "send_credentials_via": ["email"]}
+    args = {"learner_id": "u-sarthak", "password": "S3cret-pass", "send_credentials_via": ["email"]}
     out = await edit({"action": "preview", **args})
     assert "S3cret-pass" not in json.dumps(out)
     done = await edit({"action": "apply", **args, "confirm_token": out["confirm_token"]})
@@ -433,20 +433,20 @@ async def test_password_goes_through_auth_and_is_never_echoed(backend):
 
 
 async def test_edit_rejects_bad_values_and_strangers(backend):
-    out = await edit({"action": "preview", "user_id": "u-sarthak",
+    out = await edit({"action": "preview", "learner_id": "u-sarthak",
                       "changes": {"mobile_number": "12", "gender": "x", "pin_code": "", "nickname": "S"},
                       "password": "a b", "send_credentials_via": ["SMS"]})
     text = " ".join(out["problems"])
     for needle in ("not a valid phone", "gender", "cannot be cleared", "nickname", "password", "SMS"):
         assert needle in text, needle
-    assert (await edit({"action": "preview", "user_id": "u-other-institute",
+    assert (await edit({"action": "preview", "learner_id": "u-other-institute",
                         "changes": {"city": "Goa"}}))["error"] == "unknown_learner"
-    assert (await edit({"action": "preview", "user_id": "u-sarthak",
+    assert (await edit({"action": "preview", "learner_id": "u-sarthak",
                         "send_credentials_via": ["EMAIL"], "changes": {"city": "Goa"}}))["error"] == "invalid_change"
 
 
 async def test_apply_needs_a_fresh_token_when_the_learner_changed_meanwhile(backend):
-    args = {"user_id": "u-sarthak", "changes": {"city": "Goa"}}
+    args = {"learner_id": "u-sarthak", "changes": {"city": "Goa"}}
     assert (await edit({"action": "apply", **args}))["error"] == "confirm_required"
     token = (await edit({"action": "preview", **args}))["confirm_token"]
     backend.learners["u-sarthak"]["city"] = "Mumbai"  # edited in the dashboard after the preview
@@ -456,7 +456,7 @@ async def test_apply_needs_a_fresh_token_when_the_learner_changed_meanwhile(back
 
 async def test_duplicate_phone_blocks_phone_institutes_and_warns_others(backend):
     backend.phone_owners = [{"user_id": "u-x", "full_name": "Other Kid", "phone": "+91 88888 77777"}]
-    args = {"action": "preview", "user_id": "u-sarthak", "changes": {"mobile_number": "+918888877777"}}
+    args = {"action": "preview", "learner_id": "u-sarthak", "changes": {"mobile_number": "+918888877777"}}
     out = await edit(args)
     assert out["confirm_token"] and "Other Kid" in out["warnings"][0]
     backend.identifier = "PHONE"
@@ -465,11 +465,11 @@ async def test_duplicate_phone_blocks_phone_institutes_and_warns_others(backend)
 
 async def test_custom_fields_by_label_with_choice_validation(backend):
     backend.cf_values = {"cf-batch": "Morning"}
-    bad = await edit({"action": "preview", "user_id": "u-sarthak", "custom_fields": {"Batch Pref": "Night"}})
+    bad = await edit({"action": "preview", "learner_id": "u-sarthak", "custom_fields": {"Batch Pref": "Night"}})
     assert "Morning, Evening" in bad["problems"][0]
-    same = await edit({"action": "preview", "user_id": "u-sarthak", "custom_fields": {"batch pref": "morning"}})
+    same = await edit({"action": "preview", "learner_id": "u-sarthak", "custom_fields": {"batch pref": "morning"}})
     assert same["error"] == "no_changes"
-    args = {"user_id": "u-sarthak", "custom_fields": {"batch pref": "evening"}}
+    args = {"learner_id": "u-sarthak", "custom_fields": {"batch pref": "evening"}}
     token = (await edit({"action": "preview", **args}))["confirm_token"]
     await edit({"action": "apply", **args, "confirm_token": token})
     body = _profile_calls(backend)[0]["body"]
@@ -484,7 +484,7 @@ def _wf(name, event_id=None, event="LEARNER_BATCH_ENROLLMENT", status="ACTIVE"):
 
 
 async def test_preview_asks_about_both_emails_before_anything_runs(backend):
-    out = await enroll({"action": "preview", "learners": [{"user_id": "u-sarthak"}, NEW_ROW],
+    out = await enroll({"action": "preview", "learners": [{"learner_id": "u-sarthak"}, NEW_ROW],
                         "courses": [{"course_id": "course-1"}]}, answered=False)
     assert out["error"] == "ask_admin"
     assert [q["option"] for q in out["questions"]] == ["send_welcome_email", "send_credentials",
@@ -493,7 +493,7 @@ async def test_preview_asks_about_both_emails_before_anything_runs(backend):
 
 
 async def test_credentials_question_only_when_new_accounts_are_created(backend):
-    out = await enroll({"action": "preview", "learners": [{"user_id": "u-sarthak"}],
+    out = await enroll({"action": "preview", "learners": [{"learner_id": "u-sarthak"}],
                         "courses": [{"course_id": "course-1"}],
                         "options": {"send_welcome_email": "yes", "credentials_file": False}},
                        answered=False)
@@ -518,7 +518,7 @@ async def test_switches_off_in_course_settings_are_not_asked_and_cannot_be_force
 async def test_preview_names_the_automations_that_email_anyway(backend):
     backend.workflows = [_wf("Global welcome"), _wf("Bio onboarding", event_id="ps-1"),
                          _wf("Paused one", status="INACTIVE"), _wf("Fee reminder", event="PAYMENT_DUE")]
-    out = await enroll({"action": "preview", "learners": [{"user_id": "u-sarthak"}],
+    out = await enroll({"action": "preview", "learners": [{"learner_id": "u-sarthak"}],
                         "courses": [{"course_id": "course-1"}, {"course_id": "course-2", "invite_id": "inv-2"}]})
     runs = {r["course"]: r["automations"] for r in out["emails"]["automations_that_run_anyway"]}
     # A batch's own enrolment automation replaces the institute-wide one for that batch.
@@ -546,7 +546,7 @@ async def test_credentials_file_goes_into_a_link_and_never_into_the_result(backe
                 "dry-run-asha@x.com": {"username": "asha@x.com", "password": "Pw-asha"}}
     monkeypatch.setattr(ld, "login_credentials", _logins)
 
-    args = {"learners": [{"user_id": "u-sarthak"}, NEW_ROW],
+    args = {"learners": [{"learner_id": "u-sarthak"}, NEW_ROW],
             "courses": [{"course_id": "course-1"}, {"course_id": "course-2", "invite_id": "inv-2"}],
             "options": {"credentials_file": True}}
     preview = await enroll({"action": "preview", **args})
@@ -580,3 +580,83 @@ async def test_no_file_when_nobody_was_enrolled(backend):
     out = await _credentials_file(ctx(), {"results": [{"user_id": "u-sarthak", "status": "SKIPPED"}]},
                                   {"user_ids": ["u-sarthak"]}, {"courses": [], "learners": {}})
     assert out["status"] == "not_created"
+
+
+# ── regression: the tool runner overwrites a top-level user_id with the CALLER ──
+async def test_get_and_edit_target_the_learner_not_the_connected_admin(backend):
+    """Through the real runner (execute_tool), which forces args['user_id'] = the caller. The admin is
+    also a learner of the institute — exactly the live report: every lookup came back as the admin."""
+    from app.services.assistant_tool_registry import execute_tool
+    backend.learners["admin-1"] = {**SARTHAK, "user_id": "admin-1", "full_name": "ManshuAdmin",
+                                   "email": "admin@x.com", "mobile_number": "919682419977"}
+    setting = {"enabled_tools": ["learners", "learner_profile_edits"], "role_overrides": {}}
+    got = json.loads(await execute_tool("learners", {"action": "get", "learner_id": "u-sarthak"}, ctx(), setting))
+    assert got["learner"]["learner_id"] == "u-sarthak" and got["learner"]["full_name"] == "Sarthak Rao"
+    prev = json.loads(await execute_tool("learner_edit", {"action": "preview", "learner_id": "u-sarthak",
+                                                          "changes": {"mobile_number": "+91 97777 00000"}},
+                                         ctx(), setting))
+    assert prev["learner"]["learner_id"] == "u-sarthak"
+    assert prev["changes"][0]["from"] == "+91 98765 43210"
+    # A model that still sends user_id gets a clear refusal, never the admin's record.
+    old = json.loads(await execute_tool("learners", {"action": "get", "user_id": "u-sarthak"}, ctx(), setting))
+    assert old["error"] == "unknown_learner"
+
+
+def test_no_mcp_tool_takes_a_top_level_user_id_or_institute_id():
+    """execute_tool overwrites both with the pinned principal, so a tool that reads them as a TARGET silently
+    acts on the caller. Targets must use other names (learner_id, target_user_id …)."""
+    from app.mcp.constants import MCP_EXPOSED_TOOLS
+    for name in MCP_EXPOSED_TOOLS:
+        props = ((ASSISTANT_TOOLS[name].schema.get("function") or {}).get("parameters") or {}).get("properties") or {}
+        assert not {"user_id", "institute_id"} & set(props), name
+
+
+# ── enrolment: passwords, sample values, what is sent ────────────────────
+async def test_learners_without_a_password_get_one_after_enrolling(backend, monkeypatch):
+    """auth-service reuses an existing Vacademy account (website form, OTP sign-up) as is — with no password."""
+    import app.services.file_exports as fe
+    from datetime import datetime, timedelta, timezone
+    saved = {}
+
+    def _create(db, **kw):
+        saved.update(kw)
+        return fe.ExportHandle(export_id="x", url="https://ai/x/k", kind=kw["kind"], label="learner logins",
+                               file_name=kw["file_name"], size_bytes=1,
+                               expires_at=datetime.now(timezone.utc) + timedelta(minutes=30), max_downloads=3)
+    monkeypatch.setattr(fe, "create_export", _create)
+
+    async def _logins(c, ids):
+        return {"u-sarthak": {"username": "sarthak", "password": "Existing-1"},
+                "dry-run-asha@x.com": {"username": "asha@x.com", "password": None}}
+    monkeypatch.setattr(ld, "login_credentials", _logins)
+
+    args = {"learners": [{"learner_id": "u-sarthak"}, NEW_ROW], "courses": [{"course_id": "course-1"}],
+            "options": {"credentials_file": True}}
+    token = (await enroll({"action": "preview", **args}))["confirm_token"]
+    done = await enroll({"action": "enroll", **args, "confirm_token": token})
+
+    sets = [c for c in backend.calls if c["path"].endswith("/update-password")]
+    assert len(sets) == 1 and sets[0]["body"]["user_id"] == "dry-run-asha@x.com"   # the one with none
+    new_pw = sets[0]["body"]["password"]
+    assert len(new_pw) == 10 and new_pw not in json.dumps(done)                      # never in the chat
+    assert "1 learner(s)" in done["passwords_set"]
+    assert new_pw in saved["content"] and "Existing-1" in saved["content"]           # both in the file
+    assert "not available" not in saved["content"]
+
+
+async def test_template_sample_values_are_refused(backend):
+    out = await enroll({"action": "preview", "courses": [{"course_id": "course-1"}],
+                        "learners": [{"full_name": "Asha", "email": "asha@x.com", "mobile_number": "+91 9876543210"},
+                                     {"full_name": "John Doe", "email": "student@example.com"}]})
+    text = " ".join(out["problems"])
+    assert "learner 1: mobile_number is the template's sample value" in text
+    assert "learner 2: email is the template's sample value" in text
+    assert not backend.assign_calls()
+
+
+async def test_preview_shows_exactly_what_is_sent_for_new_learners(backend):
+    out = await enroll({"action": "preview", "courses": [{"course_id": "course-1"}],
+                        "learners": [{"full_name": "Asha Verma", "email": "asha@x.com"}]})
+    assert out["learners"]["new_learner_details"] == [{"full_name": "Asha Verma", "email": "asha@x.com"}]
+    assert "keeps its own details" in out["accounts_note"]
+    assert "mobile_number" not in backend.assign_calls()[0]["body"]["new_users"][0]

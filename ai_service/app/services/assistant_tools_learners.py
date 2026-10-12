@@ -63,7 +63,7 @@ LEARNERS_SCHEMA: Dict[str, Any] = {
             "`action`:\n"
             "- find (query): learners whose name, email, phone or username matches, with their courses. When "
             "several match, list them (name, email, phone, courses) and ask the admin which one — never guess.\n"
-            "- get (user_id): one learner's full profile and enrolments — the fields learner_edit can change.\n"
+            "- get (learner_id): one learner's full profile and enrolments — the fields learner_edit can change.\n"
             "- enroll_options (course_ids: [..], max 10): each course's batches and the invites a learner can be "
             "enrolled through (name, price / payment type, default or not). Ask the admin which invite to use "
             "when a course has more than one. Batches sold to organisations are marked enrollable=false (enrol "
@@ -78,7 +78,8 @@ LEARNERS_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(LEARNERS_ACTIONS)},
                 "query": {"type": "string", "description": "find: name, email, phone or username (part is fine)."},
-                "user_id": {"type": "string", "description": "get: the learner's user_id (from find)."},
+                # NOT `user_id`: the tool runner overwrites a top-level user_id with the CALLER's id.
+                "learner_id": {"type": "string", "description": "get: the learner's learner_id (from find)."},
                 "course_ids": {"type": "array", "items": {"type": "string"},
                                "description": "enroll_options: course ids from courses(action='list')."},
             },
@@ -93,7 +94,7 @@ def _err(code: str, **extra: Any) -> Dict[str, Any]:
 
 
 def _brief(p: Dict[str, Any], enrolments: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return {"user_id": p["user_id"], "full_name": p.get("full_name"), "email": p.get("email"),
+    return {"learner_id": p["user_id"], "full_name": p.get("full_name"), "email": p.get("email"),
             "mobile_number": p.get("mobile_number"), "username": p.get("username"),
             "courses": [{"course": e["course"], "batch": e["batch"], "status": e["status"]} for e in enrolments[:8]]}
 
@@ -114,11 +115,12 @@ async def _action_find(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
 
 
 async def _action_get(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    profile = ld.learner_profile(ctx, args.get("user_id"))
+    profile = ld.learner_profile(ctx, args.get("learner_id"))
     if not profile:
-        return _err("unknown_learner", message="No learner of this institute has that user_id. Use "
+        return _err("unknown_learner", message="No learner of this institute has that learner_id. Use "
                                                "learners(action='find').")
-    return {"learner": profile, "enrolments": ld.enrolments(ctx, [profile["user_id"]]).get(profile["user_id"], []),
+    learner = {"learner_id": profile["user_id"], **{k: v for k, v in profile.items() if k != "user_id"}}
+    return {"learner": learner, "enrolments": ld.enrolments(ctx, [profile["user_id"]]).get(profile["user_id"], []),
             "custom_fields_available": [{"field_id": f["field_id"], "label": f["label"], "type": f["type"],
                                          **({"options": f["options"]} if f.get("options") else {})}
                                         for f in await ld.custom_field_catalogue(ctx)],

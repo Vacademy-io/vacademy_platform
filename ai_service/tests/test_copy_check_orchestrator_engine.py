@@ -109,6 +109,7 @@ def env(monkeypatch):
         return layout_map
 
     async def fake_locate(*a, **k):
+        state["locate_calls"] = state.get("locate_calls", 0) + 1
         return {}
 
     async def fake_render_upload(pdf_url, layout_map, verdicts, attempt_id):
@@ -407,3 +408,15 @@ def test_charge_plan_rules():
     assert api["rate_snapshot"] is None and api["tool_params"] == {"num_pages": 2}
     dash = plan({"rate_snapshot": dict(SNAPSHOT, tool_key="copy_check_evaluation")}, typed=False, num_questions=5)
     assert dash["rate_snapshot"]["tool_key"] == "copy_check_evaluation"
+
+
+def test_answer_location_runs_by_default(env):
+    _run(_payload())
+    assert env.get("locate_calls") == 1
+
+
+def test_skip_answer_location_grades_against_the_whole_copy(env):
+    # Assignment AI evaluation: one question whose answer is the whole copy.
+    _run(_payload(skip_answer_location=True))
+    assert env.get("locate_calls") is None
+    assert env["graded"] == ["q1", "q2", "q3"]

@@ -69,6 +69,13 @@ const PDF_VARIABLES = [
     '{{course_fees}}', '{{total_fees}}', '{{previous_paid}}', '{{fees_paid_now}}',
     '{{total_fees_due}}', '{{total_amount_paid}}',
     '{{next_installment_amount}}', '{{next_installment_date}}', '{{amount_in_words}}',
+    // Monthly fee invoices: the month billed (from the due date), who the invoice is addressed
+    // to when the learner is a child, and the institute's email for the contact block.
+    '{{billing_month}}', '{{billing_year}}', '{{billing_period}}',
+    '{{parent_name}}', '{{year_group}}', '{{institute_email}}',
+    // One row per class (Session N | Date | Subject | Day | Fee) from line items written as
+    // "date | subject". Goes inside a 5-column <table><tbody>, like {{line_items}}.
+    '{{session_rows}}',
 ];
 
 const EMAIL_VARIABLES = [

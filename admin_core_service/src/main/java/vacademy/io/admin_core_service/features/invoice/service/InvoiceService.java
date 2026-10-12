@@ -6292,7 +6292,8 @@ public class InvoiceService {
         // including the seed frame, where the admin has edited nothing. invoice_number is driven
         // by invoiceData (collision-resolved above), notes are folded in escaped. Mirrors the
         // renderOverrides createAdminInvoices builds.
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> renderOverrides = new HashMap<>(userOverrides);
         for (String key : EDITABLE_OVERRIDE_KEYS) {
             if (!renderOverrides.containsKey(key) && defaults.containsKey(key)) {
@@ -6303,7 +6304,6 @@ public class InvoiceService {
         if (StringUtils.hasText(effectiveNotes)) renderOverrides.put("notes", effectiveNotes);
         invoiceData.setOverrides(renderOverrides);
 
-        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
         String html = replaceTemplatePlaceholders(templateHtml, invoiceData);
         List<AdminInvoicePreviewResponseDTO.PlaceholderValue> resolved =
                 computeResolvedValues(invoiceData, templateHtml, invoiceSettings);
@@ -6323,7 +6323,7 @@ public class InvoiceService {
         java.util.regex.Matcher m = PLACEHOLDER_PATTERN.matcher(templateHtml != null ? templateHtml : "");
         while (m.find()) present.add(m.group(1));
 
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> overrides = invoiceData.getOverrides() != null
                 ? invoiceData.getOverrides() : Collections.emptyMap();
 
@@ -6349,7 +6349,8 @@ public class InvoiceService {
 
     /** Auto-derived (pre-override) value for each editable/derived text placeholder. */
     @SuppressWarnings("unchecked")
-    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings) {
+    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings,
+            String templateHtml) {
         Map<String, String> d = new HashMap<>();
         UserDTO user = invoiceData.getUser();
         Institute institute = invoiceData.getInstitute();
@@ -6393,7 +6394,10 @@ public class InvoiceService {
         d.put("billing_month", billingMonth);
         d.put("billing_year", billingYear);
         d.put("billing_period", (billingMonth + " " + billingYear).trim());
-        LearnerProfileFields lpf = resolveLearnerProfileFields(invoiceData);  // review step: always shown
+        // Only templates that print them pay for the custom-field read; the rest get blanks.
+        LearnerProfileFields lpf = usesLearnerProfileFields(templateHtml)
+                ? resolveLearnerProfileFields(invoiceData)
+                : LearnerProfileFields.EMPTY;
         d.put("parent_name", lpf.parentName());
         d.put("year_group", lpf.yearGroup());
 

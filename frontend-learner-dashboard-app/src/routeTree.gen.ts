@@ -83,6 +83,7 @@ import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/l
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
 import { Route as GoUsernameIndexRouteImport } from './routes/go/$username/index'
+import { Route as SubOrgLearnersUsernameIndexRouteImport } from './routes/sub-org-learners/$username/index'
 import { Route as EngagementHistoryIndexRouteImport } from './routes/engagement/history/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
@@ -510,6 +511,11 @@ const GoUsernameIndexRoute = GoUsernameIndexRouteImport.update({
   path: '/go/$username/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubOrgLearnersUsernameIndexRoute = SubOrgLearnersUsernameIndexRouteImport.update({
+  id: '/sub-org-learners/$username/',
+  path: '/sub-org-learners/$username/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EngagementHistoryIndexRoute = EngagementHistoryIndexRouteImport.update({
   id: '/engagement/history/',
   path: '/engagement/history/',
@@ -817,6 +823,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
   '/go/$username': typeof GoUsernameIndexRoute
+  '/sub-org-learners/$username': typeof SubOrgLearnersUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -933,6 +940,7 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
   '/go/$username': typeof GoUsernameIndexRoute
+  '/sub-org-learners/$username': typeof SubOrgLearnersUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1052,6 +1060,7 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/engagement/history/': typeof EngagementHistoryIndexRoute
   '/go/$username/': typeof GoUsernameIndexRoute
+  '/sub-org-learners/$username/': typeof SubOrgLearnersUsernameIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1172,6 +1181,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/engagement/history'
     | '/go/$username'
+    | '/sub-org-learners/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1288,6 +1298,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/engagement/history'
     | '/go/$username'
+    | '/sub-org-learners/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1406,6 +1417,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/engagement/history/'
     | '/go/$username/'
+    | '/sub-org-learners/$username/'
     | '/homework/list/'
     | '/homework/reports/'
     | '/leaderboard/$packageSessionId/'
@@ -1525,6 +1537,7 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   EngagementHistoryIndexRoute: typeof EngagementHistoryIndexRoute
   GoUsernameIndexRoute: typeof GoUsernameIndexRoute
+  SubOrgLearnersUsernameIndexRoute: typeof SubOrgLearnersUsernameIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
@@ -2096,6 +2109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GoUsernameIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sub-org-learners/$username/': {
+      id: '/sub-org-learners/$username/'
+      path: '/sub-org-learners/$username'
+      fullPath: '/sub-org-learners/$username'
+      preLoaderRoute: typeof SubOrgLearnersUsernameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/engagement/history/': {
       id: '/engagement/history/'
       path: '/engagement/history'
@@ -2493,6 +2513,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   EngagementHistoryIndexRoute: EngagementHistoryIndexRoute,
   GoUsernameIndexRoute: GoUsernameIndexRoute,
+  SubOrgLearnersUsernameIndexRoute: SubOrgLearnersUsernameIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,

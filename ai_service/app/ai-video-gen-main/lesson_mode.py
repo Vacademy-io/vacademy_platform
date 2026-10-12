@@ -47,6 +47,8 @@ _DENSE_TYPES = frozenset({
 
 TEACHER_ENTRY_PREFIX = "snippet-teacher-"
 TEACHER_Z = 500  # above shots (z≈10), below the watermark (1000) and branding
+# Bottom share of the shot canvas reserved for burned-in captions in lessons.
+CAPTION_STRIP_FRAC = 0.24
 # Layouts whose board is a smaller canvas: the shot's timeline box is resized
 # to the board area so its #shot-root lays out (and clips) inside it. Corner
 # keeps the full frame — the teacher only covers a corner of it.
@@ -336,6 +338,10 @@ def shot_prompt_block(plan: Dict[str, Any], layout: Optional[str], width: int, h
         "circle, arrow).",
         "- Maths / science: typeset formulas with KaTeX; show a derivation as aligned lines, one new line "
         "per narrated step; label diagram parts; units on every quantity.",
+        "- Powers are SUPERSCRIPTS: write `a^2` in KaTeX or `a<sup>2</sup>`. NEVER use Unicode subscript "
+        "digits (₀₁₂₃…) for a power — `c₂` reads as \"c sub two\", not \"c squared\".",
+        f"- CAPTION STRIP: burned-in captions appear over the bottom {int(CAPTION_STRIP_FRAC * 100)}% of the "
+        "frame — keep that strip free of text, labels and diagram parts (background only).",
         "- Every formula, number and label must be correct and match the narration exactly.",
         "- Text sizes for a learner: headings ≥ 52px, body ≥ 34px, formulas ≥ 44px "
         "(on 1920×1080; scale proportionally on other canvases).",
@@ -368,6 +374,90 @@ def shot_prompt_block(plan: Dict[str, Any], layout: Optional[str], width: int, h
                 "one key line / formula on the board half."
             )
     return "\n".join(lines) + "\n"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Board correctness: deterministic notation lint + the maths/facts check prompt
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SUBSCRIPT_DIGITS = re.compile(r"[\u2080-\u2089]")
+_POWER_WORDS = re.compile(r"\b(squared|cubed|to the power|power of|exponent)\b", re.IGNORECASE)
+_SCRIPT_BLOCK = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_TAG = re.compile(r"<[^>]+>")
+_KATEX_CALL = re.compile(r"katex\.render\(\s*([\"'`])((?:\\.|(?!\1).)*)\1", re.DOTALL)
+_TEX_DELIM = re.compile(r"\\\((.+?)\\\)|\$\$(.+?)\$\$", re.DOTALL)
+
+
+def board_text(html_str: str) -> str:
+    """What a learner can read on the board: visible text plus KaTeX sources
+    (formulas often live only inside katex.render(...) calls)."""
+    src = html_str or ""
+    tex = [m.group(2) for m in _KATEX_CALL.finditer(src)]
+    visible = _SCRIPT_BLOCK.sub(" ", src)
+    tex += [a or b for a, b in _TEX_DELIM.findall(visible)]
+    visible = _html.unescape(_TAG.sub(" ", visible))
+    out = re.sub(r"\s+", " ", visible).strip()
+    if tex:
+        out += " || FORMULAS: " + " ; ".join(t.strip() for t in tex if t.strip())
+    return out[:4000]
+
+
+def notation_issues(html_str: str, narration: str) -> List[str]:
+    """Definite notation mistakes we can see without a model."""
+    issues: List[str] = []
+    text = board_text(html_str)
+    subs = sorted(set(_SUBSCRIPT_DIGITS.findall(text)))
+    if subs and _POWER_WORDS.search(narration or ""):
+        issues.append(
+            "The board writes powers with Unicode SUBSCRIPT digits (" + "".join(subs) + ", e.g. \"c₂\") while "
+            "the narration says squared/cubed — that reads as a subscript. Write powers as superscripts "
+            "(KaTeX `c^2` or `c<sup>2</sup>`)."
+        )
+    return issues
+
+
+FACT_CHECK_SYSTEM = (
+    "You check one section of a taught lesson for DEFINITE errors before it is shown to learners. "
+    "You get the narration (what the teacher says) and the text/formulas visible on the board. "
+    "Report ONLY definite mistakes: wrong arithmetic, a wrong formula or law, wrong notation for what is "
+    "said (e.g. a subscript where the teacher says 'squared'), numbers/units that contradict the "
+    "narration, or a false fact. Ignore style, wording, layout, missing detail and anything you are "
+    "unsure about. Respond with ONE JSON object: "
+    '{"errors": [{"board": "<the wrong text as shown>", "problem": "<why it is wrong>", "fix": "<correct text>"}]} '
+    '— use {"errors": []} when the section is correct.'
+)
+
+
+def fact_check_user_prompt(*, narration: str, board: str, subject: Optional[str]) -> str:
+    return (
+        (f"SUBJECT: {subject}\n" if subject else "")
+        + f"NARRATION:\n{(narration or '').strip()[:2500]}\n\nBOARD:\n{board}"
+    )
+
+
+def parse_fact_check(data: Any) -> List[str]:
+    """Normalise the checker's JSON into human-readable issue lines."""
+    errs = (data or {}).get("errors") if isinstance(data, dict) else None
+    out: List[str] = []
+    for e in errs or []:
+        if not isinstance(e, dict):
+            continue
+        board = str(e.get("board") or "").strip()[:160]
+        problem = str(e.get("problem") or "").strip()[:240]
+        fix = str(e.get("fix") or "").strip()[:160]
+        if board or problem:
+            out.append(f'"{board}" — {problem}' + (f' → write: "{fix}"' if fix else ""))
+    return out[:6]
+
+
+def correction_prompt(issues: List[str]) -> str:
+    return (
+        "The board in your previous shot HTML has DEFINITE errors a learner would copy down:\n"
+        + "\n".join(f"  - {i}" for i in issues)
+        + "\n\nFix exactly these errors (correct text, numbers and notation; powers as superscripts via "
+        "KaTeX). Keep the layout, shot_pack tokens, animation_strategy and narration sync unchanged. "
+        "Return only the JSON shot object."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -553,6 +643,34 @@ def build_teacher_entries(
             },
         })
     return out
+
+
+def keep_out_zones(
+    plan: Optional[Dict[str, Any]],
+    layout: Optional[str],
+    width: int,
+    height: int,
+    *,
+    canvas_w: int,
+    canvas_h: int,
+) -> List[Dict[str, Any]]:
+    """Rects (shot-canvas coords) a lesson shot must leave empty, for the
+    bbox lint: the teacher's corner / bubble and the caption strip."""
+    if not plan:
+        return []
+    zones: List[Dict[str, Any]] = [{
+        "l": 0, "t": int(canvas_h * (1 - CAPTION_STRIP_FRAC)), "r": canvas_w, "b": canvas_h,
+        "name": "caption_strip",
+    }]
+    if has_teacher(plan) and layout in OVERLAY_LAYOUTS:
+        box = teacher_box(layout, width, height)
+        if box:
+            m = 16
+            zones.append({
+                "l": max(0, box["x"] - m), "t": max(0, box["y"] - m),
+                "r": width, "b": height, "name": "teacher",
+            })
+    return zones
 
 
 def caption_box(layout: str, width: int, height: int) -> Optional[Dict[str, int]]:

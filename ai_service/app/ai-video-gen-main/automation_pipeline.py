@@ -12274,7 +12274,36 @@ class VideoGenerationPipeline:
         size. The directive is intentionally concrete (demote tier / break /
         max-width) so the LLM has 3 acknowledged escapes rather than freewheeling.
         """
-        lines = [
+        zoned = [v for v in violations if v.get("zone")]
+        zl: List[str] = []
+        if zoned:
+            names = sorted({str(v.get("zone")) for v in zoned})
+            zl = [
+                "Your previous shot HTML placed board content inside a KEEP-OUT ZONE "
+                f"({', '.join(names)}). In a lesson the teacher video is composited over the "
+                "teacher area and burned-in captions over the caption strip, so anything there is "
+                "hidden or collides. Measured by a headless-Chromium bounding-box walk:",
+            ]
+            for v in zoned[:6]:
+                r = v.get("rect") or {}
+                txt = str(v.get("text") or "")
+                zl.append(
+                    f"  - [{v.get('zone')}] {v.get('selector') or '?'}"
+                    + (f' "{txt[:50]}"' if txt else "")
+                    + f" rect=(l={r.get('l', 0):.0f}, t={r.get('t', 0):.0f}, r={r.get('r', 0):.0f}, b={r.get('b', 0):.0f})"
+                )
+            zl += [
+                "Move or resize those elements so NOTHING visible overlaps the zones: shift content up/left, "
+                "reduce sizes, or reflow into fewer columns. Keep the zone area plain background.",
+                "",
+            ]
+            if len(zoned) == len(violations):
+                return "\n".join(zl + [
+                    "Keep the same shot_pack tokens, the same animation_strategy, and the same narration sync. "
+                    "Return only the JSON shot object.",
+                ])
+            violations = [v for v in violations if not v.get("zone")]
+        lines = zl + [
             "Your previous shot HTML had text/media that OVERFLOWED the canvas. This is a "
             "deterministic check from a headless-Chromium bounding-box walk — not a vision-model "
             "interpretation. Every element listed below had a `getBoundingClientRect()` that crossed "
@@ -12562,6 +12591,116 @@ class VideoGenerationPipeline:
             "_skill_audio_events": [],
         }
 
+    def _lesson_check_shot(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Lesson board correctness: deterministic notation lint + one model
+        check of formulas / numbers / facts against the narration; on a
+        definite error, ONE corrective regen. Returns a record (with
+        `regen_html` when the fix ships) or None outside lesson mode.
+        Never raises — the shot ships as-is on any failure."""
+        plan = getattr(self, "_lesson_plan", None)
+        if not plan or not (html or "").strip():
+            return None
+        import lesson_mode as _lm_f
+        narration = str(shot.get("narration_text") or shot.get("narration_excerpt") or "")
+        record: Dict[str, Any] = {"issues": [], "shipped": "original", "regen_html": None}
+        issues = _lm_f.notation_issues(html, narration)
+        board = _lm_f.board_text(html)
+        if board and narration:
+            _phase_tok = _llm_phase.set("lesson_check")
+            _stage_tok = _llm_stage.set(f"lesson_fact_check_shot_{shot_idx}")
+            try:
+                raw_c, usage_c = self.script_client.chat(
+                    messages=[
+                        {"role": "system", "content": _lm_f.FACT_CHECK_SYSTEM},
+                        {"role": "user", "content": _lm_f.fact_check_user_prompt(
+                            narration=narration, board=board, subject=plan.get("subject"))},
+                    ],
+                    model=(self._resolve_stage_model("vision_review")
+                           or self._resolve_stage_model("narration_writer")),
+                    temperature=0.0,
+                    max_tokens=3000,
+                    response_format={"type": "json_object"},
+                )
+                for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    usage[_k] = usage.get(_k, 0) + (usage_c or {}).get(_k, 0)
+                issues += _lm_f.parse_fact_check(_extract_json_blob(raw_c or "{}"))
+            except Exception as exc:
+                record["check_error"] = str(exc)[:200]
+                print(f"   ⚠️ Shot {shot_idx + 1} lesson fact-check skipped ({str(exc)[:80]})")
+            finally:
+                _llm_phase.reset(_phase_tok)
+                _llm_stage.reset(_stage_tok)
+        record["issues"] = issues
+        if not issues:
+            return record
+        print(f"   🧮 Shot {shot_idx + 1} lesson check FOUND {len(issues)} error(s): {issues[0][:120]}")
+        _phase_tok = _llm_phase.set("regen")
+        _stage_tok = _llm_stage.set(f"lesson_fact_regen_shot_{shot_idx}")
+        try:
+            raw2, usage2 = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                    {"role": "user", "content": _lm_f.correction_prompt(issues)},
+                ],
+                temperature=0.3,
+                max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+            )
+            for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                usage[_k] = usage.get(_k, 0) + (usage2 or {}).get(_k, 0)
+            html2 = ((_extract_json_blob(raw2) or {}).get("html") or "").strip()
+        except Exception as exc:
+            record["regen_error"] = str(exc)[:200]
+            print(f"   ⚠️ Shot {shot_idx + 1} lesson fix regen failed ({str(exc)[:80]}) — shipping original")
+            return record
+        finally:
+            _llm_phase.reset(_phase_tok)
+            _llm_stage.reset(_stage_tok)
+        if not html2:
+            record["regen_error"] = "regen returned empty html"
+            return record
+        candidate = self._sanitize_html_content(html2)
+        candidate = self._clamp_entry_animations(candidate, float(end_time - start_time))
+        if _lm_f.notation_issues(candidate, narration):
+            record["regen_error"] = "regen still has notation errors"
+            print(f"   ⏪ Shot {shot_idx + 1} lesson fix still wrong — shipping original")
+            return record
+        record["regen_html"] = candidate
+        record["shipped"] = "regen"
+        print(f"   ✅ Shot {shot_idx + 1} lesson fix shipped")
+        return record
+
+    def _lesson_keep_out(self, shot: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Keep-out rects (shot canvas coords) for a lesson shot: the teacher's
+        corner / bubble and the caption strip. [] outside lesson mode."""
+        plan = getattr(self, "_lesson_plan", None)
+        if not plan or not isinstance(shot, dict):
+            return []
+        try:
+            import lesson_mode as _lm_k
+        except Exception:
+            return []
+        w, h = self._lesson_canvas(shot)
+        return _lm_k.keep_out_zones(
+            plan, shot.get("teacher_layout"),
+            int(getattr(self, "video_width", 1920) or 1920),
+            int(getattr(self, "video_height", 1080) or 1080),
+            canvas_w=w, canvas_h=h,
+        )
+
     def _lesson_canvas(self, shot: Optional[Dict[str, Any]]) -> Tuple[int, int]:
         """Canvas a shot is laid out on: the board area for lesson side /
         presenter sections (lesson_mode.fit_shots_to_board), else the frame.
@@ -12605,11 +12744,14 @@ class VideoGenerationPipeline:
 
         Never raises — every failure path returns None (skip) so the shot ships.
         """
-        if not self._tier_config.get("shot_bbox_check"):
+        # Lessons run the lint on every tier: it is what keeps the teacher's
+        # corner and the caption strip clear (keep-out zones below).
+        _lesson_zones = self._lesson_keep_out(shot)
+        if not (self._tier_config.get("shot_bbox_check") or _lesson_zones):
             return None
 
         shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
-        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES:
+        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES and not _lesson_zones:
             return None
 
         duration_s = float(end_time - start_time)
@@ -12663,6 +12805,7 @@ class VideoGenerationPipeline:
                 height=canvas_h,
                 timestamps=timestamps,
                 background=bg,
+                keep_out=_lesson_zones or None,
             )
         except ScreenshotClientError as exc:
             print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — render worker /bbox-check failed: {exc}")
@@ -12674,6 +12817,7 @@ class VideoGenerationPipeline:
                 {
                     "t": v.t, "selector": v.selector, "rect": dict(v.rect),
                     "text": v.text, "is_media": v.is_media,
+                    "zone": getattr(v, "zone", ""),
                 }
                 for v in violations
             ],
@@ -12760,6 +12904,7 @@ class VideoGenerationPipeline:
                 height=canvas_h,
                 timestamps=timestamps,
                 background=bg,
+                keep_out=_lesson_zones or None,
             )
         except ScreenshotClientError as exc:
             print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen re-check failed ({exc}) — shipping original")
@@ -12770,6 +12915,7 @@ class VideoGenerationPipeline:
             {
                 "t": v.t, "selector": v.selector, "rect": dict(v.rect),
                 "text": v.text, "is_media": v.is_media,
+                "zone": getattr(v, "zone", ""),
             }
             for v in violations2
         ]
@@ -21746,6 +21892,22 @@ class VideoGenerationPipeline:
             )
             if _brand_asset_record and _brand_asset_record.get("regen_html"):
                 html = _brand_asset_record["regen_html"]
+
+            # ── Lesson board correctness (lesson mode only) ──
+            # Wrong maths on a teaching board is the worst defect a lesson can
+            # ship (prod: "c₂ = a₂ + b₂" while the teacher said "c squared").
+            try:
+                _lesson_check_record = self._lesson_check_shot(
+                    html=html, shot=shot, shot_idx=shot_idx,
+                    start_time=start_time, end_time=end_time,
+                    system_prompt=system_prompt, user_prompt=user_prompt,
+                    last_raw_response=raw, usage=usage,
+                )
+            except Exception as _lc_err:
+                _lesson_check_record = None
+                print(f"   ⚠️ Shot {shot_idx + 1} lesson check errored ({_lc_err}) — shipping as-is")
+            if _lesson_check_record and _lesson_check_record.get("regen_html"):
+                html = _lesson_check_record["regen_html"]
 
             # ── Vision reviewer — sees the rendered frame ──
             # Catches defects the regex validator can't (legibility, face

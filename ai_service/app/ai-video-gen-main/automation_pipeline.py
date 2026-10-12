@@ -12702,18 +12702,18 @@ class VideoGenerationPipeline:
         )
 
     def _lesson_canvas(self, shot: Optional[Dict[str, Any]]) -> Tuple[int, int]:
-        """Canvas a shot is laid out on: the board area for lesson side /
-        presenter sections (lesson_mode.fit_shots_to_board), else the frame.
+        """Canvas a shot is laid out on: the lesson board area (above the
+        caption band, beside a teacher panel — lesson_mode.board_area), else
+        the frame.
         QA screenshots use it so they judge the layout the viewer gets."""
         w = int(getattr(self, "video_width", 1920) or 1920)
         h = int(getattr(self, "video_height", 1080) or 1080)
         if getattr(self, "_lesson_plan", None) and isinstance(shot, dict):
             try:
                 import lesson_mode as _lm_c
-                if (shot.get("teacher_layout") in _lm_c.BOARD_RESIZED_LAYOUTS
-                        and _lm_c.has_teacher(self._lesson_plan)):
-                    area = _lm_c.board_area(shot["teacher_layout"], w, h)
-                    return int(area["w"]), int(area["h"])
+                lay = (shot.get("teacher_layout") or "board") if _lm_c.has_teacher(self._lesson_plan) else "board"
+                area = _lm_c.board_area(lay, w, h)
+                return int(area["w"]), int(area["h"])
             except Exception:
                 pass
         return w, h
@@ -12747,11 +12747,12 @@ class VideoGenerationPipeline:
         # Lessons run the lint on every tier: it is what keeps the teacher's
         # corner and the caption strip clear (keep-out zones below).
         _lesson_zones = self._lesson_keep_out(shot)
-        if not (self._tier_config.get("shot_bbox_check") or _lesson_zones):
+        _lesson_on = bool(getattr(self, "_lesson_plan", None))
+        if not (self._tier_config.get("shot_bbox_check") or _lesson_on):
             return None
 
         shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
-        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES and not _lesson_zones:
+        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES and not _lesson_on:
             return None
 
         duration_s = float(end_time - start_time)
@@ -29230,88 +29231,97 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         content_starts_at: float,
         palette: Optional[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Teacher overlay entries for the timeline (one per run of sections
-        sharing a layout). Writes lesson_outputs.json for billing/metadata."""
+        """Lesson overlays for the timeline: the teacher (one entry per run of
+        sections sharing a layout) and the caption band. Also gives every shot
+        its board canvas. Writes lesson_outputs.json for billing/metadata."""
         plan = getattr(self, "_lesson_plan", None)
         if not plan:
             return []
         import lesson_mode as _lm
         import lesson_teacher as _lt
         outputs: Dict[str, Any] = {"teacher": None, "runs": [], "error": None}
-        entries: List[Dict[str, Any]] = []
+        width = int(getattr(self, "video_width", 1920) or 1920)
+        height = int(getattr(self, "video_height", 1080) or 1080)
+        shots = ((getattr(self, "_v3_shot_plan", None) or {}).get("shots") or [])
+        # Timeline ids are shot-{enumerate index}, so key by position.
+        layout_by_shot = {
+            i: ((s.get("teacher_layout") or "board") if _lm.has_teacher(plan) else "board")
+            for i, s in enumerate(shots) if isinstance(s, dict)
+        }
+        teacher_entries: List[Dict[str, Any]] = []
+        runs: List[Dict[str, Any]] = []
+        urls: List[Optional[str]] = []
         try:
-            if not _lm.has_teacher(plan):
-                return []
-            shots = ((getattr(self, "_v3_shot_plan", None) or {}).get("shots") or [])
-            # Timeline ids are shot-{enumerate index}, so key by position.
-            layout_by_shot = {
-                i: (s.get("teacher_layout") or "board")
-                for i, s in enumerate(shots) if isinstance(s, dict)
-            }
-            runs = _lm.teacher_runs(timeline_entries, layout_by_shot)
-            outputs["runs"] = runs
-            if not runs:
-                return []
-            if getattr(self, "_lesson_teacher_thread", None) is None and not self._lesson_teacher_result:
-                # Resume leg / html stage skipped the early start: render now
-                # from the voice-only track (the mix pass keeps it as
-                # narration_unmixed.mp3 once music has been baked in).
-                _voice = run_dir / "narration_unmixed.mp3"
-                if not _voice.exists():
-                    _voice = run_dir / "narration.mp3"
-                self._lesson_teacher_start(run_dir, _voice)
-            _thread = getattr(self, "_lesson_teacher_thread", None)
-            if _thread is not None and _thread.is_alive():
-                self._emit_progress({
-                    "type": "sub_stage", "sub_stage": "lesson_teacher",
-                    "message": "Waiting for the teacher recording...",
-                })
-                _thread.join(timeout=4800)
-            track = self._lesson_teacher_result
-            if not track:
-                outputs["error"] = self._lesson_teacher_error or "teacher render did not finish"
-                return []
-            width = int(getattr(self, "video_width", 1920) or 1920)
-            height = int(getattr(self, "video_height", 1080) or 1080)
-            urls = _lt.build_clips(
-                track, runs,
-                content_starts_at=content_starts_at,
-                width=width, height=height,
-                run_dir=run_dir, run_name=run_dir.name,
-                reuse=track.get("precut"),
-            )
-            entries = _lm.build_teacher_entries(
-                runs, urls, width=width, height=height,
-                teacher=plan.get("teacher"), palette=palette,
-            )
-            # Side / presenter boards are a smaller canvas: size those shots'
-            # boxes to the board area so #shot-root lays out (and clips)
-            # beside the teacher instead of running under the panel.
-            outputs["shots_fit_to_board"] = _lm.fit_shots_to_board(
-                timeline_entries, runs, urls, width=width, height=height,
-            )
-            outputs["teacher"] = {
-                k: track.get(k) for k in (
-                    "provider", "avatar_id", "job_id", "audio_seconds", "video_seconds",
-                    "offset_s", "render_seconds", "vendor_credits", "vendor_usd", "platform_credits",
-                )
-            }
-            outputs["clips_ok"] = sum(1 for u in urls if u)
-            outputs["clips_failed"] = sum(1 for u in urls if not u)
-            print(
-                f"   🧑‍🏫 Teacher on screen: {len(entries)} run(s) "
-                f"({', '.join(r['layout'] for r in runs[:12])}{'…' if len(runs) > 12 else ''})"
-            )
-            return entries
+            if _lm.has_teacher(plan):
+                runs = _lm.teacher_runs(timeline_entries, layout_by_shot)
+                outputs["runs"] = runs
+            if runs:
+                if getattr(self, "_lesson_teacher_thread", None) is None and not self._lesson_teacher_result:
+                    # Resume leg / html stage skipped the early start: render
+                    # now from the voice-only track (the mix pass keeps it as
+                    # narration_unmixed.mp3 once music has been baked in).
+                    _voice = run_dir / "narration_unmixed.mp3"
+                    if not _voice.exists():
+                        _voice = run_dir / "narration.mp3"
+                    self._lesson_teacher_start(run_dir, _voice)
+                _thread = getattr(self, "_lesson_teacher_thread", None)
+                if _thread is not None and _thread.is_alive():
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "lesson_teacher",
+                        "message": "Waiting for the teacher recording...",
+                    })
+                    _thread.join(timeout=4800)
+                track = self._lesson_teacher_result
+                if not track:
+                    outputs["error"] = self._lesson_teacher_error or "teacher render did not finish"
+                else:
+                    urls = _lt.build_clips(
+                        track, runs,
+                        content_starts_at=content_starts_at,
+                        width=width, height=height,
+                        run_dir=run_dir, run_name=run_dir.name,
+                        reuse=track.get("precut"),
+                    )
+                    teacher_entries = _lm.build_teacher_entries(
+                        runs, urls, width=width, height=height,
+                        teacher=plan.get("teacher"), palette=palette,
+                    )
+                    outputs["teacher"] = {
+                        k: track.get(k) for k in (
+                            "provider", "avatar_id", "job_id", "audio_seconds", "video_seconds",
+                            "offset_s", "render_seconds", "vendor_credits", "vendor_usd", "platform_credits",
+                        )
+                    }
+                    outputs["clips_ok"] = sum(1 for u in urls if u)
+                    outputs["clips_failed"] = sum(1 for u in urls if not u)
+                    print(
+                        f"   🧑‍🏫 Teacher on screen: {len(teacher_entries)} run(s) "
+                        f"({', '.join(r['layout'] for r in runs[:12])}{'…' if len(runs) > 12 else ''})"
+                    )
         except Exception as _lt_err:
             outputs["error"] = str(_lt_err)[:500]
-            print(f"   ⚠️ Lesson teacher entries failed — shipping board-only: {_lt_err}")
-            return []
+            print(f"   ⚠️ Lesson teacher failed — board-only: {_lt_err}")
+            teacher_entries, urls = [], [None] * len(runs)
+        band_entries: List[Dict[str, Any]] = []
+        try:
+            # Every shot gets its board canvas (above the caption band, beside
+            # a teacher panel); #shot-root clips to it, so nothing a shot draws
+            # can land under the captions or the panel.
+            effective = _lm.effective_layouts(layout_by_shot, runs, urls, timeline_entries)
+            outputs["shots_fit_to_board"] = _lm.fit_shots_to_board(
+                timeline_entries, effective, width=width, height=height,
+            )
+            band_entries = _lm.build_band_entries(
+                timeline_entries, effective, width=width, height=height, palette=palette,
+            )
+        except Exception as _band_err:
+            print(f"   ⚠️ Lesson caption band failed: {_band_err}")
         finally:
             try:
                 (run_dir / "lesson_outputs.json").write_text(json.dumps(outputs, indent=2, default=str))
             except Exception:
                 pass
+        return teacher_entries + band_entries
 
     def _write_timeline(
         self,

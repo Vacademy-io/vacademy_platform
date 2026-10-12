@@ -224,31 +224,40 @@ def test_teacher_entries_are_overlays_the_coverage_gate_ignores(tmp_path):
     assert cov["missing"] == [] and cov["present"] == 2
 
 
-def test_captions_stay_on_the_board_side_of_the_teacher():
-    # landscape: everything left of the teacher box, for every layout
-    for layout in lm.TEACHER_LAYOUTS:
-        box = lm.teacher_box(layout, 1920, 1080)
+def test_captions_sit_in_the_band_left_of_any_teacher():
+    for layout in lm.TEACHER_LAYOUTS + ("board",):
+        band = lm.caption_band(layout, 1920, 1080)
         cb = lm.caption_box(layout, 1920, 1080)
-        assert cb["x"] == 0 and cb["w"] < box["x"] and "bottom" not in cb
-    # portrait band layouts: captions sit above the band
-    cb = lm.caption_box("side", 1080, 1920)
-    assert cb["w"] == 1080 and cb["bottom"] > lm.teacher_box("side", 1080, 1920)["h"]
-    entries = lm.build_teacher_entries([{"layout": "side", "start": 0, "end": 5}], ["u"], width=1920, height=1080,
-                                       teacher=None)
-    assert entries[0]["entry_meta"]["caption_box"] == lm.caption_box("side", 1920, 1080)
+        assert band["y"] + band["h"] == 1080 and band["y"] < cb["cy"] < 1080
+        box = lm.teacher_box(layout, 1920, 1080)
+        if box:
+            assert cb["x"] + cb["w"] <= box["x"]
+    # portrait panel layouts: the band sits above the teacher band
+    pb = lm.caption_band("side", 1080, 1920)
+    assert pb["y"] + pb["h"] == lm.teacher_box("side", 1080, 1920)["y"]
 
 
-def test_side_and_presenter_shots_get_the_board_as_their_canvas():
+def test_every_lesson_shot_gets_its_board_canvas_above_the_band():
     shots = [dict(_entry(i, t0, t1), htmlStartX=0, htmlStartY=0, htmlEndX=1920, htmlEndY=1080)
              for i, (t0, t1) in enumerate([(0, 9), (9, 20), (20, 31), (31, 40)])]
     runs = [{"layout": "presenter", "start": 0, "end": 9}, {"layout": "side", "start": 9, "end": 20},
             {"layout": "corner", "start": 20, "end": 31}, {"layout": "side", "start": 31, "end": 40}]
-    n = lm.fit_shots_to_board(shots, runs, ["a", "b", "c", None], width=1920, height=1080)
-    assert n == 2
-    assert [s["htmlEndX"] for s in shots] == [1920 - 690, 1440, 1920, 1920]   # corner keeps the frame; failed clip keeps it too
+    eff = lm.effective_layouts({0: "presenter", 1: "side", 2: "corner", 3: "side"}, runs,
+                               ["a", "b", "c", None], shots)
+    assert eff == {0: "presenter", 1: "side", 2: "corner", 3: "board"}   # failed clip → board
+    assert lm.fit_shots_to_board(shots, eff, width=1920, height=1080) == 4
+    band_y = lm.caption_band("board", 1920, 1080)["y"]
+    assert [(s["htmlEndX"], s["htmlEndY"]) for s in shots] == [
+        (1230, band_y), (1440, band_y), (1920, band_y), (1920, band_y)]
+    bands = lm.build_band_entries(shots, eff, width=1920, height=1080)
+    # corner and board share the band's geometry but not the caption box
+    # (corner captions stop short of the teacher), so they stay separate
+    assert [b["htmlEndX"] for b in bands] == [1230, 1440, 1920, 1920]
+    assert bands[2]["entry_meta"]["caption_box"]["w"] < bands[3]["entry_meta"]["caption_box"]["w"]
+    assert all(b["entry_meta"]["kind"] == "lesson_band" and b["z"] < lm.TEACHER_Z for b in bands)
     plan = lm.normalize_lesson_plan(TEACHER)
-    assert "canvas is 1440×1080px" in lm.shot_prompt_block(plan, "side", 1920, 1080)
-    assert "canvas is" not in lm.shot_prompt_block(plan, "corner", 1920, 1080)
+    assert f"canvas is 1440×{band_y}px" in lm.shot_prompt_block(plan, "side", 1920, 1080)
+    assert f"canvas is 1920×{band_y}px" in lm.shot_prompt_block(plan, "corner", 1920, 1080)
 
 
 def test_corner_name_label_is_readable_on_dark_and_light_boards():
@@ -271,12 +280,14 @@ def test_teacher_never_takes_more_than_about_a_third_of_the_frame():
         assert b["w"] * b["h"] / (1920 * 1080) <= max_frac, layout
 
 
-def test_bubble_is_a_round_overlay_on_the_full_board():
+def test_bubble_is_a_round_overlay_on_the_full_width_board():
     b = lm.teacher_box("bubble", 1920, 1080)
     assert b["w"] == b["h"] == 270 and b["x"] + b["w"] < 1920 and b["y"] + b["h"] < 1080
     html = lm.teacher_entry_html(layout="bubble", clip_url="u", width=1920, height=1080,
                                  teacher={"name": "Riya"}, palette=None)
     assert "border-radius:50%" in html and "object-fit:cover" in html and "Riya" in html
-    assert lm.board_area("bubble", 1920, 1080) == {"x": 0, "y": 0, "w": 1920, "h": 1080}
+    assert lm.board_area("bubble", 1920, 1080)["w"] == 1920
     assert "bottom-right corner" in lm.shot_prompt_block(lm.normalize_lesson_plan(TEACHER), "bubble", 1920, 1080)
     assert lm.normalize_lesson_plan({**TEACHER, "layout": "bubble"})["layout"] == "bubble"
+
+

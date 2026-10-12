@@ -671,10 +671,13 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         # times. Advisory only — {} (call failed, copy too small, locator
         # unconvincing) means every call sees the full transcript, as before.
         cancellation.check(job_id, process_id)
-        located = await locate.locate_answers(
-            llm, questions, layout_map, DEFAULT_MODEL,
-            institute_id=institute_id, token_sink=grader,
-        )
+        if req.get("skip_answer_location"):
+            located = {}
+        else:
+            located = await locate.locate_answers(
+                llm, questions, layout_map, DEFAULT_MODEL,
+                institute_id=institute_id, token_sink=grader,
+            )
         # The per-question budget was sized before the page count was known;
         # the page-level steps and the cut checks must not starve the last
         # questions of the paper (a 43-question copy ran dry on question 42).

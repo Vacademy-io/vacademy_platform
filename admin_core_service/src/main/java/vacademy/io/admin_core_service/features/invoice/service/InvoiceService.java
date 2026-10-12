@@ -2717,6 +2717,9 @@ public class InvoiceService {
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
+        // A separate token rather than a change to {{line_items}}, whose 4-cell shape every
+        // existing custom template depends on (see buildLineItemsHtml).
+        filled = filled.replace("{{session_rows}}", buildSessionRowsHtml(invoiceData.getLineItems(), currencySymbol));
 
         // The whole sum, in one conditional block — see buildTotalsRowsHtml.
         filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
@@ -3048,7 +3051,7 @@ public class InvoiceService {
      * re-expanded by a later substitution pass (template substitution is sequential).
      * Null → empty string.
      */
-    private String escapeHtml(String value) {
+    private static String escapeHtml(String value) {
         if (value == null) return "";
         return value
                 .replace("&", "&amp;")
@@ -3097,6 +3100,87 @@ public class InvoiceService {
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
+        }
+        return html.toString();
+    }
+
+    private static final List<DateTimeFormatter> SESSION_DATE_FORMATS = java.util.stream.Stream.of(
+                    "d MMM yyyy", "d MMMM yyyy", "EEE d MMM yyyy", "EEEE d MMMM yyyy",
+                    "yyyy-MM-dd", "d/M/yyyy", "d-M-yyyy", "d.M.yyyy")
+            .map(p -> new java.time.format.DateTimeFormatterBuilder()
+                    .parseCaseInsensitive().appendPattern(p).toFormatter(Locale.ENGLISH))
+            .toList();
+
+    private static final DateTimeFormatter SESSION_DATE_DISPLAY = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
+
+    /** The date an admin typed into a line item, in any of the usual spellings, or null. */
+    static LocalDate parseSessionDate(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String t = text.trim().replace(",", "").replaceAll("\\s+", " ");
+        for (DateTimeFormatter f : SESSION_DATE_FORMATS) {
+            try {
+                return LocalDate.parse(t, f);
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // try the next spelling
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Line items as one row per class: Session N | Date | Subject | Day | Fee.
+     *
+     * <p>A line item carries only a description, so the description is read as
+     * {@code "date | subject"} or {@code "date | subject | day"}. When the first part is a date
+     * the day is worked out from it, so an admin types only the date and the subject. Anything
+     * else is shown as typed: one part becomes the subject, and a first part that is not a date
+     * is shown as the date text. The fee is the line amount.
+     *
+     * <p>The first cell carries {@code session-icon-1..3} in rotation so a template can give each
+     * row an icon from its own CSS; the backend emits no images.
+     */
+    static String buildSessionRowsHtml(List<InvoiceLineItemData> lineItems, String currencySymbol) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return "<tr><td colspan=\"5\">No sessions</td></tr>";
+        }
+        StringBuilder html = new StringBuilder();
+        int n = 0;
+        for (InvoiceLineItemData item : lineItems) {
+            n++;
+            String[] parts = item.getDescription() != null ? item.getDescription().split("\\|", -1) : new String[0];
+            String first = parts.length > 0 ? parts[0].trim() : "";
+            String second = parts.length > 1 ? parts[1].trim() : "";
+            String third = parts.length > 2 ? parts[2].trim() : "";
+            LocalDate date = parseSessionDate(first);
+            String dateText;
+            String subject;
+            String day;
+            if (date != null) {
+                dateText = date.format(SESSION_DATE_DISPLAY);
+                subject = second;
+                day = !third.isEmpty() ? third
+                        : date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH);
+            } else if (parts.length <= 1) {
+                dateText = "";
+                subject = first;
+                day = "";
+            } else {
+                dateText = first;
+                subject = second;
+                day = third;
+            }
+            BigDecimal amount = item.getAmount() != null ? item.getAmount() : item.getUnitPrice();
+            html.append("<tr>")
+                    .append("<td class=\"session-label session-icon-").append((n - 1) % 3 + 1).append("\">")
+                    .append("Session ").append(n).append("</td>")
+                    .append("<td class=\"session-date\">").append(escapeHtml(dateText)).append("</td>")
+                    .append("<td class=\"session-subject\">").append(escapeHtml(subject)).append("</td>")
+                    .append("<td class=\"session-day\">").append(escapeHtml(day)).append("</td>")
+                    .append("<td class=\"session-fee\" style=\"text-align:right\">")
+                    .append(currencySymbol).append(money(amount)).append("</td>")
+                    .append("</tr>");
         }
         return html.toString();
     }

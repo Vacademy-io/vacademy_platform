@@ -73,6 +73,9 @@ const PDF_VARIABLES = [
     // to when the learner is a child, and the institute's email for the contact block.
     '{{billing_month}}', '{{billing_year}}', '{{billing_period}}',
     '{{parent_name}}', '{{year_group}}', '{{institute_email}}',
+    // One row per class (Session N | Date | Subject | Day | Fee) from line items written as
+    // "date | subject". Goes inside a 5-column <table><tbody>, like {{line_items}}.
+    '{{session_rows}}',
 ];
 
 const EMAIL_VARIABLES = [

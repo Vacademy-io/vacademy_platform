@@ -103,3 +103,26 @@ def test_the_walker_reports_content_inside_the_teacher_corner():
     # without zones the same shot is clean (it does not overflow the canvas)
     assert _run(lambda w: w.bbox_check_shot(html=SHOT, width=1920, height=842, timestamps=[0.5],
                                             background="#1F3B2D")) == []
+
+
+SQUEEZED = (
+    '<div id="shot-root" style="position:absolute;inset:0;width:100%;height:100%;background:#1F3B2D">'
+    '<div style="position:absolute;left:100px;top:100px;width:420px;display:flex;gap:16px;color:#fff;font:600 30px sans-serif">'
+    '<div style="flex:0 0 360px;height:80px;background:#333"></div>'
+    '<div id="txt" style="min-width:0">Verify the 90° Right Angle</div></div>'
+    '<div style="position:absolute;left:100px;top:600px;color:#fff;font:600 30px sans-serif">A normal sentence</div>'
+    "</div>"
+)
+
+
+def test_the_walker_reports_text_squeezed_into_a_sliver():
+    """The 2026-10-12 recap: a flex row left the text column ~40 px wide and
+    "Verify the 90° Right Angle" rendered one syllable per line."""
+    rows = _run(lambda w: w.bbox_check_shot(html=SQUEEZED, width=1920, height=842, timestamps=[0.5],
+                                            background="#1F3B2D", check_squeeze=True))
+    hits = [r for r in rows if r.get("zone") == "squeezed"]
+    assert hits and "Verify" in hits[0]["text"]
+    assert not [r for r in rows if "normal sentence" in r.get("text", "")]
+    # off by default (non-lesson runs are unchanged)
+    assert _run(lambda w: w.bbox_check_shot(html=SQUEEZED, width=1920, height=842, timestamps=[0.5],
+                                            background="#1F3B2D")) == []

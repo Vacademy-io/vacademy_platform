@@ -12316,10 +12316,10 @@ class VideoGenerationPipeline:
         if zoned:
             names = sorted({str(v.get("zone")) for v in zoned})
             zl = [
-                "Your previous shot HTML placed board content inside a KEEP-OUT ZONE "
-                f"({', '.join(names)}). In a lesson the teacher video is composited over the "
-                "teacher area and burned-in captions over the caption strip, so anything there is "
-                "hidden or collides. Measured by a headless-Chromium bounding-box walk:",
+                "Your previous shot HTML has layout defects measured by a headless-Chromium "
+                f"bounding-box walk ({', '.join(names)}). `teacher`: board content inside the area the "
+                "teacher video is composited over (hidden / collides). `squeezed`: text forced into a "
+                "column so narrow its words break letter by letter (e.g. \"Veri / fy / the\"):",
             ]
             for v in zoned[:6]:
                 r = v.get("rect") or {}
@@ -12330,8 +12330,10 @@ class VideoGenerationPipeline:
                     + f" rect=(l={r.get('l', 0):.0f}, t={r.get('t', 0):.0f}, r={r.get('r', 0):.0f}, b={r.get('b', 0):.0f})"
                 )
             zl += [
-                "Move or resize those elements so NOTHING visible overlaps the zones: shift content up/left, "
-                "reduce sizes, or reflow into fewer columns. Keep the zone area plain background.",
+                "Fix: move or resize elements so nothing overlaps the teacher area (shift up/left, reduce "
+                "sizes, reflow into fewer columns; keep that area plain background). Give every text "
+                "column room for at least ~12 characters per line — `min-width`, `flex:1 1 auto`, "
+                "`flex-wrap:wrap`, or fewer columns; never let a flex child shrink a text block to a sliver.",
                 "",
             ]
             if len(zoned) == len(violations):
@@ -12844,6 +12846,7 @@ class VideoGenerationPipeline:
                 timestamps=timestamps,
                 background=bg,
                 keep_out=_lesson_zones or None,
+                check_squeeze=_lesson_on,
             )
         except ScreenshotClientError as exc:
             print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — render worker /bbox-check failed: {exc}")
@@ -12943,6 +12946,7 @@ class VideoGenerationPipeline:
                 timestamps=timestamps,
                 background=bg,
                 keep_out=_lesson_zones or None,
+                check_squeeze=_lesson_on,
             )
         except ScreenshotClientError as exc:
             print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen re-check failed ({exc}) — shipping original")
@@ -13683,7 +13687,12 @@ class VideoGenerationPipeline:
         if (
             review.get("severity_max", 0) >= 3
             and review.get("issues")
-            and self._tier_config.get("vision_review_regen_enabled", True)
+            and (
+                self._tier_config.get("vision_review_regen_enabled", True)
+                # Lessons fix what the reviewer flags on every tier — a
+                # learner cannot read a collapsed or clipped board.
+                or bool(getattr(self, "_lesson_plan", None))
+            )
         ):
             _issue_codes = ",".join(
                 str(i.get("code") or i.get("type") or "issue")

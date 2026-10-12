@@ -257,6 +257,7 @@ class ScreenshotWorker:
         timestamps: List[float],
         background: str = "#0a0e27",
         keep_out: Optional[List[Dict[str, object]]] = None,
+        check_squeeze: bool = False,
     ) -> List[Dict[str, object]]:
         """Render `html` in the harness and check whether any visible text or
         media overflows the viewport at each timestamp.
@@ -265,6 +266,10 @@ class ScreenshotWorker:
         leave empty — e.g. a lesson's teacher corner or caption strip. Visible
         text / media overlapping one is reported with `zone=name`. Full-canvas
         backgrounds (> half the canvas) are exempt.
+
+        `check_squeeze`: also report text squeezed into a column so narrow its
+        words break letter by letter (zone="squeezed") — a lesson recap once
+        shipped "Veri / fy / the / 90°" one syllable per line.
 
         Returns a list of violation dicts:
             {"t": float, "selector": str, "rect": {l, t, r, b}, "text": str}
@@ -414,7 +419,7 @@ class ScreenshotWorker:
             # EVERY shot of the run). Pack both dimensions into a single
             # object argument and destructure on the JS side.
             walker_js = """
-                ({W, H, KO}) => {
+                ({W, H, KO, SQ}) => {
                     function cssPath(el) {
                         if (!el) return '?';
                         if (el.id) return '#' + el.id;
@@ -471,6 +476,27 @@ class ScreenshotWorker:
                             // 1-pixel tolerance on each edge — sub-pixel rendering and
                             // text antialiasing routinely push fractional pixels past
                             // the canvas edge without any visible glyph clip.
+                            // Squeezed text: a multi-line text block narrower than
+                            // ~2.5 characters breaks words letter by letter.
+                            if (SQ && isLeafText && text.length >= 6) {
+                                const fs = parseFloat(cs.fontSize) || 16;
+                                const lh = parseFloat(cs.lineHeight) || fs * 1.2;
+                                if (r.width < fs * 2.5 && r.height >= lh * 2.6) {
+                                    out.push({
+                                        selector: cssPath(el),
+                                        rect: {
+                                            l: Math.round(r.left * 10) / 10,
+                                            t: Math.round(r.top * 10) / 10,
+                                            r: Math.round(r.right * 10) / 10,
+                                            b: Math.round(r.bottom * 10) / 10,
+                                        },
+                                        text: text.slice(0, 80),
+                                        is_media: false,
+                                        zone: 'squeezed',
+                                    });
+                                    return;
+                                }
+                            }
                             // Keep-out zones (lesson teacher area / caption strip).
                             const area = r.width * r.height;
                             if (KO && KO.length && area < 0.5 * W * H) {
@@ -526,7 +552,8 @@ class ScreenshotWorker:
                         "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
                     )
                     rows = await page.evaluate(
-                        walker_js, {"W": width, "H": height, "KO": list(keep_out or [])}
+                        walker_js, {"W": width, "H": height, "KO": list(keep_out or []),
+                                    "SQ": bool(check_squeeze)}
                     )
                     for row in rows or []:
                         violations.append({

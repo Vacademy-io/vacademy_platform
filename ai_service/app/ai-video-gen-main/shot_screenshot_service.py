@@ -193,6 +193,7 @@ class ShotScreenshotClient:
         timestamps: List[float],
         background: str = "#0a0e27",
         keep_out: Optional[List[Dict[str, Any]]] = None,
+        check_squeeze: bool = False,
     ) -> List[BboxViolation]:
         """Call /bbox-check on the render worker and return overflow violations.
 
@@ -218,6 +219,8 @@ class ShotScreenshotClient:
         }
         if keep_out:
             payload["keep_out"] = list(keep_out)
+        if check_squeeze:
+            payload["check_squeeze"] = True
 
         try:
             data = self._post_json("/bbox-check", payload)

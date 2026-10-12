@@ -83,11 +83,11 @@ left of a corner/bubble teacher). Every lesson shot's canvas is the board area A
 prompt-only "keep the bottom strip clear" was ignored by hook shots.
 
 **Board checks (every tier, lesson only).** The bbox lint gets keep-out zones — the teacher's
-corner/bubble (+16 px) — and the render worker reports any visible
+corner/bubble (+16 px) — plus a squeezed-text check (multi-line text narrower than ~2.5 characters), and the render worker reports any visible
 text/media inside one (`zone`), which drives the usual single corrective regen. After it, a notation
 lint (Unicode subscript digits while the teacher says "squared") plus one model fact-check of the
 board's formulas / numbers against the narration (`lesson_mode.FACT_CHECK_SYSTEM`, vision_review stage
-model) trigger one corrective regen on a definite error.
+model) trigger one corrective regen on a definite error. The vision review's severity-3 regen (off on ultra) is always on for lessons.
 
 **Captions.** Each teacher entry carries `entry_meta.caption_box`; while it is on screen
 `generate_video.py` re-centres the caption pill on the board side (landscape) or lifts it above the

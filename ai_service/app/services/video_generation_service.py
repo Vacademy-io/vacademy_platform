@@ -146,6 +146,9 @@ def _get_run_state_aggregator():
         return RUN_STATE
     except Exception:
         return None
+
+
+from .lesson_plan_service import LessonConfigError, resolve_lesson_plan  # noqa: E402
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
@@ -1043,6 +1046,8 @@ class VideoGenerationService:
         cast_id: Optional[str] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        # Lesson mode (schemas.LessonConfig) — validated into a plan below.
+        lesson: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
         # Per-video brand overrides (palette/intro/outro/watermark/system_prompt)
         # layered on top of the resolved kit. Untyped (Any) to avoid a
@@ -1202,6 +1207,22 @@ class VideoGenerationService:
             except HostFeatureError as he:
                 logger.warning(f"[VideoGenService] Host validation failed: {he}")
                 yield {"type": "error", "message": str(he)}
+                return
+
+        # Lesson mode — validate before any DB record / credit work, like host.
+        lesson_plan_dict: Optional[Dict[str, Any]] = None
+        if lesson is not None and not resume:
+            try:
+                lesson_plan_dict = resolve_lesson_plan(
+                    lesson, institute_id=institute_id, host=host, db=db_session,
+                )
+            except LessonConfigError as le:
+                logger.warning(f"[VideoGenService] Lesson validation failed: {le}")
+                yield {"type": "error", "message": str(le)}
+                return
+            except Exception as le:  # registry / import trouble must not 500 the request
+                logger.warning(f"[VideoGenService] Lesson validation errored: {le}")
+                yield {"type": "error", "message": f"Lesson mode could not be set up: {le}"}
                 return
 
         # Get or create video record
@@ -1483,6 +1504,7 @@ class VideoGenerationService:
                     saved_cast=_saved_cast_list,
                     routing_overrides=routing_overrides,
                     host=host,
+                    lesson_plan=lesson_plan_dict,
                     brand_kit_id=brand_kit_id,
                     brand_overrides=brand_overrides,
                     resolved_saved_avatar=resolved_saved_avatar,
@@ -1647,6 +1669,7 @@ class VideoGenerationService:
         saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        lesson_plan: Optional[Dict[str, Any]] = None,
         brand_kit_id: Optional[str] = None,
         brand_overrides: Optional[Any] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
@@ -2278,6 +2301,28 @@ class VideoGenerationService:
         # extra_metadata.intent_outcomes further below; the raw view is kept
         # in extra_metadata.user_selections so history can pre-fill sliders
         # to exactly what the user originally picked.
+        # ── Lesson mode plan — persisted for resume legs ──
+        # Fresh runs arrive with the validated plan; resumes (assist gates,
+        # stage-by-stage review, another pod) re-read it from run_dir or the
+        # video record so the second half is still taught as a lesson.
+        try:
+            _lesson_cache = run_dir / "lesson_plan.json"
+            if lesson_plan:
+                _lesson_cache.write_text(json.dumps(lesson_plan, indent=2), encoding="utf-8")
+                _vrec_l = self.repository.get_by_video_id(video_id)
+                _emeta_l = (_vrec_l.extra_metadata or {}) if _vrec_l else {}
+                _emeta_l["lesson"] = {**(_emeta_l.get("lesson") or {}), "plan": lesson_plan}
+                self.repository.update_metadata(video_id, _emeta_l)
+            else:
+                if _lesson_cache.exists():
+                    lesson_plan = json.loads(_lesson_cache.read_text(encoding="utf-8")) or None
+                if not lesson_plan:
+                    _vrec_l = self.repository.get_by_video_id(video_id)
+                    lesson_plan = (((_vrec_l.extra_metadata or {}) if _vrec_l else {})
+                                   .get("lesson") or {}).get("plan") or None
+        except Exception as _lp_err:
+            logger.warning(f"[VideoGenService] Lesson plan persist/reload failed: {_lp_err}")
+
         visual_prefs_struct: Dict[str, Any] = {}
         visual_prefs_from_text: Dict[str, Any] = {}
         visual_prefs_resolved: Dict[str, Any] = {}
@@ -2970,6 +3015,7 @@ class VideoGenerationService:
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,
+                    lesson_plan=lesson_plan or None,
                     # Resolved view = structured slider input merged with
                     # IntentRouter free-text scan (free-text wins on overlap).
                     # Empty / all-None → pipeline behaves identically to today.
@@ -3516,6 +3562,71 @@ class VideoGenerationService:
                                     )
                         except Exception as _hm_err:
                             logger.warning(f"[VideoGenService] Failed to merge host_outputs.json: {_hm_err}")
+
+                # ── Lesson mode: teacher outputs → metadata + one credit charge ──
+                # lesson_outputs.json is written by the pipeline's timeline
+                # step. The teacher is charged once per video (idempotency key),
+                # by started minute of narration it covers.
+                if stage_pipeline_name == "html" and run_dir and (run_dir / "lesson_outputs.json").exists():
+                    try:
+                        import json as _json_l
+                        from decimal import Decimal as _Dec_l
+                        _lesson_out = _json_l.loads((run_dir / "lesson_outputs.json").read_text(encoding="utf-8"))
+                        _vrec_lo = self.repository.get_by_video_id(video_id)
+                        _emeta_lo = (_vrec_lo.extra_metadata or {}) if _vrec_lo else {}
+                        _lesson_block = _emeta_lo.get("lesson") or {}
+                        _prev_billed = ((_lesson_block.get("outputs") or {}).get("billed_at"))
+                        _teacher_out = _lesson_out.get("teacher") or {}
+                        _credits = int(_teacher_out.get("platform_credits") or 0)
+                        if _prev_billed:
+                            _lesson_out["billed_at"] = _prev_billed
+                            _lesson_out["billed_credits"] = (_lesson_block.get("outputs") or {}).get("billed_credits")
+                        elif institute_id and _credits > 0 and (_lesson_out.get("clips_ok") or 0) > 0:
+                            from datetime import datetime as _dt_lo
+                            with _fresh_db_session() as _lesson_db:
+                                TokenUsageService(_lesson_db).record_usage_and_deduct_credits(
+                                    api_provider=ApiProvider.OPENAI,
+                                    prompt_tokens=0,
+                                    completion_tokens=0,
+                                    total_tokens=0,
+                                    request_type=RequestType.AVATAR_VIDEO,
+                                    institute_id=institute_id,
+                                    user_id=user_id,
+                                    model="spatius/video",
+                                    metadata={
+                                        "video_id": video_id,
+                                        "stage": "html",
+                                        "purpose": "lesson_teacher",
+                                        "audio_seconds": _teacher_out.get("audio_seconds"),
+                                        "vendor_usd": _teacher_out.get("vendor_usd"),
+                                    },
+                                    seconds=int(round(float(_teacher_out.get("audio_seconds") or 0))),
+                                    batch_id=video_id,
+                                    precomputed_credits=_Dec_l(_credits),
+                                    idempotency_key=f"{video_id}:lesson-teacher",
+                                    description="Lesson teacher (Spatius) for AI video",
+                                )
+                            _lesson_out["billed_at"] = _dt_lo.utcnow().isoformat()
+                            _lesson_out["billed_credits"] = _credits
+                            logger.info(
+                                f"[VideoGenService] Lesson teacher charged {_credits} credits "
+                                f"({_teacher_out.get('audio_seconds')}s) for {video_id}"
+                            )
+                        _lesson_block["outputs"] = _lesson_out
+                        _emeta_lo["lesson"] = _lesson_block
+                        self.repository.update_metadata(video_id, _emeta_lo)
+                        if _lesson_out.get("error"):
+                            # Surface it: the lesson shipped without its teacher.
+                            try:
+                                self.repository.record_warning(
+                                    video_id,
+                                    f"Lesson teacher unavailable — the video shows the board only "
+                                    f"({str(_lesson_out['error'])[:200]})",
+                                )
+                            except Exception:
+                                pass
+                    except Exception as _lo_err:
+                        logger.warning(f"[VideoGenService] Lesson outputs merge/charge failed: {_lo_err}")
 
                 # ── Merge visual_preferences_realized.json into extra_metadata ──
                 # _run_director writes this file alongside the director plan

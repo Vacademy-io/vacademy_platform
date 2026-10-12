@@ -1849,6 +1849,26 @@ def render_video_from_json(
                         position_css = f"top:{int(height * 0.037)}px; bottom:auto;"
                     else:
                         position_css = f"bottom:{int(height * 0.074)}px; top:auto;"
+                    # Lesson mode: while a teacher overlay is on screen its
+                    # entry_meta.caption_box keeps captions on the board side
+                    # (or above a portrait teacher band) instead of across
+                    # the teacher's face (lesson_mode.caption_box). The
+                    # caption host is always full-viewport (dispatcher
+                    # __updateCaption), so the pill itself is re-centred.
+                    _cap_x, _cap_w = 0, width
+                    for _e in active:
+                        _em = _e.get("entry_meta")
+                        if isinstance(_em, dict) and _em.get("kind") == "lesson_teacher":
+                            _cb = _em.get("caption_box")
+                            if isinstance(_cb, dict):
+                                try:
+                                    _cap_x = max(0, int(_cb.get("x", 0)))
+                                    _cap_w = max(1, min(width - _cap_x, int(_cb.get("w", width))))
+                                    if _cb.get("bottom") is not None and cap_position != "top":
+                                        position_css = f"bottom:{int(_cb['bottom'])}px; top:auto;"
+                                except (TypeError, ValueError):
+                                    _cap_x, _cap_w = 0, width
+                            break
                     font_size = int(style.get("font_size", 20))
                     font_color = str(style.get("font_color", "#FFFFFF"))
                     font_weight = int(style.get("font_weight", 400))
@@ -1917,10 +1937,17 @@ def render_video_from_json(
                         content_html = " ".join(_spans)
                     else:
                         content_html = raw_text if allow_html else _html_escape(raw_text)
+                    if (_cap_x, _cap_w) == (0, width):
+                        _pill_box_css = "left:50%; transform:translateX(-50%); max-width:85%; "
+                    else:
+                        _pill_box_css = (
+                            f"left:{_cap_x + _cap_w // 2}px; transform:translateX(-50%); "
+                            f"max-width:{int(_cap_w * 0.85)}px; "
+                        )
                     html = (
                         f'<div style="width:100%; height:100%; position:relative;">'
-                        f'<div style="position:absolute; left:50%; transform:translateX(-50%); '
-                        f'max-width:85%; padding:10px 20px; border-radius:8px; '
+                        f'<div style="position:absolute; {_pill_box_css}'
+                        f'padding:10px 20px; border-radius:8px; '
                         f'background:{style["background_color"]}; text-align:center; '
                         f'font-family:{font_family_css}; '
                         f'font-size:{font_size}px; font-weight:{font_weight}; color:{font_color}; '

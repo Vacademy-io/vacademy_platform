@@ -73,6 +73,8 @@ function buildPreviewPayload(
         // synthesis + reference-image cost lines. BE silently ignores `host`
         // for tiers below ultra (matches the API-edge tier gate).
         host: options.host,
+        // Lesson mode — the BE adds the Spatius teacher row when a teacher is set.
+        lesson: options.lesson,
         // Forward AI video opt-in so the BE adds a worst-case Veo row to
         // the breakdown. Same tier-gate as host above — BE ignores on
         // sub-ultra tiers.

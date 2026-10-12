@@ -3502,6 +3502,9 @@ class VideoGenerationPipeline:
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
+        # Lesson mode (lesson_mode.normalize_lesson_plan output): an education
+        # video taught by a Spatius teacher at a board. None ⇒ off.
+        lesson_plan: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Dict[str, Any]] = None,
         # AI video (Phase 3b): per-run opt-in, ultra+ only. Tier eligibility is
         # gated by `QUALITY_TIERS[tier]["ai_video_eligible"]`; passing
@@ -4024,6 +4027,20 @@ class VideoGenerationPipeline:
                         f"{'on' if self._ai_video_audio_run_enabled else 'off'}, "
                         f"cap=${_cap:.2f})"
                     )
+
+        # Lesson mode — None ⇒ every lesson branch below is a no-op.
+        self._lesson_plan: Optional[Dict[str, Any]] = lesson_plan or None
+        self._lesson_teacher_thread = None
+        self._lesson_teacher_result: Optional[Dict[str, Any]] = None
+        self._lesson_teacher_error: Optional[str] = None
+        if self._lesson_plan:
+            # A lesson is always the clean educational board look.
+            self._visual_style_override = "educational"
+            _lt_teacher = (self._lesson_plan.get("teacher") or {})
+            print(
+                f"🧑‍🏫 Lesson mode: teacher={_lt_teacher.get('avatar_id') or 'none'} "
+                f"layout={self._lesson_plan.get('layout')} subject={self._lesson_plan.get('subject') or '-'}"
+            )
 
         # When enabled=False (default): pipeline behaves identically to today.
         self._host_plan: Dict[str, Any] = host_plan or {}
@@ -6174,6 +6191,14 @@ class VideoGenerationPipeline:
                             accumulate_usage({"image_count": _sv_images})
                     except Exception as _sv_err:
                         print(f"   ⚠️ support-visuals resolve failed: {_sv_err}")
+
+                    # Lesson mode: the voice track is final here (music is
+                    # mixed only after the HTML stage), so the Spatius teacher
+                    # renders in the background while the board is generated.
+                    if getattr(self, "_lesson_plan", None):
+                        self._lesson_teacher_start(
+                            run_dir, Path(tts_outputs.get("audio_path") or audio_path)
+                        )
 
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
@@ -14475,6 +14500,8 @@ class VideoGenerationPipeline:
                 wpm_override=target_wpm,
                 regen_note=regen_note,
                 source_request=getattr(self, "_base_prompt", None),
+                teaching_voice=bool(getattr(self, "_lesson_plan", None)),
+                max_tokens=(16000 if getattr(self, "_lesson_plan", None) else 6000),
             )
         except NarrationWriteError as _nw_err:
             print(f"   ⚠️ v3 overrun NarrationWriter regen unparseable: {_nw_err}")
@@ -14772,6 +14799,8 @@ class VideoGenerationPipeline:
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
             valid_template_ids=_tmpl_valid_ids,
+            subject_domain=((getattr(self, "_lesson_plan", None) or {}).get("subject") or None),
+            lesson=getattr(self, "_lesson_plan", None),
             include_music_plan=self._is_background_music_enabled(),
             music_plan_target_duration_s=target_duration_s,
             temperature=tier_config.get("concept_temperature") or 0.6,
@@ -15092,6 +15121,10 @@ class VideoGenerationPipeline:
             # Ground-truth for names/numbers/claims (writer rule 15) — without
             # it the writer only ever sees 1-2 sentence briefs.
             source_request=base_prompt,
+            teaching_voice=bool(getattr(self, "_lesson_plan", None)),
+            # A 10-minute lesson is ~1,500 words of narration; 6k left no
+            # room for a reasoning model's thinking on top.
+            max_tokens=(16000 if getattr(self, "_lesson_plan", None) else 6000),
         )
         nw_usage = nw_result.get("usage") or {}
         # Record NarrationWriter tokens. (ShotPlanner already recorded above
@@ -19504,6 +19537,9 @@ class VideoGenerationPipeline:
             if (
                 _template_enabled and _template_compose_fn is not None
                 and shot.get("template_id")
+                # Templates fill the whole frame; a lesson section with the
+                # teacher on screen must keep the teacher's area clear.
+                and (shot.get("teacher_layout") or "board") == "board"
                 # A user revision note / real asset needs the LLM path — the
                 # deterministic template would re-render the identical frame
                 # and silently discard the user's input.
@@ -20350,6 +20386,19 @@ class VideoGenerationPipeline:
                     "      at 26s in output(23).mp4.)\n"
                 )
                 user_prompt = user_prompt + _host_block
+
+            # ── Lesson mode: board guidance + the teacher's safe area ──
+            if getattr(self, "_lesson_plan", None):
+                try:
+                    from lesson_mode import shot_prompt_block as _lesson_shot_block
+                    user_prompt = user_prompt + _lesson_shot_block(
+                        self._lesson_plan,
+                        shot.get("teacher_layout"),
+                        int(getattr(self, "video_width", 1920) or 1920),
+                        int(getattr(self, "video_height", 1080) or 1080),
+                    )
+                except Exception as _lsb_err:
+                    print(f"   ⚠️ Lesson board block skipped for shot {shot_idx}: {_lsb_err}")
 
             # Inject the shared shot pack (premium/ultra/super_ultra only).
             # Rewrite the id_prefix placeholder with this shot's concrete index.
@@ -28831,6 +28880,182 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
 
     # --- Timeline + video -------------------------------------------------
+    # ── Lesson mode: the Spatius teacher track (lesson_teacher.py) ─────────
+    def _lesson_teacher_start(self, run_dir: Path, voice_audio: Path) -> None:
+        """Render the teacher for the whole voice narration in the background.
+
+        Idempotent per run; a cached render in run_dir is reused. Failure is
+        non-fatal — the lesson ships as a board-only video and the reason is
+        recorded in lesson_outputs.json."""
+        plan = getattr(self, "_lesson_plan", None)
+        if not plan or getattr(self, "_lesson_teacher_thread", None) is not None:
+            return
+        try:
+            import lesson_mode as _lm
+            import lesson_teacher as _lt
+        except Exception as _imp_err:
+            self._lesson_teacher_error = f"lesson modules unavailable: {_imp_err}"
+            print(f"   ⚠️ Lesson teacher skipped — {self._lesson_teacher_error}")
+            return
+        if not _lm.has_teacher(plan):
+            return
+        if not _lt.configured():
+            self._lesson_teacher_error = "Spatius is not configured on this service"
+            print(f"   ⚠️ Lesson teacher skipped — {self._lesson_teacher_error}")
+            return
+        voice_audio = Path(voice_audio)
+        if not voice_audio.exists():
+            self._lesson_teacher_error = f"voice track missing ({voice_audio.name})"
+            print(f"   ⚠️ Lesson teacher skipped — {self._lesson_teacher_error}")
+            return
+        import threading as _th_lt
+        avatar_id = plan["teacher"]["avatar_id"]
+        run_name = run_dir.name
+
+        def _work() -> None:
+            try:
+                self._lesson_teacher_result = _lt.render_track(
+                    voice_audio=voice_audio,
+                    avatar_id=avatar_id,
+                    run_dir=run_dir,
+                    run_name=run_name,
+                    on_progress=lambda st: print(f"   🧑‍🏫 Teacher render: {st}"),
+                )
+                _r = self._lesson_teacher_result or {}
+                print(
+                    f"   🧑‍🏫 Teacher ready: {_r.get('video_seconds')}s video in "
+                    f"{_r.get('render_seconds')}s, voice offset {_r.get('offset_s')}s"
+                )
+                # Pre-cut the per-layout clips now, while the board is still
+                # being generated: section starts are fixed by the recorded
+                # voice, so the timeline step only has to reuse them (keying
+                # is CPU-heavy on this 1.5-CPU pod). +1 s of tail covers the
+                # last section being stretched to the audio end.
+                if _r and not _r.get("precut"):
+                    try:
+                        _shots = ((getattr(self, "_v3_shot_plan", None) or {}).get("shots") or [])
+                        _pseudo = [
+                            {"id": f"shot-{i}", "inTime": float(s.get("start_time") or 0.0),
+                             "exitTime": float(s.get("end_time") or 0.0)}
+                            for i, s in enumerate(_shots) if isinstance(s, dict)
+                        ]
+                        _layouts = {
+                            i: (s.get("teacher_layout") or "board")
+                            for i, s in enumerate(_shots) if isinstance(s, dict)
+                        }
+                        _pre_runs = _lm.teacher_runs(_pseudo, _layouts)
+                        if _pre_runs:
+                            _lt.build_clips(
+                                _r, _pre_runs, content_starts_at=0.0,
+                                width=int(getattr(self, "video_width", 1920) or 1920),
+                                height=int(getattr(self, "video_height", 1080) or 1080),
+                                run_dir=run_dir, run_name=run_name, pad_end_s=1.0,
+                            )
+                            print(f"   🧑‍🏫 Teacher clips pre-cut: {len(_r.get('precut') or [])} run(s)")
+                    except Exception as _pc_err:
+                        print(f"   ⚠️ Teacher clip pre-cut skipped ({_pc_err}) — cutting at timeline time")
+            except Exception as _err:
+                self._lesson_teacher_error = str(_err)[:500]
+                print(f"   ⚠️ Teacher render failed — lesson ships board-only: {_err}")
+
+        self._lesson_teacher_thread = _th_lt.Thread(target=_work, name="lesson-teacher", daemon=True)
+        self._lesson_teacher_thread.start()
+        self._emit_progress({
+            "type": "sub_stage", "sub_stage": "lesson_teacher",
+            "message": "Recording the teacher...",
+        })
+
+    def _lesson_teacher_entries(
+        self,
+        timeline_entries: List[Dict[str, Any]],
+        run_dir: Path,
+        *,
+        content_starts_at: float,
+        palette: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Teacher overlay entries for the timeline (one per run of sections
+        sharing a layout). Writes lesson_outputs.json for billing/metadata."""
+        plan = getattr(self, "_lesson_plan", None)
+        if not plan:
+            return []
+        import lesson_mode as _lm
+        import lesson_teacher as _lt
+        outputs: Dict[str, Any] = {"teacher": None, "runs": [], "error": None}
+        entries: List[Dict[str, Any]] = []
+        try:
+            if not _lm.has_teacher(plan):
+                return []
+            shots = ((getattr(self, "_v3_shot_plan", None) or {}).get("shots") or [])
+            # Timeline ids are shot-{enumerate index}, so key by position.
+            layout_by_shot = {
+                i: (s.get("teacher_layout") or "board")
+                for i, s in enumerate(shots) if isinstance(s, dict)
+            }
+            runs = _lm.teacher_runs(timeline_entries, layout_by_shot)
+            outputs["runs"] = runs
+            if not runs:
+                return []
+            if getattr(self, "_lesson_teacher_thread", None) is None and not self._lesson_teacher_result:
+                # Resume leg / html stage skipped the early start: render now
+                # from the voice-only track (the mix pass keeps it as
+                # narration_unmixed.mp3 once music has been baked in).
+                _voice = run_dir / "narration_unmixed.mp3"
+                if not _voice.exists():
+                    _voice = run_dir / "narration.mp3"
+                self._lesson_teacher_start(run_dir, _voice)
+            _thread = getattr(self, "_lesson_teacher_thread", None)
+            if _thread is not None and _thread.is_alive():
+                self._emit_progress({
+                    "type": "sub_stage", "sub_stage": "lesson_teacher",
+                    "message": "Waiting for the teacher recording...",
+                })
+                _thread.join(timeout=4800)
+            track = self._lesson_teacher_result
+            if not track:
+                outputs["error"] = self._lesson_teacher_error or "teacher render did not finish"
+                return []
+            width = int(getattr(self, "video_width", 1920) or 1920)
+            height = int(getattr(self, "video_height", 1080) or 1080)
+            urls = _lt.build_clips(
+                track, runs,
+                content_starts_at=content_starts_at,
+                width=width, height=height,
+                run_dir=run_dir, run_name=run_dir.name,
+                reuse=track.get("precut"),
+            )
+            entries = _lm.build_teacher_entries(
+                runs, urls, width=width, height=height,
+                teacher=plan.get("teacher"), palette=palette,
+            )
+            # Side / presenter boards are a smaller canvas: size those shots'
+            # boxes to the board area so #shot-root lays out (and clips)
+            # beside the teacher instead of running under the panel.
+            outputs["shots_fit_to_board"] = _lm.fit_shots_to_board(
+                timeline_entries, runs, urls, width=width, height=height,
+            )
+            outputs["teacher"] = {
+                k: track.get(k) for k in (
+                    "provider", "avatar_id", "job_id", "audio_seconds", "video_seconds",
+                    "offset_s", "render_seconds", "vendor_credits", "vendor_usd", "platform_credits",
+                )
+            }
+            outputs["clips_ok"] = sum(1 for u in urls if u)
+            outputs["clips_failed"] = sum(1 for u in urls if not u)
+            print(
+                f"   🧑‍🏫 Teacher on screen: {len(entries)} run(s) "
+                f"({', '.join(r['layout'] for r in runs[:12])}{'…' if len(runs) > 12 else ''})"
+            )
+            return entries
+        except Exception as _lt_err:
+            outputs["error"] = str(_lt_err)[:500]
+            print(f"   ⚠️ Lesson teacher entries failed — shipping board-only: {_lt_err}")
+            return []
+        finally:
+            try:
+                (run_dir / "lesson_outputs.json").write_text(json.dumps(outputs, indent=2, default=str))
+            except Exception:
+                pass
+
     def _write_timeline(
         self,
         html_segments: List[Dict[str, Any]],
@@ -29211,6 +29436,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             }
             timeline_entries.append(watermark_entry)
             print(f"   ➕ Added watermark branding ({content_starts_at}s - {content_max_end}s) at {position}")
+
+        # 3.5 Lesson mode — the teacher overlay (after audio pinning + gap-snap
+        # so its runs line up with the final shot times).
+        if navigation == "time_driven" and getattr(self, "_lesson_plan", None):
+            timeline_entries.extend(self._lesson_teacher_entries(
+                timeline_entries, run_dir,
+                content_starts_at=content_starts_at,
+                palette=((style_guide or {}).get("palette") if isinstance(style_guide, dict) else None),
+            ))
         
         # 4. Add OUTRO entry if enabled (full-screen, after audio ends)
         if outro_enabled and outro_config.get("html"):

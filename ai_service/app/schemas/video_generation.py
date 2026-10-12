@@ -34,6 +34,7 @@ class VideoCostPreviewRequest(BaseModel):
     review_mode: bool = False
     attachments_count: int = 0
     host: Optional["HostConfig"] = None
+    lesson: Optional["LessonConfig"] = None
     # When true, the estimator adds an AI video (Veo) upper-bound row to
     # the breakdown so the FE pre-submit panel surfaces the worst-case
     # spend. Ultra/super_ultra tiers only — silently ignored otherwise.
@@ -278,6 +279,38 @@ class HostConfig(BaseModel):
                     "or saved_avatar_id (resolved server-side)."
                 )
         return self
+
+
+class LessonTeacherConfig(BaseModel):
+    """The on-screen teacher of a lesson — a Spatius avatar the institute may
+    use (platform stock or its own, as listed by GET /tutor/options)."""
+    avatar_id: str = Field(..., min_length=8, max_length=160, description="Spatius avatar id.")
+    name: Optional[str] = Field(default=None, max_length=60, description="Shown on the teacher panel.")
+    title: Optional[str] = Field(default=None, max_length=60, description="e.g. 'Maths teacher'.")
+
+
+class LessonConfig(BaseModel):
+    """Lesson mode: an education video taught by a teacher at a board.
+
+    The planner paces it as a lesson (6-20 s sections, no shot cap, hook →
+    concepts → worked example → recap), the narration is written as a
+    teacher, and — when `teacher` is set — a Spatius avatar appears beside
+    the board in a per-section layout."""
+    enabled: bool = True
+    teacher: Optional[LessonTeacherConfig] = Field(
+        default=None, description="None = board-only lesson (no on-screen teacher).",
+    )
+    layout: Literal["auto", "corner", "side", "presenter", "board"] = Field(
+        default="auto",
+        description=(
+            "Where the teacher sits. 'auto' lets the planner choose per section: "
+            "presenter (half frame) for hook/recap, side (right third) for explanations, "
+            "corner (small, bottom-right) for dense boards."
+        ),
+    )
+    subject: Optional[str] = Field(default=None, max_length=80, description="e.g. 'Mathematics', 'Physics'.")
+    include_worked_example: bool = True
+    include_recap: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -705,6 +738,13 @@ class VideoGenerationRequest(BaseModel):
             "where you want to hear the speaker. Use False for marketing/explainer "
             "videos where the TTS script is the main content."
         )
+    )
+    lesson: Optional[LessonConfig] = Field(
+        default=None,
+        description=(
+            "Lesson mode for education videos: lesson pacing, a teacher's narration and "
+            "(optionally) a Spatius teacher beside the board. Not combinable with `host`."
+        ),
     )
     host: Optional[HostConfig] = Field(
         default=None,

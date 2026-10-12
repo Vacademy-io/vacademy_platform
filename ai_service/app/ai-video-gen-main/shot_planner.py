@@ -662,6 +662,7 @@ def build_shot_planner_user_prompt(
     cultural_context: Any = None,
     template_catalog_md: Optional[str] = None,
     valid_template_ids: Optional[List[str]] = None,
+    lesson: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the user-facing prompt for the ShotPlanner LLM call.
 
@@ -680,6 +681,17 @@ def build_shot_planner_user_prompt(
     ]
     if subject_domain:
         lines.append(f"SUBJECT DOMAIN: {subject_domain}")
+    if lesson:
+        from lesson_mode import planner_user_block
+        lines.append(planner_user_block(
+            lesson,
+            target_duration_s=target_duration_s,
+            portrait=str(image_ratio).strip() == "9:16",
+        ))
+        lines.append(
+            "Keep each shot's JSON compact (narration_brief ≤ 30 words, visual_description ≤ 45 words) "
+            "— a long lesson has many sections and the whole plan must fit in one response."
+        )
 
     # Marketing shot-mix bias — fires ONLY for promotional/product content so
     # educational lectures (where TEXT_DIAGRAM is the right default) are
@@ -1204,6 +1216,8 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "source_video_index",
         "role",
         "pacing_role",
+        # Lesson mode: where the teacher sits for this section (lesson_mode.LAYOUTS).
+        "teacher_layout",
         # DIALOGUE_SCENE (storybook/drama mode): spoken lines + scene staging.
         "dialogue",
         "scene_description",
@@ -1679,6 +1693,7 @@ def plan_shots(
     cultural_context: Any = None,
     template_catalog_md: Optional[str] = None,
     valid_template_ids: Optional[List[str]] = None,
+    lesson: Optional[Dict[str, Any]] = None,
     include_music_plan: bool = False,
     music_plan_target_duration_s: Optional[float] = None,
     enforce_concept: bool = True,
@@ -1750,9 +1765,15 @@ def plan_shots(
         cultural_context=cultural_context,
         template_catalog_md=template_catalog_md,
         valid_template_ids=valid_template_ids,
+        lesson=lesson,
     )
 
     system_content = SHOT_PLANNER_SYSTEM_PROMPT
+    if lesson:
+        # Lesson pacing replaces the reel rhythm rule (2.5-4 s body shots,
+        # 12-shot cap) — that rule cannot express a 10-minute lesson.
+        from lesson_mode import planner_system_prompt
+        system_content = planner_system_prompt(system_content)
     if verbalized_sampling:
         system_content = system_content + _VERBALIZED_SAMPLING_BLOCK
     if include_music_plan:
@@ -1876,6 +1897,12 @@ def plan_shots(
     # exists because a prod video shipped broken without it. On a concrete
     # structural miss, fire ONE corrective re-plan. Bounded, guarded,
     # ship-original-on-regression.
+    # A lesson is structured hook → concepts → worked example → recap; the
+    # concept contract's "energy RISES toward the climax" rule would push it
+    # back toward reel structure, so lessons skip it.
+    if lesson:
+        enforce_concept = False
+
     def _conformance_issues(_p: Dict[str, Any]) -> List[str]:
         out: List[str] = []
         if enforce_concept:
@@ -1919,6 +1946,11 @@ def plan_shots(
                         usage[_k] = int(usage.get(_k, 0) or 0) + int((_usage2 or {}).get(_k, 0) or 0)
             except Exception:
                 pass  # non-fatal — keep the original plan
+
+    if lesson:
+        from lesson_mode import apply_layouts
+        _layout_counts = apply_layouts(parsed["shots"], lesson)
+        print(f"   🧑‍🏫 Lesson plan: {len(parsed['shots'])} sections, teacher layouts {_layout_counts}")
 
     return {
         "shots": parsed["shots"],

@@ -16,9 +16,14 @@ The teacher itself is rendered by `lesson_teacher.py` (Spatius Video API).
 Layouts, landscape 1920x1080 (portrait maps side/presenter to a bottom band):
 
   board      no teacher on screen
-  corner     teacher cut out in the bottom-right corner over the board
-  side       teacher panel on the right third, board on the left two thirds
-  presenter  teacher panel on the right half — the hook and "why it matters" moments
+  corner     small teacher cut-out in the bottom-right corner over the board (22% wide)
+  bubble     round teacher bubble in the bottom-right corner (270 px)
+  side       slim teacher panel on the right (25%), board on the rest
+  presenter  teacher panel on the right (36%) — the hook and "why it matters" moments
+
+The avatar is never drawn larger than the Spatius render (a 1080p head-and-
+shoulders): every layout scales it DOWN, so the face stays sharp. Teachers
+read as too big and soft at the first sizes (side 33%, presenter 50%).
 """
 from __future__ import annotations
 
@@ -26,8 +31,10 @@ import html as _html
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-LAYOUTS: Tuple[str, ...] = ("board", "corner", "side", "presenter")
-TEACHER_LAYOUTS: Tuple[str, ...] = ("corner", "side", "presenter")
+LAYOUTS: Tuple[str, ...] = ("board", "corner", "bubble", "side", "presenter")
+TEACHER_LAYOUTS: Tuple[str, ...] = ("corner", "bubble", "side", "presenter")
+# Layouts that float over a full-frame board (no panel, no canvas resize).
+OVERLAY_LAYOUTS: Tuple[str, ...] = ("corner", "bubble")
 LAYOUT_PREFERENCES: Tuple[str, ...] = ("auto",) + LAYOUTS
 
 # Shot types whose content is dense enough that the board needs most of the
@@ -252,15 +259,19 @@ def teacher_box(layout: str, width: int, height: int) -> Optional[Dict[str, int]
     portrait = height > width
     if layout == "corner":
         if portrait:
-            w, h = _even(width * 0.40), _even(height * 0.26)
+            w, h = _even(width * 0.36), _even(height * 0.22)
         else:
-            w, h = _even(width * 0.30), _even(height * 0.555)
-        return {"x": width - w - _even(width * 0.008), "y": height - h, "w": w, "h": h}
+            w, h = _even(width * 0.22), _even(height * 0.42)
+        return {"x": width - w - _even(width * 0.012), "y": height - h, "w": w, "h": h}
+    if layout == "bubble":
+        d = _even(width * 0.30) if portrait else _even(height * 0.25)
+        m = _even(min(width, height) * 0.04)
+        return {"x": width - d - m, "y": height - d - m, "w": d, "h": d}
     if portrait:
-        frac = 0.32 if layout == "side" else 0.5
+        frac = 0.26 if layout == "side" else 0.38
         h = _even(height * frac)
         return {"x": 0, "y": height - h, "w": width, "h": h}
-    frac = 1.0 / 3.0 if layout == "side" else 0.5
+    frac = 0.25 if layout == "side" else 0.36
     w = _even(width * frac)
     return {"x": width - w, "y": 0, "w": w, "h": height}
 
@@ -271,15 +282,18 @@ def clip_size(layout: str, width: int, height: int) -> Optional[Tuple[int, int]]
     if box is None:
         return None
     bw, bh = box["w"], box["h"]
-    if layout == "corner":
+    if layout in OVERLAY_LAYOUTS:
         return bw, bh
-    if bh > bw * 1.2 and width > height:  # landscape side panel: portrait 3:4 teacher at the bottom
+    if width > height:
+        # Landscape panel: head-and-shoulders bust standing at the bottom,
+        # with head room above it for the name card.
         cw = bw
-        ch = _even(min(bh * 0.80, cw * 4 / 3))
+        ratio = 4 / 3 if layout == "side" else 1.22
+        ch = _even(min(bh * 0.78, cw * ratio))
         return cw, ch
-    # bands (portrait) and the presenter half: teacher fills the band height
+    # Portrait bands: teacher fills the band height.
     ch = bh
-    cw = _even(min(bw, ch * (0.75 if height > width else 0.9)))
+    cw = _even(min(bw, ch * 0.75))
     return cw, ch
 
 
@@ -288,7 +302,7 @@ def safe_area_text(layout: str, width: int, height: int) -> str:
     if box is None:
         return ""
     x0, y0 = box["x"], box["y"]
-    if layout == "corner":
+    if layout in OVERLAY_LAYOUTS:
         mx, my = x0 - 24, y0 - 24
         return (f"the bottom-right corner — every pixel with x ≥ {mx}px AND y ≥ {my}px "
                 f"(a {width - mx}×{height - my}px box)")
@@ -299,7 +313,7 @@ def safe_area_text(layout: str, width: int, height: int) -> str:
 
 def board_area(layout: str, width: int, height: int) -> Dict[str, int]:
     box = teacher_box(layout, width, height)
-    if box is None or layout == "corner":
+    if box is None or layout in OVERLAY_LAYOUTS:
         return {"x": 0, "y": 0, "w": width, "h": height}
     if height > width:
         return {"x": 0, "y": 0, "w": width, "h": box["y"]}
@@ -343,7 +357,7 @@ def shot_prompt_block(plan: Dict[str, Any], layout: Optional[str], width: int, h
             )
         lines += [
             f"- Put ALL board content inside x ∈ [0, {area['w']}]px, y ∈ [0, {area['h']}]px"
-            + (" and outside the bottom-right corner box." if layout == "corner" else "."),
+            + (" and outside the bottom-right corner box." if layout in OVERLAY_LAYOUTS else "."),
             "- Keep the background in the teacher area plain (the same board background) — no text, "
             "images, diagrams or animated elements there.",
             "- Do NOT draw a person, avatar, face or presenter yourself — the real teacher is added later.",
@@ -454,6 +468,23 @@ def teacher_entry_html(
            f"left:{(box['w'] - cw) // 2 if box['h'] >= box['w'] or layout == 'presenter' else box['w'] - cw}px;bottom:0;")
         + '"></video>'
     )
+    if layout == "bubble":
+        ring = max(3, _even(box["w"] * 0.016))
+        label = ""
+        if name:
+            label = (
+                f'<div style="position:absolute;left:50%;transform:translateX(-50%);bottom:{_even(box["h"] * 0.04)}px;'
+                f'padding:3px 12px;border-radius:999px;background:{colors["panel"]};color:{colors["text"]};{font}'
+                f'font-size:{max(12, int(height * 0.014))}px;font-weight:600;white-space:nowrap;">{name}</div>'
+            )
+        return (
+            f'<div style="position:absolute;inset:0;pointer-events:none;">'
+            f'<div style="position:absolute;inset:0;border-radius:50%;overflow:hidden;box-sizing:border-box;'
+            f'background:{colors["panel"]};border:{ring}px solid {colors["accent"]};">'
+            f'<video class="lesson-teacher" src="{url}" autoplay muted playsinline preload="auto" '
+            f'style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;"></video>'
+            f'</div>{label}</div>'
+        )
     if layout == "corner":
         label = ""
         if name:

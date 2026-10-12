@@ -20,7 +20,7 @@ import type {
 
 type Options = Omit<GenerateVideoRequest, 'prompt'>;
 
-const LAYOUTS: LessonLayout[] = ['auto', 'presenter', 'side', 'corner', 'board'];
+const LAYOUTS: LessonLayout[] = ['corner', 'bubble', 'side', 'presenter', 'auto', 'board'];
 
 /**
  * Lesson mode — an education video taught by a teacher at a board. Lesson
@@ -79,7 +79,8 @@ export function LessonModePanel({
         setLesson({
             ...lesson,
             teacher: { avatar_id: a.external_id, name: a.display_name },
-            layout: lesson.layout === 'board' ? 'auto' : lesson.layout || 'auto',
+            // Smallest cut-out by default — the teacher should not crowd the board.
+            layout: !lesson.layout || lesson.layout === 'board' ? 'corner' : lesson.layout,
         });
     };
 
@@ -166,7 +167,7 @@ export function LessonModePanel({
                                 {t('lesson.layout.label')}
                             </Label>
                             <Select
-                                value={lesson.layout || 'auto'}
+                                value={lesson.layout || 'corner'}
                                 onValueChange={(v) => patch({ layout: v as LessonLayout })}
                             >
                                 <SelectTrigger className="h-8 text-xs">
@@ -181,7 +182,7 @@ export function LessonModePanel({
                                 </SelectContent>
                             </Select>
                             <p className="text-2xs text-muted-foreground">
-                                {t(`lesson.layout.help.${lesson.layout || 'auto'}`)}
+                                {t(`lesson.layout.help.${lesson.layout || 'corner'}`)}
                             </p>
                         </div>
                     )}

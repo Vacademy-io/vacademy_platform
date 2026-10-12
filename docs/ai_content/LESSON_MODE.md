@@ -7,7 +7,7 @@ explains it, and (optionally) a Spatius avatar teacher stands beside the board.
 // POST /external/video/v1/generate — request body excerpt
 "lesson": {
   "teacher": { "avatar_id": "<Spatius avatar id>", "title": "Maths teacher" }, // omit = board-only lesson
-  "layout": "auto",            // auto | presenter | side | corner | board
+  "layout": "corner",          // corner | bubble | side | presenter | board | auto
   "subject": "Mathematics",
   "include_worked_example": true,
   "include_recap": true
@@ -57,10 +57,15 @@ If anything fails, the lesson ships board-only and the run gets a warning
 
 | layout | teacher box | board area |
 |---|---|---|
-| presenter | right half, panel | left half (title + one key line) |
-| side | right third (640 px), panel | left 1280 px |
-| corner | bottom-right 576×600, cut out, no panel | whole frame except that corner |
+| corner (UI default) | bottom-right 422×454 cut-out, no panel | whole frame except that corner |
+| bubble | bottom-right 270 px circle, accent ring | whole frame except that corner |
+| side | right 480 px panel, bust 480×640 | left 1440 px |
+| presenter | right 690 px panel, bust 690×842 | left 1230 px (title + one key line; hook only) |
 | board | none | whole frame |
+
+Sizes were cut after the first production lesson (side was 640 px, presenter 960 px): the teacher
+crowded the board and was drawn larger than the Spatius render, so the face looked soft. Every layout
+now scales the avatar down (crop ≥ clip size, asserted in tests).
 
 The panel colour is derived from the run's board palette.
 

@@ -99,13 +99,15 @@ def test_billing_is_per_started_minute():
 
 # ── framing ──────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("cw,ch,layout", [(576, 600, "corner"), (640, 852, "side"), (960, 1080, "presenter"),
-                                          (460, 614, "side")])
+@pytest.mark.parametrize("cw,ch,layout", [(422, 454, "corner"), (480, 640, "side"), (690, 842, "presenter"),
+                                          (270, 270, "bubble"), (374, 498, "side")])
 def test_crop_frames_the_teacher_inside_the_render(cw, ch, layout):
     box = (482, 114, 1437, 1080)   # measured subject box of a real render
     x, y, w, h = lt.crop_for(cw, ch, box, layout=layout)
     assert 0 <= x and x + w <= 1920 and 0 <= y and y + h <= 1080
-    assert y + h == 1080 or abs(h - 1080) <= 2          # shoulders reach the bottom edge
+    if layout != "bubble":
+        assert y + h == 1080 or abs(h - 1080) <= 2      # shoulders reach the bottom edge
+    assert w >= cw and h >= ch                           # never upscaled: the face stays sharp
     assert abs(w / h - cw / ch) < 0.02                   # no stretching
     assert x <= (482 + 1437) // 2 <= x + w               # centred on the teacher
     assert y <= 114                                      # head room kept

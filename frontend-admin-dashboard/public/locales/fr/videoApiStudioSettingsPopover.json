@@ -307,16 +307,18 @@
             "label": "Disposition de l’enseignant",
             "options": {
                 "auto": "Auto — selon la section",
-                "presenter": "Présentateur — moitié de l’image",
-                "side": "Panneau latéral — tiers droit",
-                "corner": "Coin — petit, en bas à droite",
+                "presenter": "Présentateur — tiers droit, pour l’intro",
+                "side": "Panneau latéral — fin, quart droit",
+                "corner": "Coin — petite découpe, en bas à droite",
+                "bubble": "Bulle — ronde, en bas à droite",
                 "board": "Tableau seul — enseignant masqué"
             },
             "help": {
                 "auto": "Introduction avec l’enseignant en grand, explications et récapitulatif à côté du tableau, étapes denses avec l’enseignant dans le coin.",
-                "presenter": "L’enseignant occupe la moitié de l’image ; le tableau montre un titre et une ligne clé.",
-                "side": "Le tableau occupe les deux tiers de l’image ; l’enseignant est dans un panneau à droite.",
-                "corner": "Le tableau occupe presque toute l’image ; l’enseignant est petit en bas à droite.",
+                "presenter": "L’enseignant est dans un panneau sur le tiers droit ; le tableau montre un titre et une ligne clé.",
+                "side": "Le tableau occupe les trois quarts de l’image ; l’enseignant est dans un panneau fin à droite.",
+                "corner": "Le tableau occupe toute l’image ; l’enseignant est une petite découpe en bas à droite.",
+                "bubble": "Le tableau occupe toute l’image ; l’enseignant apparaît dans une bulle ronde en bas à droite.",
                 "board": "Pas d’enseignant à l’écran ; la narration reste celle d’un enseignant."
             }
         },

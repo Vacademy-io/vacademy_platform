@@ -300,12 +300,13 @@ class LessonConfig(BaseModel):
     teacher: Optional[LessonTeacherConfig] = Field(
         default=None, description="None = board-only lesson (no on-screen teacher).",
     )
-    layout: Literal["auto", "corner", "side", "presenter", "board"] = Field(
+    layout: Literal["auto", "corner", "bubble", "side", "presenter", "board"] = Field(
         default="auto",
         description=(
-            "Where the teacher sits. 'auto' lets the planner choose per section: "
-            "presenter (half frame) for hook/recap, side (right third) for explanations, "
-            "corner (small, bottom-right) for dense boards."
+            "Where the teacher sits. corner = small cut-out bottom-right; bubble = round "
+            "270 px bubble bottom-right; side = slim right panel (25%); presenter = right "
+            "panel (36%); board = no teacher. 'auto' lets the planner choose per section "
+            "(presenter for the hook, side for explanations, corner for dense boards)."
         ),
     )
     subject: Optional[str] = Field(default=None, max_length=80, description="e.g. 'Mathematics', 'Physics'.")

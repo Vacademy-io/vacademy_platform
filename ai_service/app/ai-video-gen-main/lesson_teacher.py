@@ -276,9 +276,13 @@ def crop_for(clip_w: int, clip_h: int, box: Tuple[int, int, int, int], *, layout
     a clip of clip_w x clip_h. Head room above the hair, shoulders to the
     bottom edge; centred on the subject; clamped to the frame."""
     aspect = clip_w / float(clip_h)
-    top_pad = int(RENDER_H * (0.05 if layout == "corner" else 0.08))
+    top_pad = int(RENDER_H * (0.05 if layout in ("corner", "bubble") else 0.08))
     y = max(0, box[1] - top_pad)
     h = RENDER_H - y
+    if layout == "bubble":
+        # Head and upper shoulders only — the circle crops the rest anyway,
+        # and a tighter source keeps the face from looking tiny in 270 px.
+        h = int(h * 0.74)
     w = int(round(h * aspect))
     if w > RENDER_W:
         w = RENDER_W

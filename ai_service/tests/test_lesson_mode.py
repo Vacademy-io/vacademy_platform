@@ -159,7 +159,7 @@ def test_teaching_voice_reaches_the_narration_writer():
 def test_shot_block_reserves_the_teacher_area():
     plan = lm.normalize_lesson_plan(TEACHER)
     side = lm.shot_prompt_block(plan, "side", 1920, 1080)
-    assert "TEACHER SAFE AREA" in side and "x ≥ 1264px" in side and "x ∈ [0, 1280]px" in side
+    assert "TEACHER SAFE AREA" in side and "x ≥ 1424px" in side and "x ∈ [0, 1440]px" in side
     corner = lm.shot_prompt_block(plan, "corner", 1920, 1080)
     assert "bottom-right corner" in corner
     board = lm.shot_prompt_block(plan, "board", 1920, 1080)
@@ -176,7 +176,7 @@ def test_teacher_boxes_fit_the_frame_and_clips_are_even():
             cw, ch = lm.clip_size(layout, w, h)
             assert cw % 2 == 0 and ch % 2 == 0 and cw <= b["w"] and ch <= b["h"]
     assert lm.teacher_box("board", 1920, 1080) is None
-    assert lm.teacher_box("side", 1920, 1080) == {"x": 1280, "y": 0, "w": 640, "h": 1080}
+    assert lm.teacher_box("side", 1920, 1080) == {"x": 1440, "y": 0, "w": 480, "h": 1080}
 
 
 # ── timeline ─────────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ def test_teacher_entries_are_overlays_the_coverage_gate_ignores(tmp_path):
     assert len(entries) == 1   # a failed clip is skipped, not shipped empty
     e = entries[0]
     assert e["id"].startswith("snippet-teacher-")   # renderer seeks <video> in snippet-* hosts
-    assert e["z"] > 10 and (e["htmlStartX"], e["htmlEndX"]) == (960, 1920)
+    assert e["z"] > 10 and (e["htmlStartX"], e["htmlEndX"]) == (1920 - 690, 1920)
     assert 'src="https://x/t0.webm"' in e["html"] and "muted" in e["html"]
     assert "<b>" not in e["html"] and "Riya &lt;b&gt;Jain" in e["html"]
 
@@ -245,9 +245,9 @@ def test_side_and_presenter_shots_get_the_board_as_their_canvas():
             {"layout": "corner", "start": 20, "end": 31}, {"layout": "side", "start": 31, "end": 40}]
     n = lm.fit_shots_to_board(shots, runs, ["a", "b", "c", None], width=1920, height=1080)
     assert n == 2
-    assert [s["htmlEndX"] for s in shots] == [960, 1280, 1920, 1920]   # corner keeps the frame; failed clip keeps it too
+    assert [s["htmlEndX"] for s in shots] == [1920 - 690, 1440, 1920, 1920]   # corner keeps the frame; failed clip keeps it too
     plan = lm.normalize_lesson_plan(TEACHER)
-    assert "canvas is 1280×1080px" in lm.shot_prompt_block(plan, "side", 1920, 1080)
+    assert "canvas is 1440×1080px" in lm.shot_prompt_block(plan, "side", 1920, 1080)
     assert "canvas is" not in lm.shot_prompt_block(plan, "corner", 1920, 1080)
 
 
@@ -260,3 +260,23 @@ def test_corner_name_label_is_readable_on_dark_and_light_boards():
         colors = lm.panel_colors(pal)
         assert f"background:{colors['panel']}" in html and f"color:{colors['text']}" in html
         assert "rgba(255,255,255" not in html
+
+
+
+def test_teacher_never_takes_more_than_about_a_third_of_the_frame():
+    # Feedback on the first prod lesson: the teacher took too much space
+    # (side was a third, presenter half the frame).
+    for layout, max_frac in (("corner", 0.10), ("bubble", 0.04), ("side", 0.26), ("presenter", 0.37)):
+        b = lm.teacher_box(layout, 1920, 1080)
+        assert b["w"] * b["h"] / (1920 * 1080) <= max_frac, layout
+
+
+def test_bubble_is_a_round_overlay_on_the_full_board():
+    b = lm.teacher_box("bubble", 1920, 1080)
+    assert b["w"] == b["h"] == 270 and b["x"] + b["w"] < 1920 and b["y"] + b["h"] < 1080
+    html = lm.teacher_entry_html(layout="bubble", clip_url="u", width=1920, height=1080,
+                                 teacher={"name": "Riya"}, palette=None)
+    assert "border-radius:50%" in html and "object-fit:cover" in html and "Riya" in html
+    assert lm.board_area("bubble", 1920, 1080) == {"x": 0, "y": 0, "w": 1920, "h": 1080}
+    assert "bottom-right corner" in lm.shot_prompt_block(lm.normalize_lesson_plan(TEACHER), "bubble", 1920, 1080)
+    assert lm.normalize_lesson_plan({**TEACHER, "layout": "bubble"})["layout"] == "bubble"

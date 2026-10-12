@@ -12519,6 +12519,49 @@ class VideoGenerationPipeline:
 
         return record
 
+    def _crash_fallback_entry(
+        self, shot: Dict[str, Any], shot_idx: int, palette: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """A neutral card in the run's palette for a shot whose task raised,
+        carrying the narration so the frame is not empty."""
+        import html as _html_fb
+        start = float(shot.get("start_time", 0) or 0)
+        end = float(shot.get("end_time", start + 8) or (start + 8))
+        if end <= start:
+            return None
+        pal = palette or {}
+        bg = pal.get("background") or "var(--brand-bg, #f5f0e8)"
+        fg = pal.get("text") or "var(--brand-text, #2a1a0a)"
+        accent = pal.get("accent") or "var(--brand-accent, #FF7A1A)"
+        text = _html_fb.escape(str(
+            shot.get("narration_excerpt") or shot.get("narration_text")
+            or shot.get("visual_description") or ""
+        ).strip()[:200])
+        w = int(getattr(self, "video_width", 1920) or 1920)
+        h = int(getattr(self, "video_height", 1080) or 1080)
+        body = (
+            "<div id='shot-root' style='position:relative;width:100%;height:100%;overflow:hidden;"
+            f"background:{bg};display:flex;align-items:center;justify-content:center;padding:6%;'>"
+            + (f"<div id='fbc_t' style='max-width:80%;text-align:center;font-size:2.4rem;font-weight:700;"
+               f"color:{fg};line-height:1.4;opacity:0;'>{text}</div>" if text else "")
+            + f"<div id='fbc_b' style='position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"
+            f"width:6rem;height:4px;background:{accent};border-radius:2px;opacity:0;'></div>"
+            "<script>(function(){if(typeof gsap==='undefined')return;"
+            + ("gsap.to('#fbc_t',{opacity:1,duration:0.5,delay:0.1});" if text else "")
+            + "gsap.to('#fbc_b',{opacity:1,duration:0.4,delay:0.4});})();</script></div>"
+        )
+        return {
+            "start": start, "end": end,
+            "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": w, "htmlEndY": h,
+            "html": self._ensure_fonts(body),
+            "id": f"shot-{shot_idx}", "index": shot_idx,
+            "z": shot.get("z", 10),
+            "_shot_type": "FALLBACK",
+            "_narration_excerpt": shot.get("narration_excerpt", ""),
+            "_visual_description": shot.get("visual_description", ""),
+            "_skill_audio_events": [],
+        }
+
     def _lesson_canvas(self, shot: Optional[Dict[str, Any]]) -> Tuple[int, int]:
         """Canvas a shot is laid out on: the board area for lesson side /
         presenter sections (lesson_mode.fit_shots_to_board), else the frame.
@@ -22073,6 +22116,18 @@ class VideoGenerationPipeline:
                         import traceback as _tb_e
                         print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
                         print(f"      traceback:\n{_tb_e.format_exc()}")
+                        # Never leave a hole in the timeline: a crashed shot
+                        # task used to vanish, and a 12 s gap is wider than
+                        # gap-snap fills (10 s) — a white screen in the MP4.
+                        try:
+                            _crashed = shots[shot_idx] if 0 <= shot_idx < len(shots) else None
+                            if isinstance(_crashed, dict):
+                                _fb_crash = self._crash_fallback_entry(_crashed, shot_idx, palette)
+                                if _fb_crash:
+                                    all_entries.append(_fb_crash)
+                                    print(f"   🔄 Shot {shot_idx + 1} → fallback card (task crashed)")
+                        except Exception as _fbc_err:
+                            print(f"   ⚠️ Shot {shot_idx + 1} crash fallback failed: {_fbc_err}")
         finally:
             # Cancel queued-but-unstarted shots and return immediately — do NOT
             # block the pipeline thread joining the in-flight ones (wait=False).

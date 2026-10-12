@@ -306,16 +306,18 @@
             "label": "Teacher layout",
             "options": {
                 "auto": "Auto — changes by section",
-                "presenter": "Presenter — half the frame",
-                "side": "Side panel — right third",
-                "corner": "Corner — small, bottom right",
+                "presenter": "Presenter — right third, for intros",
+                "side": "Side panel — slim, right quarter",
+                "corner": "Corner — small cut-out, bottom right",
+                "bubble": "Bubble — round, bottom right",
                 "board": "Board only — teacher hidden"
             },
             "help": {
                 "auto": "Intro with the teacher large, explanations and recap beside the board, dense steps with the teacher in the corner.",
-                "presenter": "The teacher takes half the frame; the board shows a title and one key line.",
-                "side": "The board uses two thirds of the frame; the teacher stands in a panel on the right.",
-                "corner": "The board gets almost the whole frame; the teacher is small in the bottom-right corner.",
+                "presenter": "The teacher stands in a panel on the right third; the board shows a title and one key line.",
+                "side": "The board uses three quarters of the frame; the teacher stands in a slim panel on the right.",
+                "corner": "The board gets the whole frame; the teacher is a small cut-out in the bottom-right corner.",
+                "bubble": "The board gets the whole frame; the teacher appears in a round bubble in the bottom-right corner.",
                 "board": "No teacher on screen; the narration still sounds like a teacher."
             }
         },

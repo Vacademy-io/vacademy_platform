@@ -555,7 +555,7 @@ export interface HostRawConfig {
 }
 
 /** Where the lesson teacher sits. `auto` lets the planner pick per section. */
-export type LessonLayout = 'auto' | 'corner' | 'side' | 'presenter' | 'board';
+export type LessonLayout = 'auto' | 'corner' | 'bubble' | 'side' | 'presenter' | 'board';
 
 /**
  * Lesson mode — an education video taught by a teacher at a board: lesson

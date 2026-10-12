@@ -23,6 +23,7 @@ import GuardianSettings from '../-components/GuardianSettings';
 import OnboardingSettings from '../-components/OnboardingSettings';
 import GtmSettings from '../-components/GtmSettings';
 import UtmSettings from '../-components/UtmSettings';
+import SecuritySettings from '../-components/SecuritySettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
@@ -69,7 +70,13 @@ export const SETTINGS_DOMAIN_ORDER: SettingsDomain[] = [
 
 /** Sub-group display order within each domain. */
 export const SETTINGS_GROUP_ORDER: Record<SettingsDomain, string[]> = {
-    General: ['Branding & Identity', 'Roles & Access', 'Data & Fields', 'Platform Configuration'],
+    General: [
+        'Branding & Identity',
+        'Roles & Access',
+        'Security',
+        'Data & Fields',
+        'Platform Configuration',
+    ],
     LMS: [
         'Course & Curriculum',
         'Assessment & Certification',
@@ -145,6 +152,14 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             component: TncSettings,
             domain: 'General',
             group: 'Roles & Access',
+        },
+        // ── General — Security ───────────────────────────────────────────────
+        {
+            tab: SettingsTabs.Security,
+            value: 'Security Settings',
+            component: SecuritySettings,
+            domain: 'General',
+            group: 'Security',
         },
         // ── General — Data & Fields ──────────────────────────────────────────
         {

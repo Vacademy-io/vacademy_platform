@@ -37,6 +37,7 @@ import {
     ClipboardText,
     VideoCamera,
     ShieldCheck,
+    LockKey,
     Funnel,
     GraduationCap,
     Users,
@@ -477,6 +478,7 @@ export const SETTINGS_TAB_ICONS: Record<string, React.FC<IconProps>> = {
     integrations: Megaphone,
     youtube: YoutubeLogo,
     gtmSettings: Tag,
+    security: LockKey,
 };
 
 interface SettingsTabsListProps {

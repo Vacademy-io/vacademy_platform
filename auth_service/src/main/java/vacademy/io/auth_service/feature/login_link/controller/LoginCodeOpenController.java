@@ -24,7 +24,7 @@ import java.util.Map;
  *
  * <pre>
  * POST /auth-service/open/v1/login-codes
- * X-API-Key: vak_login_…      (Settings → Login links on the admin dashboard)
+ * X-API-Key: vak_login_…      (admin dashboard: Settings → Security)
  * {"username": "rahul123", "expires_in_days": 7}
  * →
  * {"code": "…", "expires_at": "…", "user_id": "…", "username": "rahul123", "query_param": "lc"}

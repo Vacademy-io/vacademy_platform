@@ -20,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The institute's "Require login code" switch (Settings → Login links). Off (the default):
+ * The institute's "Require login code" switch (admin dashboard: Settings → Security). Off (the default):
  * username-only links keep working. On: a learner of this institute can only be signed in by a
  * link carrying a valid {@code ?lc=} code. ACTIVE ADMIN of the institute only.
  */

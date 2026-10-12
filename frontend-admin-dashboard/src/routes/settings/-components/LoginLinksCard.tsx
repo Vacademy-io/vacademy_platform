@@ -58,7 +58,7 @@ const STATUS_LABEL_KEYS = {
 } as const;
 
 /**
- * Settings → Integrations → "Login links". The "require a login code" switch for the
+ * Settings → Security → "Login links". The "require a login code" switch for the
  * learner portal's passwordless links, and the keys an institute's own server uses to
  * mint codes. Keys reuse the Evaluation API key table (product login_links) and its
  * shown-once / revoke behaviour.

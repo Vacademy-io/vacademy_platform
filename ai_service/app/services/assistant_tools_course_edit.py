@@ -11,7 +11,9 @@ off the catalogue, and slides are DRAFT unless the admin asks for them to be
 published; edits / discards are refused on courses that are not DRAFT. A course
 goes live only via ``submit_for_review`` → an admin approves it in the dashboard.
 ``publish_slides`` is the one action that can reach learners (on a live course)
-and runs only when the admin asks to publish / approve slides.
+and runs only when the admin asks to publish / approve slides. ``update_media``
+also works on a live course (the admin's choice): it only changes the course's
+images and fills the course's invites' EMPTY image slots, never one set on purpose.
 
 Actions
     create_course      outline (+ optional inline slides) → a DRAFT course with its structure
@@ -24,6 +26,7 @@ Actions
     discard_slide      mark a slide of a DRAFT course DELETED
     publish_slides     publish DRAFT slides (course / chapter / listed) — the admin's "approve slides"
     submit_for_review  DRAFT course → IN_REVIEW (an admin approves it in the dashboard)
+    update_media       a course's preview image, banner and intro media (any status)
 """
 from __future__ import annotations
 
@@ -41,8 +44,17 @@ COURSE_EDIT_TOOL_NAME = "course_edit"
 COURSE_EDIT_GROUP_KEY = "course_edits"
 COURSE_EDIT_ACTIONS = (
     "create_course", "add_chapter", "add_slide", "update_slide", "reorder",
-    "import_image", "import_pdf", "discard_slide", "publish_slides", "submit_for_review",
+    "import_image", "import_pdf", "discard_slide", "publish_slides", "submit_for_review", "update_media",
 )
+
+#: media key → the course column it sets, and the invite image slot it fills when that is empty.
+_MEDIA_SLOTS = {"preview": ("course_preview_image_media_id", "preview"),
+                "banner": ("course_banner_media_id", "banner"),
+                "intro": ("course_media_id", "media")}
+MEDIA_DOC = ("MEDIA = {preview? (the catalogue card image), banner? (top of the course page), intro? (image or "
+             "YouTube video on the course page)}, each {image_url} (public https image — imported into the institute's "
+             "media) | {file_id} (existing media file) | 'none'; intro also takes {youtube: url}. "
+             "Never invent image URLs — use ones the admin gives or the institute's media.")
 
 _MAX_PDF_BYTES = 40_000_000
 _SPEC_TO_SOURCE = {"document": "DOCUMENT", "pdf": "DOCUMENT", "video": "VIDEO", "quiz": "QUIZ",
@@ -57,7 +69,7 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
             "first); this tool validates and saves — no AI credits are used and nothing goes live from here. "
             "Pick an `action`:\n"
             "- create_course (course:{name, depth?, about_html?, why_learn_html?, who_should_learn_html?, tags?}, "
-            "chapters | modules | subjects): creates a DRAFT course with its structure. Slides inside chapters may be "
+            "chapters | modules | subjects, media?: MEDIA): creates a DRAFT course with its structure. Slides inside chapters may be "
             "full slide specs (saved now) or {type, title} placeholders (returned in `todo` for add_slide). Returns "
             "every chapter id. Optional sessions / levels make one batch per session × level (see "
             "courses(action='schema') → batches; reuse existing ones from courses(action='sessions_levels')); leave "
@@ -77,6 +89,9 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
             "it is saved as DRAFT. A status may be set per slide (slide.status) or for the call (status).\n"
             "- submit_for_review (course_id): send the finished course for approval; an admin approves it in the "
             "dashboard and it goes live. Run courses(action='review') first.\n"
+            "- update_media (course_id, media: MEDIA): set or replace the course's images — works on live courses "
+            "too. The course's invite links get the new images wherever they have none of their own.\n"
+            + MEDIA_DOC + "\n"
             "Slide types: document {html}, video {url (YouTube)}, pdf {file_id}, quiz {questions, settings?}, "
             "question {question}, assignment {instructions_html, …}."
         ),
@@ -108,6 +123,8 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
                                           "PUBLISHED only when the admin asks for published slides."},
                 "position": {"type": "integer", "description": "add_slide: 1-based position (default: last)."},
                 "url": {"type": "string", "description": "import_image / import_pdf: public https URL."},
+                "media": {"type": "object", "description": "create_course / update_media: MEDIA "
+                                                          "{preview?, banner?, intro?}."},
             },
             "required": ["action"],
         },
@@ -211,6 +228,11 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                         problems.append(f"chapter '{c['name']}' slide '{spec.get('title')}': {report['problem']}")
     if problems:
         return _err("invalid_slides", problems=problems[:30], message="Nothing was created. Fix these and resend.")
+    media = args.get("media")
+    if media is not None:
+        problem = _check_media(media)
+        if problem:
+            return _err("invalid_media", message=problem + " Nothing was created.")
 
     # Sessions × levels (batches). Ids must be the institute's own — admin-core
     # would otherwise attach this course to another institute's session/level.
@@ -231,6 +253,11 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                                                          "levels (see courses(action='sessions_levels')).")
 
     course = outline["course"]
+    media_columns: Dict[str, str] = {}
+    if media:
+        media_columns, problem = await _resolve_media(ctx, media)
+        if problem:
+            return _err("invalid_media", message=problem + " Nothing was created.")
     created = await cbd.admin_core(
         ctx, "POST", f"/admin-core-service/course/v1/add-course/{ctx.principal.institute_id}", timeout=60.0,
         body={
@@ -242,7 +269,7 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
             "who_should_learn_html": course["who_should_learn_html"], "course_html_description": course["about_html"],
             "tags": course["tags"], "created_by_user_id": ctx.principal.user_id, "version_number": 1,
             "thumbnail_file_id": "", "course_preview_image_media_id": "", "course_banner_media_id": "",
-            "course_media_id": "",
+            "course_media_id": "", **media_columns,
         },
     )
     course_id = _id_from(created)
@@ -318,6 +345,8 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     # admin-core uniquifies a name already used by an ACTIVE/DRAFT course ("X (2)") —
     # report the name it actually saved, not the one asked for.
     saved_name = (cbd.course_row(ctx, course_id) or {}).get("name") or course["name"]
+    # The auto-created default invites are made with the course; give them its images.
+    media_notes = _invite_notes(await _fill_invites(ctx, course_id, list(media))) if media else []
     batches = cbd.course_batches(ctx, course_id)
     invites = cbd.invites_for_batches(ctx, batch_ids)
     defaults = [i for i in invites if i["is_default"]]
@@ -334,6 +363,7 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                      for c in result_chapters],
         "todo": todo,
         "failures": failures,
+        **({"media": list(media), "media_notes": media_notes} if media else {}),
         "hidden_levels": f"A hidden DEFAULT {hidden} hold the structure; learners never see them." if hidden else None,
         # Every batch gets an auto-created default invite at the institute's default price.
         "default_invites": [{"id": i["id"], "name": i["name"], "payment": i.get("payment_type"),
@@ -656,9 +686,85 @@ async def _action_submit_for_review(args: Dict[str, Any], ctx: ToolContext) -> D
     }
 
 
+# ── course media ─────────────────────────────────────────────────────────
+
+def _check_media(media: Any) -> Optional[str]:
+    if not isinstance(media, dict) or not media or set(media) - set(_MEDIA_SLOTS):
+        return "media must be {preview?, banner?, intro?} — " + MEDIA_DOC
+    for key, spec in media.items():
+        problem = cbd.check_media_spec(spec, f"media.{key}", allow_youtube=key == "intro")
+        if problem:
+            return problem
+    return None
+
+
+async def _resolve_media(ctx: ToolContext, media: Dict[str, Any]) -> Tuple[Dict[str, str], Optional[str]]:
+    """media → {course column: stored value}; intro media is stored as JSON {type, id}."""
+    columns: Dict[str, str] = {}
+    for key, spec in media.items():
+        resolved, problem = await cbd.resolve_media(ctx, spec, f"media.{key}", allow_youtube=key == "intro")
+        if problem:
+            return {}, problem
+        kind, value = resolved
+        column = _MEDIA_SLOTS[key][0]
+        columns[column] = json.dumps({"type": kind, "id": value}) if key == "intro" else value
+    return columns, None
+
+
+async def _fill_invites(ctx: ToolContext, course_id: str, keys: List[str]) -> Dict[str, List[str]]:
+    from .assistant_tools_course_invites import fill_empty_invite_images
+    course = cbd.course_row(ctx, course_id) or {}
+    batch_ids = [b["id"] for b in cbd.course_batches(ctx, course_id)]
+    if not course or not batch_ids:
+        return {"updated": [], "failed": []}
+    return await fill_empty_invite_images(ctx, course, batch_ids, [_MEDIA_SLOTS[k][1] for k in keys])
+
+
+def _invite_notes(filled: Dict[str, List[str]]) -> List[str]:
+    notes = []
+    if filled["updated"]:
+        notes.append("These invite links had no image of their own and now show the course's: "
+                     + ", ".join(filled["updated"]) + ".")
+    if filled["failed"]:
+        notes.append("These invite links could not be updated; set their images with course_invites_edit("
+                     "update_invite, images={…: 'course'}): " + ", ".join(filled["failed"]) + ".")
+    return notes
+
+
+async def _action_update_media(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    media = args.get("media")
+    if not args.get("course_id") or media is None:
+        return _err("missing_argument", action="update_media", needs=["course_id", "media"])
+    problem = _check_media(media)
+    if problem:
+        return _err("invalid_media", message=problem)
+    course = cbd.course_row(ctx, str(args["course_id"]))
+    body = cbd.course_update_body(ctx, str(args["course_id"])) if course else None
+    if not course or not body:
+        return _err("unknown_course", message="No such course in this institute. Use courses(action='list').")
+    columns, problem = await _resolve_media(ctx, media)
+    if problem:
+        return _err("invalid_media", message=problem)
+    # update-course overwrites every field it is sent: the stored values go back
+    # unchanged and only the media columns differ.
+    body.update(columns)
+    saved = await cbd.admin_core(ctx, "PUT", f"/admin-core-service/course/v1/update-course/{course['id']}", body=body)
+    if cbd.is_error(saved):
+        return _err("save_failed", message="The course's media could not be saved.",
+                    detail=saved.get("message") if isinstance(saved, dict) else None)
+    filled = await _fill_invites(ctx, course["id"], list(media))
+    notes = _invite_notes(filled)
+    if course["status"] == cbd.STATUS_ACTIVE:
+        notes.append("The course is live: learners see the new images right away.")
+    return {"course": {"id": course["id"], "name": course["name"], "status": course["status"]},
+            "changed": list(media), "invites_updated": filled["updated"], "notes": notes,
+            "editor_url": cbd.course_editor_url(ctx, course["id"])}
+
+
 _ACTIONS = {
     "create_course": _action_create_course, "add_chapter": _action_add_chapter, "add_slide": _action_add_slide,
     "update_slide": _action_update_slide, "reorder": _action_reorder, "import_image": _action_import_image,
+    "update_media": _action_update_media,
     "import_pdf": _action_import_pdf, "discard_slide": _action_discard_slide,
     "publish_slides": _action_publish_slides,
     "submit_for_review": _action_submit_for_review,

@@ -50,6 +50,7 @@ def test_exposed_set_is_the_documented_one():
         "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit",
+        "learners", "learner_enroll", "learner_edit",
     )
 
 
@@ -67,7 +68,8 @@ def test_exposed_write_tools_are_on_the_allow_list():
 
 
 def test_live_write_tools_are_not_exposed():
-    """The Assistant's confirm-card writes (learner edits, announcements) stay off MCP."""
+    """The Assistant's confirm-card writes (update_learner_profile, announcements …) stay off MCP; the learner
+    tools exposed instead carry their own preview → confirm_token gate (test_learner_tools.py)."""
     write_tools = {name for name, spec in ASSISTANT_TOOLS.items() if spec.mode == "WRITE"}
     live_writes = write_tools - set(MCP_ALLOWED_WRITE_TOOLS)
     assert live_writes, "registry should contain live write tools for this test to mean anything"
@@ -247,10 +249,22 @@ def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has
     assert (entry["area"], entry["level"], entry["risk"]) == ("website", "edit", "live")
     assert entry["opt_in"] is True and entry["label"] == "Website: publish" and entry["sub_label"]
     # Every other group keeps the area's Edit level / presets behaviour.
-    assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == ["website_data_edits", "website_publish"]
+    assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == [
+        "website_data_edits", "website_publish", "learner_enrollments", "learner_profile_edits"]
     spec = ASSISTANT_TOOLS["website_publish"]
     assert spec.mcp_only and not spec.default_enabled and not spec.default_roles and spec.mode == "WRITE"
     assert "LIVE" in MCP_ALLOWED_WRITE_TOOLS["website_publish"]
+
+
+def test_learner_writes_are_opt_in_live_capabilities():
+    """Enrolling and editing learners change live data: never switched on by the Learners view or a preset."""
+    assert gated(adapter.list_tools_for(principal(), setting(["learners"]))) == ["learners"]
+    for group, tool in (("learner_enrollments", "learner_enroll"), ("learner_profile_edits", "learner_edit")):
+        entry = next(c for c in adapter.tool_catalog() if c["name"] == tool)
+        assert (entry["key"], entry["area"], entry["level"], entry["risk"], entry["opt_in"]) == \
+               (group, "learners", "edit", "live", True)
+        assert tool in [t.name for t in adapter.list_tools_for(principal(), setting([group]))]
+        assert "confirm" in MCP_ALLOWED_WRITE_TOOLS[tool]
 
 
 def test_website_publish_is_never_offered_to_the_in_product_assistant():

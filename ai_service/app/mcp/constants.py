@@ -45,17 +45,24 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "course_edit",          # WRITE: draft-only — DRAFT courses and DRAFT slides; nothing publishes
     "course_drip_edit",     # WRITE: drip rules on courses that are not live yet
     "course_invites_edit",  # WRITE: new invites / plans; edits an invite's page and form fields
+    "learners",             # READ:  find learners, their profile + courses, enrol options, the bulk-enrol CSV template
+    "learner_enroll",       # WRITE: additive — enrols learners into courses via an invite; preview + confirm token
+    "learner_edit",         # WRITE: live — edits a learner's details (never email / username); preview + confirm token
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
 #: without a confirm card (MCP has none). A write tool is allowed here only
 #: when nothing it does can destroy or publish anything: it writes DRAFTS the
 #: admin publishes from the dashboard, or it only ADDS records. Live edits that
-#: change or remove existing data (learner edits, announcements) stay off.
-#: The one exception is website_publish (product decision 2026-10-10): it
-#: publishes, so it carries its own confirm — a single-use token from a check
-#: the admin was shown less than 10 minutes earlier, bound to that exact
-#: state — and its group is opt-in only (MCP_OPT_IN_GROUPS).
+#: change or remove existing data (update_learner_profile, announcements) stay off.
+#: The exceptions are live writes that carry their own confirm and whose groups
+#: are opt-in only (MCP_OPT_IN_GROUPS):
+#:   * website_publish (product decision 2026-10-10): it publishes, with a
+#:     single-use token from a check the admin was shown less than 10 minutes
+#:     earlier, bound to that exact state;
+#:   * learner_enroll / learner_edit (product decision 2026-10-10): a preview the
+#:     admin is shown → a signed confirm_token over the identical request → the
+#:     write (see services/learner_data.py).
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": (
         "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
@@ -92,12 +99,23 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "that is not a DRAFT; request_publish only returns the dashboard link — publishing is an admin click"
     ),
     "course_edit": "draft-only: creates DRAFT courses and edits only DRAFT courses; slides are DRAFT unless the admin "
-                   "asks to publish them (publish_slides); a course goes live only through dashboard approval",
+                   "asks to publish them (publish_slides); a course goes live only through dashboard approval. "
+                   "Exception by the admin's choice: update_media sets a course's images on any course and only "
+                   "fills invite image slots that are empty",
     "course_drip_edit": "not-live only: drip rules of DRAFT / IN_REVIEW courses; never flips the institute switches",
     "course_invites_edit": (
         "creates invites and payment plans (re-pointing / default only on non-live courses); edits an invite's "
         "page and form in place — the admin's explicit choice, live courses included — but only binds existing "
         "fields and never changes a field's shared label / type / options or the invite's payment links"
+    ),
+    "learner_enroll": (
+        "additive + confirm-gated: only ENROLS (never de-assigns; duplicates SKIP or ERROR, never RE_ENROLL) and "
+        "only through this institute's active invites of the chosen batch; refuses organisation batches; every "
+        "write needs the confirm_token of a dry-run preview of the identical request"
+    ),
+    "learner_edit": (
+        "confirm-gated live edit, the admin's explicit choice: changes one learner of this institute at a time; "
+        "never email or username; needs the confirm_token of a preview that showed every before → after"
     ),
 }
 
@@ -121,6 +139,9 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "course_edits": "Courses: build drafts",
     "course_drip_edits": "Courses: drip rules",
     "course_invite_edits": "Courses: invite links & payment plans",
+    "learners": "Learners: view",
+    "learner_enrollments": "Learners: enrol into courses",
+    "learner_profile_edits": "Learners: edit details",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -193,8 +214,9 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "course_edits": (
         "Let the connected AI app build courses — outline, reading pages, YouTube videos, PDFs, quizzes, "
         "questions and assignments — and publish slides when you ask it to. Courses are saved as DRAFT and go "
-        "live only when an admin approves them in the dashboard. The AI app writes the content itself, so it "
-        "uses no AI credits."
+        "live only when an admin approves them in the dashboard. It can also set a course's preview image, "
+        "banner and intro video, on live courses too. The AI app writes the content itself, so it uses no AI "
+        "credits."
     ),
     "course_drip_edits": (
         "Let the connected AI app set content release (drip) rules on courses that are not live yet. Never "
@@ -205,6 +227,23 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "(name, dates, text, images, where learners land after enrolling) and its registration form (add your "
         "existing fields, remove, reorder, make required). Invite edits apply right away, also on live "
         "courses. Payment plans are never edited or removed."
+    ),
+    "learners": (
+        "Find learners by name, email or phone, and see their profile and the courses they are enrolled in, "
+        "plus each course's invites and the bulk-enrol CSV template."
+    ),
+    "learner_enrollments": (
+        "Let the connected AI app enrol learners — one, a list or a CSV, existing or new — into one or more "
+        "courses through the invite you pick. It always shows you a preview (who is new, who is already enrolled) "
+        "and enrols only after you confirm. It asks you every time whether to send the welcome email and the "
+        "login-details email, and whether you want a CSV of the learners' usernames and passwords (delivered as a "
+        "private download link that expires after 30 minutes, never shown in the chat). Never removes anyone from a "
+        "course. Batches sold to organisations stay dashboard-only."
+    ),
+    "learner_profile_edits": (
+        "Let the connected AI app change a learner's details — name, phone, password, address, parents and custom "
+        "fields — after showing you the before and after and getting your confirmation. Changes apply right away. "
+        "Email and username can never be changed from here."
     ),
 }
 
@@ -219,6 +258,7 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "automations": {"label": "Automations", "summary": "Workflows, their runs, and email / WhatsApp templates."},
     "blog": {"label": "Blog", "summary": "Blog posts and the pages that show them."},
     "courses": {"label": "Courses", "summary": "Course content, drip rules, invite links and pricing."},
+    "learners": {"label": "Learners", "summary": "Find learners, enrol them into courses and edit their details."},
 }
 
 #: group key → where it sits on the settings page.
@@ -252,12 +292,16 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "course_drip_edits": {"area": "courses", "level": "edit", "risk": "not_live", "sub_label": "Drip release rules"},
     "course_invite_edits": {"area": "courses", "level": "edit", "risk": "live",
                             "sub_label": "Invite links, pricing and enrolment forms"},
+    "learners": {"area": "learners", "level": "view"},
+    "learner_enrollments": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Enrol into courses"},
+    "learner_profile_edits": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Edit learner details"},
 }
 
 #: Groups an admin turns on ONE BY ONE: the settings page never switches them
 #: on with their area's Edit level or the "Turn everything on" preset (the
 #: catalogue marks them ``opt_in``). Off for every existing institute.
-MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish"})
+MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish",
+                               "learner_enrollments", "learner_profile_edits"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.

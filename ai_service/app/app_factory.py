@@ -157,16 +157,18 @@ async def _lifespan(app: FastAPI):
             ensure_mcp_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
-    # Tables only admin_core Flyway creates (V561, V562): no DDL here, only a check
+    # Tables only admin_core Flyway creates (V561, V562, V565): no DDL here, only a check
     # that logs an error naming the migration when one is missing. Never raises.
     try:
         with db_session() as db:
             from .models.catalog_data_edit import check_catalog_data_schema
             from .models.design_import import check_design_import_schema
+            from .models.file_export import check_file_export_schema
             from .models.publish_confirm import check_publish_confirm_schema
             check_design_import_schema(db)
             check_catalog_data_schema(db)
             check_publish_confirm_schema(db)
+            check_file_export_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.error("mcp table check skipped: %s", exc)
     # design_import keeps uploads 24 h: drop expired ones hourly, uploads or not.
@@ -367,6 +369,12 @@ def create_app() -> FastAPI:
     app.include_router(studio_router, prefix=settings.api_base_path)
 
     # MCP server (Model Context Protocol) — off unless MCP_SERVER_ENABLED.
+    # Link-only downloads (e.g. an enrolment's credentials CSV). Outside /ai-service/mcp
+    # (the mount below owns that subtree) and mounted whether or not MCP is on: the
+    # in-product Assistant runs the same learner tools.
+    from .services.file_exports import router as file_exports_router
+    app.include_router(file_exports_router)
+
     # The consent/settings router declares its own absolute /ai-service/mcp/oauth
     # prefix, so it must be registered BEFORE the mount below: Starlette matches
     # routes in order and the mount owns everything under /ai-service/mcp.

@@ -125,7 +125,18 @@ SERVER_INSTRUCTIONS = (
     "approves it in the dashboard and only then does it go live. Slides are saved as DRAFT unless the admin asks "
     "for published ones (status='PUBLISHED'); course_edit(publish_slides) publishes DRAFT slides when the admin "
     "approves them. Never invent video links, image URLs, prices or dates; images come from "
-    "course_edit(import_image)."
+    "course_edit(import_image), and the course's preview image / banner / intro video from "
+    "course_edit(update_media) with images the admin provides.\n"
+    "Learners: find a learner with learners(action='find') — when several match (e.g. three 'Sarthak's) list them "
+    "with email, phone and courses and ask which one; never guess. To enrol: learners(action='enroll_options') for "
+    "the courses, ask which invite when a course has several, ask the admin whether to send the welcome email, "
+    "whether to email new learners their login details and whether they want a credentials CSV (never assume), "
+    "learner_enroll(action='preview'), show the admin the "
+    "outcome, and only after a clear yes call learner_enroll(action='enroll') with the same arguments and the "
+    "confirm_token. For a bulk upload hand the admin learners(action='enroll_template') as a .csv file and pass the "
+    "filled-in CSV back. To change details: learner_edit(action='preview') → show before / after → "
+    "learner_edit(action='apply') on a yes. Email and username cannot be changed; never repeat a password back. "
+    "A credentials CSV comes as a private download link: hand it to the admin as is and never open it."
 )
 
 

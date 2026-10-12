@@ -2426,7 +2426,7 @@ async def execute_tool(
 
 # ──────────────────────────────────────────────────────────────────────────
 # Feature tools that live in their own modules (website builder, lead forms,
-# course builder).
+# course builder, learners).
 # Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
 # so importing it here is only to make sure that happens. The import is
 # tolerant of the cycle: a test that imports the feature module first will find
@@ -2442,6 +2442,7 @@ def _load_feature_tools() -> None:
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
         "assistant_tools_course_invites",
+        "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
     ):
         try:
             __import__(f"{__package__}.{module}")

@@ -14,7 +14,8 @@ docs/ai-course/COURSE_BUILDER_MCP_PLAN.md.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
@@ -160,7 +161,8 @@ def list_courses(ctx: ToolContext, status: Optional[str] = None, search: Optiona
 _COURSE_SQL = """
 SELECT p.id, p.package_name AS name, p.status, p.course_depth AS depth,
        p.created_by_user_id, p.about_the_course, p.why_learn, p.who_should_learn,
-       p.comma_separated_tags AS tags, p.course_preview_image_media_id, p.course_banner_media_id
+       p.comma_separated_tags AS tags, p.course_preview_image_media_id, p.course_banner_media_id,
+       p.course_media_id
 FROM package p
 JOIN package_institute pi ON pi.package_id = p.id
 WHERE p.id = :id AND pi.institute_id = :inst AND p.status <> 'DELETED'
@@ -174,6 +176,40 @@ def course_row(ctx: ToolContext, course_id: Optional[str]) -> Optional[Dict[str,
         return None
     rows = _rows(ctx, _COURSE_SQL, {"id": str(course_id), "inst": ctx.principal.institute_id})
     return rows[0] if rows else None
+
+
+_COURSE_FULL_SQL = """
+SELECT p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+       p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+       p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+       p.course_depth, p.course_html_description
+FROM package p
+JOIN package_institute pi ON pi.package_id = p.id
+WHERE p.id = :id AND pi.institute_id = :inst AND p.status <> 'DELETED'
+LIMIT 1
+"""
+
+
+def course_update_body(ctx: ToolContext, course_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Every column ``PUT /course/v1/update-course/{id}`` overwrites, as currently
+    stored, in its PackageDTO shape. That endpoint sets each field to whatever it
+    is sent (nulls included), so a change starts from this and edits one key.
+    """
+    rows = _rows(ctx, _COURSE_FULL_SQL, {"id": str(course_id), "inst": ctx.principal.institute_id})
+    if not rows:
+        return None
+    r = rows[0]
+    return {
+        "id": r["id"], "package_name": r["package_name"], "thumbnail_file_id": r["thumbnail_file_id"],
+        "is_course_published_to_catalaouge": r["is_course_published_to_catalaouge"],
+        "course_preview_image_media_id": r["course_preview_image_media_id"],
+        "course_banner_media_id": r["course_banner_media_id"], "course_media_id": r["course_media_id"],
+        "why_learn_html": r["why_learn"], "who_should_learn_html": r["who_should_learn"],
+        "about_the_course_html": r["about_the_course"],
+        "tags": [t.strip() for t in (r["comma_separated_tags"] or "").split(",") if t.strip()],
+        "course_depth": r["course_depth"], "course_html_description_html": r["course_html_description"],
+    }
 
 
 _BATCH_SQL = """
@@ -568,6 +604,63 @@ COURSE_SETTING_KEY = "COURSE_SETTING"
 COURSE_SETTING_NAME = "Course Creation Configuration"
 
 
+# ── images (course + invite media) ─────────────────────────────────────
+
+MEDIA_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+MAX_MEDIA_IMAGE_BYTES = 6_000_000
+_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+MEDIA_SPEC_DOC = ("{image_url} (public https image — imported into the institute's media) | {file_id} (existing "
+                  "media file) | 'none'")
+
+
+def check_media_spec(spec: Any, label: str, *, allow_youtube: bool = False) -> Optional[str]:
+    """What is wrong with an image spec, without fetching anything — so a bad one fails before any import."""
+    if spec == "none":
+        return None
+    if not isinstance(spec, dict):
+        return f"{label} must be {MEDIA_SPEC_DOC}" + (" | {youtube: url}" if allow_youtube else "")
+    if spec.get("youtube"):
+        if not allow_youtube:
+            return f"{label} cannot be a video — only the intro media takes {{youtube}}"
+        from .course_content import youtube_id
+        return None if youtube_id(spec["youtube"]) else \
+            f"{label}.youtube must be a YouTube https link (watch / youtu.be / embed / shorts)"
+    if spec.get("file_id"):
+        return None if _FILE_ID_RE.match(str(spec["file_id"]).strip()) else \
+            f"{label}.file_id is not a media file id (pass a URL as image_url instead)"
+    if spec.get("image_url"):
+        return None if str(spec["image_url"]).strip().lower().startswith("https://") else \
+            f"{label}.image_url must be a public https URL"
+    return f"{label} must be {MEDIA_SPEC_DOC}"
+
+
+async def resolve_media(ctx: ToolContext, spec: Any, label: str, *,
+                        allow_youtube: bool = False) -> Tuple[Optional[Tuple[str, str]], Optional[str]]:
+    """
+    An image spec → (kind, value): ("image", media file id), ("youtube", url) or
+    ("", "") for 'none'; else (None, problem). Images are stored as media file
+    ids — the learner pages turn ids into URLs, never the other way round.
+    """
+    problem = check_media_spec(spec, label, allow_youtube=allow_youtube)
+    if problem:
+        return None, problem
+    if spec == "none":
+        return ("", ""), None
+    if spec.get("youtube"):
+        return ("youtube", str(spec["youtube"]).strip()), None
+    if spec.get("file_id"):
+        return ("image", str(spec["file_id"]).strip()), None
+    fetched = await fetch_public_file(str(spec["image_url"]).strip(), max_bytes=MAX_MEDIA_IMAGE_BYTES,
+                                      allowed_types=MEDIA_IMAGE_TYPES)
+    if is_error(fetched):
+        return None, f"{label}: {fetched.get('message')}"
+    content, ctype, ext = fetched
+    file_id = await upload_to_media(ctx, content, f"{label.replace('.', '-')}.{ext}", ctype)
+    if is_error(file_id):
+        return None, f"{label}: {file_id.get('message')}"
+    return ("image", file_id), None
+
+
 async def load_course_settings(ctx: ToolContext) -> Any:
     """The institute's COURSE_SETTING data ({} when never saved), or an error dict."""
     data = await admin_core(
@@ -606,6 +699,6 @@ __all__ = [
     "list_courses", "course_row", "active_batch_id", "course_batches", "institute_sessions_levels",
     "enrolled_count", "course_tree", "flatten_chapters",
     "chapter_context", "slide_context", "invites_for_batches", "invites_for_batch", "invite_row", "payment_vendors",
-    "custom_fields_by_keys",
+    "custom_fields_by_keys", "course_update_body", "check_media_spec", "resolve_media", "MEDIA_SPEC_DOC",
     "load_course_settings", "save_course_settings",
 ]

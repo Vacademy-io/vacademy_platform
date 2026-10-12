@@ -285,6 +285,10 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
         findings.append({"severity": "warn", "where": "course",
                          "issue": f"{len(drafts)} slide(s) are still DRAFT, so learners won't see them — publish them "
                                   "with course_edit(publish_slides) if the admin approves."})
+    if not course.get("course_preview_image_media_id"):
+        findings.append({"severity": "warn", "where": "course",
+                         "issue": "No preview image — the catalogue card is blank. Ask the admin for one and set it "
+                                  "with course_edit(update_media, media={preview: {image_url}})."})
     batches = cbd.course_batches(ctx, course["id"])
     invites = cbd.invites_for_batches(ctx, [b["id"] for b in batches])
     setup = {

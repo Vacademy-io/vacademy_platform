@@ -148,6 +148,10 @@ class Backend:
             return {**body, "id": self._id("po")}
         if path.endswith("/v1/enroll-invite") and method == "POST":
             return self._id("inv")
+        if "/course/v1/update-course/" in path and method == "PUT":
+            for col in ("course_preview_image_media_id", "course_banner_media_id", "course_media_id"):
+                self.course[col] = body.get(col)
+            return "Course updated successfully"
         if path.endswith("/v1/enroll-invite/inst-1/inv-default"):
             return json.loads(json.dumps(self.full_invite))
         if path.endswith("/common/custom-fields/feature-fields"):
@@ -210,6 +214,18 @@ def backend(monkeypatch):
     monkeypatch.setattr(cbd, "slide_context", _slide)
     monkeypatch.setattr(cbd, "course_editor_url", lambda c, cid: f"https://dash/c/{cid}")
     b.existing_field_keys = {}
+
+    def _update_body(c, cid):
+        if cid != b.course["id"]:
+            return None
+        return {"id": cid, "package_name": b.course["name"], "thumbnail_file_id": None,
+                "is_course_published_to_catalaouge": True,
+                "course_preview_image_media_id": b.course.get("course_preview_image_media_id"),
+                "course_banner_media_id": b.course.get("course_banner_media_id"),
+                "course_media_id": b.course.get("course_media_id"), "why_learn_html": "<p>Why</p>",
+                "who_should_learn_html": None, "about_the_course_html": b.course["about_the_course"],
+                "tags": ["bio"], "course_depth": 3, "course_html_description_html": "<p>Desc</p>"}
+    monkeypatch.setattr(cbd, "course_update_body", _update_body)
     monkeypatch.setattr(cbd, "custom_fields_by_keys",
                         lambda c, keys: {k: b.existing_field_keys[k] for k in keys if k in b.existing_field_keys})
 
@@ -989,3 +1005,80 @@ async def test_get_invite_shows_fields_available_fields_images_and_redirect(back
     assert [f["field_id"] for f in inv["available_fields"]] == ["cf-city"]
     assert inv["redirect_path"] == "/dashboard"
     assert inv["images"]["preview"] == {"file_id": "file-old", "url": "https://cdn/file-old"}
+
+
+# ── course media ─────────────────────────────────────────────────────────
+def _put(b, fragment):
+    return [c for c in b.calls if c["method"] == "PUT" and fragment in c["path"]]
+
+
+@pytest.mark.asyncio
+async def test_update_media_changes_only_media_and_fills_empty_invite_slots(backend):
+    backend.course["status"] = "ACTIVE"
+    out = await edit({"action": "update_media", "course_id": "course-1",
+                      "media": {"preview": {"file_id": "file-preview-1"}, "banner": {"file_id": "file-banner-1"},
+                                "intro": {"youtube": "https://youtu.be/dQw4w9WgXcQ"}}})
+    assert "error" not in out, out
+    body = _put(backend, "/update-course/course-1")[0]["body"]
+    assert body["course_preview_image_media_id"] == "file-preview-1"
+    assert json.loads(body["course_media_id"]) == {"type": "youtube", "id": "https://youtu.be/dQw4w9WgXcQ"}
+    # every other column goes back as stored (the endpoint nulls whatever it is not sent)
+    assert body["package_name"] == "Biology 101" and body["why_learn_html"] == "<p>Why</p>"
+    assert body["is_course_published_to_catalaouge"] is True and body["tags"] == ["bio"]
+    assert body["course_html_description_html"] == "<p>Desc</p>" and body["course_depth"] == 3
+    # the default invite had its own preview: kept. Banner and intro were empty: filled.
+    meta = json.loads(_put(backend, "/enroll-invite/enroll-invite")[0]["body"]["web_page_meta_data_json"])
+    assert meta["coursePreview"] == "file-old"
+    assert meta["courseBanner"] == "file-banner-1" and meta["courseBannerBlob"] == "https://cdn/file-banner-1"
+    assert meta["courseMedia"] == {"type": "youtube", "id": "https://youtu.be/dQw4w9WgXcQ"}
+    assert out["invites_updated"] == ["Biology 101"] and any("live" in n for n in out["notes"])
+
+
+@pytest.mark.asyncio
+async def test_update_media_leaves_invites_alone_when_their_slots_are_set(backend):
+    out = await edit({"action": "update_media", "course_id": "course-1",
+                      "media": {"preview": {"file_id": "file-preview-1"}}})
+    assert out["invites_updated"] == [] and not _put(backend, "/enroll-invite/enroll-invite")
+
+
+@pytest.mark.asyncio
+async def test_bad_media_is_refused_before_anything_is_imported_or_created(backend, monkeypatch):
+    imported = []
+
+    async def _fetch(url, **kw):
+        imported.append(url)
+        return b"png", "image/png", "png"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    out = await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                      "media": {"preview": {"image_url": "https://example.com/p.png"},
+                                "banner": {"youtube": "https://youtu.be/dQw4w9WgXcQ"}}})
+    assert out["error"] == "invalid_media" and not imported
+    assert not any(c["path"].endswith("/add-course/inst-1") for c in backend.calls)
+    out = await edit({"action": "update_media", "course_id": "course-1", "media": {"thumbnail": "none"}})
+    assert out["error"] == "invalid_media" and not _put(backend, "/update-course/")
+
+
+@pytest.mark.asyncio
+async def test_create_course_imports_media_and_stores_file_ids(backend, monkeypatch):
+    async def _fetch(url, **kw):
+        return b"png", "image/png", "png"
+
+    async def _upload(c, content, name, ctype):
+        return "file-imported-1"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    monkeypatch.setattr(cbd, "upload_to_media", _upload)
+    out = await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                      "media": {"preview": {"image_url": "https://example.com/p.png"}}})
+    assert "error" not in out, out
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert body["course_preview_image_media_id"] == "file-imported-1" and body["course_banner_media_id"] == ""
+    assert out["media"] == ["preview"]
+
+
+@pytest.mark.asyncio
+async def test_review_suggests_a_preview_image(backend):
+    out = await read({"action": "review", "course_id": "course-1"})
+    assert any("preview image" in f["issue"] for f in out["findings"])
+    backend.course["course_preview_image_media_id"] = "file-p"
+    out = await read({"action": "review", "course_id": "course-1"})
+    assert not any("preview image" in f["issue"] for f in out["findings"])

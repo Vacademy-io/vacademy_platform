@@ -50,9 +50,6 @@ PAYMENT_TYPES = ("FREE", "ONE_TIME", "SUBSCRIPTION")
 FIELD_TYPES = ("text", "number", "dropdown")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _MAX_PRICE = 10_000_000
-_MAX_IMAGE_BYTES = 6_000_000
-_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
-_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 #: A learner-app path: one leading slash, no scheme / host (``//host`` would leave the app).
 _REDIRECT_RE = re.compile(r"^/(?!/)[A-Za-z0-9\-._~/%?=&#+]{0,200}$")
 #: The registration form's built-in fields — the dashboard does not let them be removed either.
@@ -89,7 +86,7 @@ INVITES_EDIT_SCHEMA: Dict[str, Any] = {
             "invite the default or the catalogue keeps using that one.\n"
             "- update_invite (course_id, invite_id, + any of: name, start_date, end_date, clear_end_date, landing (as "
             "above — only the keys you pass change), images: {preview?, banner?, media?} each {image_url} (public "
-            "https, imported) | {file_id} | 'course' (the course's own; preview / banner) | 'none' — media also takes "
+            "https, imported) | {file_id} | 'course' (the course's own) | 'none' — media also takes "
             "{youtube: url}, redirect_path (where learners land after enrolling: a learner-app path like "
             "/study-library/courses — ask the admin for it; '' resets to the default), success_page: {content?, "
             "show_login_button?}): edits the invite's page. Payment plan and form are untouched. Allowed on live "
@@ -714,7 +711,7 @@ _LANDING_KEYS = {"description_html": "description", "learning_outcome_html": "le
 #: images slot → (meta key, the dashboard's cached-URL key, the course column 'course' copies)
 _IMAGE_SLOTS = {"preview": ("coursePreview", "coursePreviewBlob", "course_preview_image_media_id"),
                 "banner": ("courseBanner", "courseBannerBlob", "course_banner_media_id"),
-                "media": ("courseMedia", "courseMediaBlob", None)}
+                "media": ("courseMedia", "courseMediaBlob", "course_media_id")}
 
 
 def _course_and_invite(ctx: ToolContext, args: Dict[str, Any], action: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
@@ -828,41 +825,106 @@ async def _action_update_form_fields(args: Dict[str, Any], ctx: ToolContext) -> 
             "form_fields": fields, "notes": notes}
 
 
+def _media_json(raw: Any) -> Dict[str, str]:
+    """A course's / invite's intro media: {type: image|video|youtube, id}."""
+    data = _json_obj(raw) if not isinstance(raw, dict) else raw
+    return {"type": str(data.get("type") or ""), "id": str(data.get("id") or "")}
+
+
+def _course_image(slot: str, course: Dict[str, Any]) -> Any:
+    _, _, course_col = _IMAGE_SLOTS[slot]
+    if slot == "media":
+        return _media_json(course.get(course_col))
+    return course.get(course_col) or ""
+
+
 async def _image_value(ctx: ToolContext, slot: str, spec: Any, course: Dict[str, Any]) -> Tuple[Any, Optional[str]]:
     """The meta value for an image slot (a media file id; courseMedia is {type, id}), or (None, problem)."""
-    meta_key, _, course_col = _IMAGE_SLOTS[slot]
-    wrap = (lambda kind, fid: {"type": kind, "id": fid}) if slot == "media" else (lambda kind, fid: fid)
-    if spec == "none":
-        return wrap("", ""), None
     if spec == "course":
-        if not course_col:
-            return None, "images.media cannot be 'course' — pass {image_url}, {file_id} or {youtube}"
-        return wrap("image", course.get(course_col) or ""), None
-    if not isinstance(spec, dict):
-        return None, f"images.{slot} must be {{image_url}}, {{file_id}}, 'course' or 'none'"
-    if spec.get("youtube"):
-        if slot != "media":
-            return None, f"images.{slot} cannot be a video — only images.media takes {{youtube}}"
-        from .course_content import youtube_id
-        if not youtube_id(spec["youtube"]):
-            return None, "images.media.youtube must be a YouTube https link (watch / youtu.be / embed / shorts)"
-        return wrap("youtube", str(spec["youtube"]).strip()), None
-    if spec.get("file_id"):
-        fid = str(spec["file_id"]).strip()
-        if not _FILE_ID_RE.match(fid):
-            return None, f"images.{slot}.file_id is not a media file id (pass a URL as image_url instead)"
-        return wrap("image", fid), None
-    if spec.get("image_url"):
-        fetched = await cbd.fetch_public_file(str(spec["image_url"]).strip(), max_bytes=_MAX_IMAGE_BYTES,
-                                              allowed_types=_IMAGE_TYPES)
-        if cbd.is_error(fetched):
-            return None, f"images.{slot}: {fetched.get('message')}"
-        content, ctype, ext = fetched
-        fid = await cbd.upload_to_media(ctx, content, f"invite-{slot}.{ext}", ctype)
-        if cbd.is_error(fid):
-            return None, f"images.{slot}: {fid.get('message')}"
-        return wrap("image", fid), None
-    return None, f"images.{slot} must be {{image_url}}, {{file_id}}, 'course' or 'none'"
+        return _course_image(slot, course), None
+    resolved, problem = await cbd.resolve_media(ctx, spec, f"images.{slot}", allow_youtube=slot == "media")
+    if problem:
+        return None, problem
+    kind, value = resolved
+    return ({"type": kind, "id": value} if slot == "media" else value), None
+
+
+async def _set_image(ctx: ToolContext, meta: Dict[str, Any], slot: str, value: Any) -> None:
+    from .assistant_tool_registry import _media_public_url
+    meta_key, blob_key, _ = _IMAGE_SLOTS[slot]
+    meta[meta_key] = value
+    fid = value.get("id") if isinstance(value, dict) else value
+    kind = value.get("type") if isinstance(value, dict) else "image"
+    # The dashboard previews the cached URL; the learner page reads the id.
+    meta[blob_key] = (fid if kind == "youtube" else (await _media_public_url(ctx, fid) if fid else "")) or ""
+
+
+async def _read_invite(ctx: ToolContext, invite_id: str) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """The invite as admin-core returns it + its payment links, or an error."""
+    full = await cbd.admin_core(ctx, "GET", f"/admin-core-service/v1/enroll-invite/{ctx.principal.institute_id}/{invite_id}")
+    if cbd.is_error(full) or not isinstance(full, dict) or full.get("id") != invite_id:
+        return None, [], _err("fetch_failed", message="The invite could not be read.")
+    links = [m for m in full.get("package_session_to_payment_options") or [] if isinstance(m, dict)]
+    if not links or not all(m.get("id") and (m.get("payment_option") or {}).get("id") for m in links):
+        return None, [], _err("fetch_failed", message="This invite's payment links could not be read, so it was not changed.")
+    return full, links, None
+
+
+async def _save_invite(ctx: ToolContext, full: Dict[str, Any], links: List[Dict[str, Any]],
+                       changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    PUT the invite back: everything as read, plus `changes`. admin-core's update
+    overwrites every column it is sent, so nothing may be left out.
+    """
+    body: Dict[str, Any] = {k: v for k, v in full.items()
+                            if k not in ("availability_status", "sub_org", "gtm_container_id")}
+    body.update(changes)
+    # The form is not changed here. admin-core re-syncs the fields only when
+    # institute_id is sent, so it is left out — and the current fields go along by id
+    # anyway, so even a re-sync would keep the form exactly as it is.
+    body["institute_id"] = None
+    body["institute_custom_fields"] = _mapping_payload(form_field_views(full.get("institute_custom_fields")))
+    # Links sent WITH their ids stay as they are (without, admin-core deletes and recreates them).
+    body["package_session_to_payment_options"] = [
+        {"id": m["id"], "package_session_id": m.get("package_session_id"), "enroll_invite_id": full["id"],
+         "status": "ACTIVE", "payment_option": {"id": m["payment_option"]["id"]}} for m in links]
+    saved = await cbd.admin_core(ctx, "PUT", "/admin-core-service/v1/enroll-invite/enroll-invite", body=body)
+    if cbd.is_error(saved):
+        return _err("save_failed", message="The invite could not be saved.",
+                    detail=saved.get("message") if isinstance(saved, dict) else None)
+    return None
+
+
+def _slot_empty(meta: Dict[str, Any], slot: str) -> bool:
+    value = meta.get(_IMAGE_SLOTS[slot][0])
+    return not (_media_json(value)["id"] if slot == "media" else value)
+
+
+async def fill_empty_invite_images(ctx: ToolContext, course: Dict[str, Any],
+                                   batch_ids: List[str], slots: List[str]) -> Dict[str, List[str]]:
+    """
+    After a course's images change: give the course's invites those images in
+    every slot the invite has left EMPTY. An image an invite was given on purpose
+    is never replaced. Returns the invites updated and the ones that failed.
+    """
+    out: Dict[str, List[str]] = {"updated": [], "failed": []}
+    for invite in cbd.invites_for_batches(ctx, batch_ids):
+        full, links, error = await _read_invite(ctx, invite["id"])
+        if error:
+            out["failed"].append(invite["name"])
+            continue
+        meta = _json_obj(full.get("web_page_meta_data_json"))
+        empty = [slot for slot in slots if _slot_empty(meta, slot) and not _slot_empty(
+            {_IMAGE_SLOTS[slot][0]: _course_image(slot, course)}, slot)]
+        if not empty:
+            continue
+        for slot in empty:
+            await _set_image(ctx, meta, slot, _course_image(slot, course))
+        if await _save_invite(ctx, full, links, {"web_page_meta_data_json": json.dumps(meta)}):
+            out["failed"].append(invite["name"])
+        else:
+            out["updated"].append(invite["name"])
+    return out
 
 
 async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -872,16 +934,12 @@ async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     course, invite, error = _course_and_invite(ctx, args, "update_invite")
     if error:
         return error
-    full = await cbd.admin_core(ctx, "GET", f"/admin-core-service/v1/enroll-invite/{ctx.principal.institute_id}/{invite['id']}")
-    if cbd.is_error(full) or not isinstance(full, dict) or full.get("id") != invite["id"]:
-        return _err("fetch_failed", message="The invite could not be read.")
-    links = [m for m in full.get("package_session_to_payment_options") or [] if isinstance(m, dict)]
-    if not links or not all(m.get("id") and (m.get("payment_option") or {}).get("id") for m in links):
-        return _err("fetch_failed", message="This invite's payment links could not be read, so it was not changed.")
+    full, links, error = await _read_invite(ctx, invite["id"])
+    if error:
+        return error
 
     changed: List[str] = []
-    body: Dict[str, Any] = {k: v for k, v in full.items()
-                            if k not in ("availability_status", "sub_org", "gtm_container_id")}
+    body: Dict[str, Any] = {}
 
     if args.get("name") is not None:
         name = str(args["name"]).strip()[:120]
@@ -902,8 +960,8 @@ async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     elif end:
         body["end_date"] = end
         changed.append("end_date")
-    eff_start = _iso_day(body.get("start_date"))[0]
-    eff_end = _iso_day(body.get("end_date"))[0]
+    eff_start = _iso_day(body.get("start_date", full.get("start_date")))[0]
+    eff_end = _iso_day(body.get("end_date", full.get("end_date")))[0]
     if eff_start and eff_end and eff_end < eff_start:
         return _err("bad_request", message="end_date is before start_date")
 
@@ -957,28 +1015,16 @@ async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         if not isinstance(images, dict) or not images or set(images) - set(_IMAGE_SLOTS):
             return _err("bad_request", message="images must be {preview?, banner?, media?}")
         # Every image is checked before any is imported, so a bad one leaves nothing half-done.
-        resolved = {}
         for slot, spec in images.items():
-            if isinstance(spec, dict) and spec.get("image_url"):
-                continue
-            value, problem = await _image_value(ctx, slot, spec, course)
+            problem = None if spec == "course" else cbd.check_media_spec(spec, f"images.{slot}",
+                                                                         allow_youtube=slot == "media")
             if problem:
                 return _err("bad_request", message=problem)
-            resolved[slot] = value
         for slot, spec in images.items():
-            if slot not in resolved:
-                value, problem = await _image_value(ctx, slot, spec, course)
-                if problem:
-                    return _err("image_failed", message=problem)
-                resolved[slot] = value
-        from .assistant_tool_registry import _media_public_url
-        for slot, value in resolved.items():
-            meta_key, blob_key, _ = _IMAGE_SLOTS[slot]
-            meta[meta_key] = value
-            fid = value.get("id") if isinstance(value, dict) else value
-            kind = value.get("type") if isinstance(value, dict) else "image"
-            # The dashboard previews the cached URL; the learner page reads the id.
-            meta[blob_key] = (fid if kind == "youtube" else (await _media_public_url(ctx, fid) if fid else "")) or ""
+            value, problem = await _image_value(ctx, slot, spec, course)
+            if problem:
+                return _err("image_failed", message=problem)
+            await _set_image(ctx, meta, slot, value)
             changed.append(f"images.{slot}")
 
     if not changed:
@@ -987,20 +1033,11 @@ async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     if post_fill != (settings.get("postformfillConfiguration") or {}):
         settings["postformfillConfiguration"] = post_fill
         body["setting_json"] = json.dumps(settings)
-    # The form is not this action's to change. admin-core re-syncs the fields only when
-    # institute_id is sent, so it is left out — and the current fields go along by id
-    # anyway, so even a re-sync would keep the form exactly as it is.
-    body["institute_id"] = None
-    body["institute_custom_fields"] = _mapping_payload(form_field_views(full.get("institute_custom_fields")))
-    # Links sent WITH their ids stay as they are (without, admin-core deletes and recreates them).
-    body["package_session_to_payment_options"] = [
-        {"id": m["id"], "package_session_id": m.get("package_session_id"), "enroll_invite_id": invite["id"],
-         "status": "ACTIVE", "payment_option": {"id": m["payment_option"]["id"]}} for m in links]
-    saved = await cbd.admin_core(ctx, "PUT", "/admin-core-service/v1/enroll-invite/enroll-invite", body=body)
-    if cbd.is_error(saved):
-        return _err("save_failed", message="The invite could not be saved.",
-                    detail=saved.get("message") if isinstance(saved, dict) else None)
-    return {"invite": {"id": invite["id"], "name": body.get("name"), "link": full.get("short_url") or invite.get("short_url")},
+    error = await _save_invite(ctx, full, links, body)
+    if error:
+        return error
+    return {"invite": {"id": invite["id"], "name": body.get("name", full.get("name")),
+                       "link": full.get("short_url") or invite.get("short_url")},
             "changed": list(dict.fromkeys(changed)),
             "notes": [_LIVE_NOTE] if course["status"] == cbd.STATUS_ACTIVE else []}
 
@@ -1046,4 +1083,5 @@ _register()
 
 __all__ = ["INVITES_EDIT_TOOLS", "INVITES_EDIT_TOOL_NAME", "INVITES_EDIT_GROUP_KEY", "INVITES_EDIT_ACTIONS",
            "INVITES_EDIT_SCHEMA", "execute_course_invites_edit", "build_payment_option", "form_fields_payload",
-           "describe_option", "form_field_views", "catalogue_field_views", "field_key_for"]
+           "describe_option", "form_field_views", "catalogue_field_views", "field_key_for",
+           "fill_empty_invite_images"]

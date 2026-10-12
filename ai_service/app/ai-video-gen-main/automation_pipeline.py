@@ -1548,6 +1548,14 @@ def _extract_json_blob(raw: str) -> Any:
     except json.JSONDecodeError:
         pass
 
+    # 2b. Raw newlines / tabs inside the "html" string (multi-line <script>
+    # and /* comment */ blocks) are invalid strict JSON but unambiguous —
+    # strict parsing threw away complete shots after 3 attempts.
+    try:
+        return json.loads(text, strict=False)
+    except json.JSONDecodeError:
+        pass
+
     # 3. Find the outermost JSON object by matching balanced braces.
     # LLMs sometimes prepend <style> or text. We find `{` and matching `}`.
     # We will search for EVERY candidate and try them all.
@@ -1584,7 +1592,7 @@ def _extract_json_blob(raw: str) -> Any:
         if end_idx != -1:
             candidate = text[start_idx : end_idx + 1]
             try:
-                data = json.loads(candidate)
+                data = json.loads(candidate, strict=False)
                 # If it's a valid dict or list, return it immediately!
                 if isinstance(data, (dict, list)):
                     return data
@@ -12476,7 +12484,14 @@ class VideoGenerationPipeline:
             _llm_phase.reset(_phase_tok)
             _llm_stage.reset(_stage_tok)
 
-        data2 = _extract_json_blob(raw2)
+        try:
+            data2 = _extract_json_blob(raw2)
+        except ValueError as exc:
+            # An unparseable retry must not take the (already rendered) shot
+            # down with it — the exception killed the shot task and it
+            # shipped as a blank fallback frame.
+            record["regen_error"] = f"unparseable regen: {str(exc)[:120]}"
+            return record
         html2 = (data2 or {}).get("html", "")
         if usage2:
             usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
@@ -12653,7 +12668,14 @@ class VideoGenerationPipeline:
             _llm_phase.reset(_phase_tok)
             _llm_stage.reset(_stage_tok)
 
-        data2 = _extract_json_blob(raw2)
+        try:
+            data2 = _extract_json_blob(raw2)
+        except ValueError as exc:
+            # An unparseable retry must not take the (already rendered) shot
+            # down with it — the exception killed the shot task and it
+            # shipped as a blank fallback frame.
+            record["regen_error"] = f"unparseable regen: {str(exc)[:120]}"
+            return record
         html2 = (data2 or {}).get("html", "")
         if usage2:
             usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)

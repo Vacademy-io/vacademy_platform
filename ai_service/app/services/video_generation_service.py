@@ -4251,9 +4251,14 @@ class VideoGenerationService:
                             # point is that the shortfall stops being invisible.
                             self.repository.record_warning(video_id, _msg)
                             try:
-                                self.repository.update_metadata(
-                                    video_id, {"shot_coverage": _cov}
-                                )
+                                # update_metadata REPLACES the whole column: a
+                                # bare {"shot_coverage": ...} wiped every run
+                                # that tripped this gate (user_selections, host,
+                                # lesson plan + billing...). Merge instead.
+                                _vrec_cov = self.repository.get_by_video_id(video_id)
+                                _emeta_cov = dict((_vrec_cov.extra_metadata or {}) if _vrec_cov else {})
+                                _emeta_cov["shot_coverage"] = _cov
+                                self.repository.update_metadata(video_id, _emeta_cov)
                             except Exception:
                                 pass
                     except Exception as _cov_err:

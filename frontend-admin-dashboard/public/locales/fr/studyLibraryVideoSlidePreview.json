@@ -15,5 +15,44 @@
         "urlExpiredRefreshing": "L'URL de la vidéo a expiré. Actualisation en cours...",
         "playbackError": "Erreur de lecture vidéo : {{message}}",
         "unknownError": "Erreur inconnue"
+    },
+    "aiVideo": {
+        "checking": "Vérification de la vidéo…",
+        "progress": {
+            "title": "Génération de votre vidéo",
+            "percent": "{{value}} %",
+            "shots": "Scène {{done}} sur {{total}}",
+            "keepWorking": "Vous pouvez continuer à travailler — nous vous préviendrons dès qu'elle sera prête.",
+            "stages": {
+                "PENDING": "En attente de démarrage",
+                "EXTRACT": "Lecture de vos sources",
+                "SCRIPT": "Rédaction du script",
+                "TTS": "Enregistrement de la narration",
+                "WORDS": "Synchronisation du texte et de la voix",
+                "AVATAR": "Enregistrement de l'enseignant",
+                "HTML": "Conception des visuels",
+                "RENDER": "Assemblage de la vidéo",
+                "WRITE_BACK": "Finalisation",
+                "AWAITING_INPUT": "En attente d'une réponse",
+                "default": "Traitement en cours"
+            }
+        },
+        "cancel": {
+            "button": "Annuler la génération",
+            "title": "Arrêter la génération de cette vidéo ?",
+            "body": "Le travail déjà effectué est abandonné et les crédits non utilisés sont remboursés. Une vidéo annulée ne peut pas être reprise.",
+            "confirm": "Arrêter la génération",
+            "cancelling": "Arrêt…",
+            "keep": "Continuer la génération",
+            "success": "Génération de la vidéo annulée",
+            "failed": "Impossible d'annuler. Veuillez réessayer."
+        },
+        "ended": {
+            "failedTitle": "Cette vidéo n'a pas pu être générée",
+            "cancelledTitle": "La génération de la vidéo a été annulée",
+            "reason": "Motif : {{message}}",
+            "refunded": "Les crédits correspondants ont été remboursés.",
+            "hint": "Pour réessayer, supprimez cette diapositive et créez une nouvelle vidéo IA."
+        }
     }
 }

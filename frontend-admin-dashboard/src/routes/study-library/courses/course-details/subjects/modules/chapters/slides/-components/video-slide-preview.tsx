@@ -15,6 +15,12 @@ import { FileVideoPlayer } from './file-video-player';
 import { FileVideoQuestionsEditor } from './file-video-questions-editor';
 import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 import { resolveVideoSourceType, extractVimeoId } from '@/utils/video-source-type';
+import { useLmsVideoStatus } from '../-hooks/use-lms-video-status';
+import {
+    AiVideoCheckingCard,
+    AiVideoEndedCard,
+    AiVideoProgressCard,
+} from './ai-video-generation-status';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
     const { t } = useTranslation('studyLibraryVideoSlidePreview');
@@ -57,6 +63,16 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     } | null>(null);
     const [isLoadingHtmlVideo, setIsLoadingHtmlVideo] = useState(false);
 
+    // AI videos made from "Add Slide → AI Video" report live progress through
+    // /lms-video/v1/status. Anything that endpoint doesn't know (404 — e.g.
+    // course-builder videos) keeps the /video/urls path below unchanged.
+    const aiGenVideoId =
+        videoSourceType === 'HTML_VIDEO'
+            ? activeItem.html_video_slide?.ai_gen_video_id || undefined
+            : undefined;
+    const lmsVideo = useLmsVideoStatus(aiGenVideoId);
+    const lmsReadyForPlayer = lmsVideo.phase === 'legacy' || lmsVideo.phase === 'completed';
+
     // Reset state when switching to a different video slide
     useEffect(() => {
         setVideoUrl('');
@@ -71,6 +87,8 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     useEffect(() => {
         const fetchHtmlVideoUrls = async () => {
             if (videoSourceType !== 'HTML_VIDEO') return;
+            // Wait until the LMS status says the video is done (or isn't an LMS one).
+            if (!lmsReadyForPlayer) return;
 
             const htmlVideoSlide = (activeItem as any).html_video_slide;
             if (!htmlVideoSlide?.ai_gen_video_id) {
@@ -123,7 +141,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         };
 
         fetchHtmlVideoUrls();
-    }, [activeItem.id, videoSourceType]);
+    }, [activeItem.id, videoSourceType, lmsReadyForPlayer]);
 
     const refreshS3Url = async () => {
         try {
@@ -239,6 +257,16 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
 
     // HTML_VIDEO rendering
     if (videoSourceType === 'HTML_VIDEO') {
+        if (lmsVideo.phase === 'checking') {
+            return <AiVideoCheckingCard />;
+        }
+        if (lmsVideo.phase === 'running' && lmsVideo.status) {
+            return <AiVideoProgressCard status={lmsVideo.status} onCancelled={lmsVideo.refresh} />;
+        }
+        if (lmsVideo.phase === 'ended' && lmsVideo.status) {
+            return <AiVideoEndedCard status={lmsVideo.status} />;
+        }
+
         // Check if code_editor_config is present
         const htmlVideoSlide = (activeItem as any).html_video_slide;
         let codeEditorConfig: any = null;

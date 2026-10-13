@@ -15,6 +15,7 @@ import {
     BookOpen,
     MusicNotes,
     Package,
+    Sparkle,
 } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddVideoDialog } from './add-video-dialog';
@@ -26,6 +27,7 @@ import { AddPptDialog } from './add-ppt-dialog';
 import { AddAudioDialog } from './add-audio-dialog';
 import { AddScormDialog } from './add-scorm-dialog';
 import { AddAssessmentSlideDialog } from './add-assessment-slide-dialog';
+import { AddAiVideoDialog } from './ai-video/add-ai-video-dialog';
 import { ListChecks } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import {
@@ -134,6 +136,9 @@ export const ChapterSidebarAddButton = () => {
         isVimeoDialogOpen,
         openVimeoDialog,
         closeVimeoDialog,
+        isAiVideoDialogOpen,
+        openAiVideoDialog,
+        closeAiVideoDialog,
     } = useDialogStore();
 
     // Function to reorder slides after adding a new one at the bottom
@@ -225,7 +230,18 @@ export const ChapterSidebarAddButton = () => {
                         value: 'vimeo-video',
                         description: t('menu.vimeoVideo.description'),
                     },
+                    {
+                        label: t('menu.generateAiVideo.label'),
+                        value: 'generate-ai-video',
+                        description: t('menu.generateAiVideo.description'),
+                    },
                 ],
+            },
+            {
+                label: t('menu.aiVideo.label'),
+                value: 'ai-video',
+                icon: <Sparkle className="size-4 text-primary-500" weight="fill" />,
+                description: t('menu.aiVideo.description'),
             },
             {
                 label: t('menu.question.label'),
@@ -340,6 +356,8 @@ export const ChapterSidebarAddButton = () => {
                 case 'upload-video':
                 case 'youtube-video':
                 case 'vimeo-video':
+                case 'ai-video':
+                case 'generate-ai-video':
                     return ct.video?.enabled !== false;
                 case 'question':
                     return ct.question !== false;
@@ -535,6 +553,10 @@ export const ChapterSidebarAddButton = () => {
                 break;
             case 'vimeo-video':
                 openVimeoDialog();
+                break;
+            case 'ai-video':
+            case 'generate-ai-video':
+                openAiVideoDialog();
                 break;
             case 'upload-video':
                 openVideoFileDialog(); // Open the new video file upload dialog
@@ -1004,6 +1026,11 @@ export const ChapterSidebarAddButton = () => {
                     <AddVimeoDialog openState={(open) => !open && closeVimeoDialog()} />
                 </div>
             </MyDialog>
+
+            <AddAiVideoDialog
+                open={isAiVideoDialogOpen}
+                onOpenChange={(open) => !open && closeAiVideoDialog()}
+            />
         </div>
     );
 };

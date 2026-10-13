@@ -25,6 +25,8 @@
         "uploadVideo": { "label": "वीडियो फ़ाइल अपलोड करें", "description": "डिवाइस से अपलोड करें" },
         "youtubeVideo": { "label": "YouTube वीडियो", "description": "YouTube लिंक जोड़ें" },
         "vimeoVideo": { "label": "Vimeo वीडियो", "description": "Vimeo लिंक जोड़ें" },
+        "generateAiVideo": { "label": "AI से बनाएं", "description": "किसी विषय या इस अध्याय से वीडियो बनाएं" },
+        "aiVideo": { "label": "AI वीडियो", "description": "आपके विषय से AI द्वारा बना, शिक्षक जैसा वीडियो" },
         "question": { "label": "प्रश्न", "description": "इंटरैक्टिव प्रश्न" },
         "assignment": { "label": "असाइनमेंट", "description": "छात्र असाइनमेंट" },
         "presentation": { "label": "प्रस्तुति", "description": "इंटरैक्टिव प्रस्तुतियाँ" },

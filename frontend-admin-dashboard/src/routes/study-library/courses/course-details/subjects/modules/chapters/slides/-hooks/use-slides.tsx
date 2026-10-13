@@ -185,6 +185,16 @@ export interface AssessmentSlide {
     show_result?: boolean;
 }
 
+// AI-generated video slide (source_type HTML_VIDEO). The media is resolved from
+// ai_gen_video_id at view time; code_editor_config is a JSON string when set.
+export interface HtmlVideoSlideData {
+    id: string;
+    url?: string | null;
+    ai_gen_video_id?: string | null;
+    video_length_in_millis?: number | null;
+    code_editor_config?: string | null;
+}
+
 // Main slide interface
 export interface Slide {
     id: string;
@@ -203,6 +213,7 @@ export interface Slide {
     audio_slide?: AudioSlide | null;
     scorm_slide?: ScormSlide | null;
     assessment_slide?: AssessmentSlide | null;
+    html_video_slide?: HtmlVideoSlideData | null;
     is_loaded: boolean;
     new_slide: boolean;
     // Split-screen mode properties (frontend only)
@@ -440,10 +451,9 @@ export interface AssessmentSlidePayload {
     };
 }
 
-// Update-only: HTML_VIDEO slides (AI Video / AI Slides / AI Storybook) are created by
-// the AI course flow. The backend only overwrites html_video_slide fields that are sent,
-// so a payload carrying just the id leaves the generated video untouched.
-export interface HtmlVideoSlidePayload {
+// Update: the backend only overwrites html_video_slide fields that are sent, so a
+// payload carrying just the id leaves the generated video untouched.
+export interface HtmlVideoSlideUpdatePayload {
     id: string;
     title: string;
     description?: string | null;
@@ -456,6 +466,32 @@ export interface HtmlVideoSlidePayload {
         id: string;
     };
 }
+
+// Create: HTML_VIDEO slides (AI Video / AI Slides / AI Storybook) are created by the
+// AI course flow and by "Add Slide → AI Video". Both ids are client-generated — the
+// backend has no generator for html_video_slide.id. `url` and `ai_gen_video_id` both
+// carry the ai_service video id; players resolve the media by it at view time.
+export interface HtmlVideoSlideCreatePayload {
+    id: string;
+    title: string;
+    description?: string | null;
+    image_file_id?: string | null;
+    status: 'DRAFT' | 'PUBLISHED';
+    slide_order: number;
+    source_type: 'HTML_VIDEO';
+    new_slide: true;
+    notify?: boolean;
+    html_video_slide: {
+        id: string;
+        url: string;
+        ai_gen_video_id: string;
+        video_length_in_millis: number;
+        /** JSON string, e.g. {"enabled":true,"layout":"split-right","language":"python",…}. */
+        code_editor_config?: string;
+    };
+}
+
+export type HtmlVideoSlidePayload = HtmlVideoSlideUpdatePayload | HtmlVideoSlideCreatePayload;
 
 interface UpdateStatusParams {
     chapterId: string;

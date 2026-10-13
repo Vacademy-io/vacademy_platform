@@ -25,6 +25,8 @@
         "uploadVideo": { "label": "Upload video file", "description": "Upload from device" },
         "youtubeVideo": { "label": "YouTube video", "description": "Add YouTube link" },
         "vimeoVideo": { "label": "Vimeo video", "description": "Add Vimeo link" },
+        "generateAiVideo": { "label": "Generate with AI", "description": "Create a video from a topic or this chapter" },
+        "aiVideo": { "label": "AI Video", "description": "Teacher-style video made by AI from your topic" },
         "question": { "label": "Question", "description": "Interactive questions" },
         "assignment": { "label": "Assignment", "description": "Student assignments" },
         "presentation": { "label": "Presentation", "description": "Interactive presentations" },

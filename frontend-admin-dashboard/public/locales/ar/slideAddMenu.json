@@ -25,6 +25,8 @@
         "uploadVideo": { "label": "تحميل ملف فيديو", "description": "التحميل من الجهاز" },
         "youtubeVideo": { "label": "فيديو يوتيوب", "description": "إضافة رابط يوتيوب" },
         "vimeoVideo": { "label": "فيديو Vimeo", "description": "إضافة رابط Vimeo" },
+        "generateAiVideo": { "label": "إنشاء بالذكاء الاصطناعي", "description": "أنشئ فيديو من موضوع أو من هذا الفصل" },
+        "aiVideo": { "label": "فيديو بالذكاء الاصطناعي", "description": "فيديو بأسلوب المعلّم يُنشئه الذكاء الاصطناعي من موضوعك" },
         "question": { "label": "سؤال", "description": "أسئلة تفاعلية" },
         "assignment": { "label": "واجب", "description": "واجبات الطلاب" },
         "presentation": { "label": "عرض تقديمي", "description": "عروض تقديمية تفاعلية" },

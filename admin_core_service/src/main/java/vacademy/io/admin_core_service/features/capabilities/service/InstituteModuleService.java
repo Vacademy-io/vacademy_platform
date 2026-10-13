@@ -46,7 +46,9 @@ import java.util.UUID;
  * changed key in the same transaction, then evicts the resolver cache for the institute.
  */
 @Slf4j
-@Service
+// Explicit name: features.institute.service.InstituteModuleService (sub_modules) already
+// owns the default bean name "instituteModuleService"; the clash stopped admin-core booting.
+@Service("instituteEntitlementModuleService")
 public class InstituteModuleService {
 
     public static final int MAX_HISTORY_PAGE_SIZE = 100;

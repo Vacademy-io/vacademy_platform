@@ -13,6 +13,7 @@ import {
   phoneFieldHasInput,
   usePreferredPhoneCountries,
 } from "@/hooks/use-preferred-phone-countries";
+import { useSiteT } from "../-utils/catalogue-locale";
 
 interface FieldOption {
   label: string;
@@ -75,6 +76,9 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   packageSessionId,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Field and option LABELS are shown in the visitor's language; names and
+  // option values (what is matched and submitted) always stay as authored.
+  const siteT = useSiteT();
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const [formData, setFormData] = useState<FormData>({});
@@ -527,7 +531,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
       return (
         <div key={field.name} className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">
-            {field.label} {field.required && "*"}
+            {siteT(field.label)} {field.required && "*"}
           </label>
           <div className="flex flex-wrap gap-2">
             {field.options.map((option) => (
@@ -544,7 +548,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                   backgroundColor: fieldValue === option.value ? field.style?.chipColor : undefined,
                 }}
               >
-                {option.label}
+                {siteT(option.label)}
               </button>
             ))}
           </div>
@@ -555,7 +559,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
     return (
       <div key={field.name} className="space-y-3">
         <label htmlFor={field.name} className="block text-sm font-medium text-gray-700 mb-1">
-          {field.label} {field.required && "*"}
+          {siteT(field.label)} {field.required && "*"}
         </label>
         <div className="space-y-2">
           {isPhoneField(field) ? (
@@ -583,7 +587,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                   ? 'border-red-300'
                   : 'border-gray-300'
               }`}
-              placeholder={t("leadCollectionModal.enterYourField", { field: field.label.toLowerCase() })}
+              placeholder={t("leadCollectionModal.enterYourField", { field: siteT(field.label).toLowerCase() })}
               required={field.required}
             />
           )}

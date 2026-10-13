@@ -19,17 +19,19 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
+import {
+    SidebarItemsType,
+    type SidebarCategory,
+} from '@/types/layout-container/layout-container-types';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import type { CategoryId } from './category-rail';
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { LockKey } from '@phosphor-icons/react';
+import { CaretDown, LockKey } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
 import { parseSidebarLink } from './helper';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { ChevronDown } from 'lucide-react';
 
 interface CollapsedCategoryFlyoutProps {
     activeCategory: CategoryId;
@@ -61,12 +63,19 @@ export const CollapsedCategoryFlyout: React.FC<CollapsedCategoryFlyoutProps> = (
     return null;
 };
 
+const CATEGORY_LABEL_KEYS: Record<SidebarCategory, string> = {
+    CRM: 'categoryLabels.crm',
+    LMS: 'categoryLabels.lms',
+    AI: 'categoryLabels.aiTools',
+    ERP: 'categoryLabels.erp',
+};
+
 /**
  * CategoryFlyoutMenu — Used by the category rail in collapsed mode
  * to show a flyout popover with all tabs for a category.
  */
 interface CategoryFlyoutMenuProps {
-    category: 'CRM' | 'LMS' | 'AI';
+    category: SidebarCategory;
     items: SidebarItemsType[];
     children: React.ReactNode;
 }
@@ -93,7 +102,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
             <PopoverContent
                 side="right"
                 align="start"
-                className="ml-0.5 w-auto min-w-[220px] max-w-[280px] p-0"
+                className="ml-0.5 w-auto min-w-[220px] max-w-[280px] p-0" // design-lint-ignore: flyout width bounds, no size token
                 onMouseEnter={() => setIsOpen(true)}
                 onMouseLeave={() => setIsOpen(false)}
                 onOpenAutoFocus={(e) => e.preventDefault()}
@@ -101,16 +110,14 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
                 {/* Category header */}
                 <div className={cn('border-b px-3 py-2')}>
                     <p className={cn('text-sm font-semibold', colors.text)}>
-                        {category === 'AI'
-                            ? t('categoryLabels.aiTools')
-                            : category === 'CRM'
-                              ? t('categoryLabels.crm')
-                              : t('categoryLabels.lms')}
+                        {t(CATEGORY_LABEL_KEYS[category] ?? 'categoryLabels.crm')}
                     </p>
                 </div>
 
                 {/* Menu items */}
-                <div className="max-h-[60vh] overflow-y-auto p-1">
+                <div
+                    className="max-h-[60vh] overflow-y-auto p-1" // design-lint-ignore: viewport-relative flyout scroll height
+                >
                     {items.map((item, idx) => (
                         <FlyoutMenuItem
                             key={item.id}
@@ -133,7 +140,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
 
 interface FlyoutMenuItemProps {
     item: SidebarItemsType;
-    category: 'CRM' | 'LMS' | 'AI';
+    category: SidebarCategory;
     currentRoute: string;
     onClose: () => void;
     showDividerAfter?: boolean;
@@ -235,7 +242,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                                 ),
                             })}
                         <span className="flex-1 truncate text-left">{item.title}</span>
-                        <ChevronDown
+                        <CaretDown
                             className={cn(
                                 'size-3 flex-shrink-0 transition-transform',
                                 (subOpen || isActive) && 'rotate-180',
@@ -260,7 +267,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                                     to={subTo}
                                     search={subSearch}
                                     className={cn(
-                                        'flex items-center rounded-md px-2 py-1 text-[13px] transition-colors',
+                                        'flex items-center rounded-md px-2 py-1 text-[13px] transition-colors', // design-lint-ignore: matches the expanded panel's sub-item size
                                         isSubActive
                                             ? cn(colors.pillBg, colors.pillText, 'font-medium')
                                             : 'text-neutral-500 hover:bg-primary-50 hover:text-neutral-700'

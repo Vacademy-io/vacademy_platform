@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { settlePendingPurchase } from "@/routes/$tagName/-components/site-cart/pending-purchases";
 
 const paymentResultSearchSchema = z.object({
   orderId: z.string().optional(),
@@ -143,6 +144,23 @@ function PaymentResultPage() {
     queryStatus === "failed" ||
     queryStatus === "cancelled";
   const isPending = !isPaid && !isFailed && (!!orderId || isLoading);
+
+  // Site-wide cart: a product-page checkout that left for a redirect gateway
+  // noted what it was buying (see site-cart/pending-purchases). Once the
+  // gateway settles, paid courses leave the cart; a failed payment only drops
+  // the note so the courses stay ready to retry. A no-op without such a note.
+  // Only the SERVER's status settles a note: the ?status= hint in the return
+  // URL can say failed/cancelled while the payment is still in flight, and
+  // dropping the note on it would leave a later PAID nothing to clear.
+  const serverSaysFailed =
+    paymentStatusValue === "FAILED" ||
+    paymentStatusValue === "CANCELLED" ||
+    paymentStatusValue === "USER_DROPPED";
+  useEffect(() => {
+    if (!orderId || isInvoicePayment) return;
+    if (isPaid) void settlePendingPurchase(orderId, "paid");
+    else if (serverSaysFailed) void settlePendingPurchase(orderId, "failed");
+  }, [orderId, isInvoicePayment, isPaid, serverSaysFailed]);
 
   // Invoice payments: just show the success screen, no enrollment redirect.
   // The invoice page is public; the learner may not have a dashboard session.

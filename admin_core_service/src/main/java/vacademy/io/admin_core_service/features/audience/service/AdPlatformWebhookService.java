@@ -58,6 +58,9 @@ public class AdPlatformWebhookService {
     @Autowired
     private GoogleLeadFormStrategy googleLeadFormStrategy;
 
+    @Autowired
+    private AdCampaignRouteService campaignRouteService;
+
     // ── Strategy registry (built once at startup via @PostConstruct) ─────────
 
     private Map<String, AdPlatformStrategy> strategyMap;
@@ -203,10 +206,32 @@ public class AdPlatformWebhookService {
                 // extractAndFetchLeads only returns empty when its own parsing threw.
                 throw new IllegalStateException("Google lead payload produced no lead");
             }
+            String unroutableCampaign = null;
             for (NormalizedLeadData lead : leads) {
+                // Each campaign can feed its own list; unmapped ones use the catch-all.
+                if (campaignRouteService.autoCreatesLists(connector)) {
+                    try {
+                        campaignRouteService.ensureAutoList(connector, lead.getCampaignId());
+                    } catch (Exception e) {
+                        // Never lose the lead over its list: it falls back to the catch-all.
+                        log.warn("Could not auto-create a list for campaign {} on connector {}: {}",
+                                lead.getCampaignId(), connector.getId(), e.getMessage());
+                    }
+                }
+                AdCampaignRouteService.RouteDecision route =
+                        campaignRouteService.decide(connector, lead.getCampaignId());
+                lead.setRoutedAudienceId(route.audienceId());
+                if (route.unusableAudienceId() != null) unroutableCampaign = lead.getCampaignId();
                 submitNormalizedLead(lead, connector);
+                campaignRouteService.recordLead(connector, lead.getCampaignId());
             }
-            recordGoogleDelivery(connector, "ACTIVE", null);
+            if (unroutableCampaign != null) {
+                recordGoogleDelivery(connector, "ACTION_REQUIRED", "Campaign " + unroutableCampaign
+                        + " is routed to a list that was deleted or is no longer active, so its leads are "
+                        + "going to the main list. Pick another list for it in Setup & status.");
+            } else {
+                recordGoogleDelivery(connector, "ACTIVE", null);
+            }
             return GoogleWebhookResult.ok();
         } catch (Exception e) {
             // Our own validation messages ("Audience campaign is not active") tell the admin
@@ -312,8 +337,10 @@ public class AdPlatformWebhookService {
     // Note: @Transactional omitted intentionally — self-invocation from @Async bypasses AOP.
     // audienceService.submitLeadFromFormWebhook() is itself @Transactional.
     private void submitNormalizedLead(NormalizedLeadData lead, FormWebhookConnector connector) {
-        // Resolve routing rules to find actual audience
-        String audienceId = resolveAudience(lead, connector);
+        // A campaign route (Google) wins; otherwise resolve the connector's routing rules.
+        String audienceId = StringUtils.hasText(lead.getRoutedAudienceId())
+                ? lead.getRoutedAudienceId()
+                : resolveAudience(lead, connector);
         if (audienceId == null) {
             log.info("No matching audience for lead {} — discarded per no_match_action",
                     lead.getPlatformLeadId());

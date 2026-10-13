@@ -96,6 +96,9 @@ public class InvoiceService {
     private InvoiceInstituteProfileService invoiceInstituteProfileService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
+
+    @Autowired
     private TemplateService templateService;
 
     @Autowired
@@ -304,7 +307,9 @@ public class InvoiceService {
             "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
             "place_of_supply", "institute_name", "institute_address", "institute_contact",
             "tax_label", "tax_rate", "country", "country_code", "tax_registration_number",
-            "hsn_code", "notes");
+            "hsn_code", "notes",
+            "course_name", "course_code", "user_mobile", "institute_tagline",
+            "parent_name", "year_group", "billing_month", "billing_year", "institute_email");
 
     /**
      * Overrides that only make sense for a single billed user. Stripped for bulk
@@ -313,7 +318,7 @@ public class InvoiceService {
      */
     private static final Set<String> USER_SCOPED_OVERRIDE_KEYS = Set.of(
             "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
-            "place_of_supply");
+            "place_of_supply", "parent_name", "year_group");
 
     /** Display metadata for a template placeholder, powering the review/preview panel. */
     private record PlaceholderMeta(String label, String group, boolean editable, String inputType) {}
@@ -328,14 +333,28 @@ public class InvoiceService {
         PLACEHOLDER_META.put("invoice_number", new PlaceholderMeta("Invoice Number", "INVOICE", true, "text"));
         PLACEHOLDER_META.put("invoice_date", new PlaceholderMeta("Invoice Date", "INVOICE", true, "date"));
         PLACEHOLDER_META.put("due_date", new PlaceholderMeta("Due Date", "INVOICE", true, "date"));
+        // The month a monthly fee invoice is for. Read off the due date, not the invoice date:
+        // a schedule billed in advance is raised in the previous month but falls due in the one
+        // it pays for. {{billing_period}} is the two together and follows any edit to either.
+        PLACEHOLDER_META.put("billing_month", new PlaceholderMeta("Billing Month", "INVOICE", true, "text"));
+        PLACEHOLDER_META.put("billing_year", new PlaceholderMeta("Billing Year", "INVOICE", true, "text"));
+        PLACEHOLDER_META.put("billing_period",
+                new PlaceholderMeta("Billing Period (month + year)", "INVOICE", false, "text"));
         PLACEHOLDER_META.put("user_name", new PlaceholderMeta("Billed To", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("user_email", new PlaceholderMeta("Email", "BILL TO", true, "text"));
+        // For a learner who is a child, the invoice is addressed to the parent. Both default to
+        // the learner's own custom fields (see learnerProfilePlaceholderFor) and are editable.
+        PLACEHOLDER_META.put("parent_name", new PlaceholderMeta("Parent / Guardian", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("year_group", new PlaceholderMeta("Year Group / Class", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("user_address", new PlaceholderMeta("Address", "BILL TO", true, "textarea"));
         PLACEHOLDER_META.put("user_tax_info", new PlaceholderMeta("Tax ID (GSTIN/VAT)", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("place_of_supply", new PlaceholderMeta("Place of Supply", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("institute_name", new PlaceholderMeta("Institute Name", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("institute_address", new PlaceholderMeta("Institute Address", "INSTITUTE", true, "textarea"));
         PLACEHOLDER_META.put("institute_contact", new PlaceholderMeta("Institute Contact", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_email", new PlaceholderMeta("Institute Email", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_tagline",
+                new PlaceholderMeta("Institute Tagline", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("tax_label", new PlaceholderMeta("Tax Label", "TAX", true, "text"));
         PLACEHOLDER_META.put("tax_rate", new PlaceholderMeta("Tax Rate", "TAX", true, "text"));
         PLACEHOLDER_META.put("country", new PlaceholderMeta("Country", "TAX", true, "text"));
@@ -355,6 +374,30 @@ public class InvoiceService {
                 new PlaceholderMeta("Totals block (amount, discount, tax, paid)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("notes", new PlaceholderMeta("Notes", "NOTES", true, "textarea"));
+        // A fee receipt answers "where does this payment leave me", which an invoice does not:
+        // Money here is NOT editable, for the same reason subtotal and total_amount are not: a
+        // receipt that can be retyped is a receipt that can contradict the ledger. Only the
+        // descriptive fields are editable, and those are whitelisted in EDITABLE_OVERRIDE_KEYS
+        // so that an admin edit actually reaches the PDF instead of being silently dropped.
+        // the course price, what was already paid, what is still owed and the next installment.
+        // Registered here so the template editor offers them and an admin can override any one
+        // on a single receipt. Derived in buildReceiptFigures from the learner fee schedule.
+        PLACEHOLDER_META.put("course_name", new PlaceholderMeta("Course Name", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_code", new PlaceholderMeta("Course Code", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_code_bracketed",
+                new PlaceholderMeta("Course Code in brackets (hidden when none)", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("user_mobile", new PlaceholderMeta("Mobile No.", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_fees", new PlaceholderMeta("Course Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees", new PlaceholderMeta("Total Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("previous_paid", new PlaceholderMeta("Total Previous Paid", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("fees_paid_now", new PlaceholderMeta("Fees Paid Now", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees_due", new PlaceholderMeta("Total Fees Due", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_amount_paid", new PlaceholderMeta("Total Amount Paid", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("next_installment_amount",
+                new PlaceholderMeta("Next Installment Amount", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("next_installment_date",
+                new PlaceholderMeta("Next Installment Due On", "RECEIPT", false, "date"));
+        PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", false, "text"));
     }
 
     /**
@@ -928,8 +971,18 @@ public class InvoiceService {
                 BigDecimal lineSubtotal = paymentAmount.divide(
                         BigDecimal.ONE.add(rateFraction), 2, RoundingMode.HALF_UP);
                 componentSubtotalSum = componentSubtotalSum.add(lineSubtotal);
-                componentTaxSum = componentTaxSum.add(paymentAmount.subtract(lineSubtotal));
-                for (Map<String, Object> comp : comps) {
+                BigDecimal lineTax = paymentAmount.subtract(lineSubtotal);
+                componentTaxSum = componentTaxSum.add(lineTax);
+                // Split THIS line's tax across its components so they add back to it exactly.
+                // Computing each component off the subtotal independently rounds each one up:
+                // 4,571.43 x 2.5% = 114.2857 -> 114.29 for CGST and again for SGST, which is
+                // 228.58 against a tax line of 228.57. A GST invoice whose components do not
+                // sum to the tax charged is wrong on its face. The last component takes the
+                // remainder, which is also what a manually prepared invoice does.
+                BigDecimal allocatedLineTax = BigDecimal.ZERO;
+                int lastIndex = comps.size() - 1;
+                for (int ci = 0; ci < comps.size(); ci++) {
+                    Map<String, Object> comp = comps.get(ci);
                     String label = comp.get("label") != null ? comp.get("label").toString() : "";
                     if (label.isEmpty()) {
                         continue;
@@ -940,8 +993,11 @@ public class InvoiceService {
                     } catch (NumberFormatException e) {
                         rate = BigDecimal.ZERO;
                     }
-                    BigDecimal amt = lineSubtotal.multiply(rate)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    BigDecimal amt = (ci == lastIndex)
+                            ? lineTax.subtract(allocatedLineTax)
+                            : lineSubtotal.multiply(rate)
+                                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    allocatedLineTax = allocatedLineTax.add(amt);
                     final BigDecimal compRate = rate;
                     BigDecimal[] acc = componentAccumulator.computeIfAbsent(label,
                             k -> new BigDecimal[] { compRate, BigDecimal.ZERO });
@@ -2465,9 +2521,26 @@ public class InvoiceService {
                 ov.apply("institute_name", institute.getInstituteName()));
         filled = filled.replace("{{institute_address}}",
                 ovMulti.apply("institute_address", institute.getAddress()));
+        // The line an institute prints under its name on letterheads. Held in the institute
+        // description so a receipt reads from settings rather than being baked into a template.
+        filled = filled.replace("{{institute_tagline}}",
+                ov.apply("institute_tagline",
+                        institute.getDescription() != null ? institute.getDescription() : ""));
         filled = filled.replace("{{institute_contact}}",
                 ov.apply("institute_contact", institute.getMobileNumber() != null ? institute.getMobileNumber()
                         : (institute.getEmail() != null ? institute.getEmail() : "")));
+        filled = filled.replace("{{institute_email}}",
+                ov.apply("institute_email", institute.getEmail() != null ? institute.getEmail() : ""));
+
+        // Billing month: month and year are edited separately, and the period is built from
+        // whatever they ended up as, so the three can never disagree on one invoice.
+        LocalDate billingDate = billingPeriodDate(invoiceData);
+        String billingMonth = ov.apply("billing_month", billingMonthName(billingDate));
+        String billingYear = ov.apply("billing_year",
+                billingDate != null ? String.valueOf(billingDate.getYear()) : "");
+        filled = filled.replace("{{billing_month}}", billingMonth);
+        filled = filled.replace("{{billing_year}}", billingYear);
+        filled = filled.replace("{{billing_period}}", (billingMonth + " " + billingYear).trim());
 
         // Institute logo
         String instituteLogoHtml = buildInstituteLogoHtml(institute);
@@ -2492,6 +2565,13 @@ public class InvoiceService {
         filled = filled.replace("{{user_tax_info}}", ov.apply("user_tax_info", ""));
         filled = filled.replace("{{place_of_supply}}",
                 ov.apply("place_of_supply", user.getRegion() != null ? user.getRegion() : ""));
+        // Learner-entered custom field values, so escaped here: the override path escapes its
+        // own value but passes the default through untouched.
+        LearnerProfileFields lpf = usesLearnerProfileFields(template)
+                ? resolveLearnerProfileFields(invoiceData)
+                : LearnerProfileFields.EMPTY;
+        filled = filled.replace("{{parent_name}}", ov.apply("parent_name", escapeHtml(lpf.parentName())));
+        filled = filled.replace("{{year_group}}", ov.apply("year_group", escapeHtml(lpf.yearGroup())));
         // Notes (admin-entered). Overridable; defaults to the value carried on InvoiceData.
         filled = filled.replace("{{notes}}", ovMulti.apply("notes", invoiceData.getNotes()));
 
@@ -2547,6 +2627,50 @@ public class InvoiceService {
                 invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
                         : "");
 
+        // Receipt figures, read off the learner fee schedule rather than this one invoice.
+        // A receipt has to answer "where does this payment leave me" — what the course costs,
+        // what was already paid, what is still owed and when the next installment falls due.
+        // Only {{fees_paid_now}} is about this invoice alone. Every value is blank when the
+        // plan has no schedule, so a template using them degrades to empty rather than zero.
+        // Only reach for the fee schedule when the template actually asks for it. Most
+        // institutes print an invoice, not a receipt, and they should not pay a query for
+        // placeholders their template never mentions.
+        ReceiptFigures rf = usesReceiptFields(template)
+                ? buildReceiptFigures(invoiceData)
+                : new ReceiptFigures();
+        filled = filled.replace("{{course_fees}}", ov.apply("course_fees",
+                rf.courseFees != null ? currencySymbol + money(rf.courseFees) : ""));
+        filled = filled.replace("{{total_fees}}", ov.apply("total_fees",
+                rf.totalFees != null ? currencySymbol + money(rf.totalFees) : ""));
+        filled = filled.replace("{{previous_paid}}", ov.apply("previous_paid",
+                rf.previousPaid != null ? currencySymbol + money(rf.previousPaid) : ""));
+        filled = filled.replace("{{fees_paid_now}}", ov.apply("fees_paid_now",
+                invoiceData.getTotalAmount() != null
+                        ? currencySymbol + money(invoiceData.getTotalAmount()) : ""));
+        filled = filled.replace("{{total_fees_due}}", ov.apply("total_fees_due",
+                rf.totalDue != null ? currencySymbol + money(rf.totalDue) : ""));
+        filled = filled.replace("{{total_amount_paid}}", ov.apply("total_amount_paid",
+                rf.totalPaid != null ? currencySymbol + money(rf.totalPaid) : ""));
+        filled = filled.replace("{{next_installment_amount}}", ov.apply("next_installment_amount",
+                rf.nextInstallmentAmount != null
+                        ? currencySymbol + money(rf.nextInstallmentAmount) : ""));
+        filled = filled.replace("{{next_installment_date}}", ov.apply("next_installment_date",
+                rf.nextInstallmentDate != null
+                        ? rf.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : ""));
+        filled = filled.replace("{{amount_in_words}}", ov.apply("amount_in_words",
+                amountInWords(invoiceData.getTotalAmount())));
+        filled = filled.replace("{{user_mobile}}", ov.apply("user_mobile",
+                user != null ? user.getMobileNumber() : ""));
+        filled = filled.replace("{{course_name}}", ov.apply("course_name", rf.courseName));
+        filled = filled.replace("{{course_code}}", ov.apply("course_code", rf.courseCode));
+        // The bracketed form, or nothing at all. A template that writes "( {{course_code}} )"
+        // prints an empty pair of brackets for every course whose plan carries no code, and
+        // most do not. Same shape as {{discount_row}}: the whole fragment or none of it.
+        String courseCode = overrides.containsKey("course_code")
+                ? overrides.get("course_code") : rf.courseCode;
+        filled = filled.replace("{{course_code_bracketed}}",
+                StringUtils.hasText(courseCode) ? "( " + escapeHtml(courseCode) + " )" : "");
+
         // Country & tax registration details (from INVOICE_SETTING.country).
         // These let templates render the operating country, the institute's tax
         // registration number (GSTIN/VAT no.) and a breakdown of tax components.
@@ -2593,6 +2717,9 @@ public class InvoiceService {
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
+        // A separate token rather than a change to {{line_items}}, whose 4-cell shape every
+        // existing custom template depends on (see buildLineItemsHtml).
+        filled = filled.replace("{{session_rows}}", buildSessionRowsHtml(invoiceData.getLineItems(), currencySymbol));
 
         // The whole sum, in one conditional block — see buildTotalsRowsHtml.
         filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
@@ -2924,7 +3051,7 @@ public class InvoiceService {
      * re-expanded by a later substitution pass (template substitution is sequential).
      * Null → empty string.
      */
-    private String escapeHtml(String value) {
+    private static String escapeHtml(String value) {
         if (value == null) return "";
         return value
                 .replace("&", "&amp;")
@@ -2973,6 +3100,87 @@ public class InvoiceService {
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
+        }
+        return html.toString();
+    }
+
+    private static final List<DateTimeFormatter> SESSION_DATE_FORMATS = java.util.stream.Stream.of(
+                    "d MMM yyyy", "d MMMM yyyy", "EEE d MMM yyyy", "EEEE d MMMM yyyy",
+                    "yyyy-MM-dd", "d/M/yyyy", "d-M-yyyy", "d.M.yyyy")
+            .map(p -> new java.time.format.DateTimeFormatterBuilder()
+                    .parseCaseInsensitive().appendPattern(p).toFormatter(Locale.ENGLISH))
+            .toList();
+
+    private static final DateTimeFormatter SESSION_DATE_DISPLAY = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
+
+    /** The date an admin typed into a line item, in any of the usual spellings, or null. */
+    static LocalDate parseSessionDate(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String t = text.trim().replace(",", "").replaceAll("\\s+", " ");
+        for (DateTimeFormatter f : SESSION_DATE_FORMATS) {
+            try {
+                return LocalDate.parse(t, f);
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // try the next spelling
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Line items as one row per class: Session N | Date | Subject | Day | Fee.
+     *
+     * <p>A line item carries only a description, so the description is read as
+     * {@code "date | subject"} or {@code "date | subject | day"}. When the first part is a date
+     * the day is worked out from it, so an admin types only the date and the subject. Anything
+     * else is shown as typed: one part becomes the subject, and a first part that is not a date
+     * is shown as the date text. The fee is the line amount.
+     *
+     * <p>The first cell carries {@code session-icon-1..3} in rotation so a template can give each
+     * row an icon from its own CSS; the backend emits no images.
+     */
+    static String buildSessionRowsHtml(List<InvoiceLineItemData> lineItems, String currencySymbol) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return "<tr><td colspan=\"5\">No sessions</td></tr>";
+        }
+        StringBuilder html = new StringBuilder();
+        int n = 0;
+        for (InvoiceLineItemData item : lineItems) {
+            n++;
+            String[] parts = item.getDescription() != null ? item.getDescription().split("\\|", -1) : new String[0];
+            String first = parts.length > 0 ? parts[0].trim() : "";
+            String second = parts.length > 1 ? parts[1].trim() : "";
+            String third = parts.length > 2 ? parts[2].trim() : "";
+            LocalDate date = parseSessionDate(first);
+            String dateText;
+            String subject;
+            String day;
+            if (date != null) {
+                dateText = date.format(SESSION_DATE_DISPLAY);
+                subject = second;
+                day = !third.isEmpty() ? third
+                        : date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH);
+            } else if (parts.length <= 1) {
+                dateText = "";
+                subject = first;
+                day = "";
+            } else {
+                dateText = first;
+                subject = second;
+                day = third;
+            }
+            BigDecimal amount = item.getAmount() != null ? item.getAmount() : item.getUnitPrice();
+            html.append("<tr>")
+                    .append("<td class=\"session-label session-icon-").append((n - 1) % 3 + 1).append("\">")
+                    .append("Session ").append(n).append("</td>")
+                    .append("<td class=\"session-date\">").append(escapeHtml(dateText)).append("</td>")
+                    .append("<td class=\"session-subject\">").append(escapeHtml(subject)).append("</td>")
+                    .append("<td class=\"session-day\">").append(escapeHtml(day)).append("</td>")
+                    .append("<td class=\"session-fee\" style=\"text-align:right\">")
+                    .append(currencySymbol).append(money(amount)).append("</td>")
+                    .append("</tr>");
         }
         return html.toString();
     }
@@ -6099,7 +6307,8 @@ public class InvoiceService {
         // including the seed frame, where the admin has edited nothing. invoice_number is driven
         // by invoiceData (collision-resolved above), notes are folded in escaped. Mirrors the
         // renderOverrides createAdminInvoices builds.
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> renderOverrides = new HashMap<>(userOverrides);
         for (String key : EDITABLE_OVERRIDE_KEYS) {
             if (!renderOverrides.containsKey(key) && defaults.containsKey(key)) {
@@ -6110,7 +6319,6 @@ public class InvoiceService {
         if (StringUtils.hasText(effectiveNotes)) renderOverrides.put("notes", effectiveNotes);
         invoiceData.setOverrides(renderOverrides);
 
-        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
         String html = replaceTemplatePlaceholders(templateHtml, invoiceData);
         List<AdminInvoicePreviewResponseDTO.PlaceholderValue> resolved =
                 computeResolvedValues(invoiceData, templateHtml, invoiceSettings);
@@ -6130,7 +6338,7 @@ public class InvoiceService {
         java.util.regex.Matcher m = PLACEHOLDER_PATTERN.matcher(templateHtml != null ? templateHtml : "");
         while (m.find()) present.add(m.group(1));
 
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> overrides = invoiceData.getOverrides() != null
                 ? invoiceData.getOverrides() : Collections.emptyMap();
 
@@ -6156,7 +6364,8 @@ public class InvoiceService {
 
     /** Auto-derived (pre-override) value for each editable/derived text placeholder. */
     @SuppressWarnings("unchecked")
-    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings) {
+    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings,
+            String templateHtml) {
         Map<String, String> d = new HashMap<>();
         UserDTO user = invoiceData.getUser();
         Institute institute = invoiceData.getInstitute();
@@ -6187,6 +6396,44 @@ public class InvoiceService {
             d.put("institute_contact", firstNonBlank(ip.get("institute_contact"),
                     institute.getMobileNumber(), institute.getEmail()));
         }
+
+        if (institute != null) {
+            d.put("institute_tagline", nz(institute.getDescription()));
+            d.put("institute_email", nz(institute.getEmail()));
+        }
+        d.put("user_mobile", user != null ? nz(user.getMobileNumber()) : "");
+
+        LocalDate billingDate = billingPeriodDate(invoiceData);
+        String billingMonth = billingMonthName(billingDate);
+        String billingYear = billingDate != null ? String.valueOf(billingDate.getYear()) : "";
+        d.put("billing_month", billingMonth);
+        d.put("billing_year", billingYear);
+        d.put("billing_period", (billingMonth + " " + billingYear).trim());
+        // Only templates that print them pay for the custom-field read; the rest get blanks.
+        LearnerProfileFields lpf = usesLearnerProfileFields(templateHtml)
+                ? resolveLearnerProfileFields(invoiceData)
+                : LearnerProfileFields.EMPTY;
+        d.put("parent_name", lpf.parentName());
+        d.put("year_group", lpf.yearGroup());
+
+        // Seed the receipt fields too, so the review step shows what the PDF will actually
+        // print rather than an empty box next to every amount.
+        String recCur = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
+        ReceiptFigures rfd = buildReceiptFigures(invoiceData);  // review step: always shown
+        d.put("course_name", nz(rfd.courseName));
+        d.put("course_code", nz(rfd.courseCode));
+        d.put("course_fees", rfd.courseFees != null ? recCur + money(rfd.courseFees) : "");
+        d.put("total_fees", rfd.totalFees != null ? recCur + money(rfd.totalFees) : "");
+        d.put("previous_paid", rfd.previousPaid != null ? recCur + money(rfd.previousPaid) : "");
+        d.put("fees_paid_now", invoiceData.getTotalAmount() != null
+                ? recCur + money(invoiceData.getTotalAmount()) : "");
+        d.put("total_fees_due", rfd.totalDue != null ? recCur + money(rfd.totalDue) : "");
+        d.put("total_amount_paid", rfd.totalPaid != null ? recCur + money(rfd.totalPaid) : "");
+        d.put("next_installment_amount", rfd.nextInstallmentAmount != null
+                ? recCur + money(rfd.nextInstallmentAmount) : "");
+        d.put("next_installment_date", rfd.nextInstallmentDate != null
+                ? rfd.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : "");
+        d.put("amount_in_words", amountInWords(invoiceData.getTotalAmount()));
 
         // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
         // matches what replaceTemplatePlaceholders renders and what create will persist.
@@ -6518,4 +6765,347 @@ public class InvoiceService {
                 .lineItems(items)
                 .build();
     }
+
+    /**
+     * Everything collected on the plan including the payment this receipt is for. The schedule
+     * only counts that payment once allocation has run, and that ordering differs per gateway
+     * path, so the ledger decides which side of it we are on.
+     */
+    static BigDecimal totalCollected(BigDecimal scheduledPaid, BigDecimal thisPayment,
+            boolean alreadyAllocated) {
+        BigDecimal scheduled = scheduledPaid != null ? scheduledPaid : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return alreadyAllocated ? scheduled : scheduled.add(now);
+    }
+
+    /**
+     * What the learner had paid before this receipt. Never negative: a payment recorded outside
+     * the schedule would otherwise print a nonsense figure on a financial document.
+     */
+    static BigDecimal paidBefore(BigDecimal totalCollected, BigDecimal thisPayment) {
+        BigDecimal total = totalCollected != null ? totalCollected : BigDecimal.ZERO;
+        BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
+        return total.subtract(now).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * The date whose month a monthly invoice is for: the due date, falling back to the invoice
+     * date. Fees billed in advance are raised in one month and fall due in the next, so the
+     * invoice date alone would name the wrong month.
+     */
+    static LocalDate billingPeriodDate(InvoiceData invoiceData) {
+        if (invoiceData == null) {
+            return null;
+        }
+        if (invoiceData.getDueDate() != null) {
+            return invoiceData.getDueDate().toLocalDate();
+        }
+        return invoiceData.getInvoiceDate() != null ? invoiceData.getInvoiceDate().toLocalDate() : null;
+    }
+
+    /** "October", or "" without a date. English, to match the dd MMM yyyy dates on the PDF. */
+    static String billingMonthName(LocalDate date) {
+        return date != null ? date.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH) : "";
+    }
+
+    /** Parent and year group as the learner's own custom fields hold them; "" when absent. */
+    record LearnerProfileFields(String parentName, String yearGroup) {
+        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "");
+    }
+
+    /**
+     * Which invoice placeholder a learner custom field feeds, by its display name, or null.
+     * Institutes name these fields freely ("Parent Name", "Guardian's Name", "Year Group",
+     * "Grade"), so this matches on meaning rather than an exact key. A parent's email or
+     * phone also mentions "parent" and must not be taken for the name.
+     */
+    static String learnerProfilePlaceholderFor(String fieldName) {
+        if (fieldName == null) {
+            return null;
+        }
+        String n = fieldName.toLowerCase(Locale.ENGLISH).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
+        if (n.contains("parent") || n.contains("guardian")) {
+            for (String notAName : List.of("email", "mail", "phone", "mobile", "number", "contact",
+                    "whatsapp", "occupation", "address", "relation")) {
+                if (n.contains(notAName)) {
+                    return null;
+                }
+            }
+            return "parent_name";
+        }
+        if (n.contains("year group") || Set.of("year", "grade", "class", "standard", "school year",
+                "year level").contains(n)) {
+            return "year_group";
+        }
+        return null;
+    }
+
+    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}");
+
+    /** Whether a template asks for a value that needs the learner's custom fields. */
+    static boolean usesLearnerProfileFields(String template) {
+        if (template == null || template.isEmpty()) {
+            return false;
+        }
+        for (String token : LEARNER_PROFILE_PLACEHOLDERS) {
+            if (template.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Parent name and year group from the billed learner's custom fields in this institute.
+     * The newest answer wins (the query is newest first). Never throws: a failed lookup leaves
+     * the fields blank for the admin to fill in, rather than failing the invoice.
+     */
+    private LearnerProfileFields resolveLearnerProfileFields(InvoiceData invoiceData) {
+        if (invoiceData == null || invoiceData.getUser() == null || invoiceData.getInstitute() == null
+                || !StringUtils.hasText(invoiceData.getUser().getId())) {
+            return LearnerProfileFields.EMPTY;
+        }
+        try {
+            List<Object[]> rows = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
+                    "USER", List.of(invoiceData.getUser().getId()), invoiceData.getInstitute().getId());
+            String parentName = "";
+            String yearGroup = "";
+            for (Object[] row : rows) {
+                // [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
+                String value = row[5] != null ? row[5].toString().trim() : "";
+                if (value.isEmpty()) {
+                    continue;
+                }
+                String target = learnerProfilePlaceholderFor(row[3] != null ? row[3].toString() : null);
+                if ("parent_name".equals(target) && parentName.isEmpty()) {
+                    parentName = value;
+                } else if ("year_group".equals(target) && yearGroup.isEmpty()) {
+                    yearGroup = value;
+                }
+            }
+            return new LearnerProfileFields(parentName, yearGroup);
+        } catch (Exception e) {
+            log.warn("Could not read parent / year group custom fields for user {}: {}",
+                    invoiceData.getUser().getId(), e.getMessage());
+            return LearnerProfileFields.EMPTY;
+        }
+    }
+
+    private static final List<String> RECEIPT_PLACEHOLDERS = List.of(
+            "{{course_fees}}", "{{total_fees}}", "{{previous_paid}}", "{{total_fees_due}}",
+            "{{total_amount_paid}}", "{{next_installment_amount}}", "{{next_installment_date}}",
+            "{{course_name}}", "{{course_code}}", "{{course_code_bracketed}}");
+
+    /** Whether a template mentions any placeholder that needs the learner fee schedule. */
+    static boolean usesReceiptFields(String template) {
+        if (template == null || template.isEmpty()) {
+            return false;
+        }
+        for (String token : RECEIPT_PLACEHOLDERS) {
+            if (template.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The figures a fee receipt needs that a single invoice does not carry: the course price,
+     * what had already been paid before this payment, what is still outstanding and the next
+     * installment. Derived from the learner fee schedule for the plan this invoice belongs to.
+     *
+     * <p>Every field is nullable. A plan with no schedule rows yields an all-null result so the
+     * placeholders render empty instead of a misleading zero.
+     */
+    private static final class ReceiptFigures {
+        private BigDecimal courseFees;
+        private BigDecimal totalFees;
+        private BigDecimal previousPaid;
+        private BigDecimal totalPaid;
+        private BigDecimal totalDue;
+        private BigDecimal nextInstallmentAmount;
+        private LocalDateTime nextInstallmentDate;
+        private String courseName = "";
+        private String courseCode = "";
+    }
+
+    /**
+     * Build the receipt figures for an invoice. The schedule is the source of truth for money
+     * already collected; the payment plan is the source of truth for what the course costs.
+     */
+    private ReceiptFigures buildReceiptFigures(InvoiceData invoiceData) {
+        ReceiptFigures rf = new ReceiptFigures();
+        PaymentPlan plan = invoiceData.getPaymentPlan();
+        if (plan != null) {
+            rf.totalFees = BigDecimal.valueOf(plan.getActualPrice());
+            rf.courseName = plan.getName() != null ? plan.getName() : "";
+            rf.courseCode = deriveCourseCode(plan.getName());
+        }
+        rf.courseFees = invoiceData.getPlanPrice() != null ? invoiceData.getPlanPrice() : rf.totalFees;
+
+        UserPlan userPlan = invoiceData.getUserPlan();
+        if (userPlan == null || userPlan.getId() == null) {
+            return rf;
+        }
+        List<StudentFeePayment> rows;
+        try {
+            rows = studentFeePaymentRepository.findByUserPlanId(userPlan.getId());
+        } catch (Exception e) {
+            log.warn("Could not load fee schedule for user plan {} while building receipt figures",
+                    userPlan.getId(), e);
+            return rf;
+        }
+        if (rows == null || rows.isEmpty()) {
+            return rf;
+        }
+
+        BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal expected = BigDecimal.ZERO;
+        for (var row : rows) {
+            if (row.getAmountPaid() != null) {
+                paid = paid.add(row.getAmountPaid());
+            }
+            if (row.getAmountExpected() != null) {
+                expected = expected.add(row.getAmountExpected());
+            }
+        }
+        BigDecimal thisPayment = invoiceData.getTotalAmount() != null
+                ? invoiceData.getTotalAmount() : BigDecimal.ZERO;
+
+        // Whether this payment is already counted in the schedule depends on whether allocation
+        // has run yet, and that ordering differs per gateway path. Asking the ledger makes the
+        // figures the same either way: a receipt must not report a different "previously paid"
+        // because it was rendered a moment earlier.
+        boolean alreadyAllocated = false;
+        String paymentLogId = invoiceData.getPaymentLog() != null ? invoiceData.getPaymentLog().getId() : null;
+        if (paymentLogId != null) {
+            try {
+                var allocations = studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLogId);
+                alreadyAllocated = allocations != null && !allocations.isEmpty();
+            } catch (Exception e) {
+                log.warn("Could not check fee allocation for payment log {} while building receipt figures",
+                        paymentLogId, e);
+            }
+        }
+        rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
+        rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
+        BigDecimal courseTotal = rf.totalFees != null ? rf.totalFees : expected;
+        rf.totalDue = courseTotal.subtract(rf.totalPaid).max(BigDecimal.ZERO);
+
+        // The earliest installment still carrying a balance is the one the learner owes next.
+        rows.stream()
+                .filter(r -> r.getDueDate() != null)
+                .filter(r -> !"PAID".equalsIgnoreCase(String.valueOf(r.getStatus())))
+                .filter(r -> r.getAmountExpected() != null
+                        && r.getAmountExpected().compareTo(
+                                r.getAmountPaid() != null ? r.getAmountPaid() : BigDecimal.ZERO) > 0)
+                .min(java.util.Comparator.comparing(
+                        StudentFeePayment::getDueDate))
+                .ifPresent(next -> {
+                    rf.nextInstallmentAmount = next.getAmountExpected()
+                            .subtract(next.getAmountPaid() != null ? next.getAmountPaid() : BigDecimal.ZERO);
+                    rf.nextInstallmentDate = toLocalDate(next.getDueDate()).atStartOfDay();
+                });
+        return rf;
+    }
+
+
+    /**
+     * A DATE column arrives as {@link java.sql.Date}, whose {@code toInstant()} throws, so the
+     * subclass is converted directly and only a genuine {@link java.util.Date} goes via the zone.
+     */
+    private static LocalDate toLocalDate(java.util.Date date) {
+        if (date instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        return date.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+    }
+
+    /**
+     * Pull a short course code out of a payment plan name shaped "CODE - Full Course Name",
+     * where the part before the first dash is an uppercase code. Returns an empty string when
+     * the name carries no code, so a template renders nothing rather than a guess.
+     */
+    static String deriveCourseCode(String planName) {
+        if (!StringUtils.hasText(planName)) {
+            return "";
+        }
+        int dash = planName.indexOf(" - ");
+        if (dash <= 0) {
+            return "";
+        }
+        String candidate = planName.substring(0, dash).trim();
+        return candidate.matches("[A-Z0-9_&/]{2,}") ? candidate : "";
+    }
+
+    private static final String[] WORDS_BELOW_TWENTY = {
+            "", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+            "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
+            "EIGHTEEN", "NINETEEN" };
+    private static final String[] WORDS_TENS = {
+            "", "", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY" };
+
+    /**
+     * Render an amount the way a receipt spells it out, on the Indian scale:
+     * 125000 becomes "ONE LAKH TWENTY FIVE THOUSAND only". Paise are included only when present.
+     * Returns an empty string for a null or negative amount.
+     */
+    static String amountInWords(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
+            return "";
+        }
+        BigDecimal rounded = amount.setScale(2, java.math.RoundingMode.HALF_UP);
+        long rupees = rounded.longValue();
+        int paise = rounded.subtract(BigDecimal.valueOf(rupees))
+                .multiply(BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).intValue();
+        if (rupees == 0 && paise == 0) {
+            return "ZERO only";
+        }
+        StringBuilder sb = new StringBuilder(indianScale(rupees));
+        if (paise > 0) {
+            sb.append(sb.length() > 0 ? " AND " : "").append(twoDigits(paise)).append(" PAISE");
+        }
+        return sb.toString().trim() + " only";
+    }
+
+    /** Group a whole number into crore / lakh / thousand / hundred, as Indian receipts read it. */
+    private static String indianScale(long n) {
+        if (n == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        long crore = n / 10000000;
+        n %= 10000000;
+        long lakh = n / 100000;
+        n %= 100000;
+        long thousand = n / 1000;
+        n %= 1000;
+        long hundred = n / 100;
+        long rest = n % 100;
+        if (crore > 0) {
+            sb.append(indianScale(crore)).append(" CRORE ");
+        }
+        if (lakh > 0) {
+            sb.append(twoDigits((int) lakh)).append(" LAKH ");
+        }
+        if (thousand > 0) {
+            sb.append(twoDigits((int) thousand)).append(" THOUSAND ");
+        }
+        if (hundred > 0) {
+            sb.append(WORDS_BELOW_TWENTY[(int) hundred]).append(" HUNDRED ");
+        }
+        if (rest > 0) {
+            sb.append(twoDigits((int) rest)).append(" ");
+        }
+        return sb.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private static String twoDigits(int n) {
+        if (n < 20) {
+            return WORDS_BELOW_TWENTY[n];
+        }
+        String tens = WORDS_TENS[n / 10];
+        return n % 10 == 0 ? tens : tens + " " + WORDS_BELOW_TWENTY[n % 10];
+    }
+
 }

@@ -44,10 +44,9 @@ public class WorkflowAiDraftService {
     private final ObjectMapper objectMapper;
     private final vacademy.io.admin_core_service.features.institute.repository.TemplateRepository templateRepository;
 
-    // NB: the OpenRouter account behind LLMService does NOT expose the legacy
-    // anthropic/claude-3.5-sonnet slug (404s). Default to a current, verified slug;
-    // override via property. Requires openrouter.api.key to be set for admin_core.
-    @Value("${workflow.ai.draft.model:anthropic/claude-sonnet-4.5}")
+    // Optional override. Blank (the default) lets the 'workflow_draft' row in
+    // ai_model_defaults decide (GLM by default, reasoning effort low).
+    @Value("${workflow.ai.draft.model:}")
     private String draftModel;
 
     // Multi-step drafts (e.g. a 14-day drip = ~15 nodes + rationale) do not fit in the
@@ -129,10 +128,11 @@ public class WorkflowAiDraftService {
                 ConversationSession session = ConversationSession.builder()
                         .userId(userId)
                         .instituteId(request.getInstituteId())
-                        .model(draftModel)
+                        .model(draftModel == null || draftModel.isBlank() ? null : draftModel.trim())
                         .maxTokens(draftMaxTokens)
                         .history(new ArrayList<>(history))
                         .build();
+                session.getContext().put(LLMService.CTX_USE_CASE, "workflow_draft");
                 LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
                 raw = resp != null ? resp.getContent() : null;
                 finishReason = resp != null ? resp.getFinishReason() : null;
@@ -263,10 +263,11 @@ public class WorkflowAiDraftService {
                 ConversationSession session = ConversationSession.builder()
                         .userId(userId)
                         .instituteId(request.getInstituteId())
-                        .model(draftModel)
+                        .model(draftModel == null || draftModel.isBlank() ? null : draftModel.trim())
                         .maxTokens(draftMaxTokens)
                         .history(new ArrayList<>(history))
                         .build();
+                session.getContext().put(LLMService.CTX_USE_CASE, "workflow_draft");
                 LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
                 raw = resp != null ? resp.getContent() : null;
                 finishReason = resp != null ? resp.getFinishReason() : null;

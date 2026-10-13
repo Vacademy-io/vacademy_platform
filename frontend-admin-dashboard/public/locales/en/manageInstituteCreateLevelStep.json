@@ -16,7 +16,8 @@
         "title": "Choose {{term}}",
         "subtitle": "Pick the {{term}} learners in this batch will study.",
         "selectExistingHint": "Reuse a {{term}} your institute already has",
-        "createNewHint": "Add a {{term}} with its own duration"
+        "createNewHint": "Add a {{term}} with its own duration",
+        "optionalHint": "Optional. Skip it to use the default {{term}}."
     },
     "validation": {
         "pleaseSelectLevel": "Please select a level",

@@ -1,8 +1,11 @@
 import { createFileRoute, redirect, Navigate } from "@tanstack/react-router";
 import { RouteMatcher } from "../-services/route-matcher";
 import { CatalogueTagContext } from "../-components/CatalogueTagContext";
+import { retainSiteLanguage } from "../-utils/catalogue-route-search";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
 import { CourseSubPage } from "../-components/CourseSubPage";
+import { RootMountedSegment } from "../-components/RootMountedSegment";
+import { getCachedRootCatalogueTag } from "@/services/domain-routing";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -12,6 +15,9 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 
 export const Route = createFileRoute("/$tagName/$courseId/")({
+  // Keep the visitor's site language (?lang=) across catalogue navigation
+  // (sites with languages only; a no-op everywhere else).
+  search: { middlewares: [retainSiteLanguage] },
   // Reader mode (iOS always / reader-mode institutes): the public course
   // details / enroll page is a marketplace surface — block it (Apple 3.1.1).
   beforeLoad: async () => {
@@ -78,8 +84,14 @@ function RouteComponent() {
   }
 
   // "/new/<x>" on a host where `new` is mounted at the root → "/<x>", search
-  // params included (enrol links carry ?enrollInviteId=…).
-  if (RouteMatcher.isRootMounted(resolvedTagName)) {
+  // params included (enrol links carry ?enrollInviteId=…). Not for a page the
+  // learner app reserves (e.g. "courses"): the root-mounted site addresses it
+  // as "/<tag>/courses" on purpose, and redirecting would land on the app's own
+  // /courses instead of the site's Courses page — the same guard $pageSlug uses.
+  if (
+    RouteMatcher.isRootMounted(resolvedTagName) &&
+    !RouteMatcher.isReservedRootPage(resolvedTagName, resolvedCourseId)
+  ) {
     return <Navigate to={`/${resolvedCourseId}` as never} search={true} replace />;
   }
 
@@ -96,11 +108,28 @@ function RouteComponent() {
       return <DashboardLoader />;
     }
     // If no institute ID after loading, pass empty string (subpage will handle it)
-    return (
+    const subPage = (
       <CatalogueTagContext.Provider value={resolvedTagName}>
         <CourseSubPage tagName={resolvedTagName} page={resolvedCourseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />
       </CatalogueTagContext.Provider>
     );
+    // Root-mounted host: "/blog/<post-slug>" matches THIS route, not $pageSlug,
+    // so read the first segment as a root-catalogue page first (as $pageSlug
+    // does); only when the root catalogue has no such page is it another tag.
+    const rootTag = getCachedRootCatalogueTag();
+    if (rootTag && domainRouting.instituteId && !RouteMatcher.isRootMounted(resolvedTagName)) {
+      return (
+        <RootMountedSegment
+          rootTag={rootTag}
+          segment={resolvedTagName}
+          instituteId={domainRouting.instituteId}
+          instituteThemeCode={domainRouting.instituteThemeCode}
+          fallback={subPage}
+          pageOnly
+        />
+      );
+    }
+    return subPage;
   }
 
   // Show loading while domain routing is resolving

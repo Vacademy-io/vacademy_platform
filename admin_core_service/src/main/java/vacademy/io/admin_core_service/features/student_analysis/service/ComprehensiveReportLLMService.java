@@ -3,14 +3,11 @@ package vacademy.io.admin_core_service.features.student_analysis.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
+import vacademy.io.admin_core_service.features.ai_models.service.LlmGatewayRouter;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
@@ -43,38 +40,35 @@ import java.util.UUID;
 @Service
 public class ComprehensiveReportLLMService {
 
-    private static final String API_URL = "https://openrouter.ai";
     // Narration asks for a large JSON (all insights + 6 rich-markdown narrative fields). On slow
     // free-tier OpenRouter models this routinely exceeds a tight timeout, causing the whole
     // ai_insights (and narrative) to fall back to deterministic text. This is a background @Async
     // job with no user waiting synchronously, so a generous per-request timeout is safe.
-    private static final int RESPONSE_TIMEOUT_SECONDS = 170;
+    // GLM timed out at 170 s on this prompt (reasoning at its default effort); the router now
+    // sends effort low with output headroom, and the ceiling is raised for the GLM flip.
+    private static final int RESPONSE_TIMEOUT_SECONDS = 240;
     private static final int MAX_RETRIES_PER_MODEL = 2;
 
-    private final WebClient webClient;
     private final ObjectMapper objectMapper;
     private final AIModelRegistryService aiModelRegistryService;
     private final AiTokenUsageService aiTokenUsageService;
     private final SubjectResolver subjectResolver;
     private final CreditClient creditClient;
+    private final LlmGatewayRouter gatewayRouter;
 
     public ComprehensiveReportLLMService(
-            @Value("${openrouter.api.key}") String apiKey,
             ObjectMapper objectMapper,
             AIModelRegistryService aiModelRegistryService,
             AiTokenUsageService aiTokenUsageService,
             SubjectResolver subjectResolver,
-            CreditClient creditClient) {
+            CreditClient creditClient,
+            LlmGatewayRouter gatewayRouter) {
         this.objectMapper = objectMapper;
         this.aiModelRegistryService = aiModelRegistryService;
         this.aiTokenUsageService = aiTokenUsageService;
         this.subjectResolver = subjectResolver;
         this.creditClient = creditClient;
-        this.webClient = WebClient.builder()
-                .baseUrl(API_URL)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
+        this.gatewayRouter = gatewayRouter;
     }
 
     /**
@@ -160,12 +154,9 @@ public class ComprehensiveReportLLMService {
                         Map.of("role", "user", "content", prompt)),
                 "response_format", Map.of("type", "json_object"));
 
-        return webClient.post()
-                .uri("/api/v1/chat/completions")
-                .bodyValue(payload)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+        // Isoquant for routed models (one OpenRouter try on a gateway failure); GLM gets
+        // reasoning headroom + effort low. Charged under the registry id below.
+        return gatewayRouter.callModel(model, payload, Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS), null)
                 .doOnNext(response -> logTokenUsage(response, model, ctx, "subject clustering"))
                 .flatMap(response -> parseSubjectMarks(response, model));
     }
@@ -295,12 +286,9 @@ public class ComprehensiveReportLLMService {
                         Map.of("role", "user", "content", prompt)),
                 "response_format", Map.of("type", "json_object"));
 
-        return webClient.post()
-                .uri("/api/v1/chat/completions")
-                .bodyValue(payload)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+        // Isoquant for routed models (one OpenRouter try on a gateway failure); GLM gets
+        // reasoning headroom + effort low. Charged under the registry id below.
+        return gatewayRouter.callModel(model, payload, Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS), null)
                 .doOnNext(response -> logTokenUsage(response, model, ctx, "narrative"))
                 .flatMap(response -> parseInsights(response, model));
     }

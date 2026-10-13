@@ -223,3 +223,20 @@ export const subtreeIds = (node: FolderNode): Set<string> => {
 /** What a learner sees as the item's name: its own title, else the product page's. */
 export const nodeLabel = (n: FolderNode): string =>
     (n.title || '').trim() || (n.product_page_name || '').trim() || (n.node_type === 'FOLDER' ? 'Untitled folder' : 'Product page');
+
+/** The folder's link key as the site reads it: its slug, else a slug made from its subtitle or title, else its id. */
+export const folderSlug = (n: Pick<FolderNode, 'slug' | 'subtitle' | 'title' | 'id'>): string => {
+    const explicit = (n.slug || '').trim();
+    if (explicit) return explicit;
+    const fromText = (n.subtitle || n.title || '')
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return fromText || n.id;
+};
+
+/** The course tag a folder filters by on the site: its explicit tag, else its link key. */
+export const folderCourseTag = (n: Pick<FolderNode, 'slug' | 'course_tag' | 'subtitle' | 'title' | 'id'>): string =>
+    (n.course_tag || '').trim() || folderSlug(n);

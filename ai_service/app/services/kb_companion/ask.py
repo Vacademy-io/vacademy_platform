@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..kb.repository import KbRepository
 from ..kb.retrieval import Citation, KbRetrievalService
-from . import llm
+from . import llm, model_choice
 from .lesson import LANG_NAMES
 from .shell import figure_label
 
@@ -201,6 +201,7 @@ def shape_answer(parsed: Dict[str, Any], citations: List[Citation],
 
 async def answer(*, companion, learner_name, memo, question, excerpts, figures_text, history,
                  covered_topics, current_topic, citations, figures) -> Tuple[Dict[str, Any], llm.LlmResult]:
+    model_choice.refresh()  # the 'kb_companion' use case (env overrides still win)
     parsed, res = await llm.complete_json(
         ask_messages(companion=companion, learner_name=learner_name, memo=memo, question=question,
                      excerpts=excerpts, figures_text=figures_text, history=history,

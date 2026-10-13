@@ -35,6 +35,7 @@ COMPONENT_LABELS: Dict[str, str] = {
     "bookCatalogue": "Book Catalogue",
     "productPageOffer": "Product Page Offer",
     "folderBrowser": "Folder Browser",
+    "learningPath": "Learning Path",
     "productCourseGrid": "Course Grid (full catalogue)",
     "mediaShowcase": "Media Showcase",
     "courseShowcase": "Course showcase",
@@ -75,7 +76,7 @@ COMPONENT_LABELS: Dict[str, str] = {
 
 #: Blocks whose content comes from live institute data rather than authored props.
 LIVE_DATA_TYPES = frozenset({
-    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer", "folderBrowser",
+    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer", "folderBrowser", "learningPath",
     "courseDetails", "bookCatalogue", "bookDetails", "announcementFeed", "leadForm",
 })
 
@@ -236,6 +237,103 @@ def capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
             "audience_id": str(p.get("audienceId") or "").strip(),
             "audience_name": "", "required": True,
         })
+    out.extend(_widget_capture_surfaces(comp))
+    return out
+
+
+def _band_secondary_button(comp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """ctaBanner variant 'band' draws props.secondaryButton when it is enabled and has text."""
+    p = comp.get("props") or {}
+    b = p.get("secondaryButton")
+    if comp.get("type") != "ctaBanner" or p.get("variant") != "band" or not isinstance(b, dict):
+        return None
+    return b if b.get("enabled", True) is not False and str(b.get("text") or "").strip() else None
+
+
+def _widget_capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Forms inside the opt-in widgets: a band's second button, the brand
+    footer's newsletter, a learning path's coming-soon steps and the catalogue's
+    in-grid sections (spotlight button / steps, coming-soon shelf). A component
+    that sets none of these props yields nothing, so older sites are unchanged.
+    """
+    p = comp.get("props") or {}
+    ctype = comp.get("type")
+    out: List[Dict[str, Any]] = []
+
+    second = _band_secondary_button(comp)
+    if second and second.get("action") == "openForm":
+        out.append({
+            "kind": "button", "path": "props.secondaryButton.audienceId",
+            "label": str(second.get("text") or "Second button"),
+            "audience_id": str(second.get("audienceId") or "").strip(),
+            "audience_name": "", "required": True,
+        })
+
+    # Brand footer newsletter (renders when present and not enabled:false);
+    # without a campaign it falls back to the auto list, like newsletterSignup.
+    news = p.get("newsletter") if isinstance(p.get("newsletter"), dict) else None
+    if ctype == "footer" and p.get("variant") == "brand" and news and news.get("enabled") is not False:
+        out.append({
+            "kind": "form_section", "path": "props.newsletter.audienceId", "name_path": "props.newsletter.audienceName",
+            "label": "Footer newsletter",
+            "audience_id": str(news.get("audienceId") or "").strip(),
+            "audience_name": str(news.get("audienceName") or "").strip(), "required": False,
+        })
+
+    # learningPath: a coming-soon step's "Notify me" (inert without a campaign).
+    if ctype == "learningPath":
+        for i, extra in enumerate(p.get("pathExtras") or []):
+            if not isinstance(extra, dict):
+                continue
+            for j, step in enumerate(extra.get("comingSoon") or []):
+                if isinstance(step, dict) and str(step.get("title") or "").strip():
+                    out.append({
+                        "kind": "notify_step", "path": f"props.pathExtras[{i}].comingSoon[{j}].audienceId",
+                        "label": f"Coming soon: {str(step['title']).strip()[:60]}",
+                        "audience_id": str(step.get("audienceId") or "").strip(),
+                        "audience_name": "", "required": False,
+                    })
+
+    # courseCatalog in-grid sections.
+    if ctype == "courseCatalog":
+        for i, section in enumerate(p.get("columnSections") or []):
+            if not isinstance(section, dict):
+                continue
+            if section.get("kind") == "spotlight":
+                for j, slide in enumerate(section.get("slides") or []):
+                    if not isinstance(slide, dict):
+                        continue
+                    cta = slide.get("cta") if isinstance(slide.get("cta"), dict) else None
+                    # An 'open-form' button with no campaign is not drawn at all.
+                    if cta and cta.get("action") == "open-form":
+                        out.append({
+                            "kind": "button", "path": f"props.columnSections[{i}].slides[{j}].cta.audienceId",
+                            "label": str(cta.get("label") or slide.get("title") or "Spotlight button"),
+                            "audience_id": str(cta.get("audienceId") or "").strip(),
+                            "audience_name": "", "required": True, "hidden_until_wired": True,
+                        })
+                    for k, step in enumerate(slide.get("steps") or []):
+                        # A step is a form button only once it has a campaign; otherwise a link or text.
+                        if isinstance(step, dict) and str(step.get("audienceId") or "").strip():
+                            out.append({
+                                "kind": "button", "path": f"props.columnSections[{i}].slides[{j}].steps[{k}].audienceId",
+                                "label": str(step.get("title") or "Spotlight step"),
+                                "audience_id": str(step["audienceId"]).strip(),
+                                "audience_name": "", "required": False,
+                            })
+            elif section.get("kind") == "coming-soon":
+                # Each card's "Notify me" uses ITS category's campaign in the
+                # folder library, so there is no page prop to wire here.
+                out.append({
+                    "kind": "folder_notify", "path": "",
+                    "label": str(section.get("title") or "Coming soon") + " (Notify me)",
+                    "audience_id": "", "audience_name": "", "required": False,
+                    "bound_in": "folder library: each coming-soon category's own campaign",
+                })
+    for s in out:
+        if s["path"]:
+            s["surface_path"] = s["path"]
     return out
 
 
@@ -272,6 +370,16 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
             return "folder library: NONE selected (section hidden from visitors)"
         start = " from a chosen folder" if str(p.get("rootFolderId") or "").strip() else ""
         return f'folders from library "{name or lib}"{start} (live; product pages inside show their courses)'
+    if t == "learningPath":
+        if str(p.get("mode") or "single") == "list":
+            lib = str(p.get("libraryId") or "").strip()
+            if not lib:
+                return "learning paths: NO folder library selected (section hidden from visitors)"
+            return f'learning paths from folder library "{str(p.get("libraryName") or lib)}" (live)'
+        code = str(p.get("productPageCode") or "").strip()
+        if not code:
+            return "learning path: NO product page selected (section hidden from visitors)"
+        return f'learning path = product page "{str(p.get("productPageName") or code)}" in step order (live)'
     if t == "courseDetails":
         return "the selected course's details (live)"
     if t in ("bookCatalogue", "bookDetails"):
@@ -470,7 +578,58 @@ def summarize_global_settings(gs: Dict[str, Any]) -> Dict[str, Any]:
     }
     if isinstance(gs.get("brandProfile"), dict):
         out["brand_profile"] = gs["brandProfile"]
+    out.update(_design_settings_summary(gs, theme))
     return {k: v for k, v in out.items() if v not in (None, {}, "")}
+
+
+def _design_settings_summary(gs: Dict[str, Any], theme: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The opt-in settings a design-led site carries (palette, content width,
+    course formats / languages, naming, site cart, languages) — only the ones
+    the site actually has, so a site without them summarises exactly as before.
+    """
+    out: Dict[str, Any] = {}
+    palette = theme.get("palette") if isinstance(theme, dict) else None
+    if isinstance(palette, dict) and palette:
+        out["palette"] = palette
+    if isinstance(theme, dict) and theme.get("contentMaxWidth"):
+        out["content_max_width"] = theme["contentMaxWidth"]
+    formats = gs.get("courseFormats")
+    if isinstance(formats, dict) and formats:
+        order = [str(k).lower() for k in gs.get("courseFormatOrder") or [] if isinstance(k, str)]
+        keys = sorted(formats, key=lambda k: order.index(str(k).lower()) if str(k).lower() in order else len(order))
+        out["course_formats"] = [{k2: v2 for k2, v2 in {
+            "key": k, "label": (formats[k] or {}).get("label") if isinstance(formats[k], dict) else None,
+            "levels": (formats[k] or {}).get("levels") if isinstance(formats[k], dict) else None,
+            "tags": (formats[k] or {}).get("tags") if isinstance(formats[k], dict) else None,
+        }.items() if v2} for k in keys][:20]
+    langs = gs.get("courseLanguages")
+    if isinstance(langs, dict) and langs:
+        out["course_languages"] = {k: v for k, v in {
+            "enabled": bool(langs.get("enabled")),
+            "languages": [str(l.get("code")) for l in langs.get("languages") or [] if isinstance(l, dict)] or None,
+            "version_groups": len(langs.get("versionGroups") or []) or None,
+        }.items() if v is not None}
+    naming = gs.get("naming")
+    if isinstance(naming, dict) and naming:
+        out["naming"] = {k: v for k, v in naming.items() if isinstance(v, str) and v}
+    cart = gs.get("siteCart")
+    if isinstance(cart, dict) and cart:
+        out["site_cart"] = {k: v for k, v in {
+            "enabled": bool(cart.get("enabled")),
+            "store_product_page_code": cart.get("storeProductPageCode"),
+            "store_product_page_name": cart.get("storeProductPageName"),
+        }.items() if v not in (None, "")}
+    i18n = gs.get("i18n")
+    if isinstance(i18n, dict) and i18n:
+        strings = i18n.get("strings") if isinstance(i18n.get("strings"), dict) else {}
+        out["languages"] = {
+            "enabled": bool(i18n.get("enabled")),
+            "base": str(i18n.get("defaultLocale") or "en"),
+            "offered": [str(l.get("code")) for l in i18n.get("locales") or [] if isinstance(l, dict) and l.get("code")],
+            "translations": {k: len(v) for k, v in strings.items() if isinstance(v, dict)},
+        }
+    return out
 
 
 def find_page(config: Dict[str, Any], route_or_id: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -549,6 +708,17 @@ def find_text(config: Dict[str, Any], query: str, page_route: Optional[str] = No
 def collect_capture_surfaces(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Every lead-capture surface across the site, with its page and section."""
     out: List[Dict[str, Any]] = []
+    # Site chrome (globalSettings.layout): the brand footer's newsletter. Its
+    # section_id is the slot link_lead_form takes ('footer'), and it shows on
+    # every page.
+    layout = (config.get("globalSettings") or {}).get("layout")
+    footer = layout.get("footer") if isinstance(layout, dict) else None
+    if isinstance(footer, dict) and footer.get("enabled", True) is not False:
+        for s in _widget_capture_surfaces(footer):
+            out.append({
+                "page_route": None, "page_title": "Every page (site footer)", "section_id": "footer",
+                "section_type": "footer", "section_label": component_label("footer"), **s,
+            })
     for page in config.get("pages") or []:
         if not isinstance(page, dict):
             continue
@@ -613,6 +783,8 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
             form_buttons: List[Dict[str, Any]] = [{"action": p.get("action"), "audienceId": p.get("audienceId")}]
             if isinstance(p.get("button"), dict):
                 form_buttons.append(p["button"])
+            if _band_secondary_button(c):
+                form_buttons.append(p["secondaryButton"])
             left = p.get("left") if isinstance(p.get("left"), dict) else {}
             form_buttons.extend(b for b in (left.get("buttons") or []) if isinstance(b, dict))
             if any(b.get("action") == "openForm" and not str(b.get("audienceId") or "").strip() for b in form_buttons):
@@ -620,6 +792,20 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "severity": "error",
                     "title": "A button opens a form but no campaign is selected",
                     "fix": "Pick a campaign for it, or change the button back to a link. Right now it does nothing when tapped.",
+                    **cctx,
+                })
+            # A catalogue spotlight 'open-form' button without a campaign is not drawn at all.
+            unwired_spotlight = False
+            for section in (p.get("columnSections") or []) if c.get("type") == "courseCatalog" else []:
+                for slide in (section.get("slides") or []) if isinstance(section, dict) and section.get("kind") == "spotlight" else []:
+                    cta = slide.get("cta") if isinstance(slide, dict) and isinstance(slide.get("cta"), dict) else {}
+                    if cta.get("action") == "open-form" and not str(cta.get("audienceId") or "").strip():
+                        unwired_spotlight = True
+            if unwired_spotlight:
+                issues.append({
+                    "severity": "error",
+                    "title": "A spotlight button opens a form but no campaign is selected",
+                    "fix": "Pick a campaign for it, or change it to a link. Until then the button is hidden from visitors.",
                     **cctx,
                 })
             if c.get("type") == "htmlPage":
@@ -645,6 +831,16 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "fix": "Pick a product page in its properties, or remove the section. It is hidden from visitors as-is.",
                     **cctx,
                 })
+            if c.get("type") == "learningPath":
+                list_mode = str(p.get("mode") or "single") == "list"
+                bound = str((p.get("libraryId") if list_mode else p.get("productPageCode")) or "").strip()
+                if not bound:
+                    issues.append({
+                        "severity": "error",
+                        "title": "A Learning Path section has no " + ("folder library" if list_mode else "product page") + " selected",
+                        "fix": "Pick one in its properties, or remove the section. It is hidden from visitors as-is.",
+                        **cctx,
+                    })
             if c.get("type") == "folderBrowser" and not str(p.get("libraryId") or "").strip():
                 issues.append({
                     "severity": "error",

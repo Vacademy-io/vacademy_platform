@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
-import { withArabicFallback } from "@/utils/branding";
+import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { useNavigate } from "@tanstack/react-router";
+import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
@@ -13,6 +13,10 @@ import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { CatalogueLocaleProvider } from "../-utils/catalogue-locale";
+import { useSiteNavigate } from "../-utils/catalogue-route-search";
+import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
+import { CatalogueSeoHead } from "./CatalogueSeoHead";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
 import {
@@ -29,6 +33,7 @@ import {
   type CourseFinderSelection,
 } from "./CourseFinderWizard";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
+import { withSiteThemeVars } from "../-utils/catalogue-palette";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -36,6 +41,18 @@ import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
+import { headerOffsetClass } from "./header/header-chrome";
+import { PreviewPathProvider } from "../-utils/preview-path";
+import {
+  isEditorMessage,
+  isFramed,
+  isSamePath,
+  isShownRoute,
+  leavesDocument,
+  previewRouteFromHref,
+  readyTargets,
+  scrubPreviewConfig,
+} from "../-utils/preview-bridge";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -58,6 +75,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
+  // Authored routes (the mobile bar) — see useSiteNavigate.
+  const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
   const isIOS = Capacitor.getPlatform() === 'ios';
@@ -67,9 +86,23 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string; unlockTitle?: string } | null>(null);
 
+  // Preview mode: bidirectional communication with admin editor iframe.
+  // A property of the document the editor loaded, read once: a navigation in
+  // Browse mode that drops ?preview=true (TanStack drops every parameter it
+  // is not given) must not turn the editor's frame into a visitor's page —
+  // with the institute's pixels, popups and page-view counts.
+  const [isPreviewMode] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === 'true',
+  );
+  // The editor's marks (hidden-block strips, per-block frames) belong in the
+  // editor's frame; the headless AI preview shoots the page as visitors see it.
+  const previewChrome = isPreviewMode && isFramed();
+
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
-  // first-touch UTM capture for lead attribution.
-  useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+  // first-touch UTM capture for lead attribution. Never from the editor's
+  // preview: an admin opening the page is not a visitor, and their pixels
+  // and Traffic numbers must not count it.
+  useCatalogueTracking(isPreviewMode ? null : (catalogueData?.globalSettings as any)?.tracking);
 
 
   useEffect(() => { captureUtmOnce(); }, []);
@@ -77,11 +110,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // counted — the GA4/Pixel hooks above only serve the institute's own tools,
   // and most institutes never connect one.
   useCataloguePageView(
-    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+    catalogueData && !isPreviewMode ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
   // Freebie downloads need the same institute/page; resource cards do not know it.
   useResourceTrackingContext(
-    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+    catalogueData && !isPreviewMode ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
@@ -103,10 +136,24 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // basket; a first-visit open is a fresh start. Only the latter may reset it.
   const reopenedFromCheckout = useRef(false);
 
-  // Preview mode: bidirectional communication with admin editor iframe
-  const isPreviewMode = typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('preview') === 'true';
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  // Editor's Browse mode: the site is clickable (menus, filters, tabs) and
+  // links to other pages switch the editor's page tab instead of leaving.
+  const [previewInteractive, setPreviewInteractive] = useState(false);
+  // The real route of the page the editor shows as this root page, so the
+  // header lights up the right nav item.
+  const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
+  // The editor's origin, learned from its first message.
+  const editorOrigin = useRef<string | null>(null);
+  // Not framed (the headless preview) there is no editor to tell.
+  const postToEditor = (message: Record<string, unknown>) => {
+    if (isFramed()) window.parent.postMessage(message, editorOrigin.current ?? "*");
+  };
+  // A short note over the preview ("Forms don't send in the preview").
+  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
+  // Once the editor has posted its draft, the slower published fetch must not
+  // land on top of it and show the old site.
+  const previewConfigReceived = useRef(false);
 
 
   // Fetch course catalogue data
@@ -122,6 +169,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         // Memoised: on a root-mounted host the route already fetched this
         // catalogue to classify the URL, so this is normally a cache hit.
         const data = await CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName);
+        if (previewConfigReceived.current) return;
 
         console.log("[CourseCataloguePage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -161,7 +209,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         }
       } catch (err) {
         console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
-        setError(t("courseSubPage.loadCatalogueFailed", { course }));
+        // A draft-only site has nothing published; the editor's config stands.
+        if (!previewConfigReceived.current) setError(t("courseSubPage.loadCatalogueFailed", { course }));
       } finally {
         setIsLoading(false);
       }
@@ -184,21 +233,46 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     }
   }, [instituteId, tagName]);
 
-  // Preview mode: receive live config updates and highlight signals from admin editor
+  // Preview mode: receive live config updates and highlight signals from admin editor.
+  // Only from the frame that embeds this page, or (headless preview, not
+  // framed) from the page itself — see preview-bridge.ts.
   useEffect(() => {
     if (!isPreviewMode) return;
 
     // Signal readiness to the admin editor
-    window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+    if (isFramed()) {
+      for (const target of readyTargets()) window.parent.postMessage({ type: 'PREVIEW_READY' }, target);
+    }
 
     const handler = (event: MessageEvent) => {
+      if (!isEditorMessage(event)) return;
+      if (isFramed()) editorOrigin.current = event.origin;
+      // The editor's frame loaded again (or it is checking): still here.
+      if (event.data?.type === 'PREVIEW_HELLO') postToEditor({ type: 'PREVIEW_READY' });
       if (event.data?.type === 'CATALOGUE_CONFIG_UPDATE' && event.data.payload) {
-        setCatalogueData(event.data.payload);
+        previewConfigReceived.current = true;
+        setCatalogueData(scrubPreviewConfig(event.data.payload));
+        setPreviewPath(typeof event.data.previewPath === 'string' ? event.data.previewPath : undefined);
         setIsLoading(false);
         setError(null);
       }
+      if (event.data?.type === 'PREVIEW_INTERACT') {
+        setPreviewInteractive(event.data.on === true);
+      }
       if (event.data?.type === 'HIGHLIGHT_COMPONENT') {
-        setSelectedComponentId(event.data.componentId || null);
+        const componentId: string | null = event.data.componentId || null;
+        setSelectedComponentId(componentId);
+        // Picked in the editor's Layers panel: bring it into view. A block
+        // already on screen (e.g. just clicked here) is left where it is.
+        if (componentId) {
+          requestAnimationFrame(() => {
+            const el = document.querySelector(`[data-cid="${CSS.escape(componentId)}"]`);
+            const box = el?.getBoundingClientRect();
+            if (el && box && (box.bottom < 0 || box.top > window.innerHeight)) {
+              el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+          });
+        }
       }
     };
 
@@ -206,21 +280,122 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePreviewComponentClick = (componentId: string, pageId: string) => {
-    window.parent.postMessage({ type: 'COMPONENT_SELECTED', componentId, pageId }, '*');
+  const handlePreviewComponentClick = (componentId: string, pageId: string, parentId?: string) => {
+    postToEditor({ type: 'COMPONENT_SELECTED', componentId, pageId, ...(parentId ? { parentId } : {}) });
     setSelectedComponentId(componentId);
   };
 
+  // Browse mode: a link to another page asks the editor to open that page
+  // instead of navigating the frame away from the preview (the editor says
+  // so when it is not a page of the site). Same-page jumps (#anchor, or a
+  // link to the shown page) and new-tab external links behave as on the
+  // live site.
   useEffect(() => {
+    if (!previewInteractive) return;
+    const onClick = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || (anchor.getAttribute("href") || "").startsWith("#")) return;
+      const route = previewRouteFromHref(anchor.href, { origin: window.location.origin, tagName });
+      if (route === null && anchor.target === "_blank") return;
+      event.preventDefault();
+      if (route !== null && isShownRoute(route, previewPath)) {
+        const hash = new URL(anchor.href).hash.slice(1);
+        let id = hash;
+        try {
+          id = decodeURIComponent(hash);
+        } catch {
+          /* a malformed escape: look the id up as written */
+        }
+        const target = id ? document.getElementById(id) : null;
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        else if (!hash) window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      postToEditor({ type: "PREVIEW_NAVIGATE", route, href: anchor.href });
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [previewInteractive, tagName, previewPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...and navigation that replaces the document from code (Login buttons,
+  // the logo, same-tab external links all set window.location): held where
+  // the browser can hold it (Navigation API), so the editor's frame never
+  // leaves the preview. The editor also notices if one gets through.
+  useEffect(() => {
+    if (!isPreviewMode || !isFramed()) return;
+    const navigation = (window as unknown as { navigation?: EventTarget }).navigation;
+    if (!navigation) return;
+    const onNavigate = (event: Event) => {
+      const nav = event as Event & Parameters<typeof leavesDocument>[0];
+      if (!leavesDocument(nav)) return;
+      event.preventDefault();
+      const href = nav.destination?.url ?? "";
+      postToEditor({
+        type: "PREVIEW_NAVIGATE",
+        route: previewRouteFromHref(href, { origin: window.location.origin, tagName }),
+        href,
+      });
+    };
+    navigation.addEventListener("navigate", onNavigate);
+    return () => navigation.removeEventListener("navigate", onNavigate);
+  }, [tagName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // No form sends from the preview: an editor trying the contact form must
+  // not create a real lead (or the emails and calls that follow one). Site
+  // search forms stay usable.
+  useEffect(() => {
+    if (!isPreviewMode) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSubmit = (event: Event) => {
+      if ((event.target as Element | null)?.closest?.('[role="search"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviewNotice(t("courseCataloguePage.previewFormNotSent"));
+      clearTimeout(timer);
+      timer = setTimeout(() => setPreviewNotice(null), 4000);
+    };
+    document.addEventListener("submit", onSubmit, true);
+    return () => {
+      document.removeEventListener("submit", onSubmit, true);
+      clearTimeout(timer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...and the same for navigation from code (header items, cards). A change
+  // of query string only (filters, tabs) stays on this page.
+  useBlocker({
+    disabled: !previewInteractive,
+    enableBeforeUnload: false,
+    shouldBlockFn: ({ current, next }) => {
+      // Same page, preview kept (a tab or filter in the query string): stay.
+      // Same page WITHOUT ?preview=true (the header's Home or logo — every
+      // shown page is posted as the root page): that is "open the home page".
+      const keepsPreview = String((next.search as Record<string, unknown> | undefined)?.preview) === "true";
+      if (isSamePath(next.pathname, current.pathname) && keepsPreview) return false;
+      const route = previewRouteFromHref(next.pathname, { origin: window.location.origin, tagName });
+      postToEditor({ type: "PREVIEW_NAVIGATE", route, href: next.pathname });
+      return true;
+    },
+  });
+
+  useEffect(() => {
+    // A site offering हिन्दी / मराठी also gets a Devanagari face after the
+    // brand font (loaded with the others); every other site's stack is
+    // exactly as before.
+    const devanagari = siteUsesDevanagari(catalogueData?.globalSettings?.i18n);
+    const withScripts = (stack: string) =>
+      devanagari ? withDevanagariFallback(withArabicFallback(stack)) : withArabicFallback(stack);
+
     // Load EVERY font face the config references (global family + every
     // per-component style.typography.fontFamily incl. responsive overrides)
     // in one merged Google-Fonts request. Previously only the global family
     // loaded, so per-component font picks silently fell back to system fonts.
-    ensureFontsLoaded(collectConfigFontFamilies(catalogueData));
+    const families = collectConfigFontFamilies(catalogueData);
+    ensureFontsLoaded(devanagari ? [...families, DEVANAGARI_FALLBACK_FAMILY] : families);
 
     const fonts = catalogueData?.globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily = withArabicFallback(
+      document.body.style.fontFamily = withScripts(
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
       );
       document.documentElement.style.removeProperty("--catalogue-heading-font");
@@ -229,7 +404,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     // Apply the global font exactly as specified in JSON, plus the Arabic
     // fallback the stack would otherwise drop (Latin order is preserved).
-    const fontFamily = withArabicFallback(fonts.family.trim());
+    const fontFamily = withScripts(fonts.family.trim());
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
 
@@ -539,6 +714,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // Keep the tenant's branded tab title (set by TabBranding/use-domain-routing);
   // only fall back to a sensible default if none was applied. og:* uses the
   // richer institute name for link previews without overriding the tab title.
+  // (A site with languages uses CatalogueSeoHead instead — see below.)
   const brandedTitle =
     (typeof document !== "undefined" && document.title) || "";
   const defaultCatalogueTitle = t("courseCataloguePage.defaultTitle", { course });
@@ -563,11 +739,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
   /** An imported HTML page normally pastes in its own nav and footer, so the
    *  site's chrome would render a second set. Opt-out lives on the page. */
-  const hidesSiteChrome = !!(
-    catalogueData.pages.find(matchesActivePage) as { hideSiteChrome?: boolean } | undefined
-  )?.hideSiteChrome;
+  const activePage = catalogueData.pages.find(matchesActivePage);
+  const hidesSiteChrome = !!(activePage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 
   return (
+    // Site language (?lang=, remembered per tag): authored props, live data
+    // and react-i18next chrome below all follow it. A single-language site
+    // renders exactly as before.
+    <CatalogueLocaleProvider
+      settings={catalogueData.globalSettings?.i18n}
+      scope={tagName}
+      persist={!isPreviewMode}
+    >
     <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
     <div
       ref={wrapperRef}
@@ -579,15 +762,28 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || 'subtle'}
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
-      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
+      // Opt-in theme.palette / theme.contentMaxWidth vars join the primary scale (same object when unset).
+      style={withSiteThemeVars(buildPrimaryScaleVars(themeSettings?.primaryColor), catalogueData?.globalSettings) as React.CSSProperties}
     >
-      <Helmet>
-        <title>{seoTitle}</title>
-        <meta name="description" content={seoDescription} />
-        <meta property="og:title" content={ogTitle} />
-        <meta property="og:description" content={seoDescription} />
-        <meta property="og:type" content="website" />
-      </Helmet>
+      {catalogueData.globalSettings?.i18n?.enabled ? (
+        // A site with languages: title/description from stable inputs (page
+        // SEO, institute branding) in the visitor's language — never read
+        // back from document.title.
+        <CatalogueSeoHead
+          page={activePage}
+          instituteName={domainRouting.instituteName}
+          course={course}
+          courses={courses}
+        />
+      ) : (
+        <Helmet>
+          <title>{seoTitle}</title>
+          <meta name="description" content={seoDescription} />
+          <meta property="og:title" content={ogTitle} />
+          <meta property="og:description" content={seoDescription} />
+          <meta property="og:type" content="website" />
+        </Helmet>
+      )}
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent
@@ -606,9 +802,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <>
           {/* Keyboard users land on the header nav; this lets them jump the
               whole global chrome straight to the page content. */}
-          <a href="#catalogue-main" className="catalogue-skip-link">
-            {t("courseCataloguePage.skipToMainContent")}
-          </a>
+          <SkipToMainLink />
           {/* Header from JSON globalSettings.
               Suppressed when the active page asks for it: an imported HTML
               page usually pastes in its own nav and footer, so rendering the
@@ -627,6 +821,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                 tagName={tagName}
                 catalogueData={catalogueData}
                 isPreviewMode={isPreviewMode}
+                previewChrome={previewChrome}
+                previewInteractive={previewInteractive}
+                previewPath={previewPath}
                 selectedComponentId={selectedComponentId}
                 onComponentClick={handlePreviewComponentClick}
               />
@@ -635,21 +832,26 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
           {/* Legacy page title banner — removed in v2. Page titles are now handled by hero/textBlock components. */}
           {/* Render the matching page (home page by default, or specific slug) */}
+          <PreviewPathProvider value={isPreviewMode ? previewPath : undefined}>
           {catalogueData.pages
             .filter(matchesActivePage)
             .map((page) => (
-              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : headerOffsetClass((catalogueData.globalSettings as any).layout?.header?.props)} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}
                   instituteId={instituteId}
                   tagName={tagName}
                   isPreviewMode={isPreviewMode}
+                  previewChrome={previewChrome}
+                  previewInteractive={previewInteractive}
+                  previewPath={previewPath}
                   selectedComponentId={selectedComponentId}
                   onComponentClick={handlePreviewComponentClick}
                 />
               </main>
             ))}
+          </PreviewPathProvider>
 
           {/* Footer from JSON globalSettings */}
           {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
@@ -665,6 +867,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               tagName={tagName}
               catalogueData={catalogueData}
               isPreviewMode={isPreviewMode}
+              previewChrome={previewChrome}
+              previewInteractive={previewInteractive}
               selectedComponentId={selectedComponentId}
               onComponentClick={handlePreviewComponentClick}
             />
@@ -683,6 +887,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           unlockUrl={audienceForm.unlockUrl}
           unlockLabel={audienceForm.unlockLabel}
           unlockTitle={audienceForm.unlockTitle}
+          isPreviewMode={isPreviewMode}
         />
       )}
       {showLeadCollection && !isPreviewMode && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (
@@ -729,7 +934,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
           onLogin={handleIntroLogin}
           onLegacyGetStarted={() => setShowLeadCollection(true)}
-          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
+          // Same navigation as always; only while a site language is carried
+          // does a route with its own query string go by `href` (see
+          // useSiteNavigate), so ?lang= never follows a second "?".
+          onNavigate={(route) => void siteNavigate(RouteMatcher.pagePath(tagName, route))}
           nativePad={isAndroid || isIOS}
         />
       )}
@@ -738,8 +946,41 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {catalogueData?.globalSettings?.backToTop && !isPreviewMode && (
         <BackToTopButton />
       )}
+      {/* The headless preview (not framed) shoots the page as visitors see it. */}
+      {isPreviewMode && isFramed() && <PreviewRibbon notice={previewNotice} />}
     </div>
     </CatalogueNamingProvider>
+    </CatalogueLocaleProvider>
+  );
+};
+
+/** Always on in preview: an editor preview is never mistaken for the live
+ *  site, and a framed copy of it is no use for passing off as one. */
+const PreviewRibbon = ({ notice }: { notice: string | null }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <div className="pointer-events-none fixed bottom-2 start-2 z-50 flex items-center gap-2">
+      <span className="rounded-full bg-warning-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm">
+        {t("courseCataloguePage.previewRibbon")}
+      </span>
+      {notice && (
+        <span role="status" className="rounded-full bg-catalogue-text-primary px-3 py-0.5 text-xs text-catalogue-bg shadow-sm">
+          {notice}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/** Keyboard users land on the header nav; this jumps past the global chrome.
+ *  Its own component so the label follows the site language (it renders
+ *  inside CatalogueLocaleProvider, unlike the page shell's own `t`). */
+const SkipToMainLink = () => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <a href="#catalogue-main" className="catalogue-skip-link">
+      {t("courseCataloguePage.skipToMainContent")}
+    </a>
   );
 };
 

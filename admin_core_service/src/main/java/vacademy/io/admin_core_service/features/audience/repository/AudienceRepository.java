@@ -20,6 +20,9 @@ import java.util.Optional;
 @Repository
 public interface AudienceRepository extends JpaRepository<Audience, String> {
 
+    /** Lists of an institute with this exact name (case-insensitive), any status. */
+    List<Audience> findByInstituteIdAndCampaignNameIgnoreCase(String instituteId, String campaignName);
+
     /**
      * Bulk id -> campaign name, for screens that show which campaign a row came from
      * without needing the audience itself. Two-column projection: the queue resolves

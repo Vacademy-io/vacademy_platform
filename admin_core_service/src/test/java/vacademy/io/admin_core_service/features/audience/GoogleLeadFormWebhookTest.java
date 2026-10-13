@@ -11,12 +11,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.audience.controller.MetaOAuthController;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
+import vacademy.io.admin_core_service.features.audience.dto.ConnectorUpdateRequest;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.ProcessedFormDataDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
+import vacademy.io.admin_core_service.features.audience.repository.AdCampaignRouteRepository;
+import vacademy.io.admin_core_service.features.audience.service.AdCampaignRouteService;
 import vacademy.io.admin_core_service.features.audience.service.AdPlatformWebhookService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadEnricher;
@@ -135,12 +138,16 @@ class GoogleLeadFormWebhookTest {
         private AdPlatformWebhookService service;
         private FormWebhookConnectorRepository repo;
         private AudienceService audienceService;
+        private AdCampaignRouteService routes;
 
         @BeforeEach
         void setUp() {
             service = new AdPlatformWebhookService();
             repo = mock(FormWebhookConnectorRepository.class);
             audienceService = mock(AudienceService.class);
+            routes = mock(AdCampaignRouteService.class);
+            when(routes.decide(any(), any())).thenReturn(new AdCampaignRouteService.RouteDecision(null, null));
+            ReflectionTestUtils.setField(service, "campaignRouteService", routes);
             ReflectionTestUtils.setField(service, "connectorRepository", repo);
             ReflectionTestUtils.setField(service, "audienceService", audienceService);
             ReflectionTestUtils.setField(service, "objectMapper", mapper);
@@ -203,6 +210,62 @@ class GoogleLeadFormWebhookTest {
             verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTIVE"), isNull());
         }
 
+        /** One lead form, several campaigns: a mapped campaign's lead goes to its own list. */
+        @Test
+        void mappedCampaignLeadGoesToItsList() {
+            when(routes.decide(any(), eq("21345678901")))
+                    .thenReturn(new AdCampaignRouteService.RouteDecision("aud-pune-mbbs", null));
+
+            assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, false)).status());
+
+            verify(audienceService).submitLeadFromFormWebhook(eq("aud-pune-mbbs"), any(), eq("GOOGLE_LEAD_ADS"));
+            verify(routes).recordLead(any(), eq("21345678901"));
+            verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTIVE"), isNull());
+        }
+
+        /** A campaign routed to a deleted/inactive list still lands (catch-all), and the admin is told. */
+        @Test
+        void campaignRoutedToADeadListFallsBackAndFlagsTheConnector() {
+            when(routes.decide(any(), eq("21345678901")))
+                    .thenReturn(new AdCampaignRouteService.RouteDecision(null, "aud-deleted"));
+
+            assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, false)).status());
+
+            verify(audienceService).submitLeadFromFormWebhook(eq(AUDIENCE), any(), eq("GOOGLE_LEAD_ADS"));
+            verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTION_REQUIRED"),
+                    contains("Campaign 21345678901 is routed to a list that was deleted"));
+        }
+
+        @Test
+        void autoListsOffNeverTouchesTheCampaignsList() {
+            service.handleGoogleWebhook(KEY, payload(KEY, false));
+            verify(routes, never()).ensureAutoList(any(), any());
+            verify(audienceService).submitLeadFromFormWebhook(eq(AUDIENCE), any(), eq("GOOGLE_LEAD_ADS"));
+        }
+
+        /** Auto lists on: the campaign's list is made before routing, and a failure there never loses the lead. */
+        @Test
+        void aFailedAutoListStillSavesTheLeadToTheCatchAll() {
+            when(routes.autoCreatesLists(any())).thenReturn(true);
+            doThrow(new RuntimeException("db down")).when(routes).ensureAutoList(any(), any());
+
+            assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, false)).status());
+
+            verify(routes).ensureAutoList(any(), eq("21345678901"));
+            verify(audienceService).submitLeadFromFormWebhook(eq(AUDIENCE), any(), eq("GOOGLE_LEAD_ADS"));
+            verify(routes).recordLead(any(), eq("21345678901"));
+        }
+
+        @Test
+        void aFailedLeadIsNotCountedForItsCampaign() {
+            when(audienceService.submitLeadFromFormWebhook(any(), any(), any()))
+                    .thenThrow(new VacademyException("boom"));
+
+            service.handleGoogleWebhook(KEY, payload(KEY, false));
+
+            verify(routes, never()).recordLead(any(), any());
+        }
+
         @Test
         void ingestFailureIs500SoGoogleRetries() {
             when(audienceService.submitLeadFromFormWebhook(any(), any(), any()))
@@ -233,7 +296,8 @@ class GoogleLeadFormWebhookTest {
             validator = mock(InstituteAccessValidator.class);
             webhookService = mock(AdPlatformWebhookService.class);
             controller = new MetaOAuthController(null, webhookService, null, null, repo, null, null,
-                    mapper, validator, audiences);
+                    mapper, validator, audiences, mock(AdCampaignRouteService.class),
+                    mock(AdCampaignRouteRepository.class));
             Audience own = new Audience();
             own.setId(AUDIENCE);
             own.setInstituteId(INSTITUTE);
@@ -264,6 +328,34 @@ class GoogleLeadFormWebhookTest {
             verify(webhookService).saveConnector(saved.capture(), isNull());
             assertEquals(key, saved.getValue().getVendorId());
             assertEquals(key, saved.getValue().getPlatformFormId());
+            verify(validator).requireInstituteStaff(user, INSTITUTE);
+        }
+
+        @Test
+        void storesTheNameTheListShowsInsteadOfTheKey() {
+            AdConnectorSetupRequest r = request(null);
+            r.setPlatformFormName("  Admissions lead form  ");
+
+            controller.saveGoogleConnector(r, user);
+
+            ArgumentCaptor<FormWebhookConnector> saved = ArgumentCaptor.forClass(FormWebhookConnector.class);
+            verify(webhookService).saveConnector(saved.capture(), isNull());
+            assertEquals("Admissions lead form", saved.getValue().getPlatformFormName());
+        }
+
+        @Test
+        void renamingAConnectorLeavesItsDefaultsAlone() {
+            FormWebhookConnector ours = connector();
+            ours.setDefaultValuesJson("{\"center name\":\"Wakad\"}");
+            when(repo.findById("conn-1")).thenReturn(Optional.of(ours));
+            when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            ConnectorUpdateRequest rename = new ConnectorUpdateRequest();
+            rename.setPlatformFormName("Pune campaigns form");
+
+            controller.updateConnector("conn-1", rename, user);
+
+            assertEquals("Pune campaigns form", ours.getPlatformFormName());
+            assertEquals("{\"center name\":\"Wakad\"}", ours.getDefaultValuesJson());
             verify(validator).requireInstituteStaff(user, INSTITUTE);
         }
 

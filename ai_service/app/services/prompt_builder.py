@@ -448,7 +448,6 @@ class CourseOutlinePromptBuilder:
                   "type": "DOCUMENT",
                   "path": "C1.SL1",
                   "keyword": "python variables data types tutorial",
-                  "model": "google/gemini-2.5-pro",
                   "actionType": "ADD",
                   "prompt": "Create comprehensive content about Python variables and data types...",
                   "order": 1,
@@ -462,7 +461,6 @@ class CourseOutlinePromptBuilder:
                   "type": "VIDEO",
                   "path": "C1.SL2",
                   "keyword": "python functions methods tutorial",
-                  "model": "google/gemini-2.5-flash-preview-05-20",
                   "actionType": "ADD",
                   "prompt": "Create video content about Python functions and methods...",
                   "order": 2,
@@ -476,7 +474,6 @@ class CourseOutlinePromptBuilder:
                   "type": "VIDEO",
                   "path": "C1.CH1.SL1",
                   "keyword": "python functions methods tutorial",
-                  "model": "google/gemini-2.5-flash-preview-05-20",
                   "actionType": "ADD",
                   "prompt": "Create video content about Python functions and methods...",
                   "order": 2,
@@ -490,7 +487,6 @@ class CourseOutlinePromptBuilder:
                   "type": "DOCUMENT",
                   "path": "C1.M1.CH1.SL1",
                   "keyword": "python oop classes tutorial",
-                  "model": "google/gemini-2.5-pro",
                   "actionType": "ADD",
                   "prompt": "Create content about OOP basics...",
                   "order": 4,
@@ -504,7 +500,6 @@ class CourseOutlinePromptBuilder:
                   "type": "DOCUMENT",
                   "path": "C1.S1.M1.CH1.SL1",
                   "keyword": "python variables data types tutorial",
-                  "model": "google/gemini-2.5-pro",
                   "actionType": "ADD",
                   "prompt": "Create content about variables...",
                   "order": 3,
@@ -641,16 +636,6 @@ class CourseOutlinePromptBuilder:
                 - Depth 3: "C1.CH3.SL9" (course.chapter.slide)
                 - Depth 4: "C1.M2.CH3.SL9" (course.module.chapter.slide)
                 - Depth 5: "C1.S1.M2.CH3.SL9" (course.subject.module.chapter.slide)
-              - `model`: Suggest which model should be used to generate the content
-                       - for `DOCUMENT' generation use `google/gemini-2.5-pro'
-                       - for 'VIDEO' generation use `google/gemini-2.5-flash-preview-05-20`
-                       - for 'VIDEO_CODE' generation use `google/gemini-2.5-pro` (for code generation)
-                       - for 'AI_VIDEO' generation use `google/gemini-2.5-pro` (for script generation)
-                       - for 'AI_VIDEO_CODE' generation use `google/gemini-2.5-pro` (for script and code generation)
-                       - for 'AI_SLIDES' generation use `google/gemini-2.5-pro` (for slide deck generation)
-                       - for 'AI_STORYBOOK' generation use `google/gemini-2.5-pro` (for storybook script generation)
-                       - for 'PDF' generation use 'google/gemini-2.5-pro'
-                       - for 'ASSESSMENT' generation use 'google/gemini-2.5-pro'
               - `actionType`: `ADD` if the slide is newly added and needs initial content, `UPDATE` if the slide already exists and its content needs to be re-generated or improved.
               - `prompt`: A **very clear and detailed prompt** for an AI to generate the specific content for this slide. This prompt should include:
                 - The slide's topic.

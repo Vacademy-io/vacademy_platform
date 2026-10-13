@@ -708,24 +708,41 @@ class AIModelsService:
         return self.get_free_models()
 
     def update_use_case_default(
-        self, 
-        use_case: str, 
+        self,
+        use_case: str,
         request: UpdateUseCaseDefaultRequest
-    ) -> UseCaseDefaultResponse:
-        """Update defaults for a use case."""
+    ) -> Optional[UseCaseDefaultResponse]:
+        """Update defaults for a use case. Only fields present in the request
+        change (pydantic model_fields_set); an explicit null clears the
+        fallback / free-tier model. Returns None when the use case has no row
+        (the router answers 404). default_model_id cannot be cleared (NOT NULL):
+        raises ValueError."""
+        existing = self.db.execute(
+            text("SELECT 1 FROM ai_model_defaults WHERE use_case = :use_case"),
+            {"use_case": use_case},
+        ).fetchone()
+        if not existing:
+            return None
+
+        fields_set = getattr(request, "model_fields_set", None)
+        if fields_set is None:  # pragma: no cover - pydantic v1 fallback
+            fields_set = {f for f in ("default_model_id", "fallback_model_id", "free_tier_model_id")
+                          if getattr(request, f) is not None}
+
         updates = []
         params = {"use_case": use_case, "now": datetime.utcnow()}
-        
-        if request.default_model_id is not None:
+        if "default_model_id" in fields_set:
+            if not request.default_model_id:
+                raise ValueError("default_model_id cannot be cleared")
             updates.append("default_model_id = :default")
             params["default"] = request.default_model_id
-        if request.fallback_model_id is not None:
+        if "fallback_model_id" in fields_set:
             updates.append("fallback_model_id = :fallback")
-            params["fallback"] = request.fallback_model_id
-        if request.free_tier_model_id is not None:
+            params["fallback"] = request.fallback_model_id or None
+        if "free_tier_model_id" in fields_set:
             updates.append("free_tier_model_id = :free")
-            params["free"] = request.free_tier_model_id
-        
+            params["free"] = request.free_tier_model_id or None
+
         if updates:
             updates.append("updated_at = :now")
             update_query = text(f"""
@@ -735,17 +752,24 @@ class AIModelsService:
             """)
             self.db.execute(update_query, params)
             self.db.commit()
-        
+            try:
+                from .model_selection import invalidate_cache
+                invalidate_cache(use_case)
+            except Exception:  # noqa: BLE001
+                pass
+
         # Fetch updated record
         query = text("""
-            SELECT use_case, default_model_id, fallback_model_id, 
+            SELECT use_case, default_model_id, fallback_model_id,
                    free_tier_model_id, description
             FROM ai_model_defaults
             WHERE use_case = :use_case
         """)
         result = self.db.execute(query, {"use_case": use_case})
         row = result.fetchone()
-        
+        if row is None:
+            return None
+
         return UseCaseDefaultResponse(
             use_case=row.use_case,
             default_model_id=row.default_model_id,

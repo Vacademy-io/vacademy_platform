@@ -1,6 +1,7 @@
 {
   "columnLayoutTitle": "Mise en page à {{count}} colonnes",
   "actions": {
+    "pickColor": "Choisir une couleur",
     "tryAnotherVersion": "Essayer une autre version de cette section (IA)",
     "cannotReorderNested": "Impossible de réorganiser les composants imbriqués",
     "moveUp": "Monter",
@@ -70,7 +71,8 @@
       "motion": "Mouvement",
       "backToTopButton": "Bouton retour en haut",
       "mode": "Mode",
-      "compactness": "Compacité"
+      "compactness": "Compacité",
+      "ownPaletteNote": "En mode clair, la palette propre à ce site remplace la plupart des couleurs des préréglages."
     },
     "fonts": {
       "heading": "Typographie",
@@ -175,6 +177,59 @@
       "sameAsLabel": "Liens sociaux et profils",
       "sameAsHint": "Une URL par ligne. Les liens déjà présents dans le pied de page sont inclus automatiquement.",
       "sitemapHint": "Un sitemap est généré automatiquement sur /<catalogue>/sitemap.xml (et /sitemap.xml lorsque le site est servi depuis votre propre domaine)."
+    },
+    "palette": {
+      "heading": "Couleurs du site",
+      "hint": "Les couleurs propres à ce site. Modifiez-en une ici et tout ce qui l’utilise sur le site suit.",
+      "keys": {
+        "text": "Titres",
+        "body": "Texte courant",
+        "muted": "Texte discret",
+        "muted2": "Texte très discret",
+        "primary": "Marque (boutons et liens)",
+        "gold": "Touches dorées",
+        "accent": "Accent",
+        "olive": "Accent olive",
+        "cream": "Panneau crème",
+        "canvas": "Fond de page",
+        "sand": "Panneau sable",
+        "border": "Lignes",
+        "borderStrong": "Lignes marquées",
+        "accentOnDark": "Accent sur bandeaux sombres",
+        "bodyOnDark": "Texte sur bandeaux sombres",
+        "outline": "Boutons contour"
+      },
+      "otherKey": "Autre couleur : {{key}}",
+      "applyToTokens": "Utiliser ces couleurs partout",
+      "applyToTokensHint": "Recolore aussi les couleurs standard du texte, des fonds et des lignes du site (mode clair).",
+      "contentWidth": "Largeur du contenu",
+      "contentWidthDefault": "Par défaut",
+      "contentWidthHint": "Largeur du contenu de la page en pixels, de {{min}} à {{max}}. Laissez vide pour la valeur par défaut.",
+      "contentWidthNotSaved": "Non enregistré : saisissez un nombre entier de {{min}} à {{max}}."
+    },
+    "courseFormats": {
+      "heading": "Formats de cours",
+      "hint": "Les formats comme E-books ou Sessions en direct s’affichent sur les cartes de cours et dans le filtre Format. Un cours reçoit un format grâce à son tag format-<id>.",
+      "namesInTranslations": "Les noms des formats se traduisent dans Languages → Translations. Passez l’éditeur à la langue de base pour renommer ou ajouter un format.",
+      "renameHint": "Renommer un format copie ses traductions vers le nouveau nom. Vérifiez-les dans Languages → Translations.",
+      "name": "Nom",
+      "id": "ID",
+      "namePlaceholder": "Livre audio",
+      "moveUp": "Monter {{name}}",
+      "moveDown": "Descendre {{name}}",
+      "remove": "Supprimer {{name}}",
+      "confirmRemove": "Supprimer « {{name}} » ? Les cours avec le tag {{tag}} n’afficheront plus ce format, et ses réglages de correspondance seront perdus.",
+      "noNameWarning": "Un format sans nom est masqué sur le site.",
+      "alsoMatches": "Correspond aussi à : {{list}}",
+      "addHeading": "Ajouter un format",
+      "add": "Ajouter le format",
+      "tagHint": "Ajouté. Ajoutez le tag {{tag}} aux cours pour qu’ils apparaissent sous « {{name}} ».",
+      "issue": {
+        "noId": "Saisissez un ID en lettres latines ou chiffres.",
+        "badId": "L’ID doit commencer par une lettre ou un chiffre et n’utiliser que a-z, 0-9 et des tirets.",
+        "taken": "Un format avec cet ID existe déjà.",
+        "tooMany": "Le site affiche au plus {{max}} formats. Supprimez-en un pour en ajouter un autre."
+      }
     }
   },
   "options": {
@@ -265,7 +320,12 @@
     "minimal": "Minimal",
     "slow": "Lent",
     "warn": "Avertissement",
-    "resource": "Ressource"
+    "resource": "Ressource",
+    "customValue": "Personnalisé : {{value}}"
+  },
+  "chromeLook": {
+    "useSiteColour": "Utiliser la couleur du site",
+    "siteColourNote": "Non défini : la couleur du site est utilisée."
   },
   "componentTypes": {
     "heroSection": "Section héros",
@@ -371,7 +431,201 @@
     "imageFitHint": "Utilisez « Adapter l'image entière » lorsque les couvertures sont de larges bannières avec du texte près des bords.",
     "defaultSort": "Tri par défaut",
     "defaultSortHint": "Comment les cours sont triés à l'ouverture de la page. Les apprenants peuvent toujours le modifier. Choisissez « Prix : croissant » pour afficher d'abord les cours gratuits.",
-    "advancedComingSoon": "La configuration avancée des filtres et du panier arrive bientôt."
+    "titleWithHero": "Titre supplémentaire au-dessus des onglets (généralement vide)",
+    "titleWithHeroHint": "Le titre de page vu par les visiteurs vient de l'en-tête de page (hero) de cette section. Un texte ici ajoute un second titre.",
+    "legacyFiltersSummary": "Autres filtres issus des données des cours (non utilisés par ce design)",
+    "legacyFiltersHint": "La barre latérale de cette page a ses propres groupes de filtres. En cocher un ajoute un groupe supplémentaire après eux."
+  },
+  "catalogDesign": {
+    "title": "Design de la page des cours",
+    "hint": "Textes et listes du design propre à cette page. Les identifiants et les couleurs restent dans « Modifier en JSON ».",
+    "common": {
+      "builtInText": "Texte par défaut",
+      "category": "Catégorie",
+      "heading": "Titre",
+      "link": "Lien",
+      "moveDown": "Descendre {{item}}",
+      "moveUp": "Monter {{item}}",
+      "noCourses": "Aucun cours trouvé.",
+      "noStreams": "Les onglets de filières ne sont pas encore chargés, ou cette page n'en a pas.",
+      "pickStream": "Choisir une filière",
+      "remove": "Supprimer {{item}}",
+      "searchCourses": "Rechercher des cours…",
+      "stream": "Filière",
+      "text": "Texte"
+    },
+    "hero": {
+      "group": "En-tête de page",
+      "groupHint": "Le bandeau en haut de la page : titre, introduction, chiffres, recherche et puces Populaires.",
+      "title": "Titre de la page",
+      "titleHint": "Le titre principal de la page. Laissez vide pour ne pas en avoir.",
+      "lead": "Texte d'introduction",
+      "breadcrumb": "Fil d'Ariane",
+      "breadcrumbHint": "Le chemin au-dessus du titre. Le dernier élément est cette page et n'est jamais un lien.",
+      "crumbN": "Élément {{n}}",
+      "crumbCurrent": "Cette page (pas un lien)",
+      "addCrumb": "Ajouter un élément",
+      "stats": "Chiffres",
+      "statsHint": "Compteurs en direct à côté du titre (3 maximum).",
+      "statN": "Chiffre {{n}}",
+      "statKind": "Compte",
+      "statKinds": {
+        "courses": "Cours",
+        "streams": "Filières",
+        "categories": "Catégories"
+      },
+      "statLabel": "Texte sous le chiffre",
+      "addStat": "Ajouter un chiffre",
+      "search": "Champ de recherche",
+      "searchOn": "Afficher le champ de recherche",
+      "searchPlaceholder": "Texte dans le champ de recherche",
+      "searchButton": "Bouton de recherche",
+      "popular": "Puces Populaires",
+      "popularHint": "Raccourcis sous le champ de recherche (8 maximum).",
+      "popularLabel": "Texte avant les puces",
+      "chipN": "Puce {{n}}",
+      "chipAction": "Ouvre",
+      "chipActions": {
+        "stream": "Une filière (et une catégorie)",
+        "quickFilter": "Un filtre rapide",
+        "search": "Une recherche",
+        "link": "Un lien"
+      },
+      "wholeStream": "Toute la filière",
+      "quickFilter": "Filtre rapide",
+      "pickQuickFilter": "Choisir un filtre rapide",
+      "searchValue": "Rechercher",
+      "addChip": "Ajouter une puce",
+      "results": "En-tête des résultats",
+      "resultsHint": "La ligne « N cours affichés » au-dessus des résultats.",
+      "countText": "Texte du nombre",
+      "countHint": "{count} est remplacé par le nombre de cours.",
+      "countTextOne": "Texte du nombre pour un seul cours",
+      "allStreamsLabel": "Texte de la puce quand aucune filière n'est choisie",
+      "sortPrefix": "Texte avant le tri",
+      "sortLabels": "Noms des options de tri",
+      "sort": {
+        "popular": "Populaires",
+        "newest": "Plus récents",
+        "oldest": "Plus anciens",
+        "price-asc": "Prix croissant",
+        "price-desc": "Prix décroissant",
+        "rating": "Note",
+        "name-asc": "Nom A-Z",
+        "name-desc": "Nom Z-A"
+      },
+      "quickFilterLabel": "Texte avant les filtres rapides",
+      "groupResults": "Au-dessus des résultats",
+      "groupResultsHint": "La ligne « N cours affichés » et le texte avant les filtres rapides."
+    },
+    "rows": {
+      "group": "Rangées au-dessus et au-dessous des cours",
+      "groupHint": "La bande des cours gratuits, le panneau phare et la rangée « bientôt ».",
+      "kinds": {
+        "free-courses": "Cours gratuits",
+        "spotlight": "Panneau phare",
+        "coming-soon": "Bientôt disponible"
+      },
+      "placement": "Affichage",
+      "placements": {
+        "before-grid": "Au-dessus des cours",
+        "after-grid": "Au-dessous des cours"
+      },
+      "subtitle": "Ligne sous le titre",
+      "freeCourses": "Cours affichés en premier",
+      "freeCoursesHint": "Cours gratuits uniquement, dans cet ordre ; d'autres cours gratuits complètent. Les {{limit}} premiers s'affichent.",
+      "courseN": "Cours {{n}}",
+      "addCourse": "Ajouter un cours…",
+      "ctaLabel": "Texte du bouton",
+      "ctaRule": "Texte du bouton pour {{formats}}",
+      "seeAllLabel": "Lien « Tout voir »",
+      "seeAllHint": "{count} est remplacé par le nombre de cours gratuits.",
+      "slides": "Diapositives",
+      "slidesHint": "Le cours, l'invitation et la session ouverts par le bouton se règlent dans « Modifier en JSON ».",
+      "slideN": "Diapositive {{n}}",
+      "eyebrow": "Petit texte au-dessus du titre",
+      "titleNative": "Titre en devanagari",
+      "titleNativeHint": "Affiché à côté du titre.",
+      "description": "Description",
+      "buttonText": "Texte du bouton",
+      "priceToken": "{price} est remplacé par le prix actuel.",
+      "price": "Texte du prix",
+      "priceHint": "Utilisé seulement si le prix actuel est illisible, par ex. ₹1,001.",
+      "steps": "Étapes",
+      "stepN": "Étape {{n}}",
+      "stepMeta": "Petit texte sous l'étape",
+      "stepAccent": "Mettre cette étape en avant",
+      "addStep": "Ajouter une étape",
+      "addSlide": "Ajouter une diapositive",
+      "notifyLabel": "Texte du bouton",
+      "categories": "Catégories affichées",
+      "categoriesHint": "Seules les catégories « bientôt » avec un formulaire d'alerte peuvent s'afficher. Aucune cochée = toutes.",
+      "freeLimit": "Nombre de cours affichés",
+      "freeLimitDefault": "3 (par défaut)",
+      "seeAllOn": "Afficher le lien « Tout voir »",
+      "buttonTextHint": "{price} est remplacé par le prix actuel. Vide, le bouton disparaît.",
+      "noButton": "Cette diapositive n'a pas de bouton. Un bouton se configure dans « Modifier en JSON ».",
+      "removeSlideConfirm": "Le bouton de cette diapositive ouvre un cours ou un formulaire réglé dans « Modifier en JSON ». Supprimer la diapositive supprime aussi ces identifiants. La supprimer ?",
+      "noComingSoon": "Aucune catégorie n'est encore marquée « bientôt » avec un formulaire d'alerte. Marquez-en une dans la bibliothèque de dossiers.",
+      "categoryOrder": "Ordre sur le site"
+    },
+    "sidebar": {
+      "group": "Barre de filtres",
+      "groupHint": "Les groupes de filtres, leur ordre et la carte de l'application dessous.",
+      "title": "Titre de la barre",
+      "clearAll": "Lien « Tout effacer »",
+      "order": "Groupes de filtres",
+      "orderHint": "Désactivez un groupe pour le masquer. Les flèches changent l'ordre.",
+      "show": "Afficher {{item}}",
+      "builtIn": {
+        "category": "Catégorie",
+        "language": "Langue",
+        "price": "Prix"
+      },
+      "filterTitle": "Filtre : {{name}}",
+      "formatsNote": "Les options sont les formats de cours des paramètres du site.",
+      "optionN": "Option {{n}}",
+      "tags": "Étiquettes de cours",
+      "tagsHint": "Séparées par des virgules. Un cours portant l'une d'elles correspond.",
+      "addOption": "Ajouter une option",
+      "addFilter": "Ajouter un groupe de filtres",
+      "promo": "Carte de l'application",
+      "promoHint": "La carte sombre sous les filtres.",
+      "promoOn": "Afficher la carte de l'application",
+      "screenImage": "Photo sur l'écran du téléphone",
+      "image": "Image prête",
+      "imageHint": "Une image prête remplace le téléphone dessiné.",
+      "imageAlt": "Description de l'image (lecteurs d'écran)",
+      "buttonLink": "Lien du bouton",
+      "urlKey": "Clé de lien : ?{{id}}=… (fixe une fois définie)",
+      "urlKeyReserved": "La page utilise déjà cette clé pour autre chose, le site masque donc ce groupe. Changez l'identifiant dans « Modifier en JSON ».",
+      "needsTag": "Ajoutez au moins une étiquette : une option sans étiquette n'est pas affichée."
+    },
+    "cards": {
+      "group": "Cartes de cours",
+      "groupHint": "Textes des cartes de cours. Un champ vide utilise le texte par défaut.",
+      "buttons": "Textes des boutons",
+      "cta": {
+        "paid": "Cours payant",
+        "start": "Cours gratuit",
+        "watch": "Vidéo ou film gratuit",
+        "read": "Livre ou article gratuit",
+        "listen": "Audio gratuit",
+        "comingSoon": "Bientôt disponible"
+      },
+      "freeLabel": "Texte « Gratuit »",
+      "formatLabels": "Noms des formats sur les cartes",
+      "formatLabelsHint": "Noms courts de la pastille de format. Vide : le nom des paramètres du site.",
+      "descriptions": "Descriptions courtes",
+      "descriptionsHint": "Remplacent la description du cours sur sa carte.",
+      "descriptionOf": "Description de {{name}}",
+      "addDescription": "Ajouter une description pour un cours…",
+      "loadMore": "Afficher plus",
+      "loadMoreLabel": "Texte du bouton",
+      "countLabel": "Texte du nombre",
+      "countLabelHint": "{{shown}} et {{total}} sont remplacés par les nombres.",
+      "gridHeading": "Titre au-dessus des cours"
+    }
   },
   "buyRent": {
     "heading": "Paramètres Acheter/Louer",
@@ -398,7 +652,7 @@
     "backgroundColor": "Couleur de fond",
     "textColor": "Couleur du texte",
     "navigationLinks": "Liens de navigation",
-    "syncPagesTitle": "Générer automatiquement à partir des pages publiées",
+    "syncPagesTitle": "Ajoutez et ordonnez vos pages publiées. Les méga-menus, liens externes et liens masqués restent tels quels.",
     "syncPages": "Synchroniser les pages",
     "labelPlaceholder": "Libellé",
     "route": "Route",
@@ -414,6 +668,37 @@
     "hideLink": "Masquer ce lien",
     "showLink": "Afficher ce lien",
     "hiddenBadge": "Masqué"
+  },
+  "headerLook": {
+    "heading": "Apparence",
+    "standard": "Standard",
+    "editorial": "Éditorial",
+    "navStyle": "Style du menu",
+    "navStyleHint": "Éditorial : liens en texte simple, la page actuelle en gras.",
+    "barSize": "Hauteur de la barre",
+    "barCompact": "Compacte",
+    "contentWidth": "Largeur du contenu",
+    "widthFull": "Pleine largeur",
+    "widthContained": "Largeur de la page",
+    "logoOnly": "Logo seul",
+    "logoOnlyHint": "Masquer le nom du site à côté du logo.",
+    "languageSwitcherStyle": "Style du sélecteur de langue",
+    "switchPill": "Pastille",
+    "switchSegmented": "En deux parties (हिन्दी | EN)",
+    "cartDisplay": "Icône du panier",
+    "cartAlways": "Toujours",
+    "cartWhenNotEmpty": "Seulement s'il contient des articles",
+    "megaMenuStyle": "Style du méga-menu"
+  },
+  "headerExtras": {
+    "heading": "Options de l'en-tête",
+    "currentPage": "Page actuelle",
+    "tintedPill": "Pastille teintée",
+    "underline": "Soulignement",
+    "search": "Recherche",
+    "searchHint": "Une icône de recherche qui trouve les cours, les pages et les filières du méga-menu.",
+    "languageSwitch": "Sélecteur de langue",
+    "languageSwitchHint": "हिन्दी | EN — les autres langues d'abord, la langue principale du site en dernier. Apparaît dès que le site a plus d'une langue (Paramètres globaux) ; sur téléphone, il se trouve dans le menu."
   },
   "footer": {
     "column2": "Colonne 2",
@@ -434,7 +719,34 @@
     "sectionTitlePlaceholder": "ex. Liens rapides",
     "links": "Liens",
     "bottomNote": "Note de bas de page",
-    "bottomNotePlaceholder": "© 2025 Votre entreprise. Tous droits réservés."
+    "bottomNotePlaceholder": "© 2025 Votre entreprise. Tous droits réservés.",
+    "column5": "Colonne 5",
+    "brandDesignNote": "Ce pied de page a son propre design : il affiche toujours quatre colonnes de liens, et la mise en page et les préréglages ne s’appliquent pas.",
+    "useStandard": "Utiliser plutôt un pied de page standard",
+    "useStandardConfirm": "Passer à un pied de page standard ? Vos liens et textes sont conservés ; la mise en page et les préréglages s’appliquent de nouveau. Annuler rétablit le design de marque."
+  },
+  "footerBrand": {
+    "brandHeading": "Logo et slogan de la marque",
+    "logo": "Logo",
+    "tagline": "Slogan",
+    "taglinePlaceholder": "ex. Apprendre • Grandir",
+    "newsletterHeading": "Newsletter",
+    "newsletterShow": "Afficher la newsletter",
+    "newsletterList": "Envoyer les inscriptions à",
+    "newsletter": {
+      "heading": "Titre",
+      "subheading": "Texte sous le titre",
+      "placeholder": "Texte indicatif du champ e-mail",
+      "buttonText": "Texte du bouton",
+      "note": "Petit texte sous le formulaire",
+      "successMessage": "Message de remerciement"
+    },
+    "bottomBarHeading": "Barre du bas",
+    "bottomTagline": "Slogan à droite",
+    "bottomTaglinePlaceholder": "ex. Fait en Inde",
+    "languageSwitch": "Sélecteur de langue",
+    "languageSwitchHint": "S'affiche dès que le site a plus d'une langue.",
+    "backgroundColor": "Couleur de fond"
   },
   "hero": {
     "heading": "Paramètres de la section héros",
@@ -481,7 +793,26 @@
     "posterField": "Affiche (vidéo téléversée uniquement)",
     "carouselImages": "Images du carrousel",
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
-    "slideN": "Diapositive {{n}}"
+    "slideN": "Diapositive {{n}}",
+    "eyebrowStyleRule": "Filet (trait avant le texte)"
+  },
+  "heroEditorial": {
+    "style": "Design",
+    "styleHint": "Éditorial : fil d'Ariane, titre en deux couleurs, puces cochées et image sans cadre.",
+    "styleClassic": "Classique",
+    "styleEditorial": "Éditorial",
+    "heading": "Détails éditoriaux",
+    "titleAccent": "Deuxième ligne du titre (couleur d'accent)",
+    "titleAccentPlaceholder": "ex. Suivez un parcours.",
+    "checklist": "Puces cochées",
+    "breadcrumb": "Fil d'Ariane",
+    "breadcrumbHint": "Les éléments avec un lien sont cliquables ; le dernier est cette page.",
+    "crumbLabel": "Texte",
+    "crumbRoute": "Lien (facultatif)",
+    "mediaWidth": "Largeur de l'image (px)",
+    "mediaWidthHint": "De 200 à 800 sur grand écran ; vide = 500.",
+    "mediaWidthClamped": "La largeur de l’image doit être comprise entre 200 et 800 ; elle a été réglée sur {{value}}.",
+    "outlineColor": "Bordure du bouton à contour"
   },
   "bookDetails": {
     "heading": "Paramètres des détails du livre",
@@ -566,6 +897,34 @@
     "layout": "Mise en page",
     "layoutSplit": "Divisé (texte à gauche, bouton à droite)",
     "showButton": "Afficher le bouton"
+  },
+  "ctaBand": {
+    "style": "Design",
+    "styleHint": "Bande : une bande pleine largeur avec un surtitre, deux boutons et une image de téléphone en option.",
+    "styleClassic": "Classique",
+    "styleBand": "Bande",
+    "textHeading": "Texte de la bande",
+    "eyebrow": "Petit libellé au-dessus du titre",
+    "eyebrowPlaceholder": "ex. Pour les écoles et institutions",
+    "eyebrowColor": "Couleur du libellé",
+    "subheadingColor": "Couleur du sous-titre",
+    "bandSize": "Taille de la bande",
+    "sizeStandard": "Standard",
+    "sizeLarge": "Grande",
+    "firstButtonLook": "Premier bouton : apparence",
+    "secondButton": "Deuxième bouton",
+    "buttonStyle": "Style du bouton",
+    "stylePrimary": "Couleur de la marque",
+    "styleOlive": "Olive",
+    "styleOutlineLight": "Contour (sur fond sombre)",
+    "styleOutlineDark": "Contour (sur fond clair)",
+    "arrow": "Flèche après le texte",
+    "formTitle": "Titre du formulaire",
+    "formTitlePlaceholder": "Vide = le texte du bouton",
+    "phoneHeading": "Image de téléphone",
+    "phoneShow": "Afficher un téléphone",
+    "phoneHint": "Un téléphone avec votre image à l'écran, à côté du texte.",
+    "phoneImage": "Image à l'écran"
   },
   "pricingTable": {
     "defaults": {
@@ -922,7 +1281,8 @@
     "numberLabelPlaceholder": "Numéro/libellé de l'étape",
     "metaPlaceholder": "Méta (ex. Semaines 1-4)",
     "chipsPlaceholder": "Puces (séparées par des virgules)",
-    "highlightThisStep": "Mettre en valeur cette étape"
+    "highlightThisStep": "Mettre en valeur cette étape",
+    "variantCards": "Cartes"
   },
   "documentViewer": {
     "heading": "Paramètres de la visionneuse de document",
@@ -977,5 +1337,21 @@
     "gateHeading": "Demander les coordonnées avant la lecture",
     "gateTitlePlaceholder": "Titre du formulaire (ex. Lisez nos articles gratuits)",
     "gateHint": "Choisissez une liste : chaque article ne s'ouvre qu'après un premier remplissage du formulaire. Avec la même liste sur les cartes ressources, un seul formulaire débloque les deux."
+  },
+  "sectionJson": {
+    "button": "Modifier en JSON",
+    "buttonHint": "Modifier les paramètres de cette section en JSON, y compris les valeurs sans champ",
+    "title": "Modifier cette section en JSON",
+    "hint": "Uniquement les paramètres de cette section. Appliquer les remplace en une fois ; Annuler restaure les anciens.",
+    "apply": "Appliquer",
+    "notObject": "Les paramètres doivent être un objet JSON : { … }.",
+    "errorAt": "JSON invalide à la ligne {{line}}, colonne {{column}} : {{message}}",
+    "invalid": "JSON invalide : {{message}}",
+    "baseLanguageOnly": "Passez à la langue principale pour modifier le JSON"
+  },
+  "sectionVersion": {
+    "keptTitle": "Nouvelle version appliquée",
+    "keptSettings": "{{count}} paramètres absents de cette version ont été conservés. Annulez pour revenir en arrière, ou utilisez « Modifier en JSON » pour les voir.",
+    "keepsNote": "Conserve aussi {{count}} paramètres absents de cette version : {{names}}"
   }
 }

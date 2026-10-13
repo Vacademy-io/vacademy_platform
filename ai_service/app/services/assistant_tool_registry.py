@@ -79,6 +79,26 @@ class ToolContext:
     # part of the tool result string — the model never sees the nonce, so it can
     # never fabricate a confirmation.
     pending_action: Optional[Dict[str, Any]] = None
+    # True when the caller shows a tool's base64 images to the model as images
+    # (the MCP adapter). The in-product assistant stores tool results as chat
+    # text, so tools leave large images out for it.
+    images_as_content: bool = False
+    # The tool settings this call was gated with (set by execute_tool), so a READ
+    # tool can word its advice for what the caller may also do — e.g. "bind it
+    # with website_edit" only to a caller who has website_edit. None = unknown,
+    # which a tool must treat as "not allowed".
+    gate_setting: Optional[Dict[str, Any]] = None
+    gate_checked: bool = False
+    # True only for calls that came in over the MCP server (set by the adapter).
+    # ``mcp_only`` tools refuse every other caller, whatever the settings say.
+    via_mcp: bool = False
+
+    def may_use(self, tool_name: str) -> bool:
+        """True iff this caller may also call ``tool_name`` (same gates as execute_tool)."""
+        spec = ASSISTANT_TOOLS.get(tool_name)
+        if spec is not None and spec.mcp_only and not self.via_mcp:
+            return False
+        return self.gate_checked and is_tool_allowed(tool_name, self.principal, self.gate_setting)
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str
@@ -104,6 +124,9 @@ class ToolSpec:
     # assistant/MCP at all, and not offered as a toggle. Reserved for tools that
     # reveal nothing beyond the caller's own identity (whoami).
     always_allowed: bool = False
+    # Exposed only over MCP (an AI app with its own tools, e.g. Figma reads):
+    # never offered to the in-product assistant's model.
+    mcp_only: bool = False
 
     def key(self) -> str:
         return self.setting_key or self.name
@@ -552,8 +575,13 @@ async def _service_json(
     params: Optional[Dict[str, Any]] = None,
     body: Optional[Dict[str, Any]] = None,
     timeout: float = 20.0,
+    error_detail: bool = False,
 ) -> Any:
-    """One JWT-authenticated call to a backend service; returns parsed JSON or an error dict."""
+    """
+    One JWT-authenticated call to a backend service; returns parsed JSON or an error dict.
+    ``error_detail`` also puts the start of a non-200 answer's body in the error dict
+    (``detail``), for callers that tell one 409 from another.
+    """
     import httpx
 
     if not ctx.bearer_token:
@@ -566,6 +594,8 @@ async def _service_json(
             )
         if resp.status_code != 200:
             logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
+            if error_detail:
+                return {"error": "fetch_failed", "status": resp.status_code, "detail": resp.text[:500]}
             return {"error": "fetch_failed", "status": resp.status_code}
         try:
             return resp.json()
@@ -2321,7 +2351,7 @@ def build_offered_tools(
     return [
         spec.schema
         for spec in ASSISTANT_TOOLS.values()
-        if is_tool_allowed(spec.name, principal, setting)
+        if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting)
     ]
 
 
@@ -2330,9 +2360,14 @@ async def execute_tool(
     args: Optional[Dict[str, Any]],
     ctx: ToolContext,
     setting: Optional[Dict[str, Any]],
+    *,
+    in_product: bool = False,
 ) -> str:
     """
     Dispatch a tool call after re-checking the AND-gate and forcing identity.
+
+    ``mcp_only`` tools run only for MCP callers (``ctx.via_mcp``); ``in_product``
+    (the dashboard assistant) refuses them as well, whatever the context says.
 
     Returns a string tool-result in ALL cases (including denial/errors) — the
     agent loop feeds tool output back to the LLM as a string, so raising here
@@ -2356,7 +2391,22 @@ async def execute_tool(
         })
 
     spec = ASSISTANT_TOOLS[tool_name]
+    if spec.mcp_only and (in_product or not ctx.via_mcp):
+        # Never offered outside MCP; refuse a model that names it anyway (e.g. a
+        # settings row that enables the group for the in-product assistant).
+        logger.warning("Assistant refused MCP-only tool '%s' outside MCP for user=%s institute=%s",
+                       tool_name, ctx.principal.user_id, ctx.principal.institute_id)
+        return json.dumps({
+            "error": "tool_not_available",
+            "tool": tool_name,
+            "message": "This tool is only available to AI apps connected over the MCP server. Do not retry.",
+        })
+    ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
+    # What the model put in `user_id` survives only as data (e.g. a model with a stale tool schema
+    # naming a learner); it never becomes identity.
+    if (args or {}).get("user_id") not in (None, ""):
+        safe_args["requested_user_id"] = str(args["user_id"]).strip()
     # Identity is ALWAYS taken from the pinned principal, never from the model.
     safe_args["user_id"] = ctx.principal.user_id
     safe_args["institute_id"] = ctx.principal.institute_id
@@ -2380,7 +2430,7 @@ async def execute_tool(
 
 # ──────────────────────────────────────────────────────────────────────────
 # Feature tools that live in their own modules (website builder, lead forms,
-# course builder).
+# course builder, learners).
 # Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
 # so importing it here is only to make sure that happens. The import is
 # tolerant of the cycle: a test that imports the feature module first will find
@@ -2389,10 +2439,15 @@ async def execute_tool(
 # ──────────────────────────────────────────────────────────────────────────
 def _load_feature_tools() -> None:
     for module in (
-        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
+        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_design_import",
+        "assistant_tools_catalog_data_edit",
+        "assistant_tools_website_publish",
+        "assistant_tools_audience",
         "assistant_tools_workflow", "assistant_tools_blog",
         "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
         "assistant_tools_course_invites",
+        "assistant_tools_course_structure",
+        "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
     ):
         try:
             __import__(f"{__package__}.{module}")

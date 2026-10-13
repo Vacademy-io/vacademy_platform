@@ -14,8 +14,10 @@ Invariants this layer enforces:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -37,6 +39,64 @@ def _dumps(value: Any) -> Optional[str]:
     if value is None:
         return None
     return json.dumps(value)
+
+
+#: Argument values never stored in the audit log, only their size + hash: a
+#: base64 image (website_edit import_image, up to ~13 MB of text) or a Figma
+#: design payload (design_import) is client artwork and would bloat
+#: mcp_tool_call_log on the primary.
+_AUDIT_DIGEST_KEYS = frozenset({"data_base64", "metadata_xml", "design_code"})
+#: Argument NAMES that would carry a credential (a tool refuses them, but the
+#: call is still logged): only "redacted" is kept — not even a hash, which a
+#: guessable password would not survive.
+_AUDIT_SECRET_KEY_RE = re.compile(r"(token|secret|password|api[_-]?key|authorization|bearer|cookie|^pat$)", re.I)
+#: Largest args_json kept whole; bigger calls keep their small top-level values
+#: (action, ids, names) and a size + hash for the rest.
+_AUDIT_ARGS_MAX_CHARS = 64_000
+_AUDIT_SCALAR_MAX_CHARS = 512
+
+
+def _digest(value: Any) -> Dict[str, Any]:
+    text_value = value if isinstance(value, str) else json.dumps(value, default=str, sort_keys=True)
+    raw = text_value.encode("utf-8", "replace")
+    return {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _redact_audit_item(key: Any, value: Any, depth: int) -> Any:
+    if value is None:
+        return None
+    # A flag such as apply_to_tokens (bool / number) carries no secret: kept.
+    if isinstance(key, str) and _AUDIT_SECRET_KEY_RE.search(key) and not isinstance(value, (bool, int, float)):
+        return "[redacted]"
+    if key in _AUDIT_DIGEST_KEYS:
+        return _digest(value)
+    return _redact_audit(value, depth + 1)
+
+
+def _redact_audit(value: Any, depth: int = 0) -> Any:
+    if depth > 20:
+        return _digest(value)
+    if isinstance(value, dict):
+        return {k: _redact_audit_item(k, v, depth) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_audit(v, depth + 1) for v in value]
+    return value
+
+
+def _audit_args_json(args: Optional[Dict[str, Any]]) -> str:
+    """args for mcp_tool_call_log.args_json: secrets-free, bounded in size."""
+    redacted = _redact_audit(args or {})
+    out = json.dumps(redacted, default=str)
+    if len(out) <= _AUDIT_ARGS_MAX_CHARS or not isinstance(redacted, dict):
+        return out if len(out) <= _AUDIT_ARGS_MAX_CHARS else json.dumps({"_truncated": True, **_digest(out)})
+    summary: Dict[str, Any] = {"_truncated": True, "_bytes": len(out.encode("utf-8", "replace"))}
+    for key, value in list(redacted.items())[:100]:
+        small = value is None or isinstance(value, (bool, int, float)) or (
+            isinstance(value, str) and len(value) <= _AUDIT_SCALAR_MAX_CHARS
+        )
+        summary[str(key)[:100]] = value if small else _digest(value)
+    out = json.dumps(summary, default=str)
+    return out if len(out) <= _AUDIT_ARGS_MAX_CHARS else json.dumps({"_truncated": True, **_digest(out)})
 
 
 def _loads(value: Optional[str], default: Any) -> Any:
@@ -494,7 +554,7 @@ class McpOAuthRepository:
                     "cid": client_id,
                     "cname": client_name,
                     "tool": tool_name,
-                    "args": _dumps(args or {}),
+                    "args": _audit_args_json(args),
                     "ok": ok,
                     "err": error_code,
                     "ms": duration_ms,

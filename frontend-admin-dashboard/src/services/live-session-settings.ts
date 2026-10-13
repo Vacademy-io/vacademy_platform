@@ -1,7 +1,6 @@
 import { GET_INSTITUTE_SETTING_DATA, SAVE_INSTITUTE_SETTING } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 
 export const SETTING_KEY_LIVE_SESSION = 'LIVE_SESSION_SETTING';
@@ -323,6 +322,15 @@ export interface LiveSessionSettings {
      * present in any of this institute's classes is not asked again.
      */
     disclaimerVideoUrl: string;
+    /**
+     * "Attendance only" mode for institutes that teach offline and create live
+     * classes purely to record attendance. When on, learners never see the
+     * institute's live classes (upcoming, live or past) — only their
+     * attendance. Enforced server-side on the learner list endpoints. A live
+     * switch, not a scheduling default: it applies to existing classes too.
+     * Off by default.
+     */
+    attendanceOnlyMode: boolean;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -400,14 +408,17 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     // and the per-class control stays hidden, until an admin turns this on.
     disclaimerVideoEnabled: false,
     disclaimerVideoUrl: '',
+    attendanceOnlyMode: false,
 };
 
+// The institute being worked in (selected institute, falling back to the token's first only
+// when none is selected) — NOT always the token's first institute. A multi-institute user
+// otherwise read and saved this setting on the wrong institute, and the backend now rejects
+// a setting save whose clientId isn't the target instituteId.
 const getInstituteId = (): string => {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
-    const instituteIds = Object.keys(tokenData?.authorities || {});
-    if (instituteIds.length === 0) throw new Error('No institute ID found in token');
-    return instituteIds[0]!;
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) throw new Error('No institute ID found in token');
+    return instituteId;
 };
 
 export const getLiveSessionSettings = async (): Promise<LiveSessionSettings> => {

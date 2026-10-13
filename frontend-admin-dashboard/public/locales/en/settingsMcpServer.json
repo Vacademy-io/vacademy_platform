@@ -45,6 +45,7 @@
         "description": "Choose, area by area, whether AI apps can only view or also make changes. Open a row to see exactly what it allows.",
         "empty": "No tools are available on this server yet.",
         "alwaysOn": "Always on",
+        "optIn": "Turned on separately",
         "level": {
             "off": "Off",
             "view": "View",
@@ -55,6 +56,7 @@
             "drafts": "Drafts only",
             "additive": "Adds only",
             "not_live": "Not-live courses only",
+            "live_additive": "Adds to live data",
             "live": "Changes live"
         },
         "preset": {

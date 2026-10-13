@@ -32,6 +32,9 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "get_institute_overview",
     "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
+    "design_import",        # WRITE: a Figma design the AI app read itself → site plan; save_draft = website_edit drafts
+    "catalog_data_edit",    # WRITE: additive live data — HIDDEN folders, appended course tags, DRAFT product pages
+    "website_publish",      # WRITE (live): publish a checked draft / roll back — two-step confirm token, opt-in only
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
@@ -42,15 +45,52 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "course_edit",          # WRITE: draft-only — DRAFT courses and DRAFT slides; nothing publishes
     "course_drip_edit",     # WRITE: drip rules on courses that are not live yet
     "course_invites_edit",  # WRITE: new invites / plans; edits an invite's page and form fields
+    "course_structure_edit",  # WRITE (live): change a course's depth / regroup it — preview + confirm token, opt-in
+    "learners",             # READ:  find learners, their profile + courses, enrol options, the bulk-enrol CSV template
+    "learner_enroll",       # WRITE: additive — enrols learners into courses via an invite; preview + confirm token
+    "learner_edit",         # WRITE: live — edits a learner's details (never email / username); preview + confirm token
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
 #: without a confirm card (MCP has none). A write tool is allowed here only
 #: when nothing it does can destroy or publish anything: it writes DRAFTS the
 #: admin publishes from the dashboard, or it only ADDS records. Live edits that
-#: change or remove existing data (learner edits, announcements) stay off.
+#: change or remove existing data (update_learner_profile, announcements) stay off.
+#: The exceptions are live writes that carry their own confirm and whose groups
+#: are opt-in only (MCP_OPT_IN_GROUPS):
+#:   * website_publish (product decision 2026-10-10): it publishes, with a
+#:     single-use token from a check the admin was shown less than 10 minutes
+#:     earlier, bound to that exact state;
+#:   * course_structure_edit (product decision 2026-10-12): regroups a course, live
+#:     ones included, through a dry run the admin is shown → a signed confirm_token
+#:     over the identical request → one admin-core transaction;
+#:   * learner_enroll / learner_edit (product decision 2026-10-10): a preview the
+#:     admin is shown → a signed confirm_token over the identical request → the
+#:     write (see services/learner_data.py).
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
-    "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
+    "website_edit": (
+        "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
+        "(checks + diff vs live + editor link) — publishing is an admin click"
+    ),
+    "design_import": (
+        "draft-only: plan parses the Figma results the caller sends and stores them 24 h for this institute "
+        "(its own table, never served elsewhere); save_draft saves a DRAFT through website_edit's create_site / "
+        "create_page and also needs website_edit's group"
+    ),
+    "catalog_data_edit": (
+        "additive only; never deletes or renames existing records; new folder nodes start HIDDEN; tags are "
+        "appended; product pages are created DRAFT. Every action is a dry run first: applying needs the dry run's "
+        "plan_token (10 minutes, refused when the data changed); a shown folder changes only while no live site "
+        "uses its library; the store sync never switches a course off; activating a product page and invite "
+        "payment vendors stay admin clicks"
+    ),
+    "website_publish": (
+        "LIVE, two-step confirmed: publish needs a single-use confirm_token from website_edit(request_publish) "
+        "less than 10 minutes earlier on the same draft (id + JSON hash) and live revision, and admin-core "
+        "refuses a draft older than live (409, never overrideStale); rollback republishes an earlier PUBLISHED "
+        "revision through a new draft + publish with the same token rule and refuses while a draft is open. "
+        "Nothing is deleted: every version stays in the history"
+    ),
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
         "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "
@@ -63,12 +103,29 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "that is not a DRAFT; request_publish only returns the dashboard link — publishing is an admin click"
     ),
     "course_edit": "draft-only: creates DRAFT courses and edits only DRAFT courses; slides are DRAFT unless the admin "
-                   "asks to publish them (publish_slides); a course goes live only through dashboard approval",
+                   "asks to publish them (publish_slides); a course goes live only through dashboard approval. "
+                   "Exception by the admin's choice: update_media sets a course's images on any course and only "
+                   "fills invite image slots that are empty",
     "course_drip_edit": "not-live only: drip rules of DRAFT / IN_REVIEW courses; never flips the institute switches",
     "course_invites_edit": (
         "creates invites and payment plans (re-pointing / default only on non-live courses); edits an invite's "
         "page and form in place — the admin's explicit choice, live courses included — but only binds existing "
         "fields and never changes a field's shared label / type / options or the invite's payment links"
+    ),
+    "course_structure_edit": (
+        "LIVE, confirm-gated, the admin's explicit choice: changes a course's depth / grouping in ONE admin-core "
+        "transaction for every batch; nothing is copied or deleted — slides and kept containers keep their ids, "
+        "emptied containers are soft-deleted; refuses content shared with another course and trees that drop or "
+        "duplicate a slide; every write needs the confirm_token of a dry-run preview of the identical request"
+    ),
+    "learner_enroll": (
+        "additive + confirm-gated: only ENROLS (never de-assigns; duplicates SKIP or ERROR, never RE_ENROLL) and "
+        "only through this institute's active invites of the chosen batch; refuses organisation batches; every "
+        "write needs the confirm_token of a dry-run preview of the identical request"
+    ),
+    "learner_edit": (
+        "confirm-gated live edit, the admin's explicit choice: changes one learner of this institute at a time; "
+        "never email or username; needs the confirm_token of a preview that showed every before → after"
     ),
 }
 
@@ -79,6 +136,9 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "institute_overview": "Institute stats",
     "website_builder": "Website: view",
     "website_builder_edits": "Website: edit drafts",
+    "design_import": "Website: import Figma designs",
+    "website_data_edits": "Website: set up course data",
+    "website_publish": "Website: publish",
     "audience_forms": "Lead forms: view",
     "audience_forms_edits": "Lead forms: edit",
     "workflows": "Automations: view",
@@ -89,6 +149,10 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "course_edits": "Courses: build drafts",
     "course_drip_edits": "Courses: drip rules",
     "course_invite_edits": "Courses: invite links & payment plans",
+    "course_structure_edits": "Courses: change structure / depth",
+    "learners": "Learners: view",
+    "learner_enrollments": "Learners: enrol into courses",
+    "learner_profile_edits": "Learners: edit details",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -103,8 +167,29 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     ),
     "website_builder_edits": (
         "Let the connected AI app build and change websites — compose pages, edit sections, set "
-        "colours and fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing "
+        "colours and fonts, course formats and languages, translations, wire forms to lead campaigns "
+        "and sections to folder libraries or product pages. Every change is saved as a draft; nothing "
         "goes live until you publish it in Manage Pages. Uses no AI credits."
+    ),
+    "design_import": (
+        "Let the connected AI app turn a Figma design it read with its own Figma tools into a site plan "
+        "(colours, fonts, sections, the data it needs) and save it as a DRAFT site. The design files it sends "
+        "are kept 24 hours for this institute only. Saving also needs 'Build and edit pages'. Uses no AI credits."
+    ),
+    "website_data_edits": (
+        "Let the connected AI app add the course data a website design needs: create folder libraries and "
+        "folders (new folders start hidden), append tags to courses (existing tags are kept), create product "
+        "pages as DRAFT and add catalogue courses to a store page. It shows each change first and never deletes, "
+        "renames or hides anything; activating a product page and payment settings stay with you. These are "
+        "live records, not drafts: tags added to live courses change the site's filters at once, and courses "
+        "added to an active store page are on sale at once. Uses no AI credits."
+    ),
+    "website_publish": (
+        "Let the connected AI app publish a website draft, or roll the live site back to an earlier published "
+        "version, after you say yes in the chat. Changes go live at once. Each publish needs a fresh check of that "
+        "exact draft from the last 10 minutes; a draft older than the live site, or edited after the check, is "
+        "refused, and a rollback never overwrites an unpublished draft. Every version stays in the history. "
+        "Needs 'Build and edit pages' for the check. Turned on separately."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."
@@ -140,8 +225,9 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "course_edits": (
         "Let the connected AI app build courses — outline, reading pages, YouTube videos, PDFs, quizzes, "
         "questions and assignments — and publish slides when you ask it to. Courses are saved as DRAFT and go "
-        "live only when an admin approves them in the dashboard. The AI app writes the content itself, so it "
-        "uses no AI credits."
+        "live only when an admin approves them in the dashboard. It can also set a course's preview image, "
+        "banner and intro video, on live courses too. The AI app writes the content itself, so it uses no AI "
+        "credits."
     ),
     "course_drip_edits": (
         "Let the connected AI app set content release (drip) rules on courses that are not live yet. Never "
@@ -152,6 +238,30 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "(name, dates, text, images, where learners land after enrolling) and its registration form (add your "
         "existing fields, remove, reorder, make required). Invite edits apply right away, also on live "
         "courses. Payment plans are never edited or removed."
+    ),
+    "course_structure_edits": (
+        "Let the connected AI app change how many levels a course has (subjects / modules / chapters) or regroup "
+        "its content — for example turn a chapters-only course into modules of chapters, with groups it proposes "
+        "from the content and you adjust. It always shows you the new structure first and changes it only after "
+        "you confirm. Works on live courses too: learners see the new structure at once and keep their slide "
+        "progress. Nothing is copied or deleted."
+    ),
+    "learners": (
+        "Find learners by name, email or phone, and see their profile and the courses they are enrolled in, "
+        "plus each course's invites and the bulk-enrol CSV template."
+    ),
+    "learner_enrollments": (
+        "Let the connected AI app enrol learners — one, a list or a CSV, existing or new — into one or more "
+        "courses through the invite you pick. It always shows you a preview (who is new, who is already enrolled) "
+        "and enrols only after you confirm. It asks you every time whether to send the welcome email and the "
+        "login-details email, and whether you want a CSV of the learners' usernames and passwords (delivered as a "
+        "private download link that expires after 30 minutes, never shown in the chat). Never removes anyone from a "
+        "course. Batches sold to organisations stay dashboard-only."
+    ),
+    "learner_profile_edits": (
+        "Let the connected AI app change a learner's details — name, phone, password, address, parents and custom "
+        "fields — after showing you the before and after and getting your confirmation. Changes apply right away. "
+        "Email and username can never be changed from here."
     ),
 }
 
@@ -166,12 +276,17 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "automations": {"label": "Automations", "summary": "Workflows, their runs, and email / WhatsApp templates."},
     "blog": {"label": "Blog", "summary": "Blog posts and the pages that show them."},
     "courses": {"label": "Courses", "summary": "Course content, drip rules, invite links and pricing."},
+    "learners": {"label": "Learners", "summary": "Find learners, enrol them into courses and edit their details."},
 }
 
 #: group key → where it sits on the settings page.
 #:   level: "view" | "edit"   (edit needs view — the page turns view on with it)
 #:   risk:  what an edit can touch — "drafts" (nothing goes live), "additive"
-#:          (only adds), "not_live" (only courses not live yet), "live"
+#:          (only adds), "not_live" (only courses not live yet), "live_additive"
+#:          (only adds, but to live records: new folders / pages start hidden or
+#:          draft, while tags on live courses and courses added to an active
+#:          store page show at once; the settings page never turns it on with
+#:          the area's Edit level), "live"
 #:          (changes what learners see straight away)
 #:   sub_label: the edit's own name, shown when an area has several edits
 MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
@@ -179,6 +294,10 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "institute_overview": {"area": "institute", "level": "view"},
     "website_builder": {"area": "website", "level": "view"},
     "website_builder_edits": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Build and edit pages"},
+    "design_import": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Import Figma designs"},
+    "website_data_edits": {"area": "website", "level": "edit", "risk": "live_additive",
+                           "sub_label": "Set up folders, course tags and product pages"},
+    "website_publish": {"area": "website", "level": "edit", "risk": "live", "sub_label": "Publish and roll back"},
     "audience_forms": {"area": "lead_forms", "level": "view"},
     "audience_forms_edits": {"area": "lead_forms", "level": "edit", "risk": "additive",
                              "sub_label": "Create campaigns and add fields"},
@@ -191,7 +310,18 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "course_drip_edits": {"area": "courses", "level": "edit", "risk": "not_live", "sub_label": "Drip release rules"},
     "course_invite_edits": {"area": "courses", "level": "edit", "risk": "live",
                             "sub_label": "Invite links, pricing and enrolment forms"},
+    "course_structure_edits": {"area": "courses", "level": "edit", "risk": "live",
+                               "sub_label": "Structure and depth"},
+    "learners": {"area": "learners", "level": "view"},
+    "learner_enrollments": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Enrol into courses"},
+    "learner_profile_edits": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Edit learner details"},
 }
+
+#: Groups an admin turns on ONE BY ONE: the settings page never switches them
+#: on with their area's Edit level or the "Turn everything on" preset (the
+#: catalogue marks them ``opt_in``). Off for every existing institute.
+MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish",
+                               "learner_enrollments", "learner_profile_edits", "course_structure_edits"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.
@@ -262,6 +392,7 @@ __all__ = [
     "MCP_TOOL_GROUP_SUMMARIES",
     "MCP_TOOL_AREAS",
     "MCP_TOOL_PLACEMENT",
+    "MCP_OPT_IN_GROUPS",
     "LEARNER_ROLES",
     "DEFAULT_ALLOWED_ROLES",
     "MCP_SCOPE_READ",

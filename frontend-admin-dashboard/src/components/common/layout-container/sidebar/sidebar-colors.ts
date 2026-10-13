@@ -6,7 +6,7 @@ import type { SidebarCategory } from '@/types/layout-container/layout-container-
  * - CRM  → Teal   (business/professional)
  * - LMS  → Indigo (educational/knowledge)
  * - AI   → Rose   (tech/futuristic)
- * - ERP  → Amber  (operations/back-office)
+ * - ERP  → Institute theme (primary-*)
  */
 
 export interface CategoryColors {
@@ -79,16 +79,19 @@ export const CATEGORY_COLORS: Record<SidebarCategory, CategoryColors> = {
         railIconActive: 'text-neutral-900',
         railIconInactive: 'text-white/70',
     },
+    // ERP follows the institute's theme (primary-* is the brand ramp set by
+    // ThemeProvider) instead of a fixed hue — a fixed amber clashed with every
+    // non-orange brand.
     ERP: {
-        text: 'text-amber-700',
-        bg: 'bg-amber-500',
-        ring: 'ring-amber-200',
-        hoverText: 'hover:text-amber-700',
-        hoverBg: 'hover:bg-amber-50',
+        text: 'text-primary-600',
+        bg: 'bg-primary-500',
+        ring: 'ring-primary-200',
+        hoverText: 'hover:text-primary-600',
+        hoverBg: 'hover:bg-primary-50',
         railActiveBg: 'bg-white',
-        pillBg: 'bg-amber-500',
+        pillBg: 'bg-primary-500',
         pillText: 'text-white',
-        divider: 'border-amber-100',
+        divider: 'border-primary-100',
         railIconActive: 'text-neutral-900',
         railIconInactive: 'text-white/70',
     },

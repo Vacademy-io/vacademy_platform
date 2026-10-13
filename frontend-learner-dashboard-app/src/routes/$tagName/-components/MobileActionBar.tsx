@@ -1,6 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { resolveMobileBarLinks, classifyBarLink, shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
+import { useSiteT } from "../-utils/catalogue-locale";
 import { useSignupAvailability } from "@/hooks/use-signup-availability";
 
 /**
@@ -40,6 +41,10 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
   nativePad = false,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // The links come from the raw catalogue JSON (the header's authLinks), so
+  // their labels are put in the visitor's language here, at display only —
+  // classifyBarLink keeps reading the authored values.
+  const siteT = useSiteT();
   // New-user prompt shown as one line beside the signup link, not as a button.
   const signupPrompt = t("mobileActionBar.signupPrompt");
   // No institute prop: the hook falls back to the InstituteId that domain
@@ -94,13 +99,15 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
   // ── Header-mirrored bar ──
   const handleClick = (link: any) => {
     switch (classifyBarLink(link)) {
-      case "form":
+      case "form": {
+        const title = link.formTitle || link.label;
         window.dispatchEvent(
           new CustomEvent("openAudienceForm", {
-            detail: { audienceId: String(link.audienceId).trim(), title: link.formTitle || link.label },
+            detail: { audienceId: String(link.audienceId).trim(), title: title ? siteT(title) : title },
           })
         );
         break;
+      }
       case "login":
         onLogin();
         break;
@@ -137,7 +144,7 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
                 onClick={() => handleClick(link)}
                 className="font-semibold text-primary-500 underline underline-offset-2"
               >
-                {link.label || t("mobileActionBar.getStarted")}
+                {siteT(link.label) || t("mobileActionBar.getStarted")}
               </button>
             </p>
           );
@@ -151,7 +158,7 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
             onClick={() => handleClick(link)}
             className={`catalogue-btn w-full justify-center ${primary ? "catalogue-btn-primary" : "catalogue-btn-secondary"}`}
           >
-            {link.label || t("mobileActionBar.open")}
+            {siteT(link.label) || t("mobileActionBar.open")}
           </button>
         );
       })}

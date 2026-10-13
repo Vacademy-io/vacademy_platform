@@ -129,6 +129,8 @@ class Backend:
         if path.endswith("/add-course/inst-1"):
             self.created_name = body["course_name"]
             return "course-new"
+        if path.endswith("/course/v1/copy-content"):
+            return {"copiedSubjects": 1, "copiedModules": 1, "copiedChapters": 1, "copiedSlides": 1, "warnings": []}
         if path.endswith("/course-new/batches"):
             return [{"id": b} for b in getattr(self, "new_batch_ids", ["ps-new"])]
         if path.endswith("/add-subject"):
@@ -148,6 +150,10 @@ class Backend:
             return {**body, "id": self._id("po")}
         if path.endswith("/v1/enroll-invite") and method == "POST":
             return self._id("inv")
+        if "/course/v1/update-course/" in path and method == "PUT":
+            for col in ("course_preview_image_media_id", "course_banner_media_id", "course_media_id"):
+                self.course[col] = body.get(col)
+            return "Course updated successfully"
         if path.endswith("/v1/enroll-invite/inst-1/inv-default"):
             return json.loads(json.dumps(self.full_invite))
         if path.endswith("/common/custom-fields/feature-fields"):
@@ -210,6 +216,18 @@ def backend(monkeypatch):
     monkeypatch.setattr(cbd, "slide_context", _slide)
     monkeypatch.setattr(cbd, "course_editor_url", lambda c, cid: f"https://dash/c/{cid}")
     b.existing_field_keys = {}
+
+    def _update_body(c, cid):
+        if cid != b.course["id"]:
+            return None
+        return {"id": cid, "package_name": b.course["name"], "thumbnail_file_id": None,
+                "is_course_published_to_catalaouge": True,
+                "course_preview_image_media_id": b.course.get("course_preview_image_media_id"),
+                "course_banner_media_id": b.course.get("course_banner_media_id"),
+                "course_media_id": b.course.get("course_media_id"), "why_learn_html": "<p>Why</p>",
+                "who_should_learn_html": None, "about_the_course_html": b.course["about_the_course"],
+                "tags": ["bio"], "course_depth": 3, "course_html_description_html": "<p>Desc</p>"}
+    monkeypatch.setattr(cbd, "course_update_body", _update_body)
     monkeypatch.setattr(cbd, "custom_fields_by_keys",
                         lambda c, keys: {k: b.existing_field_keys[k] for k in keys if k in b.existing_field_keys})
 
@@ -989,3 +1007,175 @@ async def test_get_invite_shows_fields_available_fields_images_and_redirect(back
     assert [f["field_id"] for f in inv["available_fields"]] == ["cf-city"]
     assert inv["redirect_path"] == "/dashboard"
     assert inv["images"]["preview"] == {"file_id": "file-old", "url": "https://cdn/file-old"}
+
+
+# ── course media ─────────────────────────────────────────────────────────
+def _put(b, fragment):
+    return [c for c in b.calls if c["method"] == "PUT" and fragment in c["path"]]
+
+
+@pytest.mark.asyncio
+async def test_update_media_changes_only_media_and_fills_empty_invite_slots(backend):
+    backend.course["status"] = "ACTIVE"
+    out = await edit({"action": "update_media", "course_id": "course-1",
+                      "media": {"preview": {"file_id": "file-preview-1"}, "banner": {"file_id": "file-banner-1"},
+                                "intro": {"youtube": "https://youtu.be/dQw4w9WgXcQ"}}})
+    assert "error" not in out, out
+    body = _put(backend, "/update-course/course-1")[0]["body"]
+    assert body["course_preview_image_media_id"] == "file-preview-1"
+    assert json.loads(body["course_media_id"]) == {"type": "youtube", "id": "https://youtu.be/dQw4w9WgXcQ"}
+    # every other column goes back as stored (the endpoint nulls whatever it is not sent)
+    assert body["package_name"] == "Biology 101" and body["why_learn_html"] == "<p>Why</p>"
+    assert body["is_course_published_to_catalaouge"] is True and body["tags"] == ["bio"]
+    assert body["course_html_description_html"] == "<p>Desc</p>" and body["course_depth"] == 3
+    # the default invite had its own preview: kept. Banner and intro were empty: filled.
+    meta = json.loads(_put(backend, "/enroll-invite/enroll-invite")[0]["body"]["web_page_meta_data_json"])
+    assert meta["coursePreview"] == "file-old"
+    assert meta["courseBanner"] == "file-banner-1" and meta["courseBannerBlob"] == "https://cdn/file-banner-1"
+    assert meta["courseMedia"] == {"type": "youtube", "id": "https://youtu.be/dQw4w9WgXcQ"}
+    assert out["invites_updated"] == ["Biology 101"] and any("live" in n for n in out["notes"])
+
+
+@pytest.mark.asyncio
+async def test_update_media_leaves_invites_alone_when_their_slots_are_set(backend):
+    out = await edit({"action": "update_media", "course_id": "course-1",
+                      "media": {"preview": {"file_id": "file-preview-1"}}})
+    assert out["invites_updated"] == [] and not _put(backend, "/enroll-invite/enroll-invite")
+
+
+@pytest.mark.asyncio
+async def test_bad_media_is_refused_before_anything_is_imported_or_created(backend, monkeypatch):
+    imported = []
+
+    async def _fetch(url, **kw):
+        imported.append(url)
+        return b"png", "image/png", "png"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    out = await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                      "media": {"preview": {"image_url": "https://example.com/p.png"},
+                                "banner": {"youtube": "https://youtu.be/dQw4w9WgXcQ"}}})
+    assert out["error"] == "invalid_media" and not imported
+    assert not any(c["path"].endswith("/add-course/inst-1") for c in backend.calls)
+    out = await edit({"action": "update_media", "course_id": "course-1", "media": {"thumbnail": "none"}})
+    assert out["error"] == "invalid_media" and not _put(backend, "/update-course/")
+
+
+@pytest.mark.asyncio
+async def test_create_course_imports_media_and_stores_file_ids(backend, monkeypatch):
+    async def _fetch(url, **kw):
+        return b"png", "image/png", "png"
+
+    async def _upload(c, content, name, ctype):
+        return "file-imported-1"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    monkeypatch.setattr(cbd, "upload_to_media", _upload)
+    out = await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                      "media": {"preview": {"image_url": "https://example.com/p.png"}}})
+    assert "error" not in out, out
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert body["course_preview_image_media_id"] == "file-imported-1" and body["course_banner_media_id"] == ""
+    assert out["media"] == ["preview"]
+
+
+@pytest.mark.asyncio
+async def test_review_suggests_a_preview_image(backend):
+    out = await read({"action": "review", "course_id": "course-1"})
+    assert any("preview image" in f["issue"] for f in out["findings"])
+    backend.course["course_preview_image_media_id"] = "file-p"
+    out = await read({"action": "review", "course_id": "course-1"})
+    assert not any("preview image" in f["issue"] for f in out["findings"])
+
+
+# ── create_course: instructor + copy from an existing course ────────────
+@pytest.mark.asyncio
+async def test_create_course_makes_the_creator_its_instructor(backend):
+    await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}]})
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert [f["user"]["id"] for f in body["add_faculty_to_course"]] == ["user-1"]
+    assert body["add_faculty_to_course"][0]["new_user"] is False
+    # With sessions/levels admin-core reads the instructors per level instead.
+    backend.calls.clear()
+    await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                "levels": [{"id": "lvl-9"}]})
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    levels = [lv for sess in body["sessions"] for lv in sess["levels"]]
+    assert levels and all([f["user"]["id"] for f in lv["add_faculty_to_course"]] == ["user-1"] for lv in levels)
+
+
+@pytest.mark.asyncio
+async def test_copy_from_seeds_the_course_then_appends_new_chapters(backend):
+    out = await edit({"action": "create_course", "course": {"name": "Biology 102"},
+                      "copy_from": {"course_id": "course-1"},
+                      "chapters": [{"name": "Tissues", "slides": ["Intro"]}]})
+    assert "error" not in out, out
+    copy = next(c for c in backend.calls if c["path"].endswith("/copy-content"))["body"]
+    assert copy == {"sourcePackageSessionId": "ps-1", "targetPackageSessionIds": ["ps-new"], "mode": "VALUE"}
+    add_course = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert add_course["course_depth"] == 3      # the source's depth
+    # The new chapter goes into the copy's hidden module, after the copied chapter — no second DEFAULT subject.
+    assert not [c for c in backend.calls if c["path"].endswith(("/add-subject", "/add-module"))]
+    chapter = next(c for c in backend.calls if c["path"].endswith("/add-chapter"))
+    assert chapter["params"]["moduleId"] == "mod-1" and chapter["body"]["chapter_order"] == 2
+    order = [c["path"] for c in backend.calls]
+    assert order.index(next(p for p in order if p.endswith("/copy-content"))) < \
+        order.index(next(p for p in order if p.endswith("/add-chapter")))
+    assert out["copied"]["from"]["course"] == "Biology 101"
+    assert [c["id"] for c in out["copied"]["chapter_list"]] == ["ch-1"]
+    assert [t["title"] for t in out["todo"]] == ["Intro"]
+
+
+@pytest.mark.asyncio
+async def test_copy_from_alone_needs_no_outline(backend):
+    out = await edit({"action": "create_course", "course": {"name": "Biology 102"}, "copy_from": "course-1"})
+    assert "error" not in out, out
+    assert out["copied"]["chapters"] == 1 and out["chapters"] == []
+    assert not [c for c in backend.calls if c["path"].endswith(("/add-subject", "/add-module", "/add-chapter"))]
+
+
+@pytest.mark.asyncio
+async def test_depth_2_copy_appends_slides_to_the_copied_chapter(backend):
+    backend.course["depth"] = 2
+    out = await edit({"action": "create_course", "course": {"name": "Short"}, "copy_from": {"course_id": "course-1"},
+                      "slides": [{"type": "document", "title": "More", "html": GOOD_HTML}]})
+    assert "error" not in out, out
+    assert not [c for c in backend.calls if c["path"].endswith("/add-chapter")]
+    slide = next(c for c in backend.calls if "/slide/" in c["path"])
+    assert slide["params"]["chapterId"] == "ch-1" and slide["body"]["slide_order"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("copy_from, extra, code", [
+    ({"course_id": "nope"}, {}, "unknown_course"),
+    ({"course_id": "course-1"}, {"course": {"name": "X", "depth": 5}}, "depth_mismatch"),
+    ({"course_id": "course-1", "batch_id": "ps-x"}, {}, "unknown_batch"),
+])
+async def test_bad_copy_from_creates_nothing(backend, copy_from, extra, code):
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": copy_from, **extra})
+    assert out["error"] == code and not backend.calls
+
+
+@pytest.mark.asyncio
+async def test_copy_from_a_course_with_several_batches_asks_which(backend):
+    backend.batches.append({**backend.batches[0], "id": "ps-2", "name": "2026-27 · Class 9"})
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": {"course_id": "course-1"}})
+    assert out["error"] == "pick_source_batch" and [b["id"] for b in out["batches"]] == ["ps-1", "ps-2"]
+    assert not backend.calls
+    out = await edit({"action": "create_course", "course": {"name": "X"},
+                      "copy_from": {"course_id": "course-1", "batch_id": "ps-2"}})
+    assert next(c for c in backend.calls if c["path"].endswith("/copy-content"))["body"]["sourcePackageSessionId"] \
+        == "ps-2"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_copy_reports_the_draft_course(backend, monkeypatch):
+    real = backend.admin_core
+
+    async def _fail(c, method, path, **kw):
+        if path.endswith("/copy-content"):
+            return {"error": "admin_core_error", "message": "boom"}
+        return await real(c, method, path, **kw)
+    monkeypatch.setattr(cbd, "admin_core", _fail)
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": "course-1",
+                      "chapters": [{"name": "Extra"}]})
+    assert out["error"] == "copy_failed" and out["course_id"] == "course-new"
+    assert not [c for c in backend.calls if c["path"].endswith("/add-chapter")]

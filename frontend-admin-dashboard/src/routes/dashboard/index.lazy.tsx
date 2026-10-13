@@ -1,4 +1,7 @@
-import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import {
+    getActiveRoleDisplaySettingsKey,
+    getRolesForCurrentInstitute,
+} from '@/lib/auth/instituteUtils';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { useLocation, useNavigate, useRouter } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -19,9 +22,10 @@ import {
 } from '@phosphor-icons/react';
 import { CompletionStatusComponent } from './-components/CompletionStatusComponent';
 import { IntroKey } from '@/constants/storage/introKey';
-import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { getInstituteDashboardData } from './-services/dashboard-services';
+import { useInstituteDashboardCounts } from './-hooks/useDashboardSources';
+import { resolveDashboardRoleLabel } from './-utils/role-label';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID } from '@/constants/urls';
 import { amplitudeEvents, trackPageView, trackEvent } from '@/lib/amplitude';
@@ -37,8 +41,6 @@ import LiveClassesWidget from './-components/LiveClassesWidget';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '../settings/-components/NamingSettings';
 
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
 import { Badge } from '@/components/ui/badge';
 import RecentNotificationsWidget from './-components/RecentNotificationsWidget';
 import {
@@ -55,13 +57,7 @@ import SuperAdminWidgetsRegion from './-components/SuperAdminWidgetsRegion';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
-    CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-    type DashboardWidgetId,
-} from '@/types/display-settings';
+import { type DisplaySettingsData, type DashboardWidgetId } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
 
@@ -98,6 +94,8 @@ import { bundleForRoles } from './-config/dashboard-role-bundles';
 import RoleTypeComponent from './-components/RoleTypeComponent';
 import { LearnerTab } from './-components/LearnerTab';
 import { SettingsTabs } from '../settings/-constants/terms';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { hasEntitledSetupStep, welcomeTextKey } from './-config/dashboard-entitlements';
 
 // Define the lazy Route
 export const Route = createLazyFileRoute('/dashboard/')({
@@ -112,6 +110,8 @@ function DashboardPage() {
     const [showLearnerTab, setShowLearnerTab] = useState(false);
     const [showAllAlerts, setShowAllAlerts] = useState(false);
     const userId = getUserId();
+    // Only feeds the "all alerts" dialog, so it waits until that dialog opens. Unread counts
+    // (navbar bell, Pending Actions) come from the 5-item preview query, not this one.
     const infiniteAlerts = useInfiniteQuery({
         queryKey: ['SYSTEM_ALERTS_INFINITE', userId, 20] as const,
         queryFn: ({ pageParam = 0 }) =>
@@ -119,6 +119,7 @@ function DashboardPage() {
         getNextPageParam: (lastPage) => (lastPage.last ? undefined : lastPage.number + 1),
         initialPageParam: 0,
         staleTime: 30_000,
+        enabled: showAllAlerts,
     });
 
     // Check if learner tab should be shown
@@ -410,8 +411,8 @@ function MyCoursesWidget() {
 }
 
 // Known backend role enums -> terminology-aware display labels. Anything not
-// in this map (rare/custom roles) falls back to the raw role string rather
-// than guessing a translation for it.
+// in this map (custom roles) is title-cased by resolveDashboardRoleLabel
+// ("COUNSELLOR" -> "Counsellor") rather than shown as a raw enum.
 const ROLE_DISPLAY_LABEL: Record<string, () => string> = {
     ADMIN: () => getTerminology(RoleTerms.Admin, SystemTerms.Admin),
     TEACHER: () => getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
@@ -422,7 +423,7 @@ const ROLE_DISPLAY_LABEL: Record<string, () => string> = {
 };
 
 export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () => void }) {
-    const { t } = useTranslation('dashboardIndex');
+    const { t, i18n } = useTranslation('dashboardIndex');
     const location = useLocation();
     const { getValue, setValue } = useLocalStorage<boolean>(IntroKey.dashboardWelcomeVideo, true);
     const profileCardDismissed = useLocalStorage<boolean>('dashboardProfileCardDismissed', false);
@@ -435,9 +436,14 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     const subModules = getModuleFlags(instituteDetails?.sub_modules);
     const router = useRouter();
 
-    // Role detection
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const userRoles = getUserRoles(accessToken);
+    // Role detection — roles in the CURRENT institute only. The token carries every
+    // institute's roles; flattening them gave an ADMIN of institute A the admin dashboard
+    // (and fee widgets) while working in institute B as a teacher or counsellor.
+    const userRoles = useMemo(
+        () => getRolesForCurrentInstitute(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on institute switch
+        [instituteDetails?.id]
+    );
     const isAdmin = userRoles.includes('ADMIN');
     // Sub-org admins also hold ADMIN on the parent institute, so the ADMIN role
     // alone can't distinguish them — the FSPSSM-derived faculty-access data is the
@@ -451,20 +457,27 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
 
     // Non-blocking: each widget that depends on `data` handles its own
     // loading/empty state. Previously this was `useSuspenseQuery`, which
-    // blocked the whole page on this single network call.
-    const { data } = useQuery({
-        ...getInstituteDashboardData(instituteDetails?.id),
-        enabled: !!instituteDetails?.id,
-        retry: 1,
-    });
+    // blocked the whole page on this single network call. Shared with the KPI band.
+    const { data, isSuccess: isCountsLoaded } = useInstituteDashboardCounts(instituteDetails?.id);
 
     const roleBundle = useMemo(() => bundleForRoles(userRoles), [userRoles]);
+    // Institute plan (MANAGED only — FULL_ENTITLEMENT, i.e. no filtering, otherwise).
+    const entitlement = useEntitlement();
+    // Only a SUCCESSFUL load with all-zero counts is a fresh institute. While loading (counts
+    // still undefined) or after an error it is not — otherwise every admin saw the empty-state
+    // flash and lost the KPI/finance rows whenever get-dashboard was slow or failed.
+    // A plan with no LMS setup step (CRM-only) is never "fresh": it gets the normal
+    // dashboard rather than an LMS checklist with the KPI/finance rows hidden.
     const isFreshTenant =
         isAdmin &&
-        (data?.student_count || 0) === 0 &&
-        (data?.batch_count || 0) === 0 &&
-        (data?.course_count || 0) === 0 &&
-        (data?.level_count || 0) === 0;
+        hasEntitledSetupStep(entitlement) &&
+        isCountsLoaded &&
+        !!data &&
+        (data.student_count || 0) === 0 &&
+        (data.batch_count || 0) === 0 &&
+        (data.course_count || 0) === 0 &&
+        (data.level_count || 0) === 0;
+    const roleLabel = resolveDashboardRoleLabel(userRoles, ROLE_DISPLAY_LABEL);
 
     const [roleTypeCount, setRoleTypeCount] = useState({
         ADMIN: 0,
@@ -490,6 +503,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     }, []);
 
     const isWidgetVisible = (id: DashboardWidgetId): boolean => {
+        if (!entitlement.isWidgetEntitled(id)) return false; // outside the plan (MANAGED)
         const vis = roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.visible;
         return vis !== false; // default to true
     };
@@ -503,6 +517,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
      * moment it renders.
      */
     const isWidgetExplicitlyVisible = (id: DashboardWidgetId): boolean =>
+        entitlement.isWidgetEntitled(id) &&
         roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.visible === true;
 
     const orderOf = (id: DashboardWidgetId): number => {
@@ -598,18 +613,15 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                     </p>
                 </div>
                 <span className="hidden text-2xs text-neutral-400 sm:inline-block sm:text-xs">
-                    {(userRoles?.[0]
-                        ? (ROLE_DISPLAY_LABEL[userRoles[0]]?.() ?? userRoles[0])
-                        : t('header.roleFallback'))}{' '}
-                    ·{' '}
-                    {new Date().toLocaleDateString(undefined, {
+                    {roleLabel ?? t('header.roleFallback')} ·{' '}
+                    {new Date().toLocaleDateString(i18n.resolvedLanguage || i18n.language, {
                         weekday: 'long',
                         month: 'short',
                         day: 'numeric',
                     })}
                 </span>
             </div>
-            <AssistantLaunchBar />
+            {isWidgetVisible('assistantLaunchBar') && <AssistantLaunchBar />}
             {/* Familiar shortcuts remain one click away below the assistant. */}
             {roleBundle.showQuickActions && isWidgetVisible('quickActions') && (
                 <TrackedWidget widgetId="quickActions">
@@ -621,7 +633,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
             {getValue() && (
                 <>
                     <p className="mt-0.5 text-2xs text-neutral-600 sm:text-xs">
-                        {t('welcomeVideo.text')}
+                        {t(welcomeTextKey(entitlement))}
                     </p>
                     {/* {!showForInstitutes([HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID]) && (
                         <iframe
@@ -657,6 +669,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         <MyPendingActionsWidget
                             instituteId={instituteDetails?.id || ''}
                             userId={getUserId() || ''}
+                            isAdmin={isAdmin}
                             onOpenAllAlerts={onOpenAllAlerts}
                         />
                     </TrackedWidget>
@@ -669,12 +682,11 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                 {/* Finance row - snapshot + recent transactions side-by-side for admin */}
                 {isAdmin && !isFreshTenant && (
                     <div className="grid gap-4 lg:grid-cols-2">
-                        {roleBundle.showFinanceSummary &&
-                            isWidgetVisible('financeSummary') && (
-                                <TrackedWidget widgetId="financeSummary">
-                                    <FinanceSummaryWidget />
-                                </TrackedWidget>
-                            )}
+                        {roleBundle.showFinanceSummary && isWidgetVisible('financeSummary') && (
+                            <TrackedWidget widgetId="financeSummary">
+                                <FinanceSummaryWidget instituteId={instituteDetails?.id || ''} />
+                            </TrackedWidget>
+                        )}
                         {isWidgetVisible('recentTransactions') && (
                             <TrackedWidget widgetId="recentTransactions">
                                 <RecentTransactionsWidget

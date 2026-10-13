@@ -18,6 +18,11 @@ export interface LearnerCourseDetailsSettings {
     showInstructors?: boolean;
     /** object-fit for the content cards' artwork. */
     contentCardImageFit?: string;
+    /**
+     * "ebook" renders the public course page as a single-file product (cover,
+     * folder, price, buy actions) instead of the course layout. Absent = course.
+     */
+    layout?: string;
 }
 
 /**

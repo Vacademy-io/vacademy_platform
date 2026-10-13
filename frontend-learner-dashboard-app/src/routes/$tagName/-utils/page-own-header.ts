@@ -24,7 +24,20 @@ const OPENS_WITH_OWN_TITLE = new Set([
  * the caller before this is asked.
  */
 export const pageOpensWithOwnHeader = (
-    components: Array<{ type?: string } | null | undefined>,
+    components: Array<{ type?: string; props?: unknown } | null | undefined>,
 ): boolean =>
     components.some((c) => c?.type === "heroSection") ||
-    OPENS_WITH_OWN_TITLE.has(components[0]?.type ?? "");
+    OPENS_WITH_OWN_TITLE.has(components[0]?.type ?? "") ||
+    opensWithCatalogHero(components[0]);
+
+/**
+ * A Courses grid that draws its own page hero (courseCatalog.hero, opt-in)
+ * already shows the page's title, breadcrumb and lead above everything else.
+ */
+const opensWithCatalogHero = (
+    component: { type?: string; props?: unknown } | null | undefined,
+): boolean => {
+    if (component?.type !== "courseCatalog") return false;
+    const hero = (component.props as { hero?: { enabled?: unknown } } | undefined)?.hero;
+    return hero?.enabled === true;
+};

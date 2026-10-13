@@ -138,12 +138,12 @@ class InstituteApiControllerGuardsTest {
         IssueApiKeyRequest body = IssueApiKeyRequest.builder().name("ERP").build();
         assertThrows(ForbiddenException.class, () -> adminController.issue(INSTITUTE, body, user(true, "STUDENT")));
         assertThrows(ForbiddenException.class, () -> adminController.issue(INSTITUTE, body, user(false, "TEACHER")));
-        assertThrows(ForbiddenException.class, () -> adminController.list(INSTITUTE, user(true, "STUDENT")));
+        assertThrows(ForbiddenException.class, () -> adminController.list(INSTITUTE, null, user(true, "STUDENT")));
         assertThrows(ForbiddenException.class, () -> adminController.revoke("k1", INSTITUTE, user(false, "TEACHER")));
         // ADMIN of another institute: clientId header names inst-2.
         clientIdHeader("inst-2");
         assertThrows(ForbiddenException.class, () -> adminController.issue(INSTITUTE, body, user(false, "ADMIN")));
-        assertThrows(ForbiddenException.class, () -> adminController.list(INSTITUTE, user(false, "ADMIN")));
+        assertThrows(ForbiddenException.class, () -> adminController.list(INSTITUTE, null, user(false, "ADMIN")));
         verifyNoInteractions(keyService);
     }
 
@@ -162,8 +162,8 @@ class InstituteApiControllerGuardsTest {
 
     @Test
     void listNeverReturnsTheHash() {
-        when(keyService.list(INSTITUTE)).thenReturn(List.of(issued().key()));
-        List<Map<String, Object>> keys = adminController.list(INSTITUTE, user(false, "ADMIN")).getBody();
+        when(keyService.list(INSTITUTE, null)).thenReturn(List.of(issued().key()));
+        List<Map<String, Object>> keys = adminController.list(INSTITUTE, null, user(false, "ADMIN")).getBody();
         assertEquals(1, keys.size());
         assertFalse(keys.get(0).toString().contains("a".repeat(64)));
         assertFalse(keys.get(0).containsKey("key"));

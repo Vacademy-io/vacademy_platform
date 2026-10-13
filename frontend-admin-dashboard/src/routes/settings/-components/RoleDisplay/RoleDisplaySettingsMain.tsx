@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, X, CircleNotch, CopySimple } from '@phosphor-icons/react';
+import { Plus, X, CircleNotch, CopySimple, Info } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { SettingsPageShell } from '@/components/settings/shell';
 import CopyToRolesDialog from './CopyToRolesDialog';
+import { usePlanRowFilter } from './plan-rows';
 import type { RoleCopyTarget } from '@/lib/display-settings/copy-to-roles';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
@@ -54,6 +55,9 @@ const buildRoleOptions = (t: TFunction): { value: RoleKey; label: string }[] => 
 
 export default function RoleDisplaySettingsMain() {
     const { t } = useTranslation('settingsRoleDisplayMain');
+    const { t: planT } = useTranslation('institutePlan');
+    // MANAGED institutes: rows outside the plan are not shown in the editors below.
+    const planRows = usePlanRowFilter();
     const queryClient = useQueryClient();
     const [selectedRole, setSelectedRole] = useState<RoleKey>('admin');
     const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string>('');
@@ -228,6 +232,13 @@ export default function RoleDisplaySettingsMain() {
                     sourceLabel={copySource.label}
                     targets={copyTargets}
                 />
+            )}
+
+            {planRows.hidesSomething && (
+                <p className="mb-4 flex items-center gap-2 text-caption text-neutral-500">
+                    <Info size={14} className="shrink-0" aria-hidden="true" />
+                    {planT('displaySettings.managedNote')}
+                </p>
             )}
 
             {selectedRole === 'admin' && <AdminDisplaySettings onDirtyChange={handleDirtyChange} />}

@@ -12,12 +12,14 @@ interface ExportHandlerProps {
     questionPaperId: string;
     settings: ExportSettings;
     setNumber?: number;
+    title?: string;
 }
 
 export function ExportHandlerQuestionPaper({
     questionPaperId,
     settings,
     setNumber,
+    title,
 }: ExportHandlerProps) {
     const { t } = useTranslation('assessmentExportHandlerQuestionPaper');
     const [isExporting, setIsExporting] = useState(false);
@@ -167,7 +169,7 @@ export function ExportHandlerQuestionPaper({
                 setNumber !== undefined
                     ? t('fileName.withSet', { letter: setLetter })
                     : t('fileName.base')
-            }.pdf`;
+            }${settings.exportSolutionKey ? ` ${t('fileName.answerKeySuffix')}` : ''}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
         } catch (error) {
@@ -212,7 +214,11 @@ export function ExportHandlerQuestionPaper({
                         width: '210mm',
                     }}
                 >
-                    <PaperSetQuestions questionPaperId={questionPaperId} settings={settings} />
+                    <PaperSetQuestions
+                        questionPaperId={questionPaperId}
+                        settings={settings}
+                        title={title}
+                    />
                 </div>
             </div>
             {isExporting && (

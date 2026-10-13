@@ -1,4 +1,7 @@
-import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import {
+    getActiveRoleDisplaySettingsKey,
+    getRolesForCurrentInstitute,
+} from '@/lib/auth/instituteUtils';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -23,11 +26,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-    getTokenFromCookie,
-    getUserRoles,
-    removeCookiesAndLogout,
-} from '@/lib/auth/sessionUtility';
+import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useNavigate } from '@tanstack/react-router';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import useInstituteLogoStore from '../sidebar/institutelogo-global-zustand';
@@ -50,7 +49,11 @@ import { handleGetAdminDetails } from '@/services/student-list-section/getAdminD
 import useAdminLogoStore from '../sidebar/admin-logo-zustand';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { SSOSwitcher } from '../../auth/SSOSwitcher';
-import { TokenKey } from '@/constants/auth/tokens';
+import {
+    InstituteSwitcherDialog,
+    InstituteSwitcherMenuSection,
+    useCanSwitchInstitute,
+} from '../../auth/InstituteSwitcher';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getUserId, getUserName } from '@/utils/userDetails';
@@ -116,10 +119,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const { instituteLogo, setInstituteLogo } = useInstituteLogoStore();
     const { getPublicUrl } = useFileUpload();
     const { adminLogo, setAdminLogo, resetAdminLogo } = useAdminLogoStore();
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const roles = getUserRoles(accessToken);
+    // Roles in the institute being viewed — not every institute in the token. An ADMIN
+    // elsewhere who is a STUDENT here must get this institute's chrome (and vice versa).
+    const roles = getRolesForCurrentInstitute();
     const userId = getUserId();
     const [showEditAccountDetails, setShowEditAccountDetails] = useState(false);
+    // Institute switcher: offered only with ≥2 admin-eligible institutes in the token.
+    const canSwitchInstitute = useCanSwitchInstitute();
+    const [showInstituteSwitcher, setShowInstituteSwitcher] = useState(false);
     const isMobile = useIsMobile();
     const { setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
@@ -158,7 +165,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     >({ ...getSystemAlertsQuery(userId, 5), refetchInterval: 60_000 });
     useSystemAlertToasts(alertsList?.content);
 
-    // Alerts: full list (infinite)
+    const [showAllDialog, setShowAllDialog] = useState(false);
+    // Alerts: full list (infinite) — only once the "see all" dialog is open. The bell's
+    // unread badge reads the 5-item query above, not this one.
     const infiniteAlerts = useInfiniteQuery<PagedResponse<SystemAlertItem>>({
         queryKey: ['SYSTEM_ALERTS_INFINITE', userId, 20] as const,
         queryFn: ({ pageParam = 0 }) =>
@@ -166,6 +175,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
         getNextPageParam: (lastPage) => (lastPage.last ? undefined : lastPage.number + 1),
         initialPageParam: 0,
         staleTime: 30_000,
+        enabled: showAllDialog,
     });
 
     const showAiCredits = effectiveDS.ui?.showAiCredits !== false;
@@ -176,7 +186,6 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const currentLocale = useLanguageStore((state) => state.locale);
     const showLanguageSwitcher = getEnabledLocales(currentLocale).length > 1;
 
-    const [showAllDialog, setShowAllDialog] = useState(false);
     const unreadCount = useMemo(() => {
         return alertsList?.content?.reduce((acc, item) => acc + (item.isRead ? 0 : 1), 0) || 0;
     }, [alertsList]);
@@ -977,6 +986,17 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             </span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="flex flex-col items-start">
+                            <InstituteSwitcherMenuSection
+                                instituteName={instituteDetails?.institute_name}
+                                logoFileId={instituteDetails?.institute_logo_file_id}
+                                canSwitch={canSwitchInstitute}
+                                onSwitchClick={() => {
+                                    setIsOpen(false);
+                                    // Open after the menu has closed so its focus return
+                                    // doesn't fight the dialog's focus trap.
+                                    setTimeout(() => setShowInstituteSwitcher(true), 0);
+                                }}
+                            />
                             {canViewProfile && (
                                 <Sheet>
                                     <SheetTrigger className="w-full p-2 text-left text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
@@ -1175,6 +1195,12 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 <AccountDetailsEdit
                     open={showEditAccountDetails}
                     setOpen={setShowEditAccountDetails}
+                />
+            )}
+            {canSwitchInstitute && (
+                <InstituteSwitcherDialog
+                    open={showInstituteSwitcher}
+                    onOpenChange={setShowInstituteSwitcher}
                 />
             )}
         </div>

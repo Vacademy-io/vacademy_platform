@@ -68,6 +68,7 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
     // teacher's operational set. OFF by default = admin/finance widgets that
     // make no sense for a teacher (admins can still toggle them on).
     const teacherOn = new Set<DashboardWidgetConfig['id']>([
+        'assistantLaunchBar',
         'quickActions',
         'kpiBand',
         'pendingActions',
@@ -92,6 +93,7 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         //    teacherOn): integration health is an admin concern.
         'lmsConnectionHealth',
         // 1. Navigation shortcuts
+        'assistantLaunchBar',
         'quickActions',
         // 2. KPIs
         'kpiBand',
@@ -257,6 +259,10 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
     // grants it per role from Display Settings.
     liveClassActions: {
         allowDeletePastSessions: false,
+    },
+    // Off for every role — an institute opts a role in from Display Settings.
+    leadActions: {
+        showAddLead: false,
     },
     courseCreation: {
         showCreateCourseWithAI: false,

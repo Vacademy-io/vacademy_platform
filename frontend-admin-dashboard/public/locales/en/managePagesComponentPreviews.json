@@ -141,5 +141,14 @@
         "sampleExcerpt": "A short teaser of the article shows here.",
         "readMore": "Read more",
         "liveNote": "Published posts appear here on the live site. Write them under Manage Pages → Blog."
+    },
+    "catalogFeatures": {
+        "hero": "Hero",
+        "streamIcons": "Stream icons",
+        "streamTabs": "Stream tabs",
+        "filterSidebar": "Filter sidebar",
+        "highlightedRows_one": "{{count}} highlighted row",
+        "highlightedRows_other": "{{count}} highlighted rows",
+        "editorialCards": "Editorial cards"
     }
 }

@@ -1,10 +1,7 @@
 {
-    "overduePayment": {
-        "title": "{{name}} — {{amount}} en retard",
-        "subtitle_one": "{{count}} jour de retard · {{feeType}}",
-        "subtitle_many": "{{count}} jours de retard · {{feeType}}",
-        "subtitle_other": "{{count}} jours de retard · {{feeType}}",
-        "defaultFeeType": "Frais"
+    "overdueSummary": {
+        "title": "{{amount}} de frais en retard",
+        "subtitle": "Échus et impayés dans tout l'établissement"
     },
     "pendingApproval": {
         "title": "Approuver l'ajustement pour {{name}}",

@@ -1,7 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GOOGLE_ACCOUNTS_BASE, GOOGLE_OAUTH_INITIATE } from '@/constants/urls';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 /**
  * Service module for managing per-institute connected Google Workspace accounts.
@@ -39,12 +38,13 @@ export interface GoogleTestConnectionResponse {
     error?: string;
 }
 
+// The institute being worked in (selected; the token's first only when none is selected) —
+// not always the token's first, which put a multi-institute admin's accounts on the wrong
+// institute.
 const getInstituteId = (): string => {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
-    const instituteIds = Object.keys(tokenData?.authorities || {});
-    if (instituteIds.length === 0) throw new Error('No institute ID found in token');
-    return instituteIds[0]!;
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) throw new Error('No institute ID found in token');
+    return instituteId;
 };
 
 export const listGoogleAccounts = async (): Promise<GoogleAccountSummary[]> => {

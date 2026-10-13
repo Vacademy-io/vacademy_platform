@@ -218,6 +218,44 @@ def _ensure_video_access(video_id: str, institute_id: str, db: Session):
     return record
 
 
+# Selections the video estimator prices — keyword arguments of
+# estimate_video_generation. The pre-flight (check_video_tier_credits) requires
+# the estimator's expected credits for exactly these, so the start check and
+# the preview the user saw agree.
+_ESTIMATE_SELECTION_KEYS = (
+    "model", "target_duration", "target_audience", "orientation", "voice_gender",
+    "tts_provider", "voice_id", "language", "generate_avatar",
+    "background_music_enabled", "sound_effects_enabled", "content_type",
+    "visual_style", "captions_enabled", "html_quality", "dialogue_scenes_enabled",
+    "dialogue_mode", "dialogue_clip_model",
+)
+
+
+def _video_estimate_params(
+    selections: Optional[Dict[str, Any]],
+    *,
+    host: Optional[Dict[str, Any]] = None,
+    lesson: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Estimator kwargs from a request dump or persisted user_selections."""
+    sel = selections if isinstance(selections, dict) else {}
+    params: Dict[str, Any] = {k: sel[k] for k in _ESTIMATE_SELECTION_KEYS if sel.get(k) is not None}
+    if isinstance(host, dict):
+        params["host"] = host
+    if isinstance(lesson, dict):
+        params["lesson"] = lesson
+    return params
+
+
+def _persisted_estimate_params(extra_metadata: Any) -> Dict[str, Any]:
+    """Estimator kwargs for a resume/retry/decision leg, from the video record.
+    The host snapshot is a HostPlan (not the request's HostConfig), so the
+    host line is left out; the lesson plan carries the teacher."""
+    meta = extra_metadata if isinstance(extra_metadata, dict) else {}
+    lesson_plan = (meta.get("lesson") or {}).get("plan") if isinstance(meta.get("lesson"), dict) else None
+    return _video_estimate_params(meta.get("user_selections"), lesson=lesson_plan)
+
+
 @router.post(
     "/preview-cost",
     response_model=VideoCostPreviewResponse,
@@ -255,6 +293,7 @@ def preview_video_cost(
         review_mode=payload.review_mode,
         attachments_count=payload.attachments_count,
         host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
+        lesson=(payload.lesson.model_dump() if getattr(payload, "lesson", None) else None),
         ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
         ai_video_audio_enabled=bool(getattr(payload, "ai_video_audio_enabled", False)),
         dialogue_scenes_enabled=bool(getattr(payload, "dialogue_scenes_enabled", False)),
@@ -342,21 +381,27 @@ async def generate_video_external(
     _check_rate_limit(institute_id)
     _check_concurrency_limit(institute_id)
 
-    # Tier-aware pre-flight (2026-05 audit, supersedes the standalone Veo
-    # check). The generic `require_credits("video", ...)` dep above is a
-    # zero-balance floor (resolves to ~0.05 credits via the fallback formula)
-    # and was never gating realistic cost. This block reads `payload.quality_tier`
-    # + `payload.ai_video_enabled` after parsing and rejects HTTP 402 when
-    # balance can't cover the tier baseline + Veo cap (if enabled).
-    # See `CreditService.check_video_tier_credits` for the per-tier floors;
-    # they're derived from the breakdown in docs/AI_CREDITS_PRICING.md.
+    # Pre-flight (2026-10-13, supersedes the standalone Veo check). The
+    # generic `require_credits("video", ...)` dep above is a zero-balance
+    # floor (resolves to ~0.05 credits via the fallback formula) and was
+    # never gating realistic cost. This block requires the estimator's
+    # expected credits for the request's selections (what /preview-cost
+    # shows) + the Veo hold, and rejects HTTP 402 when the balance can't
+    # cover it. Mid-run charges may then take the balance negative so the
+    # video finishes. See `CreditService.check_video_tier_credits`.
     with make_db_session() as _preflight_db:
         from ..services.credit_service import CreditService
+        _payload_dump = payload.model_dump()
         _tier_check = CreditService(_preflight_db).check_video_tier_credits(
             institute_id=institute_id,
             quality_tier=getattr(payload, "quality_tier", "standard") or "standard",
             ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
-            partial_run_factor=1.0,  # fresh run — full budget required
+            partial_run_factor=1.0,  # fresh run — full estimate required
+            estimate_params=_video_estimate_params(
+                _payload_dump,
+                host=_payload_dump.get("host"),
+                lesson=_payload_dump.get("lesson"),
+            ),
         )
         if not _tier_check.has_sufficient_credits:
             raise HTTPException(
@@ -433,6 +478,7 @@ async def generate_video_external(
                         cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
+                        lesson=getattr(p, "lesson", None),
                         brand_kit_id=getattr(p, "brand_kit_id", None),
                         # Per-video overrides (palette/intro/outro/watermark/system_prompt)
                         # that layer on top of the resolved kit. One-shot — not persisted
@@ -701,6 +747,7 @@ async def resume_video_external(
         quality_tier=_qt,
         ai_video_enabled=_ai_video,
         partial_run_factor=0.7,
+        estimate_params=_persisted_estimate_params(_vr_meta),
     )
     if not _tier_check.has_sufficient_credits:
         raise HTTPException(
@@ -952,6 +999,7 @@ async def decision_video_external(
         quality_tier=_qt,
         ai_video_enabled=_ai_video,
         partial_run_factor=0.7,
+        estimate_params=_persisted_estimate_params(_meta),
     )
     if not _tier_check.has_sufficient_credits:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=_tier_check.message)
@@ -1577,6 +1625,7 @@ async def retry_video_external(
         quality_tier=_qt,
         ai_video_enabled=_ai_video,
         partial_run_factor=0.4,
+        estimate_params=_persisted_estimate_params(_vr_meta),
     )
     if not _tier_check.has_sufficient_credits:
         raise HTTPException(
@@ -2758,24 +2807,17 @@ async def silence_shot_external(
 # with. `xiaomi/mimo-v2-flash:free` (the constructor's hard-coded
 # default in VideoGenerationPipeline) is deprecated and 404s, so we
 # always pass a resolved model down to the pipeline here.
-_TIER_FLASH_MODEL = "google/gemini-3-flash-preview"
-_FLASH_TIERS = {"free", "standard", "premium"}
-
-
 def _resolve_html_model(db: Session, quality_tier: str) -> str:
     """Pick the HTML LLM for an inserted shot.
 
-    Mirrors VideoGenerationService's tier-aware routing:
-      - free/standard/premium → flash (`google/gemini-3-flash-preview`)
-      - ultra/super_ultra     → the AI-Models-Service default for "video"
-
-    Falls back to `_TIER_FLASH_MODEL` end-to-end when no DB default is
-    configured. Never returns None — the pipeline constructor's default
-    (`xiaomi/mimo-v2-flash:free`) is deprecated and 404s, so we always
-    pass an explicit model down.
+    Every tier uses the AI-Models-Service default for "video" (owner
+    decision 2026-10-13: no premium-model tier), falling back to
+    GLM_DEFAULT when the registry can't answer. Never returns None — the
+    pipeline constructor's default (`xiaomi/mimo-v2-flash:free`) is
+    deprecated and 404s, so we always pass an explicit model down.
+    `quality_tier` is kept for call-site compatibility.
     """
-    if quality_tier in _FLASH_TIERS:
-        return _TIER_FLASH_MODEL
+    from ..constants.model_defaults import GLM_DEFAULT
     try:
         from ..services.ai_models_service import AIModelsService
         resp = AIModelsService(db).get_models_for_use_case("video")
@@ -2788,7 +2830,7 @@ def _resolve_html_model(db: Session, quality_tier: str) -> str:
                 return str(model_id)
     except Exception:
         pass
-    return _TIER_FLASH_MODEL
+    return GLM_DEFAULT
 
 
 class InsertShotRequest(BaseModel):

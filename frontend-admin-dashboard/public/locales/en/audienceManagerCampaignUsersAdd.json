@@ -9,7 +9,8 @@
     },
     "backButton": "Back to {{audienceTerm}} Users",
     "header": {
-        "description": "Fill in the details below to submit a response on behalf of a respondent."
+        "description": "Fill in the details below to submit a response on behalf of a respondent.",
+        "cardDescription": "Add the person's details to add them as a lead in this {{audienceTerm}}."
     },
     "emptyState": {
         "title": "No form fields configured for this {{audienceTerm}}.",
@@ -20,7 +21,9 @@
         "requiredFields": "Required fields",
         "cancel": "Cancel",
         "submitting": "Submitting...",
-        "submit": "Submit Response"
+        "submit": "Submit Response",
+        "requiredHint": "All fields marked with <star>*</star> are required",
+        "loadingFields": "Loading form…"
     },
     "validation": {
         "missingFields": "Please fill required fields: {{fields}}"
@@ -32,5 +35,14 @@
     "audienceFallbackName": "this {{audienceTerm}}",
     "footer": {
         "responsesAppearUnder": "Responses appear under <bold>{{audienceName}}</bold> in your {{audienceTerm}} list."
+    },
+    "assign": {
+        "label": "Assign to counsellor",
+        "placeholder": "Select counsellor (optional)",
+        "loading": "Loading counsellors…",
+        "search": "Search counsellor…",
+        "empty": "No counsellor found.",
+        "hint": "If left empty, the lead follows your usual lead routing.",
+        "optional": "(optional)"
     }
 }

@@ -13,8 +13,8 @@ import { toast } from 'sonner';
 
 /**
  * CompleteFollowUpPopover — the single shared "Mark complete" close flow for a
- * lead follow-up (PUT /v1/lead-followup/{id}/close with an optional closer
- * reason). Extracted from the manage-students FollowUpsWidget so the
+ * lead follow-up (PUT /v1/lead-followup/{id}/close with a mandatory closing
+ * note as the closer reason). Extracted from the manage-students FollowUpsWidget so the
  * Follow-ups page can close follow-ups inline from list rows.
  *
  * Two host modes:
@@ -146,7 +146,7 @@ export function CompleteFollowUpPopover({
     const closeMutation = useMutation({
         mutationFn: () =>
             authenticatedAxiosInstance.put(CLOSE_LEAD_FOLLOWUP(effectiveFollowupId ?? ''), {
-                closer_reason: reason,
+                closer_reason: reason.trim(),
             }),
         onSuccess: () => {
             toast.success('Follow-up marked complete');
@@ -165,12 +165,14 @@ export function CompleteFollowUpPopover({
 
     const isBusy = closeMutation.isPending || createMutation.isPending;
     const needsInlineSchedule = scheduleNext && !onScheduleNext;
-    // The note only becomes mandatory for the follow-up being CREATED here — closing
-    // the current one still carries its own outcome ("reason"), not a note.
+    // Closing always needs a note on what happened. The next follow-up's note is
+    // separate and only mandatory when the institute requires notes.
+    const reasonMissing = !reason.trim();
     const nextNoteMissing = needsInlineSchedule && notesRequired && !nextContent.trim();
     const canSubmit =
         !isBusy &&
         !!effectiveFollowupId &&
+        !reasonMissing &&
         (!needsInlineSchedule || !!nextTime) &&
         !nextNoteMissing &&
         !(needsInlineSchedule && followUpFields.missingRequired);
@@ -246,7 +248,7 @@ export function CompleteFollowUpPopover({
                         <textarea
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
-                            placeholder="Closing note (optional)…"
+                            placeholder="Closing note (required)…"
                             rows={2}
                             className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                         />

@@ -5,6 +5,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { RouteMatcher } from "./-services/route-matcher";
 import { CatalogueTagContext } from "./-components/CatalogueTagContext";
+import { retainSiteLanguage } from "./-utils/catalogue-route-search";
 import { CourseCataloguePage } from "./-components/CourseCataloguePage";
 import { RootMountedSegment } from "./-components/RootMountedSegment";
 import { getCachedRootCatalogueTag } from "@/services/domain-routing";
@@ -14,6 +15,9 @@ import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/$tagName/$pageSlug")({
+  // Keep the visitor's site language (?lang=) across catalogue navigation
+  // (sites with languages only; a no-op everywhere else).
+  search: { middlewares: [retainSiteLanguage] },
   component: RouteComponent,
 });
 

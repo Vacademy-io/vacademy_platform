@@ -50,6 +50,13 @@
         "defaultLinkDescription": "Afficher la carte « Lien de cours par défaut » dans chaque jour sélectionné du planning récurrent, où les administrateurs peuvent définir un lien de secours et un nom de cours partagés pour toutes les sessions de ce jour.",
         "disabledBecauseWeeklyOff": "Désactivé car le planning hebdomadaire récurrent est désactivé."
     },
+    "attendanceOnly": {
+        "title": "Mode présence uniquement",
+        "description": "Pour les établissements qui enseignent en présentiel et créent des cours en direct uniquement pour enregistrer la présence.",
+        "toggleTitle": "Masquer les cours en direct aux apprenants",
+        "toggleDescription": "Lorsque activé, les apprenants ne voient aucun cours en direct (à venir, en cours ou passé) et ne reçoivent aucune notification à leur sujet. Ils ne voient que leur présence. Les formateurs continuent de recevoir leurs notifications.",
+        "onWarning": "S'applique à tous les cours en direct de l'établissement, y compris ceux déjà créés. Les apprenants ne pourront ni voir ni rejoindre aucun cours."
+    },
     "disclaimer": {
         "title": "Vidéo d'avertissement",
         "description": "Affichée avant qu'un apprenant rejoigne un cours auquel il n'a pas encore assisté, et non à nouveau une fois marqué présent à ce cours. Une seule vidéo pour tous les cours en direct, y compris ceux créés automatiquement par un workflow.",

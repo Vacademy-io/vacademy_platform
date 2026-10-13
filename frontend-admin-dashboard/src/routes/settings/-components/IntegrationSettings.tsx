@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
@@ -47,6 +48,15 @@ import {
     resubscribeConnector,
     pollConnectorNow,
     buildGoogleWebhookUrl,
+    connectorDisplayId,
+    campaignRoutesQueryKey,
+    deleteCampaignRoute,
+    fetchCampaignRoutes,
+    updateCampaignRoute,
+    setCampaignAutoLists,
+    type CampaignRoute,
+    type CampaignRoutes,
+    type CampaignRouteUpdate,
     fetchAudienceCustomFields,
     buildFieldMappingJson,
     type MetaPage,
@@ -71,6 +81,7 @@ interface AudienceOption {
     id: string;
     name: string;
     campaignType?: string;
+    status?: string;
 }
 
 function useAudienceList(instituteId: string) {
@@ -89,10 +100,12 @@ function useAudienceList(instituteId: string) {
                     audience_id?: string;
                     campaign_name: string;
                     campaign_type?: string;
+                    status?: string;
                 }) => ({
                     id: c.audience_id ?? c.id ?? '',
                     name: c.campaign_name,
                     campaignType: c.campaign_type,
+                    status: c.status,
                 })
             );
         },
@@ -491,6 +504,12 @@ function ConnectorTable({
                         const vendorLabel = v ? t(v.labelKey) : c.vendor;
                         const vendorColor = v?.color ?? 'text-neutral-700';
                         const vendorBg = v?.bg ?? 'bg-neutral-100';
+                        // A Google connector's form id is its webhook key, a credential: show a
+                        // name instead, and only the key's last four characters.
+                        const displayName =
+                            c.platformFormName ??
+                            (c.vendor === 'GOOGLE_LEAD_ADS' ? t('table.googleUnnamed') : null);
+                        const displayId = connectorDisplayId(c);
                         return (
                             <tr key={c.id} className="border-b last:border-0">
                                 <td className="px-4 py-2.5">
@@ -501,27 +520,27 @@ function ConnectorTable({
                                     </span>
                                 </td>
                                 <td className="max-w-xs px-4 py-2.5 text-sm">
-                                    {c.platformFormName ? (
+                                    {displayName ? (
                                         <>
                                             <div
                                                 className="truncate font-medium"
-                                                title={c.platformFormName}
+                                                title={displayName}
                                             >
-                                                {c.platformFormName}
+                                                {displayName}
                                             </div>
                                             <div
                                                 className="whitespace-nowrap font-mono text-caption text-neutral-400"
-                                                title={c.platformFormId ?? undefined}
+                                                title={displayId ?? undefined}
                                             >
-                                                {c.platformFormId ?? '-'}
+                                                {displayId ?? '-'}
                                             </div>
                                         </>
                                     ) : (
                                         <span
                                             className="whitespace-nowrap font-mono text-caption text-neutral-600"
-                                            title={c.platformFormId ?? undefined}
+                                            title={displayId ?? undefined}
                                         >
-                                            {c.platformFormId ?? '-'}
+                                            {displayId ?? '-'}
                                         </span>
                                     )}
                                 </td>
@@ -589,6 +608,17 @@ function ConnectorTable({
                                             <p className="mt-0.5 max-w-xs text-caption leading-snug text-warning-700">
                                                 {c.statusDetail}
                                             </p>
+                                        )}
+                                    {c.vendor === 'GOOGLE_LEAD_ADS' &&
+                                        (c.unmappedCampaigns ?? 0) > 0 && (
+                                            <button
+                                                onClick={() => onGoogleSetup(c.id)}
+                                                className="mt-1 block rounded-full bg-warning-50 px-2 py-0.5 text-caption font-medium text-warning-700 hover:bg-warning-100"
+                                            >
+                                                {t('table.unmappedCampaigns', {
+                                                    count: c.unmappedCampaigns ?? 0,
+                                                })}
+                                            </button>
                                         )}
                                 </td>
                                 <td className="px-4 py-2.5">
@@ -892,6 +922,519 @@ function GoogleDeliveryStatus({ connector }: { connector: ConnectorListItem }) {
     );
 }
 
+/** Rename a Google connector: the list shows this name, never the key (a credential). */
+function GoogleConnectorName({ connector }: { connector: ConnectorListItem }) {
+    const { t } = useTranslation('settingsIntegration');
+    const queryClient = useQueryClient();
+    // null = not edited; the list refetches every few seconds while the dialog is open.
+    const [draft, setDraft] = useState<string | null>(null);
+    const current = connector.platformFormName ?? '';
+    const value = draft ?? current;
+
+    const { mutate: rename, isPending } = useMutation({
+        mutationFn: () => updateConnector(connector.id, { platformFormName: value.trim() }),
+        onSuccess: () => {
+            toast.success(t('google.nameSaved'));
+            setDraft(null);
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: () => toast.error(t('google.nameSaveError')),
+    });
+
+    return (
+        <div className="space-y-1">
+            <Label className="text-xs">{t('google.connectorNameLabel')}</Label>
+            <div className="flex gap-2">
+                <Input
+                    value={value}
+                    placeholder={t('google.connectorNamePlaceholder')}
+                    onChange={(e) => setDraft(e.target.value)}
+                />
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => rename()}
+                    disable={isPending || value.trim() === current}
+                >
+                    {isPending ? t('google.saving') : t('google.nameSave')}
+                </MyButton>
+            </div>
+        </div>
+    );
+}
+
+/** Select value meaning "create a new list for this campaign". */
+const CREATE_LIST = '__create_list__';
+
+/** Server message from a failed request, or the fallback. */
+function apiErrorMessage(err: unknown, fallback: string): string {
+    return (
+        (err as { response?: { data?: { message?: string; ex?: string } } })?.response?.data
+            ?.message ??
+        (err as { response?: { data?: { ex?: string } } })?.response?.data?.ex ??
+        fallback
+    );
+}
+
+/**
+ * One campaign's routing row: where its leads go, with an inline "create a new list"
+ * and the option to move the campaign's existing leads along. With `route` null it is
+ * the "add a campaign" row (the admin types a campaign id from Google Ads).
+ */
+function CampaignRouteRow({
+    connectorId,
+    route,
+    mainAudienceId,
+    lists,
+}: {
+    connectorId: string;
+    route: CampaignRoute | null;
+    mainAudienceId: string;
+    lists: AudienceOption[];
+}) {
+    const { t } = useTranslation('settingsIntegration');
+    const { campaignType: term } = useLeadTerminology();
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
+    const queryClient = useQueryClient();
+    const isNew = route === null;
+    const current = route?.audience_id ?? '';
+    const [campaignId, setCampaignId] = useState('');
+    const [campaignName, setCampaignName] = useState('');
+    const [editingName, setEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState('');
+    const [selection, setSelection] = useState(current);
+    const [newListName, setNewListName] = useState('');
+    const [newListType, setNewListType] = useState('');
+    const [moveExisting, setMoveExisting] = useState(true);
+
+    const mainName = lists.find((l) => l.id === mainAudienceId)?.name;
+    const typeOptions = buildCampaignTypeFilterOptions(
+        buildDefaultCampaignTypeOptions(tCampaignType),
+        lists.map((l) => l.campaignType)
+    );
+    const creating = selection === CREATE_LIST;
+    // A new row can be saved with just a name: its list then comes later (or automatically).
+    const dirty = isNew
+        ? !!campaignId.trim() && (!!selection || !!campaignName.trim())
+        : selection !== current;
+    // Where this campaign's existing leads sit today (unmapped = the main list).
+    const effectiveCurrent = current || mainAudienceId;
+    const canMove =
+        !isNew && (route?.lead_count ?? 0) > 0 && (creating || selection !== effectiveCurrent);
+
+    const reset = () => {
+        setSelection(current);
+        setNewListName('');
+        setNewListType('');
+        setMoveExisting(true);
+        if (isNew) {
+            setCampaignId('');
+            setCampaignName('');
+        }
+    };
+
+    const refreshRoutes = () => {
+        queryClient.invalidateQueries({ queryKey: campaignRoutesQueryKey(connectorId) });
+        queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+    };
+
+    const { mutate: save, isPending } = useMutation({
+        mutationFn: () => {
+            const update: CampaignRouteUpdate = { move_existing_leads: canMove && moveExisting };
+            if (creating) {
+                update.new_list = {
+                    name: newListName.trim(),
+                    campaign_type: newListType || undefined,
+                };
+            } else if (selection) {
+                update.audience_id = selection;
+            }
+            if (isNew && campaignName.trim()) update.campaign_name = campaignName.trim();
+            return updateCampaignRoute(
+                connectorId,
+                isNew ? campaignId.trim() : route!.campaign_id,
+                update
+            );
+        },
+        onSuccess: (result) => {
+            if (!creating && !selection) {
+                toast.success(t('google.routes.nameSaved'));
+            } else {
+                const listName = creating
+                    ? newListName.trim()
+                    : lists.find((l) => l.id === result.route.audience_id)?.name ?? '';
+                toast.success(t('google.routes.saved', { list: listName }));
+            }
+            if (result.moved_leads > 0) {
+                toast.info(t('google.routes.moved', { count: result.moved_leads }));
+            }
+            if (result.skipped_leads > 0) {
+                toast.warning(t('google.routes.skipped', { count: result.skipped_leads }));
+            }
+            refreshRoutes();
+            if (result.created_audience_id) {
+                queryClient.invalidateQueries({ queryKey: ['audience-list-for-integrations'] });
+            }
+            if (isNew) reset();
+            else {
+                setNewListName('');
+                setNewListType('');
+            }
+        },
+        onError: (err) => toast.error(apiErrorMessage(err, t('google.routes.saveError'))),
+    });
+
+    const { mutate: saveName, isPending: isSavingName } = useMutation({
+        mutationFn: () =>
+            updateCampaignRoute(connectorId, route!.campaign_id, {
+                campaign_name: nameDraft.trim(),
+            }),
+        onSuccess: () => {
+            toast.success(t('google.routes.nameSaved'));
+            setEditingName(false);
+            refreshRoutes();
+            // Naming a campaign also renames its automatically named list.
+            queryClient.invalidateQueries({ queryKey: ['audience-list-for-integrations'] });
+        },
+        onError: (err) => toast.error(apiErrorMessage(err, t('google.routes.saveError'))),
+    });
+
+    const { mutate: remove, isPending: isRemoving } = useMutation({
+        mutationFn: () => deleteCampaignRoute(connectorId, route!.campaign_id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: campaignRoutesQueryKey(connectorId) });
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: (err) => toast.error(apiErrorMessage(err, t('google.routes.saveError'))),
+    });
+
+    // Keep the select in step with the server after a save or a refetch.
+    useEffect(() => {
+        setSelection(current);
+    }, [current]);
+
+    return (
+        <div className="space-y-2 p-2.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="min-w-0 sm:w-56">
+                    {isNew ? (
+                        <div className="space-y-1.5">
+                            <Input
+                                value={campaignId}
+                                inputMode="numeric"
+                                placeholder={t('google.routes.campaignIdPlaceholder')}
+                                onChange={(e) => setCampaignId(e.target.value.replace(/\D/g, ''))}
+                            />
+                            <Input
+                                value={campaignName}
+                                placeholder={t('google.routes.campaignNamePlaceholder')}
+                                onChange={(e) => setCampaignName(e.target.value)}
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            {editingName ? (
+                                <div className="mb-1 flex items-center gap-1">
+                                    <Input
+                                        value={nameDraft}
+                                        autoFocus
+                                        placeholder={t('google.routes.campaignNamePlaceholder')}
+                                        onChange={(e) => setNameDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') saveName();
+                                            if (e.key === 'Escape') setEditingName(false);
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => saveName()}
+                                        disabled={isSavingName}
+                                        className="text-primary-500 hover:text-primary-600 disabled:opacity-50"
+                                        title={t('google.routes.save')}
+                                    >
+                                        <Check className="size-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => setEditingName(false)}
+                                        className="text-neutral-400 hover:text-neutral-600"
+                                        title={t('google.routes.cancel')}
+                                    >
+                                        <X className="size-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="flex items-center gap-1 text-sm font-medium text-neutral-800">
+                                    <span className="truncate">
+                                        {route!.campaign_name || (
+                                            <span className="font-normal text-neutral-400">
+                                                {t('google.routes.unnamed')}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setNameDraft(route!.campaign_name ?? '');
+                                            setEditingName(true);
+                                        }}
+                                        className="shrink-0 text-neutral-400 hover:text-primary-500"
+                                        title={t('google.routes.editName')}
+                                        aria-label={t('google.routes.editName')}
+                                    >
+                                        <PencilSimple className="size-3.5" />
+                                    </button>
+                                </p>
+                            )}
+                            <p className="flex items-center gap-1.5 font-mono text-xs text-neutral-700">
+                                {route!.campaign_id}
+                                {!route!.audience_id && (
+                                    <span className="rounded-full bg-warning-50 px-1.5 py-0.5 font-sans text-caption text-warning-700">
+                                        {t('google.routes.notMapped')}
+                                    </span>
+                                )}
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                {route!.lead_count > 0
+                                    ? t('google.routes.leads', { count: route!.lead_count }) +
+                                      (route!.last_lead_at
+                                          ? ` · ${t('google.routes.lastLead', {
+                                                time: formatDateTime(
+                                                    parseServerUtc(route!.last_lead_at)
+                                                ),
+                                            })}`
+                                          : '')
+                                    : t('google.routes.noLeadsYet')}
+                            </p>
+                        </>
+                    )}
+                </div>
+                <select
+                    className="w-full flex-1 rounded-md border bg-white px-3 py-2 text-sm"
+                    value={selection}
+                    onChange={(e) => {
+                        const value = e.target.value;
+                        setSelection(value);
+                        // A new list is usually named after its campaign.
+                        if (value === CREATE_LIST && !newListName) {
+                            setNewListName((isNew ? campaignName : route!.campaign_name) ?? '');
+                        }
+                    }}
+                    aria-label={t('google.routes.listLabel')}
+                >
+                    {(isNew || !current) && (
+                        <option value="">
+                            {isNew
+                                ? t('google.routes.chooseList')
+                                : t('google.routes.unmappedOption', { list: mainName ?? '' })}
+                        </option>
+                    )}
+                    <option value={mainAudienceId}>
+                        {t('google.routes.mainListOption', { list: mainName ?? '' })}
+                    </option>
+                    {lists
+                        .filter((l) => l.id !== mainAudienceId)
+                        .map((l) => (
+                            <option key={l.id} value={l.id}>
+                                {l.name}
+                            </option>
+                        ))}
+                    <option value={CREATE_LIST}>{t('google.routes.createListOption')}</option>
+                </select>
+                {!isNew && route!.lead_count === 0 && (
+                    <button
+                        onClick={() => remove()}
+                        disabled={isRemoving}
+                        className="text-neutral-400 hover:text-danger-600 disabled:opacity-50"
+                        title={t('google.routes.remove')}
+                    >
+                        <Trash className="size-4" />
+                    </button>
+                )}
+            </div>
+
+            {creating && (
+                <div className="grid gap-2 rounded-md bg-neutral-50 p-2.5 sm:grid-cols-2">
+                    <div className="space-y-1">
+                        <Label className="text-xs">{t('google.routes.newListName')}</Label>
+                        <Input
+                            value={newListName}
+                            placeholder={t('google.routes.newListNamePlaceholder')}
+                            onChange={(e) => setNewListName(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">{t('campaignTypeFilter.label', { term })}</Label>
+                        <select
+                            className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                            value={newListType}
+                            onChange={(e) => setNewListType(e.target.value)}
+                        >
+                            <option value="">{t('google.routes.sameTypeAsMain')}</option>
+                            {typeOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <p className="text-caption text-neutral-500 sm:col-span-2">
+                        {t('google.routes.newListHint')}
+                    </p>
+                </div>
+            )}
+
+            {dirty && (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    {canMove ? (
+                        <label className="flex items-center gap-2 text-xs text-neutral-700">
+                            <input
+                                type="checkbox"
+                                checked={moveExisting}
+                                onChange={(e) => setMoveExisting(e.target.checked)}
+                            />
+                            {t('google.routes.moveExisting', { count: route!.lead_count })}
+                        </label>
+                    ) : (
+                        <span />
+                    )}
+                    <div className="flex gap-2">
+                        {!isNew && (
+                            <MyButton buttonType="secondary" scale="small" onClick={reset}>
+                                {t('google.routes.cancel')}
+                            </MyButton>
+                        )}
+                        <MyButton
+                            buttonType="primary"
+                            scale="small"
+                            onClick={() => save()}
+                            disable={
+                                isPending ||
+                                (creating && !newListName.trim()) ||
+                                (isNew && !selection && !campaignName.trim())
+                            }
+                        >
+                            {isPending
+                                ? t('google.saving')
+                                : isNew
+                                  ? t('google.routes.add')
+                                  : t('google.routes.save')}
+                        </MyButton>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Campaign → lead list routing. One Google lead form usually runs in several
+ * campaigns; each campaign can send its leads to its own list (with that list's
+ * workflows and counsellors). Campaigns without a list go to the main list, so a
+ * new campaign never loses a lead.
+ */
+function GoogleCampaignRoutes({
+    connector,
+    audiences,
+}: {
+    connector: ConnectorListItem;
+    audiences: AudienceOption[];
+}) {
+    const { t } = useTranslation('settingsIntegration');
+    const queryClient = useQueryClient();
+    const { data, isLoading } = useQuery({
+        queryKey: campaignRoutesQueryKey(connector.id),
+        queryFn: () => fetchCampaignRoutes(connector.id),
+    });
+    const { mutate: toggleAutoLists, isPending: isTogglingAutoLists } = useMutation({
+        mutationFn: (enabled: boolean) => setCampaignAutoLists(connector.id, enabled),
+        onSuccess: (result: CampaignRoutes) => {
+            queryClient.setQueryData(campaignRoutesQueryKey(connector.id), result);
+            toast.success(
+                t(
+                    result.auto_create_lists
+                        ? 'google.routes.autoListsOn'
+                        : 'google.routes.autoListsOff'
+                )
+            );
+        },
+        onError: (err) => toast.error(apiErrorMessage(err, t('google.routes.saveError'))),
+    });
+    const mainAudienceId = data?.main_audience_id ?? connector.audienceId;
+    const mainName = audiences.find((a) => a.id === mainAudienceId)?.name ?? '';
+    const mainType = audiences.find((a) => a.id === mainAudienceId)?.campaignType?.trim();
+    const routes = data?.routes ?? [];
+    // Leads can only be routed to a live list of the main list's type (Google lists
+    // only, not every website/Facebook list of the institute). A list a campaign is
+    // already routed to stays listed so the row still shows it.
+    const mappedIds = new Set(routes.map((r) => r.audience_id).filter(Boolean));
+    const activeLists = audiences.filter((a) => !a.status || a.status === 'ACTIVE');
+    const sameType = new Set(
+        filterByCampaignTypes(activeLists, mainType ? [mainType] : []).map((a) => a.id)
+    );
+    const lists = activeLists.filter(
+        (a) => sameType.has(a.id) || a.id === mainAudienceId || mappedIds.has(a.id)
+    );
+
+    return (
+        <div className="space-y-1.5">
+            <p className="text-xs font-medium text-neutral-500">{t('google.routes.heading')}</p>
+            <p className="text-caption text-neutral-500">
+                {t('google.routes.hint', { list: mainName })}
+            </p>
+            {data && (
+                <label className="flex items-start gap-2.5 rounded-md border bg-neutral-50 p-2.5">
+                    <Switch
+                        checked={data.auto_create_lists}
+                        disabled={isTogglingAutoLists}
+                        onCheckedChange={(checked) => toggleAutoLists(checked)}
+                        aria-label={t('google.routes.autoListsLabel')}
+                    />
+                    <span className="space-y-0.5">
+                        <span className="block text-sm font-medium text-neutral-800">
+                            {t('google.routes.autoListsLabel')}
+                        </span>
+                        <span className="block text-caption text-neutral-500">
+                            {t('google.routes.autoListsHint')}
+                        </span>
+                    </span>
+                </label>
+            )}
+            {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                    <CircleNotch className="size-4 animate-spin" />
+                    {t('activeConnectors.loading')}
+                </div>
+            ) : (
+                <div className="divide-y rounded-md border">
+                    {routes.length === 0 && (
+                        <p className="p-2.5 text-caption text-neutral-500">
+                            {t('google.routes.empty')}
+                        </p>
+                    )}
+                    {routes.map((r) => (
+                        <CampaignRouteRow
+                            key={r.campaign_id}
+                            connectorId={connector.id}
+                            route={r}
+                            mainAudienceId={mainAudienceId}
+                            lists={lists}
+                        />
+                    ))}
+                    <div className="bg-neutral-50/50">
+                        <p className="px-2.5 pt-2.5 text-caption font-medium text-neutral-600">
+                            {t('google.routes.addHeading')}
+                        </p>
+                        <CampaignRouteRow
+                            connectorId={connector.id}
+                            route={null}
+                            mainAudienceId={mainAudienceId}
+                            lists={lists}
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 const GOOGLE_SETUP_DIALOG_CLASS = 'flex max-h-[90vh] w-[95vw] max-w-2xl flex-col'; // design-lint-ignore: viewport-bounded so the guide scrolls on short screens
 
 /**
@@ -902,11 +1445,13 @@ const GOOGLE_SETUP_DIALOG_CLASS = 'flex max-h-[90vh] w-[95vw] max-w-2xl flex-col
 export function GoogleSetupDialog({
     connector,
     audienceName,
+    audiences,
     open,
     onOpenChange,
 }: {
     connector: ConnectorListItem | null;
     audienceName: string | undefined;
+    audiences: AudienceOption[];
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
@@ -933,6 +1478,7 @@ export function GoogleSetupDialog({
                         </div>
                     ) : (
                         <div className="space-y-4">
+                            <GoogleConnectorName connector={connector} />
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <CopyableValue
                                     label={t('google.webhookUrlLabel')}
@@ -947,6 +1493,7 @@ export function GoogleSetupDialog({
                                 </p>
                                 <GoogleDeliveryStatus connector={connector} />
                             </div>
+                            <GoogleCampaignRoutes connector={connector} audiences={audiences} />
                             <div className="space-y-1">
                                 <p className="text-xs font-medium text-neutral-500">
                                     {t('google.troubleshootHeading')}
@@ -974,6 +1521,7 @@ export function GoogleSetupDialog({
 function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void }) {
     const { t } = useTranslation('settingsIntegration');
     const [audienceId, setAudienceId] = useState('');
+    const [name, setName] = useState('');
     const instituteId = getCurrentInstituteId() ?? '';
     const { data: audiences = [] } = useAudienceList(instituteId);
 
@@ -984,11 +1532,13 @@ function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void
                 vendor: 'GOOGLE_LEAD_ADS',
                 instituteId,
                 audienceId,
+                platformFormName: name.trim() || undefined,
                 producesSourceType: 'GOOGLE_ADS',
             }),
         onSuccess: (result) => {
             toast.success(result.message);
             setAudienceId('');
+            setName('');
             onCreated(result.connector_id);
         },
         onError: () => toast.error(t('google.saveError')),
@@ -1004,6 +1554,14 @@ function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void
                     audienceLabel={t('google.audienceLabel')}
                     audiencePlaceholder={t('google.selectAudiencePlaceholder')}
                 />
+                <div className="space-y-1">
+                    <Label className="text-xs">{t('google.connectorNameLabel')}</Label>
+                    <Input
+                        value={name}
+                        placeholder={t('google.connectorNamePlaceholder')}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+                </div>
             </div>
             <div className="rounded-md bg-neutral-50 p-3">
                 <p className="mb-1.5 text-xs font-medium text-neutral-600">
@@ -1721,6 +2279,7 @@ export default function IntegrationSettings() {
                         ? audiences.find((a) => a.id === googleSetupConnector.audienceId)?.name
                         : undefined
                 }
+                audiences={audiences}
                 open={!!googleSetupId}
                 onOpenChange={(o) => {
                     if (!o) setGoogleSetupId(null);

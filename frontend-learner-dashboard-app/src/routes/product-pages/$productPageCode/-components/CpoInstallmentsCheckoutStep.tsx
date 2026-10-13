@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { enrollCpoForProductPage } from '../-services/product-page-service';
+import { enrollCpoForProductPage, handleGetProductPage } from '../-services/product-page-service';
+import { checkoutErrorOf } from '../-utils/checkout-error';
 import {
     fetchCpoSchedule,
     fetchCpoDues,
@@ -16,6 +18,11 @@ import { ArrowLeft, SpinnerGap, ShieldCheck } from '@phosphor-icons/react';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 import type { FieldValue } from '../-types/product-page-types';
 import { resolveLearnerIdentity } from '../-utils/learner-identity';
+import {
+    clearPurchasedFromSiteCart,
+    isPaidCpoPayment,
+    notePendingSiteCartPurchase,
+} from '../-utils/site-cart-housekeeping';
 
 interface CpoInstallmentsCheckoutStepProps {
     pageData: ProductPageData;
@@ -25,6 +32,9 @@ interface CpoInstallmentsCheckoutStepProps {
     onBack: () => void;
     onSuccess: () => void;
 }
+
+/** A failure this step explains itself, in words already translated. */
+class CpoStepError extends Error {}
 
 export const CpoInstallmentsCheckoutStep = ({
     pageData,
@@ -65,6 +75,8 @@ export const CpoInstallmentsCheckoutStep = ({
             selectedPsOptionIds.includes(m.ps_invite_payment_option_id) &&
             m.payment_option_type?.toUpperCase() === 'CPO'
     );
+    // What this checkout enrols — leaves the site-wide cart once it succeeds.
+    const cpoSessionIds = cpoMapping?.package_session_id ? [cpoMapping.package_session_id] : [];
 
     // Same resolver the submit calls use — a label search for "name" also
     // matches "School Name", and the first MATCH is not necessarily the first
@@ -74,6 +86,33 @@ export const CpoInstallmentsCheckoutStep = ({
     );
 
     const payAmount = cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
+
+    const queryClient = useQueryClient();
+    const priceChangedMessage = t(
+        'common.priceChangedReload',
+        'The price of a course in your cart has changed. Please review your cart and try again.'
+    );
+    /**
+     * Why a payment step failed, as the combined checkout says it
+     * (checkoutErrorOf): the server's own words when they were written for the
+     * learner, else `fallback` — never the transport's "Request failed with
+     * status code …". A 409 means the plan on this page changed since it
+     * loaded (the server refuses the plan id the step sent): the page is
+     * fetched again, so a retry sends the mapping's current plan.
+     */
+    const failPayment = (err: unknown, fallback: string) => {
+        if (err instanceof CpoStepError) {
+            setPaymentError(err.message);
+            return;
+        }
+        const { message, priceChanged } = checkoutErrorOf(err, fallback, priceChangedMessage);
+        setPaymentError(message);
+        if (priceChanged) {
+            void queryClient.invalidateQueries({
+                queryKey: handleGetProductPage(pageData.code, pageData.institute_id).queryKey,
+            });
+        }
+    };
 
     // On mount: fetch the CPO installment template (before enrollment)
     useEffect(() => {
@@ -132,7 +171,7 @@ export const CpoInstallmentsCheckoutStep = ({
         }
 
         if (!currentUserId || !currentUserPlanId) {
-            throw new Error(t('cpoInstallments.enrollmentDataMissingRetryLater'));
+            throw new CpoStepError(t('cpoInstallments.enrollmentDataMissingRetryLater'));
         }
 
         // Fetch actual SFP rows to get their IDs
@@ -142,7 +181,7 @@ export const CpoInstallmentsCheckoutStep = ({
             .map((d) => d.id);
 
         if (pendingSfpIds.length === 0) {
-            throw new Error(t('cpoInstallments.noPendingInstallmentsFound'));
+            throw new CpoStepError(t('cpoInstallments.noPendingInstallmentsFound'));
         }
 
         await buildPayRequest(currentUserId, currentUserPlanId, pendingSfpIds);
@@ -176,7 +215,7 @@ export const CpoInstallmentsCheckoutStep = ({
                 }
             });
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('common.couldNotInitiatePayment'));
+            failPayment(err, t('common.couldNotInitiatePayment'));
         } finally {
             setIsProcessing(false);
         }
@@ -193,7 +232,7 @@ export const CpoInstallmentsCheckoutStep = ({
             // Read from ref — always up-to-date even if this closure is stale
             const enrolled = enrolledDataRef.current;
             if (!enrolled?.userId || !enrolled?.userPlanId) {
-                throw new Error(t('cpoInstallments.enrollmentDataMissingRetry'));
+                throw new CpoStepError(t('cpoInstallments.enrollmentDataMissingRetry'));
             }
             const sfpDues = await fetchCpoDues({ userId: enrolled.userId, userPlanId: enrolled.userPlanId });
             const pendingSfpIds = sfpDues
@@ -212,9 +251,10 @@ export const CpoInstallmentsCheckoutStep = ({
                 name: userName,
                 razorpayPaymentData: razorpayData,
             });
+            void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
             onSuccess();
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('cpoInstallments.paymentConfirmationFailed'));
+            failPayment(err, t('cpoInstallments.paymentConfirmationFailed'));
         } finally {
             setIsProcessing(false);
         }
@@ -238,13 +278,32 @@ export const CpoInstallmentsCheckoutStep = ({
                 });
 
                 if (result?.payment_url) {
+                    // order_id is the payment log the gateway settles.
+                    await notePendingSiteCartPurchase({
+                        paymentLogId: result?.order_id,
+                        instituteIds: [pageData.institute_id],
+                        packageSessionIds: cpoSessionIds,
+                    });
                     window.location.href = result.payment_url;
                 } else {
+                    // Only a confirmed payment clears the site cart. Anything
+                    // else (a gateway still settling, or one whose payment page
+                    // this step does not open) is noted against its payment
+                    // log, so the course leaves the cart once it is paid.
+                    if (isPaidCpoPayment(result)) {
+                        void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
+                    } else {
+                        await notePendingSiteCartPurchase({
+                            paymentLogId: result?.order_id,
+                            instituteIds: [pageData.institute_id],
+                            packageSessionIds: cpoSessionIds,
+                        });
+                    }
                     onSuccess();
                 }
             });
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('common.genericPaymentFailed'));
+            failPayment(err, t('common.genericPaymentFailed'));
         } finally {
             setIsProcessing(false);
         }

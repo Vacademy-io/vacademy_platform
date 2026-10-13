@@ -14,11 +14,11 @@
         },
         "outstandingFees": {
             "label": "Frais impayés",
-            "subtitle": "Dus sur les éléments en retard"
+            "subtitle": "Reste à encaisser, échéances à venir incluses"
         },
-        "overdueItems": {
-            "label": "Éléments en retard",
-            "subtitle": "Nécessite un suivi"
+        "overdueFees": {
+            "label": "Frais en retard",
+            "subtitle": "Échéance dépassée, non payés"
         },
         "classesToday": {
             "label": "{{sessions}} aujourd'hui",

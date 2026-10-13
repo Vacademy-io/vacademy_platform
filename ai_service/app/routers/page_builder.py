@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 import base64
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -38,7 +39,9 @@ from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.figma_links import FIGMA_LINK_GUIDANCE, find_figma_url, is_figma_url
 from ..services.llm_json import generate_json
+from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
 from ..services.page_audit import audit_component, audit_page, audit_reference_fidelity
 from ..utils.json_extract import extract_and_sanitize_json
@@ -47,8 +50,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/page-builder", tags=["page-builder"])
 
-# Page composition wants a strong instruction-following model; override via env.
-_DEFAULT_MODEL = os.getenv("PAGE_BUILDER_MODEL") or "anthropic/claude-sonnet-5"
+# The model comes from the 'page_builder' use case (ai_model_defaults, set in
+# the super-admin portal); a request's preferred_model still wins. This is only
+# the hard fallback for a missing row / unreachable DB — the platform default
+# (GLM), overridable via env for emergencies.
+_DEFAULT_MODEL = os.getenv("PAGE_BUILDER_MODEL") or GLM_DEFAULT
 _USAGE_MARKUP = Decimal("2")
 _TOOL_KEY = "page_generate"
 
@@ -64,6 +70,28 @@ _IMAGE_KEYS = {
     "thumbnail", "icontype_image", "imageurl",
 }
 _IMAGE_LIST_KEYS = {"avatars", "imagecollage", "images"}
+# Newer widgets name their art after what it is (filterSidebar.promo.screenImage,
+# heroSection coverImage, previewImageUrl…). A fixed key list let those slip past
+# BOTH the stripper here and the MCP's allow-list, so a model could hotlink any
+# URL through them. Any key ending in one of these is an image key too.
+_IMAGE_KEY_SUFFIXES = ("image", "imageurl", "src")
+
+
+def is_image_key(key: Any) -> bool:
+    """A prop key whose string value is an image URL (allow-list-keep).
+
+    THE shared rule: page_builder's stripper and the MCP's asset allow-list
+    (assistant_tools_website_edit._asset_urls_in) both call this, so a key can
+    never be stripped on one side and unrecognised on the other."""
+    if not isinstance(key, str):
+        return False
+    lk = key.lower()
+    return lk in _IMAGE_KEYS or lk.endswith(_IMAGE_KEY_SUFFIXES)
+
+
+def is_image_list_key(key: Any) -> bool:
+    """A prop key holding a list of image URLs (string items are allow-list-keep)."""
+    return isinstance(key, str) and key.lower() in _IMAGE_LIST_KEYS
 
 # Hostile URL schemes — browsers strip embedded control chars/whitespace before
 # parsing a scheme, so "java\tscript:" still fires; normalize first.
@@ -324,19 +352,21 @@ def _is_public_http_host(target: str) -> bool:
     """SSRF guard shared by site-import and image-inlining: only public
     http(s) hosts — blocks localhost / .local / private / link-local ranges."""
     try:
-        import ipaddress
         import socket
         from urllib.parse import urlparse
+
+        from ..services.safe_http import host_is_blocked_name, is_public_address
         if not target.startswith(("http://", "https://")):
             return False
         host = (urlparse(target).hostname or "").lower()
-        if not host or host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+        if host_is_blocked_name(host):
             return False
-        for info in socket.getaddrinfo(host, None):
-            ip = ipaddress.ip_address(info[4][0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-                return False
-        return True
+        # Same address rules as safe_fetch (adds CGNAT, NAT64 and v4-mapped
+        # private addresses to the old private/loopback/link-local list). This
+        # is only a PRE-check for callers that cannot pin the connection
+        # (Playwright); anything we download ourselves goes through safe_fetch.
+        infos = socket.getaddrinfo(host, None)
+        return bool(infos) and all(is_public_address(info[4][0]) for info in infos)
     except Exception:  # noqa: BLE001 — guard failure = treat as non-public
         return False
 
@@ -400,16 +430,28 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
     presigned/short-lived or served with non-image content types, which
     providers reject. SSRF-guarded. Returns (data_url, None) on success or
     (None, reason) on failure."""
+    from ..services.safe_http import WEB_PORTS, SafeFetchError, safe_fetch
     if not isinstance(url, str) or not _is_public_http_host(url):
         return None, "blocked non-public host"
     try:
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
-            resp = await client.get(url)
+        # Pinned to the validated address, every redirect hop re-checked, body
+        # capped while streaming (the pre-check above alone could be rebound).
+        try:
+            resp = await safe_fetch(
+                url, max_bytes=_MAX_INLINE_IMAGE_BYTES, timeout=12.0, total_timeout=30.0, allow_http=True,
+                allowed_ports=WEB_PORTS,  # the old fetch took any port; keep :8080 / :8443 working
+            )
+        except SafeFetchError as exc:
+            if exc.code == "too_large":
+                return None, "bad size (over limit)"
+            if exc.code in ("blocked_host", "blocked_address"):
+                return None, "blocked non-public host"
+            return None, f"fetch error: {exc.code}"
         if resp.status_code != 200:
             return None, f"http {resp.status_code}"
-        if not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
+        if not resp.content:
             return None, f"bad size {len(resp.content)}"
-        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        ctype = resp.content_type
         if not ctype.startswith("image/"):
             head = resp.content[:12]
             if head.startswith(b"\x89PNG"):
@@ -542,6 +584,12 @@ async def _capture_reference_screenshots(url: str, warnings: List[str]) -> List[
     target = (url or "").strip()
     if not target:
         return []
+    # A figma.com file opened without the owner's session is Figma's login
+    # wall: capturing it "designed" pages from a sign-in form. No server-side
+    # Figma (product decision 1) — say what works instead.
+    if is_figma_url(target):
+        warnings.append(FIGMA_LINK_GUIDANCE)
+        return []
     if not target.lower().startswith(("http://", "https://")):
         target = "https://" + target
     if not _is_public_http_host(target):
@@ -647,7 +695,10 @@ async def _resolve_inspiration_sources(body: "GeneratePageRequest", warnings: Li
     """Admin-uploaded screenshots first (they chose those deliberately), then
     the captured reference site, within the vision pass's image budget."""
     urls = [u for u in (body.inspiration_image_urls or []) if isinstance(u, str) and u]
-    if body.reference_url:
+    if body.reference_url and is_figma_url(body.reference_url):
+        # Checked before the budget so the admin learns why, not "budget full".
+        warnings.append(FIGMA_LINK_GUIDANCE)
+    elif body.reference_url:
         room = _MAX_INSPIRATION_IMAGES - len(urls)
         if room <= 0:
             warnings.append("Reference site skipped: the screenshot budget is already full")
@@ -663,6 +714,9 @@ async def _import_site(url: str) -> str:
     if not url or not url.strip():
         return ""
     target = url.strip()
+    # A Figma file link fetches Figma's login page, not anyone's copy.
+    if is_figma_url(target):
+        return ""
     if not target.startswith(("http://", "https://")):
         target = "https://" + target
     # SSRF guard: only public http(s) hosts — block localhost / link-local /
@@ -713,6 +767,16 @@ async def _import_site(url: str) -> str:
         return ""
 
 
+def _vision_models(db) -> tuple[str, List[str]]:
+    """The page_builder chain for the two vision passes. They used to ride the
+    platform env default through ApiKeyResolver, so a super-admin change to the
+    page_builder use case never reached them. The use-case default is passed
+    as an explicit model (with its chain for failover); a request's
+    preferred_model is deliberately NOT applied here — a text model an admin
+    picked for composition may not read images."""
+    return resolve_models(db, "page_builder", hard_fallback=_DEFAULT_MODEL)
+
+
 async def _describe_attachments(
     image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]
 ) -> str:
@@ -741,6 +805,7 @@ async def _describe_attachments(
         attachments = [{"type": "image", "url": u} for u in urls]
 
     client = ChatLLMClient(ApiKeyResolver(db))
+    primary, fallbacks = _vision_models(db)
     messages = [{
         "role": "user",
         "content": (
@@ -771,7 +836,8 @@ async def _describe_attachments(
     }]
     try:
         resp = await client.chat_completion(
-            messages, temperature=0.2, max_tokens=2200, institute_id=institute_id, user_id=user_id
+            messages, temperature=0.2, max_tokens=2200, institute_id=institute_id, user_id=user_id,
+            model=primary, fallback_models=fallbacks,
         )
         return _clean_string((resp.get("content") or "").strip())
     except Exception as e:  # noqa: BLE001 — never block the edit on the vision pass
@@ -801,6 +867,7 @@ async def _analyze_inspiration(
     from ..services.api_key_resolver import ApiKeyResolver
 
     client = ChatLLMClient(ApiKeyResolver(db))
+    primary, fallbacks = _vision_models(db)
     urls = [u for u in image_urls if isinstance(u, str) and u][:_MAX_INSPIRATION_IMAGES]
     if not urls:
         return {}
@@ -879,7 +946,8 @@ async def _analyze_inspiration(
     resp = await client.chat_completion(
         # Room for a section blueprint across up to six screenshots; a truncated
         # reply loses the tail of `sections`, which is the part that matters.
-        messages, temperature=0.2, max_tokens=2600, institute_id=institute_id, user_id=user_id
+        messages, temperature=0.2, max_tokens=2600, institute_id=institute_id, user_id=user_id,
+        model=primary, fallback_models=fallbacks,
     )
     return _coerce_inspiration_spec(resp.get("content") or "")
 
@@ -1089,6 +1157,12 @@ _FONT_STACKS: Dict[str, str] = {
     "Rubik": "Rubik, sans-serif",
     "Quicksand": "Quicksand, sans-serif",
     "Baloo 2": '"Baloo 2", sans-serif',
+    # Devanagari faces (mirrors catalogue-fonts.ts) for Hindi / Marathi sites.
+    "Noto Sans Devanagari": '"Noto Sans Devanagari", sans-serif',
+    "Mukta": "Mukta, sans-serif",
+    "Hind": "Hind, sans-serif",
+    "Noto Serif Devanagari": '"Noto Serif Devanagari", serif',
+    "Tiro Devanagari Hindi": '"Tiro Devanagari Hindi", serif',
 }
 
 # One compact, VALID exemplar page showing the premium vocabulary in-schema —
@@ -1755,6 +1829,68 @@ _NO_COMMERCE_RULE = (
 )
 
 
+#: Pattern components that are page sections the composer may emit (header /
+#: footer are site chrome, globalSettings patterns are site settings).
+_PATTERN_CARD_SKIP = frozenset({"header", "footer", "globalSettings"})
+
+_PATTERN_CARDS_RULES = (
+    "## DESIGN PATTERNS — opt-in looks of our blocks (use one ONLY when the REFERENCE DESIGN shows it)\n"
+    "Each card is a named look of a component in the vocabulary: what it looks like, when NOT to use it, and the props "
+    "that produce it (merge `props` into that component's props). When a reference section matches a card, build it "
+    "from the card instead of the nearest generic look — e.g. a course grid of text-led cards with a stream label and "
+    "format chips is courseCatalog with render.cardStyle 'editorial', not a default grid. Several courseCatalog cards "
+    "combine into ONE courseCatalog: deep-merge their props (objects key by key, arrays concatenated). Text in "
+    "<angle brackets> is a placeholder: write your own copy from the brief, or leave the field empty. Every id "
+    "(libraryId, audienceId, productPageCode, course ids) stays EMPTY — the admin links them in the editor. Never "
+    "write numbers the widgets compute live (stats kinds, counts, prices). A card the reference does not show stays "
+    "off: the block's ordinary look is the default."
+)
+
+
+_CARD_IMAGE_PLACEHOLDER = "<image: a PROVIDED IMAGES url, 'gen:<prompt>' when IMAGE GENERATION is on, or empty>"
+_CARD_ROUTE_PLACEHOLDER = "<route: of a page this site has, or an #anchor on this page>"
+
+
+def _composer_card_props(value: Any, key: str = "") -> Any:
+    """
+    A pattern's ``minimal`` props as the composer may use them. The registry's
+    placeholders are written for MCP callers (website(list_media),
+    website_edit(link_lead_form)), tools this composer does not have, and its
+    example routes (/login, /learning-paths) may not exist on this site.
+    """
+    if isinstance(value, dict):
+        return {k: _composer_card_props(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_composer_card_props(v, key) for v in value]
+    if not isinstance(value, str):
+        return value
+    if value.startswith("<") and ("website(" in value or "website_edit(" in value):
+        if "image" in value.lower():
+            return _CARD_IMAGE_PLACEHOLDER
+        name = value[1:].split(":", 1)[0].strip()
+        return f"<{name}: leave empty — the admin picks it in the editor>"
+    if key == "target" and value.startswith("/"):
+        return _CARD_ROUTE_PLACEHOLDER
+    return value
+
+
+def _pattern_cards_block(catalog: Dict[str, Any], vocab_types: set) -> str:
+    """Compact pattern cards for the components this page may contain, or "" when the catalog has none."""
+    cards = []
+    for p in catalog.get("patterns") or []:
+        if not isinstance(p, dict) or not p.get("id"):
+            continue
+        component = p.get("component")
+        if component in _PATTERN_CARD_SKIP or component not in vocab_types:
+            continue
+        card = {"id": p["id"], "component": component, "looks": p.get("looksLike"), "avoid": p.get("avoidWhen"),
+                "props": _composer_card_props(p.get("minimal"))}
+        cards.append({k: v for k, v in card.items() if v not in (None, "", [], {})})
+    if not cards:
+        return ""
+    return _PATTERN_CARDS_RULES + "\n" + json.dumps(cards, ensure_ascii=False)
+
+
 def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration: Any = None, site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     parts.append(
@@ -1820,6 +1956,11 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
             theme_locked=bool(fixed_global),
             locked_surface=_derive_dark_surface((fixed_global or {}).get("theme")) if fixed_global else None,
         ))
+        # Only with a reference design: the cards name looks to MATCH, so a
+        # page composed from a brief alone is prompted exactly as before.
+        cards = _pattern_cards_block(catalog, {c.get("type") for c in vocab})
+        if cards:
+            parts.append(cards)
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
 
@@ -1903,13 +2044,13 @@ def clean_urls(node: Any, allowed_urls: set, warnings: List[str]) -> Any:
             lk = k.lower()
             # Image keys: pure allowlist-keep — empty, or exactly a provided
             # URL; everything else (data:, //host, HTTP, hallucinated) stripped.
-            if lk in _IMAGE_KEYS and isinstance(v, str):
+            if is_image_key(k) and isinstance(v, str):
                 if v and v not in allowed_urls:
                     warnings.append(f"Stripped unknown image URL from '{k}'")
                     out[k] = ""
                 else:
                     out[k] = v
-            elif lk in _IMAGE_LIST_KEYS and isinstance(v, list):
+            elif is_image_list_key(k) and isinstance(v, list):
                 kept = [u for u in v if not (isinstance(u, str) and u and u not in allowed_urls)]
                 if len(kept) != len(v):
                     warnings.append(f"Stripped unknown image URL(s) from '{k}'")
@@ -2285,7 +2426,104 @@ def coerce_hex_color(value: Any) -> Optional[str]:
     return None
 
 
-def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+# globalSettings.theme.palette: named hex colours + applyToTokens. The renderer
+# reads 16 known names (catalogue-palette.ts PALETTE_KEYS) and accepts #rgb or
+# #rrggbb in any case; the editor's palette card also shows other authored
+# names, so any identifier-like key with a hex value is kept AS AUTHORED (no
+# re-casing — a round trip must not rewrite the admin's values).
+_PALETTE_HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+_PALETTE_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
+_PALETTE_MAX_KEYS = 40
+# globalSettings.theme.contentMaxWidth: px of content, the range the renderer
+# honours (resolveContentMaxWidth).
+_CONTENT_MAX_WIDTH_RANGE = (320, 2400)
+
+
+def _clean_palette(raw: Any) -> Dict[str, Any]:
+    """The valid entries of a palette object ({} for anything else)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if len(out) >= _PALETTE_MAX_KEYS:
+            break
+        if key == "applyToTokens":
+            if isinstance(value, bool):
+                out[key] = value
+        elif isinstance(key, str) and _PALETTE_KEY_RE.match(key) and isinstance(value, str):
+            v = value.strip()
+            if _PALETTE_HEX_RE.match(v):
+                out[key] = v
+    return out
+
+
+def _clean_content_max_width(raw: Any) -> Optional[int]:
+    """A content width in px the renderer honours, else None.
+
+    Same rule as resolveContentMaxWidth (and the editor's palette card): round,
+    then 320–2400 or nothing. NOT a clamp — the renderer ignores 3000 and
+    shows the default width, so clamping it to 2400 would visibly narrow the
+    page on an unrelated edit."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = float(raw.strip())
+        except ValueError:
+            return None
+    if not isinstance(raw, (int, float)) or raw != raw or raw in (float("inf"), float("-inf")):
+        return None
+    px = int(math.floor(raw + 0.5))  # Math.round, not banker's rounding
+    lo, hi = _CONTENT_MAX_WIDTH_RANGE
+    return px if lo <= px <= hi else None
+
+
+def _carry_theme_extras(
+    theme_in: Dict[str, Any], base_theme: Dict[str, Any], allow_new: bool = True
+) -> Dict[str, Any]:
+    """theme.palette / theme.contentMaxWidth for the clamp's output.
+
+    Incoming wins over base, per colour for the palette (so "change the accent"
+    keeps the other 15). An explicit null clears the key, the same contract as
+    primaryColor; a null colour inside an incoming palette removes that colour.
+
+    `allow_new=False` is for input that is the MODEL's own proposal (unpinned
+    generation, the chrome assistant): it may edit a palette / width the site
+    already has, but never add one to a site that has none — both are opt-in."""
+    out: Dict[str, Any] = {}
+
+    base_palette = _clean_palette(base_theme.get("palette"))
+    if "palette" in theme_in and theme_in.get("palette") is None:
+        palette: Dict[str, Any] = {}
+    else:
+        palette = dict(base_palette)
+        incoming = theme_in.get("palette")
+        if not allow_new and not base_palette:
+            incoming = None
+        if isinstance(incoming, dict):
+            for key, value in incoming.items():
+                if value is None:
+                    palette.pop(key, None)
+            palette.update(_clean_palette(incoming))
+    if palette:
+        out["palette"] = palette
+
+    base_width = _clean_content_max_width(base_theme.get("contentMaxWidth"))
+    if "contentMaxWidth" in theme_in and (allow_new or base_width is not None or theme_in.get("contentMaxWidth") is None):
+        width = _clean_content_max_width(theme_in.get("contentMaxWidth"))
+        if width is None and theme_in.get("contentMaxWidth") is not None:
+            # Junk from the model: keep the site's own width rather than drop it.
+            width = base_width
+    else:
+        width = base_width
+    if width is not None:
+        out["contentMaxWidth"] = width
+    return out
+
+
+def _coerce_global_settings(
+    raw: Any, base: Optional[Dict[str, Any]] = None, *, model_proposed: bool = False
+) -> Optional[Dict[str, Any]]:
     """Clamp the model's globalSettings to valid values (the theme presets,
     atmospheres, fonts, etc. the renderers actually support). Font label OR a
     known stack maps to a stack; anything else falls back to Inter.
@@ -2294,7 +2532,11 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
     back to the base instead of to a hardcoded default — required by the chrome
     editor, whose prompt says "include ONLY the keys you actually changed": with
     no base, "switch the theme to ocean" also reset atmosphere, heading scale,
-    radius and the brand color to defaults."""
+    radius and the brand color to defaults.
+
+    `model_proposed=True` marks `raw` as the model's own output (not the
+    caller's pinned settings): it may then change a palette / content width
+    the base already has, but cannot introduce either."""
     if not isinstance(raw, dict):
         return None
     theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
@@ -2348,6 +2590,15 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
             theme_out["primaryColor"] = primary
     elif coerce_hex_color(base_theme.get("primaryColor")):
         theme_out["primaryColor"] = coerce_hex_color(base_theme.get("primaryColor"))
+
+    # Opt-in site palette + content width (learner -utils/catalogue-palette.ts).
+    # The clamp above rebuilds `theme` from scratch, so these were silently
+    # DROPPED by every path that runs it: the wizard's pinned theme (applied
+    # over the site's theme) and the chrome assistant's merge both wiped a
+    # 16-colour palette on "add a page" or "make the corners sharper". Carry
+    # them through (incoming wins, base fills in), validated the way the
+    # renderer reads them; a site without either still gets neither.
+    theme_out.update(_carry_theme_extras(theme_in, base_theme, allow_new=not model_proposed))
 
     return {
         "theme": theme_out,
@@ -2581,7 +2832,9 @@ def _sanitize_page(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
 
-    global_settings = _coerce_global_settings(data.get("globalSettings")) if isinstance(data, dict) else None
+    global_settings = (
+        _coerce_global_settings(data.get("globalSettings"), model_proposed=True) if isinstance(data, dict) else None
+    )
     page = data.get("page") if isinstance(data, dict) else None
     if page is None and isinstance(data, dict) and "components" in data:
         page = data  # model returned the page object directly
@@ -2738,7 +2991,10 @@ async def _compose_one_page(
             logger.warning("[page-builder] inspiration analysis skipped: %s", e)
 
     site_corpus = ""
-    if body.source_url:
+    if body.source_url and is_figma_url(body.source_url):
+        if FIGMA_LINK_GUIDANCE not in pre_warnings:
+            pre_warnings.append(FIGMA_LINK_GUIDANCE)
+    elif body.source_url:
         try:
             site_corpus = await _import_site(body.source_url)
         except Exception as e:  # noqa: BLE001
@@ -3098,6 +3354,10 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
     # with image generation off the model reached for the only URL it had and
     # put the whole template sheet in the hero. Keep it out of the allowlist.
     allowed_urls = ({i.url for i in req.images} - (mockup_urls or set())) | (extra_allowed or set())
+    # Images ALREADY on the page are trusted (the variants endpoint uses the
+    # same rule): a patch that re-sends a section's object — say the whole
+    # filterSidebar with its promo.screenImage — must not blank its own art.
+    allowed_urls |= _collect_page_image_urls(req.page, set()) - (mockup_urls or set())
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
@@ -3360,10 +3620,9 @@ def _collect_page_image_urls(node: Any, out: set, depth: int = 0) -> set:
         return out
     if isinstance(node, dict):
         for k, v in node.items():
-            lk = k.lower()
-            if lk in _IMAGE_KEYS and isinstance(v, str) and v:
+            if is_image_key(k) and isinstance(v, str) and v:
                 out.add(v)
-            elif lk in _IMAGE_LIST_KEYS and isinstance(v, list):
+            elif is_image_list_key(k) and isinstance(v, list):
                 out.update(u for u in v if isinstance(u, str) and u)
             else:
                 _collect_page_image_urls(v, out, depth + 1)
@@ -3433,8 +3692,8 @@ def _build_variants_prompt(
         parts.append(
             f"The current section is a '{target.get('type')}'. Prefer keeping that type; switch to a "
             "different component only when the instruction genuinely calls for a different kind of "
-            "section, and never to header, footer, productPageOffer or folderBrowser (an admin must "
-            "bind those to a product page / folder library by hand, so a generated one renders as nothing)."
+            "section, and never to header, footer, productPageOffer, folderBrowser or learningPath (an admin "
+            "must bind those to a product page / folder library by hand, so a generated one renders as nothing)."
         )
     parts.append(_VOCAB_HEADER + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
@@ -3556,7 +3815,7 @@ async def generate_section_variants(
             continue
         # productPageOffer needs an admin-chosen product page, so a generated
         # one is guaranteed to render as nothing (audit rule 'offer-unbound').
-        if comp_in.get("type") in ("productPageOffer", "folderBrowser") and comp_in.get("type") != target.get("type"):
+        if comp_in.get("type") in ("productPageOffer", "folderBrowser", "learningPath") and comp_in.get("type") != target.get("type"):
             rejected += 1
             continue
         # Fresh seen_ids per variant: they are alternatives, not siblings, so
@@ -3618,6 +3877,7 @@ _FONT_FAMILIES = {
     "Inter", "Roboto", "Open Sans", "Poppins", "Lato", "Montserrat", "Mulish", "Figtree",
     "Outfit", "Nunito", "Space Grotesk", "Playfair Display", "Fraunces", "Newsreader",
     "Lora", "DM Serif Display", "Rubik", "Quicksand", "Baloo 2",
+    "Noto Sans Devanagari", "Mukta", "Hind", "Noto Serif Devanagari", "Tiro Devanagari Hindi",
 }
 _ATMOSPHERES = {"flat", "soft", "mesh", "aurora"}
 _INTENSITIES = {"subtle", "medium", "bold"}
@@ -3641,6 +3901,38 @@ def _theme_value_reference() -> str:
         f"- motion.personality: {sorted(_MOTIONS)}\n"
         f"- fonts.family (body) and fonts.headingFamily (headings): {sorted(_FONT_FAMILIES)}"
     )
+
+
+#: globalSettings.theme.palette keys (learner -utils/catalogue-palette.ts PALETTE_KEYS).
+_PATCH_PALETTE_KEYS = (
+    "text", "body", "muted", "muted2", "primary", "gold", "accent", "olive", "cream", "canvas",
+    "sand", "border", "borderStrong", "accentOnDark", "bodyOnDark", "outline",
+)
+#: globalSettings.theme.contentMaxWidth range (resolveContentMaxWidth).
+_PATCH_WIDTH_MIN, _PATCH_WIDTH_MAX = 320, 2400
+
+
+def _validate_palette_patch(raw: Any, warnings: List[str]) -> Dict[str, Any]:
+    """A theme.palette PATCH: known keys with a hex value (None removes one) and applyToTokens."""
+    if not isinstance(raw, dict):
+        warnings.append("Ignored theme.palette — not an object of named colours")
+        return {}
+    out: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if key == "applyToTokens":
+            if isinstance(value, bool) or value is None:
+                out[key] = value
+            else:
+                warnings.append("Ignored theme.palette.applyToTokens — not true/false")
+        elif key not in _PATCH_PALETTE_KEYS:
+            warnings.append(f"Ignored unknown theme.palette key '{key}'")
+        elif value is None:
+            out[key] = None
+        elif coerce_hex_color(value):
+            out[key] = coerce_hex_color(value)
+        else:
+            warnings.append(f"Ignored theme.palette.{key} — not a hex colour")
+    return out
 
 
 def _validate_global_patch(patch: Dict[str, Any], warnings: List[str]) -> Dict[str, Any]:
@@ -3681,6 +3973,24 @@ def _validate_global_patch(patch: Dict[str, Any], warnings: List[str]) -> Dict[s
             }
             if atm_out:
                 theme_out["atmosphere"] = atm_out
+        # Opt-in design tokens (learner -utils/catalogue-palette.ts): the named
+        # palette and the content column width. Kept only when valid; the
+        # merge (applyOps / website_edit) folds a palette in key by key.
+        if "palette" in theme_in:
+            palette_out = _validate_palette_patch(theme_in.get("palette"), warnings)
+            if palette_out:
+                theme_out["palette"] = palette_out
+        if "contentMaxWidth" in theme_in:
+            width = theme_in.get("contentMaxWidth")
+            if width is None:
+                theme_out["contentMaxWidth"] = None  # explicit reset to the default width
+            elif (not isinstance(width, bool) and isinstance(width, (int, float)) and width == int(width)
+                  and _PATCH_WIDTH_MIN <= int(width) <= _PATCH_WIDTH_MAX):
+                theme_out["contentMaxWidth"] = int(width)
+            else:
+                warnings.append(
+                    f"Ignored theme.contentMaxWidth — not a whole px value from {_PATCH_WIDTH_MIN} to {_PATCH_WIDTH_MAX}"
+                )
         if theme_out:
             out["theme"] = theme_out
 
@@ -4046,7 +4356,9 @@ async def generate_site(
             shared_global = gs
         page["route"] = pt if pt != "homepage" else (page.get("route") or "home")
         pages.append(SitePageOut(page_type=pt, page=page))
-        warnings.extend(w)
+        # The Figma guidance can come from the shared reference AND the
+        # homepage's source_url — say it once.
+        warnings.extend(x for x in w if not (x == FIGMA_LINK_GUIDANCE and x in warnings))
 
     if not pages:
         raise HTTPException(status_code=502, detail="Site generation produced no pages — please retry.")
@@ -4128,7 +4440,10 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "color/style direction (including anything learned from uploaded logo/inspiration), and which "
         "uploaded photos exist. Be specific — the composer only knows what the brief says. Keep the "
         "brief under 350 words — dense, no filler.\n"
-        "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead)."
+        "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead).\n"
+        "FIGMA LINKS: nothing here can open a figma.com link (it shows Figma's sign-in page). If the admin "
+        f"shares one, say: \"{FIGMA_LINK_GUIDANCE}\" and ask for screenshots of the frames "
+        "(request_upload='inspiration'). Never claim to have seen a Figma design."
     )
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
@@ -4157,6 +4472,52 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "prices\"), say so explicitly in `brief` — the composer omits all commerce when it reads that."
     )
     return "\n\n".join(parts)
+
+
+def _latest_user_figma_link(history: List[IntakeTurn]) -> Optional[str]:
+    """The figma.com link in the admin's LATEST message, if any."""
+    for turn in reversed(history):
+        if turn.role != "assistant":
+            return find_figma_url(turn.content or "")
+    return None
+
+
+_FIGMA_SCREENSHOT_ASK = "Could you upload screenshots of the frames you want the page to follow?"
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _drop_figma_sentences(text: str) -> str:
+    """``text`` without any sentence that mentions Figma — a model that ignored
+    the FIGMA LINKS rule ("I've looked at your Figma design…", "match the Figma
+    file") must not reach the admin or the composer. Line breaks are kept."""
+    lines = []
+    for line in (text or "").splitlines():
+        kept = [s for s in _SENTENCE_SPLIT_RE.split(line) if "figma" not in s.lower()]
+        lines.append(" ".join(kept).rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def _latest_user_has_images(history: List[IntakeTurn]) -> bool:
+    """The admin's LATEST message came with uploaded images (e.g. the frames' screenshots)."""
+    for turn in reversed(history):
+        if turn.role != "assistant":
+            # Only https uploads are sent to the model (see intake_turn's attachments).
+            return any(isinstance(u, str) and u.startswith("https://") for u in turn.image_urls or [])
+    return False
+
+
+def _apply_figma_link_guard(reply: str, request_upload: Optional[str],
+                            screenshots_attached: bool = False) -> tuple[str, Optional[str]]:
+    """The admin just pasted a Figma link: the reply opens with the guidance,
+    keeps only the model's sentences that don't talk about Figma (it cannot
+    have seen the design), asks for screenshots when nothing else is left, and
+    the screenshot uploader opens. When the same message already carries
+    screenshots, the model HAS seen the frames: only the guidance is added."""
+    if screenshots_attached:
+        rest = reply.replace(FIGMA_LINK_GUIDANCE, "").strip()
+        return (f"{FIGMA_LINK_GUIDANCE}\n\n{rest}" if rest else FIGMA_LINK_GUIDANCE), request_upload
+    rest = _drop_figma_sentences(reply.replace(FIGMA_LINK_GUIDANCE, ""))
+    return f"{FIGMA_LINK_GUIDANCE}\n\n{rest or _FIGMA_SCREENSHOT_ASK}", request_upload or "inspiration"
 
 
 def _parse_intake_json(raw: str) -> Dict[str, Any]:
@@ -4231,6 +4592,14 @@ async def intake_turn(
             msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(atts)} image(s)]").strip()
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
+    figma_link = _latest_user_figma_link(body.history)
+    figma_shots = bool(figma_link) and _latest_user_has_images(body.history)
+    if figma_link:
+        messages[-1]["content"] = (
+            str(messages[-1].get("content") or "")
+            + "\n\n(The link above is a Figma file. It cannot be opened here — follow the FIGMA LINKS rule."
+            + (" The admin attached screenshots with this message: use those.)" if figma_shots else ")")
+        )
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
     # the contract inside the final user message so every turn stays JSON.
     messages[-1]["content"] = (
@@ -4307,6 +4676,16 @@ async def intake_turn(
     page_type = data.get("page_type")
     if page_type not in _PAGE_TYPE_LABELS:
         page_type = "homepage"
+    reply = _clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!"
+    ready = bool(data.get("ready"))
+    brief = _clean_string(str(data.get("brief"))) if data.get("brief") else None
+    if figma_link:
+        reply, req_upload = _apply_figma_link_guard(reply, req_upload, screenshots_attached=figma_shots)
+        if not figma_shots:
+            # Nothing has been seen yet: wait for the screenshots, and keep "match
+            # the Figma file" out of the brief the composer reads.
+            ready = False
+            brief = _drop_figma_sentences(brief or "") or None
 
     try:
         record_tool_billing(
@@ -4326,12 +4705,12 @@ async def intake_turn(
         logger.warning("[page-intake] billing skipped: %s", e)
 
     return IntakeResponse(
-        reply=_clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!",
+        reply=reply,
         chips=chips,
         request_upload=req_upload,
         received_image_kind=recv_kind,
-        ready=bool(data.get("ready")),
-        brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
+        ready=ready,
+        brief=brief,
         page_type=page_type,
         whole_site=bool(data.get("whole_site")),
         run_id=run_id,
@@ -4435,7 +4814,10 @@ def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str
     )
     parts.append(
         "## CURRENT SETTINGS (edit these; preserve anything the instruction does not mention)\n"
-        + json.dumps(req.global_settings or {}, ensure_ascii=False)[:12000]
+        # The site-language dictionary (globalSettings.i18n) can be large and is not
+        # chrome: keep it out of this window so it never crowds out header/footer
+        # context. _merge_chrome deep-copies the full settings, so it survives.
+        + json.dumps({k: v for k, v in (req.global_settings or {}).items() if k != "i18n"}, ensure_ascii=False)[:12000]
     )
     if req.history:
         parts.append(
@@ -4473,7 +4855,7 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
     # wiped the brand color, because the clamp defaults every absent key.
     theme_like = {k: v for k, v in proposed.items() if k in _CHROME_WRITABLE_KEYS}
     if theme_like:
-        coerced = _coerce_global_settings(theme_like, base=merged)
+        coerced = _coerce_global_settings(theme_like, base=merged, model_proposed=True)
         if coerced:
             for k in _CHROME_WRITABLE_KEYS:
                 if k in theme_like and k in coerced:
@@ -4489,8 +4871,10 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
             props_in = section_in.get("props")
             if not isinstance(props_in, dict):
                 continue
-            # Strings get the same hostile-content scrub as page props.
-            cleaned = clean_urls(props_in, set(), warnings)
+            # Strings get the same hostile-content scrub as page props. Images
+            # already in the site's chrome stay allowed (a model that echoes the
+            # logo back must not blank it); any other URL is stripped.
+            cleaned = clean_urls(props_in, _collect_page_image_urls(current.get("layout") if isinstance(current, dict) else None, set()), warnings)
             existing = merged["layout"].get(section)
             if isinstance(existing, dict):
                 merged["layout"][section] = {
@@ -4575,5 +4959,200 @@ async def edit_site_chrome(
         reply=reply,
         run_id=run_id,
         model=model_used,
+        warnings=warnings,
+    )
+
+
+# ─── Site languages: translate site texts ─────────────────────────────────────
+#
+# A site's other languages are dictionaries keyed by the EXACT base-language
+# text (globalSettings.i18n.strings[locale]); the builder's Translations panel
+# sends the missing texts here in batches and merges what comes back. The work
+# (translation memory, masking, chunked parallel calls, safety checks) lives in
+# translation_service.translate_website_strings; this route authenticates,
+# pre-flights credits and charges ONCE per request on the summed usage.
+#
+# Auth is the pinned principal (membership of the clientId institute is
+# checked), stricter than get_current_user, which trusts clientId verbatim —
+# and, because it spends the institute's credits, only for the people who can
+# edit the website: the builder's own write gate is ADMIN or OWNER
+# (use-catalogue-permissions.ts). Platform root users pass.
+from ..core.security import get_pinned_principal  # noqa: E402
+from ..schemas.auth import PinnedPrincipal  # noqa: E402
+
+_TRANSLATE_TOOL_KEY = "page_translate"
+
+
+def _can_translate_site(principal: Any) -> bool:
+    if getattr(principal, "is_root_user", False):
+        return True
+    roles = {
+        str(r).strip().upper().replace("-", "_").replace(" ", "_")
+        for r in (getattr(principal, "roles", None) or [])
+        if r
+    }
+    return "OWNER" in roles or any("ADMIN" in r for r in roles)
+
+
+class SiteTranslateRequest(BaseModel):
+    # Exact source texts — they come back as the keys of `translations`.
+    strings: List[str] = Field(default_factory=list)
+    target_locale: str
+    source_locale: str = "en"
+    # "Translate again with AI": ignore the translation memory.
+    skip_memory: bool = False
+    preferred_model: Optional[str] = None
+
+
+class SiteTranslateFailure(BaseModel):
+    source: str
+    reason: str
+
+
+class SiteTranslateResponse(BaseModel):
+    translations: Dict[str, str]
+    failed: List[SiteTranslateFailure] = Field(default_factory=list)
+    tm_hits: int = 0
+    run_id: str
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+@router.post("/v1/translate", response_model=SiteTranslateResponse)
+async def translate_site_strings(
+    body: SiteTranslateRequest,
+    db: Session = Depends(db_dependency),
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+) -> SiteTranslateResponse:
+    # Imported here so loading the page builder stays light (the service pulls
+    # in the translation-job models).
+    from ..services import translation_service as ts
+
+    institute_id = getattr(principal, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    if not _can_translate_site(principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only institute admins can translate the website.",
+        )
+    actor_user_id = getattr(principal, "user_id", None)
+
+    source = (body.source_locale or "en").strip().lower()
+    target = (body.target_locale or "").strip().lower()
+    if source not in ts.LOCALE_NAMES or target not in ts.LOCALE_NAMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language. Supported: {', '.join(sorted(ts.LOCALE_NAMES))}.",
+        )
+    if source == target:
+        raise HTTPException(status_code=400, detail="The target language is the site's base language.")
+
+    # Exact texts, each once, in the order sent. Blank texts need no translation.
+    seen: set = set()
+    texts: List[str] = []
+    for value in body.strings or []:
+        if not isinstance(value, str) or not value.strip() or value in seen:
+            continue
+        seen.add(value)
+        texts.append(value)
+    run_id = uuid.uuid4().hex
+    if not texts:
+        return SiteTranslateResponse(translations={}, run_id=run_id, model="", warnings=["Nothing to translate."])
+    if len(texts) > ts.WEBSITE_MAX_STRINGS:
+        raise HTTPException(
+            status_code=400, detail=f"Send at most {ts.WEBSITE_MAX_STRINGS} texts per request."
+        )
+    too_long = [s for s in texts if len(s) > ts.WEBSITE_MAX_STRING_CHARS]
+    texts = [s for s in texts if len(s) <= ts.WEBSITE_MAX_STRING_CHARS]
+    total_chars = sum(len(s) for s in texts)
+    if total_chars > ts.WEBSITE_MAX_TOTAL_CHARS:
+        raise HTTPException(
+            status_code=400, detail="Too much text for one request — send the texts in smaller batches."
+        )
+
+    warnings: List[str] = []
+    failures: List[Dict[str, str]] = [
+        {"source": s, "reason": "too long to translate automatically — translate it by hand"} for s in too_long
+    ]
+    if not texts:
+        return SiteTranslateResponse(
+            translations={}, failed=failures, run_id=run_id, model="", warnings=warnings
+        )
+
+    # Translation memory first: remembered texts are free, so credits are
+    # pre-flighted only on what goes to the model (none → no credit check).
+    memory: Dict[str, str] = (
+        {}
+        if body.skip_memory
+        else await ts.lookup_website_memory(
+            strings=texts, source_locale=source, target_locale=target, institute_id=institute_id
+        )
+    )
+    model_chars = sum(len(s) for s in texts if s not in memory)
+    if model_chars:
+        estimate = preflight_tool_credits(
+            db,
+            tool_key=_TRANSLATE_TOOL_KEY,
+            tool_params={"transcript_chars": model_chars},
+            institute_id=institute_id,
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: translating these texts needs ~{estimate['estimated_credits']} "
+                    f"credits but the balance is {estimate.get('current_balance')}."
+                ),
+            )
+
+    try:
+        result = await ts.translate_website_strings(
+            strings=texts,
+            source_locale=source,
+            target_locale=target,
+            institute_id=institute_id,
+            memory=memory,
+            preferred_model=body.preferred_model,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[translate] failed: %s", e)
+        raise HTTPException(status_code=502, detail="Could not translate right now. You were not charged.")
+
+    if result["llm_calls"] and not result["completed_calls"] and not result["translations"]:
+        raise HTTPException(
+            status_code=502, detail="The AI could not translate right now. You were not charged."
+        )
+
+    if result["completed_calls"]:
+        usage = result.get("usage") or {}
+        try:
+            record_tool_billing(
+                tool_key=_TRANSLATE_TOOL_KEY,
+                tool_params={"transcript_chars": int(result.get("llm_chars") or 0)},
+                request_type=RequestType.TRANSLATION,
+                model=result.get("model_used") or "",
+                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                completion_tokens=int(usage.get("completion_tokens") or 0),
+                institute_id=institute_id,
+                user_id=actor_user_id,
+                user_role=None,
+                idempotency_key=f"{_TRANSLATE_TOOL_KEY}:{run_id}",
+                usage_markup=_USAGE_MARKUP,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[translate] billing skipped: %s", e)
+
+    failures.extend(result.get("failed") or [])
+    if failures:
+        warnings.append(
+            f"{len(failures)} text(s) could not be translated safely and were left untranslated."
+        )
+    return SiteTranslateResponse(
+        translations=result.get("translations") or {},
+        failed=[SiteTranslateFailure(**f) for f in failures],
+        tm_hits=int(result.get("tm_hits") or 0),
+        run_id=run_id,
+        model=result.get("model_used") or ("translation-memory" if result.get("tm_hits") else ""),
         warnings=warnings,
     )

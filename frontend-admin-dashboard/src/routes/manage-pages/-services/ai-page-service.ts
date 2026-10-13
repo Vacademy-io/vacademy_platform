@@ -9,6 +9,7 @@ import {
     AI_PAGE_BUILDER_IMAGE,
     AI_PAGE_BUILDER_SITE,
     AI_PAGE_BUILDER_INTAKE,
+    AI_PAGE_BUILDER_TRANSLATE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -444,9 +445,23 @@ export const applyOps = (config: CatalogueConfig, pageId: string, ops: EditOp[])
             case 'updateGlobalSettings': {
                 const gs: Record<string, any> = clone.globalSettings as any;
                 for (const [k, v] of Object.entries(op.patch)) {
+                    const before = k === 'theme' ? gs.theme?.palette : undefined;
                     gs[k] = v && typeof v === 'object' && !Array.isArray(v)
                         ? { ...(gs[k] || {}), ...v }
                         : v;
+                    // theme.palette merges one level deeper: a patch naming one
+                    // colour must not drop the site's other palette colours.
+                    const palettePatch = (v as any)?.palette;
+                    if (k === 'theme' && palettePatch && typeof palettePatch === 'object' && !Array.isArray(palettePatch)) {
+                        const merged: Record<string, unknown> = { ...(before && typeof before === 'object' ? before : {}) };
+                        for (const [key, value] of Object.entries(palettePatch)) {
+                            if (value === null) delete merged[key];
+                            else merged[key] = value;
+                        }
+                        // No colour left: applyToTokens alone means nothing (same as the MCP's apply_ops).
+                        if (Object.keys(merged).some((key) => key !== 'applyToTokens')) gs.theme.palette = merged;
+                        else delete gs.theme.palette;
+                    }
                 }
                 break;
             }
@@ -479,6 +494,40 @@ export const editSiteChrome = async (payload: SiteChromePayload): Promise<SiteCh
         AI_PAGE_BUILDER_SITE_CHROME(),
         payload,
         { timeout: 180000 }
+    );
+    return response.data;
+};
+
+/* ─── Site languages: translate site texts ─────────────────────────────── */
+
+export interface TranslateSiteStringsPayload {
+    /** Exact base-language texts (they are the dictionary keys). At most 200 per call. */
+    strings: string[];
+    target_locale: string;
+    source_locale?: string;
+    /** Ignore the translation memory ("translate again with AI"). */
+    skip_memory?: boolean;
+    preferred_model?: string;
+}
+
+export interface TranslateSiteStringsResponse {
+    /** Keyed by the exact source text sent. */
+    translations: Record<string, string>;
+    /** Texts that could not be translated safely (markup, links or numbers changed). */
+    failed: Array<{ source: string; reason: string }>;
+    tm_hits: number;
+    run_id: string;
+    model: string;
+    warnings: string[];
+}
+
+export const translateSiteStrings = async (
+    payload: TranslateSiteStringsPayload
+): Promise<TranslateSiteStringsResponse> => {
+    const response = await authenticatedAxiosInstance.post<TranslateSiteStringsResponse>(
+        AI_PAGE_BUILDER_TRANSLATE(),
+        payload,
+        { timeout: 180000 } // a batch is several small LLM calls in parallel
     );
     return response.data;
 };

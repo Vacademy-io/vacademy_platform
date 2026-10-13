@@ -57,6 +57,26 @@ class _StaticKeyResolver:
         return self._keys
 
 
+_USE_CASE = "assistant"
+
+
+def _assistant_model_chain(db, key_resolver, institute_id, user_id):
+    """(model, fallbacks) for the Assistant: an institute/user BYO default
+    model (ai_api_keys.default_model) wins; otherwise the 'assistant' use case
+    (super-admin portal; GLM by default). The use-case chain is the failover
+    behind either. (None, None) leaves the choice to ChatLLMClient's resolver."""
+    try:
+        from .model_selection import resolve_models
+        primary, chain = resolve_models(db, _USE_CASE)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Assistant model lookup failed (%s); using the platform default", e)
+        return None, None
+    byo = key_resolver.byo_default_model(institute_id, user_id)
+    if byo:
+        return byo, [m for m in [primary, *chain] if m != byo]
+    return primary, list(chain)
+
+
 def _msg_event(msg) -> dict:
     """Convert an ORM ChatMessage to an SSE-friendly dict (matches the learner agent)."""
     return {
@@ -177,7 +197,7 @@ class AssistantAgentService:
             setting = load_assistant_tools_setting(db, principal.institute_id)
         groups: Dict[str, Dict[str, Any]] = {}
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 g = groups.setdefault(spec.key(), {"key": spec.key(), "mode": spec.mode, "tools": []})
                 g["tools"].append(spec.name)
                 if spec.mode == "WRITE":
@@ -342,8 +362,12 @@ class AssistantAgentService:
                 message_repo = ChatMessageRepository(db)
                 latest = message_repo.get_latest_message(session_id)
                 history = message_repo.get_conversation_history(session_id, limit=12)
-                keys = ApiKeyResolver(db).resolve_keys(
+                key_resolver = ApiKeyResolver(db)
+                keys = key_resolver.resolve_keys(
                     institute_id=principal.institute_id, user_id=principal.user_id
+                )
+                assistant_model, assistant_fallbacks = _assistant_model_chain(
+                    db, key_resolver, principal.institute_id, principal.user_id
                 )
                 setting = load_assistant_tools_setting(db, principal.institute_id)
         except PermissionError:
@@ -419,6 +443,8 @@ class AssistantAgentService:
                     temperature=0.2,
                     institute_id=principal.institute_id,
                     user_id=principal.user_id,
+                    model=assistant_model,
+                    fallback_models=assistant_fallbacks,
                 ):
                     ctype = chunk.get("type")
                     if ctype == "token":
@@ -480,7 +506,7 @@ class AssistantAgentService:
                         db=db, principal=principal, keys=keys,
                         bearer_token=bearer_token, session_id=session_id,
                     )
-                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting)
+                    tool_result = await execute_tool(tool_name, tool_args, ctx, setting, in_product=True)
                     pending_action = ctx.pending_action
 
                 with self._get_db() as db:
@@ -573,7 +599,7 @@ class AssistantAgentService:
         # schema when denied, so without this the model can't know they exist).
         enabled_groups: set = set()
         for spec in ASSISTANT_TOOLS.values():
-            if is_tool_allowed(spec.name, principal, setting):
+            if not spec.mcp_only and is_tool_allowed(spec.name, principal, setting):
                 enabled_groups.add(spec.key())
         all_groups = list(GROUP_LABELS.keys())
         have = [GROUP_LABELS[g] for g in all_groups if g in enabled_groups]

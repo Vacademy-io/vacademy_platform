@@ -36,6 +36,7 @@ from ..services.assistant_tool_registry import (
 from .access import setting_for_tool_gate
 from .constants import (
     MCP_EXPOSED_TOOLS,
+    MCP_OPT_IN_GROUPS,
     MCP_TOOL_AREAS,
     MCP_TOOL_GROUP_LABELS,
     MCP_TOOL_GROUP_SUMMARIES,
@@ -65,20 +66,30 @@ def _placement(key: str) -> Dict[str, Any]:
     area = MCP_TOOL_AREAS.get(place["area"]) or {"label": MCP_TOOL_GROUP_LABELS.get(key, key), "summary": ""}
     return {"area": place["area"], "area_label": area["label"], "area_summary": area["summary"],
             "area_order": list(MCP_TOOL_AREAS).index(place["area"]) if place["area"] in MCP_TOOL_AREAS else 99,
-            "level": place["level"], "risk": place.get("risk"), "sub_label": place.get("sub_label")}
+            "level": place["level"], "risk": place.get("risk"), "sub_label": place.get("sub_label"),
+            # Turned on one by one: never by the area's Edit level or a preset.
+            "opt_in": key in MCP_OPT_IN_GROUPS}
 
 
-def tool_catalog() -> List[Dict[str, Any]]:
+def tool_catalog(include_opt_in: bool = True) -> List[Dict[str, Any]]:
     """
     The catalogue the settings UI renders toggles from.
 
     Served from the backend so the dashboard never carries a second copy of the
     tool list that can drift from the registry.
+
+    ``include_opt_in=False`` leaves out the opt-in groups (MCP_OPT_IN_GROUPS). The
+    settings page asks for them explicitly (``?opt_in=1``) because it never turns
+    them on with a preset; an older dashboard bundle does not know the flag, so it
+    never sees them and its "everything" / Edit-level presets cannot switch on
+    live publishing or live data edits.
     """
     catalog: List[Dict[str, Any]] = []
     for spec in exposed_specs():
         fn = spec.schema.get("function", {})
         key = spec.key()
+        if not include_opt_in and key in MCP_OPT_IN_GROUPS:
+            continue
         description = fn.get("description", "")
         # Action-style tools carry their verbs in an `action` enum; surface them
         # so an admin can see what a toggle actually allows.
@@ -178,6 +189,8 @@ async def call_tool(
         principal=principal,
         keys=(),  # embeddings-only; none of the exposed tools need API keys
         bearer_token=platform_token,
+        images_as_content=True,  # image fields become ImageContent below
+        via_mcp=True,  # mcp_only tools (design_import, website_publish) run only here
     )
 
     started = time.monotonic()
@@ -205,12 +218,18 @@ async def call_tool(
         )
 
     # A tool may hand back a rendered image (website preview): send it as image
-    # content so the model can SEE it, with the rest of the result as text.
-    if isinstance(payload, dict) and isinstance(payload.get("image_png_base64"), str):
-        image = payload.pop("image_png_base64")
+    # content so the model can SEE it, with the rest of the result as text. A
+    # tall page comes as several tiles (`images_base64`, top to bottom).
+    if isinstance(payload, dict) and (
+        isinstance(payload.get("image_png_base64"), str) or isinstance(payload.get("images_base64"), list)
+    ):
+        images = []
+        if isinstance(payload.get("image_png_base64"), str):
+            images.append(payload.pop("image_png_base64"))
+        images.extend(i for i in payload.pop("images_base64", None) or [] if isinstance(i, str) and i)
         return CallToolResult(
             content=[
-                ImageContent(type="image", data=image, mime_type="image/jpeg"),
+                *(ImageContent(type="image", data=image, mime_type="image/jpeg") for image in images),
                 TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, default=str)),
             ],
             is_error=not ok,

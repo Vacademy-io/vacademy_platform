@@ -77,7 +77,8 @@ def get_image_service() -> ImageGenerationService:
         s3_bucket=settings.aws_bucket_name,
         gemini_api_key=settings.gemini_api_key,
         openrouter_api_key=settings.openrouter_api_key,
-        llm_model=settings.llm_default_model
+        # No llm_model: the keyword LLM resolves the 'image_keyword' use case
+        # (super-admin portal) instead of riding the platform env default.
     )
 
 

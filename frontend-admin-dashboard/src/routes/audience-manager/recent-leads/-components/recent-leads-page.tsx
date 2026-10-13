@@ -17,6 +17,7 @@ import {
     Folders,
     MagnifyingGlass,
     Megaphone,
+    Plus,
     X,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -119,6 +120,8 @@ import { SettingsQuickAccessButton } from '@/components/settings/quick-access/Se
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { MigrateLeadsDialog } from '@/components/shared/leads/migrate-leads-dialog';
+import { useLeadActionVisibility } from '@/lib/display-settings/lead-actions';
+import { AddLeadDialog } from './add-lead-dialog';
 import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/delete-audience-lead';
 import {
     ArrowCounterClockwise,
@@ -682,6 +685,7 @@ const RecentLeadsContent = ({
                     id: c.id || c.campaign_id || c.audience_id || '',
                     name: c.campaign_name || t('filters.audience.untitled'),
                     campaignType: c.campaign_type,
+                    status: c.status,
                 }))
                 .filter((opt) => opt.id !== ''),
         [audiencesQuery.data, t]
@@ -969,6 +973,9 @@ const RecentLeadsContent = ({
     const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
     const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
+    // "Add New Lead" — off for every role until Display Settings → Lead Actions turns it on.
+    const { canAddLead } = useLeadActionVisibility();
+    const [addLeadOpen, setAddLeadOpen] = useState(false);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
@@ -1648,16 +1655,28 @@ const RecentLeadsContent = ({
         <div className="flex w-full flex-col gap-4">
             {/* Heading — while a (re)filtered query is in flight there is no count yet;
                 a spinner avoids flashing a misleading "0 Leads". */}
-            <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
-                {isLoading ? (
-                    <>
-                        <CircleNotch className="size-5 animate-spin text-neutral-400" />
-                        {t('heading.loading')}
-                    </>
-                ) : (
-                    t('heading.leadsCount', { count: totalElements })
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
+                    {isLoading ? (
+                        <>
+                            <CircleNotch className="size-5 animate-spin text-neutral-400" />
+                            {t('heading.loading')}
+                        </>
+                    ) : (
+                        t('heading.leadsCount', { count: totalElements })
+                    )}
+                </h1>
+                {canAddLead && !showDeleted && (
+                    <MyButton
+                        buttonType="primary"
+                        scale="large"
+                        onClick={() => setAddLeadOpen(true)}
+                    >
+                        <Plus className="size-4" weight="bold" />
+                        {t('toolbar.addLead')}
+                    </MyButton>
                 )}
-            </h1>
+            </div>
 
             {/* Toolbar — left filters, right actions (search lives in its own row below) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2289,6 +2308,17 @@ const RecentLeadsContent = ({
                 }}
                 isExporting={isExporting}
             />
+
+            {canAddLead && (
+                <AddLeadDialog
+                    open={addLeadOpen}
+                    onOpenChange={setAddLeadOpen}
+                    audiences={audienceOptions}
+                    isLoading={audiencesQuery.isLoading}
+                    campaignTypeTerm={terminology.campaignType}
+                    audienceTerm={terminology.leadSource}
+                />
+            )}
         </div>
     );
 };

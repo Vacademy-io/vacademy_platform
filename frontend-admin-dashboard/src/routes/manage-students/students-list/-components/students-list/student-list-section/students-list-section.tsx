@@ -56,6 +56,10 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { useListCustomFieldControls } from '@/components/shared/leads/use-list-custom-field-controls';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
+// Row statuses that mean the user actually holds (or held) an enrolment, as opposed to
+// INVITED / PENDING_FOR_APPROVAL rows and audience-only respondents.
+const ENROLLED_STATUSES: string[] = ['ACTIVE', 'INACTIVE', 'TERMINATED'];
+
 export const StudentsListSection = () => {
     const { t } = useTranslation('manageStudentsListSection');
     const { t: tAllFilters } = useTranslation('manageStudentsAllFilters');
@@ -566,6 +570,17 @@ export const StudentsListSection = () => {
                                                             const userId = props.row.original
                                                                 .user_id as string;
                                                             const profile = leadProfiles[userId];
+                                                            // An enrolled learner is past the lead stage,
+                                                            // whatever their lead profile still says (e.g.
+                                                            // enrolled outside the normal flow, so it was
+                                                            // never marked CONVERTED). Only people who
+                                                            // haven't joined yet keep the badge.
+                                                            const isEnrolled =
+                                                                !props.row.original
+                                                                    .is_audience_only &&
+                                                                ENROLLED_STATUSES.includes(
+                                                                    props.row.original.status
+                                                                );
                                                             return (
                                                                 <div className="flex flex-col gap-0.5">
                                                                     {typeof originalCell ===
@@ -573,6 +588,7 @@ export const StudentsListSection = () => {
                                                                         ? originalCell(props)
                                                                         : null}
                                                                     {profile &&
+                                                                        !isEnrolled &&
                                                                         profile.conversion_status !==
                                                                             'CONVERTED' && (
                                                                             <LeadScoreBadge

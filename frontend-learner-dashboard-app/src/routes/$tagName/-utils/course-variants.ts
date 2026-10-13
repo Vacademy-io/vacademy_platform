@@ -28,6 +28,13 @@ export interface CourseLanguageSettings {
   /** Fold a course's language levels into one card, with language chips and filter. */
   enabled?: boolean;
   languages?: CourseLanguageOption[];
+  /**
+   * Opt-in: courses that are the SAME course in different languages but were
+   * set up as separate packages (["<EN package id>", "<HI package id>"]). With
+   * grouping on, each list folds into one card like a course's language levels
+   * do. Absent = one card per package, exactly as before.
+   */
+  versionGroups?: string[][];
 }
 
 export const DEFAULT_COURSE_LANGUAGES: CourseLanguageOption[] = [
@@ -71,7 +78,41 @@ export interface VariantRow {
   package_id?: string | null;
   package_session_id?: string | null;
   level_name?: string | null;
+  /** Course tags; a tag that IS a language names the row's language when its level does not. */
+  comma_separeted_tags?: string | null;
 }
+
+/**
+ * The language a course's tags name: a tag that is EXACTLY a language's label,
+ * code or match word ("Hindi", "हिन्दी", "en"), never a word inside a longer tag
+ * ("English literature" is not English).
+ */
+export const languageOfTags = (
+  tags: string | null | undefined,
+  languages: CourseLanguageOption[],
+): CourseLanguageOption | null => {
+  if (typeof tags !== "string" || !tags.trim()) return null;
+  const list = tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return null;
+  for (const lang of languages) {
+    const tokens = [...(lang.match || []), lang.label, lang.code]
+      .filter((t): t is string => typeof t === "string" && !!t.trim())
+      .map((t) => t.toLowerCase().trim());
+    if (list.some((t) => tokens.includes(t))) return lang;
+  }
+  return null;
+};
+
+/**
+ * The language a row is in: its level name ("Beginner Hindi") — or, for
+ * institutes whose levels are formats (eBook, Short Film) and whose language
+ * versions are separate courses, a course tag that is exactly a language.
+ */
+export const languageOfRow = (
+  row: { level_name?: string | null; level?: string | null; comma_separeted_tags?: string | null },
+  languages: CourseLanguageOption[],
+): CourseLanguageOption | null =>
+  languageOfLevel(row.level_name ?? row.level, languages) ?? languageOfTags(row.comma_separeted_tags, languages);
 
 export interface CourseGroup<T extends VariantRow> {
   /** package_id — one card per course. */
@@ -85,19 +126,46 @@ export interface CourseGroup<T extends VariantRow> {
 }
 
 /**
+ * Package id -> "vg:<n>" for the authored version groups (a list of 2+ ids is
+ * one course). An id listed twice keeps its first group. Null when none.
+ */
+export const versionGroupIndex = (groups: string[][] | null | undefined): Map<string, string> | null => {
+  if (!Array.isArray(groups) || !groups.length) return null;
+  const out = new Map<string, string>();
+  groups.forEach((group, i) => {
+    if (!Array.isArray(group)) return;
+    for (const id of group) {
+      const key = typeof id === "string" ? id.trim() : "";
+      if (key && !out.has(key)) out.set(key, `vg:${i}`);
+    }
+  });
+  return out.size ? out : null;
+};
+
+/**
  * Folds rows into one group per course, keeping the catalogue's order (a
  * course sits where its first row sat). With grouping disabled every row is a
  * group of one — the pre-existing one-card-per-level behaviour.
  */
 export const groupCourseVariants = <T extends VariantRow>(
   rows: T[],
-  opts: { enabled: boolean; languages: CourseLanguageOption[]; preferredLanguage?: string | null },
+  opts: {
+    enabled: boolean;
+    languages: CourseLanguageOption[];
+    preferredLanguage?: string | null;
+    /** Packages that are one course (CourseLanguageSettings.versionGroups); only read when enabled. */
+    versionGroups?: string[][] | null;
+  },
 ): CourseGroup<T>[] => {
   const groups: CourseGroup<T>[] = [];
   const byCourse = new Map<string, CourseGroup<T>>();
+  const groupOf = opts.enabled ? versionGroupIndex(opts.versionGroups) : null;
   for (const row of rows) {
     const courseId = String(row.package_id || row.package_session_id || "");
-    const key = opts.enabled && row.package_id ? String(row.package_id) : `${courseId}::${row.package_session_id ?? groups.length}`;
+    const key =
+      opts.enabled && row.package_id
+        ? groupOf?.get(String(row.package_id)) ?? String(row.package_id)
+        : `${courseId}::${row.package_session_id ?? groups.length}`;
     let group = byCourse.get(key);
     if (!group) {
       group = { courseId, variants: [], primary: row, languages: [] };
@@ -109,13 +177,13 @@ export const groupCourseVariants = <T extends VariantRow>(
   for (const group of groups) {
     const present = new Set<string>();
     for (const v of group.variants) {
-      const lang = languageOfLevel(v.level_name, opts.languages);
+      const lang = languageOfRow(v, opts.languages);
       if (lang) present.add(lang.code);
     }
     group.languages = opts.languages.filter((l) => present.has(l.code));
     if (opts.preferredLanguage) {
       const preferred = group.variants.find(
-        (v) => languageOfLevel(v.level_name, opts.languages)?.code === opts.preferredLanguage,
+        (v) => languageOfRow(v, opts.languages)?.code === opts.preferredLanguage,
       );
       if (preferred) group.primary = preferred;
     }
@@ -128,7 +196,7 @@ export const variantForLanguage = <T extends VariantRow>(
   group: CourseGroup<T>,
   languageCode: string,
   languages: CourseLanguageOption[],
-): T | undefined => group.variants.find((v) => languageOfLevel(v.level_name, languages)?.code === languageCode);
+): T | undefined => group.variants.find((v) => languageOfRow(v, languages)?.code === languageCode);
 
 /** Does a row belong to any of the selected languages? An empty selection matches everything. */
 export const rowMatchesLanguages = (
@@ -137,7 +205,7 @@ export const rowMatchesLanguages = (
   languages: CourseLanguageOption[],
 ): boolean => {
   if (!selected.length) return true;
-  const lang = languageOfLevel(row.level_name, languages);
+  const lang = languageOfRow(row, languages);
   return !!lang && selected.includes(lang.code);
 };
 

@@ -243,7 +243,8 @@
     "discountOff": "— {{amount}} की छूट",
     "errors": {
       "applyFailed": "कूपन लागू नहीं हो सका। कृपया फिर से प्रयास करें।",
-      "enterCodeFirst": "पहले एक कूपन कोड दर्ज करें।"
+      "enterCodeFirst": "पहले एक कूपन कोड दर्ज करें।",
+      "notApplicable": "यह कूपन इस {{course}} के लिए मान्य नहीं है।"
     },
     "heading": "कूपन कोड",
     "placeholder": "कूपन कोड दर्ज करें",

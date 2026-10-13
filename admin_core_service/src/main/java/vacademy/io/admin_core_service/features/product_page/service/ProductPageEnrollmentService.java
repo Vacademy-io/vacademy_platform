@@ -42,17 +42,20 @@ import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -233,12 +236,75 @@ public class ProductPageEnrollmentService {
                         .map(ProductPageSelectedMappingDTO::getPsInvitePaymentOptionId)
                         .collect(Collectors.toList()));
 
-        // Validate + compute total server-side
+        // Override vendor/vendorId from the invite of the first course in the cart
+        // that costs something (gatewayInvite), and currency from the first
+        // EnrollInvite (checkoutCurrency below replaces it with the priced
+        // courses' one), so we always use the invites' configured payment gateway,
+        // ignoring whatever the client sends. Settled before pricing, which has to
+        // know whether this call is Razorpay Phase 2, so the courses' plans are
+        // read here by the rule pricing locks them with, which Phase 1 and Phase 2
+        // share (gatewayPlans): on an unchanged page the same cart picks the same
+        // gateway in both. A page changed mid-payment is handled below.
+        PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
+        EnrollInvite firstInvite = null;
+        if (!selectedMappings.isEmpty()) {
+            firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
+            EnrollInvite gatewayInvite = gatewayInvite(selectedMappings,
+                    gatewayPlans(request.getSelectedMappings(), selectedMappings));
+            if (gatewayInvite != firstInvite && !Objects.equals(gatewayInvite.getVendor(), firstInvite.getVendor())) {
+                log.info("Product page checkout: the cart's first course (invite {}, gateway {}) is free; charging "
+                        + "through the first priced course's gateway {} (invite {})", firstInvite.getId(),
+                        firstInvite.getVendor(), gatewayInvite.getVendor(), gatewayInvite.getId());
+            }
+            if (gatewayInvite.getVendor() != null)
+                payReq.setVendor(gatewayInvite.getVendor());
+            if (gatewayInvite.getVendorId() != null)
+                payReq.setVendorId(gatewayInvite.getVendorId());
+            if (firstInvite.getCurrency() != null)
+                payReq.setCurrency(firstInvite.getCurrency());
+        }
+
+        // Razorpay Phase 2 is the call the browser makes AFTER Razorpay has
+        // captured the money for the order Phase 1 created (see below).
+        boolean confirmsRazorpayPayment = payReq.getRazorpayRequest() != null
+                && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
+                && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+        // Phase 1 chose Razorpay by the plans the cart's courses were on then.
+        // An admin who moves one of them between a free and a priced plan while
+        // the Razorpay widget is open can make the rule above name another
+        // course's gateway now, and so can an order opened by the release that
+        // took the gateway from the cart's first course. The order is on record,
+        // though: a genuine confirmation of an order a product-page Razorpay
+        // Phase 1 opened is that order's Phase 2, through Razorpay and the
+        // account the order was opened with, so the paid checkout completes
+        // instead of being refused or sent to another gateway.
+        if (confirmsRazorpayPayment && !"RAZORPAY".equalsIgnoreCase(payReq.getVendor())) {
+            PaymentLog razorpayOrder = razorpayPhase1Order(payReq.getRazorpayRequest(), request.getInstituteId());
+            if (razorpayOrder != null) {
+                log.info("Product page checkout: completing Razorpay order {} (payment log {}) that Phase 1 opened, "
+                        + "although the cart's courses now pick gateway {}",
+                        payReq.getRazorpayRequest().getRazorpayOrderId(), razorpayOrder.getId(), payReq.getVendor());
+                payReq.setVendor("RAZORPAY");
+                payReq.setVendorId(razorpayOrder.getVendorId());
+            }
+        }
+        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
+        boolean isRazorpayPhase2 = isRazorpay && confirmsRazorpayPayment;
+
+        // Validate + compute total server-side. Every line is priced on the plan
+        // locked on its mapping, never on a plan the request picks (lockedPlanId).
+        // Phase 2 never refuses a plan: the learner has already paid the price
+        // Phase 1 checked. An admin who re-plans a course while the Razorpay
+        // widget is open must not turn that paid checkout into an error, so a
+        // stale plan resolves to the mapping's current one instead.
         double serverTotal = 0.0;
         Map<String, PaymentPlan> planByMappingId = new LinkedHashMap<>();
         for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
-            PaymentPlan plan = paymentPlanRepository.findById(sel.getPaymentPlanId())
-                    .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + sel.getPaymentPlanId()));
+            String planId = lockedPlanId(
+                    sel.getPsInvitePaymentOptionId(), sel.getPaymentPlanId(), selectedMappings,
+                    !isRazorpayPhase2);
+            PaymentPlan plan = paymentPlanRepository.findById(planId)
+                    .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + planId));
             planByMappingId.put(sel.getPsInvitePaymentOptionId(), plan);
             serverTotal += plan.getActualPrice();
         }
@@ -296,21 +362,23 @@ public class ProductPageEnrollmentService {
 
         double finalTotal = Math.max(0.0, afterOffer - discountAmount);
 
-        PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         payReq.setAmount(finalTotal);
 
-        // Override vendor/vendorId/currency from the first EnrollInvite so we always
-        // use
-        // the invite's configured payment gateway, ignoring whatever the client sends.
-        EnrollInvite firstInvite = null;
-        if (!selectedMappings.isEmpty()) {
-            firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
-            if (firstInvite.getVendor() != null)
-                payReq.setVendor(firstInvite.getVendor());
-            if (firstInvite.getVendorId() != null)
-                payReq.setVendorId(firstInvite.getVendorId());
-            if (firstInvite.getCurrency() != null)
-                payReq.setCurrency(firstInvite.getCurrency());
+        // One order is charged in one currency, and the server decides which.
+        // A cart whose courses are priced in different currencies used to add
+        // their prices up and charge the sum in the first course's currency
+        // (₹299 for a $299 course), so it is refused here, before a user, a
+        // payment log or an enrollment exists. Nothing is refused once the
+        // money is taken (Razorpay Phase 2) or when nothing is charged (a free
+        // cart). Free courses decide nothing (their currency is often just a
+        // default label). When the priced courses name one currency it
+        // replaces whatever the request carries; when none does (a cart of
+        // free courses only, say), the request's value and the fallback below
+        // stand as before.
+        String serverCurrency = checkoutCurrency(selectedMappings, planByMappingId,
+                !isRazorpayPhase2 && finalTotal > 0.0);
+        if (serverCurrency != null) {
+            payReq.setCurrency(serverCurrency);
         }
 
         // Defensive: ensure currency always has a value (Razorpay gateway requires it).
@@ -343,11 +411,7 @@ public class ProductPageEnrollmentService {
         payReq.setEmail(user.getEmail());
 
         // ── Razorpay Phase 1: order creation ──────────────────────────────────
-        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
-        boolean isRazorpayPhase2 = isRazorpay
-                && payReq.getRazorpayRequest() != null
-                && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
-                && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+        // (isRazorpay / isRazorpayPhase2 are settled above, before pricing.)
 
         // Free payment options (amount = 0) must never reach a payment gateway
         if (isRazorpay && !isRazorpayPhase2 && finalTotal > 0.0) {
@@ -450,27 +514,22 @@ public class ProductPageEnrollmentService {
                         .build();
             }
 
-            // No provisioned Phase 1 order to complete — an order created before this
-            // two-phase provisioning shipped, or one whose Phase 1 enrollment failed. Fall
-            // back to the original behaviour so those payments still enrol.
-            log.warn("Razorpay Phase 2: no provisioned Phase 1 enrollment found for razorpayOrderId={}. "
-                    + "Falling back to enrolling from the confirmation call.",
-                    payReq.getRazorpayRequest().getRazorpayOrderId());
-
-            // Create a payment log with PAID status (payment already collected by Razorpay)
-            parentPaymentLogId = paymentLogService.createPaymentLog(
-                    user.getId(), finalTotal,
-                    payReq.getVendor(), payReq.getVendorId(), payReq.getCurrency(),
-                    null, null);
-            payReq.setOrderId(parentPaymentLogId);
-            paymentLogService.updatePaymentLog(
-                    parentPaymentLogId,
-                    "ACTIVE",
-                    PaymentStatusEnum.PAID.name(),
-                    "{\"razorpayPaymentId\":\"" + payReq.getRazorpayRequest().getRazorpayPaymentId() + "\","
-                            + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
-            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
-            log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
+            // No provisioned Phase 1 checkout to complete. Every product-page Razorpay
+            // checkout provisions its enrollments in Phase 1, in the same transaction that
+            // opens the order (provisionPendingEnrollments), so a paid order of THIS
+            // checkout always has one. A confirmation without it carries a payment made
+            // somewhere else - another flow's order, replayed here with its valid
+            // signature - and enrolling from it handed out any cart, as PAID, for the
+            // price of whatever was paid there. Refuse, as
+            // LearnerEnrollRequestService.completeGatewayPaymentConfirmation does for the
+            // invite flow; nothing has been created for this call yet.
+            String razorpayPaymentId = payReq.getRazorpayRequest().getRazorpayPaymentId();
+            log.warn("Razorpay Phase 2: no provisioned Phase 1 enrollment for razorpayOrderId={} "
+                    + "(payment {}); refusing to enrol from the confirmation call.",
+                    gatewayOrderRef, razorpayPaymentId);
+            throw new VacademyException("We could not match this payment to your checkout. "
+                    + "If money was taken, please contact the institute with payment id "
+                    + razorpayPaymentId + ".");
 
         } else if (finalTotal <= 0.0) {
             // Free enrollment: bypass gateway entirely, create a PAID log directly
@@ -638,8 +697,9 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Product page does not belong to this institute");
         }
 
-        ProductPageInviteMapping mapping = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of("ACTIVE"))
+        List<ProductPageInviteMapping> pageMappings = mappingRepository
+                .findOrderedWithBridge(page.getId(), List.of(STATUS_ACTIVE));
+        ProductPageInviteMapping mapping = pageMappings
                 .stream()
                 .filter(m -> m.getPsInvitePaymentOption().getId().equals(request.getPsInvitePaymentOptionId()))
                 .findFirst()
@@ -653,8 +713,11 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Payment option " + bridge.getPaymentOption().getId() + " is not CPO type");
         }
 
-        PaymentPlan plan = paymentPlanRepository.findById(request.getPaymentPlanId())
-                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + request.getPaymentPlanId()));
+        // The plan locked on the mapping, as for one-time checkout (lockedPlanId).
+        String planId = lockedPlanId(
+                request.getPsInvitePaymentOptionId(), request.getPaymentPlanId(), pageMappings);
+        PaymentPlan plan = paymentPlanRepository.findById(planId)
+                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + planId));
 
         // Create / find user — ensure STUDENT role is assigned
         if (request.getUserDetails().getRoles() == null || request.getUserDetails().getRoles().isEmpty()) {
@@ -865,9 +928,8 @@ public class ProductPageEnrollmentService {
      * {@code childPaymentLogIds} entry that {@link #provisionPendingEnrollments} writes
      * there — that, not a linked UserPlan, is what the parent carries.
      *
-     * <p>Returns {@code null} when there is nothing to complete: an order opened before
-     * this provisioning shipped, or one whose Phase 1 enrollment failed. The caller then
-     * falls back to enrolling from the confirmation call itself.
+     * <p>Returns {@code null} when there is nothing to complete - the order was not
+     * opened by a product-page checkout. The caller then refuses the confirmation.
      */
     private PaymentLog findPhase1PaymentLog(String gatewayOrderRef) {
         if (!StringUtils.hasText(gatewayOrderRef)) {
@@ -907,11 +969,18 @@ public class ProductPageEnrollmentService {
         try {
             Map<String, Object> gatewayData = institutePaymentGatewayMappingService
                     .findInstitutePaymentGatewaySpecifData(payReq.getVendor(), instituteId);
-            String keySecret = (String) gatewayData.getOrDefault("publishableKey",
-                    gatewayData.get("keySecret"));
+            // The secret Phase 1 created the order with, read the way
+            // RazorpayPaymentManager reads it. Without one no order can have
+            // been created, so a confirmation that cannot be verified is
+            // refused. Skipping the check instead enrolled a made-up payment
+            // id whenever the institute's Razorpay mapping had no secret -
+            // also on pages whose invite names no gateway, where the request
+            // names RAZORPAY itself.
+            String keySecret = razorpayKeySecret(gatewayData);
             if (keySecret == null) {
-                log.warn("Razorpay key_secret not found; skipping signature verification");
-                return;
+                log.warn("Razorpay key secret not configured for institute {}; refusing an unverifiable payment",
+                        instituteId);
+                throw new VacademyException("Razorpay payment could not be verified");
             }
             String razorpayOrderId = payReq.getRazorpayRequest().getRazorpayOrderId();
             String razorpayPaymentId = payReq.getRazorpayRequest().getRazorpayPaymentId();
@@ -919,14 +988,7 @@ public class ProductPageEnrollmentService {
             if (razorpayOrderId == null || razorpayPaymentId == null || signature == null) {
                 throw new VacademyException("Missing Razorpay verification fields");
             }
-            String payload = razorpayOrderId + "|" + razorpayPaymentId;
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash)
-                hex.append(String.format("%02x", b));
-            if (!hex.toString().equals(signature)) {
+            if (!razorpaySignatureMatches(keySecret, razorpayOrderId, razorpayPaymentId, signature)) {
                 throw new VacademyException("Razorpay payment signature verification failed");
             }
             log.info("Razorpay signature verified for orderId={}", razorpayOrderId);
@@ -935,6 +997,68 @@ public class ProductPageEnrollmentService {
         } catch (Exception e) {
             throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Whether a signature is the one Razorpay gives a payment of an order:
+     * the hex HMAC-SHA256 of "orderId|paymentId" under the key secret,
+     * compared in constant time.
+     */
+    private static boolean razorpaySignatureMatches(String keySecret, String razorpayOrderId,
+                                                    String razorpayPaymentId, String signature) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] hash = mac.doFinal((razorpayOrderId + "|" + razorpayPaymentId).getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder();
+        for (byte b : hash)
+            hex.append(String.format("%02x", b));
+        return MessageDigest.isEqual(hex.toString().getBytes(StandardCharsets.UTF_8),
+                signature.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The parent payment log of the Razorpay order a confirmation call pays,
+     * when the call is genuine and the order is a product-page checkout's:
+     * the signature verifies with the institute's Razorpay secret, and a
+     * Razorpay Phase 1 opened the order and provisioned its enrollments
+     * (findPhase1PaymentLog). Null otherwise. Nothing is refused or changed
+     * here; the Phase 2 branch verifies the call again before it completes
+     * anything. The signature is checked first, so a made-up confirmation
+     * never costs the order lookup, which searches the payment logs' JSON.
+     */
+    private PaymentLog razorpayPhase1Order(RazorpayRequestDTO confirmation, String instituteId) {
+        String orderId = confirmation.getRazorpayOrderId();
+        String paymentId = confirmation.getRazorpayPaymentId();
+        String signature = confirmation.getRazorpaySignature();
+        if (!StringUtils.hasText(orderId) || !StringUtils.hasText(paymentId) || !StringUtils.hasText(signature)) {
+            return null;
+        }
+        try {
+            String keySecret = razorpayKeySecret(institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData("RAZORPAY", instituteId));
+            if (keySecret == null || !razorpaySignatureMatches(keySecret, orderId, paymentId, signature)) {
+                return null;
+            }
+        } catch (Exception e) {
+            // No Razorpay set up for the institute: no order of its can be confirmed.
+            return null;
+        }
+        PaymentLog phase1Log = findPhase1PaymentLog(orderId);
+        return phase1Log != null && "RAZORPAY".equalsIgnoreCase(phase1Log.getVendor()) ? phase1Log : null;
+    }
+
+    /** publishableKey, else keySecret: the precedence RazorpayPaymentManager creates orders with. */
+    private static String razorpayKeySecret(Map<String, Object> gatewayData) {
+        if (gatewayData == null) {
+            return null;
+        }
+        for (String key : List.of("publishableKey", "keySecret")) {
+            Object value = gatewayData.get(key);
+            if (value instanceof String && StringUtils.hasText((String) value)) {
+                return (String) value;
+            }
+        }
+        return null;
     }
 
     private void triggerPostEnrollmentActions(
@@ -1033,8 +1157,12 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Course page does not belong to this institute");
         }
 
+        // In display order, with each bridge row loaded in the same query. The
+        // first selected course that costs something decides the gateway below
+        // (gatewayInvite), so the order must be the page's own rather than
+        // whatever the database returns.
         List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
+                .findOrderedWithBridge(page.getId(), List.of(STATUS_ACTIVE));
 
         Set<String> activePoIds = activeMappings.stream()
                 .map(m -> m.getPsInvitePaymentOption().getId())
@@ -1049,6 +1177,229 @@ public class ProductPageEnrollmentService {
         return activeMappings.stream()
                 .filter(m -> psInvitePoIds.contains(m.getPsInvitePaymentOption().getId()))
                 .collect(Collectors.toList());
+    }
+
+    static final String PRICE_CHANGED_MESSAGE =
+            "The price of a course in your cart has changed. Please reload the page and try again.";
+
+    static final String MIXED_CURRENCY_MESSAGE =
+            "These courses are priced in different currencies. Please check them out separately.";
+
+    /**
+     * The currency a product-page order is charged in, decided by the server
+     * rather than the request.
+     *
+     * Each course that costs something is charged in its invite's currency,
+     * or its plan's when the invite names none: the rule this checkout has
+     * always used for the first course, now applied to every priced course in
+     * the cart. When they all agree (ignoring case and blanks) that one code
+     * is the order's currency. When none names a currency the answer is null,
+     * and the caller keeps what it did before. When they disagree there is no
+     * single currency to charge: with refuseMixed that is a 409
+     * (ConflictException), otherwise null.
+     *
+     * A free course (no plan, or a plan priced 0) decides nothing. It adds
+     * nothing to the order (allocateOrderTotal gives it no share of a priced
+     * cart), and its currency is often only a default label: a free plan is
+     * created in INR by the server and in GBP by the admin app when no
+     * currency is picked. A paid AUD course and a free orientation labelled
+     * INR are one AUD order, whichever comes first. A cart of free courses
+     * only (also on a basket-priced page whose courses are all 0, where the
+     * basket sets the money) gets null, so today's fallback stands for it.
+     *
+     * A priced course whose invite and plan name different currencies is
+     * charged in its invite's, exactly as a single-course checkout of it is
+     * charged today; that misconfiguration is logged, not refused.
+     *
+     * Visible for testing.
+     *
+     * @param selectedMappings the courses in the order, with their bridge rows
+     * @param planByBridgeId   each course's plan, by bridge row id
+     * @param refuseMixed      true refuses courses in different currencies
+     */
+    static String checkoutCurrency(List<ProductPageInviteMapping> selectedMappings,
+                                   Map<String, PaymentPlan> planByBridgeId, boolean refuseMixed) {
+        Set<String> currencies = new TreeSet<>();
+        for (ProductPageInviteMapping m : selectedMappings) {
+            PackageSessionLearnerInvitationToPaymentOption bridge = m.getPsInvitePaymentOption();
+            PaymentPlan plan = planByBridgeId.get(bridge.getId());
+            if (plan == null || plan.getActualPrice() <= 0) {
+                continue;
+            }
+            EnrollInvite invite = bridge.getEnrollInvite();
+            String inviteCurrency = currencyCode(invite != null ? invite.getCurrency() : null);
+            String planCurrency = currencyCode(plan.getCurrency());
+            if (inviteCurrency != null && planCurrency != null && !inviteCurrency.equals(planCurrency)) {
+                log.warn("Product page checkout: bridge {} is charged in its invite's currency {} "
+                        + "although its plan {} is priced in {}", bridge.getId(), inviteCurrency,
+                        plan.getId(), planCurrency);
+            }
+            String code = inviteCurrency != null ? inviteCurrency : planCurrency;
+            if (code != null) {
+                currencies.add(code);
+            }
+        }
+        if (currencies.size() == 1) {
+            return currencies.iterator().next();
+        }
+        if (currencies.size() > 1 && refuseMixed) {
+            log.warn("Product page checkout refused: the cart mixes currencies {}", currencies);
+            throw new ConflictException(MIXED_CURRENCY_MESSAGE);
+        }
+        return null;
+    }
+
+    /** A currency code as gateways expect it (trimmed, upper case); null when blank. */
+    private static String currencyCode(String raw) {
+        return StringUtils.hasText(raw) ? raw.trim().toUpperCase(Locale.ROOT) : null;
+    }
+
+    /**
+     * The invite whose payment gateway charges a product-page order: the
+     * first selected course, in display order, that costs something (a plan
+     * priced above 0), else the first selected course.
+     *
+     * A free course adds nothing to the order, and its gateway is often a
+     * fallback its invite got before the institute set one up, so it never
+     * decides how the priced courses are paid: a free STRIPE orientation
+     * first in a cart of RAZORPAY courses used to send the whole order to
+     * Stripe. This is the rule checkoutCurrency applies to the currency, and
+     * the one by-code shows the page's gateway by
+     * (ProductPageService.gatewayMapping). A cart of free courses only (also
+     * a basket-priced one, whose courses are all 0) keeps the first course's
+     * invite, as before; so does a cart whose first course is priced.
+     *
+     * Visible for testing.
+     *
+     * @param selectedMappings the courses in the order, in display order, with their bridge rows; not empty
+     * @param planByBridgeId   each course's plan, by bridge row id
+     */
+    static EnrollInvite gatewayInvite(List<ProductPageInviteMapping> selectedMappings,
+                                      Map<String, PaymentPlan> planByBridgeId) {
+        for (ProductPageInviteMapping m : selectedMappings) {
+            PaymentPlan plan = planByBridgeId.get(m.getPsInvitePaymentOption().getId());
+            if (plan != null && plan.getActualPrice() > 0) {
+                return m.getPsInvitePaymentOption().getEnrollInvite();
+            }
+        }
+        return selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
+    }
+
+    /**
+     * Each selected course's plan by bridge row id, read before pricing so
+     * gatewayInvite can tell the priced courses from the free ones: the plan
+     * pricedPlanId resolves, which is the plan pricing locks the course on
+     * for every request it accepts, in Razorpay Phase 1 and Phase 2 alike.
+     * Nothing is refused here; pricing below still refuses what it refused
+     * before, in the same order. A course whose plan cannot be read counts
+     * as free.
+     */
+    private Map<String, PaymentPlan> gatewayPlans(List<ProductPageSelectedMappingDTO> selections,
+                                                  List<ProductPageInviteMapping> selectedMappings) {
+        Map<String, PaymentPlan> plans = new HashMap<>();
+        for (ProductPageSelectedMappingDTO sel : selections) {
+            String bridgeId = sel.getPsInvitePaymentOptionId();
+            String planId = pricedPlanId(bridgeId, sel.getPaymentPlanId(), selectedMappings);
+            if (planId != null) {
+                paymentPlanRepository.findById(planId).ifPresent(plan -> plans.put(bridgeId, plan));
+            }
+        }
+        return plans;
+    }
+
+    /**
+     * The plan a selected course is priced and enrolled on: the plan the page
+     * locked on that course's mapping, never one the request picks.
+     *
+     * Nothing in the learner app lets a visitor choose among a payment
+     * option's plans. The cart sends each mapping's own payment_plan_id back,
+     * and plan tiles choose between MAPPINGS, each still on its locked plan
+     * (PlanTiles groups mappings by payment_plan_id). The server used to price
+     * whatever plan id arrived, so a crafted request could buy any course on
+     * any plan it could name, at that plan's price and validity.
+     *
+     * A request naming no plan gets the locked one. A page that maps one
+     * bridge row more than once, on different plans, accepts each of those
+     * plans as it always has. Anything else is refused before any user,
+     * payment or enrollment is created. It is refused with 409 Conflict
+     * (ConflictException, logged as a warning rather than an error), so a
+     * client can tell "the page changed under you: reload it" from other errors.
+     *
+     * Visible for testing.
+     *
+     * @param pageMappings the page's ACTIVE mappings (at least every one on this bridge row)
+     */
+    static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings) {
+        return lockedPlanId(psInvitePaymentOptionId, requestedPlanId, pageMappings, true);
+    }
+
+    /**
+     * {@link #lockedPlanId(String, String, List)}, with a choice for a plan the
+     * mapping does not sell (any more).
+     *
+     * @param refuseUnlocked true refuses such a plan with 409. False resolves it
+     *                       to the mapping's current locked plan instead: for a
+     *                       call that must not fail because the money is
+     *                       already taken (Razorpay Phase 2). Pricing stays on
+     *                       locked plans either way.
+     */
+    static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings, boolean refuseUnlocked) {
+        Set<String> locked = lockedPlanIds(psInvitePaymentOptionId, pageMappings);
+        if (locked.isEmpty()) {
+            throw new VacademyException("Mapping " + psInvitePaymentOptionId + " is not part of this course page");
+        }
+        if (!StringUtils.hasText(requestedPlanId)) {
+            return locked.iterator().next();
+        }
+        String requested = requestedPlanId.trim();
+        if (locked.contains(requested)) {
+            return requested;
+        }
+        if (!refuseUnlocked) {
+            String current = locked.iterator().next();
+            log.warn("Product page checkout: plan {} for bridge {} is no longer the one the page sells ({}); "
+                    + "the payment is already taken, so the line completes on {}",
+                    requested, psInvitePaymentOptionId, locked, current);
+            return current;
+        }
+        log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
+                requested, psInvitePaymentOptionId, locked);
+        throw new ConflictException(PRICE_CHANGED_MESSAGE);
+    }
+
+    /**
+     * The plan a course is priced on when lockedPlanId accepts the request:
+     * the requested plan when the page locks it on that course's mapping,
+     * else the mapping's own locked plan (what Razorpay Phase 2 resolves a
+     * stale plan to). It never refuses and never logs, and never names a plan
+     * the page does not lock; null when the page locks no plan on the row.
+     *
+     * Visible for testing.
+     */
+    static String pricedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings) {
+        Set<String> locked = lockedPlanIds(psInvitePaymentOptionId, pageMappings);
+        if (locked.isEmpty()) {
+            return null;
+        }
+        String requested = StringUtils.hasText(requestedPlanId) ? requestedPlanId.trim() : null;
+        return requested != null && locked.contains(requested) ? requested : locked.iterator().next();
+    }
+
+    /** The plans the page locks on a bridge row's mappings, in page order. */
+    private static Set<String> lockedPlanIds(String psInvitePaymentOptionId,
+                                             List<ProductPageInviteMapping> pageMappings) {
+        Set<String> locked = new LinkedHashSet<>();
+        for (ProductPageInviteMapping m : pageMappings) {
+            if (m.getPsInvitePaymentOption() != null
+                    && Objects.equals(m.getPsInvitePaymentOption().getId(), psInvitePaymentOptionId)
+                    && StringUtils.hasText(m.getPaymentPlanId())) {
+                locked.add(m.getPaymentPlanId());
+            }
+        }
+        return locked;
     }
 
     private PaymentInitiationRequestDTO clonePaymentRequest(PaymentInitiationRequestDTO source) {

@@ -12,7 +12,7 @@ This service handles:
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -619,25 +619,16 @@ class CreditService:
     # Credit Check (Pre-flight)
     # ========================================================================
 
-    # Tier-aware pre-flight estimates for the video pipeline (recalibrated
-    # 2026-05-15 against live stage data). Original floors (300/380 for
-    # ultra/super_ultra) were calibrated against the worst-case Gemini 3.1 Pro
-    # pricing — but production ultra runs use Gemini 3 Flash, which deducts
-    # ~7-15 credits for a typical 60s video (observed: 7.22 cr on a 10-shot
-    # Labour Link run, 56s narration, 313K tokens). Those original floors
-    # would have blocked users with 50-200 credits who could complete an
-    # ultra run 5-10× over — paternalistic and wrong.
+    # Pre-flight for the video pipeline (2026-10-13). A run is charged as it
+    # goes — vendor USD × the credit ratio per stage, and the balance may go
+    # negative mid-run so the video still finishes (video deductions pass
+    # allow_negative). The start therefore requires the FULL estimate that
+    # video_estimation_service shows the user (same prices as the runtime),
+    # scaled by `partial_run_factor` on resume/retry.
     #
-    # The floor's job is to catch truly-bankrupt institutes and provide a
-    # ~30% headroom over typical cost, NOT to reserve the worst-case maximum.
-    # Mid-run depletion is handled by refund-on-failure (TokenUsageService.
-    # refund_video_credits), and per-stage deduction tracks reality via
-    # actual OpenRouter token counts. Institutes choosing the more expensive
-    # Pro model for HTML gen will spend more — they should have a sufficient
-    # balance, but we don't punish the Flash majority for that minority case.
-    #
-    # `partial_run_factor` scales the floor for resume/retry endpoints (where
-    # checkpoints mean only a fraction of the work remains).
+    # These flat floors are only used when the estimator fails (DB hiccup,
+    # unexpected selections). They date from 2026-05, when a run cost
+    # 7-15 credits; a real lesson now costs ~150-200.
     _VIDEO_TIER_FLOOR_CREDITS: Dict[str, Decimal] = {
         "free":        Decimal("5"),
         "standard":    Decimal("10"),
@@ -646,23 +637,74 @@ class CreditService:
         "super_ultra": Decimal("50"),
     }
 
+    def _video_estimate_credits(
+        self, quality_tier: str, estimate_params: Dict[str, Any]
+    ) -> Optional[Decimal]:
+        """Expected credits from the video estimator for these selections, or
+        None when it can't answer. The Veo hold is added by the caller, so the
+        estimator's worst-case AI-video row is left out here. The dialogue-clip
+        row is left out too: it is the full per-video dialogue budget, and
+        AiVideoLedger charges each clip with a guarded deduct that demotes the
+        scene to stock when the balance is short — reserving the whole budget
+        up front would 402 runs that a typical dialogue spend fits."""
+        # A savepoint: the estimator swallows its own DB errors, and a failed
+        # statement would otherwise leave the caller's session aborted.
+        nested = getattr(self.db, "begin_nested", None)
+        savepoint = None
+        try:
+            import inspect
+            from .video_estimation_service import estimate_video_generation
+
+            accepted = set(inspect.signature(estimate_video_generation).parameters)
+            params = {
+                k: v for k, v in (estimate_params or {}).items()
+                if k in accepted and v is not None
+            }
+            params["quality_tier"] = quality_tier
+            params["institute_id"] = None  # balance is checked here, not there
+            params["ai_video_enabled"] = False
+            params["dialogue_scenes_enabled"] = False
+            savepoint = nested() if callable(nested) else None
+            result = estimate_video_generation(self.db, **params)
+            if savepoint is not None:
+                savepoint.commit()
+            expected = Decimal(str((result.get("estimate") or {}).get("expected_credits") or 0))
+            if expected > 0:
+                return expected
+            logger.warning("check_video_tier_credits: estimator returned %s credits; using the tier floor", expected)
+        except Exception as exc:
+            if savepoint is not None:
+                try:
+                    savepoint.rollback()
+                except Exception:
+                    pass
+            logger.warning(f"check_video_tier_credits: estimator failed ({exc}); using the tier floor")
+        return None
+
     def check_video_tier_credits(
         self,
         institute_id: str,
         quality_tier: str,
         ai_video_enabled: bool = False,
         partial_run_factor: float = 1.0,
+        estimate_params: Optional[Dict[str, Any]] = None,
     ) -> CreditCheckResponse:
-        """Tier-aware pre-flight credit check for the video pipeline.
+        """Pre-flight credit check for the video pipeline.
 
-        Returns a CreditCheckResponse with `estimated_cost` set to the per-tier
-        typical+headroom floor (NOT actual cost — actual cost lands in
-        credit_transactions stage-by-stage via TokenUsageService).
+        Returns a CreditCheckResponse whose `estimated_cost` is the credits the
+        institute must hold to start: the estimator's expected credits for the
+        run's selections (or the per-tier floor when the estimator fails),
+        times `partial_run_factor`, plus the Veo hold. The real charge still
+        lands stage by stage via TokenUsageService.
 
         Caller raises HTTP 402 when `has_sufficient_credits` is False.
 
         - `quality_tier`: one of free/standard/premium/ultra/super_ultra.
           Unknown tier falls back to the "standard" floor (defensive).
+        - `estimate_params`: the run's selections as keyword arguments of
+          video_estimation_service.estimate_video_generation (target_duration,
+          tts_provider, language, lesson, host, model, dialogue_*, ...);
+          unknown keys are ignored. None = use the tier floor (legacy callers).
         - `ai_video_enabled`: when True, adds a Veo hold — the per-video cap
           × AI_VIDEO_PREFLIGHT_HOLD_FRACTION × the USD→credit ratio — so a
           user with marginal balance can't enable Veo and then circuit-break
@@ -680,15 +722,20 @@ class CreditService:
         current = balance.current_balance
 
         tier_key = (quality_tier or "standard").strip().lower()
-        floor = self._VIDEO_TIER_FLOOR_CREDITS.get(
-            tier_key, self._VIDEO_TIER_FLOOR_CREDITS["standard"]
-        )
+        base = None
+        if estimate_params is not None:
+            base = self._video_estimate_credits(tier_key, estimate_params)
+        from_estimate = base is not None
+        if base is None:
+            base = self._VIDEO_TIER_FLOOR_CREDITS.get(
+                tier_key, self._VIDEO_TIER_FLOOR_CREDITS["standard"]
+            )
         # partial_run_factor scales by the fraction of work remaining.
         try:
             factor = Decimal(str(max(0.1, min(1.0, float(partial_run_factor)))))
         except (TypeError, ValueError):
             factor = Decimal("1.0")
-        estimated_cost = (floor * factor).quantize(
+        estimated_cost = (base * factor).quantize(
             Decimal("0.0001"), rounding=ROUND_HALF_UP
         )
 
@@ -732,7 +779,7 @@ class CreditService:
             message = (
                 f"Sufficient credits for {tier_key} tier"
                 f"{' + AI video' if ai_video_enabled else ''}. "
-                f"Estimated floor: {estimated_cost} credits."
+                f"{'Estimated cost' if from_estimate else 'Estimated floor'}: {estimated_cost} credits."
             )
         else:
             short_by = estimated_cost - current
@@ -740,8 +787,8 @@ class CreditService:
                 f"Insufficient credits for {tier_key} tier"
                 f"{' + AI video (worst-case Veo cap included)' if ai_video_enabled else ''}. "
                 f"Need at least {estimated_cost} credits (you have {current}, short by {short_by}). "
-                f"Real cost is tracked per-stage via TokenUsageService — this is the upfront floor "
-                f"to keep your run from circuit-breaking mid-render."
+                f"{'This is the estimated cost of the video' if from_estimate else 'This is the upfront floor'}; "
+                f"the real cost is charged stage by stage as the video is made."
             )
 
         return CreditCheckResponse(
@@ -1050,6 +1097,21 @@ class CreditService:
                 exc,
             )
             return USD_TO_CREDIT_RATIO
+
+    def usd_to_credits(self, usd: Any) -> Decimal:
+        """Vendor USD → credits at the live ratio (credit_rate_config,
+        CreditRateService), quantized to 0.0001. No base cost or minimum: this
+        is what metered video units (images, premium TTS, the lesson teacher)
+        pass as `precomputed_credits`. Non-positive or unparsable USD → 0."""
+        try:
+            amount = Decimal(str(usd)) if usd is not None else Decimal("0")
+        except Exception:
+            return Decimal("0")
+        if not amount.is_finite() or amount <= 0:
+            return Decimal("0")
+        return (amount * self._effective_usd_to_credit_ratio()).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
 
     def calculate_credits(
         self,

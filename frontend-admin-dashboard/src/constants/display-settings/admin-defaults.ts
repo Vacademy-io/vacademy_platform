@@ -104,6 +104,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         //    breaks enrolment for every course wired to it.
         'lmsConnectionHealth',
         // 1. Navigation shortcuts
+        'assistantLaunchBar',
         'quickActions',
         // 2. KPIs
         'kpiBand',
@@ -261,6 +262,10 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
     assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
     liveClassActions: {
         allowDeletePastSessions: true,
+    },
+    // Off for every role — an institute opts a role in from Display Settings.
+    leadActions: {
+        showAddLead: false,
     },
     courseCreation: {
         showCreateCourseWithAI: false,

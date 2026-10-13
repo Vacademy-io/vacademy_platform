@@ -1311,7 +1311,8 @@ public class UserPlanService {
                 .updatedAt(userPlan.getUpdatedAt())
                 .startDate(userPlan.getStartDate())
                 .endDate(userPlan.getEndDate())
-                .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
+                .enrollInvite(
+                        userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().toEnrollInviteDTO() : null)
                 .paymentPlanDTO(
                         (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
                 .paymentOption(

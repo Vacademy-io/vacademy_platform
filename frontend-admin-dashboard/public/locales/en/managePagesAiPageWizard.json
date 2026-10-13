@@ -104,5 +104,8 @@
         "pagesAddedDescription": "Review on the canvas, then Save and Publish.",
         "pageAddedTitle": "Page added",
         "pageAddedDescription": "Review it on the canvas, then Save and Publish when ready."
+    },
+    "figmaLink": {
+        "message": "Figma links can't be opened here. Either upload screenshots of your frames, or use Claude with the Figma connector and the Vacademy MCP (it follows our design playbook)."
     }
 }

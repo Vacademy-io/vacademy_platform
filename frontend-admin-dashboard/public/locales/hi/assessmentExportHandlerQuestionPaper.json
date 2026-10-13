@@ -6,7 +6,8 @@
     "setLabel": " (सेट {{letter}})",
     "fileName": {
         "base": "प्रश्नपत्र",
-        "withSet": "प्रश्नपत्र {{letter}}"
+        "withSet": "प्रश्नपत्र {{letter}}",
+        "answerKeySuffix": "(उत्तर कुंजी)"
     },
     "progress": {
         "title": "PDF तैयार किया जा रहा है",

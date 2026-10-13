@@ -1,20 +1,21 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { getUserId } from '@/utils/userDetails';
-import {
-    getSystemAlertsQuery,
-    stripHtml,
-    formatAlertTimestamp,
-} from '@/services/notifications/system-alerts';
+import { stripHtml, formatAlertTimestamp } from '@/services/notifications/system-alerts';
+import { useSystemAlertsPreview } from '../-hooks/useDashboardSources';
+import SourceErrorNotice from './SourceErrorNotice';
 import { BellSimple, ArrowRight } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 export default function RecentNotificationsWidget({ onSeeAll }: { onSeeAll?: () => void }) {
     const { t } = useTranslation('dashboardRecentNotificationsWidget');
     const userId = getUserId();
-    const { data, isLoading } = useSuspenseQuery(getSystemAlertsQuery(userId, 5));
+    // useQuery, not useSuspenseQuery: no local Suspense boundary, so suspending blocked the
+    // dashboard. Same key as the navbar bell, so this is served from its request.
+    const { data, isLoading, refetch } = useSystemAlertsPreview(userId);
     const items = data?.content || [];
+    // fetchSystemAlerts resolves to an empty page on failure; don't show that as "none".
+    const failed = data?.fetchFailed === true;
 
     return (
         <Card className="flex h-full flex-col bg-white shadow-sm">
@@ -53,6 +54,8 @@ export default function RecentNotificationsWidget({ onSeeAll }: { onSeeAll?: () 
                             </li>
                         ))}
                     </ul>
+                ) : failed ? (
+                    <SourceErrorNotice className="px-2 py-6" onRetry={() => void refetch()} />
                 ) : items.length === 0 ? (
                     <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
                         <BellSimple size={20} weight="duotone" className="text-neutral-300" />

@@ -33,8 +33,16 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             // this template long after, so AI-composed headers taught the wrong
             // field and produced headers with no working buttons.
             authLinks: [
-                { label: t('header.authLogin'), route: 'login' },
+                // style: 'primary' | 'outline' | 'text'; absent = first filled, the rest outlined.
+                { label: t('header.authLogin'), route: 'login', style: 'primary' },
             ],
+            // Optional header features (headers saved without these keys keep
+            // the original look). A nav item can open a streams mega menu with
+            // { type: 'megaMenu', megaMenu: { libraryId, … } } — set in the editor.
+            activeStyle: 'pill',
+            showSearch: false,
+            // Shows only once the site has more than one language.
+            showLanguageSwitcher: true,
         },
     },
 
@@ -91,6 +99,32 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
                     backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
                 },
             },
+            // Courses-page discovery (CatalogDiscoveryEditor). Only sections
+            // added from now on carry these — saved sections without them keep
+            // the original grid. Stream tabs stay off until a folder library or
+            // tag list is picked; the language filter and one-card-per-course
+            // wait for Site settings → Course languages. Empty quick-filter
+            // labels use the visitor-language wording on the site.
+            streams: { enabled: false, source: 'folderLibrary', libraryId: '', sticky: true, labelMode: 'title' },
+            showFilterCounts: true,
+            showAppliedChips: true,
+            mobileFilterSheet: true,
+            categoryFilter: { enabled: true },
+            languageFilter: { enabled: true },
+            priceFilter: { enabled: true, showFree: true, maxOptions: [500, 1000] },
+            groupLanguageVersions: true,
+            badges: {
+                enabled: true,
+                types: ['bestseller', 'popular', 'new', 'free'],
+                newDays: 60,
+                bestsellerTop: 3,
+                max: 2,
+            },
+            quickFilters: [
+                { id: 'qf-popular', label: '', kind: 'popular' },
+                { id: 'qf-new', label: '', kind: 'new' },
+                { id: 'qf-free', label: '', kind: 'free' },
+            ],
         },
     },
 
@@ -921,6 +955,41 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             showViewCourse: true,
             courseColumns: 3,
             coursePageSize: 9,
+        },
+    },
+
+    // A learning path = a product page whose courses are taken in order
+    // (display_order). 'single' shows one path as numbered steps; 'list' shows
+    // the product pages of a folder library as path cards ("View path" opens
+    // one in place via ?path=<code>). Only codes/ids are stored — courses,
+    // prices and the tree are read live. Defaults: Knowledge Streams spec §8.
+    // Copy uses { defaultValue } so a missing locale key never shows raw (the
+    // schema exporter honours the same option).
+    learningPath: {
+        type: 'learningPath',
+        enabled: true,
+        props: {
+            mode: 'single',
+            productPageCode: '',
+            productPageName: '',
+            libraryId: '',
+            libraryName: '',
+            // '' = every stream; else only paths under this folder.
+            folderId: '',
+            // List mode on the Courses page: a stream tab shows its own paths.
+            streamFromUrl: true,
+            pathParam: 'path',
+            title: t('learningPath.title', { defaultValue: 'Learning paths' }),
+            subtitle: t('learningPath.subtitle', {
+                defaultValue: 'Courses in the order we recommend taking them.',
+            }),
+            showStepNumbers: true,
+            showTotal: true,
+            addAllLabel: t('learningPath.addAllLabel', { defaultValue: 'Add whole path to cart' }),
+            enrolLabel: t('learningPath.enrolLabel', { defaultValue: 'Enrol in this path' }),
+            viewPathLabel: t('learningPath.viewPathLabel', { defaultValue: 'View path' }),
+            // Not "coming soon": the AI page review flags that as placeholder copy.
+            emptyText: t('learningPath.emptyText', { defaultValue: 'New learning paths will appear here.' }),
         },
     },
 

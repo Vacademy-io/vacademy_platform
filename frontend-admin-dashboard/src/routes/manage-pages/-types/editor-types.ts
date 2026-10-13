@@ -1,3 +1,5 @@
+import type { CatalogueI18nSettings } from '../-utils/catalogue-i18n';
+
 export type CatalogueThemePreset =
     | 'default'
     | 'ocean'
@@ -112,6 +114,12 @@ export interface GlobalSettings {
         provider: 'razorpay' | 'stripe' | 'paypal' | 'PHONEPE';
         fields: string[];
     };
+    /**
+     * Site content languages. The pages stay written in the base language;
+     * every other language is a dictionary in `strings[locale]` keyed by the
+     * exact base text (see -utils/catalogue-i18n.ts). Absent = one language.
+     */
+    i18n?: CatalogueI18nSettings;
     layout?: {
         header?: any;
         footer?: any;
@@ -149,6 +157,107 @@ export interface GlobalSettings {
     motion?: {
         personality: 'none' | 'calm' | 'balanced' | 'dynamic';
     };
+    /**
+     * How a course's language versions are told apart (one card per course,
+     * EN / हिं chips, a language filter). Edited under Global Settings → Course
+     * languages; read by the learner's -utils/course-variants.ts. Absent =
+     * every level stays its own card, exactly as before.
+     */
+    courseLanguages?: CourseLanguageSettings;
+    /**
+     * One site-wide course cart whose checkout is the store product page's.
+     * Edited under Global Settings → Site cart; read by the learner's
+     * -utils/site-cart.ts. On only when enabled AND a store page is chosen.
+     */
+    siteCart?: SiteCartSettings;
+}
+
+/** One language a course can be offered in (mirrors the learner CourseLanguageOption). */
+export interface CourseLanguageOption {
+    /** Stable code, also used in ?language= (e.g. "hi"). */
+    code: string;
+    /** Filter label: "Hindi". */
+    label: string;
+    /** Card chip: "हिं". Falls back to the label. */
+    chip?: string;
+    /** Words that identify this language inside a level name (case-insensitive). */
+    match?: string[];
+}
+
+export interface CourseLanguageSettings {
+    /** Fold a course's language levels into one card, with language chips and filter. */
+    enabled?: boolean;
+    /** Absent or empty = the built-in English / Hindi rules. */
+    languages?: CourseLanguageOption[];
+}
+
+export interface SiteCartSettings {
+    enabled?: boolean;
+    /** Code of the product page whose checkout takes the whole cart. */
+    storeProductPageCode?: string;
+    storeProductPageName?: string;
+}
+
+/**
+ * props of a `learningPath` section (Knowledge Streams spec §8, read by the
+ * learner's LearningPathComponent). Only codes and ids are stored — course
+ * data is always read live. libraryName is the editor's own display copy.
+ */
+export interface LearningPathProps {
+    /** single = one product page as numbered steps; list = path cards from a folder library. Default single. */
+    mode?: 'single' | 'list';
+    productPageCode?: string;
+    productPageName?: string;
+    libraryId?: string;
+    libraryName?: string;
+    folderId?: string;
+    /** List mode: on /courses?stream=… show only that stream's paths. */
+    streamFromUrl?: boolean;
+    /** Address parameter "View path" sets (default 'path'). */
+    pathParam?: string;
+    title?: string;
+    subtitle?: string;
+    showStepNumbers?: boolean;
+    showTotal?: boolean;
+    addAllLabel?: string;
+    enrolLabel?: string;
+    viewPathLabel?: string;
+    emptyText?: string;
+    backgroundColor?: string;
+    /** List mode, opt-in: "featured" = goal chips, a featured path and the other paths (learner LearningPathFeatured). */
+    listLayout?: 'cards' | 'featured';
+    /** Featured layout: the parts this section shows (each defaults to true). */
+    showGoals?: boolean;
+    showFeatured?: boolean;
+    showGrid?: boolean;
+    goalParam?: string;
+    /** First chip label (default "All paths"). */
+    allGoalsLabel?: string;
+    goals?: LearningPathGoal[];
+    featured?: { code?: string; badge?: string; image?: string };
+    /** Per-path extras (step labels, merged steps, coming-soon steps); not edited here, always kept. */
+    pathExtras?: unknown[];
+    formatLabels?: Record<string, string>;
+    /** "More learning paths" heading and the note on its right. */
+    moreTitle?: string;
+    moreNote?: string;
+    /** Opt-in: read goals, the featured path and path extras from this learningPath section on the page. */
+    sharedWith?: string;
+}
+
+/** A goal chip of the featured layout: matches the paths in these stream tags (folder course tag / slug). */
+export interface LearningPathGoal {
+    /** Kept in ?goal= */
+    key: string;
+    label: string;
+    tags?: string[];
+}
+
+/** Show a section only for certain query strings (mirrors the learner VisibleWhenRule). */
+export interface VisibleWhenRule {
+    param: string;
+    op: 'empty' | 'notEmpty' | 'equals' | 'notEquals';
+    value?: string;
 }
 
 // Style schema now lives in the SHARED catalogue style engine (byte-synced
@@ -184,6 +293,12 @@ export interface Component {
     style?: ComponentStyle;
     /** Anchor ID for in-page linking (e.g. "pricing" → #pricing) */
     anchorId?: string;
+    /**
+     * Show the section only when every rule holds for the page's query string,
+     * e.g. [{ param: 'stream', op: 'empty' }] = only on the All courses tab (no ?stream).
+     * Absent = always shown.
+     */
+    visibleWhen?: VisibleWhenRule[];
 }
 
 export interface Page {

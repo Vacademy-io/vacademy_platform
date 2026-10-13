@@ -1,5 +1,6 @@
 {
     "loading": "Loading...",
+    "loadError": "Couldn't load these settings. Refresh the page to try again.",
     "page": {
         "title": "Student Display Settings",
         "description": "Control what learners see — sidebar, courses, login, certificates, notifications and more."
@@ -119,7 +120,32 @@
     "allCourses": {
         "cardTitle": "All Courses Page",
         "cardDescription": "Tabs and default selection",
-        "hideInstructorName": "Hide Instructor Name (Course Cards)"
+        "hideInstructorName": "Hide Instructor Name (Course Cards)",
+        "addCustomTab": "+ Add custom tab",
+        "customTabLabelPlaceholder": "e.g. Free Courses",
+        "customTabTags": "Show courses with any of these tags",
+        "customTabTagsPlaceholder": "Select course tags",
+        "customTabIncomplete": "Learners won't see this tab until it has a label and something to show.",
+        "customTabNoTags": "No course tags yet. Add tags to courses first, then pick them here.",
+        "customTabType": "Shows",
+        "customTabCourses": "Courses in this tab",
+        "customTabCoursesPlaceholder": "Select courses",
+        "customTabProductPages": "Product pages in this tab",
+        "customTabProductPagesPlaceholder": "Select product pages",
+        "customTabTypes": {
+            "LIVE_SESSIONS": "Live sessions & webinars",
+            "FREE_COURSES": "Free courses",
+            "COURSES": "Selected courses",
+            "PRODUCT_PAGES": "Product pages",
+            "TAG": "Courses with tags"
+        },
+        "customTabTypeHints": {
+            "LIVE_SESSIONS": "Live and upcoming sessions the learner can join, including public webinars.",
+            "FREE_COURSES": "Every catalogue course whose price is 0 — updates on its own.",
+            "COURSES": "Only the courses you pick. A course must be published to the catalogue to appear.",
+            "PRODUCT_PAGES": "A card for each product page; tapping it opens the page.",
+            "TAG": "Catalogue courses carrying any of the chosen tags."
+        }
     },
     "liveClasses": {
         "cardTitle": "Live Classes",

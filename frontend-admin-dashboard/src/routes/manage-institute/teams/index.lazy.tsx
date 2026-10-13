@@ -51,9 +51,10 @@ import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { ADMIN_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
-import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import {
+    getActiveRoleDisplaySettingsKey,
+    getRolesForCurrentInstitute,
+} from '@/lib/auth/instituteUtils';
 import { getPreferredPhoneCountries } from '@/services/domain-routing';
 import { OrgChartTab } from './-components/OrgChartTab';
 import { InviteMemberDialog } from './-components/InviteMemberDialog';
@@ -136,8 +137,8 @@ function RouteComponent() {
     // The viewer's own role settings, matching the sidebar: admin, teacher, or the
     // custom role (e.g. "Operations") they are signed in as.
     const viewerDisplaySettings = useMemo(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const viewerRoles = getUserRoles(accessToken);
+        // Roles in THIS institute — ADMIN elsewhere doesn't make the viewer an admin here.
+        const viewerRoles = getRolesForCurrentInstitute();
         const isAdmin = viewerRoles.includes('ADMIN');
         const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : getActiveRoleDisplaySettingsKey();
         return { isAdmin, settings: getDisplaySettingsFromCache(roleKey) };
@@ -158,8 +159,7 @@ function RouteComponent() {
     const allowViewPassword = viewerTeamManagement?.allowViewPassword !== false;
     // Self-role is never hidden, so a viewer can't lock themselves out.
     const isRoleVisibleToViewer = useMemo(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const viewerRoles = (getUserRoles(accessToken) || []).map((r) => r.toUpperCase());
+        const viewerRoles = getRolesForCurrentInstitute().map((r) => r.toUpperCase());
         return (roleName: string) => {
             const key = roleName.toUpperCase();
             if (viewerRoles.includes(key)) return true;

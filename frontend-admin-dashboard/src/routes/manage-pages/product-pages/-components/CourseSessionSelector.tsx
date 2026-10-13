@@ -17,6 +17,8 @@ import {
     CheckCircle,
     ArrowsClockwise,
     Network,
+    ArrowUp,
+    ArrowDown,
 } from '@phosphor-icons/react';
 import type { MappingRow } from '../-types/product-page-types';
 import { SuggestionsPanel } from './SuggestionsPanel';
@@ -111,6 +113,10 @@ interface SelectedRowProps {
     onChange: (updated: MappingRow) => void;
     onRemove: () => void;
     index: number;
+    /** Step up (-1) / down (+1). Absent = no reorder arrows. */
+    onMove?: (direction: -1 | 1) => void;
+    isFirst?: boolean;
+    isLast?: boolean;
 }
 
 const SelectedRow = ({
@@ -121,6 +127,9 @@ const SelectedRow = ({
     onChange,
     onRemove,
     index,
+    onMove,
+    isFirst = false,
+    isLast = false,
 }: SelectedRowProps) => {
     const { t } = useTranslation('managePagesCourseSessionSelector');
     const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
@@ -225,6 +234,30 @@ const SelectedRow = ({
 
                 <div className="flex shrink-0 items-center gap-2">
                     {isReady && !isLoading && <CheckCircle className="size-4 text-success-500" />}
+                    {onMove && (
+                        <div className="flex items-center">
+                            <button
+                                type="button"
+                                onClick={() => onMove(-1)}
+                                disabled={isFirst}
+                                aria-label={t('selectedRow.moveUp', 'Move up')}
+                                title={t('selectedRow.moveUp', 'Move up')}
+                                className="flex size-6 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                                <ArrowUp className="size-3.5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onMove(1)}
+                                disabled={isLast}
+                                aria-label={t('selectedRow.moveDown', 'Move down')}
+                                title={t('selectedRow.moveDown', 'Move down')}
+                                className="flex size-6 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                                <ArrowDown className="size-3.5" />
+                            </button>
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={onRemove}
@@ -328,6 +361,8 @@ interface CourseSessionSelectorProps {
     onRemove: (rowId: string) => void;
     suggestions: Record<string, string[]>;
     onUpdateSuggestions: (s: Record<string, string[]>) => void;
+    /** Moves a row one step; the row order is the order saved (and a learning path's step order). */
+    onMove?: (rowId: string, direction: -1 | 1) => void;
 }
 
 export const CourseSessionSelector = ({
@@ -337,6 +372,7 @@ export const CourseSessionSelector = ({
     onRemove,
     suggestions,
     onUpdateSuggestions,
+    onMove,
 }: CourseSessionSelectorProps) => {
     const { t } = useTranslation('managePagesCourseSessionSelector');
     const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
@@ -649,6 +685,9 @@ export const CourseSessionSelector = ({
                                     index={idx}
                                     onChange={(updated) => onUpdate(row.rowId, updated)}
                                     onRemove={() => handleRemoveRow(row.rowId)}
+                                    onMove={onMove ? (direction) => onMove(row.rowId, direction) : undefined}
+                                    isFirst={idx === 0}
+                                    isLast={idx === mappingRows.length - 1}
                                 />
                             );
                         })}

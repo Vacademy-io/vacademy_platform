@@ -1,9 +1,7 @@
 {
-    "overduePayment": {
-        "title": "{{name}} — {{amount}} overdue",
-        "subtitle_one": "{{count}} day late · {{feeType}}",
-        "subtitle_other": "{{count}} days late · {{feeType}}",
-        "defaultFeeType": "Fee"
+    "overdueSummary": {
+        "title": "{{amount}} in overdue fees",
+        "subtitle": "Past due and unpaid across the institute"
     },
     "pendingApproval": {
         "title": "Approve adjustment for {{name}}",

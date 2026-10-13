@@ -7,6 +7,7 @@ import { useDomainRouting } from '@/hooks/use-domain-routing';
 import { getPublicUrlWithoutLogin } from '@/services/upload_file';
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useSiteT } from '../-utils/catalogue-locale';
 
 interface IntroPageComponentProps {
   introPage: IntroPage;
@@ -28,6 +29,10 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
   instituteId,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Captions and field labels are authored in the catalogue JSON (introPage,
+  // leadCollection) outside the page tree, so they are translated here, for
+  // display only.
+  const siteT = useSiteT();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
   const isIOS = Capacitor.getPlatform() === 'ios';
@@ -267,13 +272,15 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             {/* Image Caption - Above the image with proper spacing */}
             <div className="absolute top-4 start-0 end-0 text-center px-4 z-10 mb-4">
               <p className="text-gray-800 text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold">
-                {image.caption}
+                {siteT(image.caption)}
               </p>
             </div>
             
             <img
               src={image.source}
-              alt={image.caption}
+              // No caption keeps the attribute absent, as before (siteT
+              // would turn it into alt="", marking the image decorative).
+              alt={image.caption ? siteT(image.caption) : image.caption}
               className="w-full h-full object-cover mt-16 md:mt-20"
               style={{
                 objectFit: introPage.imageSlider.styles.objectFit,
@@ -371,7 +378,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                         {leadCollectionSettings.fields.map((field: any, index: number) => (
                           <div key={field.name} className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700">
-                              {field.label}
+                              {siteT(field.label)}
                               {field.required && <span className="text-red-500 ms-1">*</span>}
                             </label>
                             
@@ -379,7 +386,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                               <input
                                 type={field.type}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-catalogue-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                placeholder={t("introPage.enterField", { field: field.label.toLowerCase() })}
+                                placeholder={t("introPage.enterField", { field: siteT(field.label).toLowerCase() })}
                               />
                             ) : field.type === 'chips' && field.options ? (
                               <div className="flex flex-wrap gap-2">
@@ -388,7 +395,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                                     key={optionIndex}
                                     className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                   >
-                                    {option.label}
+                                    {siteT(option.label)}
                                   </button>
                                 ))}
                               </div>

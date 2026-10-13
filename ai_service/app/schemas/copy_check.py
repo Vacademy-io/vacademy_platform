@@ -127,6 +127,10 @@ class CopyCheckGradeRequest(BaseModel):
     # The paper's maximum (sum of ungrouped max + per group the top `attempt`
     # maxima). Used for the grand total; derived from choice_groups when absent.
     paper_max: Optional[float] = Field(None, gt=0)
+    # True = grade every question against the whole copy, without the answer-
+    # location pass. Sent by assignment AI evaluation, where the single question's
+    # answer IS the whole copy. Absent/False keeps the usual behaviour.
+    skip_answer_location: bool = False
 
     @model_validator(mode="after")
     def _copy_needs_pdf(self) -> "CopyCheckGradeRequest":

@@ -199,7 +199,12 @@ const FollowUpsContent = () => {
     // Seeded from the route so a sub-tab link opens on its own tile, and kept in step
     // with it: every sub-tab shares this pathname, so switching between them does not
     // remount the page. The page never writes the param back, so there is no loop.
-    const { bucket: bucketParam, lock } = useSearch({ from: '/audience-manager/follow-ups/' });
+    const {
+        bucket: bucketParam,
+        lock,
+        status: statusParam,
+        statusExclude,
+    } = useSearch({ from: '/audience-manager/follow-ups/' });
     const [bucket, setBucket] = useState<FollowUpBucket>(bucketParam ?? 'today');
     useEffect(() => {
         if (bucketParam) setBucket(bucketParam);
@@ -376,6 +381,17 @@ const FollowUpsContent = () => {
         ]
     );
 
+    // ?status=…[&statusExclude=1] — the sidebar sub-tab decides which lead statuses its
+    // queue covers (e.g. an institute that parks lost leads in their own tab links here
+    // with status=LOST&statusExclude=1). No picker on this page; the route owns it.
+    const statusKeys = (statusParam ?? '')
+        .split(',')
+        .map((k) => k.trim())
+        .filter(Boolean)
+        .join(',');
+    const leadStatusId = statusKeys && statusExclude !== '1' ? statusKeys : undefined;
+    const leadStatusExcludeId = statusKeys && statusExclude === '1' ? statusKeys : undefined;
+
     /** One request shape for every bucket; only the window moves. */
     const baseFilter = useMemo(
         () => ({
@@ -383,12 +399,22 @@ const FollowUpsContent = () => {
             assigned_counselor_id: effectiveCounsellorId,
             // A converted lead is no longer a pending follow-up.
             conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
+            lead_status_id: leadStatusId,
+            lead_status_exclude_id: leadStatusExcludeId,
             search_query: appliedSearch || undefined,
             follow_up_pending: true,
             ...audienceParams,
             utm_filters: utmFiltersPayload,
         }),
-        [instituteId, effectiveCounsellorId, appliedSearch, audienceParams, utmFiltersPayload]
+        [
+            instituteId,
+            effectiveCounsellorId,
+            leadStatusId,
+            leadStatusExcludeId,
+            appliedSearch,
+            audienceParams,
+            utmFiltersPayload,
+        ]
     );
 
     // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used

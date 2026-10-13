@@ -352,7 +352,7 @@ export function buildDiagnostics(): string {
     const ms = (v: number | null) => (v === null ? 'n/a' : `${Math.round(v)}ms`);
 
     return [
-        'Vacademy performance diagnostics',
+        'Performance diagnostics',
         `verdict:      ${snap.verdict}`,
         `server(med):  ${ms(snap.serverMs)}`,
         `network(med): ${ms(snap.networkMs)}`,

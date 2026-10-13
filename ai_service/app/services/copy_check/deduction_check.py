@@ -33,12 +33,34 @@ from .mathpix_fallback import _download
 
 logger = logging.getLogger(__name__)
 
-# The page reader (GLM-5.3-flash) cannot tell a handwritten 7 from a 1 even on
-# a close-up crop ("the image clearly shows 1/6 and 1/5"); Gemini 2.5 Flash
-# read the same crop as "7/5 (-3/12 + 5/12) = 7/5 x 1/6 = 7/30". On a real
-# copy's cut marks it raised the three misread ones and kept the three real
-# ones. It is called only for written answers that lost marks.
-MODEL = "google/gemini-2.5-flash"
+# Measured 2026-09: the page reader (GLM-5.3-flash) could not tell a
+# handwritten 7 from a 1 even on a close-up crop ("the image clearly shows 1/6
+# and 1/5"); Gemini 2.5 Flash read the same crop as "7/5 (-3/12 + 5/12) =
+# 7/5 x 1/6 = 7/30" and on a real copy's cut marks raised the three misread
+# ones and kept the three real ones. It is called only for written answers
+# that lost marks.
+# Owner decision 2026-10-13: this check runs on GLM too, under its OWN use case
+# 'copy_check_deduction' (ai_model_defaults) so a super admin can switch it
+# back to google/gemini-2.5-flash alone if the 7-vs-1 misreads return. MODEL is
+# only the hard fallback when the registry cannot be read.
+USE_CASE = "copy_check_deduction"
+MODEL = "z-ai/glm-5.3-flash"
+
+
+def deduction_model(db: Any = None) -> str:
+    """The 'copy_check_deduction' use-case default, or MODEL. Cached 30 s by
+    model_selection."""
+    try:
+        from ..model_selection import resolve_model_sync, resolve_models
+        if db is not None:
+            primary, _fallbacks = resolve_models(db, USE_CASE, hard_fallback=MODEL)
+        else:
+            primary, _fallbacks = resolve_model_sync(USE_CASE, hard_fallback=MODEL)
+        return primary if isinstance(primary, str) and primary else MODEL
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("deduction-check model lookup failed (%s); using %s", exc, MODEL)
+        return MODEL
+
 # MCQs are settled by option_letter.py (letter or text), not by a picture.
 SKIP_TYPES = {"MCQS", "MCQM", "MCQ", "TRUE_FALSE"}
 MAX_CROPS = 3            # pages of one answer shown
@@ -206,8 +228,12 @@ class DeductionChecker:
     all held in memory while the rest of the paper is graded."""
 
     def __init__(self, pdf_url: str, layout_map: dict[str, Any], llm: Any,
-                 institute_id: Optional[str] = None, token_sink: Optional[Any] = None):
+                 institute_id: Optional[str] = None, token_sink: Optional[Any] = None,
+                 model: Optional[str] = None):
         self.pdf_url = pdf_url
+        # None = resolve the use case lazily on the first check (only copies
+        # with cut marks ever pay for the lookup).
+        self.model = model
         self.layout_map = layout_map
         self.llm = llm
         self.institute_id = institute_id
@@ -263,11 +289,13 @@ class DeductionChecker:
             if not crops:
                 return False
             self.checked += 1
+            if not self.model:
+                self.model = deduction_model()
             response = await self.llm.chat_completion(
                 messages=[{"role": "system", "content": SYSTEM},
                           {"role": "user", "content": build_prompt(question, rubric, verdict),
                            "attachments": [{"type": "image", "url": f"data:image/jpeg;base64,{b}"} for b in crops]}],
-                temperature=0.0, max_tokens=1500, institute_id=self.institute_id, model=MODEL,
+                temperature=0.0, max_tokens=1500, institute_id=self.institute_id, model=self.model,
             )
             if self.token_sink is not None:
                 try:

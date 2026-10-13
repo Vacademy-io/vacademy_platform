@@ -7,5 +7,6 @@
     "letterhead": {
         "upload": "الترويسة",
         "delete": "حذف الترويسة"
-    }
+    },
+    "answerKeyToggle": "مع مفتاح الإجابة"
 }

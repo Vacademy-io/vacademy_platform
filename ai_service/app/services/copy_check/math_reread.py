@@ -57,6 +57,8 @@ from .mathpix_fallback import _download, _rasterize_pages
 
 logger = logging.getLogger(__name__)
 
+# Hard fallback only; the live model is the 'evaluation' use case
+# (grader.evaluation_model), the same model that read the page.
 MODEL = "z-ai/glm-5.3-flash"
 # A copy with more flagged maths lines than this keeps the full-page reading
 # for the rest. Each close-up is a tiny call; the cap exists to stop a
@@ -214,7 +216,9 @@ async def reread_math_rows(
     targets = rows_to_reread(layout_map)
     if not targets:
         return 0
-    model = model or MODEL
+    if not model:
+        from .grader import evaluation_model
+        model = evaluation_model() or MODEL
 
     with tempfile.TemporaryDirectory(prefix="copycheck-mathread-") as tmp:
         pdf_path = Path(tmp) / "input.pdf"

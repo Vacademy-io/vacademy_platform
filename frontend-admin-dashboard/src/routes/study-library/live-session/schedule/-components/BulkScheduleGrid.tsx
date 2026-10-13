@@ -2767,6 +2767,7 @@ export function BulkScheduleGrid() {
                 validCount={previewValidCount}
                 courses={courses ?? []}
                 sessionList={sessionList}
+                attendanceOnly={liveSessionSettings.attendanceOnlyMode}
             />
 
             <MyDialog

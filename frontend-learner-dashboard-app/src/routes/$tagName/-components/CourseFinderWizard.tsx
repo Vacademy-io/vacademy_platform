@@ -3,6 +3,7 @@ import { X, CaretLeft, CaretRight, Compass, MagicWand } from "@phosphor-icons/re
 import { useTranslation } from "react-i18next";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useSiteT } from "../-utils/catalogue-locale";
 
 export type CourseFinderStep = "level" | "session" | "tag";
 
@@ -59,6 +60,9 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
   onSkip,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Step titles and option names are shown in the visitor's language; the
+  // selection (ids, group labels) handed to the course grid stays as authored.
+  const siteT = useSiteT();
   const [stepIndex, setStepIndex] = useState(0);
   const [selection, setSelection] = useState<CourseFinderSelection>(EMPTY_SELECTION);
 
@@ -108,8 +112,9 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
 
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
+  const authoredStepLabel = stepLabels?.[currentStep];
   const stepTitle =
-    stepLabels?.[currentStep] ||
+    (authoredStepLabel ? siteT(authoredStepLabel) : "") ||
     (currentStep === "tag"
       ? getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)
       : currentStep === "level"
@@ -194,7 +199,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
                   checked={currentSelected.includes(option.id)}
                   onChange={() => toggleOption(option.id)}
                 />
-                <span className="text-sm">{option.name}</span>
+                <span className="text-sm">{siteT(option.name)}</span>
               </label>
             ))}
           </div>

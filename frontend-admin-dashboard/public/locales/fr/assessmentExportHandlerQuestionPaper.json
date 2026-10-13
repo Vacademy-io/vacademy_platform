@@ -6,7 +6,8 @@
     "setLabel": " (Série {{letter}})",
     "fileName": {
         "base": "Sujet",
-        "withSet": "Sujet {{letter}}"
+        "withSet": "Sujet {{letter}}",
+        "answerKeySuffix": "(Corrigé)"
     },
     "progress": {
         "title": "Génération du PDF",

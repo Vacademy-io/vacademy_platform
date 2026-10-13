@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
+import { checkoutEntryOf } from "../-utils/page-switch";
+import { cartBackTarget } from "../-utils/cart-back";
 import {
   injectGtm,
   pushProductPageView,
@@ -16,6 +18,7 @@ import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
 import { CatalogueChrome } from "@/routes/$tagName/-components/CatalogueChrome";
 import { requestCourseFinder } from "@/routes/$tagName/-utils/reopen-course-finder";
+import { requestSiteCartReopen } from "@/routes/$tagName/-components/site-cart/site-cart-events";
 import type {
   ProductPageSettings,
   PageJson,
@@ -33,6 +36,10 @@ interface ProductPageShellProps {
   tagName?: string;
   /** Comma-separated level names the browse step is restricted to. */
   levels?: string;
+  /** Site language (?lang=) the visitor arrived in; kept on the way back out. */
+  lang?: string;
+  /** Sent here by the site cart's Checkout (?source=siteCart): Back returns to that page. */
+  fromSiteCart?: boolean;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -58,6 +65,9 @@ const DEFAULT_PAGE_JSON: PageJson = {
   components: [],
 };
 
+/** Steps that act on a basket the learner already confirmed in the cart. */
+const PAST_THE_CART: ProductPageStep[] = ["FORM", "PAYMENT", "CPO_INSTALLMENTS"];
+
 export const ProductPageShell = ({
   productPageCode,
   instituteId,
@@ -66,6 +76,8 @@ export const ProductPageShell = ({
   defaultTab,
   tagName,
   levels,
+  lang,
+  fromSiteCart = false,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
@@ -73,6 +85,8 @@ export const ProductPageShell = ({
   const gtmFired = useRef(false);
   const initialized = useRef(false);
   const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
 
   /**
    * Where "Back" from the cart leads.
@@ -117,15 +131,35 @@ export const ProductPageShell = ({
     // Any visitor who arrived from a catalogue carries its slug. If they have
     // not since browsed THIS page's catalogue step, that slug is where Back
     // belongs — the catalogue restores their basket from sessionStorage.
-    if (tagName && !sawOwnCatalog.current) {
-      // Going back to choose is exactly when the Course Finder earns its keep,
-      // but its once-ever seen flag would suppress it. Ask for it explicitly.
-      requestCourseFinder(tagName);
+    // The site cart's store checkout is the exception: the visitor opened the
+    // cart on some page of the site, so Back returns there (see cart-back).
+    const target = cartBackTarget({
+      fromSiteCart,
+      sawOwnCatalog: sawOwnCatalog.current,
+      canGoBack,
+      tagName,
+    });
+    if (target === "history") {
+      // The cart drawer they checked out from opens again on that page.
+      requestSiteCartReopen();
+      router.history.back();
+      return;
+    }
+    if ((target === "siteHome" || target === "siteFinder") && tagName) {
+      if (target === "siteFinder") {
+        // Going back to choose is exactly when the Course Finder earns its
+        // keep, but its once-ever seen flag would suppress it. Ask for it
+        // explicitly.
+        requestCourseFinder(tagName);
+      } else {
+        requestSiteCartReopen();
+      }
       // The params form, not a template path: real catalogue tags contain
       // spaces, parentheses and even leading slashes ("Home Page", "Arabian
       // International Stem Hub (AISH)", "/cement-factory"), which the router
       // encodes here and a hand-built `/${tagName}` would not.
-      navigate({ to: "/$tagName", params: { tagName } });
+      // The site language the visitor was reading in goes back with them.
+      navigate({ to: "/$tagName", params: { tagName }, ...(lang ? { search: { lang } } : {}) });
       return;
     }
     setStep("CATALOG");
@@ -139,15 +173,29 @@ export const ProductPageShell = ({
     if (initialized.current) return;
     initialized.current = true;
 
+    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
+    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
+
+    // The store is module-level, so it outlives this page. A DIFFERENT
+    // product page (e.g. the site cart's store checkout after another page's
+    // checkout), or a return after this page's order went through, starts
+    // from a clean store: a coupon, discount, learner or CPO plan from there
+    // must never ride into this checkout. A different basket on this page
+    // drops the coupon and CPO state worked out for the previous one. The
+    // same basket on the same page keeps its state, exactly as before.
+    const entry = checkoutEntryOf(useProductPageStore.getState(), pageData, initialSelection);
+    if (entry === "RESET") {
+      useProductPageStore.getState().reset();
+    } else if (entry === "NEW_BASKET") {
+      useProductPageStore.getState().clearBasketState();
+    }
+
     setPageData(pageData);
 
     const settings = parseSafeJson<ProductPageSettings>(
       pageData.settings_json,
       DEFAULT_SETTINGS,
     );
-
-    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
-    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
 
     const resolvedStep = defaultTab ?? settings.defaultStep;
     const configuredStep =
@@ -187,6 +235,26 @@ export const ProductPageShell = ({
 
     setStep(startStep);
   }, []);
+
+  // The page can arrive again while it is open: the refetch after a 409
+  // "price changed", or a background refresh. The totals, the Pay button and
+  // the receipt are all priced from the store, so it follows the new copy
+  // (see syncPageData) — before paint, so no frame mixes old and new prices.
+  // A finished order's receipt keeps what was paid. A basket that lost a
+  // course the page no longer sells goes back to the cart to be reviewed,
+  // rather than paying for — or, emptied, "enrolling" in — a basket nobody
+  // confirmed.
+  useLayoutEffect(() => {
+    if (!initialized.current) return;
+    const store = useProductPageStore.getState();
+    if (store.pageData === pageData || store.step === "SUCCESS") return;
+    const selectionBefore = store.selectedPsOptionIds;
+    store.syncPageData(pageData);
+    const synced = useProductPageStore.getState();
+    if (synced.selectedPsOptionIds !== selectionBefore && PAST_THE_CART.includes(synced.step)) {
+      synced.setStep("CART");
+    }
+  }, [pageData]);
 
   // GTM injection — run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps

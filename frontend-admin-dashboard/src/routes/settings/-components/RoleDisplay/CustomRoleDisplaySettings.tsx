@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePlanRowFilter, visibleSectionGroups } from './plan-rows';
 import type { RoleDisplayPanelProps } from './panel-props';
 import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +29,7 @@ import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { LiveClassActionsCard } from './LiveClassActionsCard';
+import { LeadActionsCard } from './LeadActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import {
@@ -345,6 +347,9 @@ export default function CustomRoleDisplaySettings({
         run();
     }, []);
 
+    // Institute plan: rows outside it are not rendered (stored values untouched).
+    const planRows = usePlanRowFilter();
+
     const updateSettings = (updater: (prev: DisplaySettingsData) => DisplaySettingsData) => {
         setSettings((prev) => {
             if (!prev) return prev;
@@ -418,9 +423,11 @@ export default function CustomRoleDisplaySettings({
         items: T[],
         getId: (item: T) => string,
         targetId: string,
-        direction: 'up' | 'down'
+        direction: 'up' | 'down',
+        // Rows not rendered (outside the plan) are skipped so they keep their order.
+        isMovable: (item: T) => boolean = () => true
     ): T[] => {
-        const sorted = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const sorted = [...items].filter(isMovable).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const idx = sorted.findIndex((item) => getId(item) === targetId);
         if (idx < 0) return items;
         const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -465,7 +472,9 @@ export default function CustomRoleDisplaySettings({
             ];
             return {
                 ...prev,
-                sidebarCategories: swapOrder(currentCats, (c) => c.id, id, direction),
+                sidebarCategories: swapOrder(currentCats, (c) => c.id, id, direction, (c) =>
+                    planRows.category(c.id, prev.sidebar)
+                ),
             };
         });
     };
@@ -474,7 +483,9 @@ export default function CustomRoleDisplaySettings({
         updateSettings((prev) => ({
             ...prev,
             dashboard: {
-                widgets: swapOrder(prev.dashboard.widgets, (w) => w.id, id, direction),
+                widgets: swapOrder(prev.dashboard.widgets, (w) => w.id, id, direction, (w) =>
+                    planRows.widget(w.id)
+                ),
             },
         }));
     };
@@ -485,7 +496,7 @@ export default function CustomRoleDisplaySettings({
                 .filter((t) => {
                     const baseItem = sidebarItems.find((i) => i.id === t.id);
                     const cat = baseItem?.category || t.category || 'CRM';
-                    return cat === activeCategory;
+                    return cat === activeCategory && planRows.tab(t.id);
                 })
                 .sort((a, b) => a.order - b.order);
 
@@ -513,7 +524,9 @@ export default function CustomRoleDisplaySettings({
             ...prev,
             sidebar: prev.sidebar.map((t) => {
                 if (t.id !== parentId) return t;
-                const sorted = [...(t.subTabs || [])].sort((a, b) => a.order - b.order);
+                const sorted = [...(t.subTabs || [])]
+                    .filter((s) => planRows.subTab(t.id, s.id))
+                    .sort((a, b) => a.order - b.order);
                 const idx = sorted.findIndex((s) => s.id === subId);
                 if (idx < 0) return t;
                 const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -571,7 +584,7 @@ export default function CustomRoleDisplaySettings({
     return (
         <>
             <SettingsSectionsLayout
-                groups={customDisplaySections}
+                groups={visibleSectionGroups(customDisplaySections, planRows)}
                 toolbar={
                     <MyButton
                         buttonType="secondary"
@@ -583,6 +596,9 @@ export default function CustomRoleDisplaySettings({
                 }
             >
             <section id="grp-courses" className="space-y-6">
+            {/* LMS course cards: hidden with lms.courses off (plan-rows.ts). */}
+            {planRows.card('courseCards') && (
+            <>
             <Card>
                 <CardHeader>
                     <CardTitle>{t('coursePage.title')}</CardTitle>
@@ -1407,15 +1423,33 @@ export default function CustomRoleDisplaySettings({
                     })()}
                 </CardContent>
             </Card>
-            <AssessmentActionsCard
-                settings={settings.assessmentPage}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
-            />
-            <LiveClassActionsCard
-                settings={settings.liveClassActions}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
-                defaultAllowDeletePastSessions={false}
-            />
+            </>
+            )}
+            {planRows.card('assessmentActions') && (
+                <AssessmentActionsCard
+                    settings={settings.assessmentPage}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, assessmentPage: next }))
+                    }
+                />
+            )}
+            {planRows.card('liveClassActions') && (
+                <LiveClassActionsCard
+                    settings={settings.liveClassActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, liveClassActions: next }))
+                    }
+                    defaultAllowDeletePastSessions={false}
+                />
+            )}
+            {planRows.card('leadActions') && (
+                <LeadActionsCard
+                    settings={settings.leadActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, leadActions: next }))
+                    }
+                />
+            )}
             </section>
 
             <section id="grp-layout" className="space-y-6">
@@ -1547,7 +1581,9 @@ export default function CustomRoleDisplaySettings({
                             { id: 'LMS' as const, visible: true, default: false, order: 1 },
                             { id: 'AI' as const, visible: true, default: false, order: 2 },
                         ];
-                        const sorted = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                        const sorted = categories
+                            .filter((c) => planRows.category(c.id, settings.sidebar))
+                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
                         return sorted.map((cfg, idx) => {
                             const id = cfg.id;
@@ -1727,7 +1763,7 @@ export default function CustomRoleDisplaySettings({
                                 .filter((tab) => {
                                     const baseItem = sidebarItems.find((i) => i.id === tab.id);
                                     const cat = baseItem?.category || tab.category || 'CRM';
-                                    return cat === activeCategory;
+                                    return cat === activeCategory && planRows.tab(tab.id);
                                 })
                                 .sort((a, b) => a.order - b.order);
 
@@ -1864,7 +1900,7 @@ export default function CustomRoleDisplaySettings({
                                                 </div>
                                                 {(() => {
                                                     const sortedSubs = (tab.subTabs || [])
-                                                        .slice()
+                                                        .filter((s) => planRows.subTab(tab.id, s.id))
                                                         .sort((a, b) => a.order - b.order);
 
                                                     return sortedSubs.map((sub, subIdx) => {
@@ -2089,6 +2125,9 @@ export default function CustomRoleDisplaySettings({
             </section>
 
             <section id="grp-learners" className="space-y-6">
+            {/* Slide content types: LMS only (plan-rows.ts). */}
+            {planRows.card('courseContentTypes') && (
+            <>
             <Card>
                 <CardHeader>
                     <CardTitle>{t('courseContentTypes.title')}</CardTitle>
@@ -2293,9 +2332,12 @@ export default function CustomRoleDisplaySettings({
                     </div>
                 </CardContent>
             </Card>
+            </>
+            )}
 
             <StudentSideViewSettingsCard
                 options={studentSideViewOptions}
+                isShown={planRows.sideViewTab}
                 settings={{
                     ...STUDENT_SIDE_VIEW_DEFAULTS,
                     ...settings.studentSideView,
@@ -2309,15 +2351,17 @@ export default function CustomRoleDisplaySettings({
                 }
             />
 
-            <LearnerListColumnsCard
-                settings={settings.learnerListColumns}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        learnerListColumns: next,
-                    }))
-                }
-            />
+            {planRows.card('learnerListColumns') && (
+                <LearnerListColumnsCard
+                    settings={settings.learnerListColumns}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            learnerListColumns: next,
+                        }))
+                    }
+                />
+            )}
 
             {/* Which custom fields are filter/sort controls on the list pages.
                 Saved with the rest of this blob via the shared unsaved-changes bar.
@@ -2374,15 +2418,17 @@ export default function CustomRoleDisplaySettings({
                 </CardContent>
             </Card>
 
-            <StudentManagementActionsCard
-                settings={settings.studentManagementActions}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        studentManagementActions: next,
-                    }))
-                }
-            />
+            {planRows.card('studentManagementActions') && (
+                <StudentManagementActionsCard
+                    settings={settings.studentManagementActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            studentManagementActions: next,
+                        }))
+                    }
+                />
+            )}
             </section>
 
             <section id="grp-access" className="space-y-6">
@@ -2394,7 +2440,7 @@ export default function CustomRoleDisplaySettings({
                 <CardContent className="space-y-2">
                     {(() => {
                         const sorted = settings.dashboard.widgets
-                            .slice()
+                            .filter((w) => planRows.widget(w.id))
                             .sort((a, b) => a.order - b.order);
 
                         return sorted.map((w, idx) => (

@@ -32,6 +32,18 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
             + "WHERE ar.id IN (:ids)", nativeQuery = true)
     List<Object[]> findIdNameAndMobileByIds(@Param("ids") java.util.Collection<String> ids);
 
+    /**
+     * Leads in one campaign stamped between two instants. A CSV import or migration stamps
+     * hundreds of rows within a minute, while real form traffic peaks near ten a minute, so
+     * the AI voice bot uses this to tell a genuine enquiry date from an import date.
+     * Served by idx_audience_response_audience_submitted (audience_id, submitted_at).
+     */
+    @Query(value = "SELECT count(*) FROM audience_response ar WHERE ar.audience_id = :audienceId "
+            + "AND ar.submitted_at BETWEEN :fromTs AND :toTs", nativeQuery = true)
+    long countByAudienceSubmittedBetween(@Param("audienceId") String audienceId,
+                                         @Param("fromTs") Timestamp fromTs,
+                                         @Param("toTs") Timestamp toTs);
+
 
         /**
          * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
@@ -1751,6 +1763,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
         /**
+         * Live (not soft-deleted) leads one ad campaign delivered into one list — the ones to
+         * move when that campaign is routed to another list. Ad-platform leads carry the
+         * campaign id in source_id and the connector vendor in source_type.
+         */
+        @Query("SELECT r.id FROM AudienceResponse r WHERE r.audienceId = :audienceId "
+                + "AND r.sourceType = :sourceType AND r.sourceId = :sourceId AND r.audienceStatus = 'ACTIVE'")
+        List<String> findActiveIdsByAudienceAndSource(@Param("audienceId") String audienceId,
+                @Param("sourceType") String sourceType,
+                @Param("sourceId") String sourceId);
+
+        /**
          * This person's leads in this campaign with the given audience_status. Backs
          * reactivate-on-resubmit: {@link #existsByAudienceIdAndUserId} above is derived and so
          * cannot see status, which is exactly why a soft-deleted lead would otherwise trip the
@@ -2738,6 +2761,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 OR (CAST(:email AS text) IS NOT NULL
                                     AND ar.parent_email IS NOT NULL
                                     AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(CAST(:email AS text))))
+                                OR (CAST(:name AS text) IS NOT NULL
+                                    AND ar.parent_name IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
                               )
                             ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
                             LIMIT 1
@@ -2746,6 +2772,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10,
                         @Param("email") String email,
+                        @Param("name") String name,
                         @Param("courseFieldId") String courseFieldId);
 
         /**

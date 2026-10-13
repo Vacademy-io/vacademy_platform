@@ -1,5 +1,4 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,14 +6,23 @@ import { CaretRight, CheckCircle, CurrencyDollar, Stamp, Bell } from '@phosphor-
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
-    getPendingActionsQuery,
+    buildPendingActions,
     type PendingAction,
     type PendingActionType,
 } from '../-services/pending-actions-service';
+import { toSourceState } from '../-services/dashboard-sources';
+import {
+    useInstituteFeeCollection,
+    usePendingAdjustments,
+    useSystemAlertsPreview,
+} from '../-hooks/useDashboardSources';
+import SourceErrorNotice from './SourceErrorNotice';
 
 interface MyPendingActionsWidgetProps {
     instituteId: string;
     userId: string;
+    /** Admin of the CURRENT institute — only admins get the institute-wide overdue-fees row. */
+    isAdmin: boolean;
     onOpenAllAlerts?: () => void;
 }
 
@@ -53,16 +61,35 @@ const buildFormatAge =
 export default function MyPendingActionsWidget({
     instituteId,
     userId,
+    isAdmin,
     onOpenAllAlerts,
 }: MyPendingActionsWidgetProps) {
-    const { t, i18n } = useTranslation([
+    const { t } = useTranslation([
         'dashboardMyPendingActionsWidget',
         'dashboardPendingActionsService',
     ]);
     const navigate = useNavigate();
-    const { data, isLoading, isError } = useQuery(
-        getPendingActionsQuery({ instituteId, userId, t, language: i18n.language })
+    // Shared hooks — the KPI band, Finance snapshot and navbar bell read the same queries.
+    const adjustmentsQuery = usePendingAdjustments(instituteId);
+    const alertsQuery = useSystemAlertsPreview(userId);
+    const feeQuery = useInstituteFeeCollection(instituteId, isAdmin);
+    const {
+        actions: data,
+        isLoading,
+        hasFailedSource,
+    } = buildPendingActions(
+        {
+            adjustments: toSourceState(adjustmentsQuery),
+            alerts: toSourceState(alertsQuery),
+            feeCollection: isAdmin ? toSourceState(feeQuery) : undefined,
+        },
+        t
     );
+    const retryFailed = () => {
+        if (adjustmentsQuery.isError) void adjustmentsQuery.refetch();
+        if (alertsQuery.isError || alertsQuery.data?.fetchFailed) void alertsQuery.refetch();
+        if (isAdmin && feeQuery.isError) void feeQuery.refetch();
+    };
     const typeMeta = buildTypeMeta(t);
     const formatAge = buildFormatAge(t);
 
@@ -80,7 +107,7 @@ export default function MyPendingActionsWidget({
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <CardTitle className="text-sm font-semibold">{t('heading.title')}</CardTitle>
-                        {!isLoading && data && data.length > 0 && (
+                        {!isLoading && data.length > 0 && (
                             <Badge className="rounded-full border border-primary-200 bg-primary-50 px-1.5 py-0 text-2xs font-medium text-primary-700 shadow-none">
                                 {data.length}
                             </Badge>
@@ -93,7 +120,7 @@ export default function MyPendingActionsWidget({
             </CardHeader>
 
             <div className="px-2 pb-3">
-                {isLoading ? (
+                {isLoading && data.length === 0 ? (
                     <ul className="space-y-1">
                         {[0, 1, 2].map((i) => (
                             <li key={i} className="flex items-center gap-2 rounded p-2">
@@ -105,9 +132,14 @@ export default function MyPendingActionsWidget({
                             </li>
                         ))}
                     </ul>
-                ) : isError ? (
-                    <div className="px-2 py-3 text-xs text-neutral-500">{t('error')}</div>
-                ) : !data || data.length === 0 ? (
+                ) : data.length === 0 && hasFailedSource ? (
+                    // Never "All clear" when a source failed: an empty list proves nothing.
+                    <SourceErrorNotice
+                        className="px-2 py-3"
+                        message={t('error')}
+                        onRetry={retryFailed}
+                    />
+                ) : data.length === 0 ? (
                     <div className="flex flex-col items-center gap-1.5 py-6 text-center">
                         <CheckCircle size={28} weight="duotone" className="text-emerald-500" />
                         <div className="text-xs font-medium text-neutral-700">
@@ -156,6 +188,13 @@ export default function MyPendingActionsWidget({
                             );
                         })}
                     </ul>
+                )}
+                {data.length > 0 && hasFailedSource && (
+                    <SourceErrorNotice
+                        className="px-2 pt-2"
+                        message={t('partialError')}
+                        onRetry={retryFailed}
+                    />
                 )}
             </div>
         </Card>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isNavRouteActive } from "./sidebar/active-route";
 import { Link, useRouter } from "@tanstack/react-router";
 import { DotsThree, type IconProps } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -134,6 +135,8 @@ export const PlayBottomNav: React.FC = () => {
   const router = useRouter();
   const isCleanerPlay = useCleanerPlayTheme();
   const currentRoute = router.state.location.pathname;
+  // Every entry is a direct link here (no sub-item rows), so all compete.
+  const navRoutes = items.map((item) => item.to);
 
   if (items.length === 0) return null;
 
@@ -151,7 +154,7 @@ export const PlayBottomNav: React.FC = () => {
     >
       <div className="flex items-stretch justify-around px-1 pt-1">
         {visibleItems.map((item, i) => {
-          const isActive = item.to ? currentRoute.includes(item.to) : false;
+          const isActive = isNavRouteActive(currentRoute, item.to, navRoutes);
           const Icon = item.icon;
           const shortLabel = shortLabelFor(item.title, t);
 
@@ -213,9 +216,7 @@ export const PlayBottomNav: React.FC = () => {
               <div className="grid grid-cols-3 gap-3 py-4">
                 {overflowItems.map((item, i) => {
                   const Icon = item.icon;
-                  const isActive = item.to
-                    ? currentRoute.includes(item.to)
-                    : false;
+                  const isActive = isNavRouteActive(currentRoute, item.to, navRoutes);
                   return (
                     <Link
                       key={i}
@@ -283,6 +284,8 @@ export const PlayNavRail: React.FC = () => {
   const router = useRouter();
   const isCleanerPlay = useCleanerPlayTheme();
   const currentRoute = router.state.location.pathname;
+  // Every entry is a direct link here (no sub-item rows), so all compete.
+  const navRoutes = items.map((item) => item.to);
 
   if (items.length === 0) return null;
 
@@ -292,7 +295,7 @@ export const PlayNavRail: React.FC = () => {
       className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-border bg-white px-2 py-4 lg:flex"
     >
       {items.map((item, i) => {
-        const isActive = item.to ? currentRoute.includes(item.to) : false;
+        const isActive = isNavRouteActive(currentRoute, item.to, navRoutes);
         const Icon = item.icon;
 
         return (

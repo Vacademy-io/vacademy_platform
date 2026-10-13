@@ -111,6 +111,7 @@ import type {
 } from '@/features/vimotion/api/dashboardTypes';
 import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
 import { formatCredits, usdToCredits } from '../../-utils/credits';
+import { LessonModePanel } from './LessonModePanel';
 import type { AIModel } from '@/types/ai-models';
 
 interface SettingsPopoverProps {
@@ -341,6 +342,11 @@ function SettingsBody({
                             </SelectContent>
                         </Select>
                     </Field>
+                )}
+
+                {/* Lesson mode — education videos taught by a teacher at a board. */}
+                {!vimMode && (options.content_type || 'VIDEO') === 'VIDEO' && (
+                    <LessonModePanel options={options} onOptionsChange={onOptionsChange} />
                 )}
 
                 <Field
@@ -1033,11 +1039,17 @@ function SettingsBody({
             {/* HOST — On-screen narrator (avatar / raw)                     */}
             {/* ============================================================ */}
             <TabsContent value="host" className="mt-3 space-y-3">
-                <HostTabBody
-                    options={options}
-                    onOptionsChange={onOptionsChange}
-                    vimMode={vimMode}
-                />
+                {options.lesson?.enabled ? (
+                    <p className="rounded-lg border p-3 text-xs text-muted-foreground">
+                        {t('lesson.hostDisabled')}
+                    </p>
+                ) : (
+                    <HostTabBody
+                        options={options}
+                        onOptionsChange={onOptionsChange}
+                        vimMode={vimMode}
+                    />
+                )}
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-3 space-y-3">

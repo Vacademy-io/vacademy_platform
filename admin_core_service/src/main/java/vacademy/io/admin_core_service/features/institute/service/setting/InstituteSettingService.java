@@ -34,6 +34,7 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.naming.Nam
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.setting_history.InstituteSettingWriter;
 import vacademy.io.admin_core_service.features.certificate.dto.ResolvedCertificateConfig;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
 import vacademy.io.admin_core_service.features.certificate.entity.IssuedCertificate;
@@ -81,6 +82,7 @@ public class InstituteSettingService {
     private final CertificateCustomFieldService certificateCustomFieldService;
     private final CertificateTextFitService certificateTextFitService;
     private final LearnerOperationRepository learnerOperationRepository;
+    private final InstituteSettingWriter instituteSettingWriter;
 
     // The default completion threshold now lives in
     // CertificateSettingsResolver.DEFAULT_THRESHOLD_PERCENT, alongside the rest
@@ -96,7 +98,8 @@ public class InstituteSettingService {
             CertificateVerificationService certificateVerificationService,
             CertificateCustomFieldService certificateCustomFieldService,
             CertificateTextFitService certificateTextFitService,
-            LearnerOperationRepository learnerOperationRepository) {
+            LearnerOperationRepository learnerOperationRepository,
+            InstituteSettingWriter instituteSettingWriter) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
@@ -111,28 +114,26 @@ public class InstituteSettingService {
         this.certificateCustomFieldService = certificateCustomFieldService;
         this.certificateTextFitService = certificateTextFitService;
         this.learnerOperationRepository = learnerOperationRepository;
+        this.instituteSettingWriter = instituteSettingWriter;
     }
 
     public void createNewNamingSetting(Institute institute, NameSettingRequest request) {
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.NAMING_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     public void createNewCertificateSetting(Institute institute, CertificateSettingStrategy request) {
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.CERTIFICATE_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     @Transactional
     public void updateCertificateSetting(Institute institute, CertificateSettingRequest request) {
         String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.CERTIFICATE_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
 
         // Issued certificates are immutable: editing the template must NOT change
         // a certificate a learner has already been issued. We therefore do NOT
@@ -168,8 +169,7 @@ public class InstituteSettingService {
 
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.CERTIFICATE_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     public void createDefaultSettingsForInstitute(Institute institute) {
@@ -309,8 +309,7 @@ public class InstituteSettingService {
 
             String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, request,
                     SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
-            institute.setSetting(settingJsonString);
-            instituteRepository.save(institute);
+            instituteSettingWriter.save(institute, settingJsonString);
         } catch (Exception e) {
             throw new VacademyException("Failed to create default setting: " + e.getMessage());
         }
@@ -349,45 +348,39 @@ public class InstituteSettingService {
     public void updateCustomFieldSetting(Institute institute, CustomFieldSettingRequest request) {
         String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     public void updateNamingSetting(Institute institute, NameSettingRequest request) {
         String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.NAMING_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     public void createDefaultNamingSetting(Institute institute, NameSettingRequest request) {
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.NAMING_SETTING.name());
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     // Generic methods for any setting type
     public void createNewGenericSetting(Institute institute, String settingKey, Object settingData) {
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, settingData,
                 settingKey);
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     public void updateGenericSetting(Institute institute, String settingKey, Object settingData) {
         String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,
                 settingData, settingKey);
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     // Upsert method - creates if doesn't exist, updates if exists
     public void saveGenericSetting(Institute institute, String settingKey, Object settingData) {
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute, settingData,
                 settingKey);
-        institute.setSetting(settingJsonString);
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, settingJsonString);
     }
 
     // GET methods for retrieving settings
@@ -1718,10 +1711,7 @@ public class InstituteSettingService {
         String updatedJson = objectMapper.writeValueAsString(instituteSettingDto);
 
         // Update entity
-        institute.setSetting(updatedJson);
-
-        // Persist changes
-        instituteRepository.save(institute);
+        instituteSettingWriter.save(institute, updatedJson);
 
         // Issued certificates are immutable: do NOT clear learners' cached
         // certificate file ids when the template changes. Already-issued

@@ -93,7 +93,8 @@ jobs:
               RUNPOD_API_KEY=${{ secrets.RUNPOD_API_KEY }} \
               RUNPOD_ENDPOINT_ID=${{ secrets.RUNPOD_ENDPOINT_ID }} \
               FAL_API_KEY=${{ secrets.FAL_API_KEY }} \
-              LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
+              LLM_DEFAULT_MODEL=z-ai/glm-5.3-flash \
+              LLM_FALLBACK_MODEL=google/gemini-2.5-flash \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               ADMIN_CORE_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/admin_core_service \

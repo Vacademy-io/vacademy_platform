@@ -23,6 +23,7 @@ import {
     CaretLeft,
     CaretRight,
     Warning,
+    Tag,
 } from '@phosphor-icons/react';
 import { SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ import { getAllCoursesWithFilters } from '@/routes/study-library/courses/-servic
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { GET_LEVELS_BY_INSTITUTE, GET_SESSION_DETAILS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import type { CourseItem } from '@/routes/study-library/courses/-components/course-material';
 import {
     getTerminology,
@@ -90,16 +92,21 @@ export const Step2CourseSelector = ({
     const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
     const batchesTerm = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
     const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
+    const tagTerm = getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag);
+
+    const { instituteDetails } = useInstituteDetailsStore();
+    const tagOptions = useMemo(() => instituteDetails?.tags ?? [], [instituteDetails?.tags]);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [page, setPage] = useState(0);
     const debouncedSearch = useDebounce(searchQuery, 400);
 
     useEffect(() => {
         setPage(0);
-    }, [debouncedSearch, selectedLevelIds, selectedSessionIds]);
+    }, [debouncedSearch, selectedLevelIds, selectedSessionIds, selectedTags]);
 
     const { data: levelOptions = [], isLoading: isLevelsLoading } = useQuery<
         { id: string; level_name: string }[]
@@ -148,6 +155,7 @@ export const Step2CourseSelector = ({
             debouncedSearch,
             selectedLevelIds,
             selectedSessionIds,
+            selectedTags,
             page,
         ],
         queryFn: () =>
@@ -155,7 +163,7 @@ export const Step2CourseSelector = ({
                 status: ['ACTIVE'],
                 level_ids: selectedLevelIds,
                 session_ids: selectedSessionIds,
-                tag: [],
+                tag: selectedTags,
                 faculty_ids: [],
                 search_by_name: debouncedSearch || '',
                 min_percentage_completed: 0,
@@ -232,11 +240,13 @@ export const Step2CourseSelector = ({
         [isSelected, selectedPackageSessions, onSelectedPackageSessionsChange]
     );
 
-    const activeFilterCount = selectedLevelIds.length + selectedSessionIds.length;
+    const activeFilterCount =
+        selectedLevelIds.length + selectedSessionIds.length + selectedTags.length;
 
     const clearFilters = () => {
         setSelectedLevelIds([]);
         setSelectedSessionIds([]);
+        setSelectedTags([]);
     };
 
     const isDropdownLoading = isLevelsLoading || isSessionsLoading;
@@ -275,7 +285,12 @@ export const Step2CourseSelector = ({
                 </div>
 
                 {/* Filter dropdowns — 2-col grid below search on mobile, inline on sm+ */}
-                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
+                <div
+                    className={cn(
+                        'grid w-full gap-2 sm:flex sm:w-auto sm:items-center',
+                        tagOptions.length > 0 ? 'grid-cols-3' : 'grid-cols-2'
+                    )}
+                >
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button
@@ -387,6 +402,58 @@ export const Step2CourseSelector = ({
                         )}
                     </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Tags come from the institute's course tags; hidden when no course has one. */}
+                {tagOptions.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                    'h-9 w-full justify-center gap-1.5 text-xs font-medium sm:w-auto',
+                                    selectedTags.length > 0 &&
+                                        'border-primary-300 bg-primary-50 text-primary-700'
+                                )}
+                            >
+                                <Tag size={13} />
+                                <span className="truncate">{tagTerm}</span>
+                                {selectedTags.length > 0 && (
+                                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-caption leading-none">
+                                        {selectedTags.length}
+                                    </Badge>
+                                )}
+                                <CaretDown size={11} className="text-neutral-400" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            align="end"
+                            className="z-popover-above-modal max-h-60 w-56 overflow-y-auto"
+                        >
+                            <DropdownMenuLabel className="text-xs text-neutral-500">
+                                {t('filters.filterBy', { term: tagTerm })}
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {tagOptions.map((tagValue) => (
+                                <DropdownMenuCheckboxItem
+                                    key={tagValue}
+                                    checked={selectedTags.includes(tagValue)}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedTags((prev) =>
+                                            checked
+                                                ? [...prev, tagValue]
+                                                : prev.filter((x) => x !== tagValue)
+                                        )
+                                    }
+                                    onSelect={(e) => e.preventDefault()}
+                                    className="text-xs"
+                                >
+                                    {tagValue}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
                 </div>
             </div>
 
@@ -440,6 +507,22 @@ export const Step2CourseSelector = ({
                             </span>
                         );
                     })}
+                    {selectedTags.map((tagValue) => (
+                        <span
+                            key={tagValue}
+                            className="inline-flex items-center gap-1 rounded-full border border-warning-200 bg-warning-50 px-2 py-0.5 text-xs font-medium text-warning-700"
+                        >
+                            {t('filters.tagLabel', { term: tagTerm, value: tagValue })}
+                            <button
+                                onClick={() =>
+                                    setSelectedTags((prev) => prev.filter((x) => x !== tagValue))
+                                }
+                                className="ml-0.5 rounded-full hover:text-warning-600"
+                            >
+                                <X size={11} />
+                            </button>
+                        </span>
+                    ))}
                     <button
                         onClick={clearFilters}
                         className="text-xs text-neutral-400 underline-offset-2 hover:text-neutral-600 hover:underline"

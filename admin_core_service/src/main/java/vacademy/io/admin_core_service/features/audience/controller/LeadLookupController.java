@@ -36,7 +36,8 @@ public class LeadLookupController {
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "phone", required = false) String phone,
             @RequestParam(value = "email", required = false) String email,
+            @RequestParam(value = "name", required = false) String name,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(leadLookupService.lookup(instituteId, phone, email, user));
+        return ResponseEntity.ok(leadLookupService.lookup(instituteId, phone, email, name, user));
     }
 }

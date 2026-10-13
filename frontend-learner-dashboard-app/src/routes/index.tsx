@@ -7,6 +7,7 @@ import { getCachedRootCatalogueTag } from "@/services/domain-routing";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 import { CatalogueTagContext } from "./$tagName/-components/CatalogueTagContext";
+import { retainSiteLanguage } from "./$tagName/-utils/catalogue-route-search";
 
 const CourseCataloguePage = lazy(() =>
   import("./$tagName/-components/CourseCataloguePage").then((m) => ({
@@ -26,6 +27,11 @@ const CourseCataloguePage = lazy(() =>
  * bouncing visitors to "/new".
  */
 export const Route = createFileRoute("/")({
+  // The root-mounted catalogue's home: keep the visitor's site language
+  // (?lang=) when a link leads back here — on sites with languages only.
+  // Hosts without a root catalogue are redirected away by __root, and the
+  // routes they land on (/login, /dashboard) do not retain it.
+  search: { middlewares: [retainSiteLanguage] },
   // Same reader-mode gate as /$tagName: the catalogue is a marketplace surface.
   beforeLoad: async () => {
     if (shouldHidePaidPurchaseUI()) {

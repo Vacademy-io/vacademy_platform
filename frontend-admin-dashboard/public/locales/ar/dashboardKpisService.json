@@ -14,11 +14,11 @@
         },
         "outstandingFees": {
             "label": "الرسوم المستحقة",
-            "subtitle": "مستحقة عبر البنود المتأخرة"
+            "subtitle": "المتبقي للتحصيل، بما في ذلك المستحقات القادمة"
         },
-        "overdueItems": {
-            "label": "البنود المتأخرة",
-            "subtitle": "تحتاج إلى متابعة"
+        "overdueFees": {
+            "label": "الرسوم المتأخرة",
+            "subtitle": "تجاوزت تاريخ الاستحقاق ولم تُدفع"
         },
         "classesToday": {
             "label": "{{sessions}} اليوم",

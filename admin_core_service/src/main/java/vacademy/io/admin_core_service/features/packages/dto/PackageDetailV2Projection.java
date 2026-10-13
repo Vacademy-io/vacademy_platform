@@ -95,4 +95,12 @@ public interface PackageDetailV2Projection {
      * carries LMS/Moodle connection settings.
      */
     String getComingSoonSettingJson();
+
+    /**
+     * {@code p.created_at AS createdAt} -- the course (package) creation time. Selected by both v2
+     * queries; keep the alias spelled exactly {@code createdAt}, because body sort_columns
+     * {createdAt: ...} is appended to the native SQL as {@code ORDER BY createdAt} and only
+     * resolves where the alias exists.
+     */
+    java.sql.Timestamp getCreatedAt();
 }

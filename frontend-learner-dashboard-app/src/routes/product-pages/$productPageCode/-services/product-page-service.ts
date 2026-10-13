@@ -14,6 +14,7 @@ import type {
     FieldValue,
 } from '../-types/product-page-types';
 import { resolveLearnerIdentity } from '../-utils/learner-identity';
+import { withOrderedMappings } from '../-utils/mapping-order';
 
 export const getProductPageByCode = async (
     code: string,
@@ -26,6 +27,9 @@ export const getProductPageByCode = async (
 export const handleGetProductPage = (code: string, instituteId: string) => ({
     queryKey: ['PRODUCT_PAGE_BY_CODE', code, instituteId],
     queryFn: () => getProductPageByCode(code, instituteId),
+    // Every consumer gets the mappings in the admin's display order (see
+    // mapping-order). A module-level function, so the result stays memoised.
+    select: withOrderedMappings,
     staleTime: 5 * 60 * 1000,
     enabled: !!code && !!instituteId,
 });

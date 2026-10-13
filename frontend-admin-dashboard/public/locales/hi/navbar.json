@@ -64,5 +64,29 @@
         "state": "राज्य:",
         "country": "देश:",
         "pincode": "पिनकोड:"
+    },
+    "instituteSwitcher": {
+        "currentInstitute": "वर्तमान संस्थान",
+        "unnamedInstitute": "आपका संस्थान",
+        "switchInstitute": "संस्थान बदलें",
+        "dialogTitle": "संस्थान बदलें",
+        "dialogDescription": "वह संस्थान चुनें जिसमें आप काम करना चाहते हैं। ऐप उसी संस्थान में दोबारा लोड होगा, जैसे आपने वहाँ साइन इन किया हो।",
+        "searchPlaceholder": "संस्थान खोजें",
+        "fallbackName": "संस्थान {{idPrefix}}…",
+        "current": "वर्तमान",
+        "noMatches": "\"{{query}}\" से कोई संस्थान मेल नहीं खाता",
+        "loadError": "संस्थानों के नाम लोड नहीं हो सके। आप फिर भी संस्थान बदल सकते हैं।",
+        "retry": "फिर से कोशिश करें",
+        "switching": "संस्थान बदला जा रहा है…",
+        "switchFailed": "संस्थान नहीं बदला जा सका। कृपया फिर से कोशिश करें।",
+        "adminRequired": "इस पोर्टल के लिए उस संस्थान में एडमिन भूमिका आवश्यक है।",
+        "subOrgTitle": "संगठन चुनें",
+        "subOrgDescription": "{{institute}} में आप कई संगठनों के साथ काम करते हैं। जारी रखने के लिए एक चुनें।",
+        "cancelSwitch": "बदलना रद्द करें",
+        "roleWithMore": "{{role}} +{{count}}",
+        "roles": {
+            "ADMIN": "एडमिन",
+            "TEACHER": "शिक्षक"
+        }
     }
 }

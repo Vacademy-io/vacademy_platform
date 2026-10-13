@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.institute.repository;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -14,6 +16,14 @@ import java.util.Optional;
 
 @Repository
 public interface InstituteRepository extends CrudRepository<Institute, String> {
+
+    /**
+     * Row lock on the institute, for read-compare-write of setting_json (super-admin
+     * display-settings write with a version check, setting restore). Call inside a transaction.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Institute i WHERE i.id = :id")
+    Optional<Institute> findByIdForUpdate(@Param("id") String id);
 
     @Query(value = "SELECT DISTINCT i.* " +
             "FROM staff s " +

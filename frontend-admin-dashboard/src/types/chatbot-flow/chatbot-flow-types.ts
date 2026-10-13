@@ -274,8 +274,8 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         description: 'AI-powered conversation',
         color: '#14b8a6',
         icon: '🤖',
+        // No modelId: the node uses the platform default (the 'chatbot_flow' use case).
         defaultConfig: {
-            modelId: 'google/gemini-2.5-flash',
             systemPrompt: '',
             maxTokens: 500,
             temperature: 0.7,

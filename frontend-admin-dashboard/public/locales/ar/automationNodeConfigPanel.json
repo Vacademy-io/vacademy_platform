@@ -179,6 +179,7 @@
         "sectionLabel": "محادثة الذكاء الاصطناعي",
         "modelLabel": "النموذج",
         "model": {
+            "platformDefault": "الافتراضي للمنصة (GLM 5.3 Flash)",
             "gemini20Flash": "Gemini 2.0 Flash (سريع)",
             "gemini25Flash": "Gemini 2.5 Flash",
             "gemini25Pro": "Gemini 2.5 Pro",

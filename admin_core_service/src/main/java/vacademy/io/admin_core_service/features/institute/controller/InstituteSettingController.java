@@ -9,20 +9,22 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteS
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteSettingManager;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingAccessGuard;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
 @RequestMapping("/admin-core-service/institute/setting/v1")
 public class InstituteSettingController {
 
-    private static final java.util.Set<String> PERMISSION_BEARING_SETTING_KEYS = java.util.Set.of(
-            "ADMIN_DISPLAY_SETTINGS", "TEACHER_DISPLAY_SETTINGS", "ROLE_DISPLAY_SETTINGS");
-
-    @Autowired
-    private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
-
     @Autowired
     InstituteSettingManager instituteSettingManager;
+
+    // Every write checks the caller against the institute and the key (see the guard for the
+    // rule). The per-key reads (/get, /data) stay open for ordinary keys: learner surfaces and
+    // ai_service read them with the caller's own token. Keys holding provider credentials
+    // (WhatsApp, SMTP, LMS) need staff to read. The whole-blob reads (/all, /raw) need staff.
+    @Autowired
+    InstituteSettingAccessGuard instituteSettingAccessGuard;
 
     // ========================= SAVE/UPDATE ENDPOINTS =========================
     
@@ -35,6 +37,7 @@ public class InstituteSettingController {
     public ResponseEntity<String> newNamingSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                    @RequestParam("instituteId") String instituteId,
                                                    @RequestBody NameSettingRequest request){
+        instituteSettingAccessGuard.requireCanWrite(userDetails, instituteId, InstituteSettingAccessGuard.NAMING_SETTING_KEY);
         return instituteSettingManager.createNewNamingSetting(userDetails, instituteId, request);
     }
 
@@ -48,6 +51,7 @@ public class InstituteSettingController {
     public ResponseEntity<String> updateNamingSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                    @RequestParam("instituteId") String instituteId,
                                                    @RequestBody NameSettingRequest request){
+        instituteSettingAccessGuard.requireCanWrite(userDetails, instituteId, InstituteSettingAccessGuard.NAMING_SETTING_KEY);
         return instituteSettingManager.updateNamingSetting(userDetails, instituteId, request);
     }
 
@@ -64,12 +68,7 @@ public class InstituteSettingController {
                                               @RequestParam("instituteId") String instituteId,
                                               @RequestParam("settingKey") String settingKey,
                                               @RequestBody GenericSettingRequest request){
-        // Display settings carry per-role permissions (e.g. learnerManagement.canApplyDiscounts,
-        // allowDeletePayments), so only an institute admin may change them — otherwise any
-        // member could grant their own role a permission.
-        if (PERMISSION_BEARING_SETTING_KEYS.contains(settingKey)) {
-            instituteAccessValidator.requireAdminAccess(userDetails, instituteId);
-        }
+        instituteSettingAccessGuard.requireCanWrite(userDetails, instituteId, settingKey);
         return instituteSettingManager.saveGenericSetting(userDetails, instituteId, settingKey, request);
     }
 
@@ -79,6 +78,7 @@ public class InstituteSettingController {
     @GetMapping("/all")
     public ResponseEntity<InstituteSettingDto> getAllSettings(@RequestAttribute("user")CustomUserDetails userDetails,
                                                              @RequestParam("instituteId") String instituteId){
+        instituteSettingAccessGuard.requireCanReadAll(userDetails, instituteId);
         return instituteSettingManager.getAllSettings(userDetails, instituteId);
     }
 
@@ -87,6 +87,7 @@ public class InstituteSettingController {
     public ResponseEntity<SettingDto> getSpecificSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                          @RequestParam("instituteId") String instituteId,
                                                          @RequestParam("settingKey") String settingKey){
+        instituteSettingAccessGuard.requireCanReadKey(userDetails, instituteId, settingKey);
         return instituteSettingManager.getSpecificSetting(userDetails, instituteId, settingKey);
     }
 
@@ -95,6 +96,7 @@ public class InstituteSettingController {
     public ResponseEntity<Object> getSettingData(@RequestAttribute("user")CustomUserDetails userDetails,
                                                  @RequestParam("instituteId") String instituteId,
                                                  @RequestParam("settingKey") String settingKey){
+        instituteSettingAccessGuard.requireCanReadKey(userDetails, instituteId, settingKey);
         return instituteSettingManager.getSettingData(userDetails, instituteId, settingKey);
     }
 
@@ -102,6 +104,7 @@ public class InstituteSettingController {
     @GetMapping("/raw")
     public ResponseEntity<String> getSettingsAsRawJson(@RequestAttribute("user")CustomUserDetails userDetails,
                                                        @RequestParam("instituteId") String instituteId){
+        instituteSettingAccessGuard.requireCanReadAll(userDetails, instituteId);
         return instituteSettingManager.getSettingsAsRawJson(userDetails, instituteId);
     }
 

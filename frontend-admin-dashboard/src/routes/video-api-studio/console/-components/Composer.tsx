@@ -86,6 +86,9 @@ interface ComposerProps {
     vimMode?: boolean;
 }
 
+// Set once the model saved by the retired tier auto-select has been cleared.
+const MODEL_AUTOPICK_CLEARED_KEY = 'video-studio-model-autopick-cleared-v1';
+
 export function Composer({
     onGenerate,
     isGenerating,
@@ -240,35 +243,37 @@ export function Composer({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [indexedVideos]);
 
-    // Auto-select model: prefer an LLM matching the current quality tier;
-    // otherwise fall back to whatever the BE marks is_default.
+    // No model auto-select. `options.model` is a whole-run override, so it is
+    // only sent when the user picks one in Settings; left empty, the BE
+    // resolves every stage from the stage matrix (`ai_model_stage_assignments`)
+    // for the chosen `quality_tier`. This used to pin the first model of the
+    // tier, which overrode the matrix on every console video.
     //
-    // Skipped entirely in vimMode (P2-12): the legacy top-level `model` field
-    // is admin-only — Vimotion users rely on the V200 stage-routing matrix
-    // (`ai_model_stage_assignments`) which the BE resolves from `quality_tier`
-    // alone. Auto-populating `options.model` here would ship a "ghost knob"
-    // the user can't see (we hide both override panels in vimMode via P0-5).
+    // Clean-up for options persisted by that old auto-select: a saved model is
+    // cleared once per browser (a marker key records it, on the first render
+    // whether or not a model is saved, so a later explicit pick survives), and
+    // a model the registry no longer lists is dropped so a retired id is never
+    // sent. vimMode never carries a model (VideoConsoleWorkspace strips it, P2-12).
     useEffect(() => {
         if (vimMode) return;
-        const available = modelsList?.models ?? [];
-        if (available.length === 0) return;
-        const tier = options.quality_tier || 'ultra';
-
-        if (options.model && available.some((m) => m.model_id === options.model)) {
-            return;
+        let staleAutoPick = false;
+        try {
+            if (!localStorage.getItem(MODEL_AUTOPICK_CLEARED_KEY)) {
+                localStorage.setItem(MODEL_AUTOPICK_CLEARED_KEY, '1');
+                staleAutoPick = true;
+            }
+        } catch {
+            // Storage blocked: skip the one-time clean-up.
         }
-
-        const tierModels = available.filter((m) => m.tier === tier);
-        const pick =
-            tierModels.find((m) => m.is_default) ??
-            tierModels[0] ??
-            available.find((m) => m.is_default) ??
-            available[0];
-        if (pick) {
-            onOptionsChange({ ...options, model: pick.model_id });
+        if (!options.model) return;
+        const available = modelsList?.models ?? [];
+        const retired =
+            available.length > 0 && !available.some((m) => m.model_id === options.model);
+        if (staleAutoPick || retired) {
+            onOptionsChange({ ...options, model: '' });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [modelsList, options.quality_tier, vimMode]);
+    }, [modelsList, vimMode]);
 
     // Fetch video style + branding + templates (institute-wide config).
     useEffect(() => {

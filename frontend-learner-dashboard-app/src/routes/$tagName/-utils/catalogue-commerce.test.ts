@@ -155,6 +155,21 @@ describe("site cart helpers", () => {
     expect(cartTotals([en, { ...other, currency: "USD" }]).total).toBeNull();
   });
 
+  it("totals the priced items' currency: a free item's label never makes it 'shown at checkout'", () => {
+    const paidAud = { packageSessionId: "c3-en", courseId: "c3", title: "Business English", price: 499, elevatedPrice: 599, currency: "AUD" };
+    const freeInr = { packageSessionId: "c4-en", courseId: "c4", title: "Orientation", price: 0, elevatedPrice: 999, currency: "INR" };
+    // Either order: the free INR line costs nothing, and its list price stays out of the AUD total.
+    expect(cartTotals([paidAud, freeInr])).toEqual({ count: 2, total: 499, elevatedTotal: 599, currency: "AUD" });
+    expect(cartTotals([freeInr, paidAud])).toEqual({ count: 2, total: 499, elevatedTotal: 599, currency: "AUD" });
+    // A line with no price yet does not name the currency either.
+    expect(cartTotals([{ ...freeInr, price: undefined, elevatedPrice: undefined }, paidAud]).currency).toBe("AUD");
+    // Priced items in two currencies still have no single honest total.
+    expect(cartTotals([paidAud, freeInr, en]).total).toBeNull();
+    // A cart of free items only keeps its own currency (and its list prices).
+    expect(cartTotals([freeInr])).toEqual({ count: 1, total: 0, elevatedTotal: 999, currency: "INR" });
+    expect(cartTotals([freeInr, { ...freeInr, packageSessionId: "c5-en", courseId: "c5", currency: "USD" }]).total).toBeNull();
+  });
+
   it("splits by what the store page sells and builds the checkout target", () => {
     const { available, unavailable } = partitionByStore([en, other], new Set(["c1-en"]));
     expect(available.map((i) => i.packageSessionId)).toEqual(["c1-en"]);

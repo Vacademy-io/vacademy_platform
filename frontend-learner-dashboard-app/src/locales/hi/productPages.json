@@ -25,7 +25,8 @@
         "basketSavedWithPercent": "{{amount}} · {{percent}}% की बचत",
         "basketNextTierAmount": "{{amount}} की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
         "basketNextTierAmountMore": "{{amount}} की अतिरिक्त छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
-        "basketNextTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।"
+        "basketNextTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "priceChangedReload": "आपकी कार्ट में किसी पाठ्यक्रम की कीमत बदल गई है। कृपया अपनी कार्ट देखें और फिर से कोशिश करें।"
     },
     "errors": {
         "pageNotAvailable": {
@@ -243,5 +244,9 @@
         "goToMyCourses": "{{courses}} पर जाएँ",
         "redirecting": "आपको अगले पेज पर ले जा रहे हैं…",
         "redirectNow": "अभी जारी रखें"
+    },
+    "planTiles": {
+        "coursesIncluded": "{{count}} {{courses}} शामिल",
+        "oneCourse": "1 {{course}}"
     }
 }

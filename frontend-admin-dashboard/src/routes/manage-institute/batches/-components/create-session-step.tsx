@@ -15,6 +15,7 @@ import { CalendarCheck, Plus, X } from '@phosphor-icons/react';
 import { Session } from '@/components/common/study-library/add-course/add-course-form';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { DEFAULT_SESSION_ID } from '../-utils/batch-defaults';
 
 export const CreateSessionStep = () => {
     const { t } = useTranslation('manageInstituteCreateSessionStep');
@@ -22,6 +23,23 @@ export const CreateSessionStep = () => {
     const [newSessionStartDate, setNewSessionStartDate] = useState('');
     const form = useFormContext();
     const { watch } = form;
+
+    /**
+     * The new session the user confirmed with "+". Only this collapses the
+     * inputs into the summary row; the inputs used to collapse the moment both
+     * held a value, so a session got saved mid-typing (date picked first, then
+     * the first letter of the name). Seeded from the form so Back from a later
+     * step keeps the session instead of wiping it.
+     */
+    const [addedSession, setAddedSession] = useState<{ name: string; startDate: string } | null>(
+        () => {
+            const session = form.getValues('selectedSession');
+            const startDate = form.getValues('selectedStartDate');
+            return form.getValues('sessionCreationType') === 'new' && session?.name && startDate
+                ? { name: session.name, startDate }
+                : null;
+        }
+    );
     const { getSessionFromPackage, instituteDetails } = useInstituteDetailsStore();
     const selectedCourseId = watch('selectedCourse')?.id;
 
@@ -57,28 +75,30 @@ export const CreateSessionStep = () => {
         }
     }, [sessionList.length]);
 
+    // When the course already runs the default session, start with it picked.
+    useEffect(() => {
+        if (watch('sessionCreationType') !== 'existing' || watch('selectedSession')) return;
+        const defaultSession = sessionList.find((session) => session.id === DEFAULT_SESSION_ID);
+        if (defaultSession) {
+            form.setValue('selectedSession', { id: defaultSession.id, name: defaultSession.name });
+        }
+    }, [sessionList, watch('sessionCreationType')]);
+
     const handleAddSession = (sessionName: string, startDate: string) => {
-        const newSession = {
-            id: '',
-            new_session: true,
-            session_name: sessionName,
-            status: 'INACTIVE',
-            start_date: startDate,
-            levels: [], // Initialize with empty levels array
-        };
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
-        setSessionList((prevSessionList) => [...prevSessionList, newSession]);
-        // Set the new session in the form's state
-        form.setValue('selectedSession', { id: newSession.id, name: newSession.session_name });
+        setAddedSession({ name: sessionName.trim(), startDate });
     };
 
+    /**
+     * Keeps the form in step with the new session: the confirmed one, else
+     * whatever is typed so far, so Next still works without pressing "+".
+     */
     useEffect(() => {
-        if (watch('sessionCreationType') === 'new') {
-            form.setValue('selectedSession', { id: '', name: newSessionName });
-            form.setValue('selectedStartDate', newSessionStartDate);
-        }
-    }, [watch('sessionCreationType'), newSessionName, newSessionStartDate]);
+        if (watch('sessionCreationType') !== 'new') return;
+        const name = addedSession?.name ?? newSessionName.trim();
+        const startDate = addedSession?.startDate ?? newSessionStartDate;
+        form.setValue('selectedSession', name ? { id: '', name } : null);
+        form.setValue('selectedStartDate', startDate || null);
+    }, [watch('sessionCreationType'), addedSession, newSessionName, newSessionStartDate]);
 
     const sessionTerm = getTerminology(ContentTerms.Session, SystemTerms.Session);
     const sessionLower = sessionTerm.toLocaleLowerCase();
@@ -91,6 +111,9 @@ export const CreateSessionStep = () => {
                 </p>
                 <p className="text-body text-neutral-500">
                     {t('subtitle', { session: sessionLower })}
+                </p>
+                <p className="text-caption text-neutral-500">
+                    {t('optionalHint', { session: sessionLower })}
                 </p>
             </div>
 
@@ -106,6 +129,9 @@ export const CreateSessionStep = () => {
                                     field.onChange(value);
                                     form.setValue('selectedSession', null); // Reset dependent field
                                     form.setValue('selectedStartDate', null);
+                                    setAddedSession(null);
+                                    setNewSessionName('');
+                                    setNewSessionStartDate('');
                                 }}
                                 value={field.value}
                             >
@@ -144,12 +170,10 @@ export const CreateSessionStep = () => {
                 <FormField
                     control={form.control}
                     name="selectedSession"
-                    rules={{ required: t('validation.selectSession') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-subtitle font-semibold text-neutral-700">
-                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}{' '}
-                                <span className="text-danger-500">*</span>
+                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}
                             </FormLabel>
                             <FormControl>
                                 <BatchItemSelect
@@ -186,21 +210,18 @@ export const CreateSessionStep = () => {
             )}
 
             {form.watch('sessionCreationType') === 'new' &&
-                (newSessionName !== '' && newSessionStartDate !== '' ? (
+                (addedSession ? (
                     <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                         <div className="flex grow flex-col">
-                            <p className="text-sm font-medium text-neutral-700">{newSessionName}</p>
+                            <p className="text-sm font-medium text-neutral-700">
+                                {addedSession.name}
+                            </p>
                             <p className="text-xs text-neutral-500">
-                                {t('startDate', { date: newSessionStartDate })}
+                                {t('startDate', { date: addedSession.startDate })}
                             </p>
                         </div>
                         <MyButton
-                            onClick={() => {
-                                setNewSessionName('');
-                                setNewSessionStartDate('');
-                                form.setValue('selectedSession', null);
-                                form.setValue('selectedStartDate', null);
-                            }}
+                            onClick={() => setAddedSession(null)}
                             layoutVariant="icon"
                             buttonType="text"
                             className="p-1 text-neutral-500 hover:bg-danger-50 hover:text-danger-600"

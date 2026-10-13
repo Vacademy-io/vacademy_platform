@@ -1,459 +1,469 @@
-import { useEditorStore } from '../-stores/editor-store';
-import { Component } from '../-types/editor-types';
-import { useState } from 'react';
-import { CaretDown, CaretUp, Gear, Copy, Trash } from '@phosphor-icons/react';
-import { Button } from '@/components/ui/button';
+/**
+ * PageCanvas — the canvas's "Structure" view: an honest outline of the page.
+ *
+ * One row per block (its name, the first heading a visitor reads, what it is
+ * made of, and a Hidden badge), between the site header and footer. The look
+ * of the page lives in the Website view (LiveSiteFrame, the real site); this
+ * view is for order and picking a block.
+ *
+ * - Click a row to edit that block.
+ * - Drag a row by its handle (or focus the handle and press ↑ / ↓) to move it.
+ *   Native drag events, so it never mixes with the library's dnd-kit drags.
+ * - Drag a block from the library onto the outline to add it at the end, or
+ *   onto a column of a column layout to add it there (same drop ids as before).
+ * - "Show previews" draws each block's look-alike picture (BlockPreview) in its
+ *   row: the visual canvas for an institute whose Website view cannot load.
+ */
+import {
+    useEffect,
+    useRef,
+    useState,
+    type DragEvent,
+    type KeyboardEvent,
+    type ReactNode,
+} from 'react';
+import { useDroppable } from '@dnd-kit/core';
+import { DotsSixVertical, EyeSlash } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { Switch } from '@/components/ui/switch';
+import { useEditorStore } from '../-stores/editor-store';
+import { useLocalizedView } from '../-hooks/use-localized-editing';
+import type { CatalogueConfig, Component } from '../-types/editor-types';
+import { componentLabel } from '../-utils/component-labels';
+import { firstHeading, moveItem } from '../-utils/block-summary';
+import { collectConfigFontFamilies, ensureFontsLoaded } from '../-utils/catalogue-fonts';
+import { describeCatalogFeatures } from './ComponentPreviews';
+import { BlockPreview, PreviewSurface } from './BlockPreview';
 
-export const PageCanvas = () => {
+interface PageCanvasProps {
+    /** The canvas's own 'canvas-drop-zone' droppable — owned by CanvasRenderer. */
+    dropRef: (node: HTMLElement | null) => void;
+    isDropOver: boolean;
+    /** Draw each block's look-alike preview in its row. */
+    showPreviews?: boolean;
+    onShowPreviewsChange?: (on: boolean) => void;
+    /** The Website view failed to load for this institute: say why previews are on. */
+    websiteUnavailable?: boolean;
+}
+
+/** A block's preview inside a row, in the site's theme. */
+const RowPreview = ({ config, component }: { config: CatalogueConfig | null; component: Component }) => (
+    <div className="mt-2 overflow-hidden rounded-md border border-neutral-200">
+        <PreviewSurface config={config}>
+            <BlockPreview component={component} />
+        </PreviewSurface>
+    </div>
+);
+
+/** Column layouts show their columns side by side, up to four across. */
+const COLUMN_GRID: Record<number, string> = {
+    1: 'grid-cols-1',
+    2: 'grid-cols-2',
+    3: 'grid-cols-3',
+    4: 'grid-cols-4',
+};
+
+const HiddenBadge = () => {
     const { t } = useTranslation('managePagesPageCanvas');
-    const {
-        config,
-        selectedPageId,
-        selectComponent,
-        selectedComponentId,
-        selectedGlobalSettings,
-        deleteComponent,
-        duplicateComponent,
-    } = useEditorStore();
-
-    if (!config) return null;
-
-    // Show global settings (header/footer)
-    if (selectedGlobalSettings) {
-        const header = config.globalSettings?.layout?.header;
-        const footer = config.globalSettings?.layout?.footer;
-
-        return (
-            <div
-                className="flex min-h-full w-full flex-1 flex-col gap-3 bg-white p-4"
-                onClick={() => selectComponent(null)}
-            >
-                <div className="mb-2 border-b pb-3">
-                    <h2 className="text-lg font-semibold text-gray-800">
-                        {t('globalSettings.title')}
-                    </h2>
-                    <p className="text-sm text-gray-500">{t('globalSettings.description')}</p>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-2">
-                    {/* Header Section */}
-                    {header && (
-                        <div
-                            className={`cursor-pointer rounded-lg border bg-white p-4 shadow-sm transition-all hover:shadow-md
-                                ${selectedComponentId === 'global-header' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'}`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                selectComponent('global-header');
-                            }}
-                        >
-                            <div className="mb-3 flex items-center justify-between">
-                                <span className="rounded-md bg-blue-100 px-3 py-1.5 text-xs font-bold uppercase text-blue-700">
-                                    {t('globalSettings.header')}
-                                </span>
-                                {selectedComponentId === 'global-header' && (
-                                    <span className="text-xs font-medium text-blue-600">
-                                        {t('globalSettings.selectedIndicator')}
-                                    </span>
-                                )}
-                            </div>
-                            <ComponentSummary component={header as Component} />
-                        </div>
-                    )}
-
-                    {/* Footer Section */}
-                    {footer && (
-                        <div
-                            className={`cursor-pointer rounded-lg border bg-white p-4 shadow-sm transition-all hover:shadow-md
-                                ${selectedComponentId === 'global-footer' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'}`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                selectComponent('global-footer');
-                            }}
-                        >
-                            <div className="mb-3 flex items-center justify-between">
-                                <span className="rounded-md bg-purple-100 px-3 py-1.5 text-xs font-bold uppercase text-purple-700">
-                                    {t('globalSettings.footer')}
-                                </span>
-                                {selectedComponentId === 'global-footer' && (
-                                    <span className="text-xs font-medium text-blue-600">
-                                        {t('globalSettings.selectedIndicator')}
-                                    </span>
-                                )}
-                            </div>
-                            <ComponentSummary component={footer as Component} />
-                        </div>
-                    )}
-                </div>
-
-                {/* Other Global Settings Info */}
-                <div className="mt-2 rounded-lg border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5">
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800">
-                        <Gear className="size-4" />
-                        {t('globalSettings.overview.title')}
-                    </h3>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.catalogueType')}
-                            </div>
-                            <div className="font-medium text-gray-900">
-                                {config.globalSettings?.courseCatalogeType?.value ||
-                                    t('globalSettings.overview.notAvailable')}
-                            </div>
-                        </div>
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.themeMode')}
-                            </div>
-                            <div className="font-medium capitalize text-gray-900">
-                                {config.globalSettings?.mode || 'light'}
-                            </div>
-                        </div>
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.fontFamily')}
-                            </div>
-                            <div className="font-medium text-gray-900">
-                                {config.globalSettings?.fonts?.family ||
-                                    t('globalSettings.overview.defaultFont')}
-                            </div>
-                        </div>
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.payment')}
-                            </div>
-                            <div
-                                className={`font-medium ${config.globalSettings?.payment?.enabled ? 'text-green-600' : 'text-gray-400'}`}
-                            >
-                                {config.globalSettings?.payment?.enabled
-                                    ? t('globalSettings.overview.enabledBadge')
-                                    : t('globalSettings.overview.disabledBadge')}
-                            </div>
-                        </div>
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.leadCollection')}
-                            </div>
-                            <div
-                                className={`font-medium ${config.globalSettings?.leadCollection?.enabled ? 'text-green-600' : 'text-gray-400'}`}
-                            >
-                                {config.globalSettings?.leadCollection?.enabled
-                                    ? t('globalSettings.overview.enabledBadge')
-                                    : t('globalSettings.overview.disabledBadge')}
-                            </div>
-                        </div>
-                        <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">
-                                {t('globalSettings.overview.enquiry')}
-                            </div>
-                            <div
-                                className={`font-medium ${config.globalSettings?.enrquiry?.enabled ? 'text-green-600' : 'text-gray-400'}`}
-                            >
-                                {config.globalSettings?.enrquiry?.enabled
-                                    ? t('globalSettings.overview.enabledBadge')
-                                    : t('globalSettings.overview.disabledBadge')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // Show page components
-    const page = config.pages.find((p) => p.id === selectedPageId);
-    if (!page)
-        return <div className="p-8 text-center text-gray-500">{t('page.notFound')}</div>;
-
     return (
-        <div
-            className="flex min-h-full w-full flex-1 flex-col gap-3 bg-white p-4"
-            onClick={() => selectComponent(null)}
+        <span
+            className="flex shrink-0 items-center gap-1 rounded bg-neutral-100 px-1.5 py-0.5 text-caption font-medium text-neutral-600"
+            title={t('structure.hiddenTitle')}
         >
-            <div className="mb-2 border-b pb-3">
-                <h2 className="text-lg font-semibold text-gray-800">{page.title || page.route}</h2>
-                <p className="text-sm text-gray-500">
-                    {t('page.componentsCount', { count: page.components.length })}
-                </p>
+            <EyeSlash className="size-3" />
+            {t('structure.hidden')}
+        </span>
+    );
+};
+
+/** Name, first heading and summary of one block — the body of every row. */
+const BlockText = ({ component, summary }: { component: Component; summary?: string }) => {
+    const { t } = useTranslation('managePagesPageCanvas');
+    const heading = firstHeading(component);
+    return (
+        <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-semibold text-neutral-800">
+                    {componentLabel(component.type)}
+                </span>
+                {component.enabled === false && <HiddenBadge />}
             </div>
-
-            {page.components.map((comp) => (
-                <div
-                    key={comp.id}
-                    className={`group relative cursor-pointer rounded-lg border bg-white p-4 shadow-sm transition-all hover:shadow-md
-                        ${selectedComponentId === comp.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'}`}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        selectComponent(comp.id);
-                    }}
-                >
-                    {/* Component Actions */}
-                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="size-7 p-0"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                duplicateComponent(page.id, comp.id);
-                            }}
-                            title={t('page.duplicateComponentTitle')}
-                        >
-                            <Copy className="size-3" />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="size-7 p-0 text-red-600 hover:text-red-700"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm(t('page.confirmDeleteComponent'))) {
-                                    deleteComponent(page.id, comp.id);
-                                }
-                            }}
-                            title={t('page.deleteComponentTitle')}
-                        >
-                            <Trash className="size-3" />
-                        </Button>
-                    </div>
-
-                    <div className="mb-3 flex items-center justify-between">
-                        <span className="rounded-md bg-indigo-100 px-3 py-1.5 text-xs font-bold uppercase text-indigo-700">
-                            {comp.type}
-                        </span>
-                        {selectedComponentId === comp.id && (
-                            <span className="text-xs text-blue-500">{t('page.selected')}</span>
-                        )}
-                    </div>
-
-                    <ComponentSummary component={comp} />
-                </div>
-            ))}
-
-            {page.components.length === 0 && (
-                <div className="m-4 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-16 text-gray-400">
-                    <div className="text-lg font-medium">{t('page.empty.title')}</div>
-                    <div className="mt-1 text-sm">{t('page.empty.hint')}</div>
-                </div>
-            )}
+            <div
+                className={`truncate text-xs ${heading ? 'text-neutral-600' : 'italic text-neutral-400'}`}
+            >
+                {heading || t('structure.noHeading')}
+            </div>
+            {summary && <div className="truncate text-caption text-neutral-500">{summary}</div>}
         </div>
     );
 };
 
-const ComponentSummary = ({ component }: { component: Component }) => {
+/** A column of a column layout: its blocks, and a drop target for new ones. */
+const ColumnSlot = ({
+    layoutId,
+    index,
+    blocks,
+    previewConfig,
+}: {
+    layoutId: string;
+    index: number;
+    blocks: Component[];
+    /** Set when previews are on: the site whose theme they are drawn in. */
+    previewConfig?: CatalogueConfig | null;
+}) => {
     const { t } = useTranslation('managePagesPageCanvas');
-    const { type, props } = component;
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    const getSummaryContent = () => {
-        switch (type) {
-            case 'heroSection':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.heading || t('summary.hero.fallbackTitle')}
-                        </div>
-                        {props.subheading && (
-                            <div className="text-sm text-gray-600">{props.subheading}</div>
+    const { selectedComponentId, selectComponent } = useEditorStore();
+    // '::' separates the ids — component ids only contain [a-z0-9-].
+    const { setNodeRef, isOver } = useDroppable({ id: `slot::${layoutId}::${index}` });
+    return (
+        <div
+            ref={setNodeRef}
+            className={`rounded-md border border-dashed p-2 ${
+                isOver ? 'border-primary-400 bg-primary-50' : 'border-neutral-200'
+            }`}
+        >
+            <div className="mb-1 text-caption font-semibold uppercase text-neutral-500">
+                {t('structure.column', { index: index + 1 })}
+            </div>
+            {blocks.length === 0 && (
+                <div className="text-caption text-neutral-400">{t('structure.emptyColumn')}</div>
+            )}
+            <div className="flex flex-col gap-1">
+                {blocks.map((child) => (
+                    // The preview sits beside the button, never inside it: it
+                    // draws the block's own buttons and links.
+                    <div
+                        key={child.id}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            selectComponent(child.id);
+                        }}
+                        className={`cursor-pointer rounded border bg-white px-2 py-1 ${
+                            child.id === selectedComponentId
+                                ? 'border-primary-500 ring-1 ring-primary-200'
+                                : 'border-neutral-200 hover:border-primary-300'
+                        }`}
+                    >
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                selectComponent(child.id);
+                            }}
+                            className="flex w-full rounded text-start"
+                        >
+                            <BlockText component={child} />
+                        </button>
+                        {previewConfig !== undefined && (
+                            <RowPreview config={previewConfig} component={child} />
                         )}
                     </div>
-                );
+                ))}
+            </div>
+        </div>
+    );
+};
 
-            case 'bookCatalogue':
-            case 'courseCatalog':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.title || t('summary.catalogue.fallbackTitle')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.catalogue.layoutLine', {
-                                layout: props.render?.layout || 'grid',
-                                filters: props.showFilters
-                                    ? t('summary.catalogue.filtersEnabled')
-                                    : t('summary.catalogue.filtersDisabled'),
-                            })}
-                            {props.filtersConfig &&
-                                t('summary.catalogue.filterCountSuffix', {
-                                    count: props.filtersConfig.length,
-                                })}
-                        </div>
-                    </div>
-                );
+/** Site header / footer: shared by every page, so it has no drag handle. */
+const ChromeRow = ({
+    section,
+    component,
+    previewConfig,
+}: {
+    section: 'header' | 'footer';
+    component: Component;
+    previewConfig?: CatalogueConfig | null;
+}) => {
+    const { t } = useTranslation('managePagesPageCanvas');
+    const { selectedGlobalLayout, selectGlobalLayout } = useEditorStore();
+    const select = (e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        selectGlobalLayout(section);
+    };
+    return (
+        <div
+            onClick={select}
+            className={`cursor-pointer rounded-lg border border-dashed bg-white px-3 py-2 ${
+                selectedGlobalLayout === section
+                    ? 'border-primary-500 ring-2 ring-primary-200'
+                    : 'border-neutral-300 hover:border-primary-300'
+            }`}
+        >
+            <button type="button" onClick={select} className="flex w-full min-w-0 flex-col rounded text-start">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-neutral-800">
+                        {t(section === 'header' ? 'structure.header' : 'structure.footer')}
+                    </span>
+                    <span className="text-caption text-neutral-500">
+                        {t('structure.everyPage')}
+                    </span>
+                    {component.enabled === false && <HiddenBadge />}
+                </div>
+                <div className="truncate text-xs text-neutral-600">{firstHeading(component)}</div>
+            </button>
+            {previewConfig !== undefined && <RowPreview config={previewConfig} component={component} />}
+        </div>
+    );
+};
 
-            case 'bookDetails':
-            case 'courseDetails':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {t('summary.courseDetails.title')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {props.showEnquiry && t('summary.courseDetails.enquirySuffix')}
-                            {props.showPayment && t('summary.courseDetails.paymentSuffix')}
-                            {props.showAddToCart && t('summary.courseDetails.addToCart')}
-                        </div>
-                    </div>
-                );
+export const PageCanvas = ({
+    dropRef,
+    isDropOver,
+    showPreviews = false,
+    onShowPreviewsChange,
+    websiteUnavailable = false,
+}: PageCanvasProps) => {
+    const { t } = useTranslation('managePagesPageCanvas');
+    const { t: tPreviews } = useTranslation('managePagesComponentPreviews');
+    const {
+        config: storeConfig,
+        editingLocale,
+        selectedPageId,
+        selectedComponentId,
+        selectComponent,
+        reorderComponents,
+    } = useEditorStore();
+    // Headings read in the language being edited; order is shared by all
+    // languages, so moves are applied to the stored (base) blocks.
+    const config = useLocalizedView(storeConfig, editingLocale);
+    const page = config?.pages.find((p) => p.id === selectedPageId);
+    const layout = config?.globalSettings?.layout;
+    // undefined = previews off; otherwise the site they are drawn in.
+    const previewConfig = showPreviews ? (config ?? null) : undefined;
 
-            case 'cartComponent':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {t('summary.cart.title')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {props.showQuantitySelector &&
-                                t('summary.cart.quantityControlsSuffix')}
-                            {props.showPrice && t('summary.cart.pricingEnabled')}
-                        </div>
-                    </div>
-                );
+    // Previews show the site's real typography: load the fonts it uses.
+    useEffect(() => {
+        if (showPreviews && config) ensureFontsLoaded(collectConfigFontFamilies(config));
+    }, [showPreviews, config]);
 
-            case 'MediaShowcaseComponent':
-            case 'mediaShowcase':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {t('summary.mediaShowcase.title')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.mediaShowcase.layoutSlides', {
-                                layout: props.layout || 'slider',
-                                count: props.slides?.length || 0,
-                            })}
-                            {props.autoplay && t('summary.mediaShowcase.autoplaySuffix')}
-                        </div>
-                    </div>
-                );
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const [overIndex, setOverIndex] = useState<number | null>(null);
+    const rowRefs = useRef(new Map<string, HTMLElement>());
 
-            case 'buyRentSection':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.heading || t('summary.buyRent.fallbackTitle')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.buyRent.buyRentLine', {
-                                buy: props.buy?.buttonLabel || t('summary.buyRent.buyFallback'),
-                                rent: props.rent?.buttonLabel || t('summary.buyRent.rentFallback'),
-                            })}
-                        </div>
-                    </div>
-                );
-
-            case 'statsHighlights':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {t('summary.stats.title')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.stats.count', { count: props.stats?.length || 0 })}
-                        </div>
-                    </div>
-                );
-
-            case 'testimonialSection':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.title || t('summary.testimonials.fallbackTitle')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.testimonials.countLayout', {
-                                count: props.testimonials?.length || 0,
-                                layout: props.layout || 'grid',
-                            })}
-                        </div>
-                    </div>
-                );
-
-            case 'policyRenderer':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.policies?.shipping?.title || t('summary.policy.fallbackTitle')}
-                        </div>
-                        <div className="text-xs text-gray-500">{t('summary.policy.subtitle')}</div>
-                    </div>
-                );
-
-            case 'header':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {props.title || t('summary.header.fallbackTitle')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.header.navItems', {
-                                count: props.navigation?.length || 0,
-                            })}
-                        </div>
-                    </div>
-                );
-
-            case 'footer':
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">
-                            {t('summary.footer.title')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {t('summary.footer.layout', { layout: props.layout || 'default' })}
-                        </div>
-                    </div>
-                );
-
-            default:
-                // Fallback for unknown component types
-                return (
-                    <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">{type}</div>
-                        <div className="max-h-20 overflow-hidden text-xs text-gray-500">
-                            {Object.keys(props).slice(0, 3).join(', ')}
-                            {Object.keys(props).length > 3 && '...'}
-                        </div>
-                    </div>
-                );
+    // Keep the selected block in view when it is picked elsewhere (Layers).
+    useEffect(() => {
+        if (selectedComponentId) {
+            rowRefs.current.get(selectedComponentId)?.scrollIntoView?.({ block: 'nearest' });
         }
+    }, [selectedComponentId]);
+
+    const moveBlock = (blockId: string, to: number) => {
+        const blocks = storeConfig?.pages.find((p) => p.id === selectedPageId)?.components ?? [];
+        const next = moveItem(
+            blocks,
+            blocks.findIndex((b) => b.id === blockId),
+            to
+        );
+        if (next && selectedPageId) reorderComponents(selectedPageId, next);
     };
 
-    return (
-        <div className="space-y-2">
-            {getSummaryContent()}
+    const endDrag = () => {
+        setDraggingId(null);
+        setOverIndex(null);
+    };
 
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setIsExpanded(!isExpanded);
-                }}
-                className="flex items-center gap-1 text-xs text-blue-600 transition-colors hover:text-blue-800"
+    // Every row is a drop target; only the handle starts a drag, so dragging a
+    // block inside a column never drags its whole column layout.
+    const rowDropProps = (index: number) => ({
+        onDragOver: (e: DragEvent) => {
+            if (!draggingId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setOverIndex(index);
+        },
+        onDrop: (e: DragEvent) => {
+            if (!draggingId) return;
+            e.preventDefault();
+            moveBlock(draggingId, index);
+            endDrag();
+        },
+    });
+
+    const handleDragProps = (blockId: string) => ({
+        draggable: true,
+        onDragStart: (e: DragEvent) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', blockId);
+            // Show the whole row under the pointer, not just the handle.
+            const row = rowRefs.current.get(blockId);
+            if (row) e.dataTransfer.setDragImage?.(row, 16, 16);
+            setDraggingId(blockId);
+        },
+        onDragEnd: endDrag,
+    });
+
+    const onHandleKey = (e: KeyboardEvent, index: number, blockId: string) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        // The handle keeps focus: React refocuses it after moving its row.
+        moveBlock(blockId, e.key === 'ArrowUp' ? index - 1 : index + 1);
+    };
+
+    let body: ReactNode;
+    if (!config || !page) {
+        body = (
+            <p className="py-16 text-center text-sm text-neutral-500">{t('structure.noPage')}</p>
+        );
+    } else if (page.components.length === 0) {
+        body = (
+            <p className="rounded-lg border-2 border-dashed border-neutral-300 px-6 py-12 text-center text-sm text-neutral-500">
+                {t('structure.empty')}
+            </p>
+        );
+    } else {
+        const draggingIndex = page.components.findIndex((b) => b.id === draggingId);
+        body = (
+            <ol
+                className="flex flex-col gap-2"
+                aria-label={t('structure.blockCount', { count: page.components.length })}
             >
-                {isExpanded ? (
-                    <>
-                        <CaretUp className="size-3" />
-                        {t('summary.hideDetails')}
-                    </>
-                ) : (
-                    <>
-                        <CaretDown className="size-3" />
-                        {t('summary.showDetails')}
-                    </>
-                )}
-            </button>
+                {page.components.map((block, index) => {
+                    const isSelected = block.id === selectedComponentId;
+                    const slots =
+                        block.type === 'columnLayout' && Array.isArray(block.props?.slots)
+                            ? (block.props.slots as Component[][])
+                            : null;
+                    const summary = slots
+                        ? t('structure.columns', { count: slots.length })
+                        : block.type === 'courseCatalog'
+                          ? describeCatalogFeatures(block.props, tPreviews)
+                          : '';
+                    // Where the dragged row will land: a line on that side.
+                    const dropLine =
+                        overIndex === index && draggingIndex !== -1 && draggingIndex !== index
+                            ? draggingIndex > index
+                                ? 'border-t-primary-500'
+                                : 'border-b-primary-500'
+                            : '';
+                    return (
+                        <li
+                            key={block.id}
+                            ref={(node) => {
+                                if (node) rowRefs.current.set(block.id, node);
+                                else rowRefs.current.delete(block.id);
+                            }}
+                            data-block-id={block.id}
+                            {...rowDropProps(index)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                selectComponent(block.id);
+                            }}
+                            className={`cursor-pointer rounded-lg border-2 bg-white p-2 transition-colors ${
+                                isSelected
+                                    ? 'border-primary-500'
+                                    : 'border-neutral-200 hover:border-primary-300'
+                            } ${dropLine} ${draggingId === block.id ? 'opacity-50' : ''}`}
+                        >
+                            <div className="flex items-center gap-2">
+                                {/* A span, not a <button>: Firefox will not start a
+                                    drag from a button. */}
+                                <span
+                                    role="button"
+                                    tabIndex={0}
+                                    {...handleDragProps(block.id)}
+                                    className="flex shrink-0 cursor-grab items-center rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 active:cursor-grabbing"
+                                    aria-label={t('structure.dragHandle', {
+                                        name: componentLabel(block.type),
+                                    })}
+                                    title={t('structure.dragHandle', {
+                                        name: componentLabel(block.type),
+                                    })}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => onHandleKey(e, index, block.id)}
+                                >
+                                    <DotsSixVertical className="size-4" weight="bold" />
+                                </span>
+                                <span className="w-5 shrink-0 text-center text-caption text-neutral-400">
+                                    {index + 1}
+                                </span>
+                                {/* A real button, so the keyboard can open the block too. */}
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        selectComponent(block.id);
+                                    }}
+                                    className="flex min-w-0 flex-1 rounded text-start"
+                                >
+                                    <BlockText component={block} summary={summary} />
+                                </button>
+                            </div>
+                            {/* A column layout previews each column's blocks instead. */}
+                            {previewConfig !== undefined && !slots && (
+                                <RowPreview config={previewConfig} component={block} />
+                            )}
+                            {slots && (
+                                <div
+                                    className={`mt-2 grid gap-2 ps-14 ${COLUMN_GRID[Math.min(slots.length, 4)] ?? ''}`}
+                                >
+                                    {slots.map((slotBlocks, slotIndex) => (
+                                        <ColumnSlot
+                                            key={slotIndex}
+                                            layoutId={block.id}
+                                            index={slotIndex}
+                                            blocks={Array.isArray(slotBlocks) ? slotBlocks : []}
+                                            previewConfig={previewConfig}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ol>
+        );
+    }
 
-            {isExpanded && (
-                <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-1 text-xs font-semibold text-gray-700">
-                        {t('summary.fullConfigurationLabel')}
-                    </div>
-                    <pre className="max-h-96 overflow-auto text-xs text-gray-600">
-                        {JSON.stringify(props, null, 2)}
-                    </pre>
+    return (
+        <div
+            ref={dropRef}
+            className={`flex flex-1 justify-center overflow-auto p-6 transition-colors ${isDropOver ? 'bg-primary-50' : ''}`}
+            onClick={() => selectComponent(null)}
+        >
+            <div className={`flex w-full flex-col gap-2 ${showPreviews ? 'max-w-6xl' : 'max-w-3xl'}`}>
+                <div className="flex items-start justify-between gap-4">
+                    <p className="text-xs text-neutral-500">{t('structure.intro')}</p>
+                    {onShowPreviewsChange && (
+                        <label
+                            className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium text-neutral-700"
+                            title={t('structure.showPreviewsTitle')}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <Switch
+                                checked={showPreviews}
+                                onCheckedChange={onShowPreviewsChange}
+                                aria-label={t('structure.showPreviews')}
+                            />
+                            {t('structure.showPreviews')}
+                        </label>
+                    )}
                 </div>
-            )}
+                {websiteUnavailable && showPreviews && (
+                    <p role="status" className="rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
+                        {t('structure.previewsAuto')}
+                    </p>
+                )}
+                {layout?.header && (
+                    <ChromeRow
+                        section="header"
+                        component={layout.header as Component}
+                        previewConfig={layout.header.enabled === false ? undefined : previewConfig}
+                    />
+                )}
+                {body}
+                {isDropOver && (
+                    <div className="rounded-lg border-2 border-dashed border-primary-400 p-3 text-center text-xs text-primary-600">
+                        {t('structure.dropHere')}
+                    </div>
+                )}
+                {layout?.footer && (
+                    <ChromeRow
+                        section="footer"
+                        component={layout.footer as Component}
+                        previewConfig={layout.footer.enabled === false ? undefined : previewConfig}
+                    />
+                )}
+            </div>
         </div>
     );
 };

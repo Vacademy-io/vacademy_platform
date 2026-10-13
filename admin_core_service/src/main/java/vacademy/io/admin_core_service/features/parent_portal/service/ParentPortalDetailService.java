@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanc
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionAttendanceOnlyModeService;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
@@ -73,6 +74,7 @@ public class ParentPortalDetailService {
     private final LearnerBadgeService learnerBadgeService;
     private final CertificateReadService certificateReadService;
     private final GetLiveSessionService getLiveSessionService;
+    private final LiveSessionAttendanceOnlyModeService attendanceOnlyModeService;
     private final LearnerPastSessionService learnerPastSessionService;
     private final LearnerReportService learnerReportService;
     private final AssessmentServiceClient assessmentServiceClient;
@@ -139,6 +141,11 @@ public class ParentPortalDetailService {
                                                               String packageSessionId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "liveSessions");
+        // Attendance-only institute: classes are never listed (past is gated
+        // inside LearnerPastSessionService).
+        if (attendanceOnlyModeService.isEnabled(child.instituteId())) {
+            return List.of();
+        }
         List<String> targets = targetPackageSessions(child, packageSessionId);
 
         if (targets.size() == 1) {

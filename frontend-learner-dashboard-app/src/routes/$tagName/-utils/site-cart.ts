@@ -62,6 +62,25 @@ export const upsertCartItem = (items: SiteCartItem[], item: SiteCartItem): SiteC
 export const upsertCartItems = (items: SiteCartItem[], incoming: SiteCartItem[]): SiteCartItem[] =>
   incoming.reduce((acc, item) => upsertCartItem(acc, item), items);
 
+/** One order through the store checkout holds at most this many courses. */
+export const SITE_CART_MAX_ITEMS = 40;
+
+/**
+ * upsertCartItems that never grows the cart past `max` courses. Swapping a
+ * course to another language version does not grow it, so that is always
+ * accepted. The store applies this to every add, so no caller can overfill it.
+ */
+export const upsertCartItemsCapped = (
+  items: SiteCartItem[],
+  incoming: SiteCartItem[],
+  max: number = SITE_CART_MAX_ITEMS,
+): SiteCartItem[] =>
+  incoming.reduce((acc, item) => {
+    const grows = !acc.some((i) => i.courseId === item.courseId);
+    if (grows && acc.length >= max) return acc;
+    return upsertCartItem(acc, item);
+  }, items);
+
 export const removeCartItems = (items: SiteCartItem[], packageSessionIds: string[]): SiteCartItem[] => {
   const drop = new Set(packageSessionIds);
   return items.filter((i) => !drop.has(i.packageSessionId));
@@ -69,22 +88,30 @@ export const removeCartItems = (items: SiteCartItem[], packageSessionIds: string
 
 export interface CartTotals {
   count: number;
-  /** Sum of prices; null when currencies differ (no honest single number). */
+  /** Sum of prices; null when the priced items' currencies differ (no honest single number). */
   total: number | null;
   elevatedTotal: number | null;
   currency: string | null;
 }
 
+const currencyOf = (item: SiteCartItem) => (item.currency || "INR").toUpperCase();
+
 export const cartTotals = (items: SiteCartItem[]): CartTotals => {
-  const currencies = new Set(items.map((i) => (i.currency || "INR").toUpperCase()));
+  // A free item costs nothing in any currency, so the priced items name the
+  // total's currency (every item when none is priced) — as one checkout
+  // charges a free course beside paid ones in theirs.
+  const priced = items.filter((i) => typeof i.price === "number" && i.price > 0);
+  const currencies = new Set((priced.length ? priced : items).map(currencyOf));
   if (currencies.size > 1) return { count: items.length, total: null, elevatedTotal: null, currency: null };
+  const currency = items.length ? [...currencies][0] : null;
   let total = 0;
   let elevated = 0;
   let hasElevated = false;
   for (const i of items) {
     const p = typeof i.price === "number" ? i.price : 0;
     total += p;
-    if (typeof i.elevatedPrice === "number" && i.elevatedPrice > p) {
+    // A free item labelled in another currency adds nothing, its list price included.
+    if (typeof i.elevatedPrice === "number" && i.elevatedPrice > p && currencyOf(i) === currency) {
       elevated += i.elevatedPrice;
       hasElevated = true;
     } else {
@@ -95,7 +122,7 @@ export const cartTotals = (items: SiteCartItem[]): CartTotals => {
     count: items.length,
     total,
     elevatedTotal: hasElevated ? elevated : null,
-    currency: items.length ? [...currencies][0] : null,
+    currency,
   };
 };
 

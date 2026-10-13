@@ -190,6 +190,12 @@ public class FormWebhookConnector {
      */
     @Column(name = "default_values_json", columnDefinition = "TEXT")
     private String defaultValuesJson;
+
+    /** Google: give each new campaign its own lead list on its first lead (V564).
+     *  Null/false = unmapped campaigns keep feeding this connector's audience. */
+    @Column(name = "auto_create_campaign_lists")
+    @Builder.Default
+    private Boolean autoCreateCampaignLists = false;
     
     @Column(name = "created_at", updatable = false)
     @Temporal(TemporalType.TIMESTAMP)

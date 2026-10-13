@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useTranslation } from "react-i18next";
 import { CaretLeft, CaretRight, Clock, ChalkboardTeacher, Star } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -14,9 +14,23 @@ import { cn } from "@/lib/utils";
 import { isHexDark } from "../../-utils/catalogue-style-engine";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { HeroEditorial } from "./HeroEditorial";
+import type { BreadcrumbItem } from "./catalog/Breadcrumb";
 
 interface HeroSectionProps {
   layout: "split" | "centered";
+  /**
+   * "editorial" (opt-in): breadcrumb, ruled eyebrow, two-tone title, check
+   * bullets, unframed media in the site's content column (HeroEditorial).
+   * Absent / "default": the hero below, unchanged.
+   */
+  variant?: "default" | "editorial";
+  /** Editorial only: "Home / Learning Paths" trail (last item = current page). */
+  breadcrumb?: BreadcrumbItem[];
+  /** Editorial only: media column width in px (default 500). */
+  mediaWidth?: number;
+  /** Editorial only: border of the outline button (hex). */
+  outlineColor?: string;
   backgroundImage?: string;
   backgroundColor?: string;
   /** Small accent label above the title (e.g. "COHORT 4 · STARTS JULY"). */
@@ -34,6 +48,10 @@ interface HeroSectionProps {
   };
   left?: {
     title?: string;
+    /** Editorial only: second title line in the accent colour. */
+    titleAccent?: string;
+    /** Editorial only: check bullets under the lead. */
+    checklist?: string[];
     description?: string;
     button?: {
       text: string;
@@ -355,7 +373,10 @@ const sanitizePlaceholderText = (text?: string | null): string => {
   return trimmed;
 };
 
-export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
+export const HeroSectionComponent: React.FC<HeroSectionProps> = (props) =>
+  props.variant === "editorial" ? <HeroEditorial {...props} /> : <HeroSectionDefault {...props} />;
+
+const HeroSectionDefault: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
   backgroundColor,
@@ -453,7 +474,7 @@ const HeroSectionPlaceholder: React.FC<{
   textAlign,
   backgroundColor,
 }) => {
-  const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
@@ -471,7 +492,7 @@ const HeroSectionPlaceholder: React.FC<{
           return;
         }
       }
-      navigate({ to: target });
+      void siteNavigate(target);
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
@@ -793,7 +814,7 @@ const HeroSectionWithState: React.FC<{
   statChips,
   trust,
 }) => {
-  const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
   const [resolvedBgUrl, setResolvedBgUrl] = useState<string | null>(heroBackgroundImage || null);
   const [bgLoadFailed, setBgLoadFailed] = useState(false);
@@ -867,7 +888,7 @@ const HeroSectionWithState: React.FC<{
           return;
         }
       }
-      navigate({ to: target });
+      void siteNavigate(target);
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {

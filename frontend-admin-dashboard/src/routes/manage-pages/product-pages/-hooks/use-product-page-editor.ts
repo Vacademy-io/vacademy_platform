@@ -9,6 +9,7 @@ import {
     MappingRow,
     ProductPageResponse,
 } from '../-types/product-page-types';
+import { mappingsToRows, moveRowInList } from '../-utils/mapping-rows';
 import { useTheme } from '@/providers/theme/theme-provider';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -18,24 +19,6 @@ function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
     } catch {
         return fallback;
     }
-}
-
-function mappingResponseToRow(m: ProductPageResponse['mappings'][number], idx: number): MappingRow {
-    return {
-        rowId: m.id || `row-${Date.now()}-${idx}`,
-        inviteId: m.enroll_invite_id || '',
-        inviteName: '',
-        psInvitePaymentOptionId: m.ps_invite_payment_option_id || '',
-        packageSessionId: m.package_session_id || '',
-        paymentPlanId: m.payment_plan_id || '',
-        paymentPlanName: m.payment_plan?.name || '',
-        paymentPlanPrice: m.payment_plan?.actual_price || 0,
-        currency: m.payment_plan?.currency || '',
-        preselected: m.preselected ?? false,
-        displayOrder: m.display_order ?? idx,
-        levelName: m.level_name || '',
-        packageName: m.package_name || '',
-    };
 }
 
 export const useProductPageEditor = (productPageId: string) => {
@@ -86,7 +69,8 @@ export const useProductPageEditor = (productPageId: string) => {
             ...parseSafeJson(page.settings_json, DEFAULT_PRODUCT_PAGE_SETTINGS),
         });
         setPageJson(parseSafeJson(page.page_json, defaultPageJson));
-        setMappingRows((page.mappings || []).map(mappingResponseToRow));
+        // In display order (= learning-path step order); see -utils/mapping-rows.
+        setMappingRows(mappingsToRows(page.mappings));
         setInitialized(true);
     }
 
@@ -170,6 +154,28 @@ export const useProductPageEditor = (productPageId: string) => {
         [markDirty]
     );
 
+    /** One step up (-1) or down (+1). The row order is the saved order. */
+    const moveRow = useCallback(
+        (rowId: string, direction: -1 | 1) => {
+            setMappingRows((prev) => moveRowInList(prev, rowId, direction));
+            markDirty();
+        },
+        [markDirty]
+    );
+
+    /**
+     * Replace the course rows with the server's — after a catalogue sync, which
+     * changes the mappings on the server directly. The one-shot seed above never
+     * runs again, so without this the editor would keep showing (and on the next
+     * Save write back) the rows from before the sync. Only call it with no
+     * unsaved changes: anything else local is assumed to match the server. The
+     * sync itself refreshes the ['productPage', id] cache entry (every place it
+     * runs from), so this only resets the rows.
+     */
+    const reseedMappings = useCallback((fresh: ProductPageResponse) => {
+        setMappingRows(mappingsToRows(fresh.mappings));
+    }, []);
+
     const saveMutation = useMutation({
         mutationFn: () =>
             updateProductPage(productPageId, {
@@ -216,6 +222,8 @@ export const useProductPageEditor = (productPageId: string) => {
         addRowWithData,
         updateRow,
         removeRow,
+        moveRow,
+        reseedMappings,
         save: saveMutation.mutate,
         isSaving: saveMutation.isPending,
         saveError: saveMutation.isError,

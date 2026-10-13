@@ -399,18 +399,37 @@ async def _fetch_text(url: Optional[str]) -> str:
 # LLM analysis + mapping
 # ---------------------------------------------------------------------------
 
-# USD per million tokens (input, output) for the models this feature is
-# expected to run on; OpenRouter's chat response does not return cost unless
-# asked, so the margin number is derived here. Unknown model → None (unpriced),
-# never a guess.
-_LLM_PRICE_PER_M = {
-    "z-ai/glm-5.3-flash": (0.15, 0.50),
-    "google/gemini-2.5-flash": (0.30, 2.50),
-}
+USE_CASE = "call_intelligence"
+
+
+def _llm_price_per_m(model: str) -> Optional[tuple]:
+    """(input, output) USD per million tokens from the ai_models registry —
+    the one price source (the super-admin portal edits it). The old hard-coded
+    table priced GLM at 0.15/0.50 against the registry's real rate."""
+    if not model:
+        return None
+    try:
+        with db_session() as db:
+            row = db.execute(
+                text("SELECT input_price_per_1m, output_price_per_1m FROM ai_models WHERE model_id = :m"),
+                {"m": model},
+            ).fetchone()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("call-intel: price lookup for %s failed (%s); leaving unpriced", model, exc)
+        return None
+    if not row or row[0] is None or row[1] is None:
+        return None
+    try:
+        return float(row[0]), float(row[1])
+    except (TypeError, ValueError):
+        return None
 
 
 def _llm_cost_usd(model: str, usage: Dict[str, Any]) -> Optional[float]:
-    price = _LLM_PRICE_PER_M.get((model or "").lower())
+    """OpenRouter's chat response does not return cost unless asked, so the
+    margin number is derived from the registry price. Unknown model → None
+    (unpriced), never a guess."""
+    price = _llm_price_per_m(model)
     if not price:
         return None
     try:
@@ -418,6 +437,33 @@ def _llm_cost_usd(model: str, usage: Dict[str, Any]) -> Optional[float]:
                       + float(usage.get("completion_tokens") or 0) * price[1]) / 1e6, 6)
     except (TypeError, ValueError):
         return None
+
+
+def _analysis_models() -> List[str]:
+    """Model chain for the analysis: CALL_INTEL_LLM_MODEL (env, emergency
+    override only) > the 'call_intelligence' use case (super-admin portal; GLM
+    by default) and its fallback, then LLM_FALLBACK_MODEL — never
+    LLM_DEFAULT_MODEL, which is GLM too and would de-duplicate to no fallback."""
+    import os
+
+    from .model_selection import resolve_model_sync
+
+    settings = get_settings()
+    models: List[str] = []
+    env_override = (os.getenv("CALL_INTEL_LLM_MODEL") or "").strip()
+    if env_override:
+        models.append(env_override)
+    try:
+        primary, fallbacks = resolve_model_sync(USE_CASE, hard_fallback=settings.call_intel_llm_model)
+        candidates = [primary, *fallbacks]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("call-intel: model lookup failed (%s); using %s", exc, settings.call_intel_llm_model)
+        candidates = [settings.call_intel_llm_model]
+    candidates.append(getattr(settings, "llm_fallback_model", None))
+    for candidate in candidates:
+        if candidate and candidate not in models:
+            models.append(candidate)
+    return models
 
 
 def _num(v: Any) -> Optional[float]:
@@ -539,15 +585,13 @@ async def process_one(claimed: Dict[str, Any]) -> None:
             source=claimed.get("source"),
             duration_seconds=claimed.get("duration_seconds"),
         )
-        models = [settings.call_intel_llm_model]
-        if settings.llm_default_model and settings.llm_default_model not in models:
-            models.append(settings.llm_default_model)          # fallback if the cheap model is down
+        models = await asyncio.to_thread(_analysis_models)
         sanitized, model_used, llm_usage = await llm_json.generate_json(
             prompt, models, label="call_intelligence",
         )
         data = json.loads(sanitized)
         llm_usage = dict(llm_usage or {})
-        llm_usage["cost_usd"] = _llm_cost_usd(model_used, llm_usage)
+        llm_usage["cost_usd"] = await asyncio.to_thread(_llm_cost_usd, model_used, llm_usage)
 
         # 6. Deduct + persist (one transaction, idempotent). The transcript and
         #    both legs' usage travel in analysis_json: the transcript viewer

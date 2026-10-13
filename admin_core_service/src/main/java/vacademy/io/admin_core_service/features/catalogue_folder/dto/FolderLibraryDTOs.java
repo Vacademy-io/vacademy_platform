@@ -41,8 +41,9 @@ public class FolderLibraryDTOs {
 
     /**
      * Create and update. On update a null field means "leave as is"; an empty
-     * string clears description / image_url, and an empty `view` clears the
-     * folder's display override.
+     * string clears description / image_url and every knowledge-stream text
+     * field (slug ... audience_id), and an empty `view` clears the folder's
+     * display override. coming_soon: null leaves it, true/false sets it.
      */
     @Data
     @NoArgsConstructor
@@ -60,6 +61,39 @@ public class FolderLibraryDTOs {
         /** ACTIVE | HIDDEN. */
         private String status;
         private Map<String, Object> view;
+
+        /* Knowledge-stream fields (all optional). */
+
+        /** URL key ([a-z0-9-]{1,120}, lower-cased on save); unique within the library. */
+        private String slug;
+        /** Course tag the folder filters by (max 191, no commas); empty = the slug. */
+        private String courseTag;
+        /** Max 255. */
+        private String subtitle;
+        /** Max 255. */
+        private String tagline;
+        /** Max 120. */
+        private String ctaLabel;
+        /** A site route starting with "/" or an http(s):// URL. */
+        private String linkUrl;
+        /** #rgb, #rrggbb or #rrggbbaa. */
+        private String accentColor;
+        private Boolean comingSoon;
+        /** One of the institute's audiences (lead campaigns). */
+        private String audienceId;
+
+        /** The fields every request carried before the knowledge-stream fields existed. */
+        public NodeRequest(String parentId, String nodeType, String title, String description, String imageUrl,
+                           String productPageId, String status, Map<String, Object> view) {
+            this.parentId = parentId;
+            this.nodeType = nodeType;
+            this.title = title;
+            this.description = description;
+            this.imageUrl = imageUrl;
+            this.productPageId = productPageId;
+            this.status = status;
+            this.view = view;
+        }
     }
 
     @Data
@@ -95,6 +129,20 @@ public class FolderLibraryDTOs {
         private Integer displayOrder;
         private String status;
         private Map<String, Object> view;
+        /* Knowledge-stream fields: omitted while unset, like every other optional field. */
+        private String slug;
+        private String courseTag;
+        private String subtitle;
+        private String tagline;
+        private String ctaLabel;
+        private String linkUrl;
+        private String accentColor;
+        /**
+         * Admin reads always carry it; the public tree only when true, so a
+         * library that never uses it serves exactly the payload it did before.
+         */
+        private Boolean comingSoon;
+        private String audienceId;
         @Builder.Default
         private List<NodeResponse> children = new ArrayList<>();
     }

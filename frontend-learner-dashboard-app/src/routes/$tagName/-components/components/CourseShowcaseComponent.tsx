@@ -16,6 +16,9 @@ import {
     readComingSoon,
 } from "../../-utils/coming-soon";
 import { ComingSoonRibbon } from "./ComingSoonRibbon";
+import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
+import type { CatalogEditorialCardConfig } from "../../-types/catalog-cards-types";
+import { EditorialShowcaseGrid } from "./catalog/EditorialShowcaseGrid";
 
 /**
  * A CURATED strip of courses — "new", "on sale", one tag, or a hand-picked
@@ -56,6 +59,10 @@ interface ShowcaseCourse {
     enrollInviteId?: string;
     packageSessionId?: string;
     comingSoon: ComingSoonInfo | null;
+    /** Raw search fields, read only by the editorial card (cardStyle "editorial"). */
+    tagsRaw?: string | null;
+    comingSoonRaw?: unknown;
+    availability?: string | null;
 }
 
 export interface CourseShowcaseProps {
@@ -77,8 +84,16 @@ export interface CourseShowcaseProps {
      *  win over the section-wide badgeText/badgeTone above. */
     courseBadges?: Record<string, { text?: string; tone?: CourseShowcaseBadgeTone }>;
     backgroundColor?: string;
+    /** "editorial" = the catalogue's editorial course card (opt-in; absent = this strip's own card). */
+    cardStyle?: "default" | "editorial";
+    /** Editorial card options — same shape as courseCatalog render.card. */
+    card?: CatalogEditorialCardConfig;
+    /** Folder library of the stream line on editorial cards (the catalogue's streams library). */
+    streamsLibraryId?: string;
     instituteId?: string;
     tagName?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    globalSettings?: any;
 }
 
 const splitTags = (raw: unknown): string[] =>
@@ -130,11 +145,20 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     badgeTone = "hot",
     courseBadges,
     backgroundColor,
+    cardStyle,
+    card,
+    streamsLibraryId,
     instituteId,
     tagName,
+    globalSettings,
 }) => {
+    const editorial = cardStyle === "editorial";
     const { t, i18n } = useTranslation("coursePlayerB");
     const navigate = useNavigate();
+    // Course names are live data: translated where shown, never in the
+    // filters (tag, picked ids) or the navigation below.
+    const siteT = useSiteT();
+    const siteLocale = useCatalogueLocale();
     const [courses, setCourses] = useState<ShowcaseCourse[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -190,6 +214,9 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                         enrollInviteId: c.enroll_invite_id,
                         packageSessionId: c.package_session_id,
                         comingSoon: readComingSoon(c.coming_soon),
+                        tagsRaw: typeof c.comma_separeted_tags === "string" ? c.comma_separeted_tags : null,
+                        comingSoonRaw: c.coming_soon,
+                        availability: c.enroll_invite_availability ?? null,
                     })),
                 );
             })
@@ -200,7 +227,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
         };
     }, [instituteId]);
 
-    const shown = useMemo(() => {
+    // Every course the source selects, in order (the editorial grid limits after folding language versions).
+    const selected = useMemo(() => {
         let list = courses;
         if (source === "onSale") {
             list = list.filter(
@@ -218,8 +246,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
             const byId = new Map(list.map((c) => [c.id, c]));
             list = order.map((id) => byId.get(id)).filter(Boolean) as ShowcaseCourse[];
         }
-        return list.slice(0, Math.max(1, limit));
-    }, [courses, source, tag, courseIds, limit]);
+        return list;
+    }, [courses, source, tag, courseIds]);
+    const shown = useMemo(() => selected.slice(0, Math.max(1, limit)), [selected, limit]);
+    const selectedIds = useMemo(() => selected.map((c) => c.id), [selected]);
 
     // A curated strip is often ONE or TWO courses. Left-aligning those in a
     // 3- or 4-up grid leaves the row visibly half-empty, so narrow the track
@@ -245,6 +275,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                 enrollInviteId: c.enrollInviteId,
                 packageSessionId: c.packageSessionId,
                 level: c.level,
+                // The course page opens in the language the visitor is reading.
+                ...(siteLocale.enabled && siteLocale.locale !== siteLocale.baseLocale
+                    ? { lang: siteLocale.locale }
+                    : {}),
             },
         });
 
@@ -267,6 +301,19 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                     </p>
                 )}
 
+                {editorial ? (
+                    <EditorialShowcaseGrid
+                        courses={courses}
+                        selectedIds={selectedIds}
+                        limit={limit}
+                        loading={loading}
+                        card={card}
+                        streamsLibraryId={streamsLibraryId}
+                        globalSettings={globalSettings}
+                        instituteId={instituteId}
+                        onOpen={(c) => openCourse(c as ShowcaseCourse)}
+                    />
+                ) : (
                 <div className={gridClass}>
                     {loading
                         ? Array.from({ length: visibleCount }).map((_, i) => (
@@ -281,6 +328,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                       <ComingSoonShowcaseCard
                                           key={c.id}
                                           course={c}
+                                          title={siteT(c.title)}
                                           info={c.comingSoon}
                                           locale={i18n.language}
                                           onOpen={() => openCourse(c)}
@@ -298,7 +346,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                   className="group flex flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated text-start shadow-sm transition-transform duration-300 ease-out hover:-translate-y-1"
                               >
                                   <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-muted">
-                                      <ShowcaseImage fileId={c.thumbnailId} alt={c.title} />
+                                      <ShowcaseImage fileId={c.thumbnailId} alt={siteT(c.title)} />
                                       <div className="absolute start-3 top-3">
                                           <OfferBadge actual={c.price} elevated={c.elevatedPrice} />
                                       </div>
@@ -319,7 +367,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                   </div>
                                   <div className="flex flex-1 flex-col gap-2 p-5">
                                       <h3 className="text-base font-semibold text-catalogue-text-primary">
-                                          {c.title}
+                                          {siteT(c.title)}
                                       </h3>
                                       {c.description && (
                                           <p className="line-clamp-2 text-sm text-catalogue-text-muted">
@@ -342,6 +390,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                               );
                           })}
                 </div>
+                )}
             </div>
         </section>
     );
@@ -354,10 +403,12 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
  */
 const ComingSoonShowcaseCard: React.FC<{
     course: ShowcaseCourse;
+    /** The course name as shown (in the visitor's language). */
+    title: string;
     info: ComingSoonInfo;
     locale?: string;
     onOpen: () => void;
-}> = ({ course, info, locale, onOpen }) => {
+}> = ({ course, title, info, locale, onOpen }) => {
     const { t } = useTranslation("coursePlayerB");
     const launchLabel = formatLaunchDate(info.launchDate, locale);
     return (
@@ -366,13 +417,13 @@ const ComingSoonShowcaseCard: React.FC<{
             className="group flex cursor-pointer flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated text-start shadow-sm transition-transform duration-300 ease-out hover:-translate-y-1"
         >
             <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-muted">
-                <ShowcaseImage fileId={course.thumbnailId} alt={course.title} />
+                <ShowcaseImage fileId={course.thumbnailId} alt={title} />
                 <div className="absolute end-3 top-3">
                     <ComingSoonRibbon info={info} />
                 </div>
             </div>
             <div className="flex flex-1 flex-col gap-2 p-5">
-                <h3 className="text-base font-semibold text-catalogue-text-primary">{course.title}</h3>
+                <h3 className="text-base font-semibold text-catalogue-text-primary">{title}</h3>
                 {course.description && (
                     <p className="line-clamp-2 text-sm text-catalogue-text-muted">{course.description}</p>
                 )}
@@ -386,7 +437,7 @@ const ComingSoonShowcaseCard: React.FC<{
                         type="button"
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (!openComingSoonForm(info, t("comingSoon.notifyTitle", { title: course.title }))) {
+                            if (!openComingSoonForm(info, t("comingSoon.notifyTitle", { title }))) {
                                 onOpen();
                             }
                         }}

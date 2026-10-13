@@ -32,6 +32,9 @@ interface StatsHighlightsProps {
     textColor?: string;
     hoverEffect?: "scale" | "shadow" | "none";
   };
+  /** The untranslated props (JsonRenderer): icons are picked from the
+   *  authored labels, so a translated page shows the same icons. */
+  baseProps?: { stats?: Stat[]; groups?: StatGroup[] };
 }
 
 const prefersReducedMotion = () =>
@@ -62,6 +65,21 @@ const getStatIcon = (label: string): React.ComponentType<IconProps> => {
   if (/rating|review|star|satisf|success/.test(l)) return Star;
   return TrendUp;
 };
+
+/** The big number and the label of a stat: "1,200+ Learners" with no value splits into both. */
+const splitStat = (stat: Stat): { bigValue: string; labelText: string } => {
+  const bigValue = stat.value || "";
+  const labelText = stat.label || "";
+  if (!bigValue && labelText) {
+    const match = labelText.match(/^([\d,.]+[+%]?)\s+(.+)$/);
+    if (match) return { bigValue: match[1]!, labelText: match[2]! };
+  }
+  return { bigValue, labelText };
+};
+
+/** The authored list a shown (translated) list was made from: same length, same order. */
+const authoredList = <T,>(base: T[] | undefined, shown: T[] | undefined): T[] | undefined =>
+  Array.isArray(base) && Array.isArray(shown) && base.length === shown.length ? base : undefined;
 
 /**
  * Animated number that counts up 0 → target when `active` becomes true.
@@ -121,6 +139,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   groups,
   style: displayStyle = "card",
   styles = {},
+  baseProps,
 }) => {
   const { backgroundColor } = styles;
 
@@ -159,19 +178,10 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  const renderStat = (stat: Stat, index: number) => {
-    let bigValue = stat.value || "";
-    let labelText = stat.label || "";
-
-    if (!bigValue && labelText) {
-      const match = labelText.match(/^([\d,.]+[+%]?)\s+(.+)$/);
-      if (match) {
-        bigValue = match[1]!;
-        labelText = match[2]!;
-      }
-    }
-
-    const Icon = getStatIcon(labelText);
+  const renderStat = (stat: Stat, index: number, authored?: Stat) => {
+    const { bigValue, labelText } = splitStat(stat);
+    // Picked from the authored label: the icons never change with the language.
+    const Icon = getStatIcon(authored ? splitStat(authored).labelText : labelText);
     const delayClass = REVEAL_DELAYS[Math.min(index, REVEAL_DELAYS.length - 1)];
     const revealClass = inView
       ? "opacity-100 translate-y-0"
@@ -229,6 +239,8 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   };
 
   const useGroupsFormat = groups && groups.length > 0;
+  const authoredStats = authoredList(baseProps?.stats, stats);
+  const authoredGroups = authoredList(baseProps?.groups, groups);
 
   const gridClass = (count: number) =>
     cn(
@@ -279,14 +291,16 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
                   </h3>
                 </div>
                 <div className={gridClass(group.stats.length)}>
-                  {group.stats.map((stat, index) => renderStat(stat, index))}
+                  {group.stats.map((stat, index) =>
+                    renderStat(stat, index, authoredList(authoredGroups?.[groupIndex]?.stats, group.stats)?.[index]),
+                  )}
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className={gridClass((stats || []).length)}>
-            {(stats || []).map((stat, index) => renderStat(stat, index))}
+            {(stats || []).map((stat, index) => renderStat(stat, index, authoredStats?.[index]))}
           </div>
         )}
       </div>

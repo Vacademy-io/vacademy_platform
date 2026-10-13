@@ -33,11 +33,17 @@ logger = logging.getLogger(__name__)
 # reasoning key at all, spends the entire max_tokens budget thinking and
 # returns empty content. chat_llm_client seeds it as "on-low" for that reason —
 # do not remove that seed without re-testing a real copy end to end.
+#
+# Release 2: the model is the 'evaluation' use case (ai_model_defaults,
+# super-admin portal) — see evaluation_model(). This literal is only the hard
+# fallback when the registry cannot be read. A teacher's explicit
+# preferred_model still wins for grading.
 DEFAULT_MODEL = "z-ai/glm-5.3-flash"
-# GLM 5.3 Flash only, on instruction. A low-confidence question is re-asked of
-# the same model at a lower temperature rather than escalated to another family:
-# the pipeline must not silently spend a different provider's tokens on a copy.
-ESCALATION_MODEL = "z-ai/glm-5.3-flash"
+# A low-confidence question is re-asked of the platform evaluation model at a
+# lower temperature rather than escalated to another family: the pipeline must
+# not silently spend a different provider's tokens on a copy. Hard fallback;
+# the live value is the grader's default_model.
+ESCALATION_MODEL = DEFAULT_MODEL
 ESCALATION_CONF_THRESHOLD = 0.60
 MAX_ESCALATIONS_PER_COPY = 2
 # Budget tuned for typical 8-question copies. Each grading call re-sends the
@@ -50,6 +56,22 @@ MAX_ESCALATIONS_PER_COPY = 2
 WARN_TOKENS_PER_COPY = 80_000
 FAIL_TOKENS_PER_COPY = 250_000
 TOKENS_PER_QUESTION_ALLOWANCE = 7_000
+
+
+def evaluation_model(db: Any = None) -> str:
+    """The 'evaluation' use-case default model (super-admin portal), or
+    DEFAULT_MODEL if the registry cannot be read. No failover chain is used
+    for copy-check (see ESCALATION_MODEL). Cached 30 s by model_selection."""
+    try:
+        from ..model_selection import resolve_model_sync, resolve_models
+        if db is not None:
+            primary, _fallbacks = resolve_models(db, "evaluation", hard_fallback=DEFAULT_MODEL)
+        else:
+            primary, _fallbacks = resolve_model_sync("evaluation", hard_fallback=DEFAULT_MODEL)
+        return primary if isinstance(primary, str) and primary else DEFAULT_MODEL
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("evaluation model lookup failed (%s); using %s", exc, DEFAULT_MODEL)
+        return DEFAULT_MODEL
 
 
 def token_budget_for(question_count: int) -> int:
@@ -109,8 +131,12 @@ class CopyCheckGrader:
         user_id: Optional[str] = None,
         token_budget: int = FAIL_TOKENS_PER_COPY,
         exam_context: Optional[dict[str, Any]] = None,
+        default_model: Optional[str] = None,
     ):
         self.llm = llm
+        # Model used when the teacher picked none, and for escalations: the
+        # 'evaluation' use case, resolved once per copy by the orchestrator.
+        self.default_model = default_model or DEFAULT_MODEL
         # {"level","subject",...} from the grade request: picks the grading
         # persona (T0.25). Absent = the constant "school teacher" prompt.
         self.exam_context = exam_context or {}
@@ -194,7 +220,7 @@ class CopyCheckGrader:
     ) -> dict[str, Any]:
         """`page_ids`: only these pages of the transcript go into the prompt
         (from locate.py). None = the whole copy."""
-        model = preferred_model or DEFAULT_MODEL
+        model = preferred_model or self.default_model
         verdict = await self._call(question, rubric, layout_map, model, page_ids)
         # The model writes "low" or "85%" here often enough; read it the way
         # the validator will, instead of letting float() fail the question.
@@ -205,11 +231,11 @@ class CopyCheckGrader:
             self._escalations_used += 1
             logger.info(
                 "Escalating Q%s to %s (conf=%.2f)",
-                question["question_id"], ESCALATION_MODEL,
+                question["question_id"], self.default_model,
                 coerce_confidence(verdict.get("confidence")),
             )
             try:
-                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL, page_ids)
+                verdict = await self._call(question, rubric, layout_map, self.default_model, page_ids)
             except Exception as e:
                 logger.warning(f"Escalation failed, keeping initial verdict: {e}")
         return verdict
@@ -246,7 +272,7 @@ class CopyCheckGrader:
         """An answer typed in the online player (`question["student_answer"]`):
         no transcript, no annotations. Same budget, escalation and JSON repair
         as a copy."""
-        model = preferred_model or DEFAULT_MODEL
+        model = preferred_model or self.default_model
         verdict = await self._call_typed(question, rubric, model)
         if (
             coerce_confidence(verdict.get("confidence")) < ESCALATION_CONF_THRESHOLD
@@ -254,7 +280,7 @@ class CopyCheckGrader:
         ):
             self._escalations_used += 1
             try:
-                verdict = await self._call_typed(question, rubric, ESCALATION_MODEL)
+                verdict = await self._call_typed(question, rubric, self.default_model)
             except Exception as e:
                 logger.warning(f"Escalation failed, keeping initial verdict: {e}")
         return verdict
@@ -375,7 +401,8 @@ async def call_llm_for_criteria(
         temperature=0.2,
         max_tokens=1200,
         institute_id=institute_id,
-        model=preferred_model,
+        # No pick = the 'evaluation' use case (not the platform chat default).
+        model=preferred_model or evaluation_model(),
     )
     if token_sink is not None:
         token_sink.add_usage(response.get("usage"))

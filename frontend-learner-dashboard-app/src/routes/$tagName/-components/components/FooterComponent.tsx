@@ -1,8 +1,12 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { RouteMatcher } from "../../-services/route-matcher";
+import type { GlobalSettings } from "../../-types/course-catalogue-types";
+import type { FooterBrandProps } from "../../-types/site-chrome-types";
+import { FooterBrand } from "./footer/FooterBrand";
 
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
@@ -12,7 +16,11 @@ export const FooterComponent: React.FC<FooterProps & {
    *  pickers appeared to do nothing. */
   backgroundColor?: string;
   textColor?: string;
-}> = ({
+  /** Used by the opt-in "brand" variant only (newsletter, language switch). */
+  instituteId?: string;
+  globalSettings?: GlobalSettings;
+} & Omit<FooterBrandProps, "leftSection">> = (allProps) => {
+  const {
   layout,
   backgroundColor,
   textColor,
@@ -26,8 +34,9 @@ export const FooterComponent: React.FC<FooterProps & {
   bottomNote,
   catalogueData,
   tagName = "home"
-}) => {
+  } = allProps;
   const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
   
   // Helper function to handle footer link navigation
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
@@ -44,7 +53,7 @@ export const FooterComponent: React.FC<FooterProps & {
       const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
       if (matchedPage) {
         const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
-        navigate({ to: navigationRoute });
+        void siteNavigate(navigationRoute);
         return;
       }
     }
@@ -55,7 +64,7 @@ export const FooterComponent: React.FC<FooterProps & {
       return;
     }
 
-    navigate({ to: route });
+    void siteNavigate(route);
   };
 
   const handleSocialLinkNavigation = (url: string, openInSameTab: boolean = false) => {
@@ -116,6 +125,12 @@ export const FooterComponent: React.FC<FooterProps & {
         );
     }
   };
+
+  // Opt-in "brand" footer (logo + newsletter + four columns + bottom bar).
+  // Every other footer renders the original markup below.
+  if (allProps.variant === "brand") {
+    return <FooterBrand {...allProps} tagName={tagName} />;
+  }
 
   // Determine grid columns based on layout
   const getGridCols = () => {

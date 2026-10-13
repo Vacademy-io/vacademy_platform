@@ -146,6 +146,7 @@ export const enum SettingsTabs {
     UtmSettings = 'utmSettings',
     Tnc = 'tnc',
     Integrations = 'integrations',
+    Security = 'security',
     DoubtManagement = 'doubtManagement',
     LiveSession = 'liveSession',
     Youtube = 'youtube',

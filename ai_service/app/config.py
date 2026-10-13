@@ -91,12 +91,15 @@ class Settings(BaseSettings):
     # Isoquant (OpenAI-compatible gateway). Only models listed in the route map
     # (services/llm_router.py) go there; unset = everything stays on OpenRouter.
     isoquant_api_key: Optional[str] = None  # ISOQUANT_API_KEY
-    # Strong default for production-grade tasks (script writing, director planning,
-    # per-shot HTML, frame regeneration). Free-tier models like
-    # `xiaomi/mimo-v2-flash:free` were producing too-variable HTML for the
-    # frame-regen path — bumping the default raises the floor without
-    # changing the env override. Override via `LLM_DEFAULT_MODEL` if needed.
-    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "google/gemini-3.1-pro-preview")
+    # Last-resort default chat model. Release 2 (2026-10-13): the base tier is
+    # the 'platform_default' row in ai_model_defaults (super-admin portal);
+    # this env value only applies when that lookup fails. GLM by default
+    # (constants/model_defaults.GLM_DEFAULT); the deploy workflow sets the same.
+    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "z-ai/glm-5.3-flash")
+    # Failover model when the chosen model fails (ChatLLMClient, call
+    # intelligence). Deliberately a DIFFERENT vendor than the GLM default, so a
+    # GLM outage never fails over GLM -> GLM (NON_GLM_FALLBACK).
+    llm_fallback_model: str = os.getenv("LLM_FALLBACK_MODEL", "google/gemini-2.5-flash")
     # CRM Call Intelligence (call_intelligence_service). Founder decision
     # 2026-09-11: on by default for every AI-agent call at no extra charge, so
     # the per-call cost has to be near zero. Measured on OpenRouter against a
@@ -112,10 +115,8 @@ class Settings(BaseSettings):
     # "openrouter" (default) | "render" — the render worker stays as the fallback
     # when OpenRouter transcription fails and RENDER_SERVER_URL is configured.
     call_intel_stt_backend: str = os.getenv("CALL_INTEL_STT_BACKEND", "openrouter")
-    # NOTE: for ai-service in production this default is DEAD — the Deployment
-    # spec sets LLM_DEFAULT_MODEL=google/gemini-2.5-flash as a literal env value,
-    # so that is what actually serves the learner chatbot. Change the model in the
-    # deployment (devops repo), not here.
+    # NOTE: the deploy workflow (docker-publish-ai-service.yml) re-applies
+    # LLM_DEFAULT_MODEL / LLM_FALLBACK_MODEL on every deploy; change them there.
     #
     # Suppress provider-side "reasoning" tokens on chat completions. Reasoning
     # models otherwise spend hundreds of hidden output tokens before answering,

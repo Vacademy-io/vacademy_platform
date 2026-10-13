@@ -51,6 +51,16 @@ export function SearchableSelect({
     portal = true,
 }: SearchableSelectProps) {
     const [open, setOpen] = React.useState(false);
+    const triggerRef = React.useRef<HTMLButtonElement>(null);
+    // Inline (portal={false}) content is clipped by the dialog's overflow, so
+    // measure collisions against the dialog box instead of the viewport.
+    const [boundary, setBoundary] = React.useState<Element | null>(null);
+
+    React.useEffect(() => {
+        if (open && !portal) {
+            setBoundary(triggerRef.current?.closest('[role="dialog"]') ?? null);
+        }
+    }, [open, portal]);
 
     // Get the label for the selected value
     const selectedLabel = React.useMemo(() => {
@@ -66,6 +76,7 @@ export function SearchableSelect({
         <Popover open={open && !disabled} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
                 <Button
+                    ref={triggerRef}
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
@@ -80,13 +91,15 @@ export function SearchableSelect({
                 </Button>
             </PopoverTrigger>
             <PopoverContent
-                className="w-[--radix-popover-trigger-width] p-0"
+                className="flex max-h-[--radix-popover-content-available-height] w-[--radix-popover-trigger-width] flex-col p-0" // design-lint-ignore: Radix runtime CSS vars
                 align="start"
                 portal={portal}
+                collisionBoundary={boundary ?? undefined}
+                collisionPadding={8}
             >
-                <Command>
+                <Command className="min-h-0">
                     <CommandInput placeholder={searchPlaceholder} />
-                    <CommandList>
+                    <CommandList className="min-h-0">
                         <CommandEmpty>{emptyText}</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
                             {options.map((option) => (

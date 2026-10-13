@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
-import { withArabicFallback } from "@/utils/branding";
-import { useNavigate } from "@tanstack/react-router";
+import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -13,10 +13,17 @@ import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracki
 import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
+import { CatalogueLocaleProvider, useSiteT } from "../-utils/catalogue-locale";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { useSiteNavigate } from "../-utils/catalogue-route-search";
+import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
+import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
+import { CatalogueSeoHead } from "./CatalogueSeoHead";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
+import { withSiteThemeVars } from "../-utils/catalogue-palette";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -24,6 +31,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
+import { headerOffsetClass } from "./header/header-chrome";
 
 interface CourseSubPageProps {
   tagName: string;
@@ -32,7 +40,64 @@ interface CourseSubPageProps {
   instituteThemeCode?: string | null;
 }
 
-export const CourseSubPage: React.FC<CourseSubPageProps> = ({
+/** The catalogue page "/<tag>/<page>" shows: its route or id, with or without a leading "/". */
+const isSubPage = (page: string) => (p: { route?: string; id?: string }) =>
+  p.route === page || p.id === page || p.route === `/${page}` || p.id === `/${page}`;
+
+/** The learner app's own "/<page>", the visitor's query kept. */
+const AppRouteRedirect: React.FC<{ page: string }> = ({ page }) => (
+  <Navigate to={`/${page}` as never} search={true} replace />
+);
+
+/**
+ * Root-mounted host, and "<page>" is one of the learner app's own routes
+ * ("/new/login", "/new/dashboard"): "/<tag>/<page>" stays on the site only for
+ * a site page named like an app route (a Courses page — see
+ * RouteMatcher.pagePath). Any other such address goes to the app's own page,
+ * as the canonical "/<tag>/<x>" → "/<x>" redirect always sent it. That needs
+ * only the root catalogue's page list, read through the memoised fetch the
+ * page the visitor came from already made, and it is settled before the
+ * site's terminology, fonts or tracking load. Once a site page shows, it
+ * handles the visitor's next such address itself (appRouteRedirect).
+ *
+ * Every other sub-page (all of a classic host's) renders straight away.
+ */
+export const CourseSubPage: React.FC<CourseSubPageProps> = (props) => {
+  const { tagName, page, instituteId } = props;
+  const reserved = RouteMatcher.isReservedRootPage(tagName, page);
+  const site = `${instituteId}::${tagName}`;
+  const [verdict, setVerdict] = useState<{ site: string; page: string; to: "site" | "app" } | null>(null);
+  const settled =
+    verdict?.site === site && (verdict.to === "site" || verdict.page === page) ? verdict.to : null;
+
+  useEffect(() => {
+    if (!reserved || settled) return;
+    const decide = (to: "site" | "app") => setVerdict({ site, page, to });
+    // No institute to read the site from: the app's page, as before.
+    if (!instituteId) {
+      decide("app");
+      return;
+    }
+    let cancelled = false;
+    CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName)
+      .then((data) => {
+        if (!cancelled) decide((data.pages || []).some(isSubPage(page)) ? "site" : "app");
+      })
+      .catch(() => {
+        // The site cannot be read: the app's page, as before.
+        if (!cancelled) decide("app");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reserved, settled, site, instituteId, tagName, page]);
+
+  if (!reserved || settled === "site") return <CourseSubPageContent {...props} />;
+  if (settled === "app") return <AppRouteRedirect page={page} />;
+  return <DashboardLoader />;
+};
+
+const CourseSubPageContent: React.FC<CourseSubPageProps> = ({
   tagName,
   page,
   instituteId,
@@ -46,6 +111,8 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
   const navigate = useNavigate();
+  // Authored routes (the mobile bar) — see useSiteNavigate.
+  const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,7 +147,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         setIsLoading(true);
         console.log("[CourseSubPage] Fetching catalogue data for:", { instituteId, tagName, page });
 
-        const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
+        // A root-mounted site's page named like an app route: CourseSubPage
+        // just found it through the memoised fetch, so reuse that request.
+        const data = await (RouteMatcher.isReservedRootPage(tagName, page)
+          ? CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName)
+          : CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName));
 
         console.log("[CourseSubPage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -131,10 +202,17 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   // Apply font from JSON if fonts.enabled is true
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;
+    // A site offering हिन्दी / मराठी also gets a Devanagari face after the
+    // brand font, loaded with every face its config uses (as on the catalogue
+    // home). Other sites keep exactly the stacks and links below.
+    const devanagari = siteUsesDevanagari(catalogueData?.globalSettings?.i18n);
+    if (devanagari) {
+      ensureFontsLoaded([...collectConfigFontFamilies(catalogueData), DEVANAGARI_FALLBACK_FAMILY]);
+    }
 
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily =
-        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      const defaultStack = "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.body.style.fontFamily = devanagari ? withDevanagariFallback(defaultStack) : defaultStack;
       document.documentElement.style.removeProperty("--catalogue-heading-font");
       return;
     }
@@ -156,7 +234,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
     // Apply font exactly as specified in JSON, plus the Arabic fallback the
     // stack would otherwise drop (withArabicFallback preserves Latin order).
-    const resolvedFontFamily = withArabicFallback(fontFamily);
+    const resolvedFontFamily = devanagari
+      ? withDevanagariFallback(withArabicFallback(fontFamily))
+      : withArabicFallback(fontFamily);
     document.body.style.fontFamily = resolvedFontFamily;
     document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
 
@@ -288,7 +368,16 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     return <DashboardLoader />;
   }
 
+  // Root-mounted host, an app-route address this site has no page for (see
+  // CourseSubPage) — the visitor moved on from a site page, the page was
+  // removed since the list was read, or the site failed to load: the app's own
+  // page, never a dead end.
+  const appRouteRedirect = RouteMatcher.isReservedRootPage(tagName, page) ? (
+    <AppRouteRedirect page={page} />
+  ) : null;
+
   if (error || !catalogueData) {
+    if (appRouteRedirect) return appRouteRedirect;
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -310,12 +399,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   }
 
   // Find the page configuration that matches the current route
-  const currentPage = catalogueData.pages.find(p =>
-    p.route === page ||
-    p.id === page ||
-    p.route === `/${page}` ||
-    p.id === `/${page}`
-  );
+  const currentPage = catalogueData.pages.find(isSubPage(page));
 
   /** Same opt-out as CourseCataloguePage. This component is the one that
    *  ACTUALLY renders custom pages on published sites: /$tagName/$courseId/
@@ -325,26 +409,21 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
    *  effect. An imported HTML page carries its own nav and footer. */
   const hidesSiteChrome = !!(currentPage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 
-  // If no matching page found, show not found
+  // The builder previews a sub-page here on classic hosts
+  // (/<tag>/<route>?preview=true): it shows the language its URL asks for and
+  // never reads or writes the visitor's remembered one (as CourseCataloguePage).
+  const isPreview =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "true";
+
+  // If no matching page found, show not found (in the site's language) —
+  // unless the address is also the app's own page (see appRouteRedirect).
   if (!currentPage) {
+    if (appRouteRedirect) return appRouteRedirect;
     console.warn("[CourseSubPage] No page found for route:", page);
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            {t("courseSubPage.pageNotFound")}
-          </h2>
-          <p className="text-gray-600 mb-4">
-            {t("courseSubPage.pageNotFoundDetail", { page })}
-          </p>
-          <button
-            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
-            className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
-          >
-            {t("courseSubPage.goBackToCatalogue")}
-          </button>
-        </div>
-      </div>
+      <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
+        <SubPageNotFound page={page} onBack={() => navigate({ to: RouteMatcher.pagePath(tagName) })} />
+      </CatalogueLocaleProvider>
     );
   }
 
@@ -366,10 +445,15 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const themeSettings = catalogueData?.globalSettings?.theme as any;
 
   return (
+    // Site language (?lang=, remembered per tag) for everything on the page.
+    // A single-language site renders exactly as before.
+    <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
+    {/* The site's own words (naming) on its sub-pages too, as on its home page. */}
+    <CatalogueNamingProvider naming={catalogueData.globalSettings?.naming}>
     <div
       // pt-20 exists to clear the fixed site header; with the chrome hidden it
       // would just open the page on an 80px blank strip.
-      className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 ${hidesSiteChrome ? '' : 'pt-20'}`}
+      className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 ${hidesSiteChrome ? '' : headerOffsetClass((catalogueData.globalSettings as any)?.layout?.header?.props, 'pt-20')}`}
       data-catalogue-theme={themeSettings?.preset || "default"}
       data-catalogue-radius={themeSettings?.borderRadius || "rounded-catalogue-xs"}
       data-heading-scale={themeSettings?.headingScale || "default"}
@@ -377,8 +461,20 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || "subtle"}
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || "medium"}
-      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
+      // Opt-in theme.palette / theme.contentMaxWidth vars join the primary scale (same object when unset).
+      style={withSiteThemeVars(buildPrimaryScaleVars(themeSettings?.primaryColor), catalogueData?.globalSettings) as React.CSSProperties}
     >
+      {/* A site with languages: the same title/description rules as the
+          catalogue home (page SEO → institute branding), in the visitor's
+          language. Any other site's sub-pages set no title, as before. */}
+      {catalogueData.globalSettings?.i18n?.enabled && (
+        <CatalogueSeoHead
+          page={currentPage}
+          instituteName={domainRouting.instituteName}
+          course={course}
+          courses={courses}
+        />
+      )}
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -424,7 +520,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             >
               <div className="w-full px-4 sm:px-6 lg:px-8">
                 <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-white text-center">
-                  {currentPage.title} {currentPage.title === "Your Cart" ? "🛒" : ""}
+                  <SubPageTitle title={currentPage.title} />
                 </h1>
               </div>
             </div>
@@ -510,9 +606,48 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
             }
           }}
-          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
+          // Same navigation as always; only while a site language is carried
+          // does a route with its own query string go by `href` (see
+          // useSiteNavigate), so ?lang= never follows a second "?".
+          onNavigate={(route) => void siteNavigate(RouteMatcher.pagePath(tagName, route))}
         />
       )}
+    </div>
+    </CatalogueNamingProvider>
+    </CatalogueLocaleProvider>
+  );
+};
+
+/** The fallback title band's text: the page title in the visitor's language.
+ *  The cart check stays on the authored title. */
+const SubPageTitle: React.FC<{ title: string }> = ({ title }) => {
+  const siteT = useSiteT();
+  return (
+    <>
+      {siteT(title)} {title === "Your Cart" ? "🛒" : ""}
+    </>
+  );
+};
+
+/** "Page not found" for a route the catalogue has no page for. */
+const SubPageNotFound: React.FC<{ page: string; onBack: () => void }> = ({ page, onBack }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          {t("courseSubPage.pageNotFound")}
+        </h2>
+        <p className="text-gray-600 mb-4">
+          {t("courseSubPage.pageNotFoundDetail", { page })}
+        </p>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
+        >
+          {t("courseSubPage.goBackToCatalogue")}
+        </button>
+      </div>
     </div>
   );
 };

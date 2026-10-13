@@ -3,6 +3,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getCachedRootCatalogueTag } from "@/services/domain-routing";
 import { RouteMatcher } from "./-services/route-matcher";
 import { CatalogueTagContext } from "./-components/CatalogueTagContext";
+import { retainSiteLanguage } from "./-utils/catalogue-route-search";
 import { RootMountedSegment } from "./-components/RootMountedSegment";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -18,7 +19,16 @@ const CourseCataloguePage = lazy(() =>
   })),
 );
 
+const isPreviewUrl = () =>
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("preview") === "true";
+
 export const Route = createFileRoute("/$tagName/")({
+  // On a site with languages, the language picked on one page (?lang=hi)
+  // follows every link into another catalogue page; on every other site this
+  // changes nothing. Catalogue routes only — /login and /dashboard never
+  // inherit it.
+  search: { middlewares: [retainSiteLanguage] },
   // Reader mode (iOS always / reader-mode institutes): the public course
   // catalogue is a marketplace surface — block it (Apple 3.1.1).
   beforeLoad: async () => {
@@ -145,7 +155,9 @@ function RouteComponent() {
   const rootTag = getCachedRootCatalogueTag();
   if (rootTag) {
     if (RouteMatcher.isRootMounted(resolvedTagName)) {
-      return <Navigate to="/" replace />;
+      // The page editor's preview (?preview=true) must survive the hop, or the
+      // root page renders as a normal visit and never answers the editor.
+      return isPreviewUrl() ? <Navigate to="/" search={true} replace /> : <Navigate to="/" replace />;
     }
     return (
       <RootMountedSegment

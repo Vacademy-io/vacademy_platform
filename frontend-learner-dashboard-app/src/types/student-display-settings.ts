@@ -305,8 +305,47 @@ export interface StudentAllCoursesTabConfig {
   visible: boolean;
 }
 
+/**
+ * Admin-defined Courses-page tab listing every catalogue course that carries
+ * ANY of `tags`. Lives outside `tabs` so builds that predate it ignore it
+ * instead of mapping the unknown id to In Progress. `order` shares the
+ * built-in tabs' numbering.
+ */
+/**
+ * What a custom Courses-page tab shows. Absent on tabs saved before types
+ * existed — those are TAG tabs.
+ * - TAG: catalogue courses carrying ANY of `tags`
+ * - COURSES: the catalogue courses picked in `courseIds`
+ * - FREE_COURSES: catalogue courses whose cheapest plan costs 0
+ * - LIVE_SESSIONS: the learner's live/upcoming sessions (incl. public webinars)
+ * - PRODUCT_PAGES: cards opening the product pages in `productPages`
+ */
+export type StudentAllCoursesCustomTabType =
+  | "TAG"
+  | "COURSES"
+  | "FREE_COURSES"
+  | "LIVE_SESSIONS"
+  | "PRODUCT_PAGES";
+
+export interface StudentAllCoursesCustomTabProductPage {
+  code: string;
+  name: string;
+}
+
+export interface StudentAllCoursesCustomTab {
+  id: string;
+  label: string;
+  type?: StudentAllCoursesCustomTabType;
+  tags: string[];
+  courseIds?: string[];
+  productPages?: StudentAllCoursesCustomTabProductPage[];
+  order: number;
+  visible: boolean;
+}
+
 export interface StudentAllCoursesSettings {
   tabs: StudentAllCoursesTabConfig[];
+  customTabs?: StudentAllCoursesCustomTab[];
   defaultTab: StudentAllCoursesTabId;
   /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
   hideInstructorName?: boolean;

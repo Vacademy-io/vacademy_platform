@@ -46,4 +46,12 @@ describe("pageOpensWithOwnHeader", () => {
     expect(pageOpensWithOwnHeader([])).toBe(false);
     expect(pageOpensWithOwnHeader([undefined, null])).toBe(false);
   });
+  it("counts a Courses grid that opens with its own hero, and only then", () => {
+    const grid = (props?: unknown) => [{ type: "courseCatalog", props }];
+    expect(pageOpensWithOwnHeader(grid({ hero: { enabled: true } }))).toBe(true);
+    expect(pageOpensWithOwnHeader(grid())).toBe(false);
+    expect(pageOpensWithOwnHeader(grid({ hero: {} }))).toBe(false);
+    expect(pageOpensWithOwnHeader(grid({ hero: { enabled: false } }))).toBe(false);
+    expect(pageOpensWithOwnHeader([{ type: "textBlock" }, { type: "courseCatalog", props: { hero: { enabled: true } } }])).toBe(false);
+  });
 });

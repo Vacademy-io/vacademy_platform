@@ -28,8 +28,7 @@ import { useSessionHandlers } from './hooks/useSessionHandlers';
 import { useMetadataHandlers } from './hooks/useMetadataHandlers';
 import { useContentGeneration } from './hooks/useContentGeneration';
 import { useCourseCreation } from './hooks/useCourseCreation';
-import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import { getSessionsWithProgress } from './utils/sessionUtils';
 import { generateSlideContent } from './utils/mockSlideContent';
 import { extractSlideTitlesFromSlides } from '../../shared/utils/slides';
@@ -354,10 +353,8 @@ export function RouteComponent() {
 
     // Detect roles on mount
     useEffect(() => {
-        const token = getTokenFromCookie(TokenKey.accessToken);
-        if (token) {
-            setRoles(getUserRoles(token));
-        }
+        // Current institute only — an ADMIN elsewhere is still a TEACHER here.
+        setRoles(getRolesForCurrentInstitute());
     }, []);
 
     const isTeacher = roles.includes('TEACHER') && !roles.includes('ADMIN');

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import queue as _queue
 import re
@@ -146,9 +147,14 @@ def _get_run_state_aggregator():
         return RUN_STATE
     except Exception:
         return None
+
+
+from .lesson_plan_service import LessonConfigError, resolve_lesson_plan  # noqa: E402
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
+from ..constants.model_defaults import GLM_DEFAULT
+from .provider_rates import IMAGE_FALLBACK_MODEL_ID
 
 
 # ── NLTK corpora bootstrap ────────────────────────────────────────────────
@@ -202,36 +208,553 @@ def _ensure_nltk_data_async() -> None:
         _nltk_log.warning("[VideoGenService] Could not start NLTK bootstrap thread: %s", exc)
 
 
-# TTS unit cost — currently a single rate across providers; if you add per-provider
-# TTS billing, move this to the DB the way LLM/image rates already live there.
-_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
+# ── Per-stage billing (2026-10-13) ───────────────────────────────────────────
+# Every AI-video charge is the vendor's USD × the live credit ratio
+# (credit_rate_config via CreditRateService): LLM tokens through
+# calculate_credits' real-cost path (ai_models rates), images / premium TTS /
+# the lesson teacher / host identity images as precomputed
+# CreditService.usd_to_credits amounts. In-run deductions pass
+# allow_negative=True: the vendor has already been paid, so a short balance
+# goes negative and the video finishes (the start-of-run check requires the
+# full estimate — CreditService.check_video_tier_credits).
+#
+# Deliberately NOT billed here (known gaps, each is a separate code path that
+# never reaches the stage loop):
+#   • frame regenerate (regenerate_video_frame) and thumbnail regenerate
+#     (regenerate_video_thumbnails) — LLM/image calls on user edits;
+#   • insert-shot / single-shot generation (routers/external_video_generation
+#     insert_shot → single_shot_generator, sentence_clip_service);
+#   • the assist decision-gate revision and concept-alternative calls
+#     (_assist_llm_client);
+#   • background music (Lyria) and SFX generation — recorded in
+#     cost_breakdown (kind "music" / "sfx") with their USD, not charged;
+#   • Veo / dialogue clips are charged separately by AiVideoLedger.
+# Free vendors (Edge TTS, Pexels stock) record usage but never deduct.
 
-# Image price is sourced from ai_models.image_price_per_unit (V221+). This default
-# applies only if the configured image model is missing from the registry.
-_IMAGE_COST_USD_FALLBACK: float = 0.04
+_FREE_VIDEO_PROVIDER_MODELS = frozenset({"edge-tts", "pexels-stock-api"})
+# Image events billed outside the stage loop. Empty: host identity images are
+# billed here from their own events (one per real Seedream call — one per run
+# for custom avatars, none for argil/veed), not per completed host shot.
+_IMAGE_PURPOSES_BILLED_ELSEWHERE: frozenset = frozenset()
+_TTS_BILLING_MODELS = {
+    "edge": "edge-tts",
+    "google": "google-cloud-tts",
+    "sarvam": "sarvam-bulbul-v3",
+    "smallest": "smallest-tts",
+}
+_INDIAN_TTS_LANGUAGES = frozenset({
+    "hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+    "gujarati", "malayalam", "punjabi", "odia", "english (india)",
+})
+_LESSON_TEACHER_MODEL_ID = "spatius/video"
+# Pre-2026-10-13 teacher charge (8 credits per started narration minute). Only
+# used when neither the ai_models per-second price nor the vendor USD exists.
+_LESSON_TEACHER_LEGACY_CREDITS_PER_MINUTE = 8
+
+
+def _image_events_from_breakdown(cost_breakdown: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The stage's ``kind == "image"`` cost events (one per generated image)."""
+    if not cost_breakdown:
+        return []
+    stages = cost_breakdown.get("stages")
+    if not isinstance(stages, list):
+        return []
+    return [ev for ev in stages if isinstance(ev, dict) and ev.get("kind") == "image"]
+
+
+def _resolve_tts_billing(
+    tts_provider_resolved: Optional[str],
+    tts_provider: Optional[str],
+    language: Optional[str],
+) -> Tuple[str, str]:
+    """(vendor key, billing model id) for the stage's TTS characters.
+
+    The pipeline's resolved provider wins — it covers the premium auto-pick and
+    a mid-synth edge→google fallback. Without it, mirror the pipeline's own
+    resolution from the request (premium + an Indian language → Sarvam)."""
+    vendor = (tts_provider_resolved or "").strip().lower()
+    if not vendor:
+        requested = (tts_provider or "").strip().lower()
+        if requested == "premium":
+            vendor = "sarvam" if (language or "").strip().lower() in _INDIAN_TTS_LANGUAGES else "google"
+        elif requested in ("google", "sarvam", "smallest"):
+            vendor = requested
+        else:
+            vendor = "edge"
+    return vendor, _TTS_BILLING_MODELS.get(vendor, f"{vendor}-tts")
+
+
+def _bill_video_stage_usage(
+    token_service: Any,
+    *,
+    usage: Dict[str, Any],
+    cost_breakdown: Optional[Dict[str, Any]],
+    usd_to_credits: Any,
+    image_unit_usd: Any,
+    institute_id: Optional[str],
+    user_id: Optional[str],
+    video_id: str,
+    stage: str,
+    resolved_model: Optional[str],
+    tts_provider: Optional[str],
+    tts_provider_resolved: Optional[str],
+    language: Optional[str],
+) -> Dict[str, Any]:
+    """Record usage and deduct credits for one pipeline stage's output.
+
+    ``usd_to_credits(usd) -> Decimal`` and ``image_unit_usd(model) -> float``
+    are CreditService.usd_to_credits and provider_rates.image_cost_usd bound to
+    the billing session (injected so tests can price without a DB). Returns a
+    small summary for logging/tests."""
+    import logging as _logging
+    from decimal import Decimal as _Dec
+
+    log = _logging.getLogger(__name__)
+    summary: Dict[str, Any] = {"llm_rows": 0, "image_rows": 0, "image_shortfall": 0,
+                               "stock_items": 0, "tts_model": None}
+    usage = usage or {}
+    _u_pt = int(usage.get("prompt_tokens", 0) or 0)
+    _u_ct = int(usage.get("completion_tokens", 0) or 0)
+
+    # LLM: one VIDEO row per model the breakdown saw, so each model's tokens
+    # are priced at its own ai_models rate (hero escalation, best-of-N, vision
+    # review and pinned regen models are all multi-model). Tokens only the
+    # breakdown has (e.g. vision review never reaches `usage`) are billed;
+    # tokens only `usage` has go on the dominant model's row. A stage whose
+    # usage dict omits total_tokens (the v3 script stage) still bills. Rows
+    # are attributed to the model that ACTUALLY executed (the breakdown), not
+    # `resolved_model` — that is only the ai_model_defaults fallback, and
+    # billing on it made every Vimotion run read as the system default.
+    _split = _llm_token_split_from_breakdown(cost_breakdown)
+    _split = {m: v for m, v in _split.items() if v[0] + v[1] > 0}
+    _executed_model = _dominant_model_from_breakdown(cost_breakdown)
+    _attributed_model = _executed_model or resolved_model or "video-gen-pipeline"
+    has_llm = (_u_pt + _u_ct) > 0 or bool(_split)
+    if has_llm and not _executed_model:
+        # Billing LLM tokens but the cost breakdown had no llm model (build
+        # failure / pre-cost-breakdown run): attribution AND pricing fall back
+        # to resolved_model. Surface it so a silently-degraded cost tracker
+        # can't hide behind correct-looking bills.
+        log.warning(
+            "[VideoGenService] No LLM model in cost_breakdown for video %s stage %s; "
+            "attributing VIDEO credits to fallback %r", video_id, stage, _attributed_model,
+        )
+    provider = ApiProvider.GEMINI if "gemini" in _attributed_model.lower() else ApiProvider.OPENAI
+
+    if has_llm:
+        if _split:
+            _s_pt = sum(v[0] for v in _split.values())
+            _s_ct = sum(v[1] for v in _split.values())
+            _dom = _attributed_model if _attributed_model in _split else max(_split, key=lambda m: sum(_split[m]))
+            _rp, _rc = max(0, _u_pt - _s_pt), max(0, _u_ct - _s_ct)
+            if _rp or _rc:
+                _split[_dom] = (_split[_dom][0] + _rp, _split[_dom][1] + _rc)
+            rows = list(_split.items())
+            source = "cost_breakdown_split"
+        else:
+            rows = [(_attributed_model, (_u_pt, _u_ct))]
+            source = "cost_breakdown" if _executed_model else "resolved_model"
+        for _m, (_pt, _ct) in rows:
+            token_service.record_usage_and_deduct_credits(
+                api_provider=ApiProvider.GEMINI if "gemini" in _m.lower() else provider,
+                prompt_tokens=_pt,
+                completion_tokens=_ct,
+                total_tokens=_pt + _ct,
+                request_type=RequestType.VIDEO,
+                institute_id=institute_id,
+                user_id=user_id,
+                model=_m,
+                metadata={
+                    "video_id": video_id,
+                    "image_count": usage.get("image_count", 0),
+                    "stage": stage,
+                    "attributed_model_source": source,
+                },
+                batch_id=video_id,
+                allow_negative=True,
+            )
+            summary["llm_rows"] += 1
+        log.info(
+            f"[VideoGenService] Recorded token usage for stage {stage}: {len(rows)} model row(s), "
+            f"{sum(p + c for _, (p, c) in rows)} tokens"
+        )
+
+    # Images: one IMAGE row per generated image, on the model that made it,
+    # priced from the vendor's reported cost (usage.cost) or the model's
+    # ai_models unit price. Host identity images included — the host block
+    # bills only the avatar video seconds.
+    _events = _image_events_from_breakdown(cost_breakdown)
+    _billable = [ev for ev in _events if (ev.get("purpose") or "other") not in _IMAGE_PURPOSES_BILLED_ELSEWHERE]
+    _image_count = int(usage.get("image_count", 0) or 0)
+    _shortfall = max(0, _image_count - len(_billable))
+    if _shortfall:
+        log.warning(
+            f"[VideoGenService] Stage {stage} of {video_id} reports {_image_count} image(s) but "
+            f"{len(_billable)} image cost event(s); billing {_shortfall} at the "
+            f"{IMAGE_FALLBACK_MODEL_ID} price"
+        )
+    _image_rows: List[Tuple[str, Optional[float], str, Optional[str]]] = []
+    for ev in _billable:
+        _model = ev.get("model") or IMAGE_FALLBACK_MODEL_ID
+        _cost = ev.get("cost_usd")
+        try:
+            _cost = float(_cost) if _cost is not None else None
+        except (TypeError, ValueError):
+            _cost = None
+        _image_rows.append((_model, _cost if _cost and _cost > 0 else None,
+                            ev.get("purpose") or "other", ev.get("stage")))
+    _image_rows += [(IMAGE_FALLBACK_MODEL_ID, None, "unrecorded", None)] * _shortfall
+    for _model, _cost, _purpose, _ev_stage in _image_rows:
+        _usd = _cost if _cost is not None else float(image_unit_usd(_model))
+        token_service.record_usage_and_deduct_credits(
+            api_provider=ApiProvider.OPENAI,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            request_type=RequestType.IMAGE,
+            institute_id=institute_id,
+            user_id=user_id,
+            model=_model,
+            metadata={
+                "video_id": video_id,
+                "stage": stage,
+                "purpose": _purpose,
+                "event_stage": _ev_stage,
+                "price_source": "usage.cost" if _cost is not None else "ai_models",
+            },
+            total_price=_usd,
+            batch_id=video_id,
+            precomputed_credits=usd_to_credits(_usd),
+            allow_negative=True,
+        )
+    summary["image_rows"] = len(_image_rows)
+    summary["image_shortfall"] = _shortfall
+    if _image_rows:
+        log.info(f"[VideoGenService] Deducted credits for {len(_image_rows)} images in stage {stage}")
+
+    # Stock photos/videos (Pexels / Pixabay) are free: usage only, no charge.
+    _stock_count = int(usage.get("stock_count", 0) or 0)
+    if _stock_count > 0:
+        token_service.record_usage(
+            api_provider=ApiProvider.OPENAI,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            request_type=RequestType.STOCK,
+            institute_id=institute_id,
+            user_id=user_id,
+            model="pexels-stock-api",
+            metadata={"video_id": video_id, "stage": stage, "stock_count": _stock_count, "billed": False},
+            total_price=0.0,
+        )
+        summary["stock_items"] = _stock_count
+
+    # TTS: the vendor that actually spoke. Edge is free (usage only); premium
+    # vendors are charged their per-character rate × the credit ratio.
+    _tts_chars = int(usage.get("tts_character_count", 0) or 0)
+    if _tts_chars > 0:
+        _vendor, _tts_model = _resolve_tts_billing(tts_provider_resolved, tts_provider, language)
+        summary["tts_model"] = _tts_model
+        _tts_meta = {"video_id": video_id, "stage": stage, "tts_provider": tts_provider,
+                     "tts_provider_resolved": _vendor}
+        if _tts_model in _FREE_VIDEO_PROVIDER_MODELS:
+            token_service.record_usage(
+                api_provider=ApiProvider.GOOGLE_TTS,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                request_type=RequestType.TTS,
+                institute_id=institute_id,
+                user_id=user_id,
+                model=_tts_model,
+                metadata={**_tts_meta, "billed": False},
+                total_price=0.0,
+                tts_provider=_vendor,
+                character_count=_tts_chars,
+            )
+        else:
+            from .provider_rates import tts_cost_usd
+            _tts_usd = tts_cost_usd(_vendor, _tts_chars)
+            _tts_credits = usd_to_credits(_tts_usd) if _tts_usd > 0 else None
+            token_service.record_usage_and_deduct_credits(
+                api_provider=ApiProvider.GOOGLE_TTS,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                request_type=RequestType.TTS_PREMIUM,
+                institute_id=institute_id,
+                user_id=user_id,
+                model=_tts_model,
+                character_count=_tts_chars,
+                metadata=_tts_meta,
+                total_price=_tts_usd,
+                tts_provider=_vendor,
+                batch_id=video_id,
+                # None (unknown vendor rate) → calculate_credits('tts_premium').
+                precomputed_credits=_tts_credits if _tts_credits and _tts_credits > _Dec("0") else None,
+                allow_negative=True,
+            )
+            log.info(f"[VideoGenService] Deducted premium TTS credits ({_vendor}) for {_tts_chars} chars in stage {stage}")
+    return summary
+
+
+def _merge_cost_breakdowns(by_stage: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """One cost_breakdown for the whole video from each stage run's report.
+
+    The pipeline resets its CostEventTracker on every run() (one per stage),
+    so each report covers one stage; uploading the latest one alone lost the
+    script stage's events. Events keep their order and gain `pipeline_stage`;
+    the summary sums the stages."""
+    stages: List[Dict[str, Any]] = []
+    anomalies: List[str] = []
+    totals = {"total_usd": 0.0, "base_usd": 0.0, "regen_usd": 0.0, "retry_usd": 0.0, "non_llm_usd": 0.0}
+    by_stage_summary: Dict[str, Any] = {}
+    started: List[str] = []
+    completed: List[str] = []
+    latest: Dict[str, Any] = {}
+    for stage_name, report in by_stage.items():
+        if not isinstance(report, dict):
+            continue
+        latest = report
+        for ev in report.get("stages") or []:
+            if isinstance(ev, dict):
+                stages.append({**ev, "pipeline_stage": stage_name})
+        anomalies.extend(str(a) for a in (report.get("anomalies") or []))
+        summ = report.get("summary") or {}
+        by_stage_summary[stage_name] = summ
+        for k in totals:
+            try:
+                totals[k] += float(summ.get(k) or 0.0)
+            except (TypeError, ValueError):
+                pass
+        if report.get("run_started_at"):
+            started.append(str(report["run_started_at"]))
+        if report.get("run_completed_at"):
+            completed.append(str(report["run_completed_at"]))
+    summary: Dict[str, Any] = {k: round(v, 4) for k, v in totals.items()}
+    for phase in ("base", "regen", "retry"):
+        summary[f"{phase}_pct"] = (
+            round(100.0 * totals[f"{phase}_usd"] / totals["total_usd"], 2) if totals["total_usd"] > 0 else 0.0
+        )
+    return {
+        "video_id": latest.get("video_id"),
+        "run_started_at": min(started) if started else None,
+        "run_completed_at": max(completed) if completed else None,
+        "tier": latest.get("tier"),
+        "pipeline_version": latest.get("pipeline_version"),
+        "summary": summary,
+        "by_stage": by_stage_summary,
+        "stages": stages,
+        "anomalies": anomalies,
+    }
+
+
+def _lesson_teacher_charge(
+    teacher_out: Dict[str, Any],
+    *,
+    video_price_per_second: Any,
+    usd_to_credits: Any,
+) -> Tuple[Any, Optional[float], str]:
+    """(credits as Decimal, vendor USD, price source) for the lesson teacher.
+
+    The vendor bills the returned video's seconds: ceil(video_seconds) ×
+    ai_models 'spatius/video' video_price_per_second × the credit ratio; then
+    the teacher's own vendor_usd × the ratio; the legacy 8 credits per started
+    narration minute only when neither exists."""
+    import math as _math
+    from decimal import Decimal as _Dec
+
+    try:
+        video_s = float(teacher_out.get("video_seconds") or 0)
+    except (TypeError, ValueError):
+        video_s = 0.0
+    try:
+        vendor_usd = float(teacher_out.get("vendor_usd") or 0)
+    except (TypeError, ValueError):
+        vendor_usd = 0.0
+    if video_s > 0 and video_price_per_second is not None and _Dec(str(video_price_per_second)) > 0:
+        usd = _Dec(_math.ceil(video_s)) * _Dec(str(video_price_per_second))
+        return usd_to_credits(usd), float(usd), "ai_models"
+    if vendor_usd > 0:
+        return usd_to_credits(vendor_usd), vendor_usd, "vendor_usd"
+    try:
+        audio_s = float(teacher_out.get("audio_seconds") or 0)
+    except (TypeError, ValueError):
+        audio_s = 0.0
+    if audio_s <= 0:
+        return _Dec("0"), None, "none"
+    minutes = max(1, int(_math.ceil(audio_s / 60.0)))
+    return _Dec(minutes * _LESSON_TEACHER_LEGACY_CREDITS_PER_MINUTE), None, "legacy_per_minute"
+
+
+def _lesson_billing_record(
+    lesson_out: Dict[str, Any],
+    *,
+    credits: Any,
+    vendor_usd: Optional[float],
+    price_source: str,
+    billed_at: str,
+) -> Dict[str, Any]:
+    """Stamp the charge onto the lesson outputs block that goes into
+    extra_metadata (JSON): numbers as float, never Decimal."""
+    lesson_out["billed_at"] = billed_at
+    lesson_out["billed_credits"] = float(credits)
+    lesson_out["billed_vendor_usd"] = float(vendor_usd) if vendor_usd is not None else None
+    lesson_out["billed_price_source"] = price_source
+    return lesson_out
+
+
+_FULL_VIDEO_REFUND_DESCRIPTION_PREFIX = "Full refund for failed video generation"
+
+
+def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -> str:
+    """`{video_id}:lesson-teacher`, plus a refund generation once
+    refund_video_credits has refunded this video (that refund includes the
+    teacher row, so the re-run's teacher must be billable again). Per-clip
+    AiVideoLedger refunds are not counted: they never touch the teacher."""
+    key = f"{video_id}:lesson-teacher"
+    try:
+        n = db.execute(
+            text(
+                "SELECT count(*) FROM credit_transactions "
+                "WHERE batch_id = :v AND institute_id = :i "
+                "AND transaction_type = 'REFUND' AND description LIKE :d"
+            ),
+            {"v": video_id, "i": institute_id, "d": _FULL_VIDEO_REFUND_DESCRIPTION_PREFIX + "%"},
+        ).scalar() or 0
+    except Exception as exc:  # noqa: BLE001
+        __import__("logging").getLogger(__name__).warning(
+            "[VideoGenService] Lesson-teacher refund count failed for %s (%s); using the base key",
+            video_id, exc,
+        )
+        n = 0
+    return f"{key}:refund{int(n)}" if int(n) > 0 else key
+
+
+def _charge_lesson_teacher(
+    db: Any,
+    *,
+    teacher_out: Dict[str, Any],
+    credits: Any,
+    teacher_usd: Optional[float],
+    price_source: str,
+    institute_id: str,
+    user_id: Optional[str],
+    video_id: str,
+    token_usage_service: Any = None,
+    credit_service: Any = None,
+) -> Any:
+    """Record the teacher's usage and deduct its credits; returns the credits
+    ACTUALLY deducted (Decimal, 0 on an idempotent no-op or a failure).
+
+    Calls CreditService.deduct_credits directly — record_usage_and_deduct_credits
+    swallows failures and hides the no-op, and the caller stamps billed_* on
+    the lesson metadata only when this returns > 0."""
+    import logging as _logging
+    from decimal import Decimal as _Dec
+
+    log = _logging.getLogger(__name__)
+    if token_usage_service is None:
+        from .token_usage_service import TokenUsageService
+        token_usage_service = TokenUsageService(db)
+    if credit_service is None:
+        from .credit_service import CreditService
+        credit_service = CreditService(db)
+    vendor_usd = teacher_out.get("vendor_usd")
+    seconds = int(math.ceil(float(teacher_out.get("video_seconds") or teacher_out.get("audio_seconds") or 0)))
+    usage = token_usage_service.record_usage(
+        api_provider=ApiProvider.OPENAI,
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0,
+        request_type=RequestType.AVATAR_VIDEO,
+        institute_id=institute_id,
+        user_id=user_id,
+        model=_LESSON_TEACHER_MODEL_ID,
+        metadata={
+            "video_id": video_id,
+            "stage": "html",
+            "purpose": "lesson_teacher",
+            "audio_seconds": teacher_out.get("audio_seconds"),
+            "video_seconds": teacher_out.get("video_seconds"),
+            "vendor_usd": vendor_usd,
+            "price_source": price_source,
+        },
+        total_price=float(vendor_usd) if vendor_usd is not None else teacher_usd,
+    )
+    try:
+        from ..schemas.credits import CreditDeductRequest
+
+        result = credit_service.deduct_credits(CreditDeductRequest(
+            institute_id=institute_id,
+            request_type=RequestType.AVATAR_VIDEO.value,
+            model=_LESSON_TEACHER_MODEL_ID,
+            seconds=seconds,
+            usage_log_id=str(usage.id) if usage is not None and getattr(usage, "id", None) else None,
+            batch_id=video_id,
+            precomputed_credits=credits,
+            idempotency_key=_lesson_teacher_idempotency_key(db, video_id, institute_id),
+            user_id=user_id,
+            allow_negative=True,
+            description="Lesson teacher (Spatius) for AI video",
+        ))
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"[VideoGenService] Lesson teacher deduct failed for {video_id}: {exc}")
+        return _Dec("0")
+    deducted = _Dec(str(getattr(result, "credits_deducted", 0) or 0))
+    if not getattr(result, "success", False) or deducted <= 0:
+        log.warning(
+            f"[VideoGenService] Lesson teacher for {video_id} not charged "
+            f"({getattr(result, 'message', '')}); billed_* left unset"
+        )
+        return _Dec("0")
+    return deducted
+
+
+def _video_default_model_id(db: Optional[Session] = None, use_case: str = "video") -> str:
+    """The registry default (ai_model_defaults) for `use_case`, else GLM_DEFAULT.
+
+    Replaces the old hard-coded Gemini Flash client defaults: a registry read
+    failure must never silently move video traffic onto another vendor."""
+    try:
+        from .ai_models_service import AIModelsService
+
+        def _read(session: Session) -> Optional[str]:
+            if use_case == "video":
+                resp = AIModelsService(session).get_models_for_use_case(use_case)
+                default = getattr(resp, "default_model", None)
+                return getattr(default, "model_id", None) if default is not None else None
+            return AIModelsService(session).get_default_model_id_for_use_case(use_case)
+
+        if db is not None:
+            model_id = _read(db)
+        else:
+            with _fresh_db_session() as _s:
+                model_id = _read(_s)
+        if model_id:
+            return str(model_id)
+    except Exception as exc:  # noqa: BLE001
+        __import__("logging").getLogger(__name__).warning(
+            "[VideoGenService] %s default model lookup failed (%s); using %s",
+            use_case, exc, GLM_DEFAULT,
+        )
+    return GLM_DEFAULT
+
+
+# TTS unit cost for the display-only metadata estimate below (billing uses
+# provider_rates per vendor; see _bill_video_stage_usage).
+_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
 
 
 def _lookup_image_unit_price(db: Session, image_model_id: Optional[str]) -> float:
-    """Resolve per-image USD cost from ai_models, falling back to the constant."""
-    if not image_model_id:
-        return _IMAGE_COST_USD_FALLBACK
-    try:
-        row = db.execute(
-            text(
-                "SELECT image_price_per_unit FROM ai_models "
-                "WHERE model_id = :m AND is_active = TRUE LIMIT 1"
-            ),
-            {"m": image_model_id},
-        ).fetchone()
-        if row and row.image_price_per_unit is not None:
-            return float(row.image_price_per_unit)
-    except Exception:
-        pass
-    return _IMAGE_COST_USD_FALLBACK
+    """Resolve per-image USD cost — the same lookup billing uses."""
+    from .provider_rates import image_cost_usd
+    return image_cost_usd(image_model_id, db=db)
 
 
-# Image generation model used by the video pipeline (OpenRouter route).
-_VIDEO_IMAGE_MODEL_ID: str = "bytedance-seed/seedream-4.5"
+# Image generation model used by the video pipeline (OpenRouter route) — its
+# default; Seedream is only used for host identity / cast sheets / keyframes.
+_VIDEO_IMAGE_MODEL_ID: str = IMAGE_FALLBACK_MODEL_ID
 
 
 def _estimate_video_cost_usd(
@@ -618,7 +1141,7 @@ class VideoGenerationService:
                 raise RuntimeError("no OpenRouter API key configured")
             from automation_pipeline import OpenRouterClient  # sys.path set above
             client = OpenRouterClient(
-                api_key=_api_key, default_model="google/gemini-3-flash-preview"
+                api_key=_api_key, default_model=_video_default_model_id()
             )
             rec = self.repository.get_by_video_id(video_id)
             source_request = getattr(rec, "prompt", None)
@@ -823,9 +1346,10 @@ class VideoGenerationService:
         return merged
 
     def _assist_llm_client(self):
-        """Cheap-model OpenRouter client for assist-side enrichment/revision
-        calls (concept alternatives, hook variants, steering). Returns None
-        when no API key is configured — callers degrade gracefully."""
+        """OpenRouter client on the 'video' registry default (GLM) for
+        assist-side enrichment/revision calls (concept alternatives, hook
+        variants, steering). Returns None when no API key is configured —
+        callers degrade gracefully."""
         from ..config import get_settings as _gs
         _settings = _gs()
         _api_key = _settings.openrouter_api_key or ""
@@ -834,7 +1358,7 @@ class VideoGenerationService:
         self._decision_gates()  # ensures ai-video-gen-main on sys.path
         from automation_pipeline import OpenRouterClient
         return OpenRouterClient(
-            api_key=_api_key, default_model="google/gemini-3-flash-preview"
+            api_key=_api_key, default_model=_video_default_model_id()
         )
 
     def _generate_concept_alternatives(self, video_id, concept):
@@ -1043,6 +1567,8 @@ class VideoGenerationService:
         cast_id: Optional[str] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        # Lesson mode (schemas.LessonConfig) — validated into a plan below.
+        lesson: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
         # Per-video brand overrides (palette/intro/outro/watermark/system_prompt)
         # layered on top of the resolved kit. Untyped (Any) to avoid a
@@ -1202,6 +1728,22 @@ class VideoGenerationService:
             except HostFeatureError as he:
                 logger.warning(f"[VideoGenService] Host validation failed: {he}")
                 yield {"type": "error", "message": str(he)}
+                return
+
+        # Lesson mode — validate before any DB record / credit work, like host.
+        lesson_plan_dict: Optional[Dict[str, Any]] = None
+        if lesson is not None and not resume:
+            try:
+                lesson_plan_dict = resolve_lesson_plan(
+                    lesson, institute_id=institute_id, host=host, db=db_session,
+                )
+            except LessonConfigError as le:
+                logger.warning(f"[VideoGenService] Lesson validation failed: {le}")
+                yield {"type": "error", "message": str(le)}
+                return
+            except Exception as le:  # registry / import trouble must not 500 the request
+                logger.warning(f"[VideoGenService] Lesson validation errored: {le}")
+                yield {"type": "error", "message": f"Lesson mode could not be set up: {le}"}
                 return
 
         # Get or create video record
@@ -1483,6 +2025,7 @@ class VideoGenerationService:
                     saved_cast=_saved_cast_list,
                     routing_overrides=routing_overrides,
                     host=host,
+                    lesson_plan=lesson_plan_dict,
                     brand_kit_id=brand_kit_id,
                     brand_overrides=brand_overrides,
                     resolved_saved_avatar=resolved_saved_avatar,
@@ -1647,6 +2190,7 @@ class VideoGenerationService:
         saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        lesson_plan: Optional[Dict[str, Any]] = None,
         brand_kit_id: Optional[str] = None,
         brand_overrides: Optional[Any] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
@@ -1708,30 +2252,20 @@ class VideoGenerationService:
             "quality_tier": quality_tier,
         }
 
-        # Resolve model: use explicit model, or pick from DB based on defaults
-        resolved_model = model
-        if not resolved_model:
-            try:
-                from ..services.ai_models_service import AIModelsService
-                if db_session:
-                    resolved_model = AIModelsService(db_session).get_models_for_use_case("video").default_model.model_id
-                    logger.info(f"[VideoGenService] Auto-selected default model '{resolved_model}' for video generation")
-            except Exception as e:
-                logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
+        # The registry default for 'video' (ai_model_defaults; GLM on Isoquant),
+        # with GLM_DEFAULT when the registry can't answer — never a silent
+        # fallback onto another vendor.
+        _video_default = _video_default_model_id(db_session)
+        resolved_model = model or _video_default
+        if not model:
+            logger.info(f"[VideoGenService] Auto-selected default model '{resolved_model}' for video generation")
 
-        # Tier-aware model routing: free/standard/premium use a cheap flash model for
-        # script + shot HTML; ultra/super_ultra keep the full resolved model for everything.
-        _TIER_FLASH_MODEL = "google/gemini-3-flash-preview"
-        _FLASH_TIERS = {"free", "standard", "premium"}
-
-        if resolved_model:
-            if quality_tier in _FLASH_TIERS:
-                # Director (premium) stays on resolved_model — only script + shots use flash
-                pipeline_args["script_model"] = _TIER_FLASH_MODEL
-                pipeline_args["html_model"]   = _TIER_FLASH_MODEL
-            else:
-                pipeline_args["script_model"] = resolved_model
-                pipeline_args["html_model"]   = resolved_model
+        # Every tier runs its script + shot HTML clients on the 'video' default
+        # (owner decision 2026-10-13: no premium-model tier). The stage matrix
+        # below still wins per stage, and the user's `model` reaches the
+        # user-overridable stages through it.
+        pipeline_args["script_model"] = _video_default
+        pipeline_args["html_model"] = _video_default
 
         # ── V200 stage routing: DB-backed per-stage model assignment ──
         # Resolve a {stage_id → (model_id, source)} map from
@@ -2278,6 +2812,28 @@ class VideoGenerationService:
         # extra_metadata.intent_outcomes further below; the raw view is kept
         # in extra_metadata.user_selections so history can pre-fill sliders
         # to exactly what the user originally picked.
+        # ── Lesson mode plan — persisted for resume legs ──
+        # Fresh runs arrive with the validated plan; resumes (assist gates,
+        # stage-by-stage review, another pod) re-read it from run_dir or the
+        # video record so the second half is still taught as a lesson.
+        try:
+            _lesson_cache = run_dir / "lesson_plan.json"
+            if lesson_plan:
+                _lesson_cache.write_text(json.dumps(lesson_plan, indent=2), encoding="utf-8")
+                _vrec_l = self.repository.get_by_video_id(video_id)
+                _emeta_l = (_vrec_l.extra_metadata or {}) if _vrec_l else {}
+                _emeta_l["lesson"] = {**(_emeta_l.get("lesson") or {}), "plan": lesson_plan}
+                self.repository.update_metadata(video_id, _emeta_l)
+            else:
+                if _lesson_cache.exists():
+                    lesson_plan = json.loads(_lesson_cache.read_text(encoding="utf-8")) or None
+                if not lesson_plan:
+                    _vrec_l = self.repository.get_by_video_id(video_id)
+                    lesson_plan = (((_vrec_l.extra_metadata or {}) if _vrec_l else {})
+                                   .get("lesson") or {}).get("plan") or None
+        except Exception as _lp_err:
+            logger.warning(f"[VideoGenService] Lesson plan persist/reload failed: {_lp_err}")
+
         visual_prefs_struct: Dict[str, Any] = {}
         visual_prefs_from_text: Dict[str, Any] = {}
         visual_prefs_resolved: Dict[str, Any] = {}
@@ -2970,6 +3526,7 @@ class VideoGenerationService:
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,
+                    lesson_plan=lesson_plan or None,
                     # Resolved view = structured slider input merged with
                     # IntentRouter free-text scan (free-text wins on overlap).
                     # Empty / all-None → pipeline behaves identically to today.
@@ -3135,206 +3692,41 @@ class VideoGenerationService:
                 if outputs and "token_usage" in outputs:
                     try:
                         from .token_usage_service import TokenUsageService
-                        usage = outputs["token_usage"]
-                        has_tokens = usage.get("total_tokens", 0) > 0
-                        has_images = usage.get("image_count", 0) > 0
+                        usage = outputs["token_usage"] or {}
+                        _cb = outputs.get("cost_breakdown")
+                        # Per-stage billing — see the "Per-stage billing" block at
+                        # the top of this module for what is (and is not) billed.
+                        # LLM tokens count when usage OR the breakdown has them:
+                        # the v3 script stage's usage carries no total_tokens and
+                        # vision-review tokens only reach the breakdown.
+                        has_tokens = (
+                            int(usage.get("prompt_tokens", 0) or 0)
+                            + int(usage.get("completion_tokens", 0) or 0)
+                        ) > 0 or bool(_llm_token_split_from_breakdown(_cb))
+                        has_images = usage.get("image_count", 0) > 0 or bool(_image_events_from_breakdown(_cb))
                         has_tts = usage.get("tts_character_count", 0) > 0
                         has_stock = usage.get("stock_count", 0) > 0
 
-                        # Attribute the VIDEO credit/usage row to the model that
-                        # ACTUALLY executed this stage's LLM work (per-stage
-                        # routing + the caller's model_overrides), read from the
-                        # run's cost-event breakdown — NOT the legacy
-                        # `resolved_model`, which is only the ai_model_defaults
-                        # fallback whenever a request omits a top-level `model`
-                        # (always the case for Vimotion, so every run otherwise
-                        # reads as the system default e.g. google/gemini-2.5-pro
-                        # regardless of tier or per-stage choice). The deduction
-                        # fires per pipeline stage, so this resolves to the
-                        # per-shot-HTML model on the html stage and the
-                        # shot-planner / narration-writer model on the script
-                        # stage. Because `model` also drives the per-model credit
-                        # multiplier in CreditService.calculate_credits, this makes
-                        # the deducted amount reflect real execution too. Falls
-                        # back to resolved_model when no breakdown is present
-                        # (build failure / pre-cost-breakdown runs).
-                        _executed_model = _dominant_model_from_breakdown(
-                            outputs.get("cost_breakdown")
-                        )
-                        _attributed_model = (
-                            _executed_model or resolved_model or "video-gen-pipeline"
-                        )
-                        # Images are produced by a separate image model (Seedream /
-                        # Gemini-image), NOT the LLM — attribute the IMAGE rows to the
-                        # image model the breakdown actually recorded (same principle,
-                        # different kind). Falls back to resolved_model when absent.
-                        _image_model = _dominant_model_from_breakdown(
-                            outputs.get("cost_breakdown"), kind="image"
-                        )
-                        if has_tokens and not _executed_model:
-                            # Billing LLM tokens but the cost breakdown had no llm
-                            # model (build failure / pre-cost-breakdown run): both the
-                            # attribution AND the per-model multiplier fall back to
-                            # resolved_model. Surface it so a silently-degraded cost
-                            # tracker can't hide behind correct-looking bills.
-                            logger.warning(
-                                "[VideoGenService] No LLM model in cost_breakdown for "
-                                "video %s stage %s; attributing VIDEO credits to "
-                                "fallback %r",
-                                video_id, stage_pipeline_name, _attributed_model,
-                            )
-
                         if has_tokens or has_images or has_tts or has_stock:
                           with _fresh_db_session() as _fresh:
-                            token_service = TokenUsageService(_fresh)
-                            # provider is an audit tag on the usage row only — it does
-                            # NOT feed CreditService (which bills by request_type +
-                            # model + tokens), so it never changes the deducted amount.
-                            # Aligned with the attributed model purely for log fidelity.
-                            provider = ApiProvider.OPENAI
-                            if _attributed_model and "gemini" in _attributed_model.lower():
-                                provider = ApiProvider.GEMINI
-                                
-                            # Deduct for LLM tokens (video request type).
-                            # Phase C: the html stage is genuinely MULTI-model
-                            # now (hero-shot escalation + best-of-N candidates
-                            # on the hero model, regens on pinned vision
-                            # models) — one dominant-model row priced ALL
-                            # tokens at a single multiplier, systematically
-                            # under-billing frontier tokens on long videos and
-                            # over-billing flash tokens on short ones. When the
-                            # breakdown shows multiple LLM models, deduct one
-                            # row per model with its own subtotals; leftover
-                            # tokens the breakdown didn't capture go on the
-                            # dominant model's row.
-                            if has_tokens:
-                                _split = _llm_token_split_from_breakdown(
-                                    outputs.get("cost_breakdown")
-                                )
-                                if len(_split) >= 2:
-                                    _u_pt = int(usage.get("prompt_tokens", 0) or 0)
-                                    _u_ct = int(usage.get("completion_tokens", 0) or 0)
-                                    _s_pt = sum(v[0] for v in _split.values())
-                                    _s_ct = sum(v[1] for v in _split.values())
-                                    _dom = _attributed_model
-                                    if _dom not in _split:
-                                        _dom = max(_split, key=lambda m: sum(_split[m]))
-                                    _rp, _rc = max(0, _u_pt - _s_pt), max(0, _u_ct - _s_ct)
-                                    if _rp or _rc:
-                                        _split[_dom] = (_split[_dom][0] + _rp, _split[_dom][1] + _rc)
-                                    for _m, (_pt, _ct) in _split.items():
-                                        if _pt + _ct <= 0:
-                                            continue
-                                        token_service.record_usage_and_deduct_credits(
-                                            api_provider=(
-                                                ApiProvider.GEMINI if "gemini" in _m.lower() else provider
-                                            ),
-                                            prompt_tokens=_pt,
-                                            completion_tokens=_ct,
-                                            total_tokens=_pt + _ct,
-                                            request_type=RequestType.VIDEO,
-                                            institute_id=institute_id,
-                                            user_id=user_id,
-                                            model=_m,
-                                            metadata={
-                                                "video_id": video_id,
-                                                "image_count": usage.get("image_count", 0),
-                                                "stage": stage_pipeline_name,
-                                                "attributed_model_source": "cost_breakdown_split",
-                                            },
-                                            batch_id=video_id,
-                                        )
-                                    logger.info(
-                                        f"[VideoGenService] Recorded per-model token usage for stage "
-                                        f"{stage_pipeline_name}: {len(_split)} model row(s), "
-                                        f"{usage.get('total_tokens')} tokens total"
-                                    )
-                                else:
-                                    token_service.record_usage_and_deduct_credits(
-                                        api_provider=provider,
-                                        prompt_tokens=usage.get("prompt_tokens", 0),
-                                        completion_tokens=usage.get("completion_tokens", 0),
-                                        total_tokens=usage.get("total_tokens", 0),
-                                        request_type=RequestType.VIDEO,
-                                        institute_id=institute_id,
-                                        user_id=user_id,
-                                        model=_attributed_model,
-                                        metadata={
-                                            "video_id": video_id,
-                                            "image_count": usage.get("image_count", 0),
-                                            "stage": stage_pipeline_name,
-                                            "attributed_model_source": (
-                                                "cost_breakdown" if _executed_model else "resolved_model"
-                                            ),
-                                        },
-                                        batch_id=video_id,
-                                    )
-                                    logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
-
-                            # Deduct separately for images generated in this stage
-                            _image_count = usage.get("image_count", 0)
-                            if _image_count > 0:
-                                for _ in range(_image_count):
-                                    token_service.record_usage_and_deduct_credits(
-                                        api_provider=ApiProvider.GEMINI,
-                                        prompt_tokens=0,
-                                        completion_tokens=0,
-                                        total_tokens=0,
-                                        request_type=RequestType.IMAGE,
-                                        institute_id=institute_id,
-                                        user_id=user_id,
-                                        model=_image_model or resolved_model or "gemini-image-gen",
-                                        metadata={"video_id": video_id, "stage": stage_pipeline_name},
-                                        batch_id=video_id,
-                                    )
-                                logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
-
-                            # Deduct separately for stock images & videos
-                            _stock_count = usage.get("stock_count", 0)
-                            if _stock_count > 0:
-                                for _ in range(_stock_count):
-                                    token_service.record_usage_and_deduct_credits(
-                                        api_provider=ApiProvider.OPENAI,
-                                        prompt_tokens=0,
-                                        completion_tokens=0,
-                                        total_tokens=0,
-                                        request_type=RequestType.STOCK,
-                                        institute_id=institute_id,
-                                        user_id=user_id,
-                                        model="pexels-stock-api",
-                                        metadata={"video_id": video_id, "stage": stage_pipeline_name},
-                                        batch_id=video_id,
-                                    )
-                                logger.info(f"[VideoGenService] Deducted credits for {_stock_count} stock media insertions in stage {stage_pipeline_name}")
-
-                            # Deduct separately for TTS characters
-                            # Use premium pricing (2x) for premium/google/sarvam providers
-                            _tts_chars = usage.get("tts_character_count", 0)
-                            _is_premium_tts = tts_provider in ("premium", "google", "sarvam")
-                            if _tts_chars > 0:
-                                _tts_model = "edge-tts"
-                                if _is_premium_tts:
-                                    # Resolve actual provider: premium + Indian lang → sarvam, else google
-                                    _INDIAN = {"hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
-                                               "gujarati", "malayalam", "punjabi", "odia", "english (india)"}
-                                    _resolved = tts_provider
-                                    if tts_provider == "premium":
-                                        _resolved = "sarvam" if language.lower().strip() in _INDIAN else "google"
-                                    _tts_model = "sarvam-bulbul-v3" if _resolved == "sarvam" else "google-cloud-tts"
-                                token_service.record_usage_and_deduct_credits(
-                                    api_provider=ApiProvider.GOOGLE_TTS,
-                                    prompt_tokens=0,
-                                    completion_tokens=0,
-                                    total_tokens=0,
-                                    request_type=RequestType.TTS_PREMIUM if _is_premium_tts else RequestType.TTS,
-                                    institute_id=institute_id,
-                                    user_id=user_id,
-                                    model=_tts_model,
-                                    character_count=_tts_chars,
-                                    metadata={"video_id": video_id, "stage": stage_pipeline_name, "tts_provider": tts_provider},
-                                    batch_id=video_id,
-                                )
-                                logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
+                            from .credit_service import CreditService
+                            from .provider_rates import image_cost_usd
+                            _billing_credits = CreditService(_fresh)
+                            _bill_video_stage_usage(
+                                TokenUsageService(_fresh),
+                                usage=usage,
+                                cost_breakdown=_cb,
+                                usd_to_credits=_billing_credits.usd_to_credits,
+                                image_unit_usd=lambda _m, _db=_fresh: image_cost_usd(_m, db=_db),
+                                institute_id=institute_id,
+                                user_id=user_id,
+                                video_id=video_id,
+                                stage=stage_pipeline_name,
+                                resolved_model=resolved_model,
+                                tts_provider=tts_provider,
+                                tts_provider_resolved=getattr(pipeline, "_tts_provider_resolved", None),
+                                language=language,
+                            )
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
 
@@ -3342,8 +3734,11 @@ class VideoGenerationService:
                 # queryable without joining ai_token_usage (used by FE cost display)
                 if outputs and "token_usage" in outputs and db_session:
                     try:
-                        _usage = outputs["token_usage"]
-                        if _usage.get("total_tokens", 0) > 0:
+                        _usage = outputs["token_usage"] or {}
+                        if (
+                            int(_usage.get("prompt_tokens", 0) or 0)
+                            + int(_usage.get("completion_tokens", 0) or 0)
+                        ) > 0 or bool(_llm_token_split_from_breakdown(outputs.get("cost_breakdown"))):
                             from datetime import datetime as _dt
                             # Fresh session — `db_session` has been idle across
                             # the multi-minute stage run and its connection may
@@ -3363,7 +3758,8 @@ class VideoGenerationService:
                             _existing_meta["token_usage"] = {
                                 "prompt_tokens": _usage.get("prompt_tokens", 0),
                                 "completion_tokens": _usage.get("completion_tokens", 0),
-                                "total_tokens": _usage.get("total_tokens", 0),
+                                "total_tokens": int(_usage.get("prompt_tokens", 0) or 0)
+                                + int(_usage.get("completion_tokens", 0) or 0),
                                 "image_count": _usage.get("image_count", 0),
                                 "tts_character_count": _usage.get("tts_character_count", 0),
                                 "stock_count": _usage.get("stock_count", 0),
@@ -3380,14 +3776,52 @@ class VideoGenerationService:
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
 
+                # Pillar 1 — per-video cost balance sheet (every stage). The pipeline's
+                # tracker resets on every run() (one per stage), so each
+                # stage's report is kept in run_dir/cost_breakdown_by_stage.json
+                # (a re-run stage replaces its own entry) and the MERGED
+                # report is mirrored to a stable S3 path — uploading the
+                # latest stage's file alone lost the script stage's events.
+                # A stage whose run produced no report keeps the previous
+                # entries untouched (never re-files another stage's report).
+                if run_dir:
+                    try:
+                        _by_stage_file = run_dir / "cost_breakdown_by_stage.json"
+                        _by_stage: Dict[str, Any] = {}
+                        if _by_stage_file.exists():
+                            try:
+                                _by_stage = json.loads(_by_stage_file.read_text(encoding="utf-8")) or {}
+                            except Exception:
+                                _by_stage = {}
+                        _stage_cb = (outputs or {}).get("cost_breakdown")
+                        if isinstance(_stage_cb, dict):
+                            _by_stage[stage_pipeline_name] = _stage_cb
+                            _by_stage_file.write_text(json.dumps(_by_stage, indent=2), encoding="utf-8")
+                        if _by_stage:
+                            _merged_cb_file = run_dir / "cost_breakdown_merged.json"
+                            _merged_cb_file.write_text(
+                                json.dumps(_merge_cost_breakdowns(_by_stage), indent=2), encoding="utf-8"
+                            )
+                            self.s3_service.upload_file(
+                                _merged_cb_file,
+                                s3_key=f"ai-videos/{video_id}/cost_breakdown/cost_breakdown.json",
+                                content_type="application/json",
+                            )
+                            logger.info(
+                                f"[VideoGenService] Uploaded merged cost_breakdown.json for {video_id} "
+                                f"({', '.join(_by_stage)})"
+                            )
+                    except Exception as _cb_err:
+                        logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
+
                 # ── Merge host_outputs.json (written by AvatarBatch) into extra_metadata.host ──
                 # AvatarBatch persists per-shot artifacts to run_dir/host_outputs.json
                 # during the HTML stage. We pull it forward into extra_metadata.host.outputs
                 # so analysis / debugging / cost reconciliation can read the full picture
                 # without inspecting the run dir. We ALSO deduct credits for the avatar
-                # work here, because the standard token-usage deduction loop only knows
-                # about LLM tokens / images / stock / TTS — fal.ai per-second avatar and
-                # the per-shot Seedream identity images are separate billable units.
+                # video seconds here (fal.ai per-second), which the stage loop does not
+                # see. The Seedream identity images are NOT billed here: the stage loop
+                # bills them from their host_identity cost events, one per real call.
                 if stage_pipeline_name == "html" and run_dir:
                     _host_out_file = run_dir / "host_outputs.json"
                     if _host_out_file.exists():
@@ -3407,12 +3841,12 @@ class VideoGenerationService:
                             )
 
                             # ── Deduct credits for avatar-host work ──
-                            # Two separate units:
-                            #   1. RequestType.IMAGE — per-shot Seedream identity image
-                            #      (one per completed avatar shot). Same rate as any
-                            #      other AI image generation.
-                            #   2. RequestType.AVATAR_VIDEO — total_host_seconds at the
-                            #      avatar model's video_price_per_second.
+                            # RequestType.AVATAR_VIDEO — the completed shots' seconds
+                            # at the avatar model's video_price_per_second. (Until
+                            # 2026-10-13 this also charged one Seedream image per
+                            # completed shot — wrong for argil/veed, which make none,
+                            # and for custom avatars, which make one per RUN. Those
+                            # images are now billed from their cost events.)
                             #
                             # Resume-safe: each shot artifact gets a `deducted_at`
                             # timestamp once charged. On resume, we skip artifacts
@@ -3456,26 +3890,9 @@ class VideoGenerationService:
                                       with _fresh_db_session() as _host_db:
                                         _ts = TokenUsageService(_host_db)
                                         _now_iso = _dt_dh.utcnow().isoformat()
-
-                                        # Per-shot Seedream identity image
+                                        # Stamp the shots so a resume does not bill
+                                        # their seconds again.
                                         for _shot_art in _undeducted_completed:
-                                            _ts.record_usage_and_deduct_credits(
-                                                api_provider=ApiProvider.GEMINI,
-                                                prompt_tokens=0,
-                                                completion_tokens=0,
-                                                total_tokens=0,
-                                                request_type=RequestType.IMAGE,
-                                                institute_id=institute_id,
-                                                user_id=user_id,
-                                                model="bytedance-seed/seedream-4.5",
-                                                metadata={
-                                                    "video_id": video_id,
-                                                    "stage": "html",
-                                                    "purpose": "host_avatar_identity",
-                                                    "shot_index": _shot_art.get("shot_index"),
-                                                },
-                                                batch_id=video_id,
-                                            )
                                             _shot_art["deducted_at"] = _now_iso
                                         # Avatar video seconds — single charge per dedup-run
                                         if _undeducted_seconds > 0:
@@ -3496,6 +3913,7 @@ class VideoGenerationService:
                                                 },
                                                 seconds=_undeducted_seconds,
                                                 batch_id=video_id,
+                                                allow_negative=True,
                                             )
 
                                         # Persist deducted_at stamps back into extra_metadata.
@@ -3507,8 +3925,8 @@ class VideoGenerationService:
 
                                         logger.info(
                                             f"[VideoGenService] Deducted host credits: "
-                                            f"{len(_undeducted_completed)} identity images + "
-                                            f"{_undeducted_seconds}s of {_host_model}"
+                                            f"{_undeducted_seconds}s of {_host_model} "
+                                            f"({len(_undeducted_completed)} shots)"
                                         )
                                 except Exception as _hd_err:
                                     logger.warning(
@@ -3516,6 +3934,82 @@ class VideoGenerationService:
                                     )
                         except Exception as _hm_err:
                             logger.warning(f"[VideoGenService] Failed to merge host_outputs.json: {_hm_err}")
+
+                # ── Lesson mode: teacher outputs → metadata + one credit charge ──
+                # lesson_outputs.json is written by the pipeline's timeline
+                # step. The teacher is charged once per video (idempotency key,
+                # renewed after a full refund) for the vendor's billed video
+                # seconds — see _lesson_teacher_charge for the price order and
+                # _charge_lesson_teacher for the checked deduct.
+                if stage_pipeline_name == "html" and run_dir and (run_dir / "lesson_outputs.json").exists():
+                    try:
+                        import json as _json_l
+                        _lesson_out = _json_l.loads((run_dir / "lesson_outputs.json").read_text(encoding="utf-8"))
+                        _vrec_lo = self.repository.get_by_video_id(video_id)
+                        _emeta_lo = (_vrec_lo.extra_metadata or {}) if _vrec_lo else {}
+                        _lesson_block = _emeta_lo.get("lesson") or {}
+                        _prev_out = _lesson_block.get("outputs") or {}
+                        _prev_billed = _prev_out.get("billed_at")
+                        _teacher_out = _lesson_out.get("teacher") or {}
+                        if _prev_billed:
+                            _lesson_out["billed_at"] = _prev_billed
+                            for _k in ("billed_credits", "billed_vendor_usd", "billed_price_source"):
+                                if _k in _prev_out:
+                                    _lesson_out[_k] = _prev_out.get(_k)
+                        elif institute_id and (_lesson_out.get("clips_ok") or 0) > 0:
+                            from datetime import datetime as _dt_lo
+                            from .credit_service import CreditService as _CS_lo
+                            with _fresh_db_session() as _lesson_db:
+                                _cs_lo = _CS_lo(_lesson_db)
+                                _credits, _teacher_usd, _price_src = _lesson_teacher_charge(
+                                    _teacher_out,
+                                    video_price_per_second=_cs_lo._get_model_video_per_second(_LESSON_TEACHER_MODEL_ID),
+                                    usd_to_credits=_cs_lo.usd_to_credits,
+                                )
+                                _charged = (
+                                    _charge_lesson_teacher(
+                                        _lesson_db,
+                                        teacher_out=_teacher_out,
+                                        credits=_credits,
+                                        teacher_usd=_teacher_usd,
+                                        price_source=_price_src,
+                                        institute_id=institute_id,
+                                        user_id=user_id,
+                                        video_id=video_id,
+                                        credit_service=_cs_lo,
+                                    )
+                                    if _credits > 0 else 0
+                                )
+                            # Stamp billed_* only for a charge that landed — an
+                            # idempotent no-op or a failed deduct must not read
+                            # as billed.
+                            if _charged > 0:
+                                _lesson_billing_record(
+                                    _lesson_out,
+                                    credits=_charged,
+                                    vendor_usd=_teacher_usd,
+                                    price_source=_price_src,
+                                    billed_at=_dt_lo.utcnow().isoformat(),
+                                )
+                                logger.info(
+                                    f"[VideoGenService] Lesson teacher charged {_charged} credits "
+                                    f"({_teacher_out.get('video_seconds')}s video, {_price_src}) for {video_id}"
+                                )
+                        _lesson_block["outputs"] = _lesson_out
+                        _emeta_lo["lesson"] = _lesson_block
+                        self.repository.update_metadata(video_id, _emeta_lo)
+                        if _lesson_out.get("error"):
+                            # Surface it: the lesson shipped without its teacher.
+                            try:
+                                self.repository.record_warning(
+                                    video_id,
+                                    f"Lesson teacher unavailable — the video shows the board only "
+                                    f"({str(_lesson_out['error'])[:200]})",
+                                )
+                            except Exception:
+                                pass
+                    except Exception as _lo_err:
+                        logger.warning(f"[VideoGenService] Lesson outputs merge/charge failed: {_lo_err}")
 
                 # ── Merge visual_preferences_realized.json into extra_metadata ──
                 # _run_director writes this file alongside the director plan
@@ -4101,23 +4595,6 @@ class VideoGenerationService:
                     except Exception as _ckpt_err:
                         logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
 
-                    # Pillar 1 — per-run cost balance sheet. The pipeline writes
-                    # cost_breakdown.json locally to run_dir on each run() call;
-                    # we mirror it to a stable S3 path so the FE/admin can fetch
-                    # the latest report without joining ai_token_usage. The file
-                    # is overwritten on each stage iteration — the final upload
-                    # (after render or the user's chosen stop_at stage) wins.
-                    try:
-                        _cb_file = run_dir / "cost_breakdown.json"
-                        if _cb_file.exists():
-                            self.s3_service.upload_file(
-                                _cb_file,
-                                s3_key=f"ai-videos/{video_id}/cost_breakdown/cost_breakdown.json",
-                                content_type="application/json",
-                            )
-                            logger.info(f"[VideoGenService] Uploaded cost_breakdown.json for {video_id}")
-                    except Exception as _cb_err:
-                        logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
 
                 # Coverage gate — a run that shipped a fraction of its shots is
                 # not COMPLETED. A real run planned 28 shots and delivered 20:
@@ -4140,9 +4617,14 @@ class VideoGenerationService:
                             # point is that the shortfall stops being invisible.
                             self.repository.record_warning(video_id, _msg)
                             try:
-                                self.repository.update_metadata(
-                                    video_id, {"shot_coverage": _cov}
-                                )
+                                # update_metadata REPLACES the whole column: a
+                                # bare {"shot_coverage": ...} wiped every run
+                                # that tripped this gate (user_selections, host,
+                                # lesson plan + billing...). Merge instead.
+                                _vrec_cov = self.repository.get_by_video_id(video_id)
+                                _emeta_cov = dict((_vrec_cov.extra_metadata or {}) if _vrec_cov else {})
+                                _emeta_cov["shot_coverage"] = _cov
+                                self.repository.update_metadata(video_id, _emeta_cov)
                             except Exception:
                                 pass
                     except Exception as _cov_err:
@@ -4454,6 +4936,10 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         called it. If omitted, this method calls it itself.
 
         Returns None if no persisted model is found (caller falls back).
+
+        Frame regenerate no longer calls this (2026-10-13: regens run on the
+        'video_regenerate' registry default, not the authoring model); kept
+        for forensics on which model wrote a shot.
         """
         if target_frame and target_frame.get("html_model"):
             return target_frame["html_model"]
@@ -5221,35 +5707,19 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 # classification may still be partially populated; the LLM
                 # path will echo whatever we have back in the response.
 
-            # ── Model resolution (4-step, in priority order) ──
+            # ── Model resolution (3-step, in priority order) ──
             # 1. Explicit request override (FE "Advanced > Model" dropdown).
-            # 2. Per-shot html_model persisted at initial-gen time, so a regen
-            #    uses the SAME model that authored the shot. Looked up on the
-            #    target frame, then on the matching shot in director_plan/
-            #    shot_plan if the frame doesn't carry it.
-            # 3. Registry default for use_case='video_regenerate' from
+            # 2. Registry default for use_case='video_regenerate' from
             #    ai_model_defaults (admin-tunable; see migrations).
-            # 4. Hard fallback — Gemini 2.5 Flash (matches initial-gen tier,
-            #    NOT gpt-4o which was the previous broken default).
+            # 3. Hard fallback — GLM_DEFAULT.
+            # The html_model persisted on old shots is deliberately NOT used:
+            # it pinned regens of older videos to Gemini 3.7 Flash / 2.5 Pro.
             resolved_model: Optional[str] = None
             model_source = "fallback"
 
             if model_override:
                 resolved_model = model_override
                 model_source = "request_override"
-
-            if not resolved_model:
-                persisted = target_frame.get("html_model") if target_frame else None
-                if not persisted:
-                    persisted = self._lookup_shot_html_model(
-                        video_id,
-                        target_frame,
-                        raw if isinstance(raw, dict) else None,
-                        status=status,  # reuse — get_video_status already called above
-                    )
-                if persisted:
-                    resolved_model = persisted
-                    model_source = "persisted_at_gen"
 
             if not resolved_model and db_session is not None:
                 try:
@@ -5265,7 +5735,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                     logger.warning(f"Regen model registry lookup failed: {e}")
 
             if not resolved_model:
-                resolved_model = settings.llm_default_model or "google/gemini-2.5-flash"
+                resolved_model = GLM_DEFAULT
                 model_source = "hard_fallback"
 
             logger.info(

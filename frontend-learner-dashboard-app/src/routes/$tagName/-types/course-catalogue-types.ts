@@ -3,6 +3,15 @@ import type { CatalogueI18nSettings } from "../-utils/catalogue-i18n";
 import type { CourseLanguageSettings } from "../-utils/course-variants";
 import type { SiteCartSettings } from "../-utils/site-cart";
 import type { VisibleWhenRule } from "../-utils/catalogue-url-state";
+import type { BadgeRules } from "../-utils/course-badges";
+import type { CatalogueThemeSettings, SitePalette } from "../-utils/catalogue-palette";
+import type { CourseFormatsSetting } from "../-utils/course-format";
+import type { CatalogHeroConfig } from "./catalog-hero-types";
+import type { CatalogStreamsTabsExtension } from "./catalog-tabs-types";
+import type { CatalogCategoryFilterExtension, CatalogCustomFilterConfig, CatalogFilterSidebarConfig, CatalogPriceFilterExtension } from "./catalog-sidebar-types";
+import type { CatalogColumnSectionConfig } from "./catalog-sections-types";
+import type { CatalogCardsRenderExtension } from "./catalog-cards-types";
+import type { FooterBrandProps, HeaderChromeProps } from "./site-chrome-types";
 
 /**
  * A single tier in a quantity-based additional charge (e.g. shipping).
@@ -51,7 +60,9 @@ export interface GlobalSettings {
     course?: string;
     coursePlural?: string;
     level?: string;
+    levelPlural?: string;
     session?: string;
+    sessionPlural?: string;
   };
   courseCatalogeType: {
     enabled: boolean;
@@ -176,6 +187,19 @@ export interface GlobalSettings {
    * See -utils/site-cart.ts. Absent = the original catalogue cart.
    */
   siteCart?: SiteCartSettings;
+  /**
+   * Theme. Only the opt-in fields read by -utils/catalogue-palette.ts are
+   * typed (palette, contentMaxWidth); the rest stays as loosely read as before.
+   */
+  theme?: CatalogueThemeSettings;
+  /**
+   * Course formats ("E-books", "Live sessions"…) by key, matched by the course
+   * tag `format-<key>`, then a listed tag, then a listed level name. See
+   * -utils/course-format.ts. Absent = no format anywhere (as before).
+   */
+  courseFormats?: CourseFormatsSetting;
+  /** Display order of courseFormats keys (unlisted keys follow in authoring order). */
+  courseFormatOrder?: string[];
   layout?: {
     header?: {
       id: string;
@@ -190,16 +214,12 @@ export interface GlobalSettings {
         // When true, header login/signup buttons open the AuthModal in-place
         // instead of navigating to /login or /signup. Default: false (navigate).
         useAuthModal?: boolean;
-        navigation?: Array<{
-          label: string;
-          route: string;
-          openInSameTab?: boolean;
-        }>;
-        authLinks?: Array<{
-          label: string;
-          route: string;
-        }>;
-      };
+        navigation?: HeaderNavItem[];
+        authLinks?: HeaderAuthLink[];
+        activeStyle?: HeaderActiveStyle;
+        showSearch?: boolean;
+        showLanguageSwitcher?: boolean;
+      } & HeaderChromeProps;
     };
     footer?: {
       id: string;
@@ -222,7 +242,7 @@ export interface GlobalSettings {
           }>;
         }>;
         bottomNote: string;
-      };
+      } & Omit<FooterBrandProps, "leftSection">;
     };
   };
 }
@@ -303,6 +323,81 @@ export interface HeaderProps {
   };
 }
 
+/**
+ * Header mega menu ("Knowledge Streams"): a panel of streams (the top-level
+ * folders of a folder library) with each stream's categories (its child
+ * folders). Every key is optional; the defaults below apply only once an
+ * author has turned a nav item into a mega menu.
+ *
+ * Link patterns take {stream} / {category} = the folder's slug (folderSlug).
+ * Text patterns take {stream} = the stream's name (its subtitle, else its
+ * title — the English caption under a Hindi title) and {title} = its title.
+ * A folder's own link_url / cta_label always wins over a pattern.
+ */
+export interface HeaderMegaMenuConfig {
+  libraryId?: string;
+  /** Library name at the time it was picked (editor display only). */
+  libraryName?: string;
+  /** Small caps line above the tiles, e.g. "Six streams of knowledge". */
+  eyebrow?: string;
+  /** "Not sure where to begin? Find your path" — shown with helpRoute. */
+  helpLabel?: string;
+  helpRoute?: string;
+  /** Default '/courses?stream={stream}'. */
+  streamLinkPattern?: string;
+  /** Default '/courses?stream={stream}&category={category}'. */
+  categoryLinkPattern?: string;
+  /** Default 'Explore {stream}'. */
+  ctaLabelPattern?: string;
+  /** Default 'Categories in {stream}'. */
+  categoriesHeading?: string;
+  /** "● available ○ coming soon" above the category list. */
+  showLegend?: boolean;
+  /** Small print under the panel. */
+  footnote?: string;
+}
+
+/** A header nav item. `type` absent = 'link', i.e. every header authored before mega menus. */
+export interface HeaderNavItem {
+  label: string;
+  route: string;
+  openInSameTab?: boolean;
+  /** `false` hides the item without losing it; absent = visible. */
+  enabled?: boolean;
+  type?: "link" | "megaMenu";
+  megaMenu?: HeaderMegaMenuConfig;
+}
+
+/** Look of a header auth/CTA button. Absent = the original rule (first filled, the rest outlined). */
+export type HeaderAuthLinkStyle = "primary" | "outline" | "text";
+
+export interface HeaderAuthLink {
+  label: string;
+  route: string;
+  audienceId?: string;
+  formTitle?: string;
+  style?: HeaderAuthLinkStyle;
+}
+
+/** How the current page's nav item is marked. Absent = 'pill' (tinted background). */
+export type HeaderActiveStyle = "pill" | "underline";
+
+/** Authored props of the `header` section (globalSettings.layout.header.props or a page header). */
+export interface HeaderSectionProps {
+  logo?: string;
+  title?: string;
+  useAuthModal?: boolean;
+  backgroundColor?: string;
+  textColor?: string;
+  navigation?: HeaderNavItem[];
+  authLinks?: HeaderAuthLink[];
+  activeStyle?: HeaderActiveStyle;
+  /** Search icon that opens a site search (courses, pages, streams). */
+  showSearch?: boolean;
+  /** हिन्दी | EN switch; shows only when the site has more than one language. */
+  showLanguageSwitcher?: boolean;
+}
+
 export interface BannerProps {
   title: string;
   media: {
@@ -314,7 +409,9 @@ export interface BannerProps {
 
 /** Sort modes offered by the catalogue's sort dropdown. The value stored in the
  *  catalogue JSON is the label itself, so what an admin picks in the page
- *  builder is exactly what a learner sees selected. */
+ *  builder is exactly what a learner sees selected. "Popular" (enrolment rank)
+ *  is only listed in the dropdown of a section that uses the discovery props
+ *  below or pins it as defaultSort, so older grids keep their exact menu. */
 export const COURSE_CATALOG_SORT_OPTIONS = [
   "Newest",
   "Oldest",
@@ -323,6 +420,7 @@ export const COURSE_CATALOG_SORT_OPTIONS = [
   "Rating",
   "Name A-Z",
   "Name Z-A",
+  "Popular",
 ] as const;
 
 export type CourseCatalogSortOption =
@@ -364,7 +462,94 @@ export interface CourseCatalogProps {
       roundedEdges?: boolean;
       backgroundColor?: string;
     };
-  };
+  } & CatalogCardsRenderExtension;
+
+  /* ── Courses-page discovery (all optional; absent = the original grid) ──
+   * Used by courseCatalog and productCourseGrid alike. See
+   * -components/components/catalog/catalog-config.ts for how each is read. */
+
+  /** Stream tabs across the top of the grid. */
+  streams?: CatalogStreamsConfig;
+  /** Mirror tabs, filters, sort and search in the URL. Default: on when streams are on. */
+  syncUrl?: boolean;
+  /** Live result counts next to every filter option. */
+  showFilterCounts?: boolean;
+  /** Removable chips for every applied filter, plus "Clear all". */
+  showAppliedChips?: boolean;
+  /** One-tap shortcuts to the same filters / sort. */
+  quickFilters?: CatalogQuickFilter[];
+  /** Filter by course language (globalSettings.courseLanguages must be on). */
+  languageFilter?: { enabled?: boolean; label?: string };
+  /** Free / Paid / Under an amount. */
+  priceFilter?: { enabled?: boolean; label?: string; showFree?: boolean; maxOptions?: number[] } & CatalogPriceFilterExtension;
+  /** Sub-folders of the selected stream (folder-library streams only). */
+  categoryFilter?: { enabled?: boolean; label?: string } & CatalogCategoryFilterExtension;
+  /** One card per course with EN / हिं chips (globalSettings.courseLanguages must be on). */
+  groupLanguageVersions?: boolean;
+  /** Bestseller / Popular / New / Free badges on cards. */
+  badges?: BadgeRules;
+  /** Below lg, filters open in a bottom sheet behind a "Filters (n)" button. */
+  mobileFilterSheet?: boolean;
+
+  /* ── Figma-fidelity opt-ins (absent = the grid above, byte-identical) ──
+   * One field per feature; each feature owns its type file and only edits
+   * that file (see scratchpad specs/CONTRACT.md). Do not add fields here. */
+
+  /** Content column width in px (gutters excluded); else globalSettings.theme.contentMaxWidth. Foundation. */
+  contentMaxWidth?: number;
+
+  /** Section-level palette (CSS vars on the catalog root only). Foundation. */
+  palette?: SitePalette;
+
+  /** Cream hero above the stream tabs + results header. Feature 'hero' (./catalog-hero-types.ts). */
+  hero?: CatalogHeroConfig;
+
+  /** Editorial filter sidebar + promo card. Feature 'sidebar' (./catalog-sidebar-types.ts). */
+  filterSidebar?: CatalogFilterSidebarConfig;
+
+  /** Authored FORMAT / FOR option groups. Feature 'sidebar' (./catalog-sidebar-types.ts). */
+  customFilters?: CatalogCustomFilterConfig[];
+
+  /** Start-free row, spotlight, coming soon inside the results column. Feature 'sections' (./catalog-sections-types.ts). */
+  columnSections?: CatalogColumnSectionConfig[];
+}
+
+/** One tab when streams come from a hand-written tag list. */
+export interface CatalogStreamItem {
+  /** Tab text. */
+  label: string;
+  /** URL key (?stream=<slug>). */
+  slug: string;
+  /** The course tag the tab filters by. */
+  tag: string;
+  /** Tab icon (http(s) URL or site path); anything else is dropped. */
+  imageUrl?: string;
+}
+
+export type CatalogStreamsConfig = CatalogStreamsBaseConfig & CatalogStreamsTabsExtension;
+
+export interface CatalogStreamsBaseConfig {
+  enabled?: boolean;
+  /** 'folderLibrary': top-level folders are tabs, their sub-folders categories. 'tags': `items`. */
+  source?: "folderLibrary" | "tags";
+  libraryId?: string;
+  items?: CatalogStreamItem[];
+  /** First tab, no stream filter. Default "All courses". */
+  allLabel?: string;
+  /** Stick under the site header while scrolling. Default true. */
+  sticky?: boolean;
+  /** Which folder text the tab shows. Default 'title'. */
+  labelMode?: "title" | "subtitle" | "both";
+}
+
+export type CatalogQuickFilterKind = "popular" | "new" | "free" | "bestseller" | "language" | "priceMax";
+
+export interface CatalogQuickFilter {
+  id: string;
+  label: string;
+  kind: CatalogQuickFilterKind;
+  /** Language code for 'language'; amount for 'priceMax'. */
+  value?: string | number;
 }
 
 export interface CourseDetailsProps {
@@ -503,6 +688,8 @@ export interface CartComponentProps {
     backgroundColor?: string;
   };
   onlyLogic?: boolean;
+  /** The page editor's preview: checkout and OTP never call the server. */
+  isPreviewMode?: boolean;
 }
 
 export interface CartSummaryProps {

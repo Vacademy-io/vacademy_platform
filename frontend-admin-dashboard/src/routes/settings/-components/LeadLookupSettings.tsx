@@ -170,6 +170,37 @@ export default function LeadLookupSettings() {
                             <>
                                 <Separator />
                                 <div className="space-y-1">
+                                    <p className="text-sm font-medium">What they can search by</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Phone number and email are always available. A counsellor
+                                        about to dial someone already has those in front of them.
+                                    </p>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-3">
+                                        <Switch
+                                            id="lead-lookup-search-by-name"
+                                            checked={draft.searchByName}
+                                            onCheckedChange={(v) => update({ searchByName: v })}
+                                        />
+                                        <Label
+                                            htmlFor="lead-lookup-search-by-name"
+                                            className="cursor-pointer"
+                                        >
+                                            Also allow searching by full name
+                                        </Label>
+                                    </div>
+                                    <p className="pl-12 text-xs text-muted-foreground">
+                                        A name is something a counsellor can guess, so this is the
+                                        one search that could be used to probe colleagues&rsquo;
+                                        leads. The whole name has to match exactly — a first name on
+                                        its own finds nobody — so it cannot be walked one letter at
+                                        a time.
+                                    </p>
+                                </div>
+
+                                <Separator />
+                                <div className="space-y-1">
                                     <p className="text-sm font-medium">
                                         What a counsellor sees about someone else&rsquo;s lead
                                     </p>

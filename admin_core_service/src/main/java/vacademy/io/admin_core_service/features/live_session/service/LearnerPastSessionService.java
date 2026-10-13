@@ -72,6 +72,7 @@ public class LearnerPastSessionService {
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
     private final LiveSessionInstructorService instructorService;
     private final LearnerPublicSessionVisibilityService publicSessionVisibilityService;
+    private final LiveSessionAttendanceOnlyModeService attendanceOnlyModeService;
     private final ObjectMapper objectMapper;
 
     public LearnerPastSessionsResponseDTO getPastSessions(String batchId, String userId, String instituteId,
@@ -81,6 +82,13 @@ public class LearnerPastSessionService {
         int pageNumber = Math.max(page, 0);
 
         String resolvedInstituteId = resolveInstituteId(batchId, userId, instituteId);
+        if (attendanceOnlyModeService.isEnabled(resolvedInstituteId)) {
+            // Attendance-only institute: learners never see classes. All flags
+            // off so the FE hides the Past section rather than showing it empty.
+            return LearnerPastSessionsResponseDTO.empty(
+                    LearnerPastSessionsResponseDTO.DisplayFlagsDTO.from(LearnerDisplaySettingsFlags.allOff()),
+                    pageNumber, pageSize);
+        }
         LearnerDisplaySettingsFlags flags = displaySettingsService.getFlags(resolvedInstituteId);
         LearnerPastSessionsResponseDTO.DisplayFlagsDTO flagsDTO = LearnerPastSessionsResponseDTO.DisplayFlagsDTO
                 .from(flags);

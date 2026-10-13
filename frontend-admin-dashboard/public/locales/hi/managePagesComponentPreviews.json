@@ -141,5 +141,14 @@
         "sampleExcerpt": "लेख का छोटा सा अंश यहाँ दिखता है।",
         "readMore": "और पढ़ें",
         "liveNote": "प्रकाशित पोस्ट लाइव साइट पर यहाँ दिखती हैं। उन्हें Manage Pages → Blog में लिखें।"
+    },
+    "catalogFeatures": {
+        "hero": "हीरो",
+        "streamIcons": "स्ट्रीम आइकन",
+        "streamTabs": "स्ट्रीम टैब",
+        "filterSidebar": "फ़िल्टर साइडबार",
+        "highlightedRows_one": "{{count}} विशेष पंक्ति",
+        "highlightedRows_other": "{{count}} विशेष पंक्तियाँ",
+        "editorialCards": "एडिटोरियल कार्ड"
     }
 }

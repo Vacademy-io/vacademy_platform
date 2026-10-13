@@ -27,10 +27,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..constants.model_defaults import GLM_DEFAULT
 from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.model_selection import resolve_models
 from ..services.document_postprocess import (
     DOC_IMAGE_MODEL as _IMAGE_MODEL,
     MAX_DOC_IMAGES as _MAX_AI_IMAGES,
@@ -43,9 +45,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/html-doc", tags=["html-document"])
 
-# Creative HTML/CSS/JS is best on a strong frontend-capable model. Dedicated to
-# this endpoint (NOT the shared llm_default_model); override via HTML_DOCUMENT_MODEL.
-_DEFAULT_MODEL = "z-ai/glm-5.3-flash"
+# The model comes from the 'html_document' use case (ai_model_defaults, set in
+# the super-admin portal). HTML_DOCUMENT_MODEL, when set, still wins (emergency
+# override); _DEFAULT_MODEL is only the hard fallback for a missing row.
+_USE_CASE = "html_document"
+_DEFAULT_MODEL = GLM_DEFAULT
 # HTML documents can be long (inline CSS + markup + a little JS).
 _MAX_TOKENS = 32000
 # GLM-5.x reasons before it writes and the provider will not let reasoning be
@@ -372,6 +376,16 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str)
     return content, (data.get("usage") or {})
 
 
+def _resolve_model(db: Session) -> str:
+    """HTML_DOCUMENT_MODEL (env override) > the 'html_document' use-case
+    default > GLM."""
+    explicit = (os.getenv("HTML_DOCUMENT_MODEL") or "").strip()
+    if explicit:
+        return explicit
+    primary, _fallbacks = resolve_models(db, _USE_CASE, hard_fallback=_DEFAULT_MODEL)
+    return primary
+
+
 async def _prepare(
     body: GenerateHtmlRequest, current_user, db: Session, ground: bool = True
 ) -> dict:
@@ -397,7 +411,7 @@ async def _prepare(
     openrouter_url: str = getattr(
         settings, "llm_base_url", "https://openrouter.ai/api/v1/chat/completions"
     )
-    model = os.getenv("HTML_DOCUMENT_MODEL") or _DEFAULT_MODEL
+    model = _resolve_model(db)
     if not openrouter_key:
         raise HTTPException(status_code=503, detail="No LLM provider configured. Set OPENROUTER_API_KEY.")
 

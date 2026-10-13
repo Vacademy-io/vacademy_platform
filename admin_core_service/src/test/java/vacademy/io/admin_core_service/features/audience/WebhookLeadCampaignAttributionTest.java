@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService;
+import vacademy.io.admin_core_service.features.audience.service.LeadDeduplicationService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -100,6 +102,53 @@ class WebhookLeadCampaignAttributionTest {
         verify(utm).record("inst-1", "user-1", "asha@example.com", "+919876543210", "AUDIENCE", "aud-1",
                 Map.of("utm_source", "google", "utm_medium", "lead_form",
                         "utm_campaign", "21345678901", "utm_content", "20000000002"));
+    }
+
+    private static final Map<String, String> SECOND_CAMPAIGN = Map.of(
+            "platform_lead_id", "lead-2",
+            "source_id", "22180441198",
+            "utm_source", "google",
+            "utm_medium", "lead_form",
+            "utm_campaign", "22180441198");
+    private static final Map<String, String> SECOND_CAMPAIGN_UTM = Map.of(
+            "utm_source", "google", "utm_medium", "lead_form", "utm_campaign", "22180441198");
+
+    private void submitOnly(Map<String, String> metadata) {
+        service.submitLeadFromFormWebhook("aud-1", ProcessedFormDataDTO.builder()
+                .email("asha@example.com")
+                .fullName("Asha Rao")
+                .phone("+919876543210")
+                .formFields(Map.of())
+                .metadata(metadata)
+                .build(), "GOOGLE_LEAD_ADS");
+    }
+
+    /** One lead form, several campaigns: a person already in the audience who comes back
+     *  through a second campaign gets no new lead row, but must still count for it. */
+    @Test
+    void repeatLeadThroughAnotherCampaignKeepsThatCampaign() {
+        when(responses.existsByAudienceIdAndUserId("aud-1", "user-1")).thenReturn(true);
+
+        submitOnly(SECOND_CAMPAIGN);
+
+        verify(responses, never()).save(any(AudienceResponse.class));
+        verify(utm).record("inst-1", "user-1", "asha@example.com", "+919876543210", "AUDIENCE", "aud-1",
+                SECOND_CAMPAIGN_UTM);
+    }
+
+    @Test
+    void leadRejectedByInstituteDedupStillKeepsItsCampaign() throws Exception {
+        when(((LeadDeduplicationService) get("leadDeduplicationService"))
+                .checkDuplicate(eq("inst-1"), eq("aud-1"), any(), any()))
+                .thenReturn(Optional.of(new LeadDeduplicationService.DuplicateMatch(
+                        LeadDedupSettingService.DedupAction.REJECT, "Duplicate lead", null)));
+
+        submitOnly(SECOND_CAMPAIGN);
+
+        verify(responses, never()).save(any(AudienceResponse.class));
+        // No account is created on a REJECT, so the touch is keyed on the typed contact.
+        verify(utm).record("inst-1", null, "asha@example.com", "+919876543210", "AUDIENCE", "aud-1",
+                SECOND_CAMPAIGN_UTM);
     }
 
     @Test

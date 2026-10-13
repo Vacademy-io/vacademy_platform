@@ -243,7 +243,8 @@
     "discountOff": "— {{amount}} off",
     "errors": {
       "applyFailed": "Could not apply coupon. Please try again.",
-      "enterCodeFirst": "Enter a coupon code first."
+      "enterCodeFirst": "Enter a coupon code first.",
+      "notApplicable": "This coupon isn’t valid for this {{course}}."
     },
     "heading": "Coupon Code",
     "placeholder": "Enter coupon code",

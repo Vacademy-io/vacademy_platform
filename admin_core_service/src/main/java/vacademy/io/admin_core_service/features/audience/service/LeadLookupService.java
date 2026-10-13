@@ -21,10 +21,12 @@ import java.util.Optional;
  * phone or email, with the handful of fields the institute chose to share, and
  * returns no identifier that would let the caller reach anything else.
  *
- * <p><b>Phone and email only, never name.</b> A name match would turn this into
- * a way to page through the whole institute's leads one letter at a time. A
- * counsellor who is about to dial someone already has the number, which is the
- * situation this exists for.
+ * <p><b>Name search is off unless the institute turns it on.</b> Phone and email
+ * are things the caller already has in front of them; a name is something they
+ * can guess, so searching by name is the one mode that could be used to page
+ * through other counsellors' leads. Where an institute does enable it the match
+ * is <b>exact</b> - the whole name, not a prefix or a substring - so it answers
+ * "is this person already ours" without being walkable one letter at a time.
  */
 @Slf4j
 @Service
@@ -35,7 +37,7 @@ public class LeadLookupService {
     private final LeadLookupSettingService settingService;
     private final CounsellorScopeService counsellorScopeService;
 
-    public LeadLookupResultDto lookup(String instituteId, String phone, String email,
+    public LeadLookupResultDto lookup(String instituteId, String phone, String email, String name,
                                       CustomUserDetails caller) {
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("instituteId is required");
@@ -57,12 +59,21 @@ public class LeadLookupService {
 
         String last10 = lastTenDigits(phone);
         String normalisedEmail = (email == null || email.isBlank()) ? null : email.trim();
-        if (last10 == null && normalisedEmail == null) {
-            throw new VacademyException("Search by a full phone number or an email address");
+        String normalisedName = (name == null || name.isBlank()) ? null : name.trim();
+        // Name search is for counsellors only. An admin already has a real name
+        // search over every lead in the leads list, so routing them through a
+        // one-answer-at-a-time probe adds nothing. Field masking is separate -
+        // admins still see every field on whatever they do look up.
+        if (normalisedName != null && (!settings.searchByName() || isAdmin)) {
+            throw new VacademyException(
+                    "Search by name is not available here - use the leads list");
+        }
+        if (last10 == null && normalisedEmail == null && normalisedName == null) {
+            throw new VacademyException("Search by a full phone number, an email address or a full name");
         }
 
         Optional<AudienceResponseRepository.LeadLookupRow> match = audienceResponseRepository
-                .lookupByPhoneOrEmail(instituteId, last10, normalisedEmail,
+                .lookupByPhoneOrEmail(instituteId, last10, normalisedEmail, normalisedName,
                         fields.course() ? settings.courseFieldId() : null);
 
         if (match.isEmpty()) {

@@ -24,6 +24,7 @@ import {
 import { usePostSubmitRedirect } from "@/routes/audience-response/-utils/use-post-submit-redirect";
 import { isSpamSubmission } from "../../-utils/website-lead";
 import { emitLeadCaptured } from "../../-utils/catalogue-tracking";
+import { useSiteT } from "../../-utils/catalogue-locale";
 
 /**
  * Lead Form — an Audience campaign's form rendered natively on a catalogue
@@ -92,6 +93,9 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   onSubmitted,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  // Field labels come live from the CRM campaign, so they are translated at
+  // display only — keys, ids and the submitted values never are.
+  const siteT = useSiteT();
   const { data: campaign, isLoading, isError } = useQuery({
     ...handleGetAudienceCampaign({
       instituteId: instituteId || "",
@@ -211,7 +215,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
 
     const missing = fields.filter((f) => f.mandatory && !(values[f.key] || "").trim());
     if (missing.length > 0) {
-      setError(t("leadForm.missingFields", { fields: missing.map((f) => f.name).join(", ") }));
+      setError(t("leadForm.missingFields", { fields: missing.map((f) => siteT(f.name)).join(", ") }));
       return;
     }
 
@@ -223,7 +227,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         verifiedValues[f.key] !== values[f.key],
     );
     if (unverified.length > 0) {
-      setError(`Please verify: ${unverified.map((f) => f.name).join(", ")}`);
+      setError(`Please verify: ${unverified.map((f) => siteT(f.name)).join(", ")}`);
       return;
     }
 
@@ -395,13 +399,15 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         <div key={f.id}>
           {!isCheckbox && (
             <label className="mb-1.5 block text-sm font-medium text-catalogue-text-secondary">
-              {f.name}
+              {siteT(f.name)}
               {f.mandatory && <span className="ms-1 text-catalogue-brand-ink">*</span>}
             </label>
           )}
           <CustomFieldRenderer
             type={renderType}
-            name={isCheckbox ? f.name : f.key}
+            // A checkbox prints `name` as its visible label; every other type
+            // uses it as the field's id, so that one stays the stored key.
+            name={isCheckbox ? siteT(f.name) : f.key}
             value={values[f.key] || ""}
             onChange={(v: string) => setValues((prev) => ({ ...prev, [f.key]: v }))}
             config={f.config}
@@ -409,7 +415,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             // Without this the renderer falls back to `Enter ${name}` where
             // name is the raw field KEY — visitors saw "Enter full_name" and
             // "Enter details_inst_<uuid>". Use the human label.
-            placeholder={t("leadForm.placeholderPrefix", { name: f.name.toLowerCase() })}
+            placeholder={t("leadForm.placeholderPrefix", { name: siteT(f.name).toLowerCase() })}
           />
           {/* Same gate the product-page checkout uses, driven by the same
               per-field config — so a form built here can ask a visitor to prove
@@ -423,7 +429,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
                   verification={verification}
                   value={values[f.key] || ""}
                   instituteId={instituteId}
-                  label={f.name}
+                  label={siteT(f.name)}
                   verified={
                     !!values[f.key] && verifiedValues[f.key] === values[f.key]
                   }

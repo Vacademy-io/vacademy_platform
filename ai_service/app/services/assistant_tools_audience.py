@@ -84,7 +84,7 @@ async def _site_usage(ctx: ToolContext) -> Dict[str, List[str]]:
         for s in collect_capture_surfaces(config):
             if s["audience_id"]:
                 usage.setdefault(s["audience_id"], []).append(
-                    f"{tag}/{s['page_route']} ({s['section_label']}: {s['label']})"
+                    f"{tag}/{s['page_route'] or '(every page)'} ({s['section_label']}: {s['label']})"
                 )
     return usage
 

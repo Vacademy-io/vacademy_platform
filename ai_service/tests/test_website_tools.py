@@ -162,6 +162,8 @@ def fake_admin_core(calls):
             return CAMPAIGN
         if "/open/v1/audience/campaign/" in path:
             return {"error": "fetch_failed", "status": 404}
+        if path.endswith("/folder-library/libraries"):
+            return []                                    # an institute without folder libraries
         if path.endswith("/catalogue-analytics/summary"):
             return {"views": 120, "visitors": 80, "sessions": 90, "leads": 4,
                     "daily": [{"day": "2026-09-14", "views": 60, "visitors": 40}],
@@ -340,6 +342,8 @@ async def test_context_returns_only_real_ids(admin_core):
     camp = out["lead_campaigns"][0]
     assert camp["id"] == "camp-1" and camp["leads_received"] == 12
     assert out["site"]["settings"]["theme"]["preset"] == "ocean"
+    # No folder libraries: the context reads exactly as it did before they were listed.
+    assert set(out) == {"action", "site", "courses", "product_pages", "lead_campaigns", "rules"}
 
 
 @pytest.mark.asyncio
@@ -591,7 +595,9 @@ async def test_schema_is_compact_by_default_and_detailed_on_request():
     assert out["examples"] == {} and "hint" in out
     assert out["design_rules"] and out["doctrine"] and out["page_contract"]
     assert "ocean" in out["theme_choices"]["presets"]
-    assert len(json.dumps(out)) < 40_000
+    # 40k before the design-pattern registry (~42.5k after): it added the header/footer contract, the
+    # site-settings contract, the pattern-id index and the components' dataBound/usage/escapeHatch notes.
+    assert len(json.dumps(out)) < 45_000
 
     out = json.loads(await website_mod.execute_website({"action": "schema", "page_type": "courses", "section_types": ["heroSection", "nope"]}, ctx()))
     assert list(out["examples"]) == ["heroSection"] and "title" in out["examples"]["heroSection"]["left"]
@@ -648,6 +654,41 @@ async def test_preview_is_wired_and_fails_softly(admin_core, monkeypatch):
     monkeypatch.setattr(page_preview, "render_preview", fake_render)
     out = json.loads(await website_mod.execute_website({"action": "preview"}, ctx()))
     assert out["image_png_base64"] == "AAAA" and out["height"] == 3000
+    assert out["showing"] == "published" and "from the published site" in out["note"]
+
+
+def _with_stale_draft(monkeypatch, calls):
+    """admin-core reports a draft started before the live site last changed."""
+    real = fake_admin_core(calls)
+    async def _call(ctx_, method, path, params=None, body=None, timeout=None):
+        if path.endswith("/revision/draft"):
+            return {"id": "rev-d", "revision_no": 7, "source": "MANUAL", "catalogue_json": "{\"pages\": []}",
+                    "updated_at": "2026-09-02T00:00:00", "live_changed_since_draft": True,
+                    "live_revision_no": 9, "live_updated_at": "2026-10-08T12:00:00"}
+        return await real(ctx_, method, path, params, body, timeout)
+    monkeypatch.setattr(website_data, "_admin_core_json", _call)
+
+
+@pytest.mark.asyncio
+async def test_list_flags_a_draft_older_than_live(admin_core, monkeypatch):
+    _with_stale_draft(monkeypatch, admin_core)
+    site = json.loads(await website_mod.execute_website({"action": "list"}, ctx()))["sites"][0]
+    assert site["has_unpublished_draft"] is True
+    assert site["draft"]["older_than_live"] is True and site["draft"]["revision_no"] == 7
+
+
+@pytest.mark.asyncio
+async def test_preview_of_a_stale_draft_says_it_shows_the_published_site(admin_core, monkeypatch):
+    from app.services import page_preview
+    _with_stale_draft(monkeypatch, admin_core)
+    async def fake_render(**kw):
+        assert kw["config"]["pages"][0]["route"] == "home"     # the published config, not the empty draft
+        return {"png_base64": "AAAA", "width": 1280, "height": 3000}
+    monkeypatch.setattr(page_preview, "render_preview", fake_render)
+    out = json.loads(await website_mod.execute_website({"action": "preview"}, ctx()))
+    assert out["showing"] == "published"
+    assert "from the published site" in out["note"] and "current draft" not in out["note"]
+    assert out["stale_draft"]["live_revision_no"] == 9
 
 
 def test_preview_url_adds_scheme_to_bare_institute_host():

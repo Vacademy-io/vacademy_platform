@@ -31,6 +31,7 @@ export interface SidebarTabConfig {
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
 // The list is derived from widgets present in `src/routes/dashboard/index.tsx`.
 export type DashboardWidgetId =
+    | 'assistantLaunchBar'
     | 'quickActions'
     | 'pendingActions'
     | 'kpiBand'
@@ -420,6 +421,14 @@ export interface LiveClassActionSettings {
     allowDeletePastSessions?: boolean;
 }
 
+// Per-role actions on the leads pages (CRM).
+export interface LeadActionSettings {
+    // "Add New Lead" on All Leads: pick a campaign type, then an audience, and
+    // fill that audience's form. OFF for every role, admin included, until an
+    // institute opts a role in, so read sites must resolve `=== true`.
+    showAddLead?: boolean;
+}
+
 // Per-role control over which roles this role can see/select in the Team tab —
 // in the role-type filter chips and the "Role Type" dropdown of the Invite
 // User dialog. Keys are role names uppercased (matches backend authorities and
@@ -772,6 +781,10 @@ export interface DisplaySettingsData {
     // 13b-ii) Live class list actions (Past tab delete). See
     //         LiveClassActionSettings — ON for admin, OFF for other roles.
     liveClassActions?: LiveClassActionSettings;
+
+    // 13b-iii) Lead page actions (All Leads → Add New Lead). See
+    //          LeadActionSettings — OFF for every role by default.
+    leadActions?: LeadActionSettings;
 
     // 13c) Team tab role-visibility controls. Restricts which roles the
     //      viewing role can see/select in the Team tab's role-type filter and

@@ -1,19 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-    ArrowUp,
-    ChatCircleDots,
-    ClipboardText,
-    MagnifyingGlass,
-    Megaphone,
-    Money,
-    Question,
-    Sparkle,
-    UsersThree,
-    VideoCamera,
-    type Icon,
-} from '@phosphor-icons/react';
+import { ArrowUp, ChatCircleDots, Sparkle } from '@phosphor-icons/react';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
@@ -22,29 +10,14 @@ import { ASSISTANT_CAPABILITIES } from '@/constants/urls';
 import { useAssistDock } from '@/components/assist-dock/store';
 import type { AssistantCapabilities } from './types';
 import { useInstituteChatbotName } from './useInstituteChatbotName';
-
-// Ordered by everyday dashboard tasks, not the API's group ordering. Each
-// suggestion requires its actual tool: a read-only group can never suggest a write.
-const STARTERS: { key: string; group: string; tool: string; Icon: Icon }[] = [
-    { key: 'overview', group: 'institute_overview', tool: 'get_institute_overview', Icon: Money },
-    { key: 'learner', group: 'learner_data', tool: 'find_learner', Icon: MagnifyingGlass },
-    {
-        key: 'assessments',
-        group: 'assessments',
-        tool: 'get_assessment_results',
-        Icon: ClipboardText,
-    },
-    { key: 'announcement', group: 'announcements', tool: 'send_announcement', Icon: Megaphone },
-    { key: 'schedule', group: 'schedule', tool: 'get_class_schedule', Icon: VideoCamera },
-    { key: 'payments', group: 'payments', tool: 'get_fee_dues', Icon: Money },
-    { key: 'batch', group: 'batch_data', tool: 'list_batch_learners', Icon: UsersThree },
-    { key: 'help', group: 'search_help_knowledge', tool: 'search_help_knowledge', Icon: Question },
-];
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { pickStarters, starterPromptKey } from './launch-bar-starters';
 
 /** Dashboard composer. Sends through the same dock and session as the global assistant. */
 export function AssistantLaunchBar() {
     const { t } = useTranslation('dashboardIndex');
     const chatbotName = useInstituteChatbotName();
+    const entitlement = useEntitlement();
     const [question, setQuestion] = useState('');
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const id = useId();
@@ -102,11 +75,9 @@ export function AssistantLaunchBar() {
 
     if (!capabilities?.groups?.length) return null;
 
-    const suggestions = STARTERS.filter((starter) =>
-        capabilities.groups.some(
-            (group) => group.key === starter.group && group.tools.includes(starter.tool)
-        )
-    ).slice(0, 4);
+    // Plan filter (MANAGED only: group + the chip's own features) before the
+    // four-slot cut, so the slots are backfilled with chips the institute can use.
+    const suggestions = pickStarters(capabilities, entitlement);
 
     const submit = () => {
         const text = question.trim();
@@ -177,7 +148,7 @@ export function AssistantLaunchBar() {
                     }}
                     placeholder={
                         suggestions[0]
-                            ? t(`assistant.starters.${suggestions[0].key}.prompt`)
+                            ? t(starterPromptKey(suggestions[0].key, entitlement))
                             : t('assistant.placeholder')
                     }
                     aria-describedby={`${id}-description ${id}-hint`}
@@ -212,7 +183,7 @@ export function AssistantLaunchBar() {
                             key={key}
                             type="button"
                             onClick={() => {
-                                setQuestion(t(`assistant.starters.${key}.prompt`));
+                                setQuestion(t(starterPromptKey(key, entitlement)));
                                 inputRef.current?.focus();
                             }}
                             className="flex min-h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700 transition-colors hover:border-primary-300 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 active:bg-primary-100"

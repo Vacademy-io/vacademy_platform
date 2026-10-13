@@ -46,6 +46,9 @@ interface CheckoutFormProps {
     membershipPlan?: any;
     isRentMode?: boolean;
     additionalCharges?: ResolvedCharge[];
+    /** The page editor's preview: nothing is sent (no real enrolment,
+     *  payment, lead or paid WhatsApp OTP from an editor trying the cart). */
+    isPreviewMode?: boolean;
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -57,8 +60,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     membershipPlan,
     isRentMode = false,
     additionalCharges = [],
+    isPreviewMode = false,
 }) => {
     const { t } = useTranslation("coursePlayerB");
+    const { t: tPreview } = useTranslation("coursePlayerA");
+    /** True (and says so) when this is the editor's preview: send nothing. */
+    const heldInPreview = (): boolean => {
+        if (!isPreviewMode) return false;
+        toast.info(tPreview("courseCataloguePage.previewFormNotSent"));
+        return true;
+    };
     const [email, setEmail] = useState("");
     const [fullName, setFullName] = useState("");
     const [phone, setPhone] = useState("");
@@ -254,6 +265,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const validatePhone = (phone: string): boolean => isValidPhoneValue(phone);
 
     const handleSendPhoneOTP = async () => {
+        if (heldInPreview()) return;
         if (!phone.trim() || !validatePhone(phone)) {
             setPhoneError(t("checkoutForm.errors.phoneRequiredOtp"));
             return;
@@ -283,6 +295,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     };
 
     const handleVerifyPhoneOTP = async () => {
+        if (heldInPreview()) return;
         if (!otp.trim()) {
             toast.error(t("checkoutForm.errors.otpRequired"));
             return;
@@ -316,6 +329,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     };
 
     const handleCheckout = async () => {
+        if (heldInPreview()) return;
         let hasErrors = false;
         setEmailError("");
         setPhoneError("");

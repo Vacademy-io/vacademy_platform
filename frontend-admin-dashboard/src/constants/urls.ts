@@ -808,6 +808,9 @@ export const GET_SLIDE_INTERACTIONS_ADMIN = `${BASE_URL}/admin-core-service/lear
 export const GET_SLIDE_BY_ID = `${BASE_URL}/admin-core-service/slide/v1/slide`;
 export const SAVE_QUIZ_QUESTION_FEEDBACK = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
+export const TRIGGER_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/trigger`;
+export const GET_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/latest`;
+export const ASSIGNMENT_AI_EVALUATION_BULK = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/bulk`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
 export const COPY_SLIDE = `${BASE_URL}/admin-core-service/slide/v1/copy`;
@@ -1407,6 +1410,10 @@ export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-buil
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
 export const AI_PAGE_BUILDER_INTAKE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/intake`;
+// Site languages: AI translation of site texts (Global Settings → Languages → Translations).
+export const AI_PAGE_BUILDER_TRANSLATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/translate`;
+// The public course search the live catalogue reads — course names to translate.
+export const OPEN_CATALOGUE_COURSE_SEARCH_V2 = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 // Course field AI assist (ai_service) — inline generate on the Add Course form
 export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
 export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;
@@ -1623,6 +1630,9 @@ export const REORDER_PRODUCT_PAGE_CUSTOM_FIELDS = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/order`;
 export const UPDATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+// Adds every catalogue course version not yet on the page (site cart store page / learning paths).
+export const SYNC_PRODUCT_PAGE_CATALOGUE = (productPageId: string, instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${encodeURIComponent(productPageId)}/sync-catalogue?instituteId=${encodeURIComponent(instituteId)}`;
 
 // Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
 // are admin-gated via JWT + clientId header (auto-injected by axiosInstance);
@@ -2031,3 +2041,11 @@ export const ERP_PNL_SNAPSHOT_DOWNLOAD = `${ERP_FINANCE_BASE}/pnl-snapshot/downl
 // ERP · My HR (self-service): the caller's own employee record. Every other HR
 // read is keyed on an employee id the employee cannot discover.
 export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employees/me`;
+
+// Institute capabilities (modules/features entitlement + display-settings version).
+// GET ?instituteId= → { mode, catalog_version, modules, features, display_settings_version }.
+// Phase 1 reads it only to bust the display-settings cache; see services/capabilities.ts.
+export const CAPABILITIES_ME = `${BASE_URL}/admin-core-service/capabilities/v1/me`;
+// GET → { catalog, nav }: the module/feature catalogue (§12.2). Fetched only for
+// MANAGED institutes; see services/capability-catalog.ts.
+export const CAPABILITIES_CATALOG = `${BASE_URL}/admin-core-service/capabilities/v1/catalog`;

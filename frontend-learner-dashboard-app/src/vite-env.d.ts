@@ -5,6 +5,9 @@ interface ImportMetaEnv {
   readonly VITE_CASHFREE_SANDBOX?: string;
   /** https origin of the YouTube embed bridge (functions/embed/[videoId].ts). */
   readonly VITE_YOUTUBE_BRIDGE_ORIGIN?: string;
+  /** Admin dashboard origins allowed to drive the editor preview, comma
+   *  separated (-utils/preview-bridge.ts). Unset = any parent frame. */
+  readonly VITE_PREVIEW_ADMIN_ORIGINS?: string;
 }
 
 interface ImportMeta {

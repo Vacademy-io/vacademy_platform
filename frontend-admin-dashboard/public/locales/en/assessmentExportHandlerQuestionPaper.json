@@ -6,7 +6,8 @@
     "setLabel": " (Set {{letter}})",
     "fileName": {
         "base": "Paper",
-        "withSet": "Paper {{letter}}"
+        "withSet": "Paper {{letter}}",
+        "answerKeySuffix": "(Answer Key)"
     },
     "progress": {
         "title": "Generating PDF",

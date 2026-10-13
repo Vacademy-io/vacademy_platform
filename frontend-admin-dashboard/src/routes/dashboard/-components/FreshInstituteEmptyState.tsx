@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Circle, ArrowRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
 
 interface FreshInstituteEmptyStateProps {
     studentCount: number;
@@ -14,6 +15,8 @@ interface FreshInstituteEmptyStateProps {
 }
 
 interface ChecklistItem {
+    /** Catalogue `setup_steps` id (level/course/batch/learner); profile is ungoverned. */
+    id: 'profile' | 'level' | 'course' | 'batch' | 'learner';
     label: string;
     description: string;
     done: boolean;
@@ -30,39 +33,49 @@ export default function FreshInstituteEmptyState({
 }: FreshInstituteEmptyStateProps) {
     const navigate = useNavigate();
     const { t } = useTranslation('dashboardFreshInstituteEmptyState');
+    const entitlement = useEntitlement();
 
-    const items: ChecklistItem[] = [
+    const allItems: ChecklistItem[] = [
         {
+            id: 'profile',
             label: t('items.profile.label'),
             description: t('items.profile.description'),
             done: profileCompletionPercentage >= 100,
             cta: { label: t('items.profile.cta'), onClick: onEditProfile },
         },
         {
+            id: 'level',
             label: t('items.level.label'),
             description: t('items.level.description'),
             done: levelCount > 0,
             cta: { label: t('items.level.cta'), to: '/manage-institute' },
         },
         {
+            id: 'course',
             label: t('items.course.label'),
             description: t('items.course.description'),
             done: courseCount > 0,
             cta: { label: t('items.course.cta'), to: '/study-library/courses' },
         },
         {
+            id: 'batch',
             label: t('items.batch.label'),
             description: t('items.batch.description'),
             done: batchCount > 0,
             cta: { label: t('items.batch.cta'), to: '/manage-institute' },
         },
         {
+            id: 'learner',
             label: t('items.learner.label'),
             description: t('items.learner.description'),
             done: studentCount > 0,
             cta: { label: t('items.learner.cta'), to: '/manage-students' },
         },
     ];
+    // Steps outside the institute's plan are left out (MANAGED only).
+    const items = allItems.filter(
+        (item) => item.id === 'profile' || entitlement.isSetupStepEntitled(item.id)
+    );
 
     const completed = items.filter((i) => i.done).length;
     const total = items.length;
@@ -87,7 +100,7 @@ export default function FreshInstituteEmptyState({
             <ol className="space-y-1 px-3 pb-4">
                 {items.map((item, i) => (
                     <li
-                        key={item.label}
+                        key={item.id}
                         className="flex items-center gap-3 rounded-md p-2 hover:bg-white/60"
                     >
                         {item.done ? (

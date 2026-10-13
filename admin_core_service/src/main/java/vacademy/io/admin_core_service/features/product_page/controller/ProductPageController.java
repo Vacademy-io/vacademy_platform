@@ -5,7 +5,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
+import vacademy.io.admin_core_service.features.product_page.service.ProductPageCatalogueSyncService;
 import vacademy.io.admin_core_service.features.product_page.service.ProductPageService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
 
@@ -16,6 +18,9 @@ public class ProductPageController {
 
     @Autowired
     private ProductPageService coursePageService;
+
+    @Autowired
+    private ProductPageCatalogueSyncService catalogueSyncService;
 
     @PostMapping("/create")
     public ResponseEntity<ProductPageResponse> create(
@@ -98,6 +103,25 @@ public class ProductPageController {
             @RequestBody ProductPageCustomFieldUpdateRequest request) {
         return ResponseEntity.ok(
                 coursePageService.updateCustomFieldOnPage(productPageId, customFieldId, request, instituteId));
+    }
+
+    /**
+     * Adds a mapping for every catalogue course version the page does not sell
+     * yet, on the bridge row and plan the public Courses page prices it with,
+     * appended after the existing ones. With deactivateMissing (default true)
+     * also switches off mappings whose course left the catalogue or can no
+     * longer be sold. Institute ADMIN only. Existing mappings are never
+     * replaced wholesale, unlike PUT /update. Returns the page as GET /{id}
+     * does, plus {added, deactivated, skipped, warnings}.
+     */
+    @PostMapping("/{productPageId}/sync-catalogue")
+    public ResponseEntity<ProductPageCatalogueSyncResponse> syncCatalogue(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable("productPageId") String productPageId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "deactivateMissing", defaultValue = "true") boolean deactivateMissing) {
+        return ResponseEntity.ok(
+                catalogueSyncService.syncCatalogue(user, productPageId, instituteId, deactivateMissing));
     }
 
     /** Body is the custom field ids in the order the checkout form should ask for them. */

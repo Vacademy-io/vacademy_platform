@@ -29,6 +29,12 @@ public class IssueApiKeyRequest {
 
     private String name;
 
+    /**
+     * evaluation (default when empty) | login_links. A login_links key always gets the single
+     * scope login_links:create; scopes and daily_copy_cap are ignored for it.
+     */
+    private String product;
+
     /** Defaults to evaluation:read + evaluation:write when empty. */
     private List<String> scopes;
 

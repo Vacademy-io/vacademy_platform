@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ...models.teaching_plan import TeachingPlan
+from ...constants.model_defaults import GLM_DEFAULT
 from ...schemas.tutor import CompileKbGrounding, MediaTaskOp, SvgPart, TeachingPlanDraft
 from ..ai_billing import record_llm_billing, record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
@@ -48,8 +49,9 @@ COMPILE_MAX_TOKENS = 12_000
 # Flash, not Pro: on this platform's credit pricing a single failed Pro compile
 # (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
 # magnitude cheaper and the validator + repair loop carries the quality. Raise
-# it per platform setting tutor.compile.model when the economics allow.
-DEFAULT_COMPILE_MODEL = "google/gemini-2.5-flash"
+# it per platform setting tutor.compile.model when the economics allow. Code
+# default is the platform GLM default (prod's tutor.compile.model is GLM too).
+DEFAULT_COMPILE_MODEL = GLM_DEFAULT
 # Provider answers that mean "this model id is not served": fall back to the
 # institute default. Timeouts and 5xx are NOT retried on another model — that
 # doubled cost and latency for nothing.

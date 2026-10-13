@@ -180,6 +180,7 @@ public class AudienceController {
             @RequestAttribute("user") CustomUserDetails user) {
 
         leadCreatorAttributionService.applyCreatorAsCounsellor(requestDTO, user);
+        requestDTO.setCreatedByUserId(user.getUserId());
         return ResponseEntity.ok(audienceService.submitLead(requestDTO));
     }
 
@@ -205,6 +206,11 @@ public class AudienceController {
             @RequestAttribute("user") CustomUserDetails user) {
 
         leadCreatorAttributionService.applyCreatorAsCounsellor(request, user);
+        if (request.getRows() != null) {
+            request.getRows().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(row -> row.setCreatedByUserId(user.getUserId()));
+        }
         return ResponseEntity.ok(audienceService.bulkSubmitLead(request));
     }
 

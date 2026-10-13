@@ -1408,6 +1408,7 @@ public class AudienceService {
                         .parentMobile(truncateForParentMobileColumn(userDTO.getMobileNumber()))
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
+                        .createdByUserId(requestDTO.getCreatedByUserId())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);

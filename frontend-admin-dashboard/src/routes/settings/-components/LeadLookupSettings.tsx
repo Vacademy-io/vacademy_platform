@@ -58,6 +58,12 @@ const FIELD_ROWS: { key: keyof LeadLookupFields; label: string; hint?: string }[
     { key: 'campaign', label: 'Campaign' },
     { key: 'status', label: 'Current status' },
     { key: 'course', label: 'Course' },
+    { key: 'branch', label: 'Branch' },
+    {
+        key: 'enquiredBy',
+        label: 'Enquired by',
+        hint: 'The staff member who added the lead by hand. Form and ad leads have none.',
+    },
 ];
 
 async function fetchLeadLookup(): Promise<LeadLookupConfig> {
@@ -89,9 +95,12 @@ export default function LeadLookupSettings() {
         queryFn: fetchLeadLookup,
         staleTime: 5 * 60 * 1000,
     });
-    // Only fetched once the course toggle is on — most institutes never open this.
-    // CustomField.id is the API's customFieldId, which is what the backend matches on.
-    const { data: courseFieldOptions = [] } = useQuery({
+    const [draft, setDraft] = useState<LeadLookupConfig>(LEAD_SETTINGS_DEFAULTS.leadLookup);
+    const [hasChanges, setHasChanges] = useState(false);
+
+    // Only fetched once the course or branch toggle is on — most institutes never
+    // open this. CustomField.id is the API's customFieldId, which the backend matches on.
+    const { data: customFieldOptions = [] } = useQuery({
         queryKey: ['lead-lookup-course-field-options'],
         queryFn: async () => {
             const settings = await getCustomFieldSettings();
@@ -100,11 +109,8 @@ export default function LeadLookupSettings() {
                 .map((f) => ({ label: f.name, value: f.id }));
         },
         staleTime: 5 * 60 * 1000,
-        enabled: !!data?.fields.course,
+        enabled: draft.fields.course || draft.fields.branch,
     });
-
-    const [draft, setDraft] = useState<LeadLookupConfig>(LEAD_SETTINGS_DEFAULTS.leadLookup);
-    const [hasChanges, setHasChanges] = useState(false);
 
     useEffect(() => {
         if (data) {
@@ -206,7 +212,9 @@ export default function LeadLookupSettings() {
                                     </p>
                                     <p className="text-xs text-muted-foreground">
                                         Everything is hidden until you tick it. Anything left
-                                        unticked is not sent to the browser at all.
+                                        unticked is not sent to the browser at all. Follow-up
+                                        history is never shown here — only admins and the
+                                        lead&rsquo;s own counsellor see it.
                                     </p>
                                 </div>
 
@@ -252,9 +260,30 @@ export default function LeadLookupSettings() {
                                                 Without this the course line is simply not shown.
                                             </p>
                                             <SearchableSelect
-                                                options={courseFieldOptions}
+                                                options={customFieldOptions}
                                                 value={draft.courseFieldId}
                                                 onChange={(v) => update({ courseFieldId: v })}
+                                                placeholder="Select a custom field"
+                                                searchPlaceholder="Search fields…"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                {draft.fields.branch && (
+                                    <>
+                                        <Separator />
+                                        <div className="max-w-md space-y-1.5">
+                                            <Label>Which field holds the branch</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Pick the custom field your enquiry form collects the
+                                                branch in. Without this the branch line is simply
+                                                not shown.
+                                            </p>
+                                            <SearchableSelect
+                                                options={customFieldOptions}
+                                                value={draft.branchFieldId}
+                                                onChange={(v) => update({ branchFieldId: v })}
                                                 placeholder="Select a custom field"
                                                 searchPlaceholder="Search fields…"
                                             />

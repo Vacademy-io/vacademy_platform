@@ -194,6 +194,8 @@ export interface LeadLookupConfig {
      * collect the course as a form answer.
      */
     courseFieldId: string;
+    /** Which custom field holds the branch. Same rules as {@link courseFieldId}. */
+    branchFieldId: string;
 }
 
 export interface LeadLookupFields {
@@ -205,6 +207,9 @@ export interface LeadLookupFields {
     campaign: boolean;
     status: boolean;
     course: boolean;
+    branch: boolean;
+    /** Who entered the lead from the admin panel. */
+    enquiredBy: boolean;
 }
 
 export const LEAD_LOOKUP_FIELD_KEYS: (keyof LeadLookupFields)[] = [
@@ -216,6 +221,8 @@ export const LEAD_LOOKUP_FIELD_KEYS: (keyof LeadLookupFields)[] = [
     'campaign',
     'status',
     'course',
+    'branch',
+    'enquiredBy',
 ];
 
 export interface LeadTerminologyLabels {
@@ -260,8 +267,11 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
             campaign: false,
             status: false,
             course: false,
+            branch: false,
+            enquiredBy: false,
         },
         courseFieldId: '',
+        branchFieldId: '',
         searchByName: false,
     },
     tatReminder: {
@@ -354,6 +364,7 @@ export function normaliseLeadLookup(
         enabled: saved?.enabled === true,
         fields,
         courseFieldId: typeof saved?.courseFieldId === 'string' ? saved.courseFieldId : '',
+        branchFieldId: typeof saved?.branchFieldId === 'string' ? saved.branchFieldId : '',
         searchByName: saved?.searchByName === true,
     };
 }

@@ -20,8 +20,10 @@ import java.time.Duration;
  * <pre>
  * institute.setting → setting → LEAD_SETTING → data → leadLookup → {
  *     enabled: false,
- *     fields: { name, email, phone, counsellor, source, campaign, status, course },
- *     courseFieldId: ""
+ *     fields: { name, email, phone, counsellor, source, campaign, status, course,
+ *               branch, enquiredBy },
+ *     courseFieldId: "",
+ *     branchFieldId: ""
  * }
  * </pre>
  *
@@ -33,6 +35,7 @@ import java.time.Duration;
  * <p><b>The field list governs counsellors only.</b> An ADMIN-role caller is not
  * scoped out of anything in the leads UI to begin with, so masking the lookup for
  * them would just make the same data harder to reach; admins get every field.
+ * So does the counsellor the lead is assigned to — it is their own lead.
  * The caller's role is resolved at the call site, not here.
  */
 @Slf4j
@@ -42,17 +45,21 @@ public class LeadLookupSettingService {
 
     /** Which columns a counsellor may see about another counsellor's lead. */
     public record Fields(boolean name, boolean email, boolean phone, boolean counsellor,
-                         boolean source, boolean campaign, boolean status, boolean course) {
+                         boolean source, boolean campaign, boolean status, boolean course,
+                         boolean branch, boolean enquiredBy) {
 
         /** Nothing shared — what every institute gets until it says otherwise. */
-        static final Fields NONE = new Fields(false, false, false, false, false, false, false, false);
+        static final Fields NONE = new Fields(false, false, false, false, false, false, false, false,
+                false, false);
 
         /** Admins are not scoped out of lead data anywhere else either. */
-        public static final Fields ALL = new Fields(true, true, true, true, true, true, true, true);
+        public static final Fields ALL = new Fields(true, true, true, true, true, true, true, true,
+                true, true);
 
         /** True when the institute ticked nothing — the lookup would answer with a blank card. */
         public boolean isEmpty() {
-            return !(name || email || phone || counsellor || source || campaign || status || course);
+            return !(name || email || phone || counsellor || source || campaign || status || course
+                    || branch || enquiredBy);
         }
     }
 
@@ -64,10 +71,10 @@ public class LeadLookupSettingService {
      *        cannot be walked one letter at a time.
      */
     public record LookupSettings(boolean enabled, Fields fields, String courseFieldId,
-                                 boolean searchByName) {
+                                 String branchFieldId, boolean searchByName) {
     }
 
-    private static final LookupSettings DEFAULTS = new LookupSettings(false, Fields.NONE, null, false);
+    private static final LookupSettings DEFAULTS = new LookupSettings(false, Fields.NONE, null, null, false);
 
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
@@ -103,17 +110,23 @@ public class LeadLookupSettingService {
                     fields.path("source").asBoolean(false),
                     fields.path("campaign").asBoolean(false),
                     fields.path("status").asBoolean(false),
-                    fields.path("course").asBoolean(false));
+                    fields.path("course").asBoolean(false),
+                    fields.path("branch").asBoolean(false),
+                    fields.path("enquiredBy").asBoolean(false));
 
-            String courseFieldId = lookup.path("courseFieldId").asText(null);
-            if (courseFieldId != null && courseFieldId.isBlank()) courseFieldId = null;
-
-            return new LookupSettings(lookup.path("enabled").asBoolean(false), parsed, courseFieldId,
+            return new LookupSettings(lookup.path("enabled").asBoolean(false), parsed,
+                    fieldId(lookup, "courseFieldId"), fieldId(lookup, "branchFieldId"),
                     lookup.path("searchByName").asBoolean(false));
         } catch (Exception e) {
             log.warn("Failed to read lead lookup settings for institute {} — using defaults: {}",
                     instituteId, e.getMessage());
             return DEFAULTS;
         }
+    }
+
+    /** A custom-field id, or null when unset or blank. */
+    private static String fieldId(JsonNode lookup, String key) {
+        String id = lookup.path(key).asText(null);
+        return (id == null || id.isBlank()) ? null : id;
     }
 }

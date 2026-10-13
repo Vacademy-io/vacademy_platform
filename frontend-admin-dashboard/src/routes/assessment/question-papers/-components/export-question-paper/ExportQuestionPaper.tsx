@@ -15,12 +15,17 @@ import { handleGetQuestionPaperById } from '../../-utils/question-paper-services
 import { convertQuestionsToExportSchema } from '../../-utils/helper';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyButton } from '@/components/design-system/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 const ExportQuestionPaper = ({
     questionPaperId,
+    title,
     triggerVariant = 'icon',
 }: {
     questionPaperId: string;
+    /** Paper title printed under the letterhead. */
+    title?: string;
     // 'icon' keeps the bare arrow icon; 'button' renders a labelled action for card rows.
     triggerVariant?: 'icon' | 'button';
 }) => {
@@ -45,14 +50,20 @@ const ExportQuestionPaper = ({
             </DialogTrigger>
             <DialogContent className="no-scrollbar !m-0 h-full !w-full !max-w-full !gap-0 overflow-y-auto !rounded-none !p-0">
                 <ExportSettingsProvider>
-                    <PreviewWithSettings questionPaperId={questionPaperId} />
+                    <PreviewWithSettings questionPaperId={questionPaperId} title={title} />
                 </ExportSettingsProvider>
             </DialogContent>
         </Dialog>
     );
 };
 
-function PreviewWithSettings({ questionPaperId }: { questionPaperId: string }) {
+function PreviewWithSettings({
+    questionPaperId,
+    title,
+}: {
+    questionPaperId: string;
+    title?: string;
+}) {
     const { t } = useTranslation('assessmentExportQuestionPaper');
     const { data: questionsData, isLoading } = useSuspenseQuery(
         handleGetQuestionPaperById(questionPaperId)
@@ -112,6 +123,18 @@ function PreviewWithSettings({ questionPaperId }: { questionPaperId: string }) {
                         {t('settingsButton')}
                     </Button>
                     <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                id="question-paper-answer-key"
+                                checked={settings.exportSolutionKey}
+                                onCheckedChange={(checked) =>
+                                    updateSettings({ exportSolutionKey: checked })
+                                }
+                            />
+                            <Label htmlFor="question-paper-answer-key">
+                                {t('answerKeyToggle')}
+                            </Label>
+                        </div>
                         <input
                             type="file"
                             id="letterhead-upload"
@@ -150,6 +173,7 @@ function PreviewWithSettings({ questionPaperId }: { questionPaperId: string }) {
                         <ExportHandlerQuestionPaper
                             questionPaperId={questionPaperId}
                             settings={settings}
+                            title={title}
                         />
                     </div>
                 </div>
@@ -164,7 +188,11 @@ function PreviewWithSettings({ questionPaperId }: { questionPaperId: string }) {
             )}
 
             <div className="container mx-auto py-4">
-                <PaperSetQuestions questionPaperId={questionPaperId} settings={settings} />
+                <PaperSetQuestions
+                    questionPaperId={questionPaperId}
+                    settings={settings}
+                    title={title}
+                />
             </div>
         </div>
     );

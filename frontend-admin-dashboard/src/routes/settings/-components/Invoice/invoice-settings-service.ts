@@ -306,6 +306,9 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
         }
     }
     return {
+        // Keys this page does not edit (e.g. termsAndConditions, set from the backend) must
+        // survive a save: INVOICE_SETTING writes are a full overwrite, not a merge.
+        ...base,
         taxIncluded: base.taxIncluded ?? DEFAULT_INVOICE_SETTINGS.taxIncluded,
         taxRate: Number(base.taxRate ?? DEFAULT_INVOICE_SETTINGS.taxRate) || 0,
         taxLabel: base.taxLabel ?? DEFAULT_INVOICE_SETTINGS.taxLabel,

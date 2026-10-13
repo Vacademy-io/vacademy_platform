@@ -77,8 +77,9 @@ import {
   useFallbackCartReopen,
   useHasSiteCartOpener,
 } from "../../-components/site-cart/use-site-cart";
-import { storeCartRoute, type StoreCartRoute } from "../../-components/site-cart/store-sale";
+import { sameOffer, storeCartRoute, type StoreCartRoute } from "../../-components/site-cart/store-sale";
 import { useStoreSale } from "../../-components/site-cart/use-store-sale";
+import { useFolderTrail } from "../-hooks/use-folder-trail";
 import {
   invitePaymentEntryFor,
   primeOpenEnrollInvite,
@@ -1232,10 +1233,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const siteT = siteLocale.t;
   const courseLanguageSettings = catalogueData?.globalSettings?.courseLanguages;
   const courseLanguagesEnabled = !!courseLanguageSettings?.enabled;
-  // A product page visit keeps that page's own mapping, price and checkout
-  // (and so does a promo link, once the versions show it: see siteCartMode).
-  const siteCartActive =
-    isSiteCartEnabled(catalogueData?.globalSettings?.siteCart) && !productPageCode;
+  // A product page visit (a folder card's "View" link carries the page's
+  // code) shows that page's mapping and price; it goes to the site cart only
+  // when the store sells the version at that same price, else it keeps the
+  // page's own checkout (and so does a promo link: see siteCartMode).
+  const siteCartActive = isSiteCartEnabled(catalogueData?.globalSettings?.siteCart);
   // Single-file product page, chosen per site (globalSettings.courseDetails.layout)
   // or per institute (Student Display Settings -> courseDetails.layout). It also
   // needs the course's own offer: a bare /<tag>/<courseId> link has no invite in
@@ -1376,7 +1378,16 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   }, [siteCartActive, instituteId, hydrateSiteCart]);
   // The cart checks out through the store page, so only a version the store
   // sells goes in (see siteCartMode). Reads nothing, and requests nothing, on
-  // a site without a site cart or on a product page visit.
+  // a site without a site cart.
+  // The ebook layout's breadcrumb: the folders above this PDF, each a link
+  // back to its folder (see folder-trail). Reads nothing on other layouts.
+  const folderCrumbs = useFolderTrail({
+    enabled: ebookLayout,
+    instituteId,
+    pages: catalogueData?.pages,
+    productPageCode,
+    tags: courseData?.tags,
+  });
   const storeSale = useStoreSale(
     instituteId,
     catalogueData?.globalSettings?.siteCart,
@@ -1635,7 +1646,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         ? "pending"
         : linkInviteVisit || isEnrollmentClosed || !cartPackageSessionId
           ? "page"
-          : storeCartRoute(storeSale, [cartPackageSessionId], enrolFlowSellsVersion);
+          : productPageCode &&
+              storeSale.status === "ready" &&
+              !sameOffer(storeSale.offer?.(cartPackageSessionId) ?? null, courseData)
+            ? "page"
+            : storeCartRoute(storeSale, [cartPackageSessionId], enrolFlowSellsVersion);
   const siteCartMode = storeRoute === "cart";
   const storeCheckPending = storeRoute === "pending";
   const siteCartItem =
@@ -1753,6 +1768,13 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     // The version on screen (Language picker), else what the URL named.
     const psId =
       selectedVersion?.packageSessionId || courseData.packageSessionId || packageSessionId;
+    // Site cart (also on a product page visit the store sells as shown):
+    // an HTML page's data-vacademy="enrol" buys like "Buy now".
+    if (siteCartMode && siteCartItem) {
+      handleBuyNow();
+      return;
+    }
+
     if (productPageCode && psId) {
       // A site with languages opens the checkout inside the site (its header
       // and dictionary) in the visitor's language, as its other checkout
@@ -1772,12 +1794,6 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           ...(siteLang ? { lang: siteLang } : {}),
         },
       });
-      return;
-    }
-
-    // Site cart: an HTML page's data-vacademy="enrol" buys like "Buy now".
-    if (siteCartMode && siteCartItem) {
-      handleBuyNow();
       return;
     }
 
@@ -1934,6 +1950,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             learnHtml={courseData.whyLearn ? siteT(courseData.whyLearn) : ""}
             audienceHtml={courseData.whoShouldLearn ? siteT(courseData.whoShouldLearn) : ""}
             tags={courseData.tags}
+            crumbs={folderCrumbs}
             price={courseData.price}
             elevatedPrice={courseData.elevatedPrice}
             currency={courseData.currency}

@@ -256,7 +256,10 @@ describe("header without the new props", () => {
     expect(toggle.className).toMatch(/^md:hidden /);
     expect(nav.className).toBe("hidden md:flex items-center gap-1");
     expect(byText("Login")[0].parentElement!.className).toBe("hidden md:flex items-center gap-2");
-    expect(container.querySelector("span.truncate")!.parentElement!.className).toBe("flex items-center gap-3 ");
+    // The logo and site name lead to the site's home page.
+    const brand = container.querySelector("span.truncate")!.parentElement!;
+    expect(brand.tagName).toBe("A");
+    expect(brand.className).toBe("flex items-center gap-3  no-underline");
   });
 
   it("keeps the mobile menu's first-filled, rest-text rule", async () => {
@@ -277,6 +280,62 @@ describe("header without the new props", () => {
     await render(header({ navigation: [{ label: "Courses", route: "courses" }] }));
     await click(byText("Courses")[0]);
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new/courses" });
+  });
+});
+
+describe("logo link", () => {
+  const brand = () => container.querySelector("span.truncate")!.parentElement!;
+  const leftClick = async (el: Element) => {
+    await act(async () => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+  };
+
+  it("leads to the site's home page by default", async () => {
+    await render(header({}));
+    expect(brand().getAttribute("href")).toBe("/new");
+    await leftClick(brand());
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new" });
+  });
+
+  it("follows the site's own Logo click page", async () => {
+    await render(header({ logoLink: "about" }));
+    expect(brand().getAttribute("href")).toBe("/new/about");
+    await leftClick(brand());
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new/about" });
+  });
+
+  it("opens an external Logo click link in the same tab", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, set href(v: string) { assign(v); } } });
+    try {
+      await render(header({ logoLink: "https://example.org/" }));
+      expect(brand().getAttribute("href")).toBe("https://example.org/");
+      await leftClick(brand());
+      expect(assign).toHaveBeenCalledWith("https://example.org/");
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
+  });
+
+  it("is not a link when the site sets it to none", async () => {
+    await render(header({ logoLink: "none" }));
+    expect(brand().tagName).toBe("DIV");
+    expect(brand().getAttribute("href")).toBeNull();
+  });
+
+  it("reads the untranslated value (a route, never dictionary text)", async () => {
+    await render(header({ logoLink: "बारे में", baseProps: { logoLink: "about" } }));
+    expect(brand().getAttribute("href")).toBe("/new/about");
+  });
+
+  it("lets a ctrl/cmd-click open a new tab as any link would", async () => {
+    await render(header({}));
+    await act(async () => {
+      brand().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+    });
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 });
 

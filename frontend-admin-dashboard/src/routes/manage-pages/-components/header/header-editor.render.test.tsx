@@ -184,4 +184,23 @@ describe('Global header → button look and extras', () => {
         fireEvent.click(screen.getByRole('switch', { name: 'headerExtras.languageSwitch' }));
         expect(headerProps().showLanguageSwitcher).toBe(true);
     });
+
+    it('sets where the logo leads: home by default, another page, or no link', () => {
+        render(<PropertyPanel />);
+        const choice = within(screen.getByRole('group', { name: 'headerExtras.logoClick' }));
+        expect(choice.getByRole('button', { name: 'headerExtras.logoHome' })).toHaveAttribute('aria-pressed', 'true');
+        expect(headerProps().logoLink).toBeUndefined();
+
+        fireEvent.click(choice.getByRole('button', { name: 'headerExtras.logoNone' }));
+        expect(headerProps().logoLink).toBe('none');
+
+        // "Another page or link" offers the site's pages; picking one stores its route.
+        fireEvent.click(choice.getByRole('button', { name: 'headerExtras.logoOther' }));
+        expect(headerProps().logoLink).toBeUndefined();
+        fireEvent.click(screen.getByRole('button', { name: /Find your path/ }));
+        expect(headerProps().logoLink).toBe('find-your-path');
+
+        fireEvent.click(choice.getByRole('button', { name: 'headerExtras.logoHome' }));
+        expect(headerProps().logoLink).toBeUndefined();
+    });
 });

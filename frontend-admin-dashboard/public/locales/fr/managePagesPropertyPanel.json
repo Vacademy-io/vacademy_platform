@@ -698,7 +698,13 @@
     "search": "Recherche",
     "searchHint": "Une icône de recherche qui trouve les cours, les pages et les filières du méga-menu.",
     "languageSwitch": "Sélecteur de langue",
-    "languageSwitchHint": "हिन्दी | EN — les autres langues d'abord, la langue principale du site en dernier. Apparaît dès que le site a plus d'une langue (Paramètres globaux) ; sur téléphone, il se trouve dans le menu."
+    "languageSwitchHint": "हिन्दी | EN — les autres langues d'abord, la langue principale du site en dernier. Apparaît dès que le site a plus d'une langue (Paramètres globaux) ; sur téléphone, il se trouve dans le menu.",
+    "logoClick": "Clic sur le logo",
+    "logoHome": "Page d'accueil",
+    "logoOther": "Autre page ou lien",
+    "logoNone": "Aucun lien",
+    "logoClickHint": "Où vont les visiteurs lorsqu'ils cliquent sur le logo ou le nom du site. Par défaut : la page d'accueil.",
+    "logoTarget": "Lien du logo"
   },
   "footer": {
     "column2": "Colonne 2",

@@ -701,7 +701,13 @@
     "search": "Search",
     "searchHint": "A search icon that finds courses, pages and mega-menu streams.",
     "languageSwitch": "Language switch",
-    "languageSwitchHint": "हिन्दी | EN — the other languages first, the site's main language last. Appears once the site has more than one language (Global Settings); on phones it sits in the menu."
+    "languageSwitchHint": "हिन्दी | EN — the other languages first, the site's main language last. Appears once the site has more than one language (Global Settings); on phones it sits in the menu.",
+    "logoClick": "Logo click",
+    "logoHome": "Home page",
+    "logoOther": "Another page or link",
+    "logoNone": "No link",
+    "logoClickHint": "Where visitors go when they click the logo or site name. Home page is the default.",
+    "logoTarget": "Logo link"
   },
   "footer": {
     "column2": "Column 2",

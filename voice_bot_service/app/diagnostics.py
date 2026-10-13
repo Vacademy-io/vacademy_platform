@@ -350,6 +350,7 @@ class CallDiagnostics:
     stt_stalls: int = 0
     stt_vendor_final: str = ""
     llm_failovers: int = 0
+    llm_returns: int = 0          # turns handed back to the primary after a failover
     llm_vendor_final: str = ""
     # Token usage summed over the call's LLM runs, from pipecat's usage
     # metrics. cached = prompt tokens the vendor served from its prompt cache
@@ -1067,6 +1068,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "sttStalls": d.stt_stalls,
                 "sttVendorFinal": d.stt_vendor_final or None,
                 "llmFailovers": d.llm_failovers,
+                "llmReturns": d.llm_returns,
                 "llmVendorFinal": d.llm_vendor_final or None,
                 "llmUsage": {
                     "runs": d.llm_runs,

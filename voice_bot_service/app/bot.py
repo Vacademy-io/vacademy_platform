@@ -3155,8 +3155,11 @@ class RunGuard(FrameProcessor):
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
-                 supersede=None, reply_unheard=None, runs_noted=None):
+                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None):
         super().__init__()
+        # A frame to push ahead of a run that goes through (the LLM switch back
+        # to the primary after a failover) — None for nothing.
+        self._before_run = before_run or (lambda: None)
         # ONE REPLY PER CALLER TURN (config.run_supersede). A parent who speaks
         # in pieces — "आप।" / "आप teachers से कहें मुझसे भी direct बात करें।" /
         # "बात करें।", finals 0.3-1 s apart — reaches us as several runs. A run
@@ -3373,6 +3376,7 @@ class RunGuard(FrameProcessor):
         of being let through as a second run over the same context with
         nothing to supersede (review 2026-10-08, finding 5)."""
         self._pushed_t = time.time()
+        msgs = None
         try:
             msgs = self._context.get_messages()
             self._pushed_words = self._all_caller_words(msgs)
@@ -3381,6 +3385,15 @@ class RunGuard(FrameProcessor):
         except Exception:
             self._pushed_words = 0
         self._note_run()
+        try:
+            # Only a run that answers the caller: the bot's own nudges and cues
+            # (no caller words since the last reply) never move the model.
+            pre = self._before_run() if self._caller_words(msgs or []) > 0 else None
+        except Exception:
+            logger.exception("run-guard: before_run failed")
+            pre = None
+        if pre is not None:
+            await self.push_frame(pre, direction)
         await self.push_frame(frame, direction)
 
     async def _supersede_unheard(self, msgs=None) -> bool:
@@ -4932,7 +4945,22 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
     # synthesizes worse than Devanagari — Sarvam docs), the live lead facts, and the
     # machine end/transfer MARKERS (the agent prompt has no idea these tokens exist).
-    if is_english:
+    if is_english and _agent_tts_model(agent) == "navana":
+        # Call a4ce0279 (2026-10-13, Riya): the caller asked for Hindi, the script
+        # said "switch", and this rule said "never Devanagari" — so the model wrote
+        # "main ab Hindi mein baat karungi" in Latin letters and the English voice
+        # read it as gibberish ("I don't understand you"). Navana reads Devanagari
+        # in Hindi on its own (lang_corrected, verified on her earlier calls), so
+        # Hindi the caller ASKED for goes out in Devanagari.
+        script_rule = (
+            "- SCRIPT: Write your replies in English (Latin letters). If you must echo an "
+            "Indian-language word the caller used, keep it romanized. ONE exception: if the "
+            "caller has asked you to speak Hindi and your instructions let you switch, write "
+            "every Hindi sentence in DEVANAGARI (हिंदी लिपि), keeping English business words in "
+            "English letters (demo, link, WhatsApp) — NEVER write Hindi in Latin letters like "
+            "'main aapko batati hoon'; the voice cannot pronounce romanized Hindi."
+        )
+    elif is_english:
         script_rule = (
             "- SCRIPT: Write every reply in English (Latin letters) only. If you must echo an "
             "Indian-language word the caller used, keep it romanized in Latin letters — never "
@@ -5719,6 +5747,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
     flags["llm_failed_over"] = False
     flags["llm_failed_over_t"] = 0.0
+    flags["llm_failovers_n"] = 0
     if (llm_fallback is not None and settings.llm_retire_primary
             and hasattr(llm_primary, "retire_on_error")):
         llm_primary.retire_on_error = True
@@ -6266,7 +6295,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                              and time.time() - flags["voice_tick_t"] < 0.4),
                          supersede=lambda: settings.run_supersede,
                          reply_unheard=_reply_unheard,
-                         runs_noted=lambda: no_repeat.runs_noted())
+                         runs_noted=lambda: no_repeat.runs_noted(),
+                         before_run=lambda: _llm_return_frame())
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -6347,6 +6377,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         observers=[TtfbObserver(corr, diag).observer],
     )
 
+    def _llm_return_frame():
+        """After a failover, hand the caller's next turn back to the primary.
+
+        Call a4ce0279 (2026-10-13): Vertex missed its 3 s first-token deadline
+        once, at 0:21, and the rest of the call ran on the fallback, which
+        repeated a pitch line verbatim. The stall is per request — Vertex
+        answers in ~0.6 s again a moment later — so it is the next turn's
+        model too. Not inside LLM_RETURN_AFTER_SECS of the failover (its own
+        re-run must stay on the fallback), and never after LLM_MAX_FAILOVERS
+        stalls: a primary that keeps stalling is left. The switch frame goes
+        AHEAD of the run (RunGuard pushes it first); the switcher then hands
+        the primary its metadata frame, which also un-retires it
+        (providers.with_retire)."""
+        if not (settings.llm_return_to_primary and llm_fallback is not None
+                and flags["llm_failed_over"]):
+            return None
+        if flags["llm_failovers_n"] >= settings.llm_max_failovers:
+            return None
+        if time.time() - flags["llm_failed_over_t"] < settings.llm_return_after_secs:
+            return None
+        flags["llm_failed_over"] = False
+        if hasattr(llm_primary, "retired"):
+            llm_primary.retired = False
+        diag.bump("llm_returns")
+        diag.llm_vendor_final = ""
+        logger.info("llm: back on %s for this turn (failover %.0f s ago) corr=%s",
+                    type(llm_primary).__name__, time.time() - flags["llm_failed_over_t"], corr)
+        return ManuallySwitchServiceFrame(service=llm_primary)
+
     @task.event_handler("on_pipeline_error")
     async def _on_pipeline_error(_task, frame):
         """The primary LLM failed (a timeout, a 403, a 5xx). pipecat's failover
@@ -6362,11 +6421,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 return
             flags["llm_failed_over"] = True
             flags["llm_failed_over_t"] = time.time()
+            flags["llm_failovers_n"] += 1
             diag.bump("llm_failovers")
             diag.llm_vendor_final = type(llm_fallback).__name__
-            logger.warning("llm failover: %s — switching %s → %s for the rest of the call corr=%s",
+            back = (settings.llm_return_to_primary
+                    and flags["llm_failovers_n"] < settings.llm_max_failovers)
+            logger.warning("llm failover: %s — switching %s → %s %s corr=%s",
                            str(getattr(frame, "error", ""))[:90], type(llm_primary).__name__,
-                           type(llm_fallback).__name__, corr)
+                           type(llm_fallback).__name__,
+                           "until the caller's next turn" if back else "for the rest of the call",
+                           corr)
             run_guard.allow_rerun()
             await task.queue_frames([ManuallySwitchServiceFrame(service=llm_fallback), LLMRunFrame()])
         except Exception:

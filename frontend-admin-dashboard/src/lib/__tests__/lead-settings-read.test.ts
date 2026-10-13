@@ -168,6 +168,20 @@ describe('lead lookup config', () => {
         expect(leadLookup.fields.name).toBe(false);
         expect(leadLookup.fields.counsellor).toBe(false);
         expect(leadLookup.courseFieldId).toBe('');
+        expect(leadLookup.branchFieldId).toBe('');
+    });
+
+    it('reads the branch and enquired-by switches and the branch field id', () => {
+        const { leadLookup } = mergeLeadSettings({
+            leadLookup: {
+                enabled: true,
+                fields: { branch: true, enquiredBy: true },
+                branchFieldId: 'field-branch',
+            },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(leadLookup.fields.branch).toBe(true);
+        expect(leadLookup.fields.enquiredBy).toBe(true);
+        expect(leadLookup.branchFieldId).toBe('field-branch');
     });
 
     it('only a real boolean true shares a field', () => {

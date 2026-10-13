@@ -88,6 +88,13 @@ public class AudienceResponse {
     @Column(name = "applicant_id")
     private String applicantId;
 
+    /**
+     * Staff member who entered this lead from the admin panel (single add or CSV
+     * import) — Check Lead's "Enquired By". Null for every self-submitted lead.
+     */
+    @Column(name = "created_by_user_id")
+    private String createdByUserId;
+
     @Column(name = "conversion_status", length = 50)
     private String conversionStatus;
 

@@ -20,7 +20,9 @@
  *
  * It shows whatever the institute chose to share and nothing else; the backend
  * omits the rest entirely, so there is no hidden payload to read. ADMIN-role
- * users get every field — they aren't scoped out of lead data elsewhere either.
+ * users get every field — they aren't scoped out of lead data elsewhere either —
+ * and so does the counsellor the lead is assigned to. Those two also get the
+ * follow-up history; another counsellor sees the lead details only.
  *
  * No match offers "Add New Lead" — the same dialog as All Leads, behind the same
  * Lead Actions switch, carrying the searched phone / email into the form.
@@ -41,14 +43,18 @@ import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { LeadEmptyState } from '@/components/shared/leads';
 import { useLeadActionVisibility } from '@/lib/display-settings/lead-actions';
 import { AddLeadDialog } from '../../recent-leads/-components/add-lead-dialog';
+import { cn } from '@/lib/utils';
+import { LeadLookupFollowUps } from './lead-lookup-follow-ups';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
 import {
     guessLookupMode,
     lookupLead,
     lookupParamsFor,
     isTermCompleteFor,
+    LEAD_LOOKUP_STAGE_LABEL,
     LOOKUP_MODE_COPY,
     type LeadLookupResult,
+    type LeadLookupStage,
     type LookupMode,
 } from '../-services/lead-lookup';
 
@@ -241,7 +247,7 @@ export function LeadLookupPage() {
             )}
 
             {result?.found && (
-                <Card className="max-w-xl border-primary-200">
+                <Card className="max-w-3xl border-primary-200">
                     <CardContent className="space-y-4 py-5">
                         <p className="flex items-center gap-2 font-medium text-primary-600">
                             <CheckCircle className="size-5 shrink-0" weight="fill" />
@@ -262,16 +268,24 @@ export function LeadLookupPage() {
                             <Row label="Name" value={result.lead_name} />
                             <Row label="Phone" value={result.lead_mobile} />
                             <Row label="Email" value={result.lead_email} />
-                            <Row label="Counsellor" value={result.counsellor_name} />
                             <Row label={terminology.campaignType} value={result.campaign_type} />
                             <Row label={terminology.leadSource} value={result.campaign_name} />
-                            <Row label={terminology.leadStatus} value={result.status} />
                             <Row label="Course" value={result.course} />
+                            <Row label="Branch" value={result.branch} />
+                            <Row label="Enquired by" value={result.enquired_by} />
+                            <Row label="Assigned to" value={result.counsellor_name} />
+                            <StatusRow
+                                label={terminology.leadStatus}
+                                status={result.status}
+                                stage={result.stage}
+                            />
                         </dl>
 
-                        <p className="text-caption text-neutral-400">
-                            Other details of this lead are not shown.
-                        </p>
+                        {result.follow_ups_visible !== undefined && (
+                            <div className="border-t border-neutral-100 pt-4">
+                                <LeadLookupFollowUps result={result} />
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}
@@ -292,6 +306,51 @@ export function LeadLookupPage() {
                 />
             )}
         </div>
+    );
+}
+
+const STAGE_CLASS: Record<LeadLookupStage, string> = {
+    ADMISSION_ONGOING: 'bg-success-50 text-success-700',
+    ADMISSION_COMPLETED: 'bg-success-50 text-success-700',
+    ADMISSION_TAKEN: 'bg-success-50 text-success-700',
+    DISCARDED: 'bg-danger-50 text-danger-600',
+    PENDING: 'bg-warning-50 text-warning-700',
+};
+
+/**
+ * The institute's own status label plus the Admission Taken / Pending /
+ * Discarded bucket. The label is dropped when it says the same thing as the
+ * bucket ("Discarded" next to "Discarded").
+ */
+function StatusRow({
+    label,
+    status,
+    stage,
+}: {
+    label: string;
+    status?: string;
+    stage?: LeadLookupStage;
+}) {
+    if (!status && !stage) return null;
+    const stageLabel = stage ? LEAD_LOOKUP_STAGE_LABEL[stage] : undefined;
+    const showStatus = status && status.toLowerCase() !== stageLabel?.toLowerCase();
+    return (
+        <>
+            <dt className="text-body text-neutral-500">{label}</dt>
+            <dd className="flex flex-wrap items-center gap-2 text-body font-medium text-neutral-800">
+                {stage && stageLabel && (
+                    <span
+                        className={cn(
+                            'rounded-full px-2 py-0.5 text-caption font-semibold',
+                            STAGE_CLASS[stage]
+                        )}
+                    >
+                        {stageLabel}
+                    </span>
+                )}
+                {showStatus && <span>{status}</span>}
+            </dd>
+        </>
     );
 }
 

@@ -18,6 +18,9 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
 
     List<LeadFollowup> findByAudienceResponseIdOrderByScheduleTimeAsc(String audienceResponseId);
 
+    /** Check Lead's follow-up history: every follow-up across one person's enquiries. */
+    List<LeadFollowup> findByAudienceResponseIdInOrderByScheduleTimeDesc(List<String> audienceResponseIds);
+
     List<LeadFollowup> findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(String createdBy);
 
     List<LeadFollowup> findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(String instituteId);

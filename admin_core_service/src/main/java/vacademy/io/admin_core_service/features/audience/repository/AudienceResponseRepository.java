@@ -2769,35 +2769,71 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * about to dial someone who opted out is exactly who needs telling.
          * Duplicates are still skipped, since they point at the same person.
          *
-         * Course comes from a custom field, not destination_package_session_id —
+         * Course and branch come from custom fields, not destination_package_session_id —
          * that column is unset on every lead for the institutes using this, because
-         * the course is collected as a form answer. Which field is per-institute
-         * config, matched on the field's id (stable across renames); a null id
-         * leaves the column null rather than guessing.
+         * both are collected as form answers. Which field is per-institute config,
+         * matched on the field's id (stable across renames); a null id leaves the
+         * column null rather than guessing.
+         *
+         * enrolmentState is only meaningful for an admitted lead: ONGOING when the
+         * person holds an ACTIVE enrolment that has not expired, COMPLETED when every
+         * real enrolment has lapsed, NONE when there is none at all. Invites, abandoned
+         * carts, pending approvals and deleted rows are not enrolments and are ignored,
+         * or a lead with only an invite would read as a finished course.
          *
          * Newest first: a repeat enquiry should answer with its current owner.
          */
         @Query(value = """
-                            SELECT ar.parent_name            AS "leadName",
+                            SELECT ar.id                     AS "responseId",
+                                   ar.user_id                AS "userId",
+                                   ar.parent_name            AS "leadName",
                                    ar.parent_email           AS "leadEmail",
                                    ar.parent_mobile          AS "leadMobile",
+                                   ulp.assigned_counselor_id AS "counsellorId",
                                    ulp.assigned_counselor_name AS "counsellorName",
+                                   ar.created_by_user_id     AS "createdByUserId",
                                    a.campaign_type           AS "campaignType",
                                    a.campaign_name           AS "campaignName",
                                    ls.label                  AS "statusLabel",
+                                   ls.status_key             AS "statusKey",
+                                   ulp.conversion_status     AS "conversionStatus",
+                                   COALESCE(lt.label, ulp.lead_tier) AS "interestLevel",
                                    course.value              AS "courseValue",
-                                   ar.overall_status         AS "overallStatus"
+                                   branch.value              AS "branchValue",
+                                   ar.overall_status         AS "overallStatus",
+                                   COALESCE(ar.submitted_at, ar.created_at) AS "createdAt",
+                                   CASE
+                                       WHEN enrol.active_count > 0 THEN 'ONGOING'
+                                       WHEN enrol.total_count > 0 THEN 'COMPLETED'
+                                       ELSE 'NONE'
+                                   END                       AS "enrolmentState"
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN user_lead_profile ulp
                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            LEFT JOIN lead_tier lt
+                                   ON lt.institute_id = a.institute_id AND lt.tier_key = ulp.lead_tier
                             LEFT JOIN LATERAL (
                                    SELECT cfv.value FROM custom_field_values cfv
                                    WHERE cfv.source_id = ar.id
                                      AND CAST(:courseFieldId AS text) IS NOT NULL
                                      AND cfv.custom_field_id = CAST(:courseFieldId AS text)
                                    LIMIT 1) course ON true
+                            LEFT JOIN LATERAL (
+                                   SELECT cfv.value FROM custom_field_values cfv
+                                   WHERE cfv.source_id = ar.id
+                                     AND CAST(:branchFieldId AS text) IS NOT NULL
+                                     AND cfv.custom_field_id = CAST(:branchFieldId AS text)
+                                   LIMIT 1) branch ON true
+                            LEFT JOIN LATERAL (
+                                   SELECT COUNT(*) AS total_count,
+                                          COUNT(*) FILTER (WHERE m.status = 'ACTIVE'
+                                                 AND (m.expiry_date IS NULL OR m.expiry_date > NOW())) AS active_count
+                                   FROM student_session_institute_group_mapping m
+                                   WHERE m.user_id = ar.user_id
+                                     AND m.institute_id = a.institute_id
+                                     AND m.status IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')) enrol ON true
                             WHERE a.institute_id = :instituteId
                               AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                               AND (
@@ -2819,7 +2855,38 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10,
                         @Param("email") String email,
                         @Param("name") String name,
-                        @Param("courseFieldId") String courseFieldId);
+                        @Param("courseFieldId") String courseFieldId,
+                        @Param("branchFieldId") String branchFieldId);
+
+        /**
+         * Every enquiry by the same person as {@link #lookupByPhoneOrEmail}, same
+         * match rules, newest first — Check Lead's follow-up history spans them all,
+         * so a repeat enquiry still shows the calls made on the earlier one.
+         */
+        @Query(value = """
+                            SELECT ar.id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                              AND (
+                                   (CAST(:last10 AS text) IS NOT NULL
+                                    AND ar.parent_mobile IS NOT NULL
+                                    AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = CAST(:last10 AS text))
+                                OR (CAST(:email AS text) IS NOT NULL
+                                    AND ar.parent_email IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(CAST(:email AS text))))
+                                OR (CAST(:name AS text) IS NOT NULL
+                                    AND ar.parent_name IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
+                              )
+                            ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
+                            LIMIT 50
+                        """, nativeQuery = true)
+        List<String> lookupMatchingResponseIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10,
+                        @Param("email") String email,
+                        @Param("name") String name);
 
         /**
          * Projection for {@link #lookupByPhoneOrEmail}.
@@ -2831,14 +2898,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * nothing about it".
          */
         interface LeadLookupRow {
+                String getResponseId();
+                String getUserId();
                 String getLeadName();
                 String getLeadEmail();
                 String getLeadMobile();
+                String getCounsellorId();
                 String getCounsellorName();
+                String getCreatedByUserId();
                 String getCampaignType();
                 String getCampaignName();
                 String getStatusLabel();
+                String getStatusKey();
+                String getConversionStatus();
+                String getInterestLevel();
                 String getCourseValue();
+                String getBranchValue();
                 String getOverallStatus();
+                java.sql.Timestamp getCreatedAt();
+                String getEnrolmentState();
         }
 }

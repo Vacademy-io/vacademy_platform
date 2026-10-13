@@ -297,7 +297,8 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
   const media = (n: PublicFolderNode, className?: string) => {
     if (view.imageShape === "none") return null;
     return (
-      <div className={cn("catalogue-img-zoom relative w-full bg-catalogue-bg-muted", ASPECT[view.imageShape], className)}>
+      // Not zoomed on hover: cover art with text at its edges would be cropped.
+      <div className={cn("relative w-full overflow-hidden bg-catalogue-bg-muted", ASPECT[view.imageShape], className)}>
         {n.image_url ? (
           <img src={n.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
         ) : (

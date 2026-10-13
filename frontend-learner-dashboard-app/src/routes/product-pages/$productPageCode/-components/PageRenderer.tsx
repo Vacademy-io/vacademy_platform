@@ -808,7 +808,7 @@ const CourseCard = ({
           style={{ backgroundColor: `${primaryColor}12` }}
         >
           {imageUrl ? (
-            <img src={imageUrl} alt={title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
           ) : (
             <BookOpen className="size-10 transition-transform duration-200 group-hover:scale-110" style={{ color: primaryColor, opacity: 0.75 }} />
           )}

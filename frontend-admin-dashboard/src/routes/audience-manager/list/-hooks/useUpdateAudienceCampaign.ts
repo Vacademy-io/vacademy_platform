@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { TFunction } from 'i18next';
 import {
     AudienceCampaignPayload,
+    getCampaignSaveErrorMessage,
     updateAudienceCampaign,
 } from '../-services/create-audience-campaign';
 
@@ -21,10 +22,8 @@ export function useUpdateAudienceCampaign(t: TFunction) {
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
             toast.success(t('success.updateCampaign'));
         },
-        onError: (error: any) => {
-            const message =
-                error?.response?.data?.message || error?.message || t('errors.updateCampaign');
-            toast.error(message);
+        onError: (error: unknown) => {
+            toast.error(getCampaignSaveErrorMessage(error, t('errors.updateCampaign')));
             console.error('useUpdateAudienceCampaign error', error);
         },
     });

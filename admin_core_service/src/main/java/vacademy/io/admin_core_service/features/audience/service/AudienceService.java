@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -314,9 +315,11 @@ public class AudienceService {
             audienceDTO.setStatus("ACTIVE");
         }
 
+        assertCampaignNameFree(audienceDTO.getInstituteId(), audienceDTO.getCampaignName(), null);
+
         // 1. Create and save audience entity
         Audience audienceToSave = new Audience(audienceDTO);
-        final Audience savedAudience = audienceRepository.save(audienceToSave);
+        final Audience savedAudience = saveCampaign(audienceToSave);
 
         logger.info("Saved audience with ID: {}", savedAudience.getId());
 
@@ -344,6 +347,9 @@ public class AudienceService {
 
         // Update fields
         if (StringUtils.hasText(audienceDTO.getCampaignName())) {
+            if (!audienceDTO.getCampaignName().equals(audience.getCampaignName())) {
+                assertCampaignNameFree(audience.getInstituteId(), audienceDTO.getCampaignName(), audienceId);
+            }
             audience.setCampaignName(audienceDTO.getCampaignName());
         }
         if (StringUtils.hasText(audienceDTO.getDescription())) {
@@ -382,7 +388,7 @@ public class AudienceService {
         audience.setSendRespondentEmail(audienceDTO.getSendRespondentEmail());
         audience.setCampaignObjective(audienceDTO.getCampaignObjective());
 
-        Audience updated = audienceRepository.save(audience);
+        Audience updated = saveCampaign(audience);
 
         // Update custom fields — admin's full picked list, including any toggled-off
         // entries which will be soft-deleted by the unified sync.
@@ -391,6 +397,45 @@ public class AudienceService {
 
         logger.info("Updated audience: {}", updated.getId());
         return updated.getId();
+    }
+
+    /**
+     * Campaign names are unique per institute (unique_institute_campaign), and a deleted
+     * campaign keeps its row and name. Without this check a clash reached the admin as the
+     * raw Postgres batch error. Exact match, like the constraint: "Testing" and "testing"
+     * may coexist.
+     */
+    private void assertCampaignNameFree(String instituteId, String campaignName, String excludeAudienceId) {
+        audienceRepository.findByInstituteIdAndCampaignNameIgnoreCase(instituteId, campaignName).stream()
+                .filter(existing -> campaignName.equals(existing.getCampaignName()))
+                .filter(existing -> !existing.getId().equals(excludeAudienceId))
+                .findFirst()
+                .ifPresent(existing -> {
+                    throw new ConflictException(duplicateCampaignNameMessage(campaignName,
+                            CampaignStatusEnum.DELETED.name().equals(existing.getStatus())));
+                });
+    }
+
+    /**
+     * Flushes so a name clash the check above could not see (a double-clicked submit, two
+     * admins at once) is caught here and answered like the check, not as a 511 at commit.
+     */
+    private Audience saveCampaign(Audience audience) {
+        try {
+            return audienceRepository.saveAndFlush(audience);
+        } catch (DataIntegrityViolationException e) {
+            if (String.valueOf(e.getMessage()).contains("unique_institute_campaign")) {
+                throw new ConflictException(duplicateCampaignNameMessage(audience.getCampaignName(), false));
+            }
+            throw e;
+        }
+    }
+
+    private static String duplicateCampaignNameMessage(String campaignName, boolean deleted) {
+        return deleted
+                ? "A deleted campaign is still using the name \"" + campaignName
+                        + "\". Please choose a different name."
+                : "A campaign named \"" + campaignName + "\" already exists. Please choose a different name.";
     }
 
     /**

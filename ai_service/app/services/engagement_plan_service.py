@@ -18,8 +18,8 @@ Flashcards are native FLASHCARDS tasks: the model writes plain-text cards, and
 (FlashcardsPayloadValidator is authoritative; the limits here mirror it). There
 is no rendered HTML game any more — the learner app draws the deck itself.
 
-Models: text on z-ai/glm-5.3-flash (the same model the HTML-document generator
-uses for creative HTML); pictures on qwen/qwen-image-3 via illustrate_document.
+Models: text on the 'engagement_plan' use case (super-admin portal; GLM by
+default); pictures on qwen/qwen-image-3 via illustrate_document.
 """
 from __future__ import annotations
 
@@ -36,11 +36,15 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import httpx
 from .llm_router import open_chat_stream, post_chat
 
+from ..constants.model_defaults import GLM_DEFAULT
 from .document_postprocess import adopt_foreign_images
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "z-ai/glm-5.3-flash"
+# Hard fallback only: the model comes from the 'engagement_plan' use case
+# (ai_model_defaults, super-admin portal); ENGAGEMENT_PLAN_MODEL still wins.
+DEFAULT_MODEL = GLM_DEFAULT
+USE_CASE = "engagement_plan"
 MAX_TOKENS = 24000
 MAX_DAYS = 31
 MAX_ITEMS_PER_DAY = 3
@@ -954,4 +958,16 @@ def normalise_single_item(raw: Dict[str, Any], brief: Dict[str, Any]) -> Optiona
 
 
 def model_name() -> str:
-    return os.getenv("ENGAGEMENT_PLAN_MODEL") or DEFAULT_MODEL
+    """ENGAGEMENT_PLAN_MODEL (env override) > the 'engagement_plan' use-case
+    default (cached 30 s) > GLM."""
+    explicit = (os.getenv("ENGAGEMENT_PLAN_MODEL") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        from .model_selection import resolve_model_sync
+
+        primary, _fallbacks = resolve_model_sync(USE_CASE, hard_fallback=DEFAULT_MODEL)
+        return primary or DEFAULT_MODEL
+    except Exception as exc:  # noqa: BLE001 — a model lookup never blocks a draft
+        logger.warning("[engagement-plan] model lookup failed (%s); using %s", exc, DEFAULT_MODEL)
+        return DEFAULT_MODEL

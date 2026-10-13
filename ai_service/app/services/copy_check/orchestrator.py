@@ -34,7 +34,7 @@ from .failure import (
     error_code_for,
     redact_urls,
 )
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, evaluation_model, token_budget_for
 from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
@@ -199,6 +199,7 @@ async def _grade_typed(
     """Grade every typed answer; post each verdict through `on_verdict`.
     Returns (awarded, max, evaluated, graded) - `graded` counts the answers a
     model actually read, which is what the institute is charged for."""
+    retry_model = getattr(grader, "default_model", None) or DEFAULT_MODEL
     total_awarded = 0.0
     total_max = 0.0
     evaluated = 0
@@ -218,11 +219,11 @@ async def _grade_typed(
                 raise
             except Exception as e:
                 logger.warning(
-                    f"Typed grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                    f"Typed grading failed for question {q.get('question_id')}: {e}; retrying once with {retry_model}",
                 )
                 try:
-                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
+                    rubric = await rubric_resolver.resolve(q, retry_model)
+                    raw = await grader.grade_typed_question(q, rubric, retry_model)
                     verdict = attach_criteria_max(validate_and_cap(raw, q, _EMPTY_LAYOUT), rubric)
                 except cancellation.Cancelled:
                     raise
@@ -415,6 +416,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
     billing = billing_context(req)
 
     llm = ChatLLMClient(ApiKeyResolver(db))
+    # The platform's evaluation model ('evaluation' use case, super-admin
+    # portal): used whenever the teacher picked none, for retries/escalations,
+    # and for reading the page. Resolved once per copy.
+    eval_model = evaluation_model(db)
+    # The cut-mark re-check has its own use case so it can be switched alone.
+    deduction_model = deduction_check.deduction_model(db)
     # The cut-check sends crops of the student's copy to Gemini through
     # OpenRouter: only zero-data-retention endpoints may serve it. Its own
     # client, so a model a teacher picks for grading is never restricted.
@@ -423,7 +430,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         check_llm.provider_prefs = {"zdr": True, "data_collection": "deny"}
     grader = CopyCheckGrader(
         llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)),
-        exam_context=req.get("exam_context"),
+        exam_context=req.get("exam_context"), default_model=eval_model,
     )
     mathpix = MathpixFallback()
 
@@ -431,7 +438,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         # token_sink=grader makes criteria-generation usage count against the
         # same per-copy budget as grading calls (#12).
         return await call_llm_for_criteria(
-            llm, system, user, model, institute_id, token_sink=grader,
+            llm, system, user, model or eval_model, institute_id, token_sink=grader,
         )
 
     # Pre-load all rubric state into memory. The DB session is closed after the
@@ -572,7 +579,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                 return RUN_NO_CHARGE
             record_tool_billing(
                 request_type=RequestType.EVALUATION,
-                model=(preferred_model or DEFAULT_MODEL),
+                model=(preferred_model or eval_model),
                 prompt_tokens=grader.prompt_tokens,
                 completion_tokens=grader.completion_tokens,
                 institute_id=institute_id,
@@ -607,6 +614,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         try:
             layout_map = await vision_transcript.enrich_layout_with_vision(
                 pdf_url, layout_map, llm,
+                model=eval_model,
                 institute_id=institute_id,
                 token_sink=grader,
                 cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
@@ -653,6 +661,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             try:
                 maths_rows_read = await math_reread.reread_math_rows(
                     pdf_url, layout_map, llm,
+                    model=eval_model,
                     institute_id=institute_id,
                     token_sink=grader,
                     cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
@@ -675,7 +684,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             located = {}
         else:
             located = await locate.locate_answers(
-                llm, questions, layout_map, DEFAULT_MODEL,
+                llm, questions, layout_map, eval_model,
                 institute_id=institute_id, token_sink=grader,
             )
         # The per-question budget was sized before the page count was known;
@@ -686,6 +695,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                                     + TOKENS_PER_QUESTION_CHECK * len(questions))
         checker = (deduction_check.DeductionChecker(
             pdf_url, layout_map, check_llm, institute_id=institute_id, token_sink=grader,
+            model=deduction_model,
         ) if DEDUCTION_CHECK else None)
         all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
         question_order = locate.paper_order(questions)
@@ -748,11 +758,11 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                 # with a clean state often clears. Without this, a single
                 # failure mid-batch silently steals marks from the student.
                 logger.warning(
-                    f"Grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                    f"Grading failed for question {q.get('question_id')}: {e}; retrying once with {eval_model}",
                 )
                 try:
-                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
+                    rubric = await rubric_resolver.resolve(q, eval_model)
+                    raw = await grader.grade_question(q, rubric, layout_map, eval_model, page_ids)
                     verdict = attach_criteria_max(validate_and_cap(raw, q, layout_map), rubric)
                     option_letter.honour_option_letter(verdict, q)
                 except cancellation.Cancelled:
@@ -868,7 +878,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             return RUN_NO_CHARGE
         record_tool_billing(
             request_type=RequestType.EVALUATION,
-            model=(preferred_model or DEFAULT_MODEL),
+            model=(preferred_model or eval_model),
             prompt_tokens=grader.prompt_tokens,
             completion_tokens=grader.completion_tokens,
             institute_id=institute_id,

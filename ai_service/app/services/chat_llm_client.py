@@ -11,6 +11,7 @@ from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
+from ..constants.model_defaults import GLM_DEFAULT
 from .llm_router import mark_router_failed, openrouter_chat, route_chat, should_fail_over
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,29 @@ def mark_model_broken(model: str) -> None:
     _BROKEN_UNTIL[model] = time.monotonic() + _BROKEN_TTL_SECONDS
 
 
+# Errors that say the MODEL is unusable (unknown id, no endpoint serves it,
+# no access) — as opposed to one request failing (timeout, 429, 5xx, a 400
+# about this payload). Only these park a model for _BROKEN_TTL_SECONDS: with
+# GLM as the platform default, parking it on a one-off failure would move every
+# default-model caller on the pod to the fallback for five minutes.
+_MODEL_LEVEL_ERROR_MARKERS = (
+    "not a valid model",
+    "model not found",
+    "model_not_found",
+    "no endpoints found",
+    "no allowed providers",
+    "is not available",
+    "does not exist",
+)
+
+
+def is_model_level_error(error_text: str) -> bool:
+    text = (error_text or "").lower()
+    if " 404 " in f" {text} " or "openrouter 404" in text or "status: 404" in text:
+        return True
+    return any(marker in text for marker in _MODEL_LEVEL_ERROR_MARKERS)
+
+
 def is_model_broken(model: str) -> bool:
     import time
     until = _BROKEN_UNTIL.get(model)
@@ -214,19 +238,48 @@ class ChatLLMClient:
     @staticmethod
     def _fallback_model_for(model: str, explicit_model: Optional[str]) -> Optional[str]:
         """
-        The env default model, when it differs from the one that just failed and
-        the caller did not pin the model on purpose (an explicit override —
+        The env failover model (LLM_FALLBACK_MODEL — a different vendor than
+        the GLM default, so GLM never fails over to itself), or the env default
+        when the failing model IS the fallback model. None when the caller
+        pinned the model on purpose without a chain (an explicit override —
         escalation to a stronger model — should fail loudly, not silently
-        downgrade).
+        downgrade); pass fallback_models to fail over an explicit model.
         """
         if explicit_model:
             return None
         try:
             from ..config import get_settings
-            default = get_settings().llm_default_model
+            settings = get_settings()
+            candidates = (
+                getattr(settings, "llm_fallback_model", None),
+                getattr(settings, "llm_default_model", None),
+            )
         except Exception:
             return None
-        return default if default and default != model else None
+        for candidate in candidates:
+            if candidate and candidate != model:
+                return candidate
+        return None
+
+    @classmethod
+    def _fallback_chain(
+        cls,
+        model: str,
+        explicit_model: Optional[str],
+        fallback_models: Optional[List[str]],
+    ) -> List[str]:
+        """Models to try, in order, after `model` fails. An explicit
+        fallback_models list (a use-case chain from model_selection) wins and
+        applies even to an explicitly passed model; otherwise the env failover
+        (see _fallback_model_for)."""
+        if fallback_models is not None:
+            chain: List[str] = []
+            for candidate in fallback_models:
+                if candidate and candidate != model and candidate not in chain:
+                    chain.append(candidate)
+            return chain
+        fallback = cls._fallback_model_for(model, explicit_model)
+        return [fallback] if fallback else []
 
     @staticmethod
     def _note_model_failure(model: str, reason: str, fallback: Optional[str]) -> None:
@@ -278,6 +331,7 @@ class ChatLLMClient:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         model: Optional[str] = None,
+        fallback_models: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Call LLM with tool support, trying providers in priority order.
@@ -292,6 +346,10 @@ class ChatLLMClient:
             model: Optional explicit model override — when supplied, takes
                 priority over the resolver's choice (used by copy-check to
                 escalate flagged questions to a stronger model).
+            fallback_models: Optional ordered failover chain (e.g. the rest of
+                model_selection.resolve_models' chain). When given it is used
+                even for an explicit model; when None, only an implicit model
+                fails over (to LLM_FALLBACK_MODEL).
 
         Returns:
             Response dict with content, tool_calls, finish_reason, etc.
@@ -310,14 +368,14 @@ class ChatLLMClient:
 
         # Try OpenRouter first (primary provider)
         if openrouter_key:
+            chain = self._fallback_chain(model, explicit_model, fallback_models)
             # A model that failed every variant recently is skipped for a while:
             # the fallback answers directly instead of each turn paying for the
             # rejected attempts first.
-            broken_fallback = self._fallback_model_for(model, explicit_model) if is_model_broken(model) else None
-            if broken_fallback:
-                logger.warning(f"Model {model} marked broken; answering with {broken_fallback}")
+            if chain and is_model_broken(model):
+                logger.warning(f"Model {model} marked broken; answering with {chain[0]}")
                 result = await self._call_openrouter(
-                    messages, tools, temperature, max_tokens, openrouter_key, broken_fallback
+                    messages, tools, temperature, max_tokens, openrouter_key, chain[0]
                 )
                 result["fallback_from"] = model
                 return result
@@ -330,12 +388,13 @@ class ChatLLMClient:
                 logger.warning(f"OpenRouter failed: {e}")
                 failures.append(f"OpenRouter: {e}")
                 # A model chosen in the portal / institute settings that OpenRouter
-                # rejects must not take the chatbot down: answer with the env
-                # default and record why, so the portal can show it.
-                fallback = self._fallback_model_for(model, explicit_model)
-                if fallback:
-                    mark_model_broken(model)
-                    self._note_model_failure(model, str(e), fallback)
+                # rejects must not take the chatbot down: answer with the next
+                # model in the chain and record why, so the portal can show it.
+                if chain:
+                    if is_model_level_error(str(e)):
+                        mark_model_broken(model)
+                    self._note_model_failure(model, str(e), chain[0])
+                for fallback in chain:
                     try:
                         logger.error(
                             f"Model {model} failed; falling back to {fallback} for this call"
@@ -385,7 +444,7 @@ class ChatLLMClient:
         temperature: float,
         max_tokens: int,
         api_key: str,
-        model: str = "xiaomi/mimo-v2-flash:free",
+        model: str = GLM_DEFAULT,
         force_openrouter: bool = False,
     ) -> Dict[str, Any]:
         """Call the model through its gateway (OpenRouter unless the route map
@@ -492,20 +551,30 @@ class ChatLLMClient:
         max_tokens: int = 1500,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        model: Optional[str] = None,
+        fallback_models: Optional[List[str]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream LLM response token-by-token.
         Yields dicts: {"type": "token", "content": "..."} or {"type": "tool_calls", "tool_calls": [...]} or {"type": "done", "usage": {...}}
+        — exactly one "done" per stream, carrying the usage if the gateway sent any.
         Falls back to non-streaming if streaming fails.
+
+        model / fallback_models: same meaning as in chat_completion — an
+        explicit model beats the resolver's pick (a BYO institute/user default
+        model is only the resolver's pick, so callers that must honour it
+        resolve it first), and the chain is used for failover.
         """
-        openrouter_key, _gemini_key, model = self._resolve(institute_id, user_id)
+        openrouter_key, _gemini_key, resolved_model = self._resolve(institute_id, user_id)
+        explicit_model = model
+        model = model or resolved_model
 
         if openrouter_key:
             stream_model = model
-            broken_fallback = self._fallback_model_for(model, None) if is_model_broken(model) else None
-            if broken_fallback:
-                logger.warning(f"Model {model} marked broken; streaming with {broken_fallback}")
-                stream_model = broken_fallback
+            chain = self._fallback_chain(model, explicit_model, fallback_models)
+            if chain and is_model_broken(model):
+                logger.warning(f"Model {model} marked broken; streaming with {chain[0]}")
+                stream_model = chain[0]
             try:
                 async for chunk in self._stream_openrouter(messages, tools, temperature, max_tokens, openrouter_key, stream_model):
                     yield chunk
@@ -515,9 +584,12 @@ class ChatLLMClient:
                 if stream_model == model:
                     self._note_model_failure(model, f"streaming: {e}", None)
 
-        # Fallback to non-streaming (which falls back to the env default model
-        # if the configured one is what OpenRouter rejects)
-        response = await self.chat_completion(messages, tools, temperature, max_tokens, institute_id, user_id)
+        # Fallback to non-streaming (which walks the failover chain if the
+        # configured model is what the gateway rejects)
+        response = await self.chat_completion(
+            messages, tools, temperature, max_tokens, institute_id, user_id,
+            model=explicit_model, fallback_models=fallback_models,
+        )
         if response.get("content"):
             yield {"type": "token", "content": response["content"]}
         if response.get("tool_calls"):
@@ -531,7 +603,7 @@ class ChatLLMClient:
         temperature: float,
         max_tokens: int,
         api_key: str,
-        model: str = "xiaomi/mimo-v2-flash:free",
+        model: str = GLM_DEFAULT,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream from OpenRouter using SSE."""
         # Check for multimodal content and convert if needed
@@ -599,6 +671,22 @@ class ChatLLMClient:
         unreachable or refuses, so the caller can retry on OpenRouter."""
         accumulated_tool_calls = {}  # index -> {id, function: {name, arguments}}
         routed = route is not None and not route.is_default
+        # Usage arrives in its own chunk just before [DONE] (or on the last
+        # choice chunk). Keep it and emit ONE "done" carrying it: consumers keep
+        # the last "done", and a second usage-less one used to drop the usage.
+        usage_seen: Optional[Dict[str, Any]] = None
+        usage_model: str = model
+
+        def _done() -> Dict[str, Any]:
+            return {"type": "done", "usage": usage_seen, "model": usage_model, "provider": "openrouter"}
+
+        def _tool_calls_event() -> Optional[Dict[str, Any]]:
+            if not accumulated_tool_calls:
+                return None
+            return {
+                "type": "tool_calls",
+                "tool_calls": [accumulated_tool_calls[i] for i in sorted(accumulated_tool_calls.keys())],
+            }
 
         stream_cm = self.http_client.stream("POST", url, json=payload, headers=headers)
         try:
@@ -627,13 +715,10 @@ class ChatLLMClient:
                 data_str = line[6:]
                 if data_str.strip() == "[DONE]":
                     # Yield accumulated tool calls if any
-                    if accumulated_tool_calls:
-                        tool_calls_list = []
-                        for idx in sorted(accumulated_tool_calls.keys()):
-                            tc = accumulated_tool_calls[idx]
-                            tool_calls_list.append(tc)
-                        yield {"type": "tool_calls", "tool_calls": tool_calls_list}
-                    yield {"type": "done", "usage": None, "model": model, "provider": "openrouter"}
+                    tool_event = _tool_calls_event()
+                    if tool_event:
+                        yield tool_event
+                    yield _done()
                     return
 
                 try:
@@ -641,10 +726,13 @@ class ChatLLMClient:
                 except json.JSONDecodeError:
                     continue
 
+                if chunk.get("usage"):
+                    usage_seen = chunk["usage"]
+                    # A routed gateway echoes its own wire id; billing needs the
+                    # registry id.
+                    usage_model = model if routed else (chunk.get("model") or model)
+
                 if not chunk.get("choices"):
-                    # Could be usage data at the end
-                    if chunk.get("usage"):
-                        yield {"type": "done", "usage": chunk["usage"], "model": model if routed else chunk.get("model", model), "provider": "openrouter"}
                     continue
 
                 delta = chunk["choices"][0].get("delta", {})
@@ -670,6 +758,12 @@ class ChatLLMClient:
                             accumulated_tool_calls[idx]["function"]["name"] = func["name"]
                         if func.get("arguments"):
                             accumulated_tool_calls[idx]["function"]["arguments"] += func["arguments"]
+            # Stream closed without [DONE]: still hand over the tool calls and
+            # the usage that did arrive (one "done", as above).
+            tool_event = _tool_calls_event()
+            if tool_event:
+                yield tool_event
+            yield _done()
         finally:
             await stream_cm.__aexit__(None, None, None)
 

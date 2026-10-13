@@ -82,15 +82,16 @@ class ContentGenerationService:
             logger.error(f"[ContentGenService] FAILED to initialize VideoGenerationService: {e}")
             raise
         
-        # Use the same model as outline generation
-        self._content_model = "google/gemini-2.5-flash"
+        # Default content model + its failover chain: the 'content' use case
+        # (ai_model_defaults, super-admin portal; GLM by default).
+        self._content_model, self._content_fallbacks = self._resolve_use_case("content", db_session)
         # DOCUMENT slides are now creative, self-contained HTML (rendered in an
         # iframe) and benefit from a strong front-end model — same as the manual
-        # "AI document" authoring (keep this in step with _DEFAULT_MODEL in
-        # routers/html_document.py). gemini-2.5-flash produced visibly
-        # lower-craft pages. Overridable per-slide via todo.metadata.model. Env
-        # override: HTML_DOC_MODEL.
-        self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "z-ai/glm-5.3-flash"
+        # "AI document" authoring: the 'html_document' use case. Overridable
+        # per-slide via todo.metadata.model. Env override: HTML_DOC_MODEL.
+        _html_env = (os.getenv("HTML_DOC_MODEL") or "").strip()
+        _html_model, self._html_doc_fallbacks = self._resolve_use_case("html_document", db_session)
+        self._html_doc_model = _html_env or _html_model
         # The model the user picked when creating the course. Set per run and
         # used by EVERY content leg; the hardcoded models above are only the
         # fallback when the user left it on "auto". Kept separate from
@@ -98,21 +99,52 @@ class ContentGenerationService:
         self._course_model: Optional[str] = None
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
 
+    @staticmethod
+    def _resolve_use_case(use_case: str, db_session=None):
+        """(primary, [fallbacks]) for a use case; never raises."""
+        try:
+            from .model_selection import resolve_model_sync, resolve_models
+            if db_session is not None:
+                return resolve_models(db_session, use_case)
+            return resolve_model_sync(use_case)
+        except Exception as exc:  # noqa: BLE001
+            from ..constants.model_defaults import GLM_DEFAULT, NON_GLM_FALLBACK
+            logger.warning(f"[ContentGenService] {use_case} model lookup failed ({exc}); using {GLM_DEFAULT}")
+            return GLM_DEFAULT, [NON_GLM_FALLBACK]
+
+    @staticmethod
+    def _wizard_model(todo) -> Optional[str]:
+        """The wizard's explicit per-family pick (todo.metadata.model). The
+        LLM-authored todo.model is deliberately ignored: the outline prompt used
+        to make the model write gemini-2.5-pro / a retired preview slug there."""
+        if todo is None:
+            return None
+        return (getattr(todo, "metadata", None) or {}).get("model") or None
+
     def _model_for(self, todo=None, default: Optional[str] = None) -> str:
         """Which model generates this slide.
 
-        Precedence: a per-todo override (injected from the wizard's per-family
-        settings) → the model the user chose for the course → the hardcoded
-        default for this kind of content. So a user's pick is honoured
-        everywhere, and the hardcode is only ever the fallback.
+        Precedence: the wizard's per-family pick (todo.metadata.model) → the
+        model the user chose for the course → the use-case default for this
+        kind of content. So a user's pick is honoured everywhere.
         """
-        if todo is not None:
-            picked = (getattr(todo, "metadata", None) or {}).get("model") or getattr(
-                todo, "model", None
-            )
-            if picked:
-                return picked
+        picked = self._wizard_model(todo)
+        if picked:
+            return picked
         return self._course_model or default or self._content_model
+
+    def _retry_models_for(self, model: str):
+        """Failover targets after `model` failed: the chain of the use case it
+        came from (html_document for documents, content otherwise)."""
+        if model == self._html_doc_model:
+            chain = [*self._html_doc_fallbacks, self._content_model, *self._content_fallbacks]
+        else:
+            chain = [self._content_model, *self._content_fallbacks]
+        out = []
+        for candidate in chain:
+            if candidate and candidate != model and candidate not in out:
+                out.append(candidate)
+        return out
 
     @staticmethod
     def _video_voice_kwargs(todo: Todo) -> dict:
@@ -150,9 +182,9 @@ class ContentGenerationService:
         )
 
     async def _generate_with_model_fallback(self, prompt: str, model: str):
-        """Run one LLM generation, falling back to the service default model when
-        an outline-authored model fails (the outline LLM writes todo.model and can
-        name an unavailable model; an explicit model gets no client-side fallback).
+        """Run one LLM generation, falling back through the use case's chain
+        (row default, row fallback, non-GLM tail) when the chosen model fails —
+        an explicit model gets no client-side fallback in the LLM client.
 
         Returns (generated_content, usage_info, used_model).
         """
@@ -192,22 +224,31 @@ class ContentGenerationService:
             # Out-of-credits is fatal by design — no fallback model will help.
             raise
         except Exception as e:
-            if model == self._content_model:
-                # Already the fallback model, and it has had its same-model
-                # retry above — nothing left to try.
+            retry_models = self._retry_models_for(model)
+            if not retry_models:
+                # Nothing left to try (the chain is just this model, which has
+                # had its same-model retry above).
                 raise
-            logger.warning(
-                f"Model '{model}' failed ({e}); retrying with default '{self._content_model}'"
-            )
-            content, usage = await _call(self._content_model)
-            if _is_empty(content):
-                # Both the chosen model and the fallback came back empty — fail
-                # loudly so the slide is reported as an ERROR rather than saved
-                # blank.
-                raise ValueError(
-                    f"both '{model}' and fallback '{self._content_model}' returned empty content"
+            last_error: Exception = e
+            for fallback in retry_models:
+                logger.warning(
+                    f"Model '{model}' failed ({last_error}); retrying with fallback '{fallback}'"
                 )
-            return content, usage, self._content_model
+                try:
+                    content, usage = await _call(fallback)
+                except PaymentRequiredError:
+                    raise
+                except Exception as e2:  # noqa: BLE001
+                    last_error = e2
+                    continue
+                if not _is_empty(content):
+                    return content, usage, fallback
+                last_error = ValueError(f"fallback '{fallback}' returned empty content")
+            # Every model in the chain failed or came back empty — fail loudly
+            # so the slide is reported as an ERROR rather than saved blank.
+            raise ValueError(
+                f"'{model}' and fallbacks {retry_models} all failed or returned empty content: {last_error}"
+            )
 
     async def generate_document_content(
         self, todo: Todo, prompt: str, homework_content: Optional[str] = None
@@ -567,7 +608,7 @@ class ContentGenerationService:
                 captions_enabled=True,  # Default for course outline
                 html_quality=todo.metadata.get("html_quality", "advanced"),
                 resume=False,
-                model=todo.metadata.get("model") or todo.model,  # Use model from metadata or todo
+                model=self._wizard_model(todo),  # wizard pick only; None = video pipeline default
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                 **self._video_voice_kwargs(todo),
@@ -691,7 +732,7 @@ class ContentGenerationService:
                         captions_enabled=True,
                         html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,  # Resume from current stage (SCRIPT)
-                        model=todo.metadata.get("model") or todo.model,
+                        model=self._wizard_model(todo),
                         target_audience=todo.metadata.get("target_audience", "General/Adult"),
                         target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                         **self._video_voice_kwargs(todo),
@@ -800,7 +841,7 @@ class ContentGenerationService:
                 captions_enabled=False,  # SLIDES are visual-only
                 html_quality=todo.metadata.get("html_quality", "advanced"),
                 resume=False,
-                model=todo.metadata.get("model") or todo.model,
+                model=self._wizard_model(todo),
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                 **self._video_voice_kwargs(todo),
@@ -917,7 +958,7 @@ class ContentGenerationService:
                 captions_enabled=True,
                 html_quality=todo.metadata.get("html_quality", "advanced"),
                 resume=False,
-                model=todo.metadata.get("model") or todo.model,
+                model=self._wizard_model(todo),
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                 **self._video_voice_kwargs(todo),
@@ -991,7 +1032,7 @@ class ContentGenerationService:
                         captions_enabled=True,
                         html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,
-                        model=todo.metadata.get("model") or todo.model,
+                        model=self._wizard_model(todo),
                         target_audience=todo.metadata.get("target_audience", "General/Adult"),
                         target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
                         **self._video_voice_kwargs(todo),

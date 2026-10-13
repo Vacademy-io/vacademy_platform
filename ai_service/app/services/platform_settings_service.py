@@ -172,7 +172,7 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
                 "default if the chosen model is rejected by the provider."
             ),
             type="model",
-            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-flash",
+            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "z-ai/glm-5.3-flash",
         ),
         SettingSpec(
             key="tutor.live.model",

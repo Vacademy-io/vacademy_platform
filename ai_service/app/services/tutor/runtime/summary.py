@@ -51,7 +51,12 @@ async def rewrite_rolling_summary(
     ]
     try:
         with db_session() as db:
-            keys = ApiKeyResolver(db).resolve_keys(institute_id, user_id, request_model=model)
+            keys = ApiKeyResolver(db).resolve_keys(
+                institute_id, user_id, request_model=model,
+                # A blank live model inherits the chatbot model setting (then the
+                # platform_default use case), not the env default.
+                platform_default_key="chatbot.text.model",
+            )
         client = ChatLLMClient(_FixedKeys(keys), platform_model_key="chatbot.text.model")
         resp = await client.chat_completion(messages, temperature=0.3, max_tokens=SUMMARY_MAX_TOKENS,
                                             institute_id=institute_id, user_id=user_id, model=model)

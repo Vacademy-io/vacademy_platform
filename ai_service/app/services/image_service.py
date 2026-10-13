@@ -112,13 +112,15 @@ class ImageGenerationService:
             s3_bucket: S3 bucket name for storing generated images
             gemini_api_key: Google Generative AI API key for image generation
             openrouter_api_key: OpenRouter API key for keyword generation
-            llm_model: LLM model name for keyword generation
+            llm_model: Optional explicit model for keyword generation — tried
+                first; otherwise (and for failover) the 'image_keyword' use
+                case chain (super-admin portal; GLM by default).
         """
         self._s3_client = s3_client
         self._s3_bucket = s3_bucket
         self._gemini_api_key = gemini_api_key
         self._openrouter_api_key = openrouter_api_key
-        self._llm_model = llm_model or "google/gemini-2.5-pro"
+        self._llm_model = (llm_model or "").strip() or None
         # Shared HTTP client for connection pooling (reuses DNS/TLS across image calls)
         self._http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0),
@@ -538,33 +540,45 @@ Examples:
 Return ONLY the keyword, nothing else:
 """
 
-            # Use the shared HTTP client for connection pooling
-            response = await self._http_client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._openrouter_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self._llm_model,  # Use same model as course outline
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3,  # Match course outline temperature
-                    "max_tokens": 10
-                },
-                timeout=30.0
-            )
+            # Through the model router + the 'image_keyword' chain: GLM runs on
+            # its gateway with reasoning effort low and a max_tokens allowance
+            # (a bare max_tokens=10 left a reasoning model with no room to
+            # answer), and a failed model falls over to the next one.
+            from .llm_router import chat_with_chain
+            from .use_case_chat import models_for
 
-            if response.status_code == 200:
-                data = response.json()
-                keyword = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if keyword:
-                    return keyword
+            result = await chat_with_chain(
+                {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 20,
+                },
+                _KEYWORD_USE_CASE,
+                models=models_for(_KEYWORD_USE_CASE, explicit=self._llm_model),
+                api_key=self._openrouter_api_key,
+                timeout=30.0,
+            )
+            keyword = _clean_keyword(result.content)
+            if keyword:
+                return keyword
 
         except Exception as e:
             logger.warning(f"Keyword generation failed: {str(e)}")
 
         # Fallback to course name
         return course_name
+
+
+_KEYWORD_USE_CASE = "image_keyword"
+
+
+def _clean_keyword(text: str) -> str:
+    """First line of the reply, without quotes/fences — a 1-3 word query."""
+    for line in (text or "").splitlines():
+        line = line.strip().strip("`\"'*").strip()
+        if line:
+            return line[:80]
+    return ""
 
 
 __all__ = ["ImageGenerationService"]

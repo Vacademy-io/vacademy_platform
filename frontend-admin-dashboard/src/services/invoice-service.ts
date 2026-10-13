@@ -63,8 +63,10 @@ export interface InvoiceDTO {
     source_id?: string | null;
     /** Gateway payment link — present on ADMIN_MANUAL and USER_PLAN invoices when a payment option is configured. */
     payment_link?: string | null;
-    /** Set when the discount on this invoice was granted by an admin (user id of that admin). */
+    /** Admin who gave the discount on this invoice (admin invoice, or the discounted enrollment it bills). */
     discount_granted_by_user_id?: string | null;
+    /** That admin's internal reason for the discount. Admin views only. */
+    discount_reason?: string | null;
 }
 
 export interface UserAccountLedgerEntryDTO {

@@ -236,6 +236,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowEditCredentials: false,
     // Permanent delete of payments & invoices — OFF by default for every role.
     allowDeletePayments: false,
+    // Admin discounts on enroll, bulk assign and invoices — opt-in for non-admin roles.
+    canApplyDiscounts: false,
 };
 
 function getLearnerManagementOptions(
@@ -275,6 +277,11 @@ function getLearnerManagementOptions(
             key: 'allowDeletePayments',
             label: t('learnerManagementOptions.allowDeletePayments'),
             defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
+        },
+        {
+            key: 'canApplyDiscounts',
+            label: t('learnerManagementOptions.canApplyDiscounts'),
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.canApplyDiscounts ?? false,
         },
     ];
 }

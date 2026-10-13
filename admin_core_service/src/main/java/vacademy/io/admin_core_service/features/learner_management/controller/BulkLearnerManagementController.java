@@ -1,6 +1,6 @@
 package vacademy.io.admin_core_service.features.learner_management.controller;
 
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountPermissionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +35,7 @@ public class BulkLearnerManagementController {
 
     private final BulkAssignmentService bulkAssignmentService;
     private final BulkDeassignmentService bulkDeassignmentService;
-    private final InstituteAccessValidator instituteAccessValidator;
+    private final AdminDiscountPermissionService adminDiscountPermissionService;
 
     /**
      * Bulk assign users to multiple package sessions.
@@ -68,11 +68,11 @@ public class BulkLearnerManagementController {
                 request.getOptions() != null && request.getOptions().isDryRun(),
                 userDetails != null ? userDetails.getUserId() : "unknown");
 
-        // Giving a discount is an admin decision, not just any institute member's.
+        // Only roles allowed to by Display Settings (learnerManagement.canApplyDiscounts).
         boolean discountRequested = request.getAssignments() != null && request.getAssignments().stream()
                 .anyMatch(a -> AdminDiscountService.isRequested(a.getAdminDiscount()));
         if (discountRequested) {
-            instituteAccessValidator.requireAdminAccess(userDetails, request.getInstituteId());
+            adminDiscountPermissionService.requireCanApplyDiscounts(userDetails, request.getInstituteId());
         }
 
         String adminUserId = userDetails != null ? userDetails.getUserId() : null;

@@ -327,6 +327,9 @@ export interface LearnerManagementSettings {
     // opts in here. Absent (every settings blob saved before this flag) means OFF, and the server
     // enforces the same rule, so hiding the button is not the only guard.
     allowDeletePayments?: boolean;
+    // May this role apply admin discounts (manual enroll, bulk assign, admin invoice).
+    // Admin defaults to ON.
+    canApplyDiscounts?: boolean;
 }
 
 // What a custom header button links to.

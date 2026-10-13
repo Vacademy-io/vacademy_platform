@@ -52,8 +52,8 @@ import {
     AdminDiscountField,
     EMPTY_ADMIN_DISCOUNT,
 } from '@/components/common/payments/AdminDiscountField';
+import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
 import {
-    canGrantAdminDiscounts,
     getAdminDiscountValidationError,
     toAdminDiscountPayload,
     type AdminDiscountPreview,
@@ -429,8 +429,10 @@ export function CreateInvoiceDialog({
 }: CreateInvoiceDialogProps) {
     const { t } = useTranslation('manageStudentsCreateInvoiceDialog');
     const isEditing = !!editInvoice;
-    // Discounts are for new invoices only (the update endpoint doesn't take one), by admins.
-    const showDiscount = !isEditing && canGrantAdminDiscounts(instituteId);
+    // Discounts are for new invoices only (the update endpoint doesn't take one), by roles
+    // with "Apply discounts" on in Display Settings.
+    const canApplyDiscounts = useCanApplyDiscounts(instituteId);
+    const showDiscount = !isEditing && canApplyDiscounts;
     const [successResult, setSuccessResult] = useState<AdminInvoicePaymentLinkResponse | null>(null);
     const [step, setStep] = useState<'items' | 'review'>('items');
 

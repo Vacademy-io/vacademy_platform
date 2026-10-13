@@ -95,7 +95,7 @@ import RoleTypeComponent from './-components/RoleTypeComponent';
 import { LearnerTab } from './-components/LearnerTab';
 import { SettingsTabs } from '../settings/-constants/terms';
 import { useEntitlement } from '@/lib/capabilities/use-entitlement';
-import { hasEntitledSetupStep } from './-config/dashboard-entitlements';
+import { hasEntitledSetupStep, welcomeTextKey } from './-config/dashboard-entitlements';
 
 // Define the lazy Route
 export const Route = createLazyFileRoute('/dashboard/')({
@@ -633,7 +633,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
             {getValue() && (
                 <>
                     <p className="mt-0.5 text-2xs text-neutral-600 sm:text-xs">
-                        {t('welcomeVideo.text')}
+                        {t(welcomeTextKey(entitlement))}
                     </p>
                     {/* {!showForInstitutes([HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID]) && (
                         <iframe

@@ -36,7 +36,8 @@
         "roleFallback": "Admin"
     },
     "welcomeVideo": {
-        "text": "Bienvenue à bord ! Nous sommes ravis de vous compter parmi nous. Configurons votre tableau de bord administrateur pour rendre l'apprentissage fluide et engageant."
+        "text": "Bienvenue à bord ! Nous sommes ravis de vous compter parmi nous. Configurons votre tableau de bord administrateur pour rendre l'apprentissage fluide et engageant.",
+        "textGeneral": "Bienvenue à bord ! Nous sommes ravis de vous compter parmi nous. Configurons votre tableau de bord administrateur pour que votre établissement fonctionne en toute fluidité."
     },
     "profileCard": {
         "title": "Complétez le profil de votre établissement",
@@ -113,7 +114,8 @@
             },
             "help": {
                 "label": "Aide pour une tâche",
-                "prompt": "Comment créer un cours ?"
+                "prompt": "Comment créer un cours ?",
+                "promptGeneral": "Comment ajouter un membre à l'équipe ?"
             }
         },
         "instituteName": "Chatbot de l’établissement {{instituteName}}",

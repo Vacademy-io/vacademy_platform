@@ -71,7 +71,11 @@ import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useEntitlement, useNavSnapshotStore } from '@/lib/capabilities/use-entitlement';
-import { filterSidebarByEntitlement } from '@/lib/capabilities/nav-access';
+import {
+    categoriesWithItems,
+    filterSidebarByEntitlement,
+    pickActiveCategory,
+} from '@/lib/capabilities/nav-access';
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
 // create-assessment wizard. Hidden together with the Create Assessment button.
 const ASSESSMENT_CREATE_SUB_ITEM_IDS = new Set([
@@ -209,99 +213,6 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             typeof window !== 'undefined' && window.location.hostname.startsWith('volt.')
         );
     }, []);
-
-    // Sync active category with current route
-    useEffect(() => {
-        // If on /settings, always show as SETTINGS category
-        if (currentRoute.startsWith('/settings')) {
-            setActiveCategory('SETTINGS');
-            return;
-        }
-
-        const checkCategoryVisibility = (cat: SidebarCategory) => {
-            if (!roleDisplay?.sidebarCategories) return true;
-            const cfg = roleDisplay.sidebarCategories.find((c) => c.id === cat);
-            return cfg ? cfg.visible !== false : true;
-        };
-
-        // Collect every category whose tab/sub-tab/custom-tab matches the current
-        // route. Custom tabs (saved in roleDisplay.sidebar) are collected first so
-        // they win over a static entry for the same route — e.g. an ERP custom tab
-        // pointing at /manage-students/students-list, which CRM > Manage Contacts
-        // also links to, must not flip the rail to CRM.
-        const findMatchingCategories = (): Array<SidebarCategory> => {
-            if (isVoltSubdomain) return ['LMS'];
-            const hits: Array<SidebarCategory> = [];
-            const push = (cat?: SidebarCategory) => {
-                const c = cat || 'CRM';
-                if (!hits.includes(c)) hits.push(c);
-            };
-
-            // Custom tabs from the saved role config — these have their own category.
-            const customTabs = roleDisplay?.sidebar?.filter((t) => t.isCustom) || [];
-            for (const t of customTabs) {
-                if (t.route && currentRoute.startsWith(t.route)) {
-                    push(t.category as SidebarCategory | undefined);
-                }
-                for (const s of t.subTabs || []) {
-                    if (s.route && currentRoute.startsWith(s.route)) {
-                        push(t.category as SidebarCategory | undefined);
-                    }
-                }
-            }
-
-            for (const item of getSidebarItemsData()) {
-                if (item.id === 'settings') continue;
-                if (item.to && currentRoute.startsWith(item.to)) push(item.category);
-                if (item.subItems) {
-                    for (const sub of item.subItems) {
-                        const link = sub.subItemLink || '';
-                        if (link && currentRoute.startsWith(link)) push(item.category);
-                    }
-                }
-            }
-
-            return hits;
-        };
-
-        const matches = findMatchingCategories();
-        // When the user navigates and the category they are in also owns the new
-        // route, stay there — they clicked it from that panel. Skipped on the first
-        // sync (initial state is just a 'CRM' placeholder) and on same-route re-runs.
-        const isNavigation =
-            lastSyncedRouteRef.current !== null && lastSyncedRouteRef.current !== currentRoute;
-        lastSyncedRouteRef.current = currentRoute;
-        const stayInActive =
-            isNavigation &&
-            matches.includes(activeCategory as SidebarCategory) &&
-            checkCategoryVisibility(activeCategory as SidebarCategory);
-        // Prefer a visible match; if none of the matches are visible, prefer the
-        // default visible category from sidebarCategories; otherwise fall through.
-        const visibleMatch = stayInActive
-            ? (activeCategory as SidebarCategory)
-            : matches.find((c) => checkCategoryVisibility(c));
-        let targetCategory: SidebarCategory | null = visibleMatch ?? null;
-
-        if (!targetCategory && roleDisplay?.sidebarCategories) {
-            // Find a visible category to land on. Try `default && visible`, then
-            // any visible by order. Skipping plain `default` here — a category
-            // that's marked default but hidden isn't a usable landing target.
-            const cats = roleDisplay.sidebarCategories
-                .slice()
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            const defVisible = cats.find((c) => c.default && c.visible !== false);
-            const anyVisible = cats.find((c) => c.visible !== false);
-            targetCategory = (defVisible?.id || anyVisible?.id || null) as
-                | 'CRM'
-                | 'LMS'
-                | 'AI'
-                | null;
-        }
-
-        if (targetCategory && activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') {
-            setActiveCategory(targetCategory);
-        }
-    }, [currentRoute, isVoltSubdomain, roleDisplay]);
 
     // Load display settings
     useEffect(() => {
@@ -519,6 +430,87 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     })();
     // Then the institute's plan. In LEGACY this returns roleSidebarItems itself.
     const finalSidebarItems = filterSidebarByEntitlement(roleSidebarItems, entitlement);
+    // MANAGED: the rail categories with anything left to show (the rail draws only
+    // these). A string so the category sync below re-runs only when it changes.
+    const availableCategoriesKey = entitlement.managed
+        ? Array.from(categoriesWithItems(finalSidebarItems, data?.id)).sort().join(',')
+        : null;
+
+    // Sync active category with current route
+    useEffect(() => {
+        // If on /settings, always show as SETTINGS category
+        if (currentRoute.startsWith('/settings')) {
+            setActiveCategory('SETTINGS');
+            return;
+        }
+
+        // Collect every category whose tab/sub-tab/custom-tab matches the current
+        // route. Custom tabs (saved in roleDisplay.sidebar) are collected first so
+        // they win over a static entry for the same route — e.g. an ERP custom tab
+        // pointing at /manage-students/students-list, which CRM > Manage Contacts
+        // also links to, must not flip the rail to CRM.
+        const findMatchingCategories = (): Array<SidebarCategory> => {
+            if (isVoltSubdomain) return ['LMS'];
+            const hits: Array<SidebarCategory> = [];
+            const push = (cat?: SidebarCategory) => {
+                const c = cat || 'CRM';
+                if (!hits.includes(c)) hits.push(c);
+            };
+
+            // Custom tabs from the saved role config — these have their own category.
+            const customTabs = roleDisplay?.sidebar?.filter((t) => t.isCustom) || [];
+            for (const t of customTabs) {
+                if (t.route && currentRoute.startsWith(t.route)) {
+                    push(t.category as SidebarCategory | undefined);
+                }
+                for (const s of t.subTabs || []) {
+                    if (s.route && currentRoute.startsWith(s.route)) {
+                        push(t.category as SidebarCategory | undefined);
+                    }
+                }
+            }
+
+            for (const item of getSidebarItemsData()) {
+                if (item.id === 'settings') continue;
+                if (item.to && currentRoute.startsWith(item.to)) push(item.category);
+                if (item.subItems) {
+                    for (const sub of item.subItems) {
+                        const link = sub.subItemLink || '';
+                        if (link && currentRoute.startsWith(link)) push(item.category);
+                    }
+                }
+            }
+
+            return hits;
+        };
+
+        const matches = findMatchingCategories();
+        // When the user navigates and the category they are in also owns the new
+        // route, stay there — they clicked it from that panel. Skipped on the first
+        // sync (initial state is just a 'CRM' placeholder) and on same-route re-runs.
+        const isNavigation =
+            lastSyncedRouteRef.current !== null && lastSyncedRouteRef.current !== currentRoute;
+        lastSyncedRouteRef.current = currentRoute;
+        // Prefer a visible match, then the role's default visible category. MANAGED:
+        // only categories with something to show — a page outside the plan matches
+        // the static LMS/AI/ERP entries (or nothing) and would open an empty panel.
+        const targetCategory = pickActiveCategory({
+            matches,
+            activeCategory,
+            isNavigation,
+            sidebarCategories: roleDisplay?.sidebarCategories,
+            available:
+                availableCategoriesKey === null
+                    ? null
+                    : new Set(
+                          availableCategoriesKey.split(',').filter(Boolean) as SidebarCategory[]
+                      ),
+        });
+
+        if (targetCategory && activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') {
+            setActiveCategory(targetCategory);
+        }
+    }, [currentRoute, isVoltSubdomain, roleDisplay, availableCategoriesKey]);
 
     // Publish what the user can see for the route guard (locked deep links) —
     // only when it actually changed, since this list is rebuilt every render.

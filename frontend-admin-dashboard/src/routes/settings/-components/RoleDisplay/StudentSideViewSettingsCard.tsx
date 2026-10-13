@@ -32,6 +32,11 @@ interface StudentSideViewSettingsCardProps {
     settings: StudentSideViewSettings;
     defaults: StudentSideViewSettings;
     onChange: (next: StudentSideViewSettings) => void;
+    /**
+     * Rows the institute's plan includes (MANAGED; plan-rows.ts). Rows outside it
+     * are not rendered and keep their stored visibility and position.
+     */
+    isShown?: (key: StudentSideViewVisibilityKey) => boolean;
 }
 
 // Render a tab's order index. Tabs without an explicit order land at the
@@ -66,18 +71,28 @@ export const StudentSideViewSettingsCard = ({
     settings,
     defaults,
     onChange,
+    isShown,
 }: StudentSideViewSettingsCardProps) => {
     const { t } = useTranslation('settingsStudentSideViewSettingsCard');
-    const sortedOptions = useMemo(
+    // Every row, in saved order — orders are rebuilt from this full list.
+    const allSortedOptions = useMemo(
         () => sortOptionsByOrder(options, settings.tabOrders),
         [options, settings.tabOrders]
     );
+    const sortedOptions = useMemo(
+        () => (isShown ? allSortedOptions.filter((o) => isShown(o.key)) : allSortedOptions),
+        [allSortedOptions, isShown]
+    );
 
+    // Swaps two SHOWN rows in place inside the full list, so rows outside the
+    // plan keep their slots (and order numbers).
     const move = (index: number, direction: -1 | 1) => {
         const target = index + direction;
         if (target < 0 || target >= sortedOptions.length) return;
-        const next = [...sortedOptions];
-        [next[index], next[target]] = [next[target]!, next[index]!];
+        const from = allSortedOptions.indexOf(sortedOptions[index]!);
+        const to = allSortedOptions.indexOf(sortedOptions[target]!);
+        const next = [...allSortedOptions];
+        [next[from], next[to]] = [next[to]!, next[from]!];
         onChange({
             ...settings,
             tabOrders: buildOrdersFromSorted(next),

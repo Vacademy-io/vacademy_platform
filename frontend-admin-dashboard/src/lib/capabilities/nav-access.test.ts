@@ -26,6 +26,7 @@ import {
     filterRecentEntries,
     filterSearchableItems,
     filterSidebarByEntitlement,
+    pickActiveCategory,
 } from './nav-access';
 import { canAllExcept, canForModules, CRM_ONLY_MODULES, loadRealCatalog } from './test-support';
 
@@ -407,5 +408,92 @@ describe('decideRouteAccess', () => {
                 navEntries: null,
             })
         ).toEqual({ kind: 'not-in-plan', features: ['lms.courses'] });
+    });
+});
+
+describe('pickActiveCategory (rail category for the current route)', () => {
+    const cats = [
+        { id: 'LMS', visible: true, default: true, order: 0 },
+        { id: 'CRM', visible: true, default: false, order: 1 },
+        { id: 'AI', visible: true, default: false, order: 2 },
+        { id: 'ERP', visible: false, default: false, order: 3 },
+    ];
+    // What the CRM-only sidebar actually draws.
+    const crmOnlyItems = filterSidebarByEntitlement(staticItems, crmOnly);
+    const available = categoriesWithItems(crmOnlyItems, undefined);
+
+    it('LEGACY behaves as before', () => {
+        const base = { activeCategory: 'CRM', isNavigation: true, available: null };
+        // a visible match wins
+        expect(pickActiveCategory({ ...base, matches: ['LMS'], sidebarCategories: cats })).toBe(
+            'LMS'
+        );
+        // navigating within the current category stays there
+        expect(
+            pickActiveCategory({ ...base, matches: ['LMS', 'CRM'], sidebarCategories: cats })
+        ).toBe('CRM');
+        // hidden match → the role's default visible category
+        expect(pickActiveCategory({ ...base, matches: ['ERP'], sidebarCategories: cats })).toBe(
+            'LMS'
+        );
+        // no match → default; no role settings yet → keep the current one
+        expect(pickActiveCategory({ ...base, matches: [], sidebarCategories: cats })).toBe('LMS');
+        expect(pickActiveCategory({ ...base, matches: [], sidebarCategories: null })).toBeNull();
+    });
+
+    it('MANAGED: a page outside the plan opens a category with items, never an empty panel', () => {
+        expect(available.has('CRM')).toBe(true);
+        expect(available.has('LMS')).toBe(false);
+        // /study-library/courses matches the static LMS entry; LMS is the role default too.
+        expect(
+            pickActiveCategory({
+                matches: ['LMS'],
+                activeCategory: 'CRM',
+                isNavigation: false,
+                sidebarCategories: cats,
+                available,
+            })
+        ).toBe('CRM');
+        // Nothing matches and the role settings are not loaded yet.
+        expect(
+            pickActiveCategory({
+                matches: [],
+                activeCategory: 'LMS',
+                isNavigation: false,
+                sidebarCategories: null,
+                available,
+            })
+        ).toBe('CRM');
+        // Staying in the current category needs it to have items as well.
+        expect(
+            pickActiveCategory({
+                matches: ['LMS', 'CRM'],
+                activeCategory: 'LMS',
+                isNavigation: true,
+                sidebarCategories: cats,
+                available,
+            })
+        ).toBe('CRM');
+    });
+
+    it('MANAGED: an entitled match still wins', () => {
+        expect(
+            pickActiveCategory({
+                matches: ['CRM'],
+                activeCategory: 'AI',
+                isNavigation: false,
+                sidebarCategories: cats,
+                available: new Set(['CRM', 'AI']),
+            })
+        ).toBe('CRM');
+        expect(
+            pickActiveCategory({
+                matches: [],
+                activeCategory: 'CRM',
+                isNavigation: false,
+                sidebarCategories: [],
+                available: new Set(),
+            })
+        ).toBeNull();
     });
 });

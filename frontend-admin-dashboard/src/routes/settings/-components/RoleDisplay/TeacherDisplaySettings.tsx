@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePlanRowFilter } from './plan-rows';
+import { usePlanRowFilter, visibleSectionGroups } from './plan-rows';
 import type { RoleDisplayPanelProps } from './panel-props';
 import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
@@ -566,7 +566,7 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
     return (
         <>
             <SettingsSectionsLayout
-                groups={TEACHER_DISPLAY_SECTIONS}
+                groups={visibleSectionGroups(TEACHER_DISPLAY_SECTIONS, planRows)}
                 toolbar={
                     <MyButton
                         buttonType="secondary"
@@ -578,6 +578,9 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                 }
             >
             <section id="grp-courses" className="space-y-6">
+            {/* LMS course cards: hidden with lms.courses off (plan-rows.ts). */}
+            {planRows.card('courseCards') && (
+            <>
             <Card>
                 <CardHeader>
                     <CardTitle>{t('cards.coursePage.title')}</CardTitle>
@@ -1411,19 +1414,33 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                     })()}
                 </CardContent>
             </Card>
-            <AssessmentActionsCard
-                settings={settings.assessmentPage}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
-            />
-            <LiveClassActionsCard
-                settings={settings.liveClassActions}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
-                defaultAllowDeletePastSessions={false}
-            />
-            <LeadActionsCard
-                settings={settings.leadActions}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, leadActions: next }))}
-            />
+            </>
+            )}
+            {planRows.card('assessmentActions') && (
+                <AssessmentActionsCard
+                    settings={settings.assessmentPage}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, assessmentPage: next }))
+                    }
+                />
+            )}
+            {planRows.card('liveClassActions') && (
+                <LiveClassActionsCard
+                    settings={settings.liveClassActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, liveClassActions: next }))
+                    }
+                    defaultAllowDeletePastSessions={false}
+                />
+            )}
+            {planRows.card('leadActions') && (
+                <LeadActionsCard
+                    settings={settings.leadActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({ ...prev, leadActions: next }))
+                    }
+                />
+            )}
             </section>
 
             <section id="grp-layout" className="space-y-6">
@@ -2108,6 +2125,9 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
             </section>
 
             <section id="grp-learners" className="space-y-6">
+            {/* Slide content types: LMS only (plan-rows.ts). */}
+            {planRows.card('courseContentTypes') && (
+            <>
             <Card>
                 <CardHeader>
                     <CardTitle>{t('cards.courseContentTypes.title')}</CardTitle>
@@ -2315,9 +2335,12 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                     </div>
                 </CardContent>
             </Card>
+            </>
+            )}
 
             <StudentSideViewSettingsCard
                 options={STUDENT_SIDE_VIEW_OPTIONS}
+                isShown={planRows.sideViewTab}
                 settings={{
                     ...STUDENT_SIDE_VIEW_DEFAULTS,
                     ...settings.studentSideView,
@@ -2331,15 +2354,17 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                 }
             />
 
-            <LearnerListColumnsCard
-                settings={settings.learnerListColumns}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        learnerListColumns: next,
-                    }))
-                }
-            />
+            {planRows.card('learnerListColumns') && (
+                <LearnerListColumnsCard
+                    settings={settings.learnerListColumns}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            learnerListColumns: next,
+                        }))
+                    }
+                />
+            )}
 
             {/* Which custom fields are filter/sort controls on the list pages.
                 Saved with the rest of this blob via the shared unsaved-changes bar.
@@ -2396,15 +2421,17 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                 </CardContent>
             </Card>
 
-            <StudentManagementActionsCard
-                settings={settings.studentManagementActions}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        studentManagementActions: next,
-                    }))
-                }
-            />
+            {planRows.card('studentManagementActions') && (
+                <StudentManagementActionsCard
+                    settings={settings.studentManagementActions}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            studentManagementActions: next,
+                        }))
+                    }
+                />
+            )}
             </section>
 
             <section id="grp-access" className="space-y-6">

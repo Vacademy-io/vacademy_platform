@@ -33,6 +33,8 @@ import {
     type SettingsTabEntry,
 } from '@/routes/settings/-utils/utils';
 import { filterSearchableItems } from '@/lib/capabilities/nav-access';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { filterSettingsTabs } from '@/routes/settings/-utils/settings-entitlements';
 
 interface SidebarSearchProps {
     open: boolean;
@@ -93,14 +95,16 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
     // Every settings screen, grouped by its top-level domain — indexed
     // directly from the same registry the /settings page itself renders from,
     // so search can never drift out of sync with what's actually there.
+    // MANAGED: only the plan's screens (settings-entitlements.ts).
+    const entitlement = useEntitlement();
     const settingsByDomain = React.useMemo(() => {
         const map = new Map<string, SettingsTabEntry[]>();
-        getAvailableSettingsTabs().forEach((entry) => {
+        filterSettingsTabs(getAvailableSettingsTabs(), entitlement).forEach((entry) => {
             if (!map.has(entry.domain)) map.set(entry.domain, []);
             map.get(entry.domain)!.push(entry);
         });
         return map;
-    }, []);
+    }, [entitlement]);
 
     const handleSelect = useCallback(
         (to: string | undefined, title: string, category?: string, itemId?: string) => {

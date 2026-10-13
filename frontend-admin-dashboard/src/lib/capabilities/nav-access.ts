@@ -75,6 +75,73 @@ export function categoriesWithItems(
     return set;
 }
 
+/** The rail's built-in category order (category-rail.tsx), used as the last fallback. */
+export const RAIL_CATEGORY_ORDER: readonly SidebarCategory[] = ['CRM', 'LMS', 'AI', 'ERP'];
+
+export interface PickActiveCategoryArgs {
+    /** Categories whose sidebar entries cover the current route, in priority order. */
+    matches: SidebarCategory[];
+    /** The rail's current category. */
+    activeCategory: string;
+    /** True when the route changed since the last sync (not a re-run on the same page). */
+    isNavigation: boolean;
+    /** roleDisplay.sidebarCategories (null while the role's settings load). */
+    sidebarCategories?: Array<CategoryState & { default?: boolean; order?: number }> | null;
+    /**
+     * MANAGED: the categories that have something to show (categoriesWithItems of
+     * the final sidebar — the rail draws only these). null = no restriction (LEGACY).
+     */
+    available: Set<SidebarCategory> | null;
+}
+
+/**
+ * Which rail category the sidebar opens for the current route; null = keep the
+ * current one.
+ *  1. The current category, when the user navigated within it.
+ *  2. The first matching category the role can see.
+ *  3. The role's default category, then its first visible one by order.
+ *  4. MANAGED only: the first category, in rail order, with anything to show.
+ * In MANAGED mode every step skips categories with nothing to show, so a page
+ * outside the plan (its route still matches the static LMS/AI/ERP entries, or
+ * nothing at all) lands on a category the rail draws instead of an empty panel.
+ * LEGACY (`available` null) behaves exactly as before: the rail draws every
+ * visible category, and with the role's settings still loading it keeps the
+ * current one.
+ */
+export function pickActiveCategory({
+    matches,
+    activeCategory,
+    isNavigation,
+    sidebarCategories,
+    available,
+}: PickActiveCategoryArgs): SidebarCategory | null {
+    const isVisible = (cat: string) => {
+        const cfg = sidebarCategories?.find((c) => c.id === cat);
+        return cfg ? cfg.visible !== false : true;
+    };
+    const usable = (cat: string): cat is SidebarCategory =>
+        isVisible(cat) && (!available || available.has(cat as SidebarCategory));
+
+    if (
+        isNavigation &&
+        matches.includes(activeCategory as SidebarCategory) &&
+        usable(activeCategory)
+    ) {
+        return activeCategory as SidebarCategory;
+    }
+    const match = matches.find(usable);
+    if (match) return match;
+
+    if (sidebarCategories) {
+        const cats = sidebarCategories.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const fallback =
+            cats.find((c) => c.default && usable(c.id)) ?? cats.find((c) => usable(c.id));
+        if (fallback) return fallback.id as SidebarCategory;
+    }
+    if (available) return RAIL_CATEGORY_ORDER.find(usable) ?? null;
+    return null;
+}
+
 // ─── Visible / locked entries ────────────────────────────────────────────────
 
 export interface CategoryState {

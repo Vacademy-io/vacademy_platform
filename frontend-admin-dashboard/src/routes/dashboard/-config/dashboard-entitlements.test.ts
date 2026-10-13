@@ -12,6 +12,7 @@ import {
     hasEntitledSetupStep,
     isKpiEntitled,
     KPI_FEATURES,
+    welcomeTextKey,
 } from './dashboard-entitlements';
 
 const catalog = loadRealCatalog();
@@ -83,5 +84,13 @@ describe('dashboard entitlements', () => {
         expect(isKpiEntitled('overdueFees', e)).toBe(false);
         expect(isKpiEntitled('activeLearners', e)).toBe(true);
         expect(hasEntitledSetupStep(e)).toBe(true);
+    });
+
+    it('welcome line: neutral copy only for a MANAGED plan without LMS', () => {
+        expect(welcomeTextKey(FULL_ENTITLEMENT)).toBe('welcomeVideo.text');
+        expect(welcomeTextKey(crmOnly)).toBe('welcomeVideo.textGeneral');
+        expect(
+            welcomeTextKey(createEntitlement({ catalog, can: () => true, staticItems: [] }))
+        ).toBe('welcomeVideo.text');
     });
 });

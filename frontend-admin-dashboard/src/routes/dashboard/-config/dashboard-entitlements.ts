@@ -32,3 +32,13 @@ export const GOVERNED_SETUP_STEP_IDS = ['level', 'course', 'batch', 'learner'] a
  */
 export const hasEntitledSetupStep = (entitlement: Entitlement): boolean =>
     GOVERNED_SETUP_STEP_IDS.some((id) => entitlement.isSetupStepEntitled(id));
+
+/**
+ * The welcome line under the header. Its default copy is about learning; a
+ * MANAGED institute whose plan has no LMS gets neutral copy. LEGACY (and any
+ * plan with courses) keeps the original text.
+ */
+export const welcomeTextKey = (entitlement: Entitlement): string =>
+    entitlement.managed && !entitlement.isFeatureOn('lms.courses')
+        ? 'welcomeVideo.textGeneral'
+        : 'welcomeVideo.text';

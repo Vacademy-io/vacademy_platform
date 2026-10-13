@@ -63,6 +63,8 @@ import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
 import { parseSidebarLink } from './helper';
 import { filterRecentEntries } from '@/lib/capabilities/nav-access';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { filterSettingsTabs } from '@/routes/settings/-utils/settings-entitlements';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
@@ -167,8 +169,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     const logoSpansFullWidth =
         logoWidthPx != null && logoWidthPx >= PANEL_WIDTH_PX && logoHeightPx == null;
 
-    // Settings tabs for the SETTINGS category
-    const settingsTabs = activeCategory === 'SETTINGS' ? getAvailableSettingsTabs() : [];
+    // Settings tabs for the SETTINGS category (MANAGED: only the plan's screens)
+    const entitlement = useEntitlement();
+    const settingsTabs =
+        activeCategory === 'SETTINGS'
+            ? filterSettingsTabs(getAvailableSettingsTabs(), entitlement)
+            : [];
     // Reactively read the selectedTab search param from the URL
     const routerState = useRouterState({ select: (s) => s.location.search });
     const activeSettingsTab =

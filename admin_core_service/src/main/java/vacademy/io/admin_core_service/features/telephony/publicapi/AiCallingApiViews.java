@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.telephony.publicapi;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -39,6 +41,8 @@ public class AiCallingApiViews {
     static final Duration OUTCOME_WAIT = Duration.ofMinutes(10);
     /** Pre-signed recording links live this long (MediaService presigns for one day). */
     static final Duration RECORDING_LINK_TTL = Duration.ofHours(24);
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AiCallApiCallRepository callRepository;
     private final AiCallQueueItemRepository queueRepository;
@@ -161,8 +165,37 @@ public class AiCallingApiViews {
         o.put("callback_time_text", r.getCallbackTimeText());
         o.put("follow_up", r.getFollowUp());
         o.put("follow_up_note", r.getFollowUpGist());
+        o.put("meeting", meeting(r.getRawPayload()));
         o.put("transcript", transcript(r.getTranscript()));
         return o;
+    }
+
+    /**
+     * The meeting the contact agreed to on the call, from the bot's report (kept verbatim
+     * in raw_payload): requested only when they agreed to a specific day or time.
+     */
+    static Map<String, Object> meeting(String rawPayload) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("requested", false);
+        m.put("at", null);
+        m.put("time_text", null);
+        m.put("type", null);
+        if (rawPayload == null || rawPayload.isBlank()) return m;
+        try {
+            JsonNode root = JSON.readTree(rawPayload);
+            if (root == null || !root.isObject()) return m;
+            m.put("requested", root.path("meetingRequested").asBoolean(false));
+            m.put("at", text(root.path("meetingDatetimeIso")));
+            m.put("time_text", text(root.path("meetingDatetimeText")));
+            m.put("type", text(root.path("meetingType")));
+        } catch (Exception e) {
+            log.debug("ai-calling-api: unreadable report payload: {}", e.getMessage());
+        }
+        return m;
+    }
+
+    private static String text(JsonNode n) {
+        return n == null || n.isNull() || n.isMissingNode() || n.asText().isBlank() ? null : n.asText();
     }
 
     /** "user: …" / "assistant: …" lines → [{speaker: contact|agent, text}]. */

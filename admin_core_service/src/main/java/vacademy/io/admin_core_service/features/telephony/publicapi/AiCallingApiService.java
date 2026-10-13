@@ -50,6 +50,7 @@ import java.util.regex.Pattern;
 public class AiCallingApiService {
 
     public static final int MAX_BATCH = 1000;
+    static final String OUT_OF_CREDITS = "This account is out of AI calling credits. Top up to place calls.";
     static final int MAX_VARIABLES = 50;
     static final int MAX_VARIABLE_VALUE = 500;
     static final int MAX_METADATA_BYTES = 8192;
@@ -96,7 +97,7 @@ public class AiCallingApiService {
         }
         if (!test && !aiCallService.canAffordCall(p.instituteId())) {
             throw new AiCallingApiException(HttpStatus.PAYMENT_REQUIRED, "insufficient_credits",
-                    "This account is out of AI calling credits. Top up to place calls.");
+                    OUT_OF_CREDITS);
         }
         AiCallApiCall call = newCall(p, v, null, test, idem);
         try {
@@ -110,10 +111,23 @@ public class AiCallingApiService {
             throw race;
         }
         if (test) {
-            placeTestCall(call, v);
+            try {
+                placeTestCall(call, v);
+            } catch (RuntimeException e) {
+                // Nothing was placed: drop the row so a retry with the same
+                // Idempotency-Key places the call instead of replaying a dead one.
+                callRepository.delete(call);
+                throw e;
+            }
         } else {
-            EnqueueResult q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
-                    CallTrigger.API, SOURCE, null, null, true);
+            EnqueueResult q;
+            try {
+                q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
+                        CallTrigger.API, SOURCE, null, null, true);
+            } catch (RuntimeException e) {
+                callRepository.delete(call);
+                throw e;
+            }
             if (!q.isQueued()) {
                 callRepository.delete(call);
                 throw alreadyQueued(p.instituteId(), q.getQueueItemId(), v.phone());
@@ -135,7 +149,7 @@ public class AiCallingApiService {
         AiAgent agent = requireAgent(p.instituteId(), agentId);
         if (!test && !aiCallService.canAffordCall(p.instituteId())) {
             throw new AiCallingApiException(HttpStatus.PAYMENT_REQUIRED, "insufficient_credits",
-                    "This account is out of AI calling credits. Top up to place calls.");
+                    OUT_OF_CREDITS);
         }
         String batchId = newId("batch_");
         List<Map<String, Object>> accepted = new ArrayList<>();
@@ -158,10 +172,25 @@ public class AiCallingApiService {
             }
             AiCallApiCall call = callRepository.save(newCall(p, v, batchId, test, null));
             if (test) {
-                placeTestCall(call, v);
+                try {
+                    placeTestCall(call, v);
+                } catch (RuntimeException e) {
+                    callRepository.delete(call);
+                    log.warn("ai-calling-api: test row {} of batch {} failed: {}", i, batchId, e.getMessage());
+                    rejected.add(rejection(i, v.phone(), "call_failed", "This call could not be placed; retry it."));
+                    continue;
+                }
             } else {
-                EnqueueResult q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
-                        CallTrigger.API, SOURCE, batchId, null, false);
+                EnqueueResult q;
+                try {
+                    q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
+                            CallTrigger.API, SOURCE, batchId, null, false);
+                } catch (RuntimeException e) {
+                    callRepository.delete(call);
+                    log.warn("ai-calling-api: row {} of batch {} not queued: {}", i, batchId, e.getMessage());
+                    rejected.add(rejection(i, v.phone(), "call_failed", "This call could not be queued; retry it."));
+                    continue;
+                }
                 if (!q.isQueued()) {
                     callRepository.delete(call);
                     Map<String, Object> r = rejection(i, v.phone(), "call_already_queued",

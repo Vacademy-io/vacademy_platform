@@ -83,7 +83,7 @@ public class AiCallingWebhookService {
                 .instituteId(instituteId).secret(newSecret()).createdBy(actor).build());
         w.setUrl(clean);
         w.setEnabled(true);
-        webhookRepository.save(w);
+        w = webhookRepository.save(w);
         return view(w, existing.isEmpty());
     }
 
@@ -91,7 +91,7 @@ public class AiCallingWebhookService {
         AiCallWebhook w = webhookRepository.findById(instituteId)
                 .orElseThrow(() -> AiCallingApiException.notFound("Webhook"));
         w.setSecret(newSecret());
-        webhookRepository.save(w);
+        w = webhookRepository.save(w);
         return view(w, true);
     }
 

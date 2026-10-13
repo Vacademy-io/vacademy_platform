@@ -135,12 +135,13 @@ Idempotency-Key: lead-8812            (optional, up to 255 chars)
 - **`outcome`:**
   - `disposition`, `summary`
   - `answers`: the agent's extraction questions mapped to the answers given
-  - `lead_rating`
+  - `lead_rating`: an integer from 1 to 10
   - `callback_requested`, `callback_time_text`
-  - `follow_up`, `follow_up_note`
+  - `follow_up` (`CALL` | `CALL_LATER` | `SKIP`), `follow_up_note`
+  - `meeting`: `{requested, at, time_text, type}`, read from the report's `raw_payload`
   - `transcript`: a list of `{speaker: agent|contact, text}`
   - `outcome` is null until the AI result is processed.
-- **Lists:** list endpoints return a shorter object, without the outcome and recording.
+- **Lists:** `GET /calls` returns the same full object. `GET /batches/{id}` returns counts only.
 
 ### Billing
 
@@ -151,7 +152,7 @@ Idempotency-Key: lead-8812            (optional, up to 255 chars)
 
 - **Request:** `POST /v1/batches {agent_id, test, calls: [{phone_number, contact, variables, metadata, agent_id?}]}`. Each row may override `agent_id`.
 - **Response:** 201 with `accepted_count`, `rejected_count`, `calls: [{index, id, phone_number, external_id}]` and `rejected: [{index, phone_number, code, message, call_id?}]`.
-- **Rejection codes:** `invalid_request`, `duplicate_in_batch`, `call_already_queued`.
+- **Rejection codes:** `invalid_request`, `duplicate_in_batch`, `call_already_queued`, `call_failed` (placement threw; the row is deleted).
 - **Progress:** `GET /v1/batches/{id}` returns `total`, `finished` and `counts` per status.
 
 ## 5. Webhooks

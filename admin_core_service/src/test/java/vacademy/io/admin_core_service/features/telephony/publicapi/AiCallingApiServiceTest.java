@@ -1,15 +1,25 @@
 package vacademy.io.admin_core_service.features.telephony.publicapi;
 
 import org.junit.jupiter.api.Test;
+import vacademy.io.admin_core_service.features.telephony.core.AiCallService;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository;
+import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCallApiCall;
+import vacademy.io.admin_core_service.features.telephony.publicapi.repository.AiCallApiCallRepository;
+import vacademy.io.common.exceptions.ConflictException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.*;
 
 class AiCallingApiServiceTest {
 
@@ -99,5 +109,24 @@ class AiCallingApiServiceTest {
         assertNull(AiCallingApiService.normaliseIdempotencyKey("  "));
         assertEquals("abc", AiCallingApiService.normaliseIdempotencyKey(" abc "));
         assertThrows(AiCallingApiException.class, () -> AiCallingApiService.normaliseIdempotencyKey("k".repeat(256)));
+    }
+
+    @Test
+    void aTestCallThatCannotBePlacedLeavesNoRowBehind() {
+        AiAgentRepository agents = mock(AiAgentRepository.class);
+        AiCallApiCallRepository calls = mock(AiCallApiCallRepository.class);
+        AiCallService aiCalls = mock(AiCallService.class);
+        when(agents.findByIdAndInstituteId("agent-1", "inst-1")).thenReturn(Optional.of(agent()));
+        when(calls.findByInstituteIdAndIdempotencyKey("inst-1", "k-1")).thenReturn(Optional.empty());
+        when(calls.saveAndFlush(any(AiCallApiCall.class))).thenAnswer(i -> i.getArgument(0));
+        when(aiCalls.placeCall(any(), isNull(), eq(CallTrigger.API))).thenThrow(new ConflictException("out of credits"));
+        AiCallingApiService svc = new AiCallingApiService(agents, calls, null, null, null, aiCalls, null);
+
+        assertThrows(ConflictException.class, () -> svc.createCall(
+                new AiCallingApiAuth.Principal("inst-1", "key-1", List.of("calls:write")),
+                new AiCallingApiService.CallInput("agent-1", "+919876543210", "Asha", null, null, null, null),
+                true, "k-1"));
+        // Without the delete, a retry with Idempotency-Key k-1 would replay a call that never happened.
+        verify(calls).delete(any(AiCallApiCall.class));
     }
 }

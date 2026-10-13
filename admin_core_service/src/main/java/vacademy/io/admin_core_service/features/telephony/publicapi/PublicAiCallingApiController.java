@@ -10,7 +10,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute_api.service.InstituteApiKeyService;
-import vacademy.io.common.tracing.RequestIds;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -138,8 +137,8 @@ public class PublicAiCallingApiController {
 
     private static ResponseEntity<Map<String, Object>> ok(HttpServletRequest http, HttpStatus status,
                                                           Map<String, Object> body) {
+        // X-Request-Id is set on every response by RequestTracingFilter.
         return ResponseEntity.status(status)
-                .header(RequestIds.HEADER, RequestIds.resolve(http))
                 .header("Cache-Control", "no-store")
                 .body(body);
     }

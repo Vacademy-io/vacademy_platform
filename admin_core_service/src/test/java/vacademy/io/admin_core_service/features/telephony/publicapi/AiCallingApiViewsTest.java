@@ -127,4 +127,21 @@ class AiCallingApiViewsTest {
         assertEquals("agent", t.get(2).get("speaker"));
         assertTrue(AiCallingApiViews.transcript(null).isEmpty());
     }
+
+    @Test
+    void meetingComesFromTheReportPayload() {
+        Map<String, Object> m = AiCallingApiViews.meeting(
+                "{\"meetingRequested\":true,\"meetingDatetimeIso\":\"2026-10-14T18:00:00+05:30\","
+                        + "\"meetingDatetimeText\":\"tomorrow 6 pm\",\"meetingType\":\"demo\"}");
+        assertEquals(true, m.get("requested"));
+        assertEquals("2026-10-14T18:00:00+05:30", m.get("at"));
+        assertEquals("tomorrow 6 pm", m.get("time_text"));
+        assertEquals("demo", m.get("type"));
+
+        Map<String, Object> none = AiCallingApiViews.meeting("{\"mock\":true}");
+        assertEquals(false, none.get("requested"));
+        assertNull(none.get("at"));
+        assertEquals(false, AiCallingApiViews.meeting("not json").get("requested"));
+        assertEquals(false, AiCallingApiViews.meeting(null).get("requested"));
+    }
 }

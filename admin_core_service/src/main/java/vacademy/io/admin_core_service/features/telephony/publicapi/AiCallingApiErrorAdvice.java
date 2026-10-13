@@ -40,9 +40,11 @@ public class AiCallingApiErrorAdvice {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, Object>> conflict(ConflictException e, HttpServletRequest req) {
         String msg = e.getMessage() == null ? "Conflict." : e.getMessage();
-        String code = msg.toLowerCase().contains("credit") ? "insufficient_credits" : "conflict";
-        return body(ResponseEntity.status(code.equals("insufficient_credits")
-                ? HttpStatus.PAYMENT_REQUIRED : HttpStatus.CONFLICT), req, code, msg, null);
+        if (msg.toLowerCase().contains("credit")) {
+            return body(ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED), req, "insufficient_credits",
+                    AiCallingApiService.OUT_OF_CREDITS, null);
+        }
+        return body(ResponseEntity.status(HttpStatus.CONFLICT), req, "conflict", msg, null);
     }
 
     @ExceptionHandler(VacademyException.class)
@@ -89,8 +91,8 @@ public class AiCallingApiErrorAdvice {
     private static ResponseEntity<Map<String, Object>> body(ResponseEntity.BodyBuilder b, HttpServletRequest req,
                                                             String code, String message, Map<String, ?> details) {
         String requestId = RequestIds.resolve(req);
-        return b.header(RequestIds.HEADER, requestId)
-                .header("Cache-Control", "no-store")
+        // X-Request-Id itself is set on every response by RequestTracingFilter.
+        return b.header("Cache-Control", "no-store")
                 .body(ApiErrorWriter.envelope(code, message, requestId, details));
     }
 }

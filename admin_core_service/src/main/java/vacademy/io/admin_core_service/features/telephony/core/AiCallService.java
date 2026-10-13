@@ -186,7 +186,12 @@ public class AiCallService {
         // balance cannot be read, so an unreachable credits service stops calls
         // rather than letting unpriced ones through. A blocked call is
         // recoverable (top up and re-run); an unbilled one is not.
-        if (creditGateEnabled && !hasAffordableCredits(req.getInstituteId())) {
+        //
+        // A request that names the MOCK provider never dials and is never billed (the
+        // public API's test mode), so it passes: a new account must be able to test its
+        // integration before its first top-up.
+        boolean mockRequest = ProviderType.MOCK.equalsIgnoreCase(req.getProvider());
+        if (creditGateEnabled && !mockRequest && !hasAffordableCredits(req.getInstituteId())) {
             log.warn("AI call BLOCKED — no credits for institute {} (responseId={}, phone=***{})",
                     req.getInstituteId(), req.getResponseId(),
                     req.getPhoneNumber() == null ? "" :

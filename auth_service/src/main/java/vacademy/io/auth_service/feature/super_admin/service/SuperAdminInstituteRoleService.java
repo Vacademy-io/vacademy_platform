@@ -75,8 +75,15 @@ public class SuperAdminInstituteRoleService {
         if (upper.equals(KIND_TEACHER)) {
             return KIND_TEACHER;
         }
-        return KIND_SYSTEM;
+        // SYSTEM = the built-ins the admin app does NOT let an admin configure (they resolve to
+        // the Teacher display settings; RoleDisplaySettingsMain SYSTEM_ROLE_NAMES). Every other
+        // platform role (COUNSELLOR, MENTOR, HR_*, FRONT_DESK_EMPLOYEE...) is offered in the
+        // admin app's custom-role list, keyed by its role id, so it is CUSTOM here too.
+        return TEACHER_SETTINGS_ROLE_NAMES.contains(upper) ? KIND_SYSTEM : KIND_CUSTOM;
     }
+
+    static final Set<String> TEACHER_SETTINGS_ROLE_NAMES =
+            Set.of("EVALUATOR", "CONTENT CREATOR", "ASSESSMENT CREATOR");
 
     private static int kindOrder(String kind) {
         return switch (kind) {

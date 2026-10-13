@@ -58,14 +58,16 @@ class SuperAdminInstituteRolesTest {
     @Test
     void listsStaffRolesWithKindsAndActiveCounts() {
         List<InstituteRoleDTO> out = service().getInstituteRoles("inst-1");
-        assertEquals(List.of("ADMIN", "TEACHER", "EVALUATOR", "HR_ADMIN", "Counsellor"),
+        // HR_ADMIN is a platform role but the admin app lets admins configure it like a custom
+        // role, so it is CUSTOM; only Evaluator / Content / Assessment Creator are SYSTEM.
+        assertEquals(List.of("ADMIN", "TEACHER", "EVALUATOR", "Counsellor", "HR_ADMIN"),
                 out.stream().map(InstituteRoleDTO::getRoleName).toList());
-        assertEquals(List.of("ADMIN", "TEACHER", "SYSTEM", "SYSTEM", "CUSTOM"),
+        assertEquals(List.of("ADMIN", "TEACHER", "SYSTEM", "CUSTOM", "CUSTOM"),
                 out.stream().map(InstituteRoleDTO::getKind).toList());
         assertEquals(2L, out.get(0).getUserCount());
         assertEquals(0L, out.get(1).getUserCount());
-        assertEquals(5L, out.get(4).getUserCount());
-        assertEquals("r-c1", out.get(4).getRoleId());
+        assertEquals(5L, out.get(3).getUserCount());
+        assertEquals("r-c1", out.get(3).getRoleId());
     }
 
     @Test

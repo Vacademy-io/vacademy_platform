@@ -1,7 +1,8 @@
 {
     "categoryAiTools": "AI Tools",
     "categoryCrm": "CRM",
-    "categoryLearning": "Learning",
+    "categoryErp": "ERP",
+    "categoryLms": "LMS",
     "locked": "Locked",
     "noResultsFound": "No results found",
     "searchPlaceholder": "Search tabs, features...",

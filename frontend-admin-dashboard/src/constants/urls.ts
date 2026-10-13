@@ -2042,3 +2042,6 @@ export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employee
 // GET ?instituteId= → { mode, catalog_version, modules, features, display_settings_version }.
 // Phase 1 reads it only to bust the display-settings cache; see services/capabilities.ts.
 export const CAPABILITIES_ME = `${BASE_URL}/admin-core-service/capabilities/v1/me`;
+// GET → { catalog, nav }: the module/feature catalogue (§12.2). Fetched only for
+// MANAGED institutes; see services/capability-catalog.ts.
+export const CAPABILITIES_CATALOG = `${BASE_URL}/admin-core-service/capabilities/v1/catalog`;

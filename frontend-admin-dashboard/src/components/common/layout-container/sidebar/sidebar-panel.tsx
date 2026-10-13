@@ -62,6 +62,7 @@ import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
 import { parseSidebarLink } from './helper';
+import { filterRecentEntries } from '@/lib/capabilities/nav-access';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
@@ -134,7 +135,20 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                   return (!show || show === instituteId) && category === activeCategory;
               });
 
-    const recentTabs = activeCategory === 'RECENT' ? getRecentTabs() : [];
+    // Recent offers only what the sidebar shows right now and is not locked: an
+    // entry recorded before a tab was hidden, locked or left the plan would
+    // otherwise be a way around it. Settings screens follow the rail's gear rule.
+    const hasSettings = sidebarItems.some((item) => item.id === 'settings');
+    const recentTabs =
+        activeCategory === 'RECENT'
+            ? filterRecentEntries(getRecentTabs(), sidebarItems, {
+                  instituteId,
+                  sidebarCategories: roleDisplay?.sidebarCategories,
+                  canOpenSettings: hasSettings
+                      ? roleDisplay?.ui?.showSettings !== false
+                      : roleDisplay?.ui?.showSettings === true,
+              })
+            : [];
 
     // On mobile, the panel is always rendered at full width inside the Sheet
     const panelOpen = isMobile ? true : isOpen;

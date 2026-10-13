@@ -29,6 +29,8 @@ import {
 import SourceErrorNotice from './SourceErrorNotice';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { isKpiEntitled } from '../-config/dashboard-entitlements';
 
 interface KpiBandProps {
     instituteId: string;
@@ -107,8 +109,16 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     // the same queries, so each request goes out once per dashboard load.
     const countsQuery = useInstituteDashboardCounts(instituteId, isAdmin);
     const teamQuery = useTeamMemberCount(instituteId, isAdmin);
-    const feeQuery = useInstituteFeeCollection(instituteId, isAdmin);
-    const sessionsQuery = useDashboardUpcomingSessions(instituteId, isAdmin || isTeacher);
+    // Plan (MANAGED only): a card outside it is dropped and its source not fetched.
+    // In LEGACY every card is entitled, so these flags are exactly the role checks.
+    const entitlement = useEntitlement();
+    const feesInPlan = isKpiEntitled('outstandingFees', entitlement);
+    const sessionsInPlan = isKpiEntitled('classesToday', entitlement);
+    const feeQuery = useInstituteFeeCollection(instituteId, isAdmin && feesInPlan);
+    const sessionsQuery = useDashboardUpcomingSessions(
+        instituteId,
+        (isAdmin || isTeacher) && sessionsInPlan
+    );
 
     const refetchByKpi: Record<string, () => void> = {
         activeLearners: () => void countsQuery.refetch(),
@@ -120,7 +130,7 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     };
 
     const sessions = toSourceState(sessionsQuery);
-    const items: DashboardKpi[] = isAdmin
+    const allItems: DashboardKpi[] = isAdmin
         ? buildAdminKpis(
               {
                   counts: toSourceState<InstituteCounts>(countsQuery),
@@ -133,6 +143,7 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
         : isTeacher
           ? buildTeacherKpis(sessions, t)
           : [];
+    const items = allItems.filter((k) => isKpiEntitled(k.id, entitlement));
 
     if (items.length === 0) return null;
 

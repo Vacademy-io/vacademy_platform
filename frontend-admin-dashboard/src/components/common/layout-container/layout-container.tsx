@@ -13,6 +13,7 @@ import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { RouteAccessGuard } from './route-access-guard';
 
 /**
  * New sidebar dimensions (Gmail-style two-bar):
@@ -158,7 +159,8 @@ export const LayoutContainer = ({
                             className
                         )}
                     >
-                        {children}
+                        {/* Plan (MANAGED only) + locked-for-role guard for deep links. */}
+                        <RouteAccessGuard>{children}</RouteAccessGuard>
                     </div>
                 </StudentSidebarProvider>
             </div>

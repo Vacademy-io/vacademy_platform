@@ -1,7 +1,8 @@
 {
     "categoryAiTools": "Outils IA",
     "categoryCrm": "CRM",
-    "categoryLearning": "Apprentissage",
+    "categoryErp": "ERP",
+    "categoryLms": "LMS",
     "locked": "Verrouillé",
     "noResultsFound": "Aucun résultat trouvé",
     "searchPlaceholder": "Rechercher des onglets, fonctionnalités...",

@@ -22,6 +22,7 @@ import { ASSISTANT_CAPABILITIES } from '@/constants/urls';
 import { useAssistDock } from '@/components/assist-dock/store';
 import type { AssistantCapabilities } from './types';
 import { useInstituteChatbotName } from './useInstituteChatbotName';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
 
 // Ordered by everyday dashboard tasks, not the API's group ordering. Each
 // suggestion requires its actual tool: a read-only group can never suggest a write.
@@ -45,6 +46,7 @@ const STARTERS: { key: string; group: string; tool: string; Icon: Icon }[] = [
 export function AssistantLaunchBar() {
     const { t } = useTranslation('dashboardIndex');
     const chatbotName = useInstituteChatbotName();
+    const entitlement = useEntitlement();
     const [question, setQuestion] = useState('');
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const id = useId();
@@ -102,10 +104,14 @@ export function AssistantLaunchBar() {
 
     if (!capabilities?.groups?.length) return null;
 
-    const suggestions = STARTERS.filter((starter) =>
-        capabilities.groups.some(
-            (group) => group.key === starter.group && group.tools.includes(starter.tool)
-        )
+    const suggestions = STARTERS.filter(
+        (starter) =>
+            // Plan filter first (MANAGED only), so the four slots go to chips the
+            // institute can actually use.
+            entitlement.isAssistantGroupEntitled(starter.group) &&
+            capabilities.groups.some(
+                (group) => group.key === starter.group && group.tools.includes(starter.tool)
+            )
     ).slice(0, 4);
 
     const submit = () => {

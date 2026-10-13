@@ -94,6 +94,8 @@ import { bundleForRoles } from './-config/dashboard-role-bundles';
 import RoleTypeComponent from './-components/RoleTypeComponent';
 import { LearnerTab } from './-components/LearnerTab';
 import { SettingsTabs } from '../settings/-constants/terms';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { hasEntitledSetupStep } from './-config/dashboard-entitlements';
 
 // Define the lazy Route
 export const Route = createLazyFileRoute('/dashboard/')({
@@ -459,11 +461,16 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     const { data, isSuccess: isCountsLoaded } = useInstituteDashboardCounts(instituteDetails?.id);
 
     const roleBundle = useMemo(() => bundleForRoles(userRoles), [userRoles]);
+    // Institute plan (MANAGED only — FULL_ENTITLEMENT, i.e. no filtering, otherwise).
+    const entitlement = useEntitlement();
     // Only a SUCCESSFUL load with all-zero counts is a fresh institute. While loading (counts
     // still undefined) or after an error it is not — otherwise every admin saw the empty-state
     // flash and lost the KPI/finance rows whenever get-dashboard was slow or failed.
+    // A plan with no LMS setup step (CRM-only) is never "fresh": it gets the normal
+    // dashboard rather than an LMS checklist with the KPI/finance rows hidden.
     const isFreshTenant =
         isAdmin &&
+        hasEntitledSetupStep(entitlement) &&
         isCountsLoaded &&
         !!data &&
         (data.student_count || 0) === 0 &&
@@ -496,6 +503,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     }, []);
 
     const isWidgetVisible = (id: DashboardWidgetId): boolean => {
+        if (!entitlement.isWidgetEntitled(id)) return false; // outside the plan (MANAGED)
         const vis = roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.visible;
         return vis !== false; // default to true
     };
@@ -509,6 +517,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
      * moment it renders.
      */
     const isWidgetExplicitlyVisible = (id: DashboardWidgetId): boolean =>
+        entitlement.isWidgetEntitled(id) &&
         roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.visible === true;
 
     const orderOf = (id: DashboardWidgetId): number => {

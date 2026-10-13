@@ -70,6 +70,8 @@ import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useEntitlement, useNavSnapshotStore } from '@/lib/capabilities/use-entitlement';
+import { filterSidebarByEntitlement } from '@/lib/capabilities/nav-access';
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
 // create-assessment wizard. Hidden together with the Create Assessment button.
 const ASSESSMENT_CREATE_SUB_ITEM_IDS = new Set([
@@ -197,6 +199,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const hasCrmIntelligenceData = useHasCallIntelligenceData(!isCrmIntelligenceEnabled);
     const isCrmIntelligenceAvailable = isCrmIntelligenceEnabled || hasCrmIntelligenceData;
 
+    // Institute plan (modules). FULL_ENTITLEMENT — nothing filtered — unless the
+    // institute is MANAGED and the catalogue loaded (INSTITUTE_MODULES spec §9).
+    const entitlement = useEntitlement();
+    const setNavSnapshot = useNavSnapshotStore((s) => s.setSnapshot);
+
     useEffect(() => {
         setIsVoltSubdomain(
             typeof window !== 'undefined' && window.location.hostname.startsWith('volt.')
@@ -313,8 +320,8 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // hook — the hook would fire a second identical fetch on a cold cache.
     const canCreateAssessment = roleDisplay?.assessmentPage?.showCreateAssessment !== false;
 
-    // Compute final sidebar items (same logic as before)
-    const finalSidebarItems = (() => {
+    // Compute the role's sidebar items (same logic as before)
+    const roleSidebarItems = (() => {
         const rawBase = isVoltSubdomain
             ? voltSidebarData
             : filterMenuItems(
@@ -510,6 +517,33 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             return ao - bo;
         });
     })();
+    // Then the institute's plan. In LEGACY this returns roleSidebarItems itself.
+    const finalSidebarItems = filterSidebarByEntitlement(roleSidebarItems, entitlement);
+
+    // Publish what the user can see for the route guard (locked deep links) —
+    // only when it actually changed, since this list is rebuilt every render.
+    const navSignature = JSON.stringify(
+        finalSidebarItems.map((i) => [
+            i.id,
+            i.to,
+            i.title,
+            i.category,
+            i.showForInstitute,
+            !!i.locked,
+            i.subItems?.map((s) => [s.subItemId, s.subItemLink, s.subItem, !!s.locked]),
+        ])
+    );
+    const categoriesSignature = JSON.stringify(roleDisplay?.sidebarCategories ?? null);
+    useEffect(() => {
+        if (!data?.id) return;
+        setNavSnapshot({
+            instituteId: data.id,
+            items: finalSidebarItems,
+            sidebarCategories: roleDisplay?.sidebarCategories ?? null,
+        });
+        // finalSidebarItems/roleDisplay are captured through the signatures.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navSignature, categoriesSignature, data?.id, setNavSnapshot]);
 
     // Logo
     const { getPublicUrl } = useFileUpload();
@@ -575,6 +609,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                                 roleDisplay={roleDisplay}
                                 sidebarItems={finalSidebarItems}
                                 instituteId={data?.id}
+                                hideEmptyCategories={entitlement.managed}
                             />
 
                             {/* Panel */}
@@ -620,6 +655,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         roleDisplay={roleDisplay}
                         sidebarItems={finalSidebarItems}
                         instituteId={data?.id}
+                        hideEmptyCategories={entitlement.managed}
                     />
 
                     {/* Right: Panel (always mounted, animates width) */}

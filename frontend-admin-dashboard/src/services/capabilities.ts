@@ -172,6 +172,19 @@ async function syncCapabilities(instituteId: string): Promise<void> {
 const syncedInstitutes = new Map<string, Promise<void>>();
 
 /**
+ * getCurrentInstituteId() reads storage, which can throw (blocked storage,
+ * some test environments). Gating must never take a page down with it: a
+ * failed read means "unknown institute" = nothing gated.
+ */
+export function readCurrentInstituteIdSafely(): string | null {
+    try {
+        return getCurrentInstituteId() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Fetch /capabilities/me once per page session per institute and bust the
  * display-settings cache when the server's version moved. Never rejects.
  */
@@ -197,7 +210,7 @@ export function useCapabilities(): {
     isLoaded: boolean;
 } {
     const snapshot = useCapabilitiesStore();
-    const currentInstituteId = getCurrentInstituteId() ?? null;
+    const currentInstituteId = readCurrentInstituteIdSafely();
     const isLoaded =
         snapshot.status === 'loaded' &&
         !!snapshot.data &&

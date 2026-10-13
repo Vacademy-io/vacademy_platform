@@ -37,6 +37,7 @@ import { SidebarItemsType, SidebarCategory } from '@/types/layout-container/layo
 import { CategoryFlyoutMenu } from './collapsed-category-flyout';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { TFunction } from 'i18next';
+import { categoriesWithItems } from '@/lib/capabilities/nav-access';
 
 export type CategoryId = SidebarCategory | 'RECENT' | 'SETTINGS';
 
@@ -48,6 +49,12 @@ interface CategoryRailProps {
     sidebarItems?: SidebarItemsType[];
     /** Institute ID for filtering */
     instituteId?: string;
+    /**
+     * Drop categories with no tab to show. On only for MANAGED institutes (a
+     * module switched off can empty a whole category); LEGACY keeps every
+     * category as before.
+     */
+    hideEmptyCategories?: boolean;
 }
 
 interface CategoryConfig {
@@ -69,6 +76,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     roleDisplay,
     sidebarItems = [],
     instituteId,
+    hideEmptyCategories = false,
 }) => {
     const navigate = useNavigate();
     const router = useRouter();
@@ -105,8 +113,14 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     });
 
     // Filter by visibility
+    const nonEmptyCategories = hideEmptyCategories
+        ? categoriesWithItems(sidebarItems, instituteId)
+        : null;
     const visibleCategories = sortedCategories.filter((cat) => {
         if (cat.id === 'RECENT') return true;
+        if (nonEmptyCategories && !nonEmptyCategories.has(cat.id as SidebarCategory)) {
+            return false;
+        }
         const cfg = roleDisplay?.sidebarCategories?.find((c) => c.id === cat.id);
         return cfg ? cfg.visible !== false : true;
     });
@@ -209,12 +223,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             return (
                 <CategoryFlyoutMenu
                     key={cat.id}
-                    // The flyout still types this prop as the pre-ERP union. It uses
-                    // the value only to look up CATEGORY_COLORS, which does have an
-                    // ERP entry, so 'ERP' renders correctly at runtime; widening the
-                    // prop would mean editing a file whose pre-existing design-system
-                    // violations the commit gate blocks. Narrowed here on purpose.
-                    category={cat.id as 'CRM' | 'LMS' | 'AI'}
+                    category={cat.id as SidebarCategory}
                     items={catItems}
                 >
                     {buttonContent}

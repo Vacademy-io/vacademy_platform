@@ -185,4 +185,34 @@ class InstituteSettingAccessGuardTest {
         clientIdHeader("inst-2");
         assertThrows(ForbiddenException.class, () -> guard.requireCanReadAll(admin(), INSTITUTE));
     }
+
+    // ---- per-key reads ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("keys holding provider credentials need staff to read; learners and other institutes refused")
+    void secretKeyReads() {
+        for (String key : List.of("WHATSAPP_SETTING", "EMAIL_SETTING", "LMS_SETTING", "MOODLE_SETTING", " whatsapp_setting ")) {
+            assertDoesNotThrow(() -> guard.requireCanReadKey(admin(), INSTITUTE, key), key);
+            assertDoesNotThrow(() -> guard.requireCanReadKey(teacher(), INSTITUTE, key), key);
+            assertDoesNotThrow(() -> guard.requireCanReadKey(customRole(), INSTITUTE, key), key);
+            assertThrows(ForbiddenException.class, () -> guard.requireCanReadKey(learner(), INSTITUTE, key), key);
+            assertThrows(ForbiddenException.class,
+                    () -> guard.requireCanReadKey(principal("parent", "PARENT"), INSTITUTE, key), key);
+        }
+        clientIdHeader("inst-2");
+        assertThrows(ForbiddenException.class, () -> guard.requireCanReadKey(admin(), INSTITUTE, "WHATSAPP_SETTING"));
+        clientIdHeader(null);
+        assertDoesNotThrow(() -> guard.requireCanReadKey(principal(SUPER_ADMIN_ID), INSTITUTE, "WHATSAPP_SETTING"));
+    }
+
+    @Test
+    @DisplayName("the keys the learner app reads stay open to a learner")
+    void learnerReadsOfOrdinaryKeysStayOpen() {
+        for (String key : List.of("STUDENT_TNC_SETTING", "LEARNER_TRACKING_SETTING", "ASSESSMENT_SETTING",
+                "STUDENT_DISPLAY_SETTINGS", "CHATBOT_SETTING", "CUSTOM_FIELD_SETTING", "ONBOARDING_SETTING",
+                "BADGES_REWARDS_SETTING", "DOUBT_MANAGEMENT_SETTING")) {
+            assertDoesNotThrow(() -> guard.requireCanReadKey(learner(), INSTITUTE, key), key);
+        }
+        assertDoesNotThrow(() -> guard.requireCanReadKey(learner(), INSTITUTE, null));
+    }
 }

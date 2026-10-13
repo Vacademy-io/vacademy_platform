@@ -20,8 +20,9 @@ public class InstituteSettingController {
     InstituteSettingManager instituteSettingManager;
 
     // Every write checks the caller against the institute and the key (see the guard for the
-    // rule). The per-key reads (/get, /data) stay open: learner surfaces and ai_service read
-    // them with the caller's own token. The whole-blob reads (/all, /raw) need staff.
+    // rule). The per-key reads (/get, /data) stay open for ordinary keys: learner surfaces and
+    // ai_service read them with the caller's own token. Keys holding provider credentials
+    // (WhatsApp, SMTP, LMS) need staff to read. The whole-blob reads (/all, /raw) need staff.
     @Autowired
     InstituteSettingAccessGuard instituteSettingAccessGuard;
 
@@ -86,6 +87,7 @@ public class InstituteSettingController {
     public ResponseEntity<SettingDto> getSpecificSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                          @RequestParam("instituteId") String instituteId,
                                                          @RequestParam("settingKey") String settingKey){
+        instituteSettingAccessGuard.requireCanReadKey(userDetails, instituteId, settingKey);
         return instituteSettingManager.getSpecificSetting(userDetails, instituteId, settingKey);
     }
 
@@ -94,6 +96,7 @@ public class InstituteSettingController {
     public ResponseEntity<Object> getSettingData(@RequestAttribute("user")CustomUserDetails userDetails,
                                                  @RequestParam("instituteId") String instituteId,
                                                  @RequestParam("settingKey") String settingKey){
+        instituteSettingAccessGuard.requireCanReadKey(userDetails, instituteId, settingKey);
         return instituteSettingManager.getSettingData(userDetails, instituteId, settingKey);
     }
 

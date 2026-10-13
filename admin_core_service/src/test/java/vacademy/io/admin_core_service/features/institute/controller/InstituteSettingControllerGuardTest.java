@@ -3,6 +3,9 @@ package vacademy.io.admin_core_service.features.institute.controller;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.SwitchWhatsAppProviderRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.WhatsAppProviderCredentialsRequest;
+import vacademy.io.admin_core_service.features.institute.service.setting.WhatsAppSettingService;
 import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteSettingManager;
@@ -69,6 +72,38 @@ class InstituteSettingControllerGuardTest {
         assertThrows(ForbiddenException.class, () -> controller.getAllSettings(caller, INSTITUTE));
         assertThrows(ForbiddenException.class, () -> controller.getSettingsAsRawJson(caller, INSTITUTE));
         verifyNoInteractions(manager);
+    }
+
+    @Test
+    void perKeyReadsAreCheckedForTheRequestedKey() {
+        doThrow(denied()).when(guard).requireCanReadKey(caller, INSTITUTE, "WHATSAPP_SETTING");
+        assertThrows(ForbiddenException.class,
+                () -> controller.getSpecificSetting(caller, INSTITUTE, "WHATSAPP_SETTING"));
+        assertThrows(ForbiddenException.class,
+                () -> controller.getSettingData(caller, INSTITUTE, "WHATSAPP_SETTING"));
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    void allowedPerKeyReadReachesTheManager() {
+        controller.getSpecificSetting(caller, INSTITUTE, "STUDENT_DISPLAY_SETTINGS");
+        verify(guard).requireCanReadKey(caller, INSTITUTE, "STUDENT_DISPLAY_SETTINGS");
+        verify(manager).getSpecificSetting(caller, INSTITUTE, "STUDENT_DISPLAY_SETTINGS");
+    }
+
+    @Test
+    void whatsAppConfigRoutesAreChecked() {
+        WhatsAppSettingService whatsApp = mock(WhatsAppSettingService.class);
+        InstituteWhatsAppSettingController whatsAppController = new InstituteWhatsAppSettingController(whatsApp, guard);
+        doThrow(denied()).when(guard).requireCanReadKey(caller, INSTITUTE, "WHATSAPP_SETTING");
+        doThrow(denied()).when(guard).requireCanWrite(caller, INSTITUTE, "WHATSAPP_SETTING");
+        assertThrows(ForbiddenException.class, () -> whatsAppController.getProviderStatus(caller, INSTITUTE));
+        assertThrows(ForbiddenException.class,
+                () -> whatsAppController.switchProvider(caller, INSTITUTE, new SwitchWhatsAppProviderRequest()));
+        assertThrows(ForbiddenException.class,
+                () -> whatsAppController.updateCredentials(caller, INSTITUTE, new WhatsAppProviderCredentialsRequest()));
+        assertThrows(ForbiddenException.class, () -> whatsAppController.removeCredentials(caller, INSTITUTE, "meta"));
+        verifyNoInteractions(whatsApp);
     }
 
     @Test

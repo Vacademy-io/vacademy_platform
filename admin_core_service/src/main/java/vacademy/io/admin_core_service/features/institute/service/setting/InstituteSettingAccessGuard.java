@@ -117,6 +117,40 @@ public class InstituteSettingAccessGuard {
         instituteAccessValidator.requireInstituteStaff(user, instituteId);
     }
 
+    /**
+     * Keys whose stored blob holds third-party provider credentials:
+     * WHATSAPP_SETTING (Meta access_token / app_secret, WATI and Combot apiKey), EMAIL_SETTING
+     * (SMTP username / password), LMS_SETTING (LearnDash apiKey / apiSecret / credential-sync
+     * secret, Moodle token) and MOODLE_SETTING (Moodle token). Compared upper-cased.
+     */
+    static final Set<String> SECRET_KEYS = Set.of(
+            "WHATSAPP_SETTING",
+            "EMAIL_SETTING",
+            "LMS_SETTING",
+            "MOODLE_SETTING");
+
+    /**
+     * Per-key reads ({@code /get}, {@code /data}): open to any caller for ordinary keys — the
+     * learner app reads its own keys (STUDENT_DISPLAY_SETTINGS, CHATBOT_SETTING, ...) with a
+     * learner token — but a {@link #SECRET_KEYS secret-bearing key} needs institute STAFF (or a
+     * super-admin). No frontend, ai_service or other service reads a secret key through these
+     * routes: the admin WhatsApp screen uses {@code /institute/whatsapp-config/v1}, LMS uses its
+     * own controller, and notification_service reads credentials over the HMAC internal route.
+     */
+    public void requireCanReadKey(CustomUserDetails user, String instituteId, String settingKey) {
+        if (!isSecretKey(settingKey)) {
+            return;
+        }
+        if (user != null && platformSuperAdmin.test(user)) {
+            return;
+        }
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+    }
+
+    static boolean isSecretKey(String settingKey) {
+        return settingKey != null && SECRET_KEYS.contains(settingKey.trim().toUpperCase(Locale.ROOT));
+    }
+
     enum Level { STAFF, ADMIN, SUPER_ADMIN }
 
     static Level requiredLevel(String settingKey) {

@@ -77,8 +77,6 @@
         "description": "Choose the payment plan learners see when they enrol through “{{name}}” for this batch.",
         "current": "Current plan",
         "new": "New plan",
-        "unchanged": "Same as current — choose a plan to change it",
-        "choose": "Choose plan",
         "noCurrent": "No payment plan is attached to this batch. Use Edit to set one up.",
         "currencyMismatch": "This plan charges in {{planCurrency}}, but this invite link charges in {{inviteCurrency}}. Change it from Edit so the link's currency changes with it.",
         "referralNote": "Referral rewards set on the previous plan aren't carried over. Add them again from Edit if this link uses referrals.",
@@ -87,6 +85,9 @@
         "saving": "Saving…",
         "saved": "Payment plan updated for “{{name}}”",
         "saveFailed": "Could not update the payment plan",
-        "pickerFailed": "Payment plans could not be loaded. Use Edit to change the plan."
+        "pickerFailed": "Payment plans could not be loaded. Use Edit to change the plan.",
+        "chooseNew": "Choose a new plan",
+        "chooseHint": "Pick from your institute's payment plans, or create a new one.",
+        "change": "Change"
     }
 }

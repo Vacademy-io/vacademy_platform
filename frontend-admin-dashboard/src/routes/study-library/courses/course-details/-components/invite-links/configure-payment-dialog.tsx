@@ -3,11 +3,14 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowRight, CurrencyCircleDollar, WarningCircle } from '@phosphor-icons/react';
+import { ArrowDown, ArrowRight, CurrencyCircleDollar, WarningCircle } from '@phosphor-icons/react';
 import { AxiosError } from 'axios';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
-import type { InviteLinkDataInterface } from '@/schemas/study-library/invite-links-schema';
+import type {
+    InviteLinkDataInterface,
+    InvitePaymentSummary,
+} from '@/schemas/study-library/invite-links-schema';
 import type { InviteLinkFormValues } from '@/routes/manage-students/invite/-components/create-invite/GenerateInviteLinkSchema';
 import { PaymentPlansDialog } from '@/routes/manage-students/invite/-components/create-invite/PaymentPlansDialog';
 import AddPaymentPlanDialog from '@/routes/manage-students/invite/-components/create-invite/AddPaymentPlanDialog';
@@ -48,6 +51,29 @@ class PlanPickerErrorBoundary extends React.Component<
 /** Currency a payment option charges in; null for options without priced plans (Free). */
 const optionCurrency = (option: PaymentOption | undefined): string | null =>
     option?.payment_plans?.find((plan) => plan?.currency)?.currency ?? null;
+
+/** A raw payment option as the summary the card line renders (active plans only, like the backend's). */
+const summaryFromOption = (
+    option: PaymentOption,
+    packageSessionId: string
+): InvitePaymentSummary => {
+    const plans = (option.payment_plans ?? []).filter(
+        (plan) => plan && (!plan.status || plan.status === 'ACTIVE')
+    );
+    const prices = plans.map((plan) => plan.actual_price).filter((p) => Number.isFinite(p));
+    return {
+        package_session_id: packageSessionId,
+        mapping_id: '',
+        payment_option_id: option.id,
+        payment_option_name: option.name,
+        type: option.type ? option.type.toUpperCase() : null,
+        require_approval: !!option.require_approval,
+        plan_count: plans.length,
+        min_price: prices.length ? Math.min(...prices) : null,
+        max_price: prices.length ? Math.max(...prices) : null,
+        currency: plans.find((plan) => plan.currency)?.currency ?? null,
+    };
+};
 
 interface ConfigurePaymentDialogProps {
     open: boolean;
@@ -116,6 +142,14 @@ export const ConfigurePaymentDialog = ({
     const selectedOption = options.find((option) => option.id === selectedId);
     const isChanged = !!selectedId && selectedId !== current?.payment_option_id;
 
+    // The picked option in the card's own summary shape, so "new" reads exactly
+    // like "current" (type badge, name, price or range).
+    const selectedSummary: InvitePaymentSummary | null = selectedOption
+        ? summaryFromOption(selectedOption, packageSessionId)
+        : null;
+
+    const openPicker = () => form.setValue('showPlansDialog', true);
+
     const newCurrency = optionCurrency(selectedOption);
     const currencyMismatch =
         isChanged &&
@@ -180,7 +214,9 @@ export const ConfigurePaymentDialog = ({
                     if (!saveMutation.isPending) onOpenChange(next);
                 }}
                 heading={t('configurePayment.heading')}
-                dialogWidth="w-dialog-md"
+                // max-w, not w-: MyDialog always adds w-full, which beats a width
+                // token and stretched this across the screen.
+                dialogWidth="max-w-xl"
                 footer={
                     <>
                         <MyButton
@@ -215,47 +251,69 @@ export const ConfigurePaymentDialog = ({
                         {t('configurePayment.description', { name: invite.name })}
                     </p>
 
+                    {/* Current → new, read top to bottom. */}
                     <div className="flex flex-col gap-1.5">
                         <span className="text-caption font-semibold text-neutral-500">
                             {t('configurePayment.current')}
                         </span>
-                        {current ? (
-                            <InvitePaymentSummaryLine
-                                summary={current}
-                                className="text-body text-neutral-700"
-                            />
-                        ) : (
-                            <span className="text-body text-neutral-500">
-                                {t('configurePayment.noCurrent')}
-                            </span>
-                        )}
+                        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                            {current ? (
+                                <InvitePaymentSummaryLine
+                                    summary={current}
+                                    className="text-body text-neutral-700"
+                                />
+                            ) : (
+                                <span className="text-body text-neutral-500">
+                                    {t('configurePayment.noCurrent')}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex justify-center text-neutral-400" aria-hidden="true">
+                        <ArrowDown className="size-5" />
                     </div>
 
                     <div className="flex flex-col gap-1.5">
                         <span className="text-caption font-semibold text-neutral-500">
                             {t('configurePayment.new')}
                         </span>
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
-                            <span className="flex min-w-0 items-center gap-2 text-body text-neutral-700">
-                                <CurrencyCircleDollar className="size-4 shrink-0 text-primary-500" />
-                                <span className="truncate">
-                                    {isChanged
-                                        ? selectedPlan?.name || selectedOption?.name
-                                        : t('configurePayment.unchanged')}
-                                </span>
-                            </span>
-                            <MyButton
-                                type="button"
-                                scale="small"
-                                buttonType="secondary"
-                                className="flex items-center gap-1"
-                                onClick={() => form.setValue('showPlansDialog', true)}
-                                disabled={!current || saveMutation.isPending}
-                            >
-                                {t('configurePayment.choose')}
-                                <ArrowRight className="size-3.5" />
-                            </MyButton>
-                        </div>
+                        {isChanged && selectedSummary ? (
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 p-3">
+                                <InvitePaymentSummaryLine
+                                    summary={selectedSummary}
+                                    className="text-body text-neutral-700"
+                                />
+                                <MyButton
+                                    type="button"
+                                    scale="small"
+                                    buttonType="secondary"
+                                    onClick={openPicker}
+                                    disabled={saveMutation.isPending}
+                                >
+                                    {t('configurePayment.change')}
+                                </MyButton>
+                            </div>
+                        ) : (
+                            // Nothing picked yet: the one thing to do here, so it
+                            // sits centred and prominent rather than off to a side.
+                            <div className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-primary-200 px-4 py-6 text-center">
+                                <CurrencyCircleDollar className="size-8 text-primary-400" />
+                                <MyButton
+                                    type="button"
+                                    buttonType="primary"
+                                    className="flex items-center gap-1.5"
+                                    onClick={openPicker}
+                                    disabled={!current || saveMutation.isPending}
+                                >
+                                    {t('configurePayment.chooseNew')}
+                                    <ArrowRight className="size-4" />
+                                </MyButton>
+                                <p className="text-caption text-neutral-500">
+                                    {t('configurePayment.chooseHint')}
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {currencyMismatch && (

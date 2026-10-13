@@ -101,12 +101,20 @@ async def _call(model: str, messages: List[Dict[str, str]], *, max_tokens: int, 
     if not content.strip():
         raise RuntimeError(f"{model} returned empty content (finish={choices[0].get('finish_reason')})")
     usage = data.get("usage") or {}
+    echoed = data.get("model")
     return LlmResult(
         content=content,
-        model=data.get("model") or model,
+        # The registry id we asked for, not the response's: a routed gateway
+        # echoes its own wire id (Isoquant: 'glm-5.3-flash'), which has no
+        # ai_models row, so charge_tool and ai_token_usage priced it at
+        # fallback rates. post_chat does not say which gateway served (it may
+        # have failed over), so the requested id is always used; the echo is
+        # kept in `extra` for debugging.
+        model=model,
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
         completion_tokens=int(usage.get("completion_tokens") or 0),
         finish_reason=choices[0].get("finish_reason"),
+        extra={"response_model": echoed} if echoed and echoed != model else {},
     )
 
 

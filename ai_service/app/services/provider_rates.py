@@ -9,7 +9,7 @@ invoices. Model token prices live in `ai_models`; image prices in
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,10 @@ STT_USD_PER_HOUR = {
     "render": 0.0,         # our own worker (infra, not metered)
 }
 OCR_USD_PER_PAGE = 0.025   # MathPix PDF conversion, list price
-IMAGE_USD_DEFAULT = 0.04   # qwen-image-3 (ai_models.image_price_per_unit)
+IMAGE_USD_DEFAULT = 0.04   # last resort when ai_models has no usable price
+# The AI-video pipeline's default image model. An image model without its own
+# ai_models price is billed at this row's price (it is what most calls use).
+IMAGE_FALLBACK_MODEL_ID = "recraft/recraft-v4.1"
 
 
 def tts_cost_usd(provider: str, characters: int) -> float:
@@ -42,16 +45,31 @@ def ocr_cost_usd(pages: int) -> float:
     return round(max(0, int(pages or 0)) * OCR_USD_PER_PAGE, 6)
 
 
-def image_cost_usd(model_id: Optional[str]) -> float:
-    """The image model's per-unit price from ai_models, else the default."""
-    if model_id:
-        try:
-            from sqlalchemy import text
+def image_cost_usd(model_id: Optional[str], db: Any = None) -> float:
+    """Per-image USD for an image model: its active ai_models.image_price_per_unit,
+    else the IMAGE_FALLBACK_MODEL_ID row's price, else IMAGE_USD_DEFAULT.
+
+    `db` reuses the caller's session (the video billing loop prices many images
+    per stage); without one a short session is opened.
+    """
+    ids = [m for m in (model_id, IMAGE_FALLBACK_MODEL_ID) if m]
+    try:
+        from sqlalchemy import text
+        query = text(
+            "SELECT model_id, image_price_per_unit FROM ai_models "
+            "WHERE (model_id = :m OR model_id = :f) AND is_active = TRUE"
+        )
+        params = {"m": ids[0], "f": IMAGE_FALLBACK_MODEL_ID}
+        if db is not None:
+            rows = db.execute(query, params).fetchall()
+        else:
             from ..db import db_session
-            with db_session() as db:
-                row = db.execute(text("SELECT image_price_per_unit FROM ai_models WHERE model_id = :m"), {"m": model_id}).first()
-            if row and row[0] is not None and float(row[0]) > 0:
-                return float(row[0])
-        except Exception:  # noqa: BLE001
-            logger.debug("image price lookup failed for %s", model_id, exc_info=True)
+            with db_session() as session:
+                rows = session.execute(query, params).fetchall()
+        prices = {r[0]: float(r[1]) for r in rows if r[1] is not None and float(r[1]) > 0}
+        for m in ids:
+            if m in prices:
+                return prices[m]
+    except Exception:  # noqa: BLE001
+        logger.debug("image price lookup failed for %s", model_id, exc_info=True)
     return IMAGE_USD_DEFAULT

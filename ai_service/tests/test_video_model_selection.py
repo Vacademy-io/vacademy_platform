@@ -126,17 +126,81 @@ def test_chat_selects_through_the_one_method():
 # --------------------------------------------------------------------------
 
 def test_the_edit_choreographer_and_design_identity_put_the_user_first():
+    """User's pick, then the stage's own matrix row, else None (the registry's
+    video default). The tier's hard-coded Opus `concept_model` is gone."""
     src = PIPELINE.read_text()
     ec = src[src.index("_ec_model = ("):][:400]
-    assert ec.index("_user_default_model()") < ec.index('tier_config.get("concept_model")')
-    di = src[src.index("_di_model = ("):][:500]
-    assert di.index("_user_default_model()") < di.index('tier_config.get("concept_model")')
+    assert ec.index("_user_default_model()") < ec.index('_resolve_stage_model("edit_choreographer")')
+    di = src[src.index("_di_model = ("):][:400]
+    assert di.index("_user_default_model()") < di.index('_resolve_stage_model("design_identity")')
+    for block in (ec, di):
+        body = block[:block.index("\n                )")]
+        assert "concept_model" not in body and "shot_planner_model" not in body
+        assert body.rstrip().endswith("or None")
+
+
+def test_no_reader_of_the_old_tier_model_keys_is_left():
+    """concept_model doubled as a feature flag; a missed reader would silently
+    switch concept enforcement off on premium+."""
+    import re
+    src = PIPELINE.read_text()
+    for key in ("concept_model", "hero_shot_model", "preferred_script_model", "preferred_shot_model"):
+        assert not re.search(r"\.get\(\s*[\"']" + key, src), key
+    assert 'enforce_concept=bool(tier_config.get("concept_enabled"))' in src
+    assert 'self._tier_config.get("concept_enabled")' in src  # temperature modulation gate
+
+
+def _hero():
+    tree = ast.parse(PIPELINE.read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_hero_shot_settings")
+    ns: Dict[str, Any] = {"Optional": Optional, "Tuple": Tuple, "Dict": Dict, "Any": Any}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(PIPELINE), "exec"), ns)
+    return ns["_hero_shot_settings"]
+
+
+ULTRA_HERO = {"hero_effort": "max", "hero_max_tokens": 24000}
+
+
+def test_a_hero_shot_on_glm_stays_on_glm_and_thinks_at_max():
+    """No 'hero_shot' row (or the same model): no vendor switch, effort max."""
+    hero = _hero()
+    for hero_model in (None, GLM):
+        model, effort, mt = hero(GLM, hero_model, (GLM, "matrix"), ULTRA_HERO, True)
+        assert (model, effort, mt) == (GLM, "max", 24000), hero_model
+
+
+def test_a_hero_row_with_another_model_switches_the_model():
+    model, effort, _ = _hero()(GLM, "google/gemini-2.5-pro", (GLM, "matrix"), ULTRA_HERO, True)
+    assert model == "google/gemini-2.5-pro" and effort == "max"
 
 
 def test_hero_shots_keep_refusing_to_escalate_over_the_user():
-    """The rule the other two now follow - guard it from regressing too."""
+    """An explicit user pick (per-stage or the video-wide default) is never
+    replaced by the hero model."""
+    hero = _hero()
+    for source in ("user_per_stage", "user_default"):
+        model, _, _ = hero("x/user-pick", "google/gemini-2.5-pro", ("x/user-pick", source), ULTRA_HERO, True)
+        assert model == "x/user-pick", source
+
+
+def test_ordinary_shots_and_tiers_without_hero_effort_are_untouched():
+    hero = _hero()
+    assert hero(GLM, "google/gemini-2.5-pro", (GLM, "matrix"), ULTRA_HERO, False) == (GLM, None, None)
+    assert hero(GLM, None, (GLM, "matrix"), {}, True) == (GLM, None, None)
+    assert hero(None, None, None, {"hero_effort": "max"}, True) == (None, "max", None)
+
+
+def test_the_hero_effort_wraps_only_the_calls_that_write_shot_html():
+    """The judge, vision and regen calls must not inherit "max" (it switches
+    off the small-call floor and blows their budgets)."""
     src = PIPELINE.read_text()
-    assert '_psm_entry[1] in ("user_per_stage", "user_default")' in src
+    assert src.count("with _video_effort(_hero_effort):") == 2
+    bon = src[src.index("_bon_model = _shot_model"):]
+    bon = bon[:bon.index("self._select_best_shot_candidate(")]
+    assert "with _video_effort(_hero_effort):" in bon
+    # the selection call itself sits outside any effort block
+    sel = src[src.index("_winner, _judge_usage, _judge_meta = self._select_best_shot_candidate(") - 200:]
+    assert "with _video_effort" not in sel[:200]
 
 
 # --------------------------------------------------------------------------

@@ -1932,6 +1932,12 @@ def plan_shots(
                     _messages2, model=model, temperature=temperature,
                     max_tokens=max_tokens, response_format={"type": "json_object"},
                 )
+                # The re-plan's tokens were spent whether or not it is kept (or
+                # even parses) — merge them BEFORE the accept decision. They
+                # used to be merged only on accept, so a rejected re-plan was
+                # never billed.
+                for _k in ("prompt_tokens", "completion_tokens"):
+                    usage[_k] = int(usage.get(_k, 0) or 0) + int((_usage2 or {}).get(_k, 0) or 0)
                 _parsed2 = _parse_shot_plan(_text2 or "")
                 if valid_template_ids is not None:
                     _scrub_invalid_template_ids(_parsed2["shots"], set(valid_template_ids))
@@ -1942,8 +1948,6 @@ def plan_shots(
                     and len(_conformance_issues(_parsed2)) < len(_issues)
                 ):
                     parsed = _parsed2
-                    for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                        usage[_k] = int(usage.get(_k, 0) or 0) + int((_usage2 or {}).get(_k, 0) or 0)
             except Exception:
                 pass  # non-fatal — keep the original plan
 
@@ -1966,10 +1970,22 @@ def plan_shots(
         # the asset-request gate. Keep them flowing.
         "characters": parsed.get("characters") or [],
         "asset_requests": parsed.get("asset_requests") or [],
-        "usage": usage or {},
+        "usage": _with_total_tokens(usage),
         "raw": text or "",
         "wpm": DEFAULT_WPM,
     }
+
+
+def _with_total_tokens(usage: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """`usage` with total_tokens = prompt + completion (the billing contract:
+    a provider that omits the total, or a merge that skipped it, must not hide
+    the tokens from the stage's `total_tokens > 0` billing gate)."""
+    out = dict(usage or {})
+    try:
+        out["total_tokens"] = int(out.get("prompt_tokens", 0) or 0) + int(out.get("completion_tokens", 0) or 0)
+    except (TypeError, ValueError):
+        pass
+    return out
 
 
 def _scrub_invalid_template_ids(

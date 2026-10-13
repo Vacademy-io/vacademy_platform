@@ -3,6 +3,7 @@ import { getCustomFieldSettingsFromCache } from '@/services/custom-field-setting
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
 import { isOptionFieldType, parseFieldOptionsForForm } from './parseFieldOptions';
+import { withUniqueFieldIds } from './campaignFormFields';
 
 /**
  * Interface for campaign form custom field
@@ -191,7 +192,8 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
             }
         });
 
-        return result.sort((a, b) => a.order - b.order);
+        // `id: String(index)` above and the seeds' fixed '0'/'1'/'2' can collide.
+        return withUniqueFieldIds(result.sort((a, b) => a.order - b.order));
     } catch (err) {
         console.error('[getCampaignCustomFieldsAsync] API call failed, using fallback defaults:', err);
         return getDefaultCampaignFields();

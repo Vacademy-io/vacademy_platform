@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from uuid import uuid4
 
@@ -793,3 +794,165 @@ async def cancel_lms_video(
     principal: PinnedPrincipal = Depends(_staff_principal),
 ):
     return await ext.cancel_video_generation(video_id, principal.institute_id, ensure_access=_lms_access)
+
+
+# ── MP4 render ───────────────────────────────────────────────────────────────
+#
+# The slide plays the HTML timeline; an MP4 is an optional export rendered by
+# the dedicated render worker through the external router's shared code path
+# (ext.submit_video_render + ext.render_state_with_watchdog). Renders are not
+# billed, so the LMS watchdog never refunds (the external one refunds the
+# video's credits, which here would refund the whole generation).
+
+RENDER_STATUSES = ("none", "queued", "running", "completed", "failed")
+
+
+class LmsRenderBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    resolution: Literal["720p", "1080p"] = "1080p"
+    show_captions: bool = True
+
+
+def _video_service(db: Session):
+    from ..services.s3_service import S3Service
+    from ..services.video_generation_service import VideoGenerationService
+    return VideoGenerationService(repository=AiVideoRepository(session=db), s3_service=S3Service())
+
+
+def _progress(value: Any) -> float:
+    try:
+        pct = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(100.0, pct))
+
+
+def render_state(video_id: str, institute_id: str, record: Any, db: Session) -> Dict[str, Any]:
+    """RenderState for an LMS video: {status, progress, video_url, error, updated_at}.
+
+    "none" = never rendered, or the MP4 was cleared (DELETE /external/.../render
+    drops s3_urls.video and render_job_id but leaves render_status behind).
+    A render that completed reads completed only while its MP4 is on record
+    (s3_urls.video, or render_job_id still set: the worker records
+    render_status before s3_urls)."""
+    meta = record.extra_metadata or {}
+    s3_video = (record.s3_urls or {}).get("video") if isinstance(record.s3_urls, dict) else None
+    s3_video = s3_video if isinstance(s3_video, str) and s3_video else None
+    if not meta.get("render_status"):
+        if s3_video:
+            return {"status": "completed", "progress": 100.0, "video_url": s3_video, "error": None,
+                    "updated_at": None}
+        if not meta.get("render_job_id"):
+            return {"status": "none", "progress": 0.0, "video_url": None, "error": None, "updated_at": None}
+    state, _ = ext.render_state_with_watchdog(
+        video_id, institute_id, record, db, job_id=meta.get("render_job_id"), refund=False)
+    status_ = str(state.get("status") or "queued")
+    if status_ not in RENDER_STATUSES or status_ == "none":
+        status_ = "running"
+    video_url = None
+    if status_ == "completed":
+        video_url = s3_video or (state.get("video_url") if meta.get("render_job_id") else None)
+        if not video_url:
+            return {"status": "none", "progress": 0.0, "video_url": None, "error": None,
+                    "updated_at": state.get("last_seen_at")}
+    return {
+        "status": status_,
+        "progress": 100.0 if status_ == "completed" else _progress(state.get("progress")),
+        "video_url": video_url,
+        "error": (state.get("error") or "Render failed") if status_ == "failed" else None,
+        "updated_at": state.get("last_seen_at"),
+    }
+
+
+def _not_ready_reason(record: Any) -> Optional[str]:
+    status_ = str(getattr(record, "status", "") or "")
+    stage = str(getattr(record, "current_stage", "") or "")
+    s3 = record.s3_urls if isinstance(getattr(record, "s3_urls", None), dict) else {}
+    if status_ in ("PENDING", "IN_PROGRESS") or (status_ == "COMPLETED" and stage in _EARLY_STAGES):
+        return "The video is still being generated. Render the MP4 once it has finished."
+    if not s3.get("timeline") or not s3.get("audio"):
+        return "This video has no finished board timeline and narration yet, so it can't be rendered."
+    return None
+
+
+def _claim_render(video_id: str, record: Any, db: Session) -> Tuple[str, Any]:
+    """Stamp render_status=queued before the submit so a concurrent POST reads a
+    live render and returns it instead of submitting again. The submit replaces
+    this with the real job's status; a stuck claim is failed by the watchdog.
+    Returns (claim timestamp, previous render_status) for _release_render_claim."""
+    meta = dict(record.extra_metadata or {})
+    prev_rs = meta.get("render_status")
+    claim_at = datetime.now(timezone.utc).isoformat()
+    meta["render_status"] = {"status": "queued", "progress": 0, "video_url": None,
+                             "error": None, "last_seen_at": claim_at}
+    AiVideoRepository(session=db).update_metadata(video_id, meta)
+    return claim_at, prev_rs
+
+
+def _release_render_claim(video_id: str, db: Session, claim_at: str, prev_rs: Any) -> None:
+    """The submit failed: put back the previous render_status, unless something
+    else (a callback, another submit) has written since the claim."""
+    try:
+        repo = AiVideoRepository(session=db)
+        record = repo.get_by_video_id(video_id)
+        if record is None:
+            return
+        meta = dict(record.extra_metadata or {})
+        if (meta.get("render_status") or {}).get("last_seen_at") != claim_at:
+            return
+        if prev_rs:
+            meta["render_status"] = prev_rs
+        else:
+            meta.pop("render_status", None)
+        repo.update_metadata(video_id, meta)
+    except Exception as exc:  # noqa: BLE001 - the submit's own error is what the caller sees
+        logger.warning("[LMS-Video] could not release the render claim for %s: %s", video_id, exc)
+
+
+@router.get("/render/{video_id}", summary="MP4 render status of an LMS AI video")
+async def lms_render_status(
+    video_id: str,
+    principal: PinnedPrincipal = Depends(_staff_principal),
+    db: Session = Depends(db_dependency),
+):
+    record = _lms_access(video_id, principal.institute_id, db)
+    return render_state(video_id, principal.institute_id, record, db)
+
+
+@router.post("/render/{video_id}", summary="Render an LMS AI video to MP4 (not billed)")
+async def lms_render(
+    video_id: str,
+    body: Optional[LmsRenderBody] = None,
+    principal: PinnedPrincipal = Depends(_staff_principal),
+    db: Session = Depends(db_dependency),
+):
+    inst = principal.institute_id
+    record = _lms_access(video_id, inst, db)
+    current = render_state(video_id, inst, record, db)
+    # One MP4 per video: a finished one is returned, a live job is not duplicated.
+    if current["status"] in ("completed", "queued", "running"):
+        return current
+    reason = _not_ready_reason(record)
+    if reason:
+        return _error(409, "NOT_READY", reason)
+    opts = body or LmsRenderBody()
+    # Claim the render before submitting: the submit takes seconds (render
+    # server call + timeline probe) and only then records the job, so without
+    # this a second click / tab in that window would start a second job.
+    claim_at, prev_rs = _claim_render(video_id, record, db)
+    # Off the event loop: the submit calls the render server and probes the
+    # timeline over HTTP. The request's session is used by one thread at a time.
+    try:
+        result = await asyncio.to_thread(
+            ext.submit_video_render,
+            video_id, inst, db, _video_service(db),
+            ext.RenderOptionsBody(resolution=opts.resolution, show_captions=opts.show_captions),
+            ensure_access=_lms_access,
+        )
+    except Exception:
+        _release_render_claim(video_id, db, claim_at, prev_rs)
+        raise
+    logger.info("[LMS-Video] MP4 render %s queued for %s by %s (%s, captions=%s)",
+                result.get("job_id"), video_id, principal.user_id, opts.resolution, opts.show_captions)
+    return {"status": "queued", "progress": 0.0, "video_url": None, "error": None,
+            "updated_at": datetime.now(timezone.utc).isoformat()}

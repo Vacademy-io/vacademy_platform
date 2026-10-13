@@ -21,6 +21,7 @@ import {
     AiVideoEndedCard,
     AiVideoProgressCard,
 } from './ai-video-generation-status';
+import { AiVideoRenderBar } from './ai-video-render-bar';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
     const { t } = useTranslation('studyLibraryVideoSlidePreview');
@@ -267,6 +268,13 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             return <AiVideoEndedCard status={lmsVideo.status} />;
         }
 
+        // "Render MP4" for a finished LMS video; it hides itself for videos
+        // the /lms-video API doesn't know (404).
+        const renderBar =
+            lmsVideo.phase === 'completed' && aiGenVideoId ? (
+                <AiVideoRenderBar videoId={aiGenVideoId} />
+            ) : null;
+
         // Check if code_editor_config is present
         const htmlVideoSlide = (activeItem as any).html_video_slide;
         let codeEditorConfig: any = null;
@@ -326,16 +334,22 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             };
 
             return (
-                <div key={`html-video-split-${activeItem.id}-${htmlVideoData?.htmlUrl ? 'ready' : 'generating'}`} className="w-full h-full">
-                    <SplitScreenSlide
-                        splitScreenData={splitScreenData as any}
-                        slideType="SPLIT_CODE"
-                        isEditable={true}
-                        currentSlideId={activeItem.id}
-                        onDataChange={(updatedSplitData) => {
+                <div
+                    key={`html-video-split-${activeItem.id}-${htmlVideoData?.htmlUrl ? 'ready' : 'generating'}`}
+                    className="flex size-full flex-col gap-2"
+                >
+                    {renderBar}
+                    <div className="min-h-0 w-full flex-1">
+                        <SplitScreenSlide
+                            splitScreenData={splitScreenData as any}
+                            slideType="SPLIT_CODE"
+                            isEditable={true}
+                            currentSlideId={activeItem.id}
+                            onDataChange={(updatedSplitData) => {
 
-                        }}
-                    />
+                            }}
+                        />
+                    </div>
                 </div>
             );
         }
@@ -364,12 +378,18 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         // Show video if data is available
         if (htmlVideoData?.htmlUrl) {
             return (
-                <div key={`html-video-${activeItem.id}`} className="w-full overflow-hidden rounded-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-                    <AIContentPlayer
-                        timelineUrl={htmlVideoData.htmlUrl}
-                        audioUrl={htmlVideoData.audioUrl ?? undefined}
-                        className="w-full"
-                    />
+                <div key={`html-video-${activeItem.id}`} className="flex w-full flex-col gap-2">
+                    {renderBar}
+                    <div
+                        className="flex w-full flex-col overflow-hidden rounded-lg"
+                        style={{ maxHeight: 'calc(100vh - 200px)' }}
+                    >
+                        <AIContentPlayer
+                            timelineUrl={htmlVideoData.htmlUrl}
+                            audioUrl={htmlVideoData.audioUrl ?? undefined}
+                            className="w-full"
+                        />
+                    </div>
                 </div>
             );
         }

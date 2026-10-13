@@ -53,6 +53,23 @@
             "reason": "Reason: {{message}}",
             "refunded": "The credits for it were refunded.",
             "hint": "To try again, delete this slide and create a new AI video."
+        },
+        "render": {
+            "button": "Render MP4",
+            "idle": "Save this video as an MP4 file to download or share.",
+            "starting": "Starting the MP4 render…",
+            "queued": "Waiting for the renderer to pick this up…",
+            "running": "Rendering MP4… {{value}}%",
+            "progressLabel": "MP4 render progress",
+            "hint": "This can take a while. You can leave this page and come back later.",
+            "ready": "MP4 ready",
+            "download": "Download MP4",
+            "openInNewTab": "Open in new tab",
+            "failed": "The MP4 render failed.",
+            "failedReason": "The MP4 render failed: {{message}}",
+            "retry": "Try again",
+            "startFailed": "Couldn't start the MP4 render. Please try again.",
+            "notReady": "This video isn't ready to render yet. Try again once it has finished generating."
         }
     }
 }

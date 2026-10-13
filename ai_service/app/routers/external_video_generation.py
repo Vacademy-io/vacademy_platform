@@ -3015,23 +3015,28 @@ async def insert_shot_external(
 # Video Render (offloaded to dedicated Hetzner render server)
 # ---------------------------------------------------------------------------
 
-@router.post("/render/{video_id}")
-async def request_video_render(
+def submit_video_render(
     video_id: str,
-    body: Optional[RenderOptionsBody] = None,
-    service: VideoGenerationService = Depends(get_video_service),
-    institute_id: str = Depends(get_institute_from_api_key),
-    db: Session = Depends(db_dependency),
-):
-    """
-    Trigger MP4 rendering for a completed video (HTML stage must be done).
+    institute_id: str,
+    db: Session,
+    service: VideoGenerationService,
+    options: Optional[RenderOptionsBody] = None,
+    *,
+    ensure_access: Optional[Callable[[str, str, Session], Any]] = None,
+) -> Dict[str, Any]:
+    """Submit an MP4 render job for a video whose HTML + audio stages are done.
 
-    Submits a render job to the dedicated render server. The frontend can
-    poll /urls/{video_id} to check when `video_url` becomes available.
+    Shared by POST /external/video/v1/render/{video_id} (API key) and the LMS
+    router's POST /lms-video/v1/render/{video_id} (staff JWT). `ensure_access`
+    is the caller's tenant guard (default: the external `_ensure_video_access`);
+    it runs after the render-server check, as the external route always did.
 
-    Accepts an optional JSON body with render settings (resolution, fps,
-    caption options). If omitted, uses defaults (1080p, 22fps, captions on).
+    Raises HTTPException 503 (render server not configured), 404 (no video /
+    not this institute's), 400 (timeline or audio missing), 502 (render
+    server refused the job). Returns {"job_id", "status": "queued", "video_id"}.
+    Renders are not billed.
     """
+    body = options
     from ..config import get_settings
     from ..services.render_service import RenderService
 
@@ -3043,7 +3048,7 @@ async def request_video_render(
         )
 
     # Validate video exists, belongs to this institute, and has required stages
-    _ensure_video_access(video_id, institute_id, db)
+    (ensure_access or _ensure_video_access)(video_id, institute_id, db)
     status = service.get_video_status(video_id)
     if not status:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
@@ -3253,43 +3258,52 @@ async def request_video_render(
     return {"job_id": job_id, "status": "queued", "video_id": video_id}
 
 
-@router.get("/render/status/{job_id}")
-async def get_render_status(
-    job_id: str,
-    video_id: Optional[str] = None,
+@router.post("/render/{video_id}")
+async def request_video_render(
+    video_id: str,
+    body: Optional[RenderOptionsBody] = None,
+    service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
     db: Session = Depends(db_dependency),
 ):
     """
-    Check the status and progress of a render job — DB-only read.
+    Trigger MP4 rendering for a completed video (HTML stage must be done).
 
-    Returns the cached render_status the render worker pushed to
-    /render-callback. Does NOT contact the render server, so a slow or
-    unreachable render server cannot make the FE-visible status endpoint
-    time out.
+    Submits a render job to the dedicated render server. The frontend can
+    poll /urls/{video_id} to check when `video_url` becomes available.
 
-    Watchdog runs off `render_status.last_seen_at`: if no callback has
-    arrived in `timeout_seconds` (clamp(planned * 5 + 180, 900, 5400)),
-    the response is rewritten to status=failed with credits refunded, and
-    the stale render_job_id is cleared.
+    Accepts an optional JSON body with render settings (resolution, fps,
+    caption options). If omitted, uses defaults (1080p, 22fps, captions on).
+    """
+    return submit_video_render(video_id, institute_id, db, service, body)
 
-    Returns:
-        - status: queued | running | completed | failed
-        - progress: 0-100
-        - video_url: S3 URL when completed
-        - error: error message when failed
+
+def render_state_with_watchdog(
+    video_id: str,
+    institute_id: str,
+    video_record: Any,
+    db: Session,
+    *,
+    job_id: Optional[str] = None,
+    refund: bool = True,
+) -> "tuple[Dict[str, Any], bool]":
+    """The cached render status of a video, with the stale-job watchdog applied.
+
+    Reads `extra_metadata.render_status` (pushed by the render worker to
+    /render-callback) — never the render server. Watchdog: when a queued /
+    running render has had no callback for `timeout_seconds`
+    (clamp(planned * 5 + 180, 900, 5400), env-overridable), the render is
+    marked failed in the DB, render_job_id / render_started_at are cleared
+    and — with `refund` — the video's credits are refunded (the external
+    API's long-standing behaviour).
+
+    Returns ({status, progress, video_url, error, last_seen_at}, fired) where
+    `fired` is True when this call tripped the watchdog. A video with no
+    render_status reads status="queued", progress=0 (external contract).
     """
     from datetime import datetime, timezone
 
-    if not video_id:
-        raise HTTPException(
-            status_code=400,
-            detail="video_id query param is required (push-based status is keyed off the video record).",
-        )
-
     repo = AiVideoRepository(session=db)
-    video_record = _ensure_video_access(video_id, institute_id, db)
-
     meta = dict(video_record.extra_metadata or {})
     rs = dict(meta.get("render_status") or {})
     cur_status = rs.get("status", "queued")
@@ -3297,6 +3311,13 @@ async def get_render_status(
     video_url = rs.get("video_url")
     error = rs.get("error")
     last_seen = rs.get("last_seen_at") or meta.get("render_started_at")
+    state = {
+        "status": cur_status,
+        "progress": progress,
+        "video_url": video_url,
+        "error": error,
+        "last_seen_at": last_seen,
+    }
 
     # Watchdog — fires on stale last_seen_at, not synchronous render polling.
     # If the render worker stops pushing (crashed / network partition), we
@@ -3323,7 +3344,8 @@ async def get_render_status(
                     logger.error(
                         f"[render-watchdog] Job {job_id} for video {video_id} "
                         f"silent for {age_seconds:.0f}s (> {timeout_seconds}s) "
-                        f"with status={cur_status} — marking failed and refunding credits"
+                        f"with status={cur_status} — marking failed"
+                        + (" and refunding credits" if refund else "")
                     )
                     new_meta = dict(meta)
                     new_meta.pop("render_job_id", None)
@@ -3336,39 +3358,91 @@ async def get_render_status(
                     new_rs["status"] = "failed"
                     new_rs["error"] = (
                         f"Render timed out after {age_seconds:.0f}s of silence "
-                        f"(threshold {timeout_seconds}s). Credits refunded; "
-                        f"please retry."
+                        f"(threshold {timeout_seconds}s). "
+                        + ("Credits refunded; please retry." if refund else "Please retry.")
                     )
                     new_meta["render_status"] = new_rs
                     repo.update_metadata(video_id, new_meta)
-                    try:
-                        from ..services.token_usage_service import TokenUsageService
-                        TokenUsageService(db).refund_video_credits(video_id, institute_id)
-                    except Exception as _refund_err:
-                        logger.warning(
-                            f"[render-watchdog] Refund failed for {video_id}: {_refund_err}"
-                        )
-                    return {
-                        "job_id": job_id,
-                        "video_id": video_id,
-                        "status": "failed",
-                        "progress": progress,
-                        "video_url": None,
-                        "error": new_rs["error"],
-                        "watchdog": True,
-                    }
+                    if refund:
+                        try:
+                            from ..services.token_usage_service import TokenUsageService
+                            TokenUsageService(db).refund_video_credits(video_id, institute_id)
+                        except Exception as _refund_err:
+                            logger.warning(
+                                f"[render-watchdog] Refund failed for {video_id}: {_refund_err}"
+                            )
+                    return (
+                        {
+                            "status": "failed",
+                            "progress": progress,
+                            "video_url": None,
+                            "error": new_rs["error"],
+                            "last_seen_at": last_seen,
+                        },
+                        True,
+                    )
             except (ValueError, TypeError) as _ts_err:
                 logger.debug(f"[render-watchdog] last_seen parse error: {_ts_err}")
         except Exception as _wd_err:
             logger.warning(f"[render-watchdog] errored (non-fatal): {_wd_err}")
 
+    return state, False
+
+
+@router.get("/render/status/{job_id}")
+async def get_render_status(
+    job_id: str,
+    video_id: Optional[str] = None,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """
+    Check the status and progress of a render job — DB-only read.
+
+    Returns the cached render_status the render worker pushed to
+    /render-callback. Does NOT contact the render server, so a slow or
+    unreachable render server cannot make the FE-visible status endpoint
+    time out.
+
+    Watchdog runs off `render_status.last_seen_at`: if no callback has
+    arrived in `timeout_seconds` (clamp(planned * 5 + 180, 900, 5400)),
+    the response is rewritten to status=failed with credits refunded, and
+    the stale render_job_id is cleared.
+
+    Returns:
+        - status: queued | running | completed | failed
+        - progress: 0-100
+        - video_url: S3 URL when completed
+        - error: error message when failed
+    """
+    if not video_id:
+        raise HTTPException(
+            status_code=400,
+            detail="video_id query param is required (push-based status is keyed off the video record).",
+        )
+
+    video_record = _ensure_video_access(video_id, institute_id, db)
+    state, fired = render_state_with_watchdog(
+        video_id, institute_id, video_record, db, job_id=job_id
+    )
+    if fired:
+        return {
+            "job_id": job_id,
+            "video_id": video_id,
+            "status": "failed",
+            "progress": state["progress"],
+            "video_url": None,
+            "error": state["error"],
+            "watchdog": True,
+        }
+
     return {
         "job_id": job_id,
         "video_id": video_id,
-        "status": cur_status,
-        "progress": progress,
-        "video_url": video_url,
-        "error": error,
+        "status": state["status"],
+        "progress": state["progress"],
+        "video_url": state["video_url"],
+        "error": state["error"],
     }
 
 

@@ -11,6 +11,9 @@
  * starts the run in the background) → the dashboard adds an HTML_VIDEO slide
  * linked by ai_gen_video_id → the slide polls GET /status/{id} until the run
  * ends. POST /cancel/{id} stops a run and refunds unused credits.
+ *
+ * MP4 export: POST /render/{id} starts (or returns) a render of a finished
+ * video to an MP4 file; GET /render/{id} reads its state. Renders aren't billed.
  */
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -207,6 +210,104 @@ export const cancelLmsVideo = async (videoId: string): Promise<LmsVideoCancelRes
     return res.data;
 };
 
+// ── MP4 render ───────────────────────────────────────────────────────────────
+
+const asText = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+const asHttpUrl = (value: unknown): string | undefined => {
+    const text = asText(value);
+    return text && /^https?:\/\//i.test(text) ? text : undefined;
+};
+
+/** "none" = this video has never been rendered to an MP4. */
+export type LmsVideoRenderStatus = 'none' | 'queued' | 'running' | 'completed' | 'failed';
+
+export interface LmsVideoRenderState {
+    status: LmsVideoRenderStatus;
+    /** 0-100. */
+    progress: number;
+    /** Public URL of the MP4 once the render has completed. */
+    video_url: string | null;
+    error: string | null;
+    updated_at: string | null;
+}
+
+export interface LmsVideoRenderOptions {
+    /** Server default: 1080p. */
+    resolution?: '720p' | '1080p';
+    /** Server default: true. */
+    show_captions?: boolean;
+}
+
+const RENDER_STATUSES = new Set<LmsVideoRenderStatus>([
+    'none',
+    'queued',
+    'running',
+    'completed',
+    'failed',
+]);
+
+/**
+ * Coerce whatever the server sent into a well-formed render state: an unknown
+ * status reads as "none", progress is clamped to 0-100, a completed render
+ * reports 100 %.
+ */
+export const normalizeLmsVideoRenderState = (raw: unknown): LmsVideoRenderState => {
+    const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const rawStatus = typeof data.status === 'string' ? data.status.toLowerCase() : '';
+    const status = RENDER_STATUSES.has(rawStatus as LmsVideoRenderStatus)
+        ? (rawStatus as LmsVideoRenderStatus)
+        : 'none';
+    const n = Number(data.progress);
+    const progress =
+        status === 'completed'
+            ? 100
+            : Number.isFinite(n)
+              ? Math.max(0, Math.min(100, Math.round(n)))
+              : 0;
+    return {
+        status,
+        progress,
+        // Rendered into <a href>: only an http(s) URL is a downloadable file.
+        video_url: asHttpUrl(data.video_url) ?? null,
+        error: asText(data.error) ?? null,
+        updated_at: asText(data.updated_at) ?? null,
+    };
+};
+
+/** Queued or running renders keep changing — poll them. */
+export const isActiveLmsVideoRender = (state: LmsVideoRenderState | null | undefined): boolean =>
+    state?.status === 'queued' || state?.status === 'running';
+
+/** 404 when the video wasn't created through /lms-video (or belongs to another institute). */
+export const getLmsVideoRender = async (
+    videoId: string,
+    signal?: AbortSignal
+): Promise<LmsVideoRenderState> => {
+    const res = await authenticatedAxiosInstance.get<LmsVideoRenderState>(
+        `${LMS_VIDEO_BASE}/render/${encodeURIComponent(videoId)}`,
+        { signal }
+    );
+    return normalizeLmsVideoRenderState(res.data);
+};
+
+/**
+ * Start an MP4 render. Idempotent on the server: an existing MP4 or a render
+ * already in progress is returned instead of starting another. 409 NOT_READY
+ * when the video itself isn't finished.
+ */
+export const startLmsVideoRender = async (
+    videoId: string,
+    options: LmsVideoRenderOptions = {}
+): Promise<LmsVideoRenderState> => {
+    const res = await authenticatedAxiosInstance.post<LmsVideoRenderState>(
+        `${LMS_VIDEO_BASE}/render/${encodeURIComponent(videoId)}`,
+        options
+    );
+    return normalizeLmsVideoRenderState(res.data);
+};
+
 // ── errors ───────────────────────────────────────────────────────────────────
 
 export interface LmsVideoApiError {
@@ -217,9 +318,6 @@ export interface LmsVideoApiError {
     /** Human-readable reason to show the teacher. */
     detail: string;
 }
-
-const asText = (value: unknown): string | undefined =>
-    typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 /**
  * Normalise an API failure into `{status, code, detail}`. Accepts every shape

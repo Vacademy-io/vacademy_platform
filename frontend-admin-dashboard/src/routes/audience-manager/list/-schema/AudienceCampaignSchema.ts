@@ -105,6 +105,8 @@ const formAppearanceSchema = z.object({
     eyebrow: z.string().catch(''),
     headline: z.string().catch(''),
     headingAlign: z.enum(['left', 'center', 'right']).catch(DEFAULT_FORM_APPEARANCE.headingAlign),
+    showHeader: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showHeader),
+    showHeadline: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showHeadline),
     subheadline: z.string().catch(''),
     showDescription: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showDescription),
     showObjective: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showObjective),

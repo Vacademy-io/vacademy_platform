@@ -2,11 +2,13 @@
  * Form Heading & Text editor — the words a respondent reads at the top of the
  * public response form, and where they sit.
  *
- * Two blocks, each with its own alignment:
+ * Two blocks, each with its own alignment, plus a switch for the page header:
  *
+ *   • **Page header** — the institute logo + name bar at the very top. On by
+ *     default; off for a form embedded under the institute's own site header.
  *   • **Page heading** — the big title above the form. Defaults to the
  *     audience list's own name; the admin can replace it with rich text
- *     ("Fill this form to book a free demo", in bold, centred, …).
+ *     ("Fill this form to book a free demo", in bold, centred, …) or hide it.
  *   • **Form header** — the "Please fill in your details" heading and the
  *     "This information will be used…" line at the top of the form card.
  *
@@ -46,6 +48,7 @@ import {
     type AudienceFormAppearance,
     type AudienceFormTextAlign,
 } from '@/services/audience-form-appearance';
+import { ToggleRow } from './FormAppearanceEditor';
 import { buildFormAppearancePreview, type PreviewField } from './form-appearance-preview';
 
 /** The learner page's own wording when these fields are left blank. */
@@ -129,6 +132,8 @@ const AlignControl = ({
 const isDefaultFormText = (value: AudienceFormAppearance): boolean => {
     const d = DEFAULT_FORM_APPEARANCE;
     return (
+        value.showHeader === d.showHeader &&
+        value.showHeadline === d.showHeadline &&
         value.headline === d.headline &&
         value.headingAlign === d.headingAlign &&
         value.formTitle === d.formTitle &&
@@ -181,13 +186,28 @@ export const FormTextEditor = ({
 
     const body = (
         <div className="space-y-6">
+            {/* ── Page header ── */}
+            <ToggleRow
+                label="Show Page Header"
+                help={`The bar at the very top with the institute logo and name${
+                    previewInstituteName ? ` (“${previewInstituteName}”)` : ''
+                }. Also hides it on the thank-you screen.`}
+                checked={value.showHeader}
+                disabled={disabled}
+                onCheckedChange={(showHeader) => patch({ showHeader })}
+            />
+
             {/* ── Page heading ── */}
             <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <p className="text-sm font-semibold text-neutral-800">Page Heading</p>
-                        <p className="text-xs text-neutral-500">The title at the top of the page.</p>
+                        <p className="text-xs text-neutral-500">
+                            The title at the top of the page.
+                        </p>
                     </div>
+                    {/* Stays visible with the heading off: the same alignment
+                        also places the eyebrow, intro and highlights. */}
                     <AlignControl
                         label="Page heading alignment"
                         value={value.headingAlign}
@@ -195,32 +215,43 @@ export const FormTextEditor = ({
                         onChange={(headingAlign) => patch({ headingAlign })}
                     />
                 </div>
-                <div>
-                    <RichTextEditor
-                        value={value.headline}
-                        onChange={(html) => patch({ headline: normalizeRichText(html) })}
-                        minimalToolbar
-                        placeholder={previewCampaignName}
-                        minHeight={60}
-                    />
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <HelpText>
-                            Leave empty to show the audience list name
-                            {previewCampaignName ? ` (“${previewCampaignName}”)` : ''}.
-                        </HelpText>
-                        {value.headline && (
-                            <MyButton
-                                type="button"
-                                buttonType="text"
-                                scale="small"
-                                disable={disabled}
-                                onClick={() => patch({ headline: '' })}
-                            >
-                                Use audience list name
-                            </MyButton>
-                        )}
+                <ToggleRow
+                    label="Show Page Heading"
+                    help="Turn off to hide the title — the audience list name or your own heading."
+                    checked={value.showHeadline}
+                    disabled={disabled}
+                    onCheckedChange={(showHeadline) => patch({ showHeadline })}
+                />
+                {/* Hidden, not cleared: switching the heading back on brings
+                    back whatever was typed. */}
+                {value.showHeadline && (
+                    <div>
+                        <RichTextEditor
+                            value={value.headline}
+                            onChange={(html) => patch({ headline: normalizeRichText(html) })}
+                            minimalToolbar
+                            placeholder={previewCampaignName}
+                            minHeight={60}
+                        />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <HelpText>
+                                Leave empty to show the audience list name
+                                {previewCampaignName ? ` (“${previewCampaignName}”)` : ''}.
+                            </HelpText>
+                            {value.headline && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    scale="small"
+                                    disable={disabled}
+                                    onClick={() => patch({ headline: '' })}
+                                >
+                                    Use audience list name
+                                </MyButton>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* ── Form header ── */}

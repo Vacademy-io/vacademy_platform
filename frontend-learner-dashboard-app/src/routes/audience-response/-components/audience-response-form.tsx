@@ -50,6 +50,7 @@ import {
   parseAudienceFormAppearance,
   resolveFormSubtitle,
   resolveFormSubtitleHtml,
+  hasStructuredHeroContent,
   resolveHeroHtml,
   sanitizeCustomCss,
 } from "../-utils/form-appearance";
@@ -422,8 +423,12 @@ const AudienceResponseForm = ({
   const cardClass = FORM_CARD_CLASS[appearance.cardStyle];
   const columnClass = FORM_WIDTH_CLASS[appearance.width];
 
-  /** Sticky branding bar — identical on the form and the thank-you screen. */
-  const header = (
+  /**
+   * Sticky branding bar — identical on the form and the thank-you screen.
+   * `showHeader: false` drops it on both, for a page embedded under the
+   * institute's own site header.
+   */
+  const header = appearance.showHeader && (
     <nav
       className={cn(
         AUDIENCE_FORM_HOOKS.header,
@@ -610,6 +615,16 @@ const AudienceResponseForm = ({
       </div>
     );
   }
+
+  // Every structured block switched off → no hero at all, so the classic
+  // layout does not wrap an empty card and split does not keep an empty column.
+  const showHero =
+    Boolean(heroHtml) ||
+    hasStructuredHeroContent(appearance, {
+      name: campaignData.campaign_name,
+      description: campaignData.description,
+      objective: campaignData.campaign_objective,
+    });
 
   const hero = heroHtml ? (
     // Hand-built pitch. Sanitized upstream, and deliberately WITHOUT the
@@ -906,7 +921,7 @@ const AudienceResponseForm = ({
 
       <main className="px-page py-8 sm:py-12">
         <div className={cn("mx-auto w-full", columnClass)}>
-          {appearance.layout === "split" ? (
+          {appearance.layout === "split" && showHero ? (
             // Two columns from `lg` up: the pitch stays in view while a long
             // form scrolls beside it.
             <div className="grid gap-section lg:grid-cols-12">
@@ -917,7 +932,7 @@ const AudienceResponseForm = ({
             </div>
           ) : (
             <div className="flex flex-col gap-section">
-              {appearance.layout === "classic" ? (
+              {!showHero ? null : appearance.layout === "classic" ? (
                 // The pre-2026-08 shape: the pitch in its own card.
                 <ModernCard
                   variant={cardVariant}

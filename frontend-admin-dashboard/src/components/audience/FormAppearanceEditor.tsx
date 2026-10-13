@@ -144,7 +144,7 @@ const ErrorText = ({ children }: { children: ReactNode }) => (
     <p className="mt-1 text-xs text-danger-600">{children}</p>
 );
 
-const ToggleRow = ({
+export const ToggleRow = ({
     label,
     help,
     checked,
@@ -707,6 +707,8 @@ export const FormAppearanceEditor = ({
     // own chip there, so they don't count as "this card was customised".
     const isDefault = isDefaultFormAppearance({
         ...value,
+        showHeader: DEFAULT_FORM_APPEARANCE.showHeader,
+        showHeadline: DEFAULT_FORM_APPEARANCE.showHeadline,
         headline: DEFAULT_FORM_APPEARANCE.headline,
         headingAlign: DEFAULT_FORM_APPEARANCE.headingAlign,
         formTitle: DEFAULT_FORM_APPEARANCE.formTitle,

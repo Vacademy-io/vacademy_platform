@@ -50,6 +50,40 @@ public class EnrollInviteListItemDTO {
     /** Display name for {@link #updatedByUserId}; null when unknown or auth_service was unreachable. */
     private String updatedByName;
 
+    /**
+     * The payment option attached to each of the invite's batches, one entry per
+     * package session — enough for the list card to say "Free" / "₹499 one-time"
+     * without the admin opening the invite. Filled in by one batched query per
+     * page; empty when nothing is attached or that lookup failed.
+     */
+    private List<PaymentSummary> paymentSummaries;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class PaymentSummary {
+        private String packageSessionId;
+        /**
+         * Id of the invite↔batch↔payment-option mapping row. The course page's
+         * "Configure payment plan" swaps the option through
+         * PUT /enroll-invite-payment-option, which needs this as the old id.
+         */
+        private String mappingId;
+        private String paymentOptionId;
+        private String paymentOptionName;
+        /** SUBSCRIPTION, ONE_TIME, FREE, DONATION or CPO. */
+        private String type;
+        private boolean requireApproval;
+        /** Active plans on the option; usually 0 for FREE, which carries none. */
+        private int planCount;
+        /** Lowest / highest actual_price across the active plans; null when there are none. */
+        private Double minPrice;
+        private Double maxPrice;
+        private String currency;
+    }
+
     public static EnrollInviteListItemDTO from(EnrollInviteWithSessionsProjection row, String absoluteShortUrl) {
         return EnrollInviteListItemDTO.builder()
                 .id(row.getId())

@@ -810,6 +810,7 @@ export const SAVE_QUIZ_QUESTION_FEEDBACK = `${BASE_URL}/admin-core-service/learn
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const TRIGGER_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/trigger`;
 export const GET_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/latest`;
+export const ASSIGNMENT_AI_EVALUATION_BULK = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/bulk`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
 export const COPY_SLIDE = `${BASE_URL}/admin-core-service/slide/v1/copy`;

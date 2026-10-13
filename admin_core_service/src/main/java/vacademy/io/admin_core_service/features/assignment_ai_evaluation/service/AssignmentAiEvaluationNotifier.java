@@ -6,6 +6,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.entity.AssignmentAiEvaluation;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.entity.AssignmentAiEvaluationBatch;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationBatchRepository;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -35,6 +37,7 @@ public class AssignmentAiEvaluationNotifier {
     private static final String EMAIL_TYPE = "UTILITY_EMAIL";
 
     private final AssignmentAiEvaluationRepository evaluationRepository;
+    private final AssignmentAiEvaluationBatchRepository batchRepository;
     private final SlideRepository slideRepository;
     private final InstituteRepository instituteRepository;
     private final AuthService authService;
@@ -49,31 +52,74 @@ public class AssignmentAiEvaluationNotifier {
         }
     }
 
+    /**
+     * "Check all with AI": ONE notice when the batch's last copy is done, not one per
+     * learner. Claimed in the database, so the notice goes out once even when the last
+     * two copies finish together or the queue job sweeps it as well.
+     */
+    @Async
+    public void notifyBatchFinished(String batchId) {
+        try {
+            if (batchRepository.claimNotice(batchId) == 1) {
+                batchRepository.findById(batchId).ifPresent(this::sendBatch);
+            }
+        } catch (Exception e) {
+            log.warn("[assignment-ai-eval] batch notice for {} failed: {}", batchId, e.getMessage());
+        }
+    }
+
+    void sendBatch(AssignmentAiEvaluationBatch batch) {
+        int completed = 0;
+        int failed = 0;
+        for (Object[] row : evaluationRepository.countByStatusForBatch(batch.getId())) {
+            int count = ((Number) row[1]).intValue();
+            if (AssignmentAiEvaluation.STATUS_COMPLETED.equals(String.valueOf(row[0]))) {
+                completed += count;
+            } else if (AssignmentAiEvaluation.STATUS_FAILED.equals(String.valueOf(row[0]))) {
+                failed += count;
+            }
+        }
+        String assignmentTitle = slideRepository.findById(batch.getSlideId())
+                .map(Slide::getTitle).filter(AssignmentAiEvaluationNotifier::notBlank)
+                .map(String::trim).orElse("the assignment");
+        deliver(batch.getInstituteId(), batch.getTriggeredBy(), batchMessage(completed, failed, assignmentTitle), null);
+    }
+
+    static Message batchMessage(int completed, int failed, String assignmentTitle) {
+        int total = completed + failed;
+        String failedPart = failed == 0 ? "" : " " + failed + " could not be checked - grade "
+                + (failed == 1 ? "it" : "them") + " yourself or check again.";
+        return new Message(
+                "AI checked " + completed + " of " + total + " submissions - review them",
+                "The AI Evaluator checked " + completed + " of " + total + " submissions for \"" + assignmentTitle
+                        + "\"." + failedPart + " Open the assignment's Activity Stats, review each learner's "
+                        + "marks and feedback, then press Save Grade. Learners see nothing until you do.",
+                completed > 0);
+    }
+
     void send(AssignmentAiEvaluation evaluation) {
         String teacherId = evaluation.getTriggeredBy();
         if (teacherId == null || teacherId.isBlank() || !evaluation.isTerminal()) {
             return;
         }
-        Map<String, UserDTO> users = new HashMap<>();
-        List<String> ids = new ArrayList<>(List.of(teacherId));
-        if (evaluation.getUserId() != null) {
-            ids.add(evaluation.getUserId());
-        }
-        for (UserDTO user : authService.getUsersFromAuthServiceByUserIds(ids)) {
-            if (user != null && user.getId() != null) {
-                users.put(user.getId(), user);
-            }
-        }
-        UserDTO teacher = users.get(teacherId);
-        UserDTO learner = evaluation.getUserId() == null ? null : users.get(evaluation.getUserId());
+        UserDTO learner = evaluation.getUserId() == null ? null
+                : authService.getUsersFromAuthServiceByUserIds(List.of(evaluation.getUserId())).stream()
+                        .filter(u -> u != null && evaluation.getUserId().equals(u.getId())).findFirst().orElse(null);
         String learnerName = learner != null && notBlank(learner.getFullName()) ? learner.getFullName().trim() : "A learner";
         String assignmentTitle = slideRepository.findById(evaluation.getSlideId())
                 .map(Slide::getTitle).filter(AssignmentAiEvaluationNotifier::notBlank)
                 .map(String::trim).orElse("the assignment");
-        Optional<Institute> institute = instituteRepository.findById(evaluation.getInstituteId());
 
         Message message = message(evaluation, learnerName, assignmentTitle);
+        deliver(evaluation.getInstituteId(), teacherId, message, evaluation);
+    }
 
+    /** Bell alert + institute-branded email to one teacher. {@code evaluation} adds its AI feedback to the mail. */
+    private void deliver(String instituteId, String teacherId, Message message, AssignmentAiEvaluation evaluation) {
+        if (teacherId == null || teacherId.isBlank()) {
+            return;
+        }
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
         try {
             Map<String, Object> settings = new HashMap<>();
             settings.put("priority", 2);
@@ -81,19 +127,24 @@ public class AssignmentAiEvaluationNotifier {
             settings.put("showBadge", true);
             settings.put("isActive", true);
             notificationService.createSystemAlertAnnouncement(
-                    evaluation.getInstituteId(), List.of(teacherId), message.title(), message.text(),
+                    instituteId, List.of(teacherId), message.title(), message.text(),
                     "system", institute.map(Institute::getInstituteName).filter(AssignmentAiEvaluationNotifier::notBlank)
                             .orElse("System"),
                     null, settings);
         } catch (Exception e) {
-            log.warn("[assignment-ai-eval] bell alert for {} failed: {}", evaluation.getId(), e.getMessage());
+            log.warn("[assignment-ai-eval] bell alert to {} failed: {}", teacherId, e.getMessage());
         }
 
         // The mail goes out under the institute's own name and sender (notification_service
         // picks the configured sender when fromEmail is null) - never a platform default.
         String instituteName = institute.map(Institute::getInstituteName).filter(AssignmentAiEvaluationNotifier::notBlank)
                 .map(String::trim).orElse(null);
-        if (teacher == null || !notBlank(teacher.getEmail()) || instituteName == null) {
+        if (instituteName == null) {
+            return;
+        }
+        UserDTO teacher = authService.getUsersFromAuthServiceByUserIds(List.of(teacherId)).stream()
+                .filter(u -> u != null && teacherId.equals(u.getId())).findFirst().orElse(null);
+        if (teacher == null || !notBlank(teacher.getEmail())) {
             return;
         }
         String color = institute.map(Institute::getInstituteThemeCode).filter(AssignmentAiEvaluationNotifier::notBlank)
@@ -102,9 +153,9 @@ public class AssignmentAiEvaluationNotifier {
         try {
             notificationService.sendHtmlEmailViaUnified(teacher.getEmail(), message.title(),
                     emailHtml(message, teacherName, instituteName, color, evaluation),
-                    evaluation.getInstituteId(), null, instituteName, EMAIL_TYPE);
+                    instituteId, null, instituteName, EMAIL_TYPE);
         } catch (Exception e) {
-            log.warn("[assignment-ai-eval] email for {} failed: {}", evaluation.getId(), e.getMessage());
+            log.warn("[assignment-ai-eval] email to {} failed: {}", teacherId, e.getMessage());
         }
     }
 
@@ -147,7 +198,7 @@ public class AssignmentAiEvaluationNotifier {
                 .append("<div style=\"padding:20px;border:1px solid #e5e5e5;border-top:none\">")
                 .append("<p>Hi ").append(HtmlUtils.htmlEscape(teacherName)).append(",</p>")
                 .append("<p>").append(HtmlUtils.htmlEscape(message.text())).append("</p>");
-        if (message.completed() && notBlank(evaluation.getFeedback())) {
+        if (message.completed() && evaluation != null && notBlank(evaluation.getFeedback())) {
             html.append("<p style=\"margin:16px 0 4px;font-weight:bold\">AI feedback</p>")
                     .append("<p style=\"background:#f6f6f6;padding:12px;margin:0;white-space:pre-wrap\">")
                     .append(HtmlUtils.htmlEscape(evaluation.getFeedback().trim())).append("</p>");

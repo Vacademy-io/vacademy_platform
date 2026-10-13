@@ -8,5 +8,4 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AssignmentAiEvaluationTriggerRequest {
     private String trackedId;
-    private String preferredModel;
 }

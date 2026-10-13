@@ -46,3 +46,46 @@ export function entryBoxStyle(
         height: pct(y1 - y0, canvasHeight),
     };
 }
+
+interface TimedEntry {
+    id?: string;
+    inTime?: number;
+    exitTime?: number;
+    start?: number;
+    end?: number;
+}
+
+const isOverlay = (e: TimedEntry) =>
+    !!e.id && (e.id.startsWith('branding-') || e.id.startsWith('snippet-'));
+
+/**
+ * Stretch each scene to the start of the next one when the timeline has a
+ * hole (e.g. a shot the generator couldn't produce). Overlays such as the
+ * caption band and watermark stay active through a hole, so "nothing active"
+ * never fires and the viewer saw a blank canvas; holding the previous scene
+ * matches what the MP4 renderer does. Overlays are left untouched.
+ */
+export function fillSceneGaps<T extends TimedEntry>(entries: T[]): T[] {
+    const startOf = (e: T) => e.inTime ?? e.start;
+    const scenes = entries
+        .filter((e) => !isOverlay(e) && typeof startOf(e) === 'number')
+        .sort((a, b) => (startOf(a) as number) - (startOf(b) as number));
+    const extended = new Map<T, T>();
+    for (let i = 0; i < scenes.length - 1; i++) {
+        const cur = scenes[i]!;
+        const nextStart = startOf(scenes[i + 1]!) as number;
+        const usesExit = typeof cur.exitTime === 'number';
+        const end = usesExit ? cur.exitTime : cur.end;
+        if (typeof end === 'number' && end < nextStart) {
+            extended.set(cur, usesExit ? { ...cur, exitTime: nextStart } : { ...cur, end: nextStart });
+        }
+    }
+    return extended.size ? entries.map((e) => extended.get(e) ?? e) : entries;
+}
+
+/** Canvas colour behind the layers: the video's own background, not white. */
+export function canvasBackground(palette?: { background?: string } | null): string {
+    const bg = palette?.background;
+    const fallback = '#ffffff'; // design-lint-ignore: players' historic canvas default; real colour comes from the timeline palette
+    return typeof bg === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(bg) ? bg : fallback;
+}

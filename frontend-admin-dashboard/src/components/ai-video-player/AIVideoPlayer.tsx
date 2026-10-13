@@ -6,7 +6,7 @@ import { useSoundScheduler, collectCuesFromEntries } from './hooks/useSoundSched
 import { CaptionDisplay, CaptionSettingsPopover } from './components';
 import { processHtmlContent } from './html-processor';
 import type { SoundCue } from './types';
-import { entryBoxStyle } from './entry-layout';
+import { canvasBackground, entryBoxStyle, fillSceneGaps } from './entry-layout';
 
 /**
  * Frame interface matching the time_based_frame.json structure
@@ -264,7 +264,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 // Reset audio started state
                 audioStartedRef.current = false;
 
-                setFrames(entries);
+                setFrames(fillSceneGaps(entries));
             } catch (err) {
                 console.error('❌ AIVideoPlayer: Error loading timeline:', err);
                 console.error('❌ AIVideoPlayer: Timeline URL was:', timelineUrl);
@@ -813,7 +813,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                     srcDoc={frame.processedHtml}
                                     style={{
                                         border: 'none',
-                                        background: frame.shot_type === 'SOURCE_CLIP' ? 'transparent' : (index === 0 ? '#ffffff' : 'transparent'),
+                                        background: frame.shot_type === 'SOURCE_CLIP' ? 'transparent' : (index === 0 ? canvasBackground(timelineMeta?.palette) : 'transparent'),
                                         position: 'absolute',
                                         ...entryBoxStyle(frame, width, height),
                                         zIndex: frame.z || 0,

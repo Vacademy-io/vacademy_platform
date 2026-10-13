@@ -597,9 +597,25 @@ async def test_get_and_edit_target_the_learner_not_the_connected_admin(backend):
                                          ctx(), setting))
     assert prev["learner"]["learner_id"] == "u-sarthak"
     assert prev["changes"][0]["from"] == "+91 98765 43210"
-    # A model that still sends user_id gets a clear refusal, never the admin's record.
+    # A model with a stale schema that still sends user_id gets the learner it named — never the admin.
     old = json.loads(await execute_tool("learners", {"action": "get", "user_id": "u-sarthak"}, ctx(), setting))
-    assert old["error"] == "unknown_learner"
+    assert old["learner"]["learner_id"] == "u-sarthak"
+    old_prev = json.loads(await execute_tool("learner_edit", {"action": "preview", "user_id": "u-sarthak",
+                                                              "changes": {"mobile_number": "+91 97777 00000"}},
+                                             ctx(), setting))
+    assert old_prev["learner"]["learner_id"] == "u-sarthak" and old_prev.get("confirm_token")
+    # …and applying that preview with user_id again goes through.
+    done = json.loads(await execute_tool("learner_edit", {"action": "apply", "user_id": "u-sarthak",
+                                                          "changes": {"mobile_number": "+91 97777 00000"},
+                                                          "confirm_token": old_prev["confirm_token"]},
+                                         ctx(), setting))
+    assert "error" not in done, done
+    # No id at all is a clear error, not "unknown learner".
+    none = json.loads(await execute_tool("learners", {"action": "get"}, ctx(), setting))
+    assert none["error"] == "missing_learner_id"
+    none = json.loads(await execute_tool("learner_edit", {"action": "preview", "changes": {"full_name": "X"}},
+                                         ctx(), setting))
+    assert none["error"] == "missing_learner_id"
 
 
 def test_no_mcp_tool_takes_a_top_level_user_id_or_institute_id():

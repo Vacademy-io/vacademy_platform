@@ -127,6 +127,17 @@ def search_learners(ctx: ToolContext, query: str, limit: int = 10) -> List[Dict[
     return [_profile(r) for r in rows]
 
 
+def target_learner_id(args: Dict[str, Any]) -> str:
+    """The learner a tool call names: `learner_id`, else the `user_id` the model sent (kept by the tool
+    runner as `requested_user_id` — a client with a stale schema still sends user_id)."""
+    return str(args.get("learner_id") or args.get("requested_user_id") or "").strip()
+
+
+def missing_learner_error() -> Dict[str, Any]:
+    return {"error": "missing_learner_id",
+            "message": "Pass learner_id — the learner_id that learners(action='find') returned."}
+
+
 def learner_profile(ctx: ToolContext, user_id: Any) -> Optional[Dict[str, Any]]:
     """One learner of THIS institute, else None."""
     uid = str(user_id or "").strip()
@@ -346,7 +357,7 @@ def token_error(reason: str, action: str) -> Dict[str, Any]:
 
 __all__ = [
     "CONFIRM_TTL_SECONDS", "PROFILE_FIELDS", "digits", "valid_email", "valid_phone", "parse_day", "not_future",
-    "search_learners", "learner_profile", "learners_by_ids", "match_existing", "enrolments",
+    "search_learners", "target_learner_id", "missing_learner_error", "learner_profile", "learners_by_ids", "match_existing", "enrolments",
     "org_associated_batches", "user_identifier", "notification_toggles", "custom_field_catalogue", "cf_column",
     "ENROLMENT_EVENT", "enrolment_automations",
     "auth_call", "login_credentials", "issue_token", "check_token", "token_error",

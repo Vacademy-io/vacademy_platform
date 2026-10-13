@@ -129,6 +129,8 @@ class Backend:
         if path.endswith("/add-course/inst-1"):
             self.created_name = body["course_name"]
             return "course-new"
+        if path.endswith("/course/v1/copy-content"):
+            return {"copiedSubjects": 1, "copiedModules": 1, "copiedChapters": 1, "copiedSlides": 1, "warnings": []}
         if path.endswith("/course-new/batches"):
             return [{"id": b} for b in getattr(self, "new_batch_ids", ["ps-new"])]
         if path.endswith("/add-subject"):
@@ -1082,3 +1084,98 @@ async def test_review_suggests_a_preview_image(backend):
     backend.course["course_preview_image_media_id"] = "file-p"
     out = await read({"action": "review", "course_id": "course-1"})
     assert not any("preview image" in f["issue"] for f in out["findings"])
+
+
+# ── create_course: instructor + copy from an existing course ────────────
+@pytest.mark.asyncio
+async def test_create_course_makes_the_creator_its_instructor(backend):
+    await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}]})
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert [f["user"]["id"] for f in body["add_faculty_to_course"]] == ["user-1"]
+    assert body["add_faculty_to_course"][0]["new_user"] is False
+    # With sessions/levels admin-core reads the instructors per level instead.
+    backend.calls.clear()
+    await edit({"action": "create_course", "course": {"name": "Plants"}, "chapters": [{"name": "Leaves"}],
+                "levels": [{"id": "lvl-9"}]})
+    body = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    levels = [lv for sess in body["sessions"] for lv in sess["levels"]]
+    assert levels and all([f["user"]["id"] for f in lv["add_faculty_to_course"]] == ["user-1"] for lv in levels)
+
+
+@pytest.mark.asyncio
+async def test_copy_from_seeds_the_course_then_appends_new_chapters(backend):
+    out = await edit({"action": "create_course", "course": {"name": "Biology 102"},
+                      "copy_from": {"course_id": "course-1"},
+                      "chapters": [{"name": "Tissues", "slides": ["Intro"]}]})
+    assert "error" not in out, out
+    copy = next(c for c in backend.calls if c["path"].endswith("/copy-content"))["body"]
+    assert copy == {"sourcePackageSessionId": "ps-1", "targetPackageSessionIds": ["ps-new"], "mode": "VALUE"}
+    add_course = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert add_course["course_depth"] == 3      # the source's depth
+    # The new chapter goes into the copy's hidden module, after the copied chapter — no second DEFAULT subject.
+    assert not [c for c in backend.calls if c["path"].endswith(("/add-subject", "/add-module"))]
+    chapter = next(c for c in backend.calls if c["path"].endswith("/add-chapter"))
+    assert chapter["params"]["moduleId"] == "mod-1" and chapter["body"]["chapter_order"] == 2
+    order = [c["path"] for c in backend.calls]
+    assert order.index(next(p for p in order if p.endswith("/copy-content"))) < \
+        order.index(next(p for p in order if p.endswith("/add-chapter")))
+    assert out["copied"]["from"]["course"] == "Biology 101"
+    assert [c["id"] for c in out["copied"]["chapter_list"]] == ["ch-1"]
+    assert [t["title"] for t in out["todo"]] == ["Intro"]
+
+
+@pytest.mark.asyncio
+async def test_copy_from_alone_needs_no_outline(backend):
+    out = await edit({"action": "create_course", "course": {"name": "Biology 102"}, "copy_from": "course-1"})
+    assert "error" not in out, out
+    assert out["copied"]["chapters"] == 1 and out["chapters"] == []
+    assert not [c for c in backend.calls if c["path"].endswith(("/add-subject", "/add-module", "/add-chapter"))]
+
+
+@pytest.mark.asyncio
+async def test_depth_2_copy_appends_slides_to_the_copied_chapter(backend):
+    backend.course["depth"] = 2
+    out = await edit({"action": "create_course", "course": {"name": "Short"}, "copy_from": {"course_id": "course-1"},
+                      "slides": [{"type": "document", "title": "More", "html": GOOD_HTML}]})
+    assert "error" not in out, out
+    assert not [c for c in backend.calls if c["path"].endswith("/add-chapter")]
+    slide = next(c for c in backend.calls if "/slide/" in c["path"])
+    assert slide["params"]["chapterId"] == "ch-1" and slide["body"]["slide_order"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("copy_from, extra, code", [
+    ({"course_id": "nope"}, {}, "unknown_course"),
+    ({"course_id": "course-1"}, {"course": {"name": "X", "depth": 5}}, "depth_mismatch"),
+    ({"course_id": "course-1", "batch_id": "ps-x"}, {}, "unknown_batch"),
+])
+async def test_bad_copy_from_creates_nothing(backend, copy_from, extra, code):
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": copy_from, **extra})
+    assert out["error"] == code and not backend.calls
+
+
+@pytest.mark.asyncio
+async def test_copy_from_a_course_with_several_batches_asks_which(backend):
+    backend.batches.append({**backend.batches[0], "id": "ps-2", "name": "2026-27 · Class 9"})
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": {"course_id": "course-1"}})
+    assert out["error"] == "pick_source_batch" and [b["id"] for b in out["batches"]] == ["ps-1", "ps-2"]
+    assert not backend.calls
+    out = await edit({"action": "create_course", "course": {"name": "X"},
+                      "copy_from": {"course_id": "course-1", "batch_id": "ps-2"}})
+    assert next(c for c in backend.calls if c["path"].endswith("/copy-content"))["body"]["sourcePackageSessionId"] \
+        == "ps-2"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_copy_reports_the_draft_course(backend, monkeypatch):
+    real = backend.admin_core
+
+    async def _fail(c, method, path, **kw):
+        if path.endswith("/copy-content"):
+            return {"error": "admin_core_error", "message": "boom"}
+        return await real(c, method, path, **kw)
+    monkeypatch.setattr(cbd, "admin_core", _fail)
+    out = await edit({"action": "create_course", "course": {"name": "X"}, "copy_from": "course-1",
+                      "chapters": [{"name": "Extra"}]})
+    assert out["error"] == "copy_failed" and out["course_id"] == "course-new"
+    assert not [c for c in backend.calls if c["path"].endswith("/add-chapter")]

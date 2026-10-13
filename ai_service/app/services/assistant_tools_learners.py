@@ -115,7 +115,10 @@ async def _action_find(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
 
 
 async def _action_get(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    profile = ld.learner_profile(ctx, args.get("learner_id"))
+    learner_id = ld.target_learner_id(args)
+    if not learner_id:
+        return ld.missing_learner_error()
+    profile = ld.learner_profile(ctx, learner_id)
     if not profile:
         return _err("unknown_learner", message="No learner of this institute has that learner_id. Use "
                                                "learners(action='find').")

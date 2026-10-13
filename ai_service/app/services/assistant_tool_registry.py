@@ -2403,6 +2403,10 @@ async def execute_tool(
         })
     ctx.gate_setting, ctx.gate_checked = setting, True
     safe_args: Dict[str, Any] = dict(args or {})
+    # What the model put in `user_id` survives only as data (e.g. a model with a stale tool schema
+    # naming a learner); it never becomes identity.
+    if (args or {}).get("user_id") not in (None, ""):
+        safe_args["requested_user_id"] = str(args["user_id"]).strip()
     # Identity is ALWAYS taken from the pinned principal, never from the model.
     safe_args["user_id"] = ctx.principal.user_id
     safe_args["institute_id"] = ctx.principal.institute_id

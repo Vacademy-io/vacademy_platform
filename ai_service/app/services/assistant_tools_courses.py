@@ -36,6 +36,9 @@ COURSES_ACTIONS = (
 )
 
 BRIEF_CHECKLIST = [
+    {"key": "start_from", "ask": "Start from scratch, or copy an existing course and extend it? (If copying: which "
+                                 "course — courses(list) — and, when it has several batches, which batch. The copy is "
+                                 "independent of the original.)"},
     {"key": "topic_and_goal", "ask": "What is the course about, and what should a learner be able to DO after it?"},
     {"key": "audience", "ask": "Who is it for — age/class, prior knowledge, exam or job goal?"},
     {"key": "level_and_language", "ask": "Beginner / intermediate / advanced? Which language should it be written in?"},
@@ -229,7 +232,8 @@ async def _action_schema(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
     return {
         "workflow": [
             "1. courses(brief_checklist) and interview the admin.",
-            "2. Write the outline; course_edit(create_course) — the course is saved as a DRAFT with its chapters.",
+            "2. Write the outline; course_edit(create_course) — the course is saved as a DRAFT with its chapters "
+            "(copy_from: start from a copy of an existing course and add to it).",
             "3. Write each slide and save it with course_edit(add_slide) (or include it inline in create_course).",
             "4. courses(review) → fix every `fix` with course_edit(update_slide).",
             "5. course_invites_edit(create_invite) with the price → share the returned link.",

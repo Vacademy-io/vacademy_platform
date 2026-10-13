@@ -519,12 +519,13 @@ def _iso(value: Any) -> Optional[str]:
 
 # ── outline → structure plan ─────────────────────────────────────────────
 
-def normalize_outline(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def normalize_outline(args: Dict[str, Any], *, allow_empty: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     The LLM's outline as ``{"course": {...}, "depth": n, "subjects": [{name, modules:
     [{name, chapters: [{name, slides: [...]}]}]}]}`` with hidden levels filled
     in as DEFAULT — so persistence is one loop regardless of depth. Chapter
     names are made unique within their module, slide titles within their chapter.
+    ``allow_empty`` (a course copied from another one): no structure is fine — ``subjects`` is then [].
     """
     course = args.get("course") if isinstance(args.get("course"), dict) else {}
     name = clean_title(course.get("name") or args.get("name"))
@@ -542,7 +543,7 @@ def normalize_outline(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], O
 
     if depth == 5:
         subjects_in = [s for s in (args.get("subjects") or []) if isinstance(s, dict)]
-        if not subjects_in:
+        if not subjects_in and not allow_empty:
             return None, "depth 5 needs `subjects` → modules → chapters"
         subjects = [{"name": clean_title(s.get("name"), f"Subject {i + 1}"),
                      "modules": [{"name": clean_title(m.get("name"), f"Module {j + 1}"), "chapters": _chapters(m)}
@@ -550,19 +551,20 @@ def normalize_outline(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], O
                     for i, s in enumerate(subjects_in)]
     elif depth == 4:
         modules_in = [m for m in (args.get("modules") or []) if isinstance(m, dict)]
-        if not modules_in:
+        if not modules_in and not allow_empty:
             return None, "depth 4 needs `modules` → chapters"
         subjects = [{"name": DEFAULT_LEVEL, "modules": [
             {"name": clean_title(m.get("name"), f"Module {j + 1}"), "chapters": _chapters(m)}
-            for j, m in enumerate(modules_in)]}]
+            for j, m in enumerate(modules_in)]}] if modules_in else []
     else:
         chapters_in = [c for c in (args.get("chapters") or []) if isinstance(c, dict)]
         if depth == 2:
             slides = [s for c in chapters_in for s in (c.get("slides") or [])] or list(args.get("slides") or [])
-            chapters_in = [{"name": DEFAULT_LEVEL, "slides": slides}]
-        if not chapters_in:
+            chapters_in = [{"name": DEFAULT_LEVEL, "slides": slides}] if slides or not allow_empty else []
+        if not chapters_in and not allow_empty:
             return None, "depth 3 needs `chapters` (depth 2: `slides` or one chapter)"
-        subjects = [{"name": DEFAULT_LEVEL, "modules": [{"name": DEFAULT_LEVEL, "chapters": chapters_in}]}]
+        subjects = ([{"name": DEFAULT_LEVEL, "modules": [{"name": DEFAULT_LEVEL, "chapters": chapters_in}]}]
+                    if chapters_in else [])
 
     total_chapters = 0
     for s in subjects:

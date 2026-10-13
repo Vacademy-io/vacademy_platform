@@ -16,7 +16,9 @@ also works on a live course (the admin's choice): it only changes the course's
 images and fills the course's invites' EMPTY image slots, never one set on purpose.
 
 Actions
-    create_course      outline (+ optional inline slides) → a DRAFT course with its structure
+    create_course      outline (+ optional inline slides) → a DRAFT course with its structure; copy_from
+                       seeds it with an independent copy of another course's content; the creator is
+                       its instructor
     add_chapter        one more chapter in a DRAFT course
     add_slide          one slide (document / video / pdf / quiz / question / assignment); DRAFT unless asked
     update_slide       replace a slide of a DRAFT course (status DRAFT unless asked)
@@ -73,7 +75,12 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
             "full slide specs (saved now) or {type, title} placeholders (returned in `todo` for add_slide). Returns "
             "every chapter id. Optional sessions / levels make one batch per session × level (see "
             "courses(action='schema') → batches; reuse existing ones from courses(action='sessions_levels')); leave "
-            "them out for a simple course.\n"
+            "them out for a simple course. The admin creating it is set as the course's instructor.\n"
+            "  copy_from:{course_id, batch_id?} starts the new course as an independent copy of an existing course's "
+            "chapters and slides (ask the admin first whether to start from one — courses(action='list')); the copy "
+            "keeps the source's depth, chapters/modules/subjects you also send are added after the copied ones, and "
+            "you extend it afterwards with add_chapter / add_slide. A source with several batches needs batch_id "
+            "(the error lists them).\n"
             "- add_chapter (course_id, name, module_id?): another chapter (depth ≥ 3).\n"
             "- add_slide (chapter_id, slide:{type, title, …}, position?, status?): one slide.\n"
             "- update_slide (slide_id, slide:{type, title, …}, status?): replace a slide of a DRAFT course (same type).\n"
@@ -100,6 +107,8 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(COURSE_EDIT_ACTIONS)},
                 "course": {"type": "object", "description": "create_course: course metadata (name required)."},
+                "copy_from": {"type": "object", "description": "create_course: {course_id, batch_id?} — copy an "
+                              "existing course's content into the new course, then extend it."},
                 "chapters": {"type": "array", "items": {"type": "object"},
                              "description": "create_course depth 2/3: [{name, slides:[…]}]."},
                 "modules": {"type": "array", "items": {"type": "object"},
@@ -203,8 +212,61 @@ def _chapter_slides(ctx: ToolContext, chapter: Dict[str, Any]) -> List[Dict[str,
 
 # ── create_course ────────────────────────────────────────────────────────
 
+def _copy_source(ctx: ToolContext, args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """create_course copy_from → ({course, batch, depth}, None), (None, None) when not copying, or (None, problem)."""
+    spec = args.get("copy_from")
+    if spec in (None, "", {}):
+        return None, None
+    spec = {"course_id": spec} if isinstance(spec, str) else spec
+    if not isinstance(spec, dict):
+        return None, _err("invalid_copy_from", message="copy_from must be {course_id, batch_id?}.")
+    source = cbd.course_row(ctx, str(spec.get("course_id") or ""))
+    if not source:
+        return None, _err("unknown_course", message="copy_from.course_id is not a course of this institute. "
+                                                    "Use courses(action='list').")
+    batches = cbd.course_batches(ctx, source["id"])
+    wanted = str(spec.get("batch_id") or "").strip()
+    if wanted:
+        batch = next((b for b in batches if b["id"] == wanted), None)
+        if not batch:
+            return None, _err("unknown_batch", message="copy_from.batch_id is not a batch of that course.",
+                              batches=[{"id": b["id"], "name": b["name"]} for b in batches])
+    elif len(batches) == 1:
+        batch = batches[0]
+    elif not batches:
+        return None, _err("nothing_to_copy", message=f"'{source['name']}' has no active batch to copy from.")
+    else:
+        # Batches of one course can carry different content — the admin picks which one.
+        return None, _err("pick_source_batch", message=f"'{source['name']}' has several batches; ask the admin "
+                                                       "which one to copy and pass copy_from.batch_id.",
+                          batches=[{"id": b["id"], "name": b["name"]} for b in batches])
+    depth = int(source.get("depth") or 0) or None
+    course = args.get("course") if isinstance(args.get("course"), dict) else {}
+    asked = course.get("depth") or args.get("depth")
+    if asked and depth and str(asked) != str(depth):
+        # admin-core copies only between courses of the same depth.
+        return None, _err("depth_mismatch", message=f"'{source['name']}' has depth {depth}; a copy has the same "
+                                                    "depth. Leave course.depth out (or change the source's depth "
+                                                    "first with course_structure_edit).")
+    return {"course": source, "batch": batch, "depth": depth}, None
+
+
+def _instructors(ctx: ToolContext) -> List[Dict[str, Any]]:
+    """The admin creating the course, as its instructor (what the dashboard's add-course sends)."""
+    p = ctx.principal
+    return [{"new_user": False, "status": "ACTIVE",
+             "user": {"id": p.user_id, "username": p.username or "", "full_name": p.full_name or p.username or "",
+                      "email": "", "roles": [], "root_user": bool(p.is_root_user)}}]
+
+
 async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    outline, problem = cc.normalize_outline(args)
+    copy, problem = _copy_source(ctx, args)
+    if problem:
+        return problem
+    if copy and copy["depth"]:
+        args = {**args, "course": {**(args.get("course") if isinstance(args.get("course"), dict) else {}),
+                                   "depth": copy["depth"]}}
+    outline, problem = cc.normalize_outline(args, allow_empty=bool(copy))
     if problem:
         return _err("invalid_outline", message=problem, see="courses(action='schema') → outline")
 
@@ -253,6 +315,11 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                                                          "levels (see courses(action='sessions_levels')).")
 
     course = outline["course"]
+    # The admin creating it is the course's instructor — on every batch it gets.
+    instructors = _instructors(ctx)
+    for sess in batches_spec["sessions"]:
+        for lv in sess.get("levels") or []:
+            lv["add_faculty_to_course"] = instructors
     media_columns: Dict[str, str] = {}
     if media:
         media_columns, problem = await _resolve_media(ctx, media)
@@ -263,6 +330,7 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         body={
             "id": "", "new_course": True, "force_new_course": True,
             "contain_levels": batches_spec["contain_levels"], "sessions": batches_spec["sessions"],
+            "add_faculty_to_course": instructors,
             "course_name": course["name"], "course_depth": outline["depth"], "status": cbd.STATUS_DRAFT,
             "is_course_published_to_catalaouge": False,
             "about_the_course_html": course["about_html"], "why_learn_html": course["why_learn_html"],
@@ -284,56 +352,93 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     # of them (the dashboard does the same); the first is the tracking batch.
     batch, all_batches = batch_ids[0], ",".join(batch_ids)
 
+    copied: Optional[Dict[str, Any]] = None
+    existing: List[Dict[str, Any]] = []
+    if copy:
+        # An independent copy (new ids): edits here never touch the source course. The dashboard's
+        # "linked" copy shares rows with the source, so a DRAFT edit would change a live course — not offered.
+        done = await cbd.admin_core(
+            ctx, "POST", "/admin-core-service/course/v1/copy-content", timeout=180.0,
+            body={"sourcePackageSessionId": copy["batch"]["id"], "targetPackageSessionIds": batch_ids,
+                  "mode": "VALUE"},
+        )
+        if cbd.is_error(done) or not isinstance(done, dict):
+            return _err("copy_failed", course_id=course_id, editor_url=cbd.course_editor_url(ctx, course_id),
+                        message="The DRAFT course was created but copying the content failed; nothing else was "
+                                "added. Retry in the dashboard (Copy content) or tell the admin.",
+                        detail=done.get("message") if isinstance(done, dict) else None)
+        existing = cbd.course_tree(ctx, course_id, batch)
+        copied = {"from": {"course_id": copy["course"]["id"], "course": copy["course"]["name"],
+                           "batch": copy["batch"]["name"]},
+                  "subjects": done.get("copiedSubjects", 0), "modules": done.get("copiedModules", 0),
+                  "chapters": done.get("copiedChapters", 0), "slides": done.get("copiedSlides", 0),
+                  "warnings": (done.get("warnings") or [])[:20]}
+    # New outline content lands AFTER the copied content: hidden DEFAULT levels reuse the copy's.
+    existing_chapters = cbd.flatten_chapters(existing)
+    reuse_subject = existing[0]["id"] if existing and outline["depth"] < 5 else None
+    reuse_module = (existing[0].get("modules") or [{}])[0].get("id") if existing and outline["depth"] <= 3 else None
+    reuse_chapter = existing_chapters[0] if existing_chapters and outline["depth"] == 2 else None
+    chapter_base = len(existing_chapters) if outline["depth"] >= 3 else 0
+
     result_chapters: List[Dict[str, Any]] = []
     failures: List[str] = []
     todo: List[Dict[str, Any]] = []
     for s_index, s in enumerate(outline["subjects"]):
-        subject = await cbd.admin_core(
-            ctx, "POST", "/admin-core-service/subject/v1/add-subject",
-            params={"commaSeparatedPackageSessionIds": all_batches},
-            body={"subject_name": s["name"], "subject_code": _code(s["name"]), "credit": 0,
-                  "thumbnail_id": None, "subject_order": s_index + 1},
-        )
-        subject_id = _id_from(subject)
+        subject_id = reuse_subject
         if not subject_id:
-            failures.append(f"subject '{s['name']}' could not be created")
-            continue
-        for m in s["modules"]:
-            module = await cbd.admin_core(
-                ctx, "POST", "/admin-core-service/subject/v1/add-module",
-                params={"subjectId": subject_id, "packageSessionId": batch},
-                body={"module_name": m["name"], "status": "ACTIVE", "description": "", "thumbnail_id": None},
+            subject = await cbd.admin_core(
+                ctx, "POST", "/admin-core-service/subject/v1/add-subject",
+                params={"commaSeparatedPackageSessionIds": all_batches},
+                body={"subject_name": s["name"], "subject_code": _code(s["name"]), "credit": 0,
+                      "thumbnail_id": None, "subject_order": len(existing) + s_index + 1},
             )
-            module_id = _id_from(module)
-            if not module_id:
-                failures.append(f"module '{m['name']}' could not be created")
+            subject_id = _id_from(subject)
+            if not subject_id:
+                failures.append(f"subject '{s['name']}' could not be created")
                 continue
-            for c_index, c in enumerate(m["chapters"]):
-                chapter = await cbd.admin_core(
-                    ctx, "POST", "/admin-core-service/chapter/v1/add-chapter",
-                    params={"subjectId": subject_id, "moduleId": module_id,
-                            "commaSeparatedPackageSessionIds": all_batches},
-                    body={"chapter_name": c["name"], "status": "ACTIVE", "file_id": None, "description": "",
-                          "chapter_order": len(result_chapters) + 1},
+        for m in s["modules"]:
+            module_id = reuse_module
+            if not module_id:
+                module = await cbd.admin_core(
+                    ctx, "POST", "/admin-core-service/subject/v1/add-module",
+                    params={"subjectId": subject_id, "packageSessionId": batch},
+                    body={"module_name": m["name"], "status": "ACTIVE", "description": "", "thumbnail_id": None},
                 )
-                chapter_id = _id_from(chapter)
-                if not chapter_id:
-                    failures.append(f"chapter '{c['name']}' could not be created")
+                module_id = _id_from(module)
+                if not module_id:
+                    failures.append(f"module '{m['name']}' could not be created")
                     continue
+            for c_index, c in enumerate(m["chapters"]):
+                # depth 2: the copied course's single hidden chapter takes the new slides after its own.
+                chapter_id, slide_base = (reuse_chapter["id"], len(reuse_chapter.get("slides") or [])) \
+                    if reuse_chapter else (None, 0)
+                if not chapter_id:
+                    chapter = await cbd.admin_core(
+                        ctx, "POST", "/admin-core-service/chapter/v1/add-chapter",
+                        params={"subjectId": subject_id, "moduleId": module_id,
+                                "commaSeparatedPackageSessionIds": all_batches},
+                        body={"chapter_name": c["name"], "status": "ACTIVE", "file_id": None, "description": "",
+                              "chapter_order": chapter_base + len(result_chapters) + 1},
+                    )
+                    chapter_id = _id_from(chapter)
+                    if not chapter_id:
+                        failures.append(f"chapter '{c['name']}' could not be created")
+                        continue
                 ctx_chapter = {"chapter_id": chapter_id, "module_id": module_id, "subject_id": subject_id,
                                "package_session_id": batch}
                 saved_slides = []
                 for i, spec in enumerate(c["slides"]):
+                    position = slide_base + i + 1
                     if cc.is_placeholder(spec):
-                        todo.append({"chapter_id": chapter_id, "chapter": c["name"], "position": i + 1,
+                        todo.append({"chapter_id": chapter_id, "chapter": c["name"], "position": position,
                                      "type": str(spec.get("type") or "document").lower(), "title": spec["title"]})
                         continue
                     status, _ = _status_of(spec, args)
-                    request, report = cc.build_slide_request(spec, slide_order=i + 1, status=status)
+                    request, report = cc.build_slide_request(spec, slide_order=position, status=status)
                     saved = await _save_slide(ctx, ctx_chapter, request)
                     if cbd.is_error(saved):
                         failures.append(f"slide '{spec['title']}': {saved.get('message') or 'rejected'}")
-                        todo.append({"chapter_id": chapter_id, "chapter": c["name"], "position": i + 1,
+                        todo.append({"chapter_id": chapter_id, "chapter": c["name"], "position": position,
                                      "type": request["type"], "title": request["title"], "retry": True})
                         continue
                     saved_slides.append({"id": _id_from(saved) or request["id"], "title": request["title"],
@@ -363,6 +468,15 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                      for c in result_chapters],
         "todo": todo,
         "failures": failures,
+        "instructor": ctx.principal.full_name or ctx.principal.username or ctx.principal.user_id,
+        **({"copied": {**copied, "chapter_list": [
+            {"id": c["id"], "name": c["name"], "slides": len(c.get("slides") or []),
+             **({"module": c["module_name"]} if c.get("module_name") != cc.DEFAULT_LEVEL else {}),
+             **({"subject": c["subject_name"]} if c.get("subject_name") != cc.DEFAULT_LEVEL else {})}
+            for c in existing_chapters][:200],
+            "note": "An independent copy: changing it never changes the source course. Copied slides keep the "
+                    "status the institute's 'copied slide status' setting gives them (DRAFT by default). Extend it "
+                    "with add_chapter / add_slide / update_slide."}} if copied else {}),
         **({"media": list(media), "media_notes": media_notes} if media else {}),
         "hidden_levels": f"A hidden DEFAULT {hidden} hold the structure; learners never see them." if hidden else None,
         # Every batch gets an auto-created default invite at the institute's default price.

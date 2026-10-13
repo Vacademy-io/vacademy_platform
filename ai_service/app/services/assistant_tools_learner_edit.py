@@ -115,7 +115,10 @@ def _same(a: Any, b: Any) -> bool:
 
 async def _build(ctx: ToolContext, args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[Dict[str, Any]]]:
     """(the change to apply, report context, problem)."""
-    learner = ld.learner_profile(ctx, args.get("learner_id"))
+    learner_id = ld.target_learner_id(args)
+    if not learner_id:
+        return None, {}, ld.missing_learner_error()
+    learner = ld.learner_profile(ctx, learner_id)
     if not learner:
         return None, {}, _err("unknown_learner", message="No learner of this institute has that learner_id. Use "
                                                          "learners(action='find').")

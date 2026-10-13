@@ -1,5 +1,7 @@
 import { AUDIENCE_CAMPAIGN } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getBackendErrorBody } from '@/lib/report-api-error';
+import { AxiosError } from 'axios';
 
 export interface AudienceCampaignCustomFieldPayload {
     institute_id: string;
@@ -52,4 +54,16 @@ export const updateAudienceCampaign = async (
         data: payload,
     });
     return response?.data;
+};
+
+/**
+ * Toast text for a failed create/update. A 4xx (e.g. 409 duplicate name) or 510
+ * (VacademyException validation) carries a sentence written for the admin; any other
+ * 5xx carries the raw exception text (SQL included), so the translated fallback is shown.
+ */
+export const getCampaignSaveErrorMessage = (error: unknown, fallback: string): string => {
+    const status = error instanceof AxiosError ? error.response?.status : undefined;
+    if (status === undefined || (status >= 500 && status !== 510)) return fallback;
+    const body = getBackendErrorBody(error);
+    return body?.message || body?.ex || fallback;
 };

@@ -591,6 +591,7 @@ const CampaignUsersContent = ({
                 _tat_overdue: lead.tat_overdue ?? null,
                 _tat_due_soon: lead.tat_due_soon ?? null,
                 _follow_up_overdue: lead.follow_up_overdue ?? null,
+                _sla_closed: lead.sla_closed ?? null,
                 _first_response_at: lead.first_response_at ?? null,
                 _lead_status: lead.lead_status ?? null,
                 _response_id: lead.response_id ?? null,

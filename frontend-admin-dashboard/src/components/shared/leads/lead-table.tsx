@@ -539,6 +539,7 @@ export function LeadTable({
                     baselineAt={vm.submittedIso}
                     responseId={vm.responseId}
                     dueOverridden={vm.tatDueOverridden}
+                    closed={vm.slaClosed}
                 />
             ),
         },
@@ -548,7 +549,11 @@ export function LeadTable({
             thClass: 'min-w-36',
             show: showOps,
             render: (vm) => (
-                <SlaDeadlineCell dueAt={vm.followUpDueAt} overdue={vm.followUpOverdue} />
+                <SlaDeadlineCell
+                    dueAt={vm.followUpDueAt}
+                    overdue={vm.followUpOverdue}
+                    closed={vm.slaClosed}
+                />
             ),
         },
         {

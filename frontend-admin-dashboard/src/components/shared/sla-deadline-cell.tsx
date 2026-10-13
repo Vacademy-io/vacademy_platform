@@ -42,6 +42,8 @@ interface SlaDeadlineCellProps {
     responseId?: string | null;
     /** `response` mode: the deadline was set by hand by an admin. */
     dueOverridden?: boolean | null;
+    /** Lead is Lost / Converted (backend `sla_closed`): off the SLA clock, never Pending / Overdue. */
+    closed?: boolean | null;
 }
 
 /** Format an ISO timestamp as "23 May, 5:30 PM" in the user's locale.
@@ -70,6 +72,7 @@ export function SlaDeadlineCell({
     mode = 'deadline',
     responseId,
     dueOverridden,
+    closed,
 }: SlaDeadlineCellProps) {
     // ── RESPONSE MODE — Reach-out-in column ──────────────────────────────────
     // Show the counsellor's contact time + how long it took relative to submitted_at.
@@ -101,6 +104,10 @@ export function SlaDeadlineCell({
                 );
             }
         }
+
+        // Lost / converted before anyone logged contact: there is nothing left to reach out
+        // for, so neither Pending nor Overdue applies.
+        if (closed) return <span className="text-sm text-neutral-400">Closed</span>;
 
         // Not contacted yet. Show the deadline itself — with working hours it is no longer
         // simply "submitted + N hours" (e.g. an evening lead is due 10:00 the next morning).
@@ -146,6 +153,9 @@ export function SlaDeadlineCell({
     if (!dueAt) return <span className="text-sm text-neutral-400">—</span>;
     const abs = formatClock(dueAt);
     if (!abs) return <span className="text-sm text-neutral-400">—</span>;
+
+    // A callback still scheduled on a closed lead is moot — show it muted, never Overdue.
+    if (closed) return <span className="text-sm text-neutral-400">{abs}</span>;
 
     const isPast = new Date(dueAt).getTime() < Date.now() || !!overdue;
 

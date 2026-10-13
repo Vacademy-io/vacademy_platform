@@ -3559,6 +3559,13 @@ public class AudienceService {
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
                                 (a, b) -> a));
+        // id → status_key (leadStatusIdToKey above actually carries labels): decides whether a
+        // lead is closed (LOST / CONVERTED) and therefore off the SLA clock.
+        Map<String, String> leadStatusIdToStatusKey = fetchedStatuses.stream()
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
+                                (a, b) -> a));
 
         // Batch fetch all custom field values for these responses
         List<CustomFieldValues> allCfValues = customFieldValuesRepository
@@ -3664,6 +3671,14 @@ public class AudienceService {
             vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
                     .getUserId() != null ? userIdToProfile.get(response.getUserId()) : null;
             Timestamp firstResponseAt = firstActionByResponseId.get(response.getId());
+            // Same COALESCE as the status column: per-response status first, else the profile's.
+            // A Lost / Converted lead is off the SLA clock — no Pending / Overdue badge.
+            String effectiveStatusKey = response.getLeadStatusId() != null
+                    && leadStatusIdToStatusKey.containsKey(response.getLeadStatusId())
+                            ? leadStatusIdToStatusKey.get(response.getLeadStatusId())
+                            : (profile != null ? profile.getConversionStatus() : null);
+            boolean slaClosed = "LOST".equals(effectiveStatusKey) || "CONVERTED".equals(effectiveStatusKey);
+            String slaStage = slaClosed ? null : response.getTatReminderStage();
 
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
@@ -3731,12 +3746,13 @@ public class AudienceService {
                     .tatDueOverridden(response.getTatDueOverrideAt() != null)
                     .firstResponseAt(firstResponseAt)
                     .followUpDueAt(computedFollowUpDueAt)
-                    .tatReminderStage(response.getTatReminderStage())
-                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
+                    .tatReminderStage(slaStage)
+                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(slaStage))
                     .followUpOverdue(
-                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(response.getTatReminderStage()))
-                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(response.getTatReminderStage())
-                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(response.getTatReminderStage()))
+                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(slaStage))
+                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(slaStage)
+                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(slaStage))
+                    .slaClosed(slaClosed)
                     .build();
         });
     }
@@ -5616,6 +5632,15 @@ public class AudienceService {
                 : leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
                         .collect(Collectors.toMap(LeadScore::getAudienceResponseId, ls -> ls, (a, b) -> a));
 
+        // Admin-set tier per (user, institute): wins over the score band, the same rule as the
+        // leads list and the side view, so a Hot / Warm / Cold pick shows here too.
+        Map<String, String> explicitTierByUserInstitute = userIds.isEmpty() ? Collections.emptyMap()
+                : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                        .filter(p -> StringUtils.hasText(p.getLeadTier()))
+                        .collect(Collectors.toMap(p -> p.getUserId() + "|" + p.getInstituteId(),
+                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getLeadTier,
+                                (a, b) -> a));
+
         // Batch fetch assigned counsellors from linked_users table
         Map<String, String> enquiryToCounsellorMap = enquiryIds.isEmpty() ? Collections.emptyMap()
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds)
@@ -5698,7 +5723,9 @@ public class AudienceService {
                             // Lead score
                             .leadScore(leadScore != null ? leadScore.getRawScore() : null)
                             .leadTier(leadScore != null
-                                    ? leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore())
+                                    ? explicitTierByUserInstitute.getOrDefault(
+                                            audienceResponse.getUserId() + "|" + leadScore.getInstituteId(),
+                                            leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore()))
                                     : null)
                             .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
                                     ? leadScore.getPercentileRank().doubleValue()

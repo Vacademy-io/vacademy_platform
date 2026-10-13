@@ -381,6 +381,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -754,6 +759,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -1123,6 +1133,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -1496,6 +1511,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -2196,7 +2216,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<String> findInstituteIdsWithActiveLeads();
 
         /**
-         * All open, assigned, unconverted leads for an institute, with the resolved counselor and the
+         * Of the given audience_response ids, the ones whose lead is closed — lost or converted.
+         * Status is the same COALESCE(per-response lead_status key, profile conversion_status) the
+         * leads list shows, so a lead the list calls Lost is exactly a lead this returns. Closed
+         * leads are off the SLA clock: their open follow-ups are not reminded or listed as pending.
+         */
+        @Query(value = """
+                            SELECT ar.id
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE ar.id IN (:ids)
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id),
+                                           ulp.conversion_status, '') IN ('LOST', 'CONVERTED')
+                        """, nativeQuery = true)
+        List<String> findClosedLeadIds(@Param("ids") java.util.Collection<String> ids);
+
+        /**
+         * All open, assigned, not-lost, unconverted leads for an institute, with the resolved counselor and the
          * timestamp of the last response event on the lead (the RESPONSE EVENT definition on
          * {@link #findCounselorActionsByResponseIds}; null = never responded, i.e. still on the TAT
          * clock — the column keeps its historical name). The scheduler decides which SLA stage
@@ -2246,7 +2284,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               AND ar.audience_status = 'ACTIVE'
-                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              -- Closed leads (lost or converted in EITHER the per-response status or the profile) are off
+                              -- the SLA clock: no TAT / follow-up reminder, no OVERDUE stage stamped on the row.
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED', 'LOST'))
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), '') NOT IN ('LOST', 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                             ) c
                         """, nativeQuery = true)
@@ -2299,7 +2340,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               AND ar.audience_status = 'ACTIVE'
-                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              -- Closed leads (lost or converted in EITHER the per-response status or the profile) are off
+                              -- the SLA clock: no TAT / follow-up reminder, no OVERDUE stage stamped on the row.
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED', 'LOST'))
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), '') NOT IN ('LOST', 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                               -- Narrowing for the 1-minute scan: still on the TAT clock, not yet
                               -- flagged overdue, and recent enough that its deadline can still be
@@ -2396,7 +2440,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN ulp.conversion_status = 'LOST'      THEN 1 ELSE 0 END)                  AS lostLeads,
                                    SUM(CASE WHEN ulp.conversion_status IS NULL
                                               OR ulp.conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)    AS activeLeads,
-                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE')
+                                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED','LOST')) THEN 1 ELSE 0 END) AS overdueLeads
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN LATERAL (
@@ -2651,7 +2696,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                 THEN 1 ELSE 0 END)                                                       AS tatMetCount,
                                    SUM(CASE WHEN conversion_status IS NULL
                                               OR conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)        AS openLeads,
-                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE')
+                                              AND (conversion_status IS NULL OR conversion_status NOT IN ('CONVERTED','LOST')) THEN 1 ELSE 0 END) AS overdueLeads
                             FROM lead_meta
                             WHERE counselor_id IS NOT NULL
                             GROUP BY counselor_id

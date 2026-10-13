@@ -130,6 +130,16 @@ public class AiCallService {
      * True only when the institute can actually pay for a call. Fails CLOSED on
      * any error — see the call site.
      */
+    /**
+     * Whether a new AI call could be paid for right now — the same gate placeCall applies
+     * (and false when the gate is off is never returned: off means always affordable).
+     * The public API asks before queueing so a client hears "insufficient credits" at
+     * request time instead of finding a call parked in the queue.
+     */
+    public boolean canAffordCall(String instituteId) {
+        return !creditGateEnabled || hasAffordableCredits(instituteId);
+    }
+
     private boolean hasAffordableCredits(String instituteId) {
         try {
             return creditClient.hasActiveCredits(instituteId);

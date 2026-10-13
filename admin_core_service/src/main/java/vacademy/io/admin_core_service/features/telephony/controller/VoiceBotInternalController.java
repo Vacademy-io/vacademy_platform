@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.telephony.core.TelephonyConfigCac
 import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCallApiCall;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -69,7 +70,24 @@ public class VoiceBotInternalController {
     private static final int IMPORT_WINDOW_MINUTES = 5;
     private static final int IMPORT_MIN_ROWS = 40;
 
+    @Autowired private vacademy.io.admin_core_service.features.telephony.publicapi.repository.AiCallApiCallRepository
+            apiCallRepo;
+
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /** The public-API call behind this call-log row, or null for every other call. */
+    private AiCallApiCall apiCallFor(TelephonyCallLog row) {
+        if (row == null || !vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType
+                .API_CONTACT.name().equals(row.getSubjectType()) || row.getSubjectId() == null) {
+            return null;
+        }
+        try {
+            return apiCallRepo.findByIdAndInstituteId(row.getSubjectId(), row.getInstituteId()).orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("call-context: API call lookup failed for {}: {}", row.getSubjectId(), e.getMessage());
+            return null;
+        }
+    }
 
     @GetMapping("/call-context")
     public ResponseEntity<Map<String, Object>> callContext(
@@ -82,13 +100,18 @@ public class VoiceBotInternalController {
 
         String instituteName = instituteRepository.findById(instituteId)
                 .map(i -> i.getInstituteName()).orElse("our institute");
-        String leadName = row.getUserId() == null || "UNKNOWN".equals(row.getUserId())
+        // A call placed through the public AI calling API: the client sent the contact's
+        // name and template variables with the request. Its user id is a pseudo id that
+        // exists nowhere, so the auth-service lookups below would only find nothing.
+        AiCallApiCall apiCall = apiCallFor(row);
+        String leadName = apiCall != null ? apiCall.getContactName()
+                : row.getUserId() == null || "UNKNOWN".equals(row.getUserId())
                 ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
         // Gender for how the bot addresses the lead (honorific + Hindi second-person):
         // the stored record gender wins; else a conservative name guess (null when
         // unknown, so the bot uses gender-neutral address instead of defaulting to "sir").
-        String leadGender = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId()))
+        String leadGender = (apiCall != null || row.getUserId() == null || "UNKNOWN".equals(row.getUserId()))
                 ? vacademy.io.admin_core_service.features.telephony.core.NameGender.of(leadName)
                 : userMobileResolver.findGender(row.getUserId())
                         .orElseGet(() -> vacademy.io.admin_core_service.features.telephony.core
@@ -134,7 +157,11 @@ public class VoiceBotInternalController {
         if (leadGender != null) out.put("leadGender", leadGender);
         // The lead's captured form/custom fields (company, role, …) so the agent can
         // reference what it already knows instead of re-asking. Empty for unknown callers.
-        Map<String, String> leadFields = row.getResponseId() == null
+        // For an API call, the client's variables play this part: they fill the agent's
+        // {{placeholders}} and are listed to the model as what it already knows.
+        Map<String, String> leadFields = apiCall != null
+                ? (apiCall.getVariables() == null ? Map.of() : apiCall.getVariables())
+                : row.getResponseId() == null
                 ? Map.of() : audienceService.getLeadCustomFields(row.getResponseId());
         if (leadFields != null && !leadFields.isEmpty()) out.put("leadFields", leadFields);
         // When and how the lead enquired, so the agent can answer "when did I fill a form?"
@@ -233,9 +260,12 @@ public class VoiceBotInternalController {
             return ResponseEntity.ok(Map.of("ok", true, "created", 0));
         }
 
-        String leadName = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+        AiCallApiCall apiCall = apiCallFor(row);
+        String leadName = apiCall != null ? apiCall.getContactName()
+                : (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
-        String leadPhone = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+        String leadPhone = apiCall != null ? apiCall.getPhoneNumber()
+                : (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findMobile(row.getUserId()).orElse(null);
         int created = aiCallActionService.applyMidCall(agent, row.getInstituteId(), row.getId(),
                 row.getUserId(), row.getResponseId(), artefact, leadName, leadPhone, null);

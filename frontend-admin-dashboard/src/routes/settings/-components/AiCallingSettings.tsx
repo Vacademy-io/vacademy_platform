@@ -23,6 +23,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Link } from '@tanstack/react-router';
 import { fetchAiVoiceCarrier } from '@/routes/settings/telephony/-services/ai-voice-carrier';
 import { AiAgentsCard } from './AiAgentsCard';
+import { AiCallingApiCard } from './AiCallingApiCard';
 import { noAutofillProps } from '@/lib/no-autofill';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -677,6 +678,9 @@ export default function AiCallingSettings() {
             {providerCodes.includes('VACADEMY_AI') && (
                 <AiAgentsCard onBridged={mirrorBridgedCampaign} onRemoved={mirrorRemovedCampaign} />
             )}
+
+            {/* ── Public API: keys, agent ids, webhook (calls placed by the client's own systems) ── */}
+            {providerCodes.includes('VACADEMY_AI') && <AiCallingApiCard />}
 
             {/* ── Credentials ── */}
             <Card>

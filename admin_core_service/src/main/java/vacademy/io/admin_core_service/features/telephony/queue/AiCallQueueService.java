@@ -120,6 +120,18 @@ public class AiCallQueueService {
      */
     public EnqueueResult enqueue(AiCallRequestDTO req, CallTrigger trigger,
                                  String source, String sourceRef, String actorUserId) {
+        return enqueue(req, trigger, source, sourceRef, actorUserId, trigger == CallTrigger.MANUAL);
+    }
+
+    /**
+     * {@link #enqueue(AiCallRequestDTO, CallTrigger, String, String, String)} with the
+     * priority chosen by the caller: {@code interactive} puts the item ahead of bulk work
+     * in its lane (a single call a client's server just asked for — someone may be
+     * waiting on it), without exempting it from calling hours the way MANUAL is.
+     */
+    public EnqueueResult enqueue(AiCallRequestDTO req, CallTrigger trigger,
+                                 String source, String sourceRef, String actorUserId,
+                                 boolean interactive) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required to queue an AI call.");
         }
@@ -137,6 +149,7 @@ public class AiCallQueueService {
 
         AiCallQueueItem item = buildItem(req, settings, provider, trigger, source, sourceRef,
                 actorUserId, dedupeKey);
+        if (interactive) item.setPriority(PRIORITY_INTERACTIVE);
         AiCallQueueItem saved = txOps.insertOne(item);
         if (saved == null) {
             // Lost the unique-index race — someone queued the same lead microseconds

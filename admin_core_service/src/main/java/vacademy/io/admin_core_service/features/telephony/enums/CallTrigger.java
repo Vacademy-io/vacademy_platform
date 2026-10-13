@@ -41,7 +41,16 @@ public enum CallTrigger {
      * <p>Distinct from {@link #AUTOMATION} so the skip is visible in logs and can
      * never be the default: a node without the flag still comes in as AUTOMATION.
      */
-    WORKFLOW_EXPLICIT;
+    WORKFLOW_EXPLICIT,
+
+    /**
+     * The public AI calling API (Telleo API v1). A client's server places calls on
+     * its own contacts, so every fan-out guard applies — institute daily cap,
+     * per-number daily cap, the recall gap and the duplicate window — and the queue
+     * respects calling hours. The assigned-lead guard does not: an API contact is not
+     * a lead in our CRM.
+     */
+    API;
 
     /** True when the lead already having a counsellor should block the dial. */
     public boolean enforcesAssignedLeadGuard() {

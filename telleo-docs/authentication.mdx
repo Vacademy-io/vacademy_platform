@@ -1,0 +1,46 @@
+---
+title: "Authentication"
+description: "API keys, scopes, and keeping them safe."
+---
+
+Every request carries an API key in the `X-API-Key` header:
+
+```bash
+curl https://api.telleo.ai/v1/agents -H "X-API-Key: vak_call_…"
+```
+
+`Authorization: Bearer vak_call_…` works too, if your HTTP tool prefers it.
+
+## Creating and revoking keys
+
+An admin of your account manages keys in **Settings → AI calling → API & webhooks**:
+
+- **Create key** issues a new key. It is shown once; we store only a hash and cannot show it again.
+- An optional **expiry date** makes the key stop working at the end of that day.
+- **Revoke** stops a key at once. Calls it already queued still go ahead.
+
+Use one key per system (CRM, website, automation tool). The table shows when each key was last used, so you can see which ones are still needed and revoke the rest.
+
+## Scopes
+
+A key created in the dashboard can do everything below. A request the key is not allowed to make fails with `403 insufficient_scope`.
+
+| Scope | Allows |
+|---|---|
+| `calls:read` | `GET /calls`, `GET /calls/{id}`, `GET /batches/{id}`, `GET /agents` |
+| `calls:write` | `POST /calls`, `POST /calls/{id}/cancel`, `POST /batches` |
+| `webhooks:manage` | Everything under `/webhook` |
+
+## Errors
+
+| Status | Code | Meaning |
+|---|---|---|
+| 401 | `missing_api_key` | No key in the request. |
+| 401 | `invalid_api_key` | The key is unknown, revoked or expired. |
+| 403 | `insufficient_scope` | The key does not have the scope this request needs. |
+
+## Keeping keys safe
+
+- Call the API **from your server only**. A key inside a web page or an app can be read by anyone who opens it.
+- Store keys in a secret manager or environment variables, not in code.
+- If a key may have leaked, create a new one, switch your system to it, then revoke the old one.

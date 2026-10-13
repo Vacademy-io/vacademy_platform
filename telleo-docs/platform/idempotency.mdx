@@ -1,0 +1,26 @@
+---
+title: "Idempotency"
+description: "Retry requests without calling anyone twice."
+---
+
+Networks fail. If your request to start a call times out, you cannot know whether the call was created. Send an `Idempotency-Key` header, and retrying becomes safe:
+
+```bash
+curl https://api.telleo.ai/v1/calls \
+  -H "X-API-Key: $TELLEO_API_KEY" \
+  -H "Idempotency-Key: lead-8812" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "17ea33d2-…", "phone_number": "+919876543210"}'
+```
+
+| Situation | Response |
+|---|---|
+| First request with this key | `201 Created`: the new call. |
+| Same key, same body | `200 OK`: the **same** call as before, with `"idempotent_replay": true`. Nobody is called again. |
+| Same key, different body | `409 idempotency_key_reused`, with the original `call_id` in `details`. |
+
+- Keys are up to 255 characters and are kept for your account indefinitely.
+- Build them from your own ids (`lead-8812`, `enquiry-5521-attempt-2`) so that a retry naturally reuses the key, and a deliberate new attempt gets a new one.
+- Two requests with the same key at the same moment create one call.
+
+`POST /v1/batches` does not take an `Idempotency-Key`. Its rows are protected differently: a number that already has a waiting call is rejected as `call_already_queued`, so re-sending a batch does not queue its calls twice while they are still waiting.

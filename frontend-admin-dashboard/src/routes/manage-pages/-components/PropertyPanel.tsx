@@ -57,6 +57,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/design-system/searchable-select';
 import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
@@ -5959,6 +5960,8 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
         },
     ];
     const source = props.source || 'newest';
+    const { getCourseFromPackage } = useInstituteDetailsStore();
+    const allCourses = getCourseFromPackage();
 
     return (
         <div className="space-y-4">
@@ -6004,6 +6007,20 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                     <Label className="text-xs">{coursesTerm}</Label>
                     {(props.courseIds || []).map((id: string, i: number) => {
                         const badges = props.courseBadges || {};
+                        // Picked by name from the institute's courses (the package
+                        // id is what the catalogue's cards carry); a course picked on
+                        // another row is not offered twice. An id no longer among the
+                        // institute's courses stays listed under its id, or the row
+                        // would render blank and the next pick would silently move it.
+                        const taken = new Set(
+                            (props.courseIds || []).filter((x: string, j: number) => j !== i && x)
+                        );
+                        const options: SearchableSelectOption[] = allCourses
+                            .filter((c) => !taken.has(c.id))
+                            .map((c) => ({ label: c.name, value: c.id }));
+                        if (id && !allCourses.some((c) => c.id === id)) {
+                            options.unshift({ label: id, value: id });
+                        }
                         // A keystroke that leaves the id as it was (a space, trimmed
                         // away) writes nothing; courseBadges is only written when a
                         // ribbon really moves to the new id.
@@ -6029,12 +6046,17 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                             });
                         return (
                             <div key={i} className="space-y-1 rounded border border-gray-100 p-2">
-                                <div className="flex gap-1">
-                                    <Input
-                                        value={id}
-                                        placeholder={`${courseLower} id`}
-                                        onChange={(e) => setId(e.target.value.trim())}
-                                    />
+                                <div className="flex items-center gap-1">
+                                    <div className="min-w-0 flex-1">
+                                        <SearchableSelect
+                                            options={options}
+                                            value={id}
+                                            onChange={(v) => setId(v.trim())}
+                                            placeholder={`Choose a ${courseLower}`}
+                                            searchPlaceholder={`Search ${coursesLower}…`}
+                                            emptyText={`No ${coursesLower} found`}
+                                        />
+                                    </div>
                                     <button
                                         onClick={() => {
                                             const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);

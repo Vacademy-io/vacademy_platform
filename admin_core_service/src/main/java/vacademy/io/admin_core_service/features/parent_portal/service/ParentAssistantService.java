@@ -87,7 +87,12 @@ public class ParentAssistantService {
     private final LeaderboardService leaderboardService;
     private final AiServiceCompletionClient aiServiceCompletionClient;
 
-    @Value("${parent.assistant.model:google/gemini-2.5-flash}")
+    /**
+     * Optional override, blank by default: ai_service then resolves the 'parent_assistant'
+     * row in ai_model_defaults (GLM by default). Note ai_service only honours a body model
+     * from platform staff, so this is effectively an operator escape hatch.
+     */
+    @Value("${parent.assistant.model:}")
     private String model;
 
     /**
@@ -108,7 +113,8 @@ public class ParentAssistantService {
 
         // The LLM key lives ONLY in ai_service; this returns null when the
         // completion is unavailable, and the caller falls back to preset answers.
-        return aiServiceCompletionClient.complete(prompt, model, child.instituteId(), caller.getUserId());
+        String override = model == null || model.isBlank() ? null : model.trim();
+        return aiServiceCompletionClient.complete(prompt, override, child.instituteId(), caller.getUserId());
     }
 
     /** Assemble a compact, plain-text snapshot of the guarded child's data for the prompt. */

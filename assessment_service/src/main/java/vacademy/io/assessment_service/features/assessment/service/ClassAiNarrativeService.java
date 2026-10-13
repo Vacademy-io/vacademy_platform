@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import vacademy.io.assessment_service.features.assessment.client.AiServiceLlmClient;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Duration;
@@ -48,47 +49,93 @@ public class ClassAiNarrativeService {
     /** Keeps one enormous question stem from crowding out the rest of the paper. */
     private static final int MAX_STEM_CHARS = 180;
 
+    /** ai_service model-registry use case for this report. */
+    static final String USE_CASE = "class_report";
+    /** The model the legacy direct path used before the registry; kept for that path only. */
+    static final String LEGACY_MODEL = "google/gemini-2.5-pro";
+    private static final String SYSTEM_PROMPT =
+            "You are an experienced head of department writing to the teacher who "
+                    + "will teach this class next. Be specific and grounded in the "
+                    + "figures given. Never invent a number, a topic or a student.";
+
     private final ObjectMapper objectMapper;
+    private final AiServiceLlmClient aiServiceLlmClient;
 
     @Value("${openrouter.api.key:}")
     private String openRouterApiKey;
 
     /**
-     * Pinned rather than resolved through a priority list. At ~5k/4k tokens this
-     * costs roughly 7 credits of the 10 charged; a Sonnet-class model would cost
-     * ~11 and lose money on every report, and a free-tier model would not write
-     * a class narrative worth charging for.
+     * Optional override. Blank (the default) = ai_service picks the model from the
+     * {@code class_report} row of {@code ai_model_defaults}. Set = this model is called
+     * directly on OpenRouter, as before the registry.
      */
-    @Value("${assessment.class-ai-report.model:google/gemini-2.5-pro}")
-    private String model;
+    @Value("${assessment.class-ai-report.model:}")
+    private String modelOverride;
 
     public record Narrative(String json, String model) {
     }
 
+    /** {@link #generate(Map, String, String)} without an institute to attribute usage to. */
+    public Narrative generate(Map<String, Object> facts, String assessmentName) {
+        return generate(facts, assessmentName, null);
+    }
+
     /**
-     * @param facts the aggregated class facts — counts, section/topic accuracy,
-     *              hardest questions, Bloom's, shared misconceptions
+     * @param facts       the aggregated class facts — counts, section/topic accuracy,
+     *                    hardest questions, Bloom's, shared misconceptions
+     * @param instituteId attributes ai_service's token-usage row; credits are still
+     *                    charged by the caller, never by ai_service
      * @throws VacademyException on truncation, an unparseable body, or transport
      *                           failure. The caller has already claimed the row,
      *                           so a failure must surface rather than be retried
      *                           into a second paid call.
      */
-    public Narrative generate(Map<String, Object> facts, String assessmentName) {
+    public Narrative generate(Map<String, Object> facts, String assessmentName, String instituteId) {
+        String prompt = buildPrompt(facts, assessmentName);
+        List<Map<String, String>> messages = List.of(
+                Map.of("role", "system", "content", SYSTEM_PROMPT),
+                Map.of("role", "user", "content", prompt));
+
+        if (modelOverride != null && !modelOverride.isBlank()) {
+            return generateDirect(messages, modelOverride.trim(), assessmentName, prompt.length());
+        }
+
+        log.info("Class AI report: prompt {} chars, use case {}", prompt.length(), USE_CASE);
+        AiServiceLlmClient.Completion completion;
+        try {
+            completion = aiServiceLlmClient.complete(USE_CASE, messages, true, MAX_COMPLETION_TOKENS,
+                    "low", instituteId, Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS));
+        } catch (AiServiceLlmClient.UnavailableException e) {
+            // No model ran (token unset, endpoint not deployed yet, ai_service down):
+            // the old direct call cannot double-bill anything.
+            log.warn("Class AI report: ai_service model registry unavailable ({}); using {} directly",
+                    e.getMessage(), LEGACY_MODEL);
+            return generateDirect(messages, LEGACY_MODEL, assessmentName, prompt.length());
+        } catch (AiServiceLlmClient.CompletionException e) {
+            // No retry: the row is claimed and a retry after a truncation is how
+            // the admin_core incident billed twice.
+            log.error("Class AI report: model call failed for '{}': {}", assessmentName, e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("truncated")) {
+                throw new VacademyException("The AI analysis came back incomplete. Please try again.");
+            }
+            throw new VacademyException("The AI analysis could not be generated. Please try again.");
+        }
+        String model = completion.model() != null ? completion.model() : USE_CASE;
+        return new Narrative(assertParses(completion.content(), assessmentName), model);
+    }
+
+    /** The pre-registry path: one direct OpenRouter call with an explicit model. */
+    private Narrative generateDirect(List<Map<String, String>> messages, String model, String assessmentName,
+                                     int promptChars) {
         if (openRouterApiKey == null || openRouterApiKey.isBlank()) {
             throw new VacademyException("AI is not configured for this environment");
         }
-        String prompt = buildPrompt(facts, assessmentName);
-        log.info("Class AI report: prompt {} chars, model {}", prompt.length(), model);
+        log.info("Class AI report: prompt {} chars, model {} (direct)", promptChars, model);
 
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "max_tokens", MAX_COMPLETION_TOKENS,
-                "messages", List.of(
-                        Map.of("role", "system", "content",
-                                "You are an experienced head of department writing to the teacher who "
-                                        + "will teach this class next. Be specific and grounded in the "
-                                        + "figures given. Never invent a number, a topic or a student."),
-                        Map.of("role", "user", "content", prompt)),
+                "messages", messages,
                 "response_format", Map.of("type", "json_object"));
 
         WebClient client = WebClient.builder()
@@ -129,14 +176,30 @@ public class ClassAiNarrativeService {
         if (content.isBlank()) {
             throw new VacademyException("The AI analysis came back empty. Please try again.");
         }
+        return new Narrative(assertParses(content, assessmentName), model);
+    }
+
+    /** Assert it parses BEFORE the caller persists and charges. */
+    private String assertParses(String content, String assessmentName) {
+        String json = stripFence(content);
         try {
-            // Assert it parses BEFORE the caller persists and charges.
-            objectMapper.readTree(content);
+            objectMapper.readTree(json);
         } catch (Exception e) {
             log.error("Class AI report: unparseable JSON for '{}': {}", assessmentName, e.getMessage());
             throw new VacademyException("The AI analysis could not be read. Please try again.");
         }
-        return new Narrative(content, model);
+        return json;
+    }
+
+    /** GLM sometimes wraps json_object output in a ```json fence. */
+    static String stripFence(String content) {
+        String t = content.trim();
+        if (t.startsWith("```")) {
+            t = t.replaceFirst("^```(?:json|JSON)?\\s*", "");
+            if (t.endsWith("```")) t = t.substring(0, t.length() - 3);
+            t = t.trim();
+        }
+        return t;
     }
 
     private String buildPrompt(Map<String, Object> facts, String assessmentName) {

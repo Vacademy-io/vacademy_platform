@@ -8,49 +8,48 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
+import vacademy.io.admin_core_service.features.ai_models.service.AiModelDefaultsResolver;
+import vacademy.io.admin_core_service.features.ai_models.service.LlmGatewayRouter;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 
+import java.time.Duration;
 import java.util.*;
 
 /**
- * Service for interacting with OpenRouter LLM API.
- * Handles chat completions with tool calling support.
+ * Chat completions with tool calling, for the admin agent, the Automations chatbot, the
+ * Engagement Engine, the workflow drafter and the voice-agent prompt assistant.
+ *
+ * <p>The model comes from the caller's use case in ai_model_defaults
+ * ({@link #CTX_USE_CASE}, default {@code admin_agent}); an explicit
+ * {@link ConversationSession#getModel()} still wins and keeps the use case's chain behind it
+ * as failover. Calls go through {@link LlmGatewayRouter} (Isoquant for routed models, the
+ * same model on OpenRouter when the gateway fails, then the next model), and usage is
+ * recorded under the registry id that actually answered ({@link LLMResponse#getModelUsed()}).
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class LLMService {
 
-    private static final String OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+    /** Use case when the caller names none: the admin agent (AgentOrchestrator). */
+    public static final String DEFAULT_USE_CASE = "admin_agent";
 
-    @Value("${openrouter.api.key:#{null}}")
-    private String openRouterApiKey;
-
-    // Deliberately NOT the shared RestTemplate bean: that bean has no connect/read timeouts,
-    // so one stalled OpenRouter response would pin a Tomcat worker thread forever (and each
-    // admin retry would pin another). Other clients of the shared bean are untouched.
-    private final RestTemplate restTemplate = buildLlmRestTemplate(160_000);
+    /**
+     * Per-attempt timeout. Large drafts (16k completion tokens) legitimately run for
+     * minutes; the frontend aborts at 150s, so the default sits just above that.
+     */
+    private static final Duration ATTEMPT_TIMEOUT = Duration.ofSeconds(160);
     /** For background jobs only ({@link #CTX_LONG_RUNNING}): no request thread is waiting. */
-    private final RestTemplate longRestTemplate = buildLlmRestTemplate(600_000);
+    private static final Duration LONG_ATTEMPT_TIMEOUT = Duration.ofSeconds(600);
+
     private final ObjectMapper objectMapper;
     private final AiTokenUsageService aiTokenUsageService;
-
-    private static RestTemplate buildLlmRestTemplate(int readTimeoutMs) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5_000);
-        // Large drafts (16k completion tokens) legitimately stream for minutes; the frontend
-        // aborts at 150s, so the default cap sits just above that.
-        factory.setReadTimeout(readTimeoutMs);
-        return new RestTemplate(factory);
-    }
+    private final LlmGatewayRouter gatewayRouter;
+    private final AiModelDefaultsResolver modelDefaults;
 
     /**
      * Generate a chat completion with tool calling support
@@ -58,38 +57,25 @@ public class LLMService {
     public LLMResponse generateChatCompletion(ConversationSession session) {
         log.info("[LLMService] Generating chat completion for session: {}", session.getSessionId());
 
-        validateApiKey();
-
+        Map<String, Object> ctx = session.getContext();
+        List<String> chain = modelChain(session);
         try {
-            // Build the request
-            ObjectNode requestBody = buildChatRequest(session);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> payload = objectMapper.convertValue(buildChatRequest(session), Map.class);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(openRouterApiKey);
-            headers.set("HTTP-Referer", "https://vacademy.io");
-            headers.set("X-Title", "Vacademy Agent");
+            log.debug("[LLMService] chain={} request={}", chain, payload);
 
-            HttpEntity<String> entity = new HttpEntity<>(
-                    objectMapper.writeValueAsString(requestBody),
-                    headers);
+            boolean longRunning = ctx != null && Boolean.TRUE.equals(ctx.get(CTX_LONG_RUNNING));
+            Duration attemptTimeout = ctx != null && ctx.get(CTX_ATTEMPT_TIMEOUT) instanceof Duration d
+                    ? d : (longRunning ? LONG_ATTEMPT_TIMEOUT : ATTEMPT_TIMEOUT);
+            Duration budget = ctx != null && ctx.get(CTX_TIME_BUDGET) instanceof Duration b ? b : null;
+            String effort = ctx != null && ctx.get(CTX_REASONING_EFFORT) instanceof String e && !e.isBlank()
+                    ? e : null;
 
-            log.debug("[LLMService] Request: {}", objectMapper.writeValueAsString(requestBody));
+            LlmGatewayRouter.LlmResult result = gatewayRouter.chat(chain, payload, attemptTimeout, effort, budget);
 
-            Map<String, Object> ctx = session.getContext();
-            RestTemplate client = ctx != null && Boolean.TRUE.equals(ctx.get(CTX_LONG_RUNNING))
-                    ? longRestTemplate : restTemplate;
-            ResponseEntity<String> response = client.exchange(
-                    OPENROUTER_CHAT_URL,
-                    HttpMethod.POST,
-                    entity,
-                    String.class);
-
-            if (response.getBody() == null) {
-                throw new RuntimeException("Empty response from OpenRouter");
-            }
-
-            LLMResponse llmResponse = parseResponse(response.getBody());
+            LLMResponse llmResponse = parseResponse(result.body());
+            llmResponse.setModelUsed(result.modelId());
 
             // Record the usage row (async by default; see logTokenUsage for the
             // synchronous variant callers that need to BILL the call opt into)
@@ -98,10 +84,45 @@ public class LLMService {
             return llmResponse;
 
         } catch (Exception e) {
-            log.error("[LLMService] Error generating chat completion: {}", e.getMessage(), e);
+            log.error("[LLMService] Error generating chat completion (chain {}): {}", chain, e.getMessage(), e);
             throw new RuntimeException("Failed to generate chat completion: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * The models to try, in order. An explicit session model goes first (it is a user or
+     * operator pick) unless {@link #CTX_NO_FAILOVER} says the caller runs its own fallback.
+     */
+    List<String> modelChain(ConversationSession session) {
+        Map<String, Object> ctx = session.getContext();
+        String useCase = ctx != null && ctx.get(CTX_USE_CASE) instanceof String u && !u.isBlank()
+                ? u : DEFAULT_USE_CASE;
+        String explicit = session.getModel();
+        boolean hasExplicit = explicit != null && !explicit.isBlank();
+        if (hasExplicit && ctx != null && Boolean.TRUE.equals(ctx.get(CTX_NO_FAILOVER))) {
+            return List.of(explicit.trim());
+        }
+        AiModelDefaultsResolver.ModelChain chain = modelDefaults.resolve(useCase);
+        return hasExplicit ? chain.withPreferred(explicit).models() : chain.models();
+    }
+
+    /**
+     * Context key (String): the ai_model_defaults use case whose chain serves this call.
+     * Absent = {@link #DEFAULT_USE_CASE}.
+     */
+    public static final String CTX_USE_CASE = "use_case";
+
+    /**
+     * Context flag (Boolean TRUE): try only the session's explicit model, no chain behind it.
+     * For callers that run their own primary/fallback loop.
+     */
+    public static final String CTX_NO_FAILOVER = "no_failover";
+
+    /** Context (Duration): per-attempt timeout, overriding the 160 s / 600 s defaults. */
+    public static final String CTX_ATTEMPT_TIMEOUT = "attempt_timeout";
+
+    /** Context (Duration): cap on the whole chain walk, for callers with a hard deadline. */
+    public static final String CTX_TIME_BUDGET = "time_budget";
 
     /**
      * Context key a caller sets to bucket its usage under something other than
@@ -123,7 +144,10 @@ public class LLMService {
     /** Context (Boolean TRUE): caller runs off-request (a background job) — 10 min read timeout. */
     public static final String CTX_LONG_RUNNING = "long_running";
 
-    /** Context (String low|medium|high): OpenRouter {@code reasoning.effort} for thinking models. */
+    /**
+     * Context (String low|medium|high): reasoning effort. Absent = "low" for GLM and none
+     * for other models. Isoquant has no "medium"; it runs as "high" there.
+     */
     public static final String CTX_REASONING_EFFORT = "reasoning_effort";
 
     /** Context (Boolean TRUE): ask for {@code response_format: json_object}. */
@@ -156,7 +180,7 @@ public class LLMService {
                 var saved = aiTokenUsageService.recordUsage(
                         ApiProvider.OPENAI,
                         requestType,
-                        session.getModel(),
+                        llmResponse.getModelUsed(),
                         llmResponse.getPromptTokens(),
                         llmResponse.getCompletionTokens(),
                         instituteId,
@@ -170,7 +194,7 @@ public class LLMService {
             aiTokenUsageService.recordUsageAsync(
                     ApiProvider.OPENAI,
                     requestType,
-                    session.getModel(),
+                    llmResponse.getModelUsed(),
                     llmResponse.getPromptTokens(),
                     llmResponse.getCompletionTokens(),
                     instituteId,
@@ -206,19 +230,16 @@ public class LLMService {
     }
 
     /**
-     * Build the chat request with messages and tools
+     * Build the chat request with messages and tools. The model and reasoning effort are
+     * set per attempt by {@link LlmGatewayRouter#callModel}.
      */
     private ObjectNode buildChatRequest(ConversationSession session) {
         ObjectNode request = objectMapper.createObjectNode();
 
-        request.put("model", session.getModel());
         Map<String, Object> ctx = session.getContext();
         Object temperature = ctx == null ? null : ctx.get(CTX_TEMPERATURE);
         request.put("temperature", temperature instanceof Number n ? n.doubleValue() : 0.7);
         request.put("max_tokens", session.getMaxTokens() != null ? session.getMaxTokens() : 4096);
-        if (ctx != null && ctx.get(CTX_REASONING_EFFORT) instanceof String effort && !effort.isBlank()) {
-            request.putObject("reasoning").put("effort", effort);
-        }
         if (ctx != null && Boolean.TRUE.equals(ctx.get(CTX_JSON_MODE))) {
             request.putObject("response_format").put("type", "json_object");
         }
@@ -397,12 +418,6 @@ public class LLMService {
                 .build();
     }
 
-    private void validateApiKey() {
-        if (openRouterApiKey == null || openRouterApiKey.isBlank()) {
-            throw new RuntimeException("OPENROUTER_API_KEY is not configured");
-        }
-    }
-
     /**
      * LLM Response wrapper
      */
@@ -415,6 +430,12 @@ public class LLMService {
         private List<ToolCall> toolCalls;
         private String finishReason;
         private boolean hasToolCalls;
+
+        /**
+         * Registry id of the model that answered (the chain may have failed over). Record and
+         * charge usage under this, not the requested model.
+         */
+        private String modelUsed;
 
         /** Real usage from the provider's response — 0 when it returned no usage block. */
         private int promptTokens;

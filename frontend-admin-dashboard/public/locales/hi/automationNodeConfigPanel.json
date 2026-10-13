@@ -175,6 +175,7 @@
         "sectionLabel": "AI बातचीत",
         "modelLabel": "मॉडल",
         "model": {
+            "platformDefault": "प्लेटफ़ॉर्म डिफ़ॉल्ट (GLM 5.3 Flash)",
             "gemini20Flash": "Gemini 2.0 Flash (तेज़)",
             "gemini25Flash": "Gemini 2.5 Flash",
             "gemini25Pro": "Gemini 2.5 Pro",

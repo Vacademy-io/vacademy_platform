@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.ai_models.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -12,8 +13,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
+import vacademy.io.admin_core_service.features.ai_models.ModelDefaults;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -36,6 +39,18 @@ import java.util.concurrent.TimeoutException;
  * Callers keep their OpenRouter payload and registry model id; {@link #post} turns
  * the payload into the gateway's shape. Usage must still be recorded and charged
  * under the registry id - that is what ai_models prices.
+ *
+ * <p>Entry points, most to least managed:
+ * <ul>
+ *   <li>{@link #chat(String, Map, Duration, String)} - walks a use case's model chain
+ *       (ai_model_defaults) and returns the body plus the registry id that answered;</li>
+ *   <li>{@link #callModel} - one registry model, Isoquant first with one OpenRouter try
+ *       on a gateway failure; for callers that run their own per-model retry loop;</li>
+ *   <li>{@link #postBlocking} / {@link #post} - one leg, no failover.</li>
+ * </ul>
+ * GLM models always reason and the reasoning counts against max_tokens, so the managed
+ * paths add headroom ({@link #withReasoningHeadroom}) and send effort "low" on both legs
+ * unless the caller asks for another effort.
  */
 @Slf4j
 @Component
@@ -60,7 +75,21 @@ public class LlmGatewayRouter {
     private static final Set<Integer> FAILOVER_STATUSES = Set.of(401, 402, 403, 404, 408, 429);
 
     /** OpenRouter-only request fields a direct gateway would reject or ignore. */
-    private static final Set<String> OPENROUTER_ONLY_KEYS = Set.of("reasoning", "provider", "transforms", "models", "route");
+    private static final Set<String> OPENROUTER_ONLY_KEYS =
+            Set.of("reasoning", "provider", "transforms", "models", "route", "usage", "plugins");
+
+    /** Reasoning headroom for GLM, same numbers as ai_service's apply_reasoning_mode. */
+    static final int REASONING_ON_MIN_TOKENS = 3000;
+    static final int REASONING_ALLOWANCE_MIN = 2000;
+    static final int REASONING_ALLOWANCE_MAX = 12000;
+    /**
+     * A GLM request that names no max_tokens is treated as asking for this many visible
+     * tokens. Without a cap a provider would use its own (large) default, so this keeps
+     * long reports intact while still bounding the call.
+     */
+    static final int UNSPECIFIED_MAX_TOKENS = 8000;
+
+    private static final String DEFAULT_EFFORT = "low";
 
     /**
      * @param gateway         OPENROUTER or ISOQUANT
@@ -73,22 +102,107 @@ public class LlmGatewayRouter {
         }
     }
 
+    /**
+     * What a managed call returned.
+     *
+     * @param body             the raw chat-completions JSON (tool calls, finish_reason, usage)
+     * @param modelId          the REGISTRY id that answered - record and charge usage under it
+     * @param content          choices[0].message.content, or null
+     * @param finishReason     choices[0].finish_reason, or null
+     * @param hasToolCalls     true when the message carries tool_calls
+     * @param promptTokens     usage.prompt_tokens (0 when absent)
+     * @param completionTokens usage.completion_tokens (0 when absent)
+     */
+    public record LlmResult(String body, String modelId, String content, String finishReason,
+                            boolean hasToolCalls, int promptTokens, int completionTokens) {
+
+        /** Something a caller can use: text, or a tool call to run. */
+        public boolean isUsable() {
+            return hasToolCalls || (content != null && !content.isBlank());
+        }
+
+        static LlmResult parse(String body, String modelId, ObjectMapper mapper) {
+            try {
+                JsonNode root = mapper.readTree(body);
+                JsonNode choice = root.path("choices").path(0);
+                if (choice.isMissingNode()) {
+                    throw new IllegalStateException("no choices in the response from " + modelId
+                            + errorSuffix(root));
+                }
+                JsonNode message = choice.path("message");
+                JsonNode contentNode = message.path("content");
+                String content = contentNode.isMissingNode() || contentNode.isNull() ? null : contentNode.asText();
+                JsonNode toolCalls = message.path("tool_calls");
+                boolean hasToolCalls = toolCalls.isArray() && !toolCalls.isEmpty();
+                JsonNode finish = choice.path("finish_reason");
+                JsonNode usage = root.path("usage");
+                return new LlmResult(body, modelId, content,
+                        finish.isMissingNode() || finish.isNull() ? null : finish.asText(),
+                        hasToolCalls,
+                        usage.path("prompt_tokens").asInt(0),
+                        usage.path("completion_tokens").asInt(0));
+            } catch (IllegalStateException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("unreadable response from " + modelId + ": " + e.getMessage(), e);
+            }
+        }
+
+        private static String errorSuffix(JsonNode root) {
+            JsonNode error = root.path("error");
+            return error.isMissingNode() ? "" : " (" + error.path("message").asText(error.toString()) + ")";
+        }
+    }
+
+    /** Every model in the chain failed; the cause is the last model's failure. */
+    public static class LlmChainException extends RuntimeException {
+        public LlmChainException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final AiModelDefaultsResolver modelDefaults;
     private final String isoquantApiKey;
     private final WebClient isoquantClient;
+    private final String openRouterApiKey;
+    private final WebClient openRouterClient;
 
     private final Map<String, Long> cooldownUntil = new ConcurrentHashMap<>();
     private volatile Map<String, Route> routes = Collections.emptyMap();
     private volatile long routesLoadedAt = 0L;
 
+    /** Routing only (no OpenRouter key): enough for {@link #resolve} and {@link #post}. */
     public LlmGatewayRouter(JdbcTemplate jdbcTemplate,
                             ObjectMapper objectMapper,
+                            String isoquantApiKey,
+                            String isoquantBaseUrl) {
+        this(jdbcTemplate, objectMapper, new AiModelDefaultsResolver(jdbcTemplate),
+                isoquantApiKey, isoquantBaseUrl, "", "https://openrouter.ai/api/v1");
+    }
+
+    @Autowired
+    public LlmGatewayRouter(JdbcTemplate jdbcTemplate,
+                            ObjectMapper objectMapper,
+                            AiModelDefaultsResolver modelDefaults,
                             @Value("${isoquant.api.key:}") String isoquantApiKey,
-                            @Value("${isoquant.base.url:https://api.isoquant.ai/v1}") String isoquantBaseUrl) {
+                            @Value("${isoquant.base.url:https://api.isoquant.ai/v1}") String isoquantBaseUrl,
+                            @Value("${openrouter.api.key:}") String openRouterApiKey,
+                            @Value("${openrouter.base.url:https://openrouter.ai/api/v1}") String openRouterBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.modelDefaults = modelDefaults;
         this.isoquantApiKey = isoquantApiKey == null ? "" : isoquantApiKey.trim();
+        this.openRouterApiKey = openRouterApiKey == null ? "" : openRouterApiKey.trim();
+        this.openRouterClient = WebClient.builder()
+                .baseUrl(openRouterBaseUrl.replaceAll("/+$", ""))
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + this.openRouterApiKey)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("HTTP-Referer", "https://vacademy.io")
+                .defaultHeader("X-Title", "Vacademy")
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .build();
         this.isoquantClient = WebClient.builder()
                 .baseUrl(isoquantBaseUrl.replaceAll("/+$", ""))
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + this.isoquantApiKey)
@@ -165,6 +279,198 @@ public class LlmGatewayRouter {
         Map<String, Object> copy = new LinkedHashMap<>(payload);
         copy.put("reasoning", Map.of("effort", route.reasoningEffort()));
         return copy;
+    }
+
+    // ── Managed calls ────────────────────────────────────────────────────────
+
+    /** {@link #chat(List, Map, Duration, String, Duration)} over a use case's chain. */
+    public LlmResult chat(String useCase, Map<String, Object> openRouterPayload, Duration attemptTimeout,
+                          String reasoningEffort) {
+        return chat(modelDefaults.resolve(useCase).models(), openRouterPayload, attemptTimeout, reasoningEffort, null);
+    }
+
+    /**
+     * Walk the chain until a model answers with something usable. Per model: Isoquant when
+     * routed, the same model on OpenRouter when the gateway fails (with a cooldown), then on
+     * any other failure - an error status, an unreadable or empty answer - the next model.
+     * Blocking: never call it on a Reactor thread.
+     *
+     * @param chain             registry ids, in order (an explicit pick goes first)
+     * @param openRouterPayload OpenRouter-shaped request; its "model" is replaced per attempt
+     * @param attemptTimeout    per gateway attempt
+     * @param reasoningEffort   null = "low" for GLM and nothing for other models
+     * @param totalBudget       optional cap on the whole walk (null = none); a model is not
+     *                          started once it is spent
+     * @throws LlmChainException when every model failed
+     */
+    public LlmResult chat(List<String> chain, Map<String, Object> openRouterPayload, Duration attemptTimeout,
+                          String reasoningEffort, Duration totalBudget) {
+        if (chain == null || chain.isEmpty()) {
+            throw new LlmChainException("No models to try", null);
+        }
+        long deadline = totalBudget == null ? Long.MAX_VALUE : System.currentTimeMillis() + totalBudget.toMillis();
+        List<String> tried = new ArrayList<>();
+        RuntimeException last = null;
+        for (String model : chain) {
+            if (model == null || model.isBlank()) {
+                continue;
+            }
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) {
+                log.warn("[LLM-Gateway] Time budget spent after {}; not trying {}", tried, model);
+                break;
+            }
+            Duration timeout = attemptTimeout.toMillis() <= remaining ? attemptTimeout : Duration.ofMillis(remaining);
+            tried.add(model);
+            try {
+                String body = callModel(model, openRouterPayload, timeout, reasoningEffort).block();
+                if (body == null || body.isBlank()) {
+                    throw new IllegalStateException("empty body from " + model);
+                }
+                LlmResult result = LlmResult.parse(body, model, objectMapper);
+                if (!result.isUsable()) {
+                    throw new IllegalStateException("no content from " + model
+                            + " (finish_reason=" + result.finishReason() + ")");
+                }
+                if (tried.size() > 1) {
+                    log.info("[LLM-Gateway] Answered by {} after {} failed", model, tried.subList(0, tried.size() - 1));
+                }
+                return result;
+            } catch (RuntimeException e) {
+                last = e;
+                log.warn("[LLM-Gateway] {} failed: {}", model, describe(e));
+            }
+        }
+        throw new LlmChainException("All models failed: " + tried + (last == null ? "" : " - last error: " + describe(last)), last);
+    }
+
+    /**
+     * One registry model: Isoquant when routed (one OpenRouter try on a gateway failure),
+     * else OpenRouter. Applies GLM reasoning headroom and effort. Deferred, so a retry
+     * re-resolves the route and honours a cooldown. Emits the raw response body.
+     */
+    public Mono<String> callModel(String modelId, Map<String, Object> openRouterPayload, Duration timeout,
+                                  String reasoningEffort) {
+        return Mono.defer(() -> {
+            boolean glm = ModelDefaults.isGlm(modelId);
+            String effort = reasoningEffort != null && !reasoningEffort.isBlank()
+                    ? reasoningEffort.trim().toLowerCase()
+                    : (glm ? DEFAULT_EFFORT : null);
+            Map<String, Object> payload = new LinkedHashMap<>(openRouterPayload);
+            payload.put("model", modelId);
+            if (glm) {
+                payload = withReasoningHeadroom(ensureUserTurn(payload));
+            }
+            if (effort != null) {
+                payload.put("reasoning", Map.of("effort", effort));
+            }
+            Route route = resolve(modelId);
+            if (route.isOpenRouter()) {
+                Map<String, Object> body = effort != null ? payload : withOpenRouterReasoning(payload, route);
+                return postOpenRouter(body, timeout);
+            }
+            Route gatewayRoute = route.reasoningEffort() == null
+                    ? route
+                    : new Route(route.gateway(), route.wireModel(),
+                            effort != null ? gatewayEffort(effort) : route.reasoningEffort());
+            Map<String, Object> openRouterBody = effort != null ? payload
+                    : withOpenRouterReasoning(payload, openRouterFallback(modelId, route));
+            return post(gatewayRoute, payload, timeout)
+                    .onErrorResume(LlmGatewayRouter::isGatewayFailure, error -> {
+                        coolDown(route.gateway(), error);
+                        return postOpenRouter(openRouterBody, timeout);
+                    });
+        });
+    }
+
+    /** One leg, blocking, no failover. An OpenRouter route carries its effort as reasoning. */
+    public String postBlocking(Route route, Map<String, Object> openRouterPayload, Duration timeout) {
+        if (route.isOpenRouter()) {
+            Map<String, Object> payload = new LinkedHashMap<>(openRouterPayload);
+            payload.put("model", route.wireModel());
+            return postOpenRouter(withOpenRouterReasoning(payload, route), timeout).block();
+        }
+        return post(route, openRouterPayload, timeout).block();
+    }
+
+    private Mono<String> postOpenRouter(Map<String, Object> payload, Duration timeout) {
+        if (openRouterApiKey.isEmpty()) {
+            return Mono.error(new IllegalStateException("OPENROUTER_API_KEY is not configured"));
+        }
+        return openRouterClient.post()
+                .uri("/chat/completions")
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(String.class)
+                .timeout(timeout);
+    }
+
+    /**
+     * GLM output budget: max(requested, 3000) + min(max(requested, 2000), 12000). The
+     * reasoning is billed as completion tokens and counts against max_tokens, so without
+     * this a 500-token chatbot reply can come back empty.
+     */
+    static Map<String, Object> withReasoningHeadroom(Map<String, Object> payload) {
+        Map<String, Object> copy = new LinkedHashMap<>(payload);
+        Object raw = copy.get("max_tokens");
+        int requested = raw instanceof Number n ? n.intValue() : UNSPECIFIED_MAX_TOKENS;
+        if (requested <= 0) {
+            requested = UNSPECIFIED_MAX_TOKENS;
+        }
+        int allowance = Math.min(Math.max(requested, REASONING_ALLOWANCE_MIN), REASONING_ALLOWANCE_MAX);
+        copy.put("max_tokens", Math.max(requested, REASONING_ON_MIN_TOKENS) + allowance);
+        return copy;
+    }
+
+    /**
+     * GLM providers reject a conversation with no user turn (the agent sometimes speaks
+     * first). Same fix as ai_service's ensure_user_turn: append a minimal one, never otherwise.
+     */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> ensureUserTurn(Map<String, Object> payload) {
+        if (!(payload.get("messages") instanceof List<?> messages) || messages.isEmpty()) {
+            return payload;
+        }
+        for (Object m : messages) {
+            if (m instanceof Map<?, ?> msg) {
+                Object role = msg.get("role");
+                if ("user".equals(role) || "tool".equals(role)) {
+                    return payload;
+                }
+            }
+        }
+        List<Object> withUser = new ArrayList<>((List<Object>) messages);
+        withUser.add(Map.of("role", "user", "content", "Begin."));
+        Map<String, Object> copy = new LinkedHashMap<>(payload);
+        copy.put("messages", withUser);
+        return copy;
+    }
+
+    /**
+     * Isoquant takes low|high|max only. "medium" goes up to "high" (the prompt assistant
+     * measured medium as the quality floor for Hindi rewrites); anything else is "low".
+     */
+    static String gatewayEffort(String effort) {
+        if (effort == null) {
+            return DEFAULT_EFFORT;
+        }
+        String e = effort.trim().toLowerCase();
+        if (ISOQUANT_EFFORTS.contains(e)) {
+            return e;
+        }
+        return "medium".equals(e) ? "high" : DEFAULT_EFFORT;
+    }
+
+    private static String describe(Throwable e) {
+        Throwable t = e;
+        if (t.getCause() != null && t.getClass().getName().startsWith("reactor.core.Exceptions")) {
+            t = t.getCause();
+        }
+        if (t instanceof WebClientResponseException w) {
+            String body = w.getResponseBodyAsString();
+            return w.getStatusCode().value() + " " + (body.length() > 300 ? body.substring(0, 300) : body);
+        }
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
     }
 
     /** Stop sending to this gateway for a while; calls resolve to OpenRouter meanwhile. */

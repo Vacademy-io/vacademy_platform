@@ -781,7 +781,10 @@ function AiResponseConfig({ config, onChange }: { config: Record<string, unknown
             <SectionLabel>{t('aiResponse.sectionLabel')}</SectionLabel>
             <AiCreditsNotice />
             <FieldLabel>{t('aiResponse.modelLabel')}</FieldLabel>
-            <select value={(config.modelId as string) || 'google/gemini-2.0-flash'} onChange={(e) => onChange('modelId', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded">
+            {/* No model = the platform default: admin-core resolves the 'chatbot_flow' use case
+                (GLM 5.3 Flash unless a super admin changes it). An explicit pick still wins. */}
+            <select value={(config.modelId as string) || ''} onChange={(e) => onChange('modelId', e.target.value || undefined)} className="w-full px-2 py-1.5 text-sm border rounded">
+                <option value="">{t('aiResponse.model.platformDefault')}</option>
                 <option value="google/gemini-2.0-flash">{t('aiResponse.model.gemini20Flash')}</option>
                 <option value="google/gemini-2.5-flash">{t('aiResponse.model.gemini25Flash')}</option>
                 <option value="google/gemini-2.5-pro">{t('aiResponse.model.gemini25Pro')}</option>

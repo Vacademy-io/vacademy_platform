@@ -35,6 +35,18 @@ export function getInitials(name: string): string {
 }
 
 /**
+ * Placeholder level / session names the backend stores for a course that has
+ * none ("default" / "DEFAULT"): never shown to a buyer, as in the catalogue.
+ */
+const PLACEHOLDER_NAMES = new Set(['default', 'none', 'null', 'undefined']);
+
+/** A level or session name worth showing, or '' for a missing or placeholder one. */
+export function displayName(name: string | null | undefined): string {
+    const trimmed = (name ?? '').trim();
+    return PLACEHOLDER_NAMES.has(trimmed.toLowerCase()) ? '' : trimmed;
+}
+
+/**
  * Course label, preferring the package/level/session triple over the plan name.
  *
  * `fallback` lets a caller supply the institute's own word for a course (the
@@ -42,7 +54,7 @@ export function getInitials(name: string): string {
  * the case where a mapping carries no names at all.
  */
 export function itemTitle(mapping: ProductPageMappingResponse, fallback = getTerminology(ContentTerms.Course, SystemTerms.Course)): string {
-    const parts = [mapping.package_name, mapping.level_name, mapping.session_name].filter(Boolean);
+    const parts = [mapping.package_name, displayName(mapping.level_name), displayName(mapping.session_name)].filter(Boolean);
     return parts.join(' · ') || mapping.payment_plan?.name || fallback;
 }
 

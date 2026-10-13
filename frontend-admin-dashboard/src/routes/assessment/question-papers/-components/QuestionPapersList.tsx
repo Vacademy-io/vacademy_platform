@@ -758,6 +758,7 @@ export const QuestionPapersList = ({
                                 exportButton={
                                     <ExportQuestionPaper
                                         questionPaperId={paper.id}
+                                        title={paper.title}
                                         triggerVariant="button"
                                     />
                                 }
@@ -858,6 +859,7 @@ export const QuestionPapersList = ({
                                 />
                                 <ExportQuestionPaper
                                     questionPaperId={questionsData.id}
+                                    title={questionsData.title}
                                     triggerVariant="button"
                                 />
                                 <DropdownMenu>

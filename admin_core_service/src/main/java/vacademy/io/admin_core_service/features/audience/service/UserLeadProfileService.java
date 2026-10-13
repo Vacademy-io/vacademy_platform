@@ -286,14 +286,11 @@ public class UserLeadProfileService {
         if (!leadTierService.isKnownTier(instituteId, requested)) {
             throw new VacademyException("Unknown lead tier: " + requested);
         }
-        String scoreDerived = leadTierService.deriveTier(instituteId, profile.getBestScore());
-
-        // If the admin is requesting the tier the score would derive anyway, clear
-        // lead_tier instead of storing it. The frontend falls back to score-derived
-        // tier when lead_tier is null, so this acts as "reset override". It also
-        // lets users heal legacy stale lead_tier values (set by the old recompute
-        // path) by simply clicking the tier their score now lands in.
-        profile.setLeadTier(requested.equalsIgnoreCase(scoreDerived) ? null : requested);
+        // Always store what the admin picked. This used to clear lead_tier when the pick
+        // matched the current score band ("reset override"), which left the lead on the
+        // score: the next rescore moved it to another tier and the admin's Hot / Warm /
+        // Cold click appeared not to stick.
+        profile.setLeadTier(requested);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
 
         UserLeadProfile saved = userLeadProfileRepository.save(profile);

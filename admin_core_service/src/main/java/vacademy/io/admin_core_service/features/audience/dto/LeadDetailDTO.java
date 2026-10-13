@@ -101,5 +101,6 @@ public class LeadDetailDTO {
     private Boolean tatOverdue;          // TAT breached and counselor hasn't acted
     private Boolean tatDueSoon;          // inside a "before TAT" / follow-up-due window
     private Boolean followUpOverdue;     // follow-up SLA crossed
+    private Boolean slaClosed;           // lead is Lost / Converted: off the SLA clock, no Pending / Overdue
 }
 

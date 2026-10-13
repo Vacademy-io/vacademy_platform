@@ -141,8 +141,8 @@ public class LeadFollowupService {
     @Transactional(readOnly = true)
     public List<LeadFollowupDto> myPending(CustomUserDetails user, String instituteId, String counsellorUserId) {
         if (instituteId == null || instituteId.isBlank()) {
-            return withLeadInfo(leadFollowupRepository
-                    .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId())
+            return withLeadInfo(withoutClosedLeads(leadFollowupRepository
+                    .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId()))
                     .stream()
                     .map(LeadFollowupDto::from)
                     .collect(Collectors.toList()));
@@ -168,9 +168,28 @@ public class LeadFollowupService {
             rows = leadFollowupRepository
                     .findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(instituteId);
         }
-        return withLeadInfo(rows.stream()
+        return withLeadInfo(withoutClosedLeads(rows).stream()
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList()));
+    }
+
+    /**
+     * Drops follow-ups whose lead has since been marked Lost / Converted. They are moot, so
+     * they must not sit in Upcoming / Overdue (or the reminder bell). The rows stay open
+     * rather than being closed here, so they come back if the lead is reopened.
+     */
+    private List<LeadFollowup> withoutClosedLeads(List<LeadFollowup> rows) {
+        List<String> leadIds = rows.stream()
+                .map(LeadFollowup::getAudienceResponseId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (leadIds.isEmpty()) return rows;
+        java.util.Set<String> closed = new java.util.HashSet<>(audienceResponseRepository.findClosedLeadIds(leadIds));
+        if (closed.isEmpty()) return rows;
+        return rows.stream()
+                .filter(fu -> !closed.contains(fu.getAudienceResponseId()))
+                .collect(Collectors.toList());
     }
 
     /**

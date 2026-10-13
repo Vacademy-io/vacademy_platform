@@ -43,7 +43,7 @@ public class UserLeadProfile {
     private String bestScoreResponseId;
 
     /** HOT / WARM / COLD — derived from bestScore. */
-    @Column(name = "lead_tier", length = 10)
+    @Column(name = "lead_tier", length = 100)
     private String leadTier;
 
     /**

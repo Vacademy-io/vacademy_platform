@@ -77,6 +77,7 @@ const renderCard = (props: Partial<React.ComponentProps<typeof InviteLinkCard>> 
     render(
         <InviteLinkCard
             invite={invite()}
+            packageSessionId="ps-1"
             inviteUrl={INVITE_URL}
             isMakingDefault={false}
             {...handlers}

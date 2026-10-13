@@ -329,6 +329,7 @@ const InviteDetailsComponent = ({
                                             <InviteLinkCard
                                                 key={inviteLink.id + packageSessionId}
                                                 invite={inviteLink}
+                                                packageSessionId={packageSessionId}
                                                 inviteUrl={createInviteLink(
                                                     inviteLink.invite_code,
                                                     instituteDetails?.learner_portal_base_url

@@ -60,9 +60,45 @@
     "menu": {
         "copyShortUrl": "نسخ الرابط المختصر",
         "qrCode": "رمز QR",
-        "utmGenerator": "مولّد UTM"
+        "utmGenerator": "مولّد UTM",
+        "configurePayment": "إعداد خطة الدفع"
     },
     "loading": "جارٍ التحميل",
     "loadError": "تعذّر تحميل روابط الدعوة.",
-    "retry": "إعادة المحاولة"
+    "retry": "إعادة المحاولة",
+    "payment": {
+        "label": "الدفع",
+        "needsApproval": "يتطلب الموافقة",
+        "planCount_zero": "{{count}} خطة",
+        "planCount_one": "خطة واحدة",
+        "planCount_two": "خطتان",
+        "planCount_few": "{{count}} خطط",
+        "planCount_many": "{{count}} خطة",
+        "planCount_other": "{{count}} خطة",
+        "type": {
+            "free": "مجاني",
+            "oneTime": "دفعة واحدة",
+            "subscription": "اشتراك",
+            "donation": "تبرع",
+            "feeStructure": "هيكل الرسوم",
+            "unknown": "غير معروف"
+        }
+    },
+    "configurePayment": {
+        "heading": "إعداد خطة الدفع",
+        "description": "اختر خطة الدفع التي يراها المتعلمون عند التسجيل عبر «{{name}}» لهذه الدفعة.",
+        "current": "الخطة الحالية",
+        "new": "الخطة الجديدة",
+        "unchanged": "مطابقة للحالية — اختر خطة لتغييرها",
+        "choose": "اختيار خطة",
+        "noCurrent": "لا توجد خطة دفع مرتبطة بهذه الدفعة. استخدم «تعديل» لإعدادها.",
+        "currencyMismatch": "هذه الخطة تفرض الرسوم بعملة {{planCurrency}}، بينما رابط الدعوة بعملة {{inviteCurrency}}. غيّرها من «تعديل» لتتغير عملة الرابط معها.",
+        "referralNote": "مكافآت الإحالة المعدّة على الخطة السابقة لا تُنقل. أضفها مجددًا من «تعديل» إذا كان الرابط يستخدم الإحالات.",
+        "cancel": "إلغاء",
+        "save": "حفظ",
+        "saving": "جارٍ الحفظ…",
+        "saved": "تم تحديث خطة الدفع لـ «{{name}}»",
+        "saveFailed": "تعذّر تحديث خطة الدفع",
+        "pickerFailed": "تعذّر تحميل خطط الدفع. استخدم «تعديل» لتغيير الخطة."
+    }
 }

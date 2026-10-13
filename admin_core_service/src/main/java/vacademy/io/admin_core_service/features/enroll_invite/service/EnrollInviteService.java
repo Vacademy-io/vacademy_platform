@@ -360,7 +360,64 @@ public class EnrollInviteService {
         Page<EnrollInviteListItemDTO> page = pageResult.map(row -> EnrollInviteListItemDTO.from(row,
                 shortUrlManagementService.getAbsoluteShortUrl(row.getInstituteId(), row.getShortUrl())));
         attachActorNames(page.getContent());
+        attachPaymentSummaries(page.getContent());
         return page;
+    }
+
+    /**
+     * Which payment option each invite's batches charge through, for the list
+     * card. ONE query for the whole page (mappings + payment option fetched
+     * together; plans load in @BatchSize batches). Best-effort like the actor
+     * names: a failure leaves the summaries empty rather than failing the list.
+     */
+    private void attachPaymentSummaries(List<EnrollInviteListItemDTO> rows) {
+        List<String> inviteIds = rows.stream().map(EnrollInviteListItemDTO::getId).filter(Objects::nonNull).toList();
+        if (inviteIds.isEmpty()) return;
+        try {
+            // Same dedupe as findByInvite: a batch can carry stale ACTIVE mappings,
+            // and the newest one is the option the learner actually sees.
+            Map<String, Map<String, PackageSessionLearnerInvitationToPaymentOption>> latest = new HashMap<>();
+            for (PackageSessionLearnerInvitationToPaymentOption m : packageSessionEnrollInviteToPaymentOptionService
+                    .findByEnrollInviteIdsWithPackageSession(inviteIds)) {
+                if (m.getEnrollInvite() == null || m.getPackageSession() == null || m.getPaymentOption() == null)
+                    continue;
+                latest.computeIfAbsent(m.getEnrollInvite().getId(), k -> new HashMap<>())
+                        .merge(m.getPackageSession().getId(), m, (a, b) -> {
+                            if (a.getCreatedAt() == null) return b;
+                            if (b.getCreatedAt() == null) return a;
+                            return a.getCreatedAt().isAfter(b.getCreatedAt()) ? a : b;
+                        });
+            }
+            for (EnrollInviteListItemDTO row : rows) {
+                Map<String, PackageSessionLearnerInvitationToPaymentOption> bySession = latest.get(row.getId());
+                row.setPaymentSummaries(bySession == null ? List.of()
+                        : bySession.values().stream().map(this::toPaymentSummary).toList());
+            }
+        } catch (Exception e) {
+            logger.warn("Could not resolve enroll invite payment summaries ({} invites): {}", inviteIds.size(),
+                    e.getMessage());
+        }
+    }
+
+    private EnrollInviteListItemDTO.PaymentSummary toPaymentSummary(PackageSessionLearnerInvitationToPaymentOption m) {
+        PaymentOption option = m.getPaymentOption();
+        List<PaymentPlan> plans = Optional.ofNullable(option.getPaymentPlans()).orElse(Collections.emptyList())
+                .stream().filter(Objects::nonNull).toList();
+        DoubleSummaryStatistics prices = plans.stream().mapToDouble(PaymentPlan::getActualPrice).summaryStatistics();
+        String currency = plans.stream().map(PaymentPlan::getCurrency).filter(StringUtils::hasText).findFirst()
+                .orElse(null);
+        return EnrollInviteListItemDTO.PaymentSummary.builder()
+                .packageSessionId(m.getPackageSession().getId())
+                .mappingId(m.getId())
+                .paymentOptionId(option.getId())
+                .paymentOptionName(option.getName())
+                .type(option.getType())
+                .requireApproval(option.isRequireApproval())
+                .planCount(plans.size())
+                .minPrice(plans.isEmpty() ? null : prices.getMin())
+                .maxPrice(plans.isEmpty() ? null : prices.getMax())
+                .currency(currency)
+                .build();
     }
 
     /**

@@ -98,10 +98,12 @@ class FileConversionRepository:
             .first()
         )
 
-    def start(self, vendor_file_id: str, vendor: str, file_id: Optional[str]) -> FileConversion:
+    def start(
+        self, vendor_file_id: str, vendor: str, file_id: Optional[str], file_type: Optional[str] = None,
+    ) -> FileConversion:
         row = FileConversion(
             id=str(uuid4()), vendor_file_id=vendor_file_id, vendor=vendor,
-            file_id=file_id, status="INIT",
+            file_id=file_id, status="INIT", file_type=file_type,
         )
         self.db.add(row)
         self.db.commit()

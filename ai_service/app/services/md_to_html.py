@@ -35,6 +35,26 @@ _HEAD = (
 )
 
 _NUMBERED_RE = re.compile(r"^\d+\..*")
+# MathPix joins a Word heading's lines with a literal "<br>" ("TEST - 03 <br>
+# SECTION A: …"); each line is a heading of its own, or the section heading
+# hides behind the paper's title. A bare label line ("Section A <br>
+# THERMODYNAMICS") is joined to the name under it instead.
+_HEADING_BREAK_RE = re.compile(r"\s*<br\s*/?>\s*", re.I)
+_BARE_LABEL_RE = re.compile(r"^(?:section|part|unit)\s*[-–:]?\s*[A-Za-z0-9]{1,4}\s*[:.\-–]?$", re.I)
+
+
+def _heading_lines(title: str) -> list[str]:
+    lines: list[str] = []
+    for part in _HEADING_BREAK_RE.split(title):
+        if not part:
+            continue
+        if lines and _BARE_LABEL_RE.match(lines[-1]):
+            lines[-1] = f"{lines[-1].rstrip(' :.-–')}: {part}"
+        else:
+            lines.append(part)
+    return lines
+
+
 _IMG_RE = re.compile(r"!\s?\[(.*?)\]\((.*?)\)")
 _BOLD_RE = re.compile(r"\*\*(.*?)\*\*")
 
@@ -59,7 +79,8 @@ def convert_markdown_to_html(markdown_text: str | None) -> str:
             continue
         if line.startswith("##"):
             title = re.sub(r"^#+\s*", "", line)
-            html.append(f"<h2>{_escape_html(title)}</h2>\n")
+            for part in _heading_lines(title):
+                html.append(f"<h2>{_escape_html(part)}</h2>\n")
         elif line.startswith("$$"):
             html.append(f'<div class="math-block">{line}</div>\n')
         elif _NUMBERED_RE.match(line):

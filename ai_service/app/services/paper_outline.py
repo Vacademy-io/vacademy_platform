@@ -259,7 +259,9 @@ def _label_key(label: str) -> str:
 
 
 def _tidy_name(raw: str) -> str:
-    name = _MARKS_IN_NAME.sub(" ", raw)
+    # MathPix escapes "&" in prose ("ABILITY \&amp; DATA"); the name is text.
+    name = raw.replace("&amp;", "&").replace("\\&", "&").replace("\\%", "%")
+    name = _MARKS_IN_NAME.sub(" ", name)
     name = _RANGE_IN_NAME.sub(" ", name)
     name = re.sub(r"\s+", " ", name).strip(" :-–—.,()|·")
     # The strip also takes the ")" of a name's own "(VARC)"; give it back.

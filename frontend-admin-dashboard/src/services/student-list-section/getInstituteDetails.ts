@@ -400,6 +400,16 @@ export const useInstituteQuery = () => {
             }
 
             setInstituteDetails(data);
+
+            // Once per session: a role's Display Settings edited from the super-admin
+            // portal bumps the server's version, which busts the 24 h local cache.
+            // Fire-and-forget and silent on failure; loaded lazily so the
+            // display-settings module graph stays off this file's import path.
+            if (INSTITUTE_ID) {
+                void import('@/services/capabilities')
+                    .then((m) => m.syncCapabilitiesOnce(INSTITUTE_ID))
+                    .catch(() => undefined);
+            }
             return data;
         },
         staleTime: CACHE_STALE_TIME,

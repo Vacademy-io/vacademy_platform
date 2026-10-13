@@ -2037,3 +2037,8 @@ export const ERP_PNL_SNAPSHOT_DOWNLOAD = `${ERP_FINANCE_BASE}/pnl-snapshot/downl
 // ERP · My HR (self-service): the caller's own employee record. Every other HR
 // read is keyed on an employee id the employee cannot discover.
 export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employees/me`;
+
+// Institute capabilities (modules/features entitlement + display-settings version).
+// GET ?instituteId= → { mode, catalog_version, modules, features, display_settings_version }.
+// Phase 1 reads it only to bust the display-settings cache; see services/capabilities.ts.
+export const CAPABILITIES_ME = `${BASE_URL}/admin-core-service/capabilities/v1/me`;

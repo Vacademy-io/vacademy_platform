@@ -492,6 +492,7 @@ export default defineConfig(({ mode }) => {
                 'src/lib/**/*.test.{ts,tsx}',
                 'src/i18n/**/*.test.{ts,tsx}',
                 'src/components/templates/**/*.test.{ts,tsx}',
+                'src/components/common/layout-container/sidebar/**/*.test.{ts,tsx}',
                 'src/components/shared/whatsapp/**/*.test.{ts,tsx}',
             ],
         },

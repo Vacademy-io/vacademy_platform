@@ -1,5 +1,4 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,10 +13,20 @@ import {
     type Icon,
 } from '@phosphor-icons/react';
 import {
-    getDashboardKpisQuery,
+    buildAdminKpis,
+    buildTeacherKpis,
     type DashboardKpi,
+    type InstituteCounts,
     type KpiBreakdownTone,
 } from '../-services/dashboard-kpis-service';
+import { toSourceState } from '../-services/dashboard-sources';
+import {
+    useDashboardUpcomingSessions,
+    useInstituteDashboardCounts,
+    useInstituteFeeCollection,
+    useTeamMemberCount,
+} from '../-hooks/useDashboardSources';
+import SourceErrorNotice from './SourceErrorNotice';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
@@ -32,7 +41,7 @@ const KPI_ICONS: Record<string, Icon> = {
     totalCourses: BookOpen,
     teamMembers: UsersThree,
     outstandingFees: Money,
-    overdueItems: WarningCircle,
+    overdueFees: WarningCircle,
     classesToday: VideoCamera,
 };
 
@@ -71,22 +80,61 @@ const formatValue = (k: DashboardKpi, currency: string): string => {
     return k.value.toLocaleString('en-IN');
 };
 
+const KpiSkeletonCard = () => (
+    <Card className="rounded-xl bg-white p-3 shadow-none sm:p-4">
+        <div className="flex items-start justify-between">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="size-4 rounded" />
+        </div>
+        <Skeleton className="mt-3 h-7 w-24" />
+        <Skeleton className="mt-2 h-2.5 w-28" />
+    </Card>
+);
+
 export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     const navigate = useNavigate();
-    const { t, i18n } = useTranslation('dashboardKpisService');
+    const { t } = useTranslation('dashboardKpisService');
     const { t: dashboardT } = useTranslation('dashboardIndex');
-    const { data, isLoading, isError } = useQuery(
-        getDashboardKpisQuery({ instituteId, roles, t, language: i18n.language })
-    );
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const currency = resolveInstituteCurrency(instituteDetails);
 
-    if (isError) return null;
-    if (!isLoading && (!data || data.length === 0)) return null;
+    // `roles` are the CURRENT institute's roles. Admins get the full band; teachers get
+    // today's classes only; any other role gets no band.
+    const isAdmin = roles.includes('ADMIN');
+    const isTeacher = !isAdmin && roles.includes('TEACHER');
 
-    const items: (DashboardKpi | null)[] = isLoading
-        ? Array.from({ length: 6 }, () => null)
-        : data || [];
+    // Shared hooks: the page header, Finance snapshot, Pending Actions and Live Classes read
+    // the same queries, so each request goes out once per dashboard load.
+    const countsQuery = useInstituteDashboardCounts(instituteId, isAdmin);
+    const teamQuery = useTeamMemberCount(instituteId, isAdmin);
+    const feeQuery = useInstituteFeeCollection(instituteId, isAdmin);
+    const sessionsQuery = useDashboardUpcomingSessions(instituteId, isAdmin || isTeacher);
+
+    const refetchByKpi: Record<string, () => void> = {
+        activeLearners: () => void countsQuery.refetch(),
+        totalCourses: () => void countsQuery.refetch(),
+        teamMembers: () => void teamQuery.refetch(),
+        outstandingFees: () => void feeQuery.refetch(),
+        overdueFees: () => void feeQuery.refetch(),
+        classesToday: () => void sessionsQuery.refetch(),
+    };
+
+    const sessions = toSourceState(sessionsQuery);
+    const items: DashboardKpi[] = isAdmin
+        ? buildAdminKpis(
+              {
+                  counts: toSourceState<InstituteCounts>(countsQuery),
+                  teamCount: toSourceState(teamQuery),
+                  feeCollection: toSourceState(feeQuery),
+                  sessions,
+              },
+              t
+          )
+        : isTeacher
+          ? buildTeacherKpis(sessions, t)
+          : [];
+
+    if (items.length === 0) return null;
 
     const cols =
         items.length === 1
@@ -107,20 +155,38 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
                 {dashboardT('overview.title')}
             </h2>
             <div className={`grid gap-2 ${cols}`}>
-                {items.map((k, i) => {
-                    if (!k) {
+                {items.map((k) => {
+                    if (k.status === 'loading') {
+                        return <KpiSkeletonCard key={k.id} />;
+                    }
+                    const Icon = KPI_ICONS[k.id] || Users;
+                    if (k.status === 'error') {
+                        // Not a link and no value: a failed source must not read as a real 0.
                         return (
-                            <Card key={i} className="rounded-xl bg-white p-3 shadow-none sm:p-4">
-                                <div className="flex items-start justify-between">
-                                    <Skeleton className="h-3 w-20" />
-                                    <Skeleton className="size-4 rounded" />
+                            <Card
+                                key={k.id}
+                                className="h-full rounded-xl bg-white p-3 shadow-none sm:p-4"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1 text-xs font-medium text-neutral-600">
+                                        {k.label}
+                                    </div>
+                                    <Icon
+                                        size={16}
+                                        className="mt-0.5 shrink-0 text-neutral-300"
+                                        aria-hidden="true"
+                                    />
                                 </div>
-                                <Skeleton className="mt-3 h-7 w-24" />
-                                <Skeleton className="mt-2 h-2.5 w-28" />
+                                <div className="mt-2 text-2xl font-semibold text-neutral-300">
+                                    —
+                                </div>
+                                <SourceErrorNotice
+                                    className="mt-1"
+                                    onRetry={refetchByKpi[k.id] ?? (() => undefined)}
+                                />
                             </Card>
                         );
                     }
-                    const Icon = KPI_ICONS[k.id] || Users;
                     const clickable = !!k.deepLink;
                     return (
                         <button

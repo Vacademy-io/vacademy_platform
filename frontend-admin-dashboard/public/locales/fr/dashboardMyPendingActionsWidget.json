@@ -4,6 +4,7 @@
         "description": "Éléments qui vous attendent en ce moment"
     },
     "error": "Impossible de charger les actions en attente.",
+    "partialError": "Certains éléments n'ont pas pu être chargés.",
     "empty": {
         "title": "Tout est en ordre",
         "description": "Rien ne requiert votre attention pour le moment."

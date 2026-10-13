@@ -14,8 +14,7 @@ import {
     ReportTypeEnum,
     commaSeperatedType,
 } from '../../-types/types';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getInstituteId } from '@/constants/helper';
 import { useMutation } from '@tanstack/react-query';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
@@ -149,9 +148,8 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
 
     useEffect(() => {
         if (reportRecipientsState) {
-            const accessToken = getTokenFromCookie(TokenKey.accessToken);
-            const tokenData = getTokenDecodedData(accessToken);
-            const INSTITUTE_ID = tokenData && Object.keys(tokenData.authorities)[0];
+            // Current (selected) institute, not the token's first.
+            const INSTITUTE_ID = getInstituteId();
 
             settingsMutation.mutate(
                 { userId: userId, instituteId: INSTITUTE_ID || '' },

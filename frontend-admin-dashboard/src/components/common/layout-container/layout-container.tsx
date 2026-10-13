@@ -8,9 +8,7 @@ import { InternalSideBar } from './internal-sidebar/internalSideBar';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { InternalSidebarComponent } from './internal-sidebar/internalSidebarComponent';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
@@ -57,11 +55,9 @@ export const LayoutContainer = ({
     const { open, setOpen } = useSidebar();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const roles = getUserRoles(accessToken);
-    const isAdmin = roles.includes('ADMIN');
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const roleDisplay = getDisplaySettingsFromCache(roleKey);
+    // Same key the sidebar and navbar read (admin / teacher / custom role, for the CURRENT
+    // institute), so `showSidebar` follows the role the user is actually signed in as.
+    const roleDisplay = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
     const { instituteDetails } = useInstituteDetailsStore();
     const hasFacultyPermission = hasFacultyAssignedPermission(instituteDetails?.id);
     const showMainSidebar = roleDisplay?.ui?.showSidebar !== false;

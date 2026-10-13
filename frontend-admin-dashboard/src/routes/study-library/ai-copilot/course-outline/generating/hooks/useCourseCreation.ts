@@ -5,8 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { SessionProgress } from '../../../shared/types';
 import { createCourseWithContent, setProgressCallback } from '../services/courseCreationService';
-import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import {
     isCourseApprovalRequired,
     publishCourse,
@@ -177,8 +176,8 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
             );
 
             // If user is a teacher and status is ACTIVE, we create as DRAFT first then submit
-            const accessToken = getTokenFromCookie(TokenKey.accessToken);
-            const roles = getUserRoles(accessToken);
+            // Current institute only — an ADMIN elsewhere is still a TEACHER here.
+            const roles = getRolesForCurrentInstitute();
             const isTeacher = roles.includes('TEACHER') && !roles.includes('ADMIN');
 
             const creationStatus = isTeacher && status === 'ACTIVE' ? 'DRAFT' : status;

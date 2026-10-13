@@ -124,5 +124,9 @@
     },
     "overview": {
         "title": "Vue d’ensemble de l’établissement"
+    },
+    "sourceError": {
+        "message": "Chargement impossible",
+        "retry": "Réessayer"
     }
 }

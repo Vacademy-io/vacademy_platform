@@ -4,6 +4,7 @@
         "description": "Items waiting on you right now"
     },
     "error": "Couldn't load pending actions.",
+    "partialError": "Some items couldn't load.",
     "empty": {
         "title": "All clear",
         "description": "Nothing needs your attention right now."

@@ -4,7 +4,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { MyButton } from '@/components/design-system/button';
 import { Plus, PencilSimpleLine, DownloadSimple, VideoCamera } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { useUpcomingSessions } from '@/routes/study-library/live-session/-hooks/useLiveSessions';
+import { useDashboardUpcomingSessions } from '../-hooks/useDashboardSources';
 import { useLiveSessionStore } from '@/routes/study-library/live-session/schedule/-store/sessionIdstore';
 import {
     getSessionBySessionId,
@@ -62,7 +62,8 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
     const registrationColumns = buildRegistrationColumns(tReportTable);
     const reportColumns = buildReportColumns(tReportTable);
     const navigate = useNavigate();
-    const { data: upcomingData } = useUpcomingSessions(instituteId);
+    // Shared with the KPI band's "classes today" so the list is fetched once per load.
+    const { data: upcomingData } = useDashboardUpcomingSessions(instituteId);
     const queryClient = useQueryClient();
     const {
         mutateAsync: fetchReport,

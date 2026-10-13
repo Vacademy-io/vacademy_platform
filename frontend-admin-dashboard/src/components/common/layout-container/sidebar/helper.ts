@@ -2,8 +2,7 @@ import { SidebarItemsType } from '@/types/layout-container/layout-container-type
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { SubModuleType } from '@/schemas/student/student-list/institute-schema';
 import { SUB_MODULE_SIDEBAR_MAPPING, controlledTabs, modules } from './constant';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import {
     SUB_ORG_MODULE_SUB_ITEM_ID,
     SUB_ORG_MODULE_TAB_ID,
@@ -83,8 +82,8 @@ export function filterSidebarByRole(
     menuList: SidebarItemsType[],
     roleDisplay?: DisplaySettingsData | null
 ): SidebarItemsType[] {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const userRoles = getUserRoles(accessToken);
+    // Roles are per institute: an ADMIN of another institute is not an admin here.
+    const userRoles = getRolesForCurrentInstitute();
     const isAdmin = userRoles.includes('ADMIN');
 
     // If user is admin, return all items

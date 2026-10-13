@@ -124,5 +124,9 @@
     },
     "overview": {
         "title": "Institute overview"
+    },
+    "sourceError": {
+        "message": "Couldn't load",
+        "retry": "Retry"
     }
 }

@@ -14,11 +14,11 @@
         },
         "outstandingFees": {
             "label": "Outstanding Fees",
-            "subtitle": "Due across overdue items"
+            "subtitle": "Still to collect, incl. upcoming dues"
         },
-        "overdueItems": {
-            "label": "Overdue Items",
-            "subtitle": "Need follow-up"
+        "overdueFees": {
+            "label": "Overdue Fees",
+            "subtitle": "Past due date, unpaid"
         },
         "classesToday": {
             "label": "{{sessions}} Today",

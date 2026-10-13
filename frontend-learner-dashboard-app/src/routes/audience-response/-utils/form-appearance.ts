@@ -39,6 +39,8 @@
  *     "eyebrow": "Admissions 2026",
  *     "headline": "<p>Talk to <strong>our team</strong></p>",
  *     "headingAlign": "left",      // left | center | right
+ *     "showHeader": true,          // institute logo + name bar at the top
+ *     "showHeadline": true,        // the page heading (campaign name / headline)
  *     "subheadline": "<p>Rich text is allowed and sanitized.</p>",
  *     "showDescription": true,
  *     "showObjective": true,
@@ -119,6 +121,10 @@ export interface AudienceFormAppearance {
   headline: string;
   /** Alignment of the heading block: eyebrow, headline, intro, highlights. */
   headingAlign: AudienceFormTextAlign;
+  /** The sticky institute branding bar, on the form and the thank-you screen. */
+  showHeader: boolean;
+  /** The page heading — the `headline` override or the campaign name. */
+  showHeadline: boolean;
   /** Overrides the campaign `description` HTML. Blank keeps the description. */
   subheadline: string;
   showDescription: boolean;
@@ -168,6 +174,8 @@ export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
   eyebrow: "",
   headline: "",
   headingAlign: "left",
+  showHeader: true,
+  showHeadline: true,
   subheadline: "",
   showDescription: true,
   showObjective: true,
@@ -306,6 +314,8 @@ export const parseAudienceFormAppearance = (
     eyebrow: toStr(src.eyebrow, d.eyebrow),
     headline: toRichText(src.headline, d.headline),
     headingAlign: toEnum(src.headingAlign, TEXT_ALIGNS, d.headingAlign),
+    showHeader: toBool(src.showHeader, d.showHeader),
+    showHeadline: toBool(src.showHeadline, d.showHeadline),
     subheadline: toStr(src.subheadline, d.subheadline),
     showDescription: toBool(src.showDescription, d.showDescription),
     showObjective: toBool(src.showObjective, d.showObjective),
@@ -459,6 +469,28 @@ export const resolveHeadline = (
 /** The admin's rich-text headline, sanitized. "" for plain text or blank. */
 export const resolveHeadlineHtml = (appearance: AudienceFormAppearance): string =>
   resolveRichTextHtml(appearance.headline);
+
+/**
+ * True when the structured hero would render at least one block. With the
+ * heading, intro and objective all switched off and nothing else authored, the
+ * hero is empty — and the classic layout would wrap that nothing in a card.
+ */
+export const hasStructuredHeroContent = (
+  appearance: AudienceFormAppearance,
+  campaign: {
+    name?: string | null;
+    description?: string | null;
+    objective?: string | null;
+  }
+): boolean =>
+  Boolean(appearance.coverImageUrl) ||
+  appearance.eyebrow.trim().length > 0 ||
+  (appearance.showHeadline &&
+    (resolveHeadlineHtml(appearance) !== "" ||
+      resolveHeadline(appearance, campaign.name) !== "")) ||
+  resolveHeroBodyHtml(appearance, campaign.description) !== "" ||
+  (appearance.showObjective && (campaign.objective ?? "").trim().length > 0) ||
+  appearance.highlights.length > 0;
 
 
 /**

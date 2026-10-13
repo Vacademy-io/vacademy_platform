@@ -74,6 +74,10 @@ export interface AudienceFormAppearance {
     headline: string;
     /** Alignment of the heading block: eyebrow, headline, intro, highlights. */
     headingAlign: AudienceFormTextAlign;
+    /** The institute logo + name bar at the top, on the form and the thank-you screen. */
+    showHeader: boolean;
+    /** The page heading — the `headline` override or the campaign name. */
+    showHeadline: boolean;
     /** Overrides the campaign description. Blank keeps the description. */
     subheadline: string;
     showDescription: boolean;
@@ -126,6 +130,8 @@ export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
     eyebrow: '',
     headline: '',
     headingAlign: 'left',
+    showHeader: true,
+    showHeadline: true,
     subheadline: '',
     showDescription: true,
     showObjective: true,
@@ -249,6 +255,8 @@ export const normalizeFormAppearance = (
         eyebrow: toStr(src.eyebrow, base.eyebrow),
         headline: toRichText(src.headline, base.headline),
         headingAlign: toEnum(src.headingAlign, FORM_TEXT_ALIGNS, base.headingAlign),
+        showHeader: toBool(src.showHeader, base.showHeader),
+        showHeadline: toBool(src.showHeadline, base.showHeadline),
         subheadline: toStr(src.subheadline, base.subheadline),
         showDescription: toBool(src.showDescription, base.showDescription),
         showObjective: toBool(src.showObjective, base.showObjective),
@@ -329,6 +337,8 @@ export const isDefaultFormAppearance = (config: AudienceFormAppearance): boolean
         config.eyebrow === d.eyebrow &&
         config.headline === d.headline &&
         config.headingAlign === d.headingAlign &&
+        config.showHeader === d.showHeader &&
+        config.showHeadline === d.showHeadline &&
         config.subheadline === d.subheadline &&
         config.showDescription === d.showDescription &&
         config.showObjective === d.showObjective &&

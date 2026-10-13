@@ -1,6 +1,6 @@
 package vacademy.io.admin_core_service.features.institute_learner.controller;
 
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountPermissionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +30,7 @@ public class InstituteStudentController {
     private AdminDirectEnrollService adminDirectEnrollService;
 
     @Autowired
-    private InstituteAccessValidator instituteAccessValidator;
+    private AdminDiscountPermissionService adminDiscountPermissionService;
 
     // Add User to Institute
     @PostMapping("/add-institute_learner")
@@ -63,10 +63,10 @@ public class InstituteStudentController {
     public ResponseEntity<LearnerEnrollResponseDTO> adminEnrollLearner(
             @RequestAttribute("user") CustomUserDetails admin,
             @RequestBody LearnerEnrollRequestDTO request) {
-        // Giving a discount is an admin decision, not just any institute member's.
+        // Only roles allowed to by Display Settings (learnerManagement.canApplyDiscounts).
         if (request.getLearnerPackageSessionEnroll() != null
                 && AdminDiscountService.isRequested(request.getLearnerPackageSessionEnroll().getAdminDiscount())) {
-            instituteAccessValidator.requireAdminAccess(admin, request.getInstituteId());
+            adminDiscountPermissionService.requireCanApplyDiscounts(admin, request.getInstituteId());
         }
         return ResponseEntity.ok(adminDirectEnrollService.adminEnrollLearner(request, admin));
     }

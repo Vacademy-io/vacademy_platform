@@ -1632,10 +1632,13 @@ export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
 export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;
 
 // Admin-granted discounts (Percentage / Flat / Coupon picked by an admin at enroll,
-// bulk-assign or invoice time, plus pending per-learner grants). Institute ADMIN only;
-// every call takes ?instituteId=. The granting admin is taken from the JWT server-side.
+// bulk-assign or invoice time, plus pending per-learner grants). Gated per role by the
+// Display Settings "Apply discounts" flag; every call takes ?instituteId=. The granting
+// user is taken from the JWT server-side.
 export const ADMIN_DISCOUNT_BASE = `${BASE_URL}/admin-core-service/v1/admin-discounts`;
 export const ADMIN_DISCOUNT_PREVIEW = `${ADMIN_DISCOUNT_BASE}/preview`;
+// GET → { can_apply: boolean } — whether the caller's role may apply admin discounts.
+export const ADMIN_DISCOUNT_CAN_APPLY = `${ADMIN_DISCOUNT_BASE}/can-apply`;
 
 // =============================================================================
 // Organization teams (hybrid: flat teams + user-to-user reporting inside).

@@ -107,6 +107,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowEditCredentials: true,
     // Permanent delete of payments & invoices — OFF by default for every role.
     allowDeletePayments: false,
+    // Admin discounts on enroll, bulk assign and invoices — ON for admins.
+    canApplyDiscounts: true,
 };
 
 export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanelProps = {}) {
@@ -280,6 +282,11 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
             key: 'allowDeletePayments',
             label: t('learnerManagement.allowDeletePayments'),
             defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
+        },
+        {
+            key: 'canApplyDiscounts',
+            label: t('learnerManagement.canApplyDiscounts'),
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.canApplyDiscounts ?? true,
         },
     ];
 

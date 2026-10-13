@@ -186,6 +186,7 @@
         "allowEditCredentials": "Allow Editing Learner Username & Password",
         "allowSendResetPasswordMail": "Allow Sending Reset Password Mail",
         "showApprovalToggle": "Show Approval Requests toggle on Learners list",
-        "allowDeletePayments": "Allow permanently deleting payments & invoices (cannot be undone)"
+        "allowDeletePayments": "Allow permanently deleting payments & invoices (cannot be undone)",
+        "canApplyDiscounts": "Allow applying discounts when enrolling learners, bulk assigning, or creating invoices"
     }
 }

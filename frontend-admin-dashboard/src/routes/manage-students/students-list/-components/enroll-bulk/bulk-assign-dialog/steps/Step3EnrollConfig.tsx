@@ -41,7 +41,8 @@ import {
     AdminDiscountField,
     EMPTY_ADMIN_DISCOUNT,
 } from '@/components/common/payments/AdminDiscountField';
-import { canGrantAdminDiscounts, isDiscountablePlanType } from '@/services/admin-discounts';
+import { isDiscountablePlanType } from '@/services/admin-discounts';
+import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
 
 interface Props {
     instituteId: string;
@@ -66,8 +67,8 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
     });
     const isCpo = resolved?.paymentOption?.type === 'CPO';
     const cpoId = resolved?.complexPaymentOptionId ?? null;
-    const canDiscount =
-        isDiscountablePlanType(resolved?.paymentOption?.type) && canGrantAdminDiscounts(instituteId);
+    const canApplyDiscounts = useCanApplyDiscounts(instituteId);
+    const canDiscount = isDiscountablePlanType(resolved?.paymentOption?.type) && canApplyDiscounts;
     // Same plan the backend's DefaultInviteResolver enrolls against: an ACTIVE plan,
     // DEFAULT-tagged first. Used only to price the discount preview.
     const activePlans = (resolved?.paymentOption?.payment_plans ?? []).filter(

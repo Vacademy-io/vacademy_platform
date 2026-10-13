@@ -332,6 +332,8 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         allowEditCredentials: true,
         // OFF even for admin: permanent delete is opt-in per role from Display Settings.
         allowDeletePayments: false,
+        // ON for admins; other roles get it only when granted from Display Settings.
+        canApplyDiscounts: true,
     },
     studentManagementActions: {
         showEnrollButton: true,

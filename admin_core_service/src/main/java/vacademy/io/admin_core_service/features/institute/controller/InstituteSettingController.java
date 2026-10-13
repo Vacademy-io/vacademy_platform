@@ -15,6 +15,12 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 @RequestMapping("/admin-core-service/institute/setting/v1")
 public class InstituteSettingController {
 
+    private static final java.util.Set<String> PERMISSION_BEARING_SETTING_KEYS = java.util.Set.of(
+            "ADMIN_DISPLAY_SETTINGS", "TEACHER_DISPLAY_SETTINGS", "ROLE_DISPLAY_SETTINGS");
+
+    @Autowired
+    private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
+
     @Autowired
     InstituteSettingManager instituteSettingManager;
 
@@ -58,6 +64,12 @@ public class InstituteSettingController {
                                               @RequestParam("instituteId") String instituteId,
                                               @RequestParam("settingKey") String settingKey,
                                               @RequestBody GenericSettingRequest request){
+        // Display settings carry per-role permissions (e.g. learnerManagement.canApplyDiscounts,
+        // allowDeletePayments), so only an institute admin may change them — otherwise any
+        // member could grant their own role a permission.
+        if (PERMISSION_BEARING_SETTING_KEYS.contains(settingKey)) {
+            instituteAccessValidator.requireAdminAccess(userDetails, instituteId);
+        }
         return instituteSettingManager.saveGenericSetting(userDetails, instituteId, settingKey, request);
     }
 

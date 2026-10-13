@@ -319,6 +319,7 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         // Opt-in: changing credentials signs the learner out of their session.
         allowEditCredentials: false,
         allowDeletePayments: false,
+        canApplyDiscounts: false,
     },
     studentManagementActions: {
         showEnrollButton: true,

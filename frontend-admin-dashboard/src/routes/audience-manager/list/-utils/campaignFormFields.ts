@@ -22,6 +22,55 @@ export const generateKeyFromName = (name: string): string =>
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '');
 
+/**
+ * Each editor row is keyed by `id` — React key, drag-and-drop identity, and the
+ * `findIndex` that turns a drop into a move. Two rows sharing an id leave a
+ * stale copy of one on screen after a delete, and a drag can pick up the wrong
+ * row. The loaders can produce such pairs (a list index on one side, the
+ * hardcoded `'0'`/`'1'`/`'2'` seeds on the other), so the editor never trusts
+ * them as unique.
+ *
+ * Only a blank or repeated id is replaced. The first holder of an id keeps it,
+ * so a saved campaign's mapping ids pass through untouched. The backend never
+ * reads this id back (`syncFeatureCustomFields` nulls it and matches on
+ * `custom_field.id`), so a replacement changes nothing on save.
+ */
+export const withUniqueFieldIds = <T extends { id?: unknown }>(fields: T[]): T[] => {
+    const used = new Set(
+        fields.map((field) => (field.id == null ? '' : String(field.id))).filter((id) => id !== '')
+    );
+    const seen = new Set<string>();
+    let counter = 0;
+    return fields.map((field) => {
+        const id = field.id == null ? '' : String(field.id);
+        if (id !== '' && !seen.has(id)) {
+            seen.add(id);
+            return field;
+        }
+        let fresh = `local-${counter}`;
+        while (used.has(fresh)) {
+            counter += 1;
+            fresh = `local-${counter}`;
+        }
+        used.add(fresh);
+        seen.add(fresh);
+        return { ...field, id: fresh };
+    });
+};
+
+/**
+ * Id for a field the admin is adding now. Same value as before — the list
+ * length — unless a row already holds it, which happens once the loaded ids
+ * are not a dense 0..n-1 run.
+ */
+export const nextFieldId = (fields: Array<{ id?: unknown }> | null | undefined): string => {
+    const list = fields ?? [];
+    const used = new Set(list.map((field) => String(field.id)));
+    let next = list.length;
+    while (used.has(String(next))) next += 1;
+    return String(next);
+};
+
 export const mapApiFieldTypeToUi = (type?: string): string => {
     const normalized = (type || '').toLowerCase();
     if (normalized === 'select') return 'dropdown';
@@ -169,7 +218,7 @@ export const convertExistingCustomFields = (fields?: any[] | string | null) => {
             order: index,
         }));
 
-    return converted;
+    return withUniqueFieldIds(converted);
 };
 
 export const mapFieldTypeToPayload = (type?: string) => {

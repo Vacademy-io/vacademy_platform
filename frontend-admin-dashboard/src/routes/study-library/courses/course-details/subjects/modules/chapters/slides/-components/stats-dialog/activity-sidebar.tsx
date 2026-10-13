@@ -7,7 +7,7 @@ import { StudentSearchBox } from '@/components/common/student-search-box';
 import { ActivityLogDialog } from '@/components/common/student-slide-tracking/activity-log-dialog';
 import { Dialog, DialogHeader, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ChartBar, Clock, CalendarBlank, Users, ArrowRight, DownloadSimple, Spinner } from '@phosphor-icons/react';
+import { ChartBar, Clock, CalendarBlank, Users, ArrowRight, DownloadSimple, Spinner, Sparkle } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { getSlideActivityStats } from '@/services/study-library/slide-operations/slide-activity-stats';
@@ -16,6 +16,7 @@ import { UserActivity } from '@/types/study-library/activity-stats-response-type
 import { useActivityStatsStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/activity-stats-store';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { AssignmentCheckSubmittedDialog } from './assignment-check-submitted-dialog';
 
 export const ActivityStatsSidebar = ({
     open: controlledOpen,
@@ -36,6 +37,7 @@ export const ActivityStatsSidebar = ({
         else setInternalOpen(o);
     };
     const [isDownloading, setIsDownloading] = useState(false);
+    const [aiCheckOpen, setAiCheckOpen] = useState(false);
     const [searchInput, setSearchInput] = useState('');
     // What the API is actually filtered by. Kept separate from searchInput so typing is debounced.
     const [appliedSearch, setAppliedSearch] = useState('');
@@ -221,11 +223,25 @@ export const ActivityStatsSidebar = ({
                             </p>
                         </div>
                         {activeItem?.source_type === 'ASSIGNMENT' && (
+                            <MyButton
+                                type="button"
+                                scale="small"
+                                buttonType="primary"
+                                className="ml-auto gap-1.5 font-medium"
+                                onClick={() => setAiCheckOpen(true)}
+                                disabled={!slideId}
+                                title="Check every submitted copy with AI - you review the marks before learners see them"
+                            >
+                                <Sparkle size={14} weight="fill" />
+                                Check submitted copies with AI
+                            </MyButton>
+                        )}
+                        {activeItem?.source_type === 'ASSIGNMENT' && (
                             <button
                                 type="button"
                                 onClick={handleDownload}
                                 disabled={isDownloading || !slideId}
-                                className="ml-auto mr-6 flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="ml-2 mr-6 flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
                                 title={t('downloadAllSubmissions')}
                             >
                                 {isDownloading ? (
@@ -409,6 +425,14 @@ export const ActivityStatsSidebar = ({
                     <ActivityLogDialog />
                 </div>
             </DialogContent>
+            {activeItem?.source_type === 'ASSIGNMENT' && slideId && (
+                <AssignmentCheckSubmittedDialog
+                    open={aiCheckOpen}
+                    onOpenChange={setAiCheckOpen}
+                    slideId={slideId}
+                    packageSessionId={packageSessionId}
+                />
+            )}
         </Dialog>
     );
 };

@@ -743,6 +743,10 @@ def build_status(video_id: str, st: Dict[str, Any]) -> Dict[str, Any]:
     s3 = st.get("s3_urls") or {}
     done = int(prog.get("shots_completed") or 0)
     total = int(prog.get("shots_total") or 0) or len(live.get("shots") or []) or 0
+    # current_stage only advances when a stage finishes, so a run that is
+    # already drawing shots still reads WORDS until the HTML stage completes.
+    if status_ == "IN_PROGRESS" and total > 0 and stage in _EARLY_STAGES:
+        stage = "HTML"
     if status_ == "COMPLETED":
         pct = 100
     else:

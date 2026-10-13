@@ -38,6 +38,7 @@ import {
 import { processHtmlContent, fixHtmlContent } from "./html-processor";
 import { useWebAudioMixer } from "./hooks/useWebAudioMixer";
 import { useSoundScheduler, collectCuesFromEntries } from "./hooks/useSoundScheduler";
+import { entryBoxStyle } from './entry-layout';
 
 // Re-export types for backward compatibility
 export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
@@ -938,10 +939,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               }
 
               const frameStyle = {
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
+                ...entryBoxStyle(frame, width, height),
                 zIndex: frame.z || 0,
                 opacity: frameOpacity,
               };

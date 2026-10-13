@@ -59,6 +59,7 @@ import { useWebAudioMixer } from './hooks/useWebAudioMixer';
 import { useSoundScheduler, collectCuesFromEntries } from './hooks/useSoundScheduler';
 import { CaptionDisplay, CaptionSettingsPopover } from './components';
 import '@/components/ai-course-builder/components/styles/AIVideoComponents.css';
+import { entryBoxStyle } from './entry-layout';
 
 /**
  * ScaleCalculator - Calculates scale to fit video in container
@@ -1379,13 +1380,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     ref={index === 0 ? contentIframeRef : undefined}
                                     srcDoc={entry.processedHtml}
                                     style={{
-                                        width: '100%',
-                                        height: '100%',
                                         border: 'none',
                                         background: index === 0 ? '#ffffff' : 'transparent',
                                         position: 'absolute',
-                                        top: 0,
-                                        left: 0,
+                                        ...entryBoxStyle(entry, effectiveWidth, effectiveHeight),
                                         zIndex: entry.z ?? 0,
                                         pointerEvents:
                                             entry.id?.startsWith('branding-watermark') ||

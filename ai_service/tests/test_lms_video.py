@@ -747,3 +747,16 @@ def test_runner_does_not_report_a_cancel(runner):
     runner.mode = "cancel"
     _, finished = _drive(runner)
     assert finished == [] and runner.refunds == []
+
+
+def test_status_reports_html_while_shots_are_being_drawn():
+    from ai_service.app.routers.lms_video import build_status
+
+    st = {"status": "IN_PROGRESS", "current_stage": "WORDS",
+          "generation_progress": {"shots_completed": 11, "shots_total": 14}}
+    out = build_status("v1", st)
+    assert out["current_stage"] == "HTML"
+    assert 15 < out["percentage"] < 100
+    # before any shot exists the stored stage is kept
+    early = build_status("v1", {"status": "IN_PROGRESS", "current_stage": "WORDS"})
+    assert early["current_stage"] == "WORDS"

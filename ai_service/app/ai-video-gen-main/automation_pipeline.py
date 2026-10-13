@@ -19666,11 +19666,20 @@ class VideoGenerationPipeline:
                     for _i, _ss in enumerate(_sub_shots):
                         _ss["_is_sub_shot"] = True
                         _ss["_sub_idx"] = _i
-                        _e, _u = _shot_task(shot_idx, _ss)
+                        try:
+                            _e, _u = _shot_task(shot_idx, _ss)
+                        except RuntimeError as _empty:
+                            # One empty sub-shot shouldn't sink its sibling;
+                            # only a fully empty shot falls back to a card.
+                            if "returned empty HTML" not in str(_empty):
+                                raise
+                            continue
                         _all_entries.extend(_e)
                         for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                             if _k in _u:
                                 _agg_usage[_k] = _agg_usage.get(_k, 0) + _u[_k]
+                    if not _all_entries:
+                        raise RuntimeError(f"Shot {shot_idx + 1} returned empty HTML")
                     return _all_entries, _agg_usage
 
             shot_type = shot.get("shot_type", "TEXT_DIAGRAM")
@@ -21732,7 +21741,10 @@ class VideoGenerationPipeline:
             html = data.get("html", "")
             if not html:
                 print(f"   ⚠️ Shot {shot_idx + 1} returned empty HTML")
-                return [], usage
+                # Returning no entry left a hole in the timeline (a blank
+                # 10 s stretch in the LMS player). Raise so the shot loop
+                # ships its fallback card for this shot instead.
+                raise RuntimeError(f"Shot {shot_idx + 1} returned empty HTML")
 
             html = self._sanitize_html_content(html)
 

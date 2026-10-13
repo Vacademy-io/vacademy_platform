@@ -6,6 +6,7 @@ import { useSoundScheduler, collectCuesFromEntries } from './hooks/useSoundSched
 import { CaptionDisplay, CaptionSettingsPopover } from './components';
 import { processHtmlContent } from './html-processor';
 import type { SoundCue } from './types';
+import { entryBoxStyle } from './entry-layout';
 
 /**
  * Frame interface matching the time_based_frame.json structure
@@ -811,13 +812,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                     key={`frame-${frame.id}-${index}`}
                                     srcDoc={frame.processedHtml}
                                     style={{
-                                        width: '100%',
-                                        height: '100%',
                                         border: 'none',
                                         background: frame.shot_type === 'SOURCE_CLIP' ? 'transparent' : (index === 0 ? '#ffffff' : 'transparent'),
                                         position: 'absolute',
-                                        top: 0,
-                                        left: 0,
+                                        ...entryBoxStyle(frame, width, height),
                                         zIndex: frame.z || 0,
                                         opacity: frame.opacity ?? 1,
                                         pointerEvents: frame.id?.startsWith('branding-watermark')

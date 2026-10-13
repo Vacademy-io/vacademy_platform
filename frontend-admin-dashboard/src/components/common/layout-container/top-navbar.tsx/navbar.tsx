@@ -49,6 +49,11 @@ import { handleGetAdminDetails } from '@/services/student-list-section/getAdminD
 import useAdminLogoStore from '../sidebar/admin-logo-zustand';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { SSOSwitcher } from '../../auth/SSOSwitcher';
+import {
+    InstituteSwitcherDialog,
+    InstituteSwitcherMenuSection,
+    useCanSwitchInstitute,
+} from '../../auth/InstituteSwitcher';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getUserId, getUserName } from '@/utils/userDetails';
@@ -119,6 +124,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const roles = getRolesForCurrentInstitute();
     const userId = getUserId();
     const [showEditAccountDetails, setShowEditAccountDetails] = useState(false);
+    // Institute switcher: offered only with ≥2 admin-eligible institutes in the token.
+    const canSwitchInstitute = useCanSwitchInstitute();
+    const [showInstituteSwitcher, setShowInstituteSwitcher] = useState(false);
     const isMobile = useIsMobile();
     const { setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
@@ -978,6 +986,17 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             </span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="flex flex-col items-start">
+                            <InstituteSwitcherMenuSection
+                                instituteName={instituteDetails?.institute_name}
+                                logoFileId={instituteDetails?.institute_logo_file_id}
+                                canSwitch={canSwitchInstitute}
+                                onSwitchClick={() => {
+                                    setIsOpen(false);
+                                    // Open after the menu has closed so its focus return
+                                    // doesn't fight the dialog's focus trap.
+                                    setTimeout(() => setShowInstituteSwitcher(true), 0);
+                                }}
+                            />
                             {canViewProfile && (
                                 <Sheet>
                                     <SheetTrigger className="w-full p-2 text-left text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
@@ -1176,6 +1195,12 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 <AccountDetailsEdit
                     open={showEditAccountDetails}
                     setOpen={setShowEditAccountDetails}
+                />
+            )}
+            {canSwitchInstitute && (
+                <InstituteSwitcherDialog
+                    open={showInstituteSwitcher}
+                    onOpenChange={setShowInstituteSwitcher}
                 />
             )}
         </div>

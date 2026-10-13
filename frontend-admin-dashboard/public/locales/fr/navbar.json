@@ -66,5 +66,29 @@
         "state": "État :",
         "country": "Pays :",
         "pincode": "Code postal :"
+    },
+    "instituteSwitcher": {
+        "currentInstitute": "Établissement actuel",
+        "unnamedInstitute": "Votre établissement",
+        "switchInstitute": "Changer d'établissement",
+        "dialogTitle": "Changer d'établissement",
+        "dialogDescription": "Choisissez l'établissement dans lequel travailler. L'application se recharge dans celui-ci, comme si vous vous y étiez connecté.",
+        "searchPlaceholder": "Rechercher un établissement",
+        "fallbackName": "Établissement {{idPrefix}}…",
+        "current": "Actuel",
+        "noMatches": "Aucun établissement ne correspond à « {{query}} »",
+        "loadError": "Impossible de charger les noms des établissements. Vous pouvez tout de même changer.",
+        "retry": "Réessayer",
+        "switching": "Changement d'établissement…",
+        "switchFailed": "Impossible de changer d'établissement. Veuillez réessayer.",
+        "adminRequired": "Ce portail exige le rôle Admin dans cet établissement.",
+        "subOrgTitle": "Choisir une organisation",
+        "subOrgDescription": "Vous travaillez avec plusieurs organisations dans {{institute}}. Choisissez-en une pour continuer.",
+        "cancelSwitch": "Annuler le changement",
+        "roleWithMore": "{{role}} +{{count}}",
+        "roles": {
+            "ADMIN": "Admin",
+            "TEACHER": "Enseignant"
+        }
     }
 }

@@ -10,7 +10,7 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional, List
+from typing import Any, Awaitable, Callable, Dict, Optional, List
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, status
@@ -346,6 +346,185 @@ async def external_route_preview(
     return plan.model_dump()
 
 
+async def run_video_generation(
+    q: asyncio.Queue,
+    vid: str,
+    p: VideoGenerationRequest,
+    ts: str,
+    inst_id: str,
+    *,
+    user_id: Optional[str] = None,
+    on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    on_finished: Optional[Callable[[Optional[BaseException]], Awaitable[None]]] = None,
+) -> None:
+    """The background generation run shared by POST /generate here and the LMS
+    router (routers/lms_video.py). Owns its own DB session so it keeps running
+    after the HTTP request / SSE connection closes; refunds every credit charged
+    when the run raises; always clears the task registries.
+
+    `on_event(event)` sees each pipeline event before it is queued;
+    `on_finished(exc_or_None)` runs once at the end (not on cancel). Both are
+    best-effort: a failing hook is logged and never changes the run.
+    """
+    failure: Optional[BaseException] = None
+    cancelled = False
+    try:
+        with make_bg_db_session() as bg_session:
+            bg_svc = VideoGenerationService(
+                # Session-less repo: every get/update opens its own
+                # short-lived, pre-pinged session and closes it. Sharing
+                # the long-lived `bg_session` here caused reads to leave a
+                # transaction open across the multi-minute render, which
+                # Postgres then killed (idle-in-transaction timeout).
+                repository=AiVideoRepository(),
+                s3_service=S3Service()
+            )
+            async for event in bg_svc.generate_till_stage(
+                video_id=vid,
+                prompt=p.prompt,
+                target_stage=ts,
+                language=p.language,
+                captions_enabled=p.captions_enabled,
+                html_quality=p.html_quality,
+                resume=False,
+                target_audience=p.target_audience,
+                target_duration=p.target_duration,
+                voice_gender=p.voice_gender,
+                tts_provider=p.tts_provider,
+                voice_id=p.voice_id,
+                content_type=p.content_type,
+                db_session=bg_session,
+                model=p.model or "",  # Empty = let service pick based on quality_tier
+                quality_tier=p.quality_tier,
+                institute_id=inst_id,
+                user_id=user_id,
+                reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
+                orientation=p.orientation,
+                visual_style=p.visual_style,
+                sound_effects_enabled=p.sound_effects_enabled,
+                input_video_ids=p.input_video_ids,
+                input_video_audio=p.input_video_audio,
+                mute_tts_on_source_clips=p.mute_tts_on_source_clips,
+                background_music_enabled=p.background_music_enabled,
+                background_music_volume=p.background_music_volume,
+                sub_shots_enabled=p.sub_shots_enabled,
+                dialogue_scenes_enabled=p.dialogue_scenes_enabled,
+                dialogue_mode=p.dialogue_mode,
+                dialogue_clip_model=p.dialogue_clip_model,
+                cast_id=p.cast_id,
+                routing_overrides=p.routing_overrides,
+                host=p.host,
+                lesson=getattr(p, "lesson", None),
+                brand_kit_id=getattr(p, "brand_kit_id", None),
+                # Per-video overrides (palette/intro/outro/watermark/system_prompt)
+                # that layer on top of the resolved kit. One-shot — not persisted
+                # by the FE across videos.
+                brand_overrides=getattr(p, "brand_overrides", None),
+                visual_preferences=getattr(p, "visual_preferences", None),
+                # AI video (Phase 3b): forward from request body. The
+                # service / pipeline gates tier eligibility internally.
+                ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
+                ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+                ai_video_model=getattr(p, "ai_video_model", None),
+                # Per-stage model overrides (DB-backed routing). When set,
+                # the service resolves a per-stage map via
+                # `AIModelsService.get_stage_model_map(...)`. The legacy
+                # `model` field collapses to `model_overrides.default` if
+                # `model_overrides` is omitted.
+                model_overrides=getattr(p, "model_overrides", None),
+                # Assist mode (conversational, human-in-the-loop). The
+                # service pauses at enabled SCRIPT-boundary gates and
+                # emits `decision_required`; default off = Auto mode.
+                assist_mode=bool(getattr(p, "assist_mode", False)),
+                assist_gates=getattr(p, "assist_gates", None),
+                assist_granularity=getattr(p, "assist_granularity", "per_decision"),
+            ):
+                if on_event is not None:
+                    try:
+                        await on_event(event)
+                    except Exception as hook_err:  # a hook must never break the run
+                        logger.warning(f"[BG-Gen] on_event hook failed for {vid}: {hook_err}")
+                await q.put(json.dumps(event))
+    except asyncio.CancelledError:
+        # `task.cancel()` from POST /cancel/{video_id} fired. Cancel
+        # endpoint already handled CANCELLED status + refund + SSE
+        # event; we just unwind quietly. Re-raise so asyncio cleanup
+        # works correctly.
+        logger.info(f"[BG-Gen] Background task cancelled for {vid}")
+        cancelled = True
+        raise
+    except Exception as exc:
+        failure = exc
+        logger.error(
+            f"[BG-Gen] Background task error for {vid}: "
+            f"{type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+        # Refund all credits charged for this failed video
+        try:
+            with make_db_session() as refund_session:
+                from ..services.token_usage_service import TokenUsageService
+                TokenUsageService(refund_session).refund_video_credits(vid, inst_id)
+        except Exception as refund_err:
+            logger.error(f"[BG-Gen] Failed to refund credits for {vid}: {refund_err}")
+        await q.put(json.dumps({
+            "type": "error",
+            "message": str(exc),
+            "video_id": vid,
+        }))
+    finally:
+        # Sentinel – tells the SSE generator the stream is done
+        try:
+            await q.put(None)
+        except Exception:
+            pass
+        _generation_tasks.pop(vid, None)
+        _generation_queues.pop(vid, None)
+        # Belt-and-suspenders: clear the cooperative-stop registry
+        # in case the pipeline didn't (e.g. unexpected exception path).
+        cancellation_registry.clear(vid)
+        # Remove from institute concurrency tracker
+        _institute_active_tasks.get(inst_id, set()).discard(vid)
+        logger.info(f"[BG-Gen] Background task finished for {vid}")
+        # Completion hook (LMS notifications). Not on cancel: the cancel
+        # endpoint already settled the run, and a cancelled task must not
+        # await anything further.
+        if on_finished is not None and not cancelled:
+            try:
+                await on_finished(failure)
+            except Exception as hook_err:
+                logger.warning(f"[BG-Gen] on_finished hook failed for {vid}: {hook_err}")
+
+
+def start_video_generation(
+    payload: VideoGenerationRequest,
+    video_id: str,
+    target_stage: str,
+    institute_id: str,
+    *,
+    queue: Optional[asyncio.Queue] = None,
+    user_id: Optional[str] = None,
+    on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    on_finished: Optional[Callable[[Optional[BaseException]], Awaitable[None]]] = None,
+    track_concurrency: bool = True,
+) -> asyncio.Queue:
+    """Start `run_video_generation` as a registered background task (so
+    /cancel can find it) and return its event queue."""
+    q = queue if queue is not None else asyncio.Queue()
+    _generation_queues[video_id] = q
+    task = asyncio.create_task(
+        run_video_generation(
+            q, video_id, payload, target_stage, institute_id,
+            user_id=user_id, on_event=on_event, on_finished=on_finished,
+        )
+    )
+    _generation_tasks[video_id] = task
+    if track_concurrency:
+        _institute_active_tasks[institute_id].add(video_id)
+    logger.info(f"[BG-Gen] Started background task for {video_id}")
+    return q
+
+
 @router.post(
     "/generate",
     summary="Generate AI video (External)",
@@ -428,128 +607,7 @@ async def generate_video_external(
         # Start a new background task.  It owns its own DB session so it
         # keeps running after this HTTP request / SSE connection is closed.
         # ------------------------------------------------------------------
-        _generation_queues[video_id] = queue
-
-        async def _run_generation(q: asyncio.Queue, vid: str, p: VideoGenerationRequest,
-                                   ts: str, inst_id: str) -> None:
-            try:
-                with make_bg_db_session() as bg_session:
-                    bg_svc = VideoGenerationService(
-                        # Session-less repo: every get/update opens its own
-                        # short-lived, pre-pinged session and closes it. Sharing
-                        # the long-lived `bg_session` here caused reads to leave a
-                        # transaction open across the multi-minute render, which
-                        # Postgres then killed (idle-in-transaction timeout).
-                        repository=AiVideoRepository(),
-                        s3_service=S3Service()
-                    )
-                    async for event in bg_svc.generate_till_stage(
-                        video_id=vid,
-                        prompt=p.prompt,
-                        target_stage=ts,
-                        language=p.language,
-                        captions_enabled=p.captions_enabled,
-                        html_quality=p.html_quality,
-                        resume=False,
-                        target_audience=p.target_audience,
-                        target_duration=p.target_duration,
-                        voice_gender=p.voice_gender,
-                        tts_provider=p.tts_provider,
-                        voice_id=p.voice_id,
-                        content_type=p.content_type,
-                        db_session=bg_session,
-                        model=p.model or "",  # Empty = let service pick based on quality_tier
-                        quality_tier=p.quality_tier,
-                        institute_id=inst_id,
-                        user_id=None,
-                        reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
-                        orientation=p.orientation,
-                        visual_style=p.visual_style,
-                        sound_effects_enabled=p.sound_effects_enabled,
-                        input_video_ids=p.input_video_ids,
-                        input_video_audio=p.input_video_audio,
-                        mute_tts_on_source_clips=p.mute_tts_on_source_clips,
-                        background_music_enabled=p.background_music_enabled,
-                        background_music_volume=p.background_music_volume,
-                        sub_shots_enabled=p.sub_shots_enabled,
-                        dialogue_scenes_enabled=p.dialogue_scenes_enabled,
-                        dialogue_mode=p.dialogue_mode,
-                        dialogue_clip_model=p.dialogue_clip_model,
-                        cast_id=p.cast_id,
-                        routing_overrides=p.routing_overrides,
-                        host=p.host,
-                        lesson=getattr(p, "lesson", None),
-                        brand_kit_id=getattr(p, "brand_kit_id", None),
-                        # Per-video overrides (palette/intro/outro/watermark/system_prompt)
-                        # that layer on top of the resolved kit. One-shot — not persisted
-                        # by the FE across videos.
-                        brand_overrides=getattr(p, "brand_overrides", None),
-                        visual_preferences=getattr(p, "visual_preferences", None),
-                        # AI video (Phase 3b): forward from request body. The
-                        # service / pipeline gates tier eligibility internally.
-                        ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
-                        ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
-                        ai_video_model=getattr(p, "ai_video_model", None),
-                        # Per-stage model overrides (DB-backed routing). When set,
-                        # the service resolves a per-stage map via
-                        # `AIModelsService.get_stage_model_map(...)`. The legacy
-                        # `model` field collapses to `model_overrides.default` if
-                        # `model_overrides` is omitted.
-                        model_overrides=getattr(p, "model_overrides", None),
-                        # Assist mode (conversational, human-in-the-loop). The
-                        # service pauses at enabled SCRIPT-boundary gates and
-                        # emits `decision_required`; default off = Auto mode.
-                        assist_mode=bool(getattr(p, "assist_mode", False)),
-                        assist_gates=getattr(p, "assist_gates", None),
-                        assist_granularity=getattr(p, "assist_granularity", "per_decision"),
-                    ):
-                        await q.put(json.dumps(event))
-            except asyncio.CancelledError:
-                # `task.cancel()` from POST /cancel/{video_id} fired. Cancel
-                # endpoint already handled CANCELLED status + refund + SSE
-                # event; we just unwind quietly. Re-raise so asyncio cleanup
-                # works correctly.
-                logger.info(f"[BG-Gen] Background task cancelled for {vid}")
-                raise
-            except Exception as exc:
-                logger.error(
-                    f"[BG-Gen] Background task error for {vid}: "
-                    f"{type(exc).__name__}: {exc}",
-                    exc_info=True,
-                )
-                # Refund all credits charged for this failed video
-                try:
-                    with make_db_session() as refund_session:
-                        from ..services.token_usage_service import TokenUsageService
-                        TokenUsageService(refund_session).refund_video_credits(vid, inst_id)
-                except Exception as refund_err:
-                    logger.error(f"[BG-Gen] Failed to refund credits for {vid}: {refund_err}")
-                await q.put(json.dumps({
-                    "type": "error",
-                    "message": str(exc),
-                    "video_id": vid,
-                }))
-            finally:
-                # Sentinel – tells the SSE generator the stream is done
-                try:
-                    await q.put(None)
-                except Exception:
-                    pass
-                _generation_tasks.pop(vid, None)
-                _generation_queues.pop(vid, None)
-                # Belt-and-suspenders: clear the cooperative-stop registry
-                # in case the pipeline didn't (e.g. unexpected exception path).
-                cancellation_registry.clear(vid)
-                # Remove from institute concurrency tracker
-                _institute_active_tasks.get(inst_id, set()).discard(vid)
-                logger.info(f"[BG-Gen] Background task finished for {vid}")
-
-        task = asyncio.create_task(
-            _run_generation(queue, video_id, payload, target_stage, institute_id)
-        )
-        _generation_tasks[video_id] = task
-        _institute_active_tasks[institute_id].add(video_id)
-        logger.info(f"[BG-Gen] Started background task for {video_id}")
+        queue = start_video_generation(payload, video_id, target_stage, institute_id, queue=queue)
 
     # ------------------------------------------------------------------
     # SSE generator – drains the queue.
@@ -590,37 +648,19 @@ async def generate_video_external(
 # Cancel a running generation
 # ---------------------------------------------------------------------------
 
-@router.post(
-    "/cancel/{video_id}",
-    summary="Cancel a running generation",
-)
-async def cancel_generation_external(
+async def cancel_video_generation(
     video_id: str,
-    institute_id: str = Depends(get_institute_from_api_key),
+    institute_id: str,
+    *,
+    ensure_access: Callable[[str, str, Session], Any] = _ensure_video_access,
 ) -> Dict[str, Any]:
-    """
-    Stop an in-flight generation pipeline cooperatively, transition the video
-    to ``CANCELLED``, and refund all credits charged so far for it.
-
-    Behavior:
-      1. Sets the per-video ``threading.Event`` so the pipeline thread breaks
-         out of its current stage / shot loop at the next safe checkpoint.
-      2. Cancels the asyncio task as a backstop so the SSE stream closes
-         cleanly even if no one is listening to the flag.
-      3. Marks the DB row ``CANCELLED`` immediately (don't wait for the
-         pipeline to unwind — the user's "stopped" status should be visible
-         right away).
-      4. Refunds every credit deduction recorded under ``batch_id=video_id``.
-      5. Pushes a final ``cancelled`` event onto any open SSE queue.
-
-    Returns 404 when no in-flight task matches ``video_id`` (already finished,
-    failed, or never existed). Idempotent for repeated calls within the brief
-    window before cleanup completes.
-    """
+    """Cooperative stop + CANCELLED + refund for one video — the body of
+    POST /cancel/{video_id}, shared with the LMS router (which passes its own,
+    stricter tenant check as `ensure_access`). See the endpoint for the steps."""
     # Look up the video — 404 if it doesn't exist or belongs to another
     # institute (tenant guard via extra_metadata.institute_id).
     with make_db_session() as session:
-        video = _ensure_video_access(video_id, institute_id, session)
+        video = ensure_access(video_id, institute_id, session)
         already_done = video.status in ("COMPLETED", "FAILED", "CANCELLED")
 
     if already_done:
@@ -687,6 +727,36 @@ async def cancel_generation_external(
         f"(signaled={signaled}, task_was_running={task is not None})"
     )
     return {"status": "CANCELLED", "video_id": video_id, "stopped": True}
+
+
+@router.post(
+    "/cancel/{video_id}",
+    summary="Cancel a running generation",
+)
+async def cancel_generation_external(
+    video_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    """
+    Stop an in-flight generation pipeline cooperatively, transition the video
+    to ``CANCELLED``, and refund all credits charged so far for it.
+
+    Behavior:
+      1. Sets the per-video ``threading.Event`` so the pipeline thread breaks
+         out of its current stage / shot loop at the next safe checkpoint.
+      2. Cancels the asyncio task as a backstop so the SSE stream closes
+         cleanly even if no one is listening to the flag.
+      3. Marks the DB row ``CANCELLED`` immediately (don't wait for the
+         pipeline to unwind — the user's "stopped" status should be visible
+         right away).
+      4. Refunds every credit deduction recorded under ``batch_id=video_id``.
+      5. Pushes a final ``cancelled`` event onto any open SSE queue.
+
+    Returns 404 when no in-flight task matches ``video_id`` (already finished,
+    failed, or never existed). Idempotent for repeated calls within the brief
+    window before cleanup completes.
+    """
+    return await cancel_video_generation(video_id, institute_id)
 
 
 # ---------------------------------------------------------------------------

@@ -166,6 +166,14 @@ class InstituteSettingAccessGuardTest {
     }
 
     @Test
+    @DisplayName("AI_VIDEO_POLICY (platform AI video limits) is refused even to an institute admin")
+    void aiVideoPolicyIsOpsOnly() {
+        assertEquals(InstituteSettingAccessGuard.Level.SUPER_ADMIN,
+                InstituteSettingAccessGuard.requiredLevel(" ai_video_policy "));
+        assertThrows(ForbiddenException.class, () -> guard.requireCanWrite(admin(), INSTITUTE, "AI_VIDEO_POLICY"));
+    }
+
+    @Test
     @DisplayName("a platform super-admin may write any key of any institute, with no role there")
     void superAdminBypass() {
         clientIdHeader(null);

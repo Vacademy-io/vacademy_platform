@@ -25,7 +25,9 @@ import java.util.function.Predicate;
  *   <li>{@link #SUPER_ADMIN_ONLY_KEYS}: nobody else. VOICE_CALLING_SETTING carries the
  *       OPS-ONLY {@code billing} block (per-minute credit rates, CallBillingService); tenants
  *       save it through {@code PUT /v1/telephony/voice-config}, which keeps the stored billing
- *       block. A generic save replaces the whole blob, so an institute could zero its own rates.</li>
+ *       block. A generic save replaces the whole blob, so an institute could zero its own rates.
+ *       AI_VIDEO_POLICY holds the platform's per-institute AI video limits; an institute must not
+ *       raise its own.</li>
  *   <li>{@link #ADMIN_ONLY_KEYS} and the {@code CUSTOM_ROLE_DISPLAY_SETTINGS*} family: institute
  *       ADMIN ({@link InstituteAccessValidator#requireInstituteAdmin}). These decide what each
  *       role can see or do: ROLE_DISPLAY_SETTINGS (custom roles' display blobs live inside it,
@@ -55,7 +57,10 @@ public class InstituteSettingAccessGuard {
 
     /** Keys only a platform super-admin may write through the generic endpoint. */
     static final Set<String> SUPER_ADMIN_ONLY_KEYS = Set.of(
-            "VOICE_CALLING_SETTING");
+            "VOICE_CALLING_SETTING",
+            // LMS AI video limits (enabled, qualities, minutes, monthly credit cap, concurrency),
+            // written by ai_service PUT /super-admin/v1/institutes/{id}/ai-video-policy.
+            "AI_VIDEO_POLICY");
 
     /** Keys only an institute ADMIN may write. Compared upper-cased. */
     static final Set<String> ADMIN_ONLY_KEYS = Set.of(

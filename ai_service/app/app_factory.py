@@ -22,11 +22,13 @@ from .routers.institute_settings import router as institute_settings_router
 from .routers.utils import router as utils_router
 from .routers.institute_api_keys import router as institute_api_keys_router
 from .routers.external_video_generation import router as external_video_generation_router
+from .routers.lms_video import router as lms_video_router
 from .routers.auth_test import router as auth_test_router
 from .routers.credits import router as credits_router
 from .routers.ai_models import router as ai_models_router
 from .routers.super_admin import router as super_admin_router
 from .routers.super_admin_models import router as super_admin_models_router
+from .routers.super_admin_ai_video_policy import router as super_admin_ai_video_policy_router
 from .routers.internal_llm import router as internal_llm_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
@@ -291,12 +293,16 @@ def create_app() -> FastAPI:
     app.include_router(utils_router, prefix=settings.api_base_path)
     app.include_router(institute_api_keys_router, prefix=settings.api_base_path)
     app.include_router(external_video_generation_router, prefix=settings.api_base_path)
+    # LMS AI Video: chapter-slide videos for staff (JWT + clientId, staff roles).
+    app.include_router(lms_video_router, prefix=settings.api_base_path)
     app.include_router(auth_test_router, prefix=settings.api_base_path)
     app.include_router(credits_router, prefix=settings.api_base_path)
     app.include_router(ai_models_router, prefix=settings.api_base_path)
     app.include_router(super_admin_router, prefix=settings.api_base_path)
     # Model defaults per AI feature (/super-admin/v1/models/*), platform staff only.
     app.include_router(super_admin_models_router, prefix=settings.api_base_path)
+    # Per-institute AI video policy (/super-admin/v1/institutes/{id}/ai-video-policy), platform staff only.
+    app.include_router(super_admin_ai_video_policy_router, prefix=settings.api_base_path)
     # Service-to-service chat completion by use case (assessment / community services).
     app.include_router(internal_llm_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)

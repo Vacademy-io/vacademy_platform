@@ -39,6 +39,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerS
 
 import vacademy.io.admin_core_service.features.live_session.client.LiveSessionUserDirectoryClient;
 import vacademy.io.admin_core_service.features.live_session.service.LiveSessionInstructorService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionAttendanceOnlyModeService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -70,6 +71,7 @@ public class LiveSessionNotificationProcessor {
     private final WorkflowTriggerService workflowTriggerService;
     private final LiveSessionInstructorService liveSessionInstructorService;
     private final LiveSessionUserDirectoryClient userDirectoryClient;
+    private final LiveSessionAttendanceOnlyModeService attendanceOnlyModeService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -332,6 +334,13 @@ public class LiveSessionNotificationProcessor {
                                                      String instituteId,
                                                      String sessionId) {
         List<Object[]> allStudents = new ArrayList<>();
+
+        // Attendance-only institute: learners are never told about classes, so
+        // only the instructors' rows go out (on create, reminders, edit, cancel).
+        if (attendanceOnlyModeService.suppressesLearnerNotifications(instituteId, sessionId)) {
+            allStudents.addAll(getInstructorRecipients(sessionId));
+            return allStudents;
+        }
         
         // Separate batch and individual user participants
         List<String> batchIds = new ArrayList<>();
@@ -1065,6 +1074,10 @@ public class LiveSessionNotificationProcessor {
             Optional<LiveSession> sessionOpt = liveSessionRepository.findById(sessionId);
             if (sessionOpt.isEmpty()) return;
             LiveSession session = sessionOpt.get();
+            // Attendance-only institute: no learner notifications at all, this one included.
+            if (attendanceOnlyModeService.suppressesLearnerNotifications(session)) {
+                return;
+            }
 
             String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
             String title = "Attendance Marked: " + status;

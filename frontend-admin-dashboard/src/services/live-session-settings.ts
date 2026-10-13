@@ -323,6 +323,15 @@ export interface LiveSessionSettings {
      * present in any of this institute's classes is not asked again.
      */
     disclaimerVideoUrl: string;
+    /**
+     * "Attendance only" mode for institutes that teach offline and create live
+     * classes purely to record attendance. When on, learners never see the
+     * institute's live classes (upcoming, live or past) — only their
+     * attendance. Enforced server-side on the learner list endpoints. A live
+     * switch, not a scheduling default: it applies to existing classes too.
+     * Off by default.
+     */
+    attendanceOnlyMode: boolean;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -400,6 +409,7 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     // and the per-class control stays hidden, until an admin turns this on.
     disclaimerVideoEnabled: false,
     disclaimerVideoUrl: '',
+    attendanceOnlyMode: false,
 };
 
 const getInstituteId = (): string => {

@@ -47,6 +47,13 @@ _DENSE_TYPES = frozenset({
 
 TEACHER_ENTRY_PREFIX = "snippet-teacher-"
 TEACHER_Z = 500  # above shots (z≈10), below the watermark (1000) and branding
+# Caption band: a strip under the board, in the panel colour, where burned-in
+# captions are centred. Shots never draw there — their canvas ends above it
+# (a prompt-only "keep the strip clear" was ignored by hook shots).
+CAPTION_BAND_FRAC = 0.22           # landscape share of the frame height
+CAPTION_BAND_FRAC_PORTRAIT = 0.12
+BAND_ENTRY_PREFIX = "snippet-lesson-band-"
+BAND_Z = 450                       # above shots, below the teacher (500)
 # Layouts whose board is a smaller canvas: the shot's timeline box is resized
 # to the board area so its #shot-root lays out (and clips) inside it. Corner
 # keeps the full frame — the teacher only covers a corner of it.
@@ -311,13 +318,26 @@ def safe_area_text(layout: str, width: int, height: int) -> str:
     return f"the right part of the frame — every pixel with x ≥ {x0 - 16}px"
 
 
-def board_area(layout: str, width: int, height: int) -> Dict[str, int]:
+def caption_band(layout: str, width: int, height: int) -> Dict[str, int]:
+    """The caption band (frame coords): under the board, beside a landscape
+    teacher panel, above a portrait teacher band."""
+    portrait = height > width
+    bh = _even(height * (CAPTION_BAND_FRAC_PORTRAIT if portrait else CAPTION_BAND_FRAC))
     box = teacher_box(layout, width, height)
-    if box is None or layout in OVERLAY_LAYOUTS:
-        return {"x": 0, "y": 0, "w": width, "h": height}
-    if height > width:
-        return {"x": 0, "y": 0, "w": width, "h": box["y"]}
-    return {"x": 0, "y": 0, "w": box["x"], "h": height}
+    if box and layout not in OVERLAY_LAYOUTS:
+        if portrait:
+            return {"x": 0, "y": box["y"] - bh, "w": width, "h": bh}
+        return {"x": 0, "y": height - bh, "w": box["x"], "h": bh}
+    return {"x": 0, "y": height - bh, "w": width, "h": bh}
+
+
+def board_area(layout: str, width: int, height: int) -> Dict[str, int]:
+    """The shot's canvas: above the caption band, beside any teacher panel."""
+    band = caption_band(layout, width, height)
+    box = teacher_box(layout, width, height)
+    if box and layout not in OVERLAY_LAYOUTS and width > height:
+        return {"x": 0, "y": 0, "w": box["x"], "h": band["y"]}
+    return {"x": 0, "y": 0, "w": width, "h": band["y"]}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,25 +356,28 @@ def shot_prompt_block(plan: Dict[str, Any], layout: Optional[str], width: int, h
         "circle, arrow).",
         "- Maths / science: typeset formulas with KaTeX; show a derivation as aligned lines, one new line "
         "per narrated step; label diagram parts; units on every quantity.",
+        "- Powers are SUPERSCRIPTS: write `a^2` in KaTeX or `a<sup>2</sup>`. NEVER use Unicode subscript "
+        "digits (₀₁₂₃…) for a power — `c₂` reads as \"c sub two\", not \"c squared\".",
         "- Every formula, number and label must be correct and match the narration exactly.",
         "- Text sizes for a learner: headings ≥ 52px, body ≥ 34px, formulas ≥ 44px "
         "(on 1920×1080; scale proportionally on other canvases).",
     ]
     if plan.get("subject"):
         lines.append(f"- Subject: {plan['subject']} — use its standard notation, symbols and units.")
-    if layout in TEACHER_LAYOUTS:
-        area = board_area(layout, width, height)
+    eff = layout if (has_teacher(plan) and layout in TEACHER_LAYOUTS) else "board"
+    area = board_area(eff, width, height)
+    lines.append(
+        f"- **This shot's canvas is {area['w']}×{area['h']}px, not {width}×{height}.** `#shot-root` is exactly "
+        "the board; the caption band" + (" and the teacher panel are" if eff in BOARD_RESIZED_LAYOUTS else " is")
+        + f" added outside it. Lay everything out for {area['w']}×{area['h']} (percent / flex / grid; no "
+        "fixed positions beyond it; nothing pinned to the bottom edge that needs to be read)."
+    )
+    if layout in TEACHER_LAYOUTS and has_teacher(plan):
         lines += [
             "",
             f"**TEACHER SAFE AREA — layout `{layout}`**: a live teacher video is composited ON TOP of "
             f"{safe_area_text(layout, width, height)}. Anything you place there will be hidden behind the teacher.",
         ]
-        if layout in BOARD_RESIZED_LAYOUTS:
-            lines.append(
-                f"- **This shot's canvas is {area['w']}×{area['h']}px, not {width}×{height}.** `#shot-root` "
-                f"is exactly the board area; lay everything out for {area['w']}px of width "
-                "(percent / flex / grid layouts, no fixed x-positions beyond it)."
-            )
         lines += [
             f"- Put ALL board content inside x ∈ [0, {area['w']}]px, y ∈ [0, {area['h']}]px"
             + (" and outside the bottom-right corner box." if layout in OVERLAY_LAYOUTS else "."),
@@ -368,6 +391,90 @@ def shot_prompt_block(plan: Dict[str, Any], layout: Optional[str], width: int, h
                 "one key line / formula on the board half."
             )
     return "\n".join(lines) + "\n"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Board correctness: deterministic notation lint + the maths/facts check prompt
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SUBSCRIPT_DIGITS = re.compile(r"[\u2080-\u2089]")
+_POWER_WORDS = re.compile(r"\b(squared|cubed|to the power|power of|exponent)\b", re.IGNORECASE)
+_SCRIPT_BLOCK = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_TAG = re.compile(r"<[^>]+>")
+_KATEX_CALL = re.compile(r"katex\.render\(\s*([\"'`])((?:\\.|(?!\1).)*)\1", re.DOTALL)
+_TEX_DELIM = re.compile(r"\\\((.+?)\\\)|\$\$(.+?)\$\$", re.DOTALL)
+
+
+def board_text(html_str: str) -> str:
+    """What a learner can read on the board: visible text plus KaTeX sources
+    (formulas often live only inside katex.render(...) calls)."""
+    src = html_str or ""
+    tex = [m.group(2) for m in _KATEX_CALL.finditer(src)]
+    visible = _SCRIPT_BLOCK.sub(" ", src)
+    tex += [a or b for a, b in _TEX_DELIM.findall(visible)]
+    visible = _html.unescape(_TAG.sub(" ", visible))
+    out = re.sub(r"\s+", " ", visible).strip()
+    if tex:
+        out += " || FORMULAS: " + " ; ".join(t.strip() for t in tex if t.strip())
+    return out[:4000]
+
+
+def notation_issues(html_str: str, narration: str) -> List[str]:
+    """Definite notation mistakes we can see without a model."""
+    issues: List[str] = []
+    text = board_text(html_str)
+    subs = sorted(set(_SUBSCRIPT_DIGITS.findall(text)))
+    if subs and _POWER_WORDS.search(narration or ""):
+        issues.append(
+            "The board writes powers with Unicode SUBSCRIPT digits (" + "".join(subs) + ", e.g. \"c₂\") while "
+            "the narration says squared/cubed — that reads as a subscript. Write powers as superscripts "
+            "(KaTeX `c^2` or `c<sup>2</sup>`)."
+        )
+    return issues
+
+
+FACT_CHECK_SYSTEM = (
+    "You check one section of a taught lesson for DEFINITE errors before it is shown to learners. "
+    "You get the narration (what the teacher says) and the text/formulas visible on the board. "
+    "Report ONLY definite mistakes: wrong arithmetic, a wrong formula or law, wrong notation for what is "
+    "said (e.g. a subscript where the teacher says 'squared'), numbers/units that contradict the "
+    "narration, or a false fact. Ignore style, wording, layout, missing detail and anything you are "
+    "unsure about. Respond with ONE JSON object: "
+    '{"errors": [{"board": "<the wrong text as shown>", "problem": "<why it is wrong>", "fix": "<correct text>"}]} '
+    '— use {"errors": []} when the section is correct.'
+)
+
+
+def fact_check_user_prompt(*, narration: str, board: str, subject: Optional[str]) -> str:
+    return (
+        (f"SUBJECT: {subject}\n" if subject else "")
+        + f"NARRATION:\n{(narration or '').strip()[:2500]}\n\nBOARD:\n{board}"
+    )
+
+
+def parse_fact_check(data: Any) -> List[str]:
+    """Normalise the checker's JSON into human-readable issue lines."""
+    errs = (data or {}).get("errors") if isinstance(data, dict) else None
+    out: List[str] = []
+    for e in errs or []:
+        if not isinstance(e, dict):
+            continue
+        board = str(e.get("board") or "").strip()[:160]
+        problem = str(e.get("problem") or "").strip()[:240]
+        fix = str(e.get("fix") or "").strip()[:160]
+        if board or problem:
+            out.append(f'"{board}" — {problem}' + (f' → write: "{fix}"' if fix else ""))
+    return out[:6]
+
+
+def correction_prompt(issues: List[str]) -> str:
+    return (
+        "The board in your previous shot HTML has DEFINITE errors a learner would copy down:\n"
+        + "\n".join(f"  - {i}" for i in issues)
+        + "\n\nFix exactly these errors (correct text, numbers and notation; powers as superscripts via "
+        "KaTeX). Keep the layout, shot_pack tokens, animation_strategy and narration sync unchanged. "
+        "Return only the JSON shot object."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -555,49 +662,122 @@ def build_teacher_entries(
     return out
 
 
-def caption_box(layout: str, width: int, height: int) -> Optional[Dict[str, int]]:
-    """Where burned-in captions may sit while this layout's teacher is on
-    screen: the board side of the frame (landscape) or above the teacher band
-    (portrait). Read by generate_video.py from the teacher entry_meta."""
-    box = teacher_box(layout, width, height)
-    if box is None:
-        return None
-    if height > width and layout in BOARD_RESIZED_LAYOUTS:
-        return {"x": 0, "w": width, "bottom": box["h"] + _even(height * 0.02)}
-    return {"x": 0, "w": max(_even(width * 0.3), box["x"] - _even(width * 0.0125))}
-
-
-def fit_shots_to_board(
-    entries: List[Dict[str, Any]],
-    runs: List[Dict[str, Any]],
-    clip_urls: List[Optional[str]],
-    *,
+def keep_out_zones(
+    plan: Optional[Dict[str, Any]],
+    layout: Optional[str],
     width: int,
     height: int,
-) -> int:
-    """Resize shot entries inside side/presenter runs (that got a teacher
-    clip) to the board area. Returns how many entries were resized."""
-    spans = [
-        (float(r["start"]), float(r["end"]), r["layout"])
-        for r, u in zip(runs, clip_urls) if u and r["layout"] in BOARD_RESIZED_LAYOUTS
-    ]
-    n = 0
+    *,
+    canvas_w: int,
+    canvas_h: int,
+) -> List[Dict[str, Any]]:
+    """Rects (shot-canvas coords) a lesson shot must leave empty, for the bbox
+    lint: the corner / bubble teacher where it overlaps the board. (Captions
+    need no zone — the canvas ends above the caption band.)"""
+    if not plan or not has_teacher(plan) or layout not in OVERLAY_LAYOUTS:
+        return []
+    box = teacher_box(layout, width, height)
+    if not box or box["y"] - 16 >= canvas_h:
+        return []
+    m = 16
+    return [{
+        "l": max(0, box["x"] - m), "t": max(0, box["y"] - m),
+        "r": canvas_w, "b": canvas_h, "name": "teacher",
+    }]
+
+
+def caption_box(layout: str, width: int, height: int) -> Dict[str, int]:
+    """Where burned-in captions are centred: inside the caption band, left of
+    a corner / bubble teacher. Read by generate_video.py (entry_meta)."""
+    band = caption_band(layout, width, height)
+    w = band["w"]
+    box = teacher_box(layout, width, height)
+    if box and layout in OVERLAY_LAYOUTS:
+        w = min(w, box["x"] - _even(width * 0.0125))
+    return {"x": band["x"], "w": max(_even(width * 0.3), w), "cy": band["y"] + band["h"] // 2}
+
+
+def effective_layouts(
+    layout_by_shot: Dict[int, str],
+    runs: List[Dict[str, Any]],
+    clip_urls: List[Optional[str]],
+    entries: List[Dict[str, Any]],
+) -> Dict[int, str]:
+    """Per shot, the layout that will actually be on screen: a teacher layout
+    only where its run got a clip, else the board fills the frame."""
+    ok = [(float(r["start"]), float(r["end"]), r["layout"]) for r, u in zip(runs, clip_urls) if u]
+    out: Dict[int, str] = {}
     for e in entries:
-        if shot_index_of(e) is None:
+        si = shot_index_of(e)
+        if si is None:
             continue
         try:
-            t0, t1 = float(e.get("inTime", 0)), float(e.get("exitTime", 0))
+            mid = (float(e.get("inTime", 0)) + float(e.get("exitTime", 0))) / 2.0
         except (TypeError, ValueError):
             continue
-        mid = (t0 + t1) / 2.0
-        hit = next((lay for s0, s1, lay in spans if s0 - 1e-3 <= mid <= s1 + 1e-3), None)
-        if not hit:
+        want = layout_by_shot.get(si) or "board"
+        hit = next((lay for s0, s1, lay in ok if s0 - 1e-3 <= mid <= s1 + 1e-3 and lay == want), None)
+        out.setdefault(si, hit or "board")
+    return out
+
+
+def fit_shots_to_board(entries: List[Dict[str, Any]], layout_by_shot: Dict[int, str], *, width: int, height: int) -> int:
+    """Give every lesson shot entry its board canvas (above the caption band,
+    beside a teacher panel). Returns how many entries were resized."""
+    n = 0
+    for e in entries:
+        si = shot_index_of(e)
+        if si is None:
             continue
-        area = board_area(hit, width, height)
+        area = board_area(layout_by_shot.get(si) or "board", width, height)
         e["htmlStartX"], e["htmlStartY"] = area["x"], area["y"]
         e["htmlEndX"], e["htmlEndY"] = area["x"] + area["w"], area["y"] + area["h"]
         n += 1
     return n
+
+
+def build_band_entries(
+    entries: List[Dict[str, Any]],
+    layout_by_shot: Dict[int, str],
+    *,
+    width: int,
+    height: int,
+    palette: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Caption-band overlay entries, merged across consecutive shots whose band
+    has the same geometry. They carry the caption position for the renderer."""
+    colors = panel_colors(palette)
+    spans: List[Tuple[float, float, str]] = []
+    for e in entries:
+        si = shot_index_of(e)
+        if si is None:
+            continue
+        try:
+            spans.append((float(e["inTime"]), float(e["exitTime"]), layout_by_shot.get(si) or "board"))
+        except (KeyError, TypeError, ValueError):
+            continue
+    spans.sort()
+    merged: List[List[Any]] = []
+    for t0, t1, lay in spans:
+        geo = (caption_band(lay, width, height), caption_box(lay, width, height))
+        if merged and merged[-1][3] == geo and t0 <= merged[-1][1] + 0.25:
+            merged[-1][1] = max(merged[-1][1], t1)
+        else:
+            merged.append([t0, t1, lay, geo])
+    out: List[Dict[str, Any]] = []
+    for k, (t0, t1, lay, (band, cbox)) in enumerate(merged):
+        out.append({
+            "id": f"{BAND_ENTRY_PREFIX}{k}",
+            "inTime": round(t0, 3),
+            "exitTime": round(t1, 3),
+            "htmlStartX": band["x"], "htmlStartY": band["y"],
+            "htmlEndX": band["x"] + band["w"], "htmlEndY": band["y"] + band["h"],
+            "html": (f'<div style="position:absolute;inset:0;pointer-events:none;background:{colors["panel"]};'
+                     f'border-top:1px solid {colors["border"]};"></div>'),
+            "z": BAND_Z,
+            "entry_meta": {"kind": "lesson_band", "layout": lay, "caption_box": cbox},
+        })
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

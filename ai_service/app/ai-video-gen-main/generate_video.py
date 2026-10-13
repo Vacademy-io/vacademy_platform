@@ -1855,20 +1855,26 @@ def render_video_from_json(
                     # the teacher's face (lesson_mode.caption_box). The
                     # caption host is always full-viewport (dispatcher
                     # __updateCaption), so the pill itself is re-centred.
-                    _cap_x, _cap_w = 0, width
+                    _cap_x, _cap_w, _cap_cy = 0, width, None
+                    _lesson_cb = None
                     for _e in active:
                         _em = _e.get("entry_meta")
-                        if isinstance(_em, dict) and _em.get("kind") == "lesson_teacher":
-                            _cb = _em.get("caption_box")
-                            if isinstance(_cb, dict):
-                                try:
-                                    _cap_x = max(0, int(_cb.get("x", 0)))
-                                    _cap_w = max(1, min(width - _cap_x, int(_cb.get("w", width))))
-                                    if _cb.get("bottom") is not None and cap_position != "top":
-                                        position_css = f"bottom:{int(_cb['bottom'])}px; top:auto;"
-                                except (TypeError, ValueError):
-                                    _cap_x, _cap_w = 0, width
-                            break
+                        if (isinstance(_em, dict) and _em.get("kind") in ("lesson_band", "lesson_teacher")
+                                and isinstance(_em.get("caption_box"), dict)):
+                            # The caption band wins over a teacher entry's box.
+                            if _lesson_cb is None or _em.get("kind") == "lesson_band":
+                                _lesson_cb = _em["caption_box"]
+                    if _lesson_cb is not None:
+                        try:
+                            _cap_x = max(0, int(_lesson_cb.get("x", 0)))
+                            _cap_w = max(1, min(width - _cap_x, int(_lesson_cb.get("w", width))))
+                            if _lesson_cb.get("cy") is not None:
+                                _cap_cy = int(_lesson_cb["cy"])
+                                position_css = ""
+                            elif _lesson_cb.get("bottom") is not None and cap_position != "top":
+                                position_css = f"bottom:{int(_lesson_cb['bottom'])}px; top:auto;"
+                        except (TypeError, ValueError):
+                            _cap_x, _cap_w, _cap_cy = 0, width, None
                     font_size = int(style.get("font_size", 20))
                     font_color = str(style.get("font_color", "#FFFFFF"))
                     font_weight = int(style.get("font_weight", 400))
@@ -1937,7 +1943,14 @@ def render_video_from_json(
                         content_html = " ".join(_spans)
                     else:
                         content_html = raw_text if allow_html else _html_escape(raw_text)
-                    if (_cap_x, _cap_w) == (0, width):
+                    if _cap_cy is not None:
+                        # Lesson caption band: centred in the band, whatever
+                        # the number of lines.
+                        _pill_box_css = (
+                            f"left:{_cap_x + _cap_w // 2}px; top:{_cap_cy}px; "
+                            f"transform:translate(-50%,-50%); max-width:{int(_cap_w * 0.9)}px; "
+                        )
+                    elif (_cap_x, _cap_w) == (0, width):
                         _pill_box_css = "left:50%; transform:translateX(-50%); max-width:85%; "
                     else:
                         _pill_box_css = (

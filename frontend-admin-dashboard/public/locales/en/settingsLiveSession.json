@@ -50,6 +50,13 @@
         "defaultLinkDescription": "Show the 'Default Class Link' card inside each selected day in the recurring schedule, where admins can set a fallback link and class name shared across all sessions on that day.",
         "disabledBecauseWeeklyOff": "Disabled because Recurring weekly schedule is off."
     },
+    "attendanceOnly": {
+        "title": "Attendance Only Mode",
+        "description": "For institutes that teach offline and create live classes only to record attendance.",
+        "toggleTitle": "Hide live classes from learners",
+        "toggleDescription": "When on, learners don't see any live class (upcoming, live or past) and get no notifications about them. They only see their attendance. Instructors still get their notifications.",
+        "onWarning": "Applies to all live classes of the institute, including ones already created. Learners will not be able to see or join any class."
+    },
     "disclaimer": {
         "title": "Disclaimer Video",
         "description": "Shown before a learner joins a class they have not attended yet, and not again once they are marked present in it. One video for every live class, including classes created automatically by a workflow.",

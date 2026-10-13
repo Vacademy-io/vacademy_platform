@@ -127,6 +127,9 @@ public class ApplicationSecurityConfig {
             // contain the word "internal" — InternalAuthFilter substring-matches the
             // URI and would demand clientName + Signature instead.
             "/admin-core-service/bbb/custom-domains",
+            // ai_service copy-check callbacks for assignment AI evaluation. No JWT, but
+            // AssignmentCopyCheckCallbackController requires X-Internal-Service-Token.
+            "/admin-core-service/assignment-ai-evaluation/hook/**",
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)

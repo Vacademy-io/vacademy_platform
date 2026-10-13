@@ -96,6 +96,9 @@ public class InvoiceService {
     private InvoiceInstituteProfileService invoiceInstituteProfileService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
+
+    @Autowired
     private TemplateService templateService;
 
     @Autowired
@@ -305,7 +308,8 @@ public class InvoiceService {
             "place_of_supply", "institute_name", "institute_address", "institute_contact",
             "tax_label", "tax_rate", "country", "country_code", "tax_registration_number",
             "hsn_code", "notes",
-            "course_name", "course_code", "user_mobile", "institute_tagline");
+            "course_name", "course_code", "user_mobile", "institute_tagline",
+            "parent_name", "year_group", "billing_month", "billing_year", "institute_email");
 
     /**
      * Overrides that only make sense for a single billed user. Stripped for bulk
@@ -314,7 +318,7 @@ public class InvoiceService {
      */
     private static final Set<String> USER_SCOPED_OVERRIDE_KEYS = Set.of(
             "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
-            "place_of_supply");
+            "place_of_supply", "parent_name", "year_group");
 
     /** Display metadata for a template placeholder, powering the review/preview panel. */
     private record PlaceholderMeta(String label, String group, boolean editable, String inputType) {}
@@ -329,14 +333,26 @@ public class InvoiceService {
         PLACEHOLDER_META.put("invoice_number", new PlaceholderMeta("Invoice Number", "INVOICE", true, "text"));
         PLACEHOLDER_META.put("invoice_date", new PlaceholderMeta("Invoice Date", "INVOICE", true, "date"));
         PLACEHOLDER_META.put("due_date", new PlaceholderMeta("Due Date", "INVOICE", true, "date"));
+        // The month a monthly fee invoice is for. Read off the due date, not the invoice date:
+        // a schedule billed in advance is raised in the previous month but falls due in the one
+        // it pays for. {{billing_period}} is the two together and follows any edit to either.
+        PLACEHOLDER_META.put("billing_month", new PlaceholderMeta("Billing Month", "INVOICE", true, "text"));
+        PLACEHOLDER_META.put("billing_year", new PlaceholderMeta("Billing Year", "INVOICE", true, "text"));
+        PLACEHOLDER_META.put("billing_period",
+                new PlaceholderMeta("Billing Period (month + year)", "INVOICE", false, "text"));
         PLACEHOLDER_META.put("user_name", new PlaceholderMeta("Billed To", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("user_email", new PlaceholderMeta("Email", "BILL TO", true, "text"));
+        // For a learner who is a child, the invoice is addressed to the parent. Both default to
+        // the learner's own custom fields (see learnerProfilePlaceholderFor) and are editable.
+        PLACEHOLDER_META.put("parent_name", new PlaceholderMeta("Parent / Guardian", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("year_group", new PlaceholderMeta("Year Group / Class", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("user_address", new PlaceholderMeta("Address", "BILL TO", true, "textarea"));
         PLACEHOLDER_META.put("user_tax_info", new PlaceholderMeta("Tax ID (GSTIN/VAT)", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("place_of_supply", new PlaceholderMeta("Place of Supply", "BILL TO", true, "text"));
         PLACEHOLDER_META.put("institute_name", new PlaceholderMeta("Institute Name", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("institute_address", new PlaceholderMeta("Institute Address", "INSTITUTE", true, "textarea"));
         PLACEHOLDER_META.put("institute_contact", new PlaceholderMeta("Institute Contact", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_email", new PlaceholderMeta("Institute Email", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("institute_tagline",
                 new PlaceholderMeta("Institute Tagline", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("tax_label", new PlaceholderMeta("Tax Label", "TAX", true, "text"));
@@ -2513,6 +2529,18 @@ public class InvoiceService {
         filled = filled.replace("{{institute_contact}}",
                 ov.apply("institute_contact", institute.getMobileNumber() != null ? institute.getMobileNumber()
                         : (institute.getEmail() != null ? institute.getEmail() : "")));
+        filled = filled.replace("{{institute_email}}",
+                ov.apply("institute_email", institute.getEmail() != null ? institute.getEmail() : ""));
+
+        // Billing month: month and year are edited separately, and the period is built from
+        // whatever they ended up as, so the three can never disagree on one invoice.
+        LocalDate billingDate = billingPeriodDate(invoiceData);
+        String billingMonth = ov.apply("billing_month", billingMonthName(billingDate));
+        String billingYear = ov.apply("billing_year",
+                billingDate != null ? String.valueOf(billingDate.getYear()) : "");
+        filled = filled.replace("{{billing_month}}", billingMonth);
+        filled = filled.replace("{{billing_year}}", billingYear);
+        filled = filled.replace("{{billing_period}}", (billingMonth + " " + billingYear).trim());
 
         // Institute logo
         String instituteLogoHtml = buildInstituteLogoHtml(institute);
@@ -2537,6 +2565,13 @@ public class InvoiceService {
         filled = filled.replace("{{user_tax_info}}", ov.apply("user_tax_info", ""));
         filled = filled.replace("{{place_of_supply}}",
                 ov.apply("place_of_supply", user.getRegion() != null ? user.getRegion() : ""));
+        // Learner-entered custom field values, so escaped here: the override path escapes its
+        // own value but passes the default through untouched.
+        LearnerProfileFields lpf = usesLearnerProfileFields(template)
+                ? resolveLearnerProfileFields(invoiceData)
+                : LearnerProfileFields.EMPTY;
+        filled = filled.replace("{{parent_name}}", ov.apply("parent_name", escapeHtml(lpf.parentName())));
+        filled = filled.replace("{{year_group}}", ov.apply("year_group", escapeHtml(lpf.yearGroup())));
         // Notes (admin-entered). Overridable; defaults to the value carried on InvoiceData.
         filled = filled.replace("{{notes}}", ovMulti.apply("notes", invoiceData.getNotes()));
 
@@ -2682,6 +2717,9 @@ public class InvoiceService {
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
+        // A separate token rather than a change to {{line_items}}, whose 4-cell shape every
+        // existing custom template depends on (see buildLineItemsHtml).
+        filled = filled.replace("{{session_rows}}", buildSessionRowsHtml(invoiceData.getLineItems(), currencySymbol));
 
         // The whole sum, in one conditional block — see buildTotalsRowsHtml.
         filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
@@ -3013,7 +3051,7 @@ public class InvoiceService {
      * re-expanded by a later substitution pass (template substitution is sequential).
      * Null → empty string.
      */
-    private String escapeHtml(String value) {
+    private static String escapeHtml(String value) {
         if (value == null) return "";
         return value
                 .replace("&", "&amp;")
@@ -3062,6 +3100,87 @@ public class InvoiceService {
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
+        }
+        return html.toString();
+    }
+
+    private static final List<DateTimeFormatter> SESSION_DATE_FORMATS = java.util.stream.Stream.of(
+                    "d MMM yyyy", "d MMMM yyyy", "EEE d MMM yyyy", "EEEE d MMMM yyyy",
+                    "yyyy-MM-dd", "d/M/yyyy", "d-M-yyyy", "d.M.yyyy")
+            .map(p -> new java.time.format.DateTimeFormatterBuilder()
+                    .parseCaseInsensitive().appendPattern(p).toFormatter(Locale.ENGLISH))
+            .toList();
+
+    private static final DateTimeFormatter SESSION_DATE_DISPLAY = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
+
+    /** The date an admin typed into a line item, in any of the usual spellings, or null. */
+    static LocalDate parseSessionDate(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String t = text.trim().replace(",", "").replaceAll("\\s+", " ");
+        for (DateTimeFormatter f : SESSION_DATE_FORMATS) {
+            try {
+                return LocalDate.parse(t, f);
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // try the next spelling
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Line items as one row per class: Session N | Date | Subject | Day | Fee.
+     *
+     * <p>A line item carries only a description, so the description is read as
+     * {@code "date | subject"} or {@code "date | subject | day"}. When the first part is a date
+     * the day is worked out from it, so an admin types only the date and the subject. Anything
+     * else is shown as typed: one part becomes the subject, and a first part that is not a date
+     * is shown as the date text. The fee is the line amount.
+     *
+     * <p>The first cell carries {@code session-icon-1..3} in rotation so a template can give each
+     * row an icon from its own CSS; the backend emits no images.
+     */
+    static String buildSessionRowsHtml(List<InvoiceLineItemData> lineItems, String currencySymbol) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return "<tr><td colspan=\"5\">No sessions</td></tr>";
+        }
+        StringBuilder html = new StringBuilder();
+        int n = 0;
+        for (InvoiceLineItemData item : lineItems) {
+            n++;
+            String[] parts = item.getDescription() != null ? item.getDescription().split("\\|", -1) : new String[0];
+            String first = parts.length > 0 ? parts[0].trim() : "";
+            String second = parts.length > 1 ? parts[1].trim() : "";
+            String third = parts.length > 2 ? parts[2].trim() : "";
+            LocalDate date = parseSessionDate(first);
+            String dateText;
+            String subject;
+            String day;
+            if (date != null) {
+                dateText = date.format(SESSION_DATE_DISPLAY);
+                subject = second;
+                day = !third.isEmpty() ? third
+                        : date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH);
+            } else if (parts.length <= 1) {
+                dateText = "";
+                subject = first;
+                day = "";
+            } else {
+                dateText = first;
+                subject = second;
+                day = third;
+            }
+            BigDecimal amount = item.getAmount() != null ? item.getAmount() : item.getUnitPrice();
+            html.append("<tr>")
+                    .append("<td class=\"session-label session-icon-").append((n - 1) % 3 + 1).append("\">")
+                    .append("Session ").append(n).append("</td>")
+                    .append("<td class=\"session-date\">").append(escapeHtml(dateText)).append("</td>")
+                    .append("<td class=\"session-subject\">").append(escapeHtml(subject)).append("</td>")
+                    .append("<td class=\"session-day\">").append(escapeHtml(day)).append("</td>")
+                    .append("<td class=\"session-fee\" style=\"text-align:right\">")
+                    .append(currencySymbol).append(money(amount)).append("</td>")
+                    .append("</tr>");
         }
         return html.toString();
     }
@@ -6173,7 +6292,8 @@ public class InvoiceService {
         // including the seed frame, where the admin has edited nothing. invoice_number is driven
         // by invoiceData (collision-resolved above), notes are folded in escaped. Mirrors the
         // renderOverrides createAdminInvoices builds.
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> renderOverrides = new HashMap<>(userOverrides);
         for (String key : EDITABLE_OVERRIDE_KEYS) {
             if (!renderOverrides.containsKey(key) && defaults.containsKey(key)) {
@@ -6184,7 +6304,6 @@ public class InvoiceService {
         if (StringUtils.hasText(effectiveNotes)) renderOverrides.put("notes", effectiveNotes);
         invoiceData.setOverrides(renderOverrides);
 
-        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
         String html = replaceTemplatePlaceholders(templateHtml, invoiceData);
         List<AdminInvoicePreviewResponseDTO.PlaceholderValue> resolved =
                 computeResolvedValues(invoiceData, templateHtml, invoiceSettings);
@@ -6204,7 +6323,7 @@ public class InvoiceService {
         java.util.regex.Matcher m = PLACEHOLDER_PATTERN.matcher(templateHtml != null ? templateHtml : "");
         while (m.find()) present.add(m.group(1));
 
-        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings, templateHtml);
         Map<String, String> overrides = invoiceData.getOverrides() != null
                 ? invoiceData.getOverrides() : Collections.emptyMap();
 
@@ -6230,7 +6349,8 @@ public class InvoiceService {
 
     /** Auto-derived (pre-override) value for each editable/derived text placeholder. */
     @SuppressWarnings("unchecked")
-    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings) {
+    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings,
+            String templateHtml) {
         Map<String, String> d = new HashMap<>();
         UserDTO user = invoiceData.getUser();
         Institute institute = invoiceData.getInstitute();
@@ -6264,8 +6384,22 @@ public class InvoiceService {
 
         if (institute != null) {
             d.put("institute_tagline", nz(institute.getDescription()));
+            d.put("institute_email", nz(institute.getEmail()));
         }
         d.put("user_mobile", user != null ? nz(user.getMobileNumber()) : "");
+
+        LocalDate billingDate = billingPeriodDate(invoiceData);
+        String billingMonth = billingMonthName(billingDate);
+        String billingYear = billingDate != null ? String.valueOf(billingDate.getYear()) : "";
+        d.put("billing_month", billingMonth);
+        d.put("billing_year", billingYear);
+        d.put("billing_period", (billingMonth + " " + billingYear).trim());
+        // Only templates that print them pay for the custom-field read; the rest get blanks.
+        LearnerProfileFields lpf = usesLearnerProfileFields(templateHtml)
+                ? resolveLearnerProfileFields(invoiceData)
+                : LearnerProfileFields.EMPTY;
+        d.put("parent_name", lpf.parentName());
+        d.put("year_group", lpf.yearGroup());
 
         // Seed the receipt fields too, so the review step shows what the PDF will actually
         // print rather than an empty box next to every amount.
@@ -6625,6 +6759,109 @@ public class InvoiceService {
         BigDecimal total = totalCollected != null ? totalCollected : BigDecimal.ZERO;
         BigDecimal now = thisPayment != null ? thisPayment : BigDecimal.ZERO;
         return total.subtract(now).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * The date whose month a monthly invoice is for: the due date, falling back to the invoice
+     * date. Fees billed in advance are raised in one month and fall due in the next, so the
+     * invoice date alone would name the wrong month.
+     */
+    static LocalDate billingPeriodDate(InvoiceData invoiceData) {
+        if (invoiceData == null) {
+            return null;
+        }
+        if (invoiceData.getDueDate() != null) {
+            return invoiceData.getDueDate().toLocalDate();
+        }
+        return invoiceData.getInvoiceDate() != null ? invoiceData.getInvoiceDate().toLocalDate() : null;
+    }
+
+    /** "October", or "" without a date. English, to match the dd MMM yyyy dates on the PDF. */
+    static String billingMonthName(LocalDate date) {
+        return date != null ? date.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH) : "";
+    }
+
+    /** Parent and year group as the learner's own custom fields hold them; "" when absent. */
+    record LearnerProfileFields(String parentName, String yearGroup) {
+        static final LearnerProfileFields EMPTY = new LearnerProfileFields("", "");
+    }
+
+    /**
+     * Which invoice placeholder a learner custom field feeds, by its display name, or null.
+     * Institutes name these fields freely ("Parent Name", "Guardian's Name", "Year Group",
+     * "Grade"), so this matches on meaning rather than an exact key. A parent's email or
+     * phone also mentions "parent" and must not be taken for the name.
+     */
+    static String learnerProfilePlaceholderFor(String fieldName) {
+        if (fieldName == null) {
+            return null;
+        }
+        String n = fieldName.toLowerCase(Locale.ENGLISH).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
+        if (n.contains("parent") || n.contains("guardian")) {
+            for (String notAName : List.of("email", "mail", "phone", "mobile", "number", "contact",
+                    "whatsapp", "occupation", "address", "relation")) {
+                if (n.contains(notAName)) {
+                    return null;
+                }
+            }
+            return "parent_name";
+        }
+        if (n.contains("year group") || Set.of("year", "grade", "class", "standard", "school year",
+                "year level").contains(n)) {
+            return "year_group";
+        }
+        return null;
+    }
+
+    private static final List<String> LEARNER_PROFILE_PLACEHOLDERS = List.of("{{parent_name}}", "{{year_group}}");
+
+    /** Whether a template asks for a value that needs the learner's custom fields. */
+    static boolean usesLearnerProfileFields(String template) {
+        if (template == null || template.isEmpty()) {
+            return false;
+        }
+        for (String token : LEARNER_PROFILE_PLACEHOLDERS) {
+            if (template.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Parent name and year group from the billed learner's custom fields in this institute.
+     * The newest answer wins (the query is newest first). Never throws: a failed lookup leaves
+     * the fields blank for the admin to fill in, rather than failing the invoice.
+     */
+    private LearnerProfileFields resolveLearnerProfileFields(InvoiceData invoiceData) {
+        if (invoiceData == null || invoiceData.getUser() == null || invoiceData.getInstitute() == null
+                || !StringUtils.hasText(invoiceData.getUser().getId())) {
+            return LearnerProfileFields.EMPTY;
+        }
+        try {
+            List<Object[]> rows = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
+                    "USER", List.of(invoiceData.getUser().getId()), invoiceData.getInstitute().getId());
+            String parentName = "";
+            String yearGroup = "";
+            for (Object[] row : rows) {
+                // [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
+                String value = row[5] != null ? row[5].toString().trim() : "";
+                if (value.isEmpty()) {
+                    continue;
+                }
+                String target = learnerProfilePlaceholderFor(row[3] != null ? row[3].toString() : null);
+                if ("parent_name".equals(target) && parentName.isEmpty()) {
+                    parentName = value;
+                } else if ("year_group".equals(target) && yearGroup.isEmpty()) {
+                    yearGroup = value;
+                }
+            }
+            return new LearnerProfileFields(parentName, yearGroup);
+        } catch (Exception e) {
+            log.warn("Could not read parent / year group custom fields for user {}: {}",
+                    invoiceData.getUser().getId(), e.getMessage());
+            return LearnerProfileFields.EMPTY;
+        }
     }
 
     private static final List<String> RECEIPT_PLACEHOLDERS = List.of(

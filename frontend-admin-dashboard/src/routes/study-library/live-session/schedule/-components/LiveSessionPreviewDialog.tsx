@@ -13,6 +13,7 @@ import {
 import {
     Article,
     BellRinging,
+    EyeSlash,
     Globe,
     Lightning,
     UsersThree as UsersThreeIcon,
@@ -115,6 +116,12 @@ interface LiveSessionPreviewDialogProps {
     submittingLabel?: string;
     backLabel?: string;
     footerNote?: string;
+    /**
+     * Institute runs live classes in "attendance only" mode
+     * (LIVE_SESSION_SETTING.attendanceOnlyMode): learners won't see these
+     * classes, only their attendance. Renders a notice so the admin knows.
+     */
+    attendanceOnly?: boolean;
 }
 
 export function LiveSessionPreviewDialog({
@@ -138,6 +145,7 @@ export function LiveSessionPreviewDialog({
     submittingLabel: submittingLabelProp,
     backLabel: backLabelProp,
     footerNote,
+    attendanceOnly = false,
 }: LiveSessionPreviewDialogProps) {
     const { t, i18n } = useTranslation([
         'studyLibraryLiveSessionPreviewDialog',
@@ -240,6 +248,19 @@ export function LiveSessionPreviewDialog({
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto px-6 py-5">
+                    {attendanceOnly && (
+                        <div className="mb-4 flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
+                            <EyeSlash size={18} className="mt-0.5 shrink-0 text-warning-700" />
+                            <div>
+                                <div className="text-sm font-semibold text-warning-800">
+                                    {t('attendanceOnly.title')}
+                                </div>
+                                <div className="mt-0.5 text-xs text-warning-700">
+                                    {t('attendanceOnly.description')}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="grid gap-3 lg:grid-cols-3">
                         {/* Schedule */}
                         <div className="rounded-lg border border-neutral-200 bg-white p-4">

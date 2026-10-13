@@ -26,8 +26,11 @@ import java.util.Set;
  *
  * <p>Defaults: the ADMIN card counts as ON when the flag is absent (admins could always
  * give discounts); every other card counts as OFF until an admin turns it on. A role
- * lookup error fails CLOSED. Root users are always allowed, matching
- * {@link InstituteAccessValidator#requireAdminAccess}.
+ * lookup error fails CLOSED.
+ *
+ * <p>The caller must be institute STAFF ({@link InstituteAccessValidator#requireInstituteStaff}):
+ * no root-user bypass, because {@code is_root_user} is also set for learners and invited
+ * staff, and a learner (even one carrying TEACHER from self-signup) is refused.
  */
 @Slf4j
 @Service
@@ -52,11 +55,8 @@ public class AdminDiscountPermissionService {
 
     /** Throws unless the caller belongs to the institute AND their role may apply discounts. */
     public void requireCanApplyDiscounts(CustomUserDetails user, String instituteId) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        if (user != null && user.isRootUser()) {
-            return;
-        }
-        if (user == null || !canApplyDiscounts(user.getUserId(), instituteId)) {
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        if (!canApplyDiscounts(user.getUserId(), instituteId)) {
             throw new ForbiddenException(TURNED_OFF_MESSAGE);
         }
     }
@@ -67,11 +67,11 @@ public class AdminDiscountPermissionService {
             return false;
         }
         try {
-            instituteAccessValidator.validateUserAccess(user, instituteId);
+            instituteAccessValidator.requireInstituteStaff(user, instituteId);
         } catch (Exception e) {
             return false;
         }
-        return user.isRootUser() || canApplyDiscounts(user.getUserId(), instituteId);
+        return canApplyDiscounts(user.getUserId(), instituteId);
     }
 
     public boolean canApplyDiscounts(String userId, String instituteId) {

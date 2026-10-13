@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.institute.util.PublicSettingRedactor;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.setting_history.InstituteSettingHistory;
 import vacademy.io.admin_core_service.features.institute.setting_history.InstituteSettingHistoryRepository;
@@ -230,8 +231,10 @@ public class InstituteSettingAdminService {
 
     private static Map<String, Object> detail(InstituteSettingHistory h) {
         Map<String, Object> row = summary(h);
-        row.put("old_value", h.getOldValue());
-        row.put("new_value", h.getNewValue());
+        // Stored raw so a restore puts real credentials back; shown with them blanked
+        // (SMTP password, WhatsApp apiKey, LMS tokens live in these values).
+        row.put("old_value", PublicSettingRedactor.redact(h.getOldValue()));
+        row.put("new_value", PublicSettingRedactor.redact(h.getNewValue()));
         row.put("reason", h.getReason());
         return row;
     }

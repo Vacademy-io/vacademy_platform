@@ -76,7 +76,7 @@ New nullable columns on `payment_log` (additive; existing rows stay as they are)
 
 ## 4. Settings
 
-Stored per institute in its own table, `institute_offline_payment_setting` (V576), **not** in
+Stored per institute in its own table, `institute_offline_payment_setting` (V577), **not** in
 `institutes.setting_json`: parts of that blob are served to learners and the public, and these
 options can name bank accounts. Read by institute staff, written by institute admins, through
 `GET`/`PUT /admin-core-service/v1/institute/offline-payment-modes?instituteId=`. An institute
@@ -177,7 +177,7 @@ fields:
 
 | Phase | Scope |
 |---|---|
-| 1 ✅ | Migration V576; `institute_offline_payment_setting` + defaults + GET/PUT endpoint (`OfflinePaymentModeService`); `OfflinePaymentDetailsService`; `payment_details` on paths A, B, C, E, F, G; `mapToDTO` fields; Pay-installments receipts print the mode and reference |
+| 1 ✅ | Migration V577; `institute_offline_payment_setting` + defaults + GET/PUT endpoint (`OfflinePaymentModeService`); `OfflinePaymentDetailsService`; `payment_details` on paths A, B, C, E, F, G; `mapToDTO` fields; Pay-installments receipts print the mode and reference |
 | 2 ✅ | Settings UI (`OfflinePaymentModesSettings`); shared `OfflinePaymentFields`; dialogs for A, B, C, E, F, G wired (Pay installments' hard-coded mode buttons replaced) |
 | 3 ✅ | Manage Payments: method column shows "UPI · PhonePe", detail sheet shows mode, reference, extras, notes and proof; CSV adds Paid Via and Payment Reference; collection dashboard groups by recorded mode (manual payments without one show as "Offline (mode not recorded)", no longer "Cash"); invoices print the mode and the admin's reference. Not yet: a filter by mode, and the payment dashboard |
 | 4 | Remaining paths H, I, J, K (K logged as MANUAL) and path D |

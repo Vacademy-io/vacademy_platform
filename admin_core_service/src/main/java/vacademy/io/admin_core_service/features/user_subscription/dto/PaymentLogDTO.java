@@ -30,7 +30,7 @@ public class PaymentLogDTO {
     private String trackingSource;
     private String orderStatus;
 
-    /** Offline payments only (V576): how it was paid, as recorded by an admin. */
+    /** Offline payments only (V577): how it was paid, as recorded by an admin. */
     private String paymentMode;
     private String paymentSubMode;
     private String paymentReference;

@@ -95,7 +95,7 @@ public class PaymentLog {
     @Column(name = "order_status")
     private String orderStatus;
 
-    // ─── How an offline payment was made (V576, docs/OFFLINE_PAYMENT_RECORDING.md) ───
+    // ─── How an offline payment was made (V577, docs/OFFLINE_PAYMENT_RECORDING.md) ───
     // Set by OfflinePaymentDetailsService when an admin records a payment; null on gateway payments.
 
     /** Mode code from the institute's offline payment modes, e.g. CASH, UPI, CHEQUE. */

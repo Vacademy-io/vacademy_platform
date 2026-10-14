@@ -13,7 +13,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * The offline payment modes an institute offers (V576), as JSON
+ * The offline payment modes an institute offers (V577), as JSON
  * ({@link vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentModesDTO}). Kept out of
  * {@code institutes.setting_json}, whose parts reach learners and the public, because the
  * options can name bank accounts.

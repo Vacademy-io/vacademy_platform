@@ -120,7 +120,7 @@ public class CollectionDashboardRepositoryImpl implements CollectionDashboardRep
             "GROUP BY ps.id, pkg.package_name, l.level_name, ps.name, s.session_name " +
             "ORDER BY pkg.package_name NULLS LAST, l.level_name NULLS LAST, ps.name NULLS LAST";
 
-    // An offline payment recorded with a mode (V576) is grouped by that mode (UPI, CHEQUE ...);
+    // An offline payment recorded with a mode (V577) is grouped by that mode (UPI, CHEQUE ...);
     // gateway payments and offline payments without one keep grouping by vendor.
     private static final String PAYMENT_MODE_KEY = "COALESCE(pl.payment_mode, pl.vendor)";
 

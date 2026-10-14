@@ -75,6 +75,12 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
         (p) => p.status === 'ACTIVE'
     );
     const resolvedPlan = activePlans.find((p) => p.tag === 'DEFAULT') ?? activePlans[0] ?? null;
+    // A one-time price can be paid in installments: the backend builds a hidden fee plan
+    // for it (docs/CPO_FLEXIBLE_INSTALLMENTS.md). The plan discount replaces the admin
+    // discount while this is on, as for any fee plan.
+    const canPayInInstallments =
+        resolved?.paymentOption?.type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0;
+    const oneTimeInstallments = canPayInInstallments && ps.cpoConfig != null;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -101,6 +107,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                 // Reset CPO state on invite change — different invite may carry
                                 // a different (or no) CPO mirror.
                                 cpoConfig: undefined,
+                                cpoScheduleError: null,
                                 // A discount priced against the old invite's plan no longer applies.
                                 adminDiscount: undefined,
                             })
@@ -149,7 +156,41 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                 </div>
             )}
 
-            {canDiscount && resolvedPlan && (
+            {canPayInInstallments && (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
+                    <div>
+                        <Label className="text-sm font-medium text-neutral-700">
+                            {t('courseInviteSection.payInInstallments.label')}
+                        </Label>
+                        <p className="text-xs text-neutral-400">
+                            {t('courseInviteSection.payInInstallments.description')}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={oneTimeInstallments}
+                        onCheckedChange={(on) =>
+                            onUpdate(
+                                on
+                                    ? {
+                                          cpoConfig: {
+                                              installment_overrides: [],
+                                              cpo_discount: null,
+                                              payment_mode: 'SKIP',
+                                              payment_amount: null,
+                                              payment_reference: null,
+                                              installment_schedule: null,
+                                          },
+                                          adminDiscount: undefined,
+                                          adminDiscountError: null,
+                                      }
+                                    : { cpoConfig: undefined, cpoScheduleError: null }
+                            )
+                        }
+                    />
+                </div>
+            )}
+
+            {canDiscount && resolvedPlan && !oneTimeInstallments && (
                 <div className="mt-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
                     <AdminDiscountField
                         value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
@@ -171,6 +212,17 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     cpoId={cpoId}
                     value={ps.cpoConfig}
                     onChange={(v) => onUpdate({ cpoConfig: v })}
+                    onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
+                />
+            )}
+
+            {oneTimeInstallments && resolvedPlan && (
+                <CpoEnrollmentConfigPanel
+                    cpoId={null}
+                    oneTimePrice={{ amount: resolvedPlan.actual_price, currency: resolvedPlan.currency }}
+                    value={ps.cpoConfig}
+                    onChange={(v) => onUpdate({ cpoConfig: v })}
+                    onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
                 />
             )}
         </div>

@@ -29,6 +29,49 @@ export interface CpoEnrollmentConfig {
     payment_mode?: 'OFFLINE' | 'SKIP' | null;
     payment_amount?: number | null;
     payment_reference?: string | null;
+    /**
+     * Learner-specific schedule (count, gap, first due date, edited rows). When set, the
+     * bills are generated from it instead of the fee plan's fixed installments; it also
+     * lets a one-time price be paid in installments. Never combined with
+     * `installment_overrides`. See docs/CPO_FLEXIBLE_INSTALLMENTS.md.
+     */
+    installment_schedule?: InstallmentSchedule | null;
+}
+
+export type InstallmentIntervalUnit = 'DAYS' | 'MONTHS';
+
+export interface InstallmentScheduleRow {
+    /** YYYY-MM-DD */
+    due_date: string;
+    /** Gross amount (before discount). Omitted when the plan splits more than one fee. */
+    amount?: number | null;
+}
+
+export interface InstallmentSchedule {
+    count?: number | null;
+    interval?: { unit: InstallmentIntervalUnit; value: number } | null;
+    /** YYYY-MM-DD */
+    first_due_date?: string | null;
+    /** Final rows; the backend uses these when present. */
+    rows?: InstallmentScheduleRow[] | null;
+}
+
+/** What the backend will write for one learner (dry run `cpo_schedule`). */
+export interface InstallmentSchedulePreview {
+    total_amount: number;
+    bill_count: number;
+    installments: Array<{
+        installment_number: number;
+        start_date: string | null;
+        due_date: string;
+        amount: number;
+    }>;
+    upfront_fees: Array<{
+        fee_type_id: string | null;
+        fee_type_name: string | null;
+        due_date: string;
+        amount: number;
+    }>;
 }
 
 export interface AssignmentItem {
@@ -180,6 +223,8 @@ export interface AssignResultItem {
     cpo_installment_count?: number | null;
     cpo_initial_payment_amount?: number | null;
     cpo_initial_payment_mode?: 'OFFLINE' | 'SKIP' | null;
+    /** Bills an installment schedule creates (or would, on a dry run). */
+    cpo_schedule?: InstallmentSchedulePreview | null;
     /** Plan price before / discount / after the admin discount (also on dry_run). */
     gross_amount?: number | null;
     discount_amount?: number | null;
@@ -362,6 +407,8 @@ export interface SelectedPackageSession {
      * AssignmentItem. Applies to every learner selected in the bulk run.
      */
     cpoConfig?: CpoEnrollmentConfig;
+    /** Problem with the installment schedule in `cpoConfig`; blocks Preview while set. */
+    cpoScheduleError?: string | null;
 
     /**
      * Admin-granted discount for this course (Step 3). Applies to every learner in the

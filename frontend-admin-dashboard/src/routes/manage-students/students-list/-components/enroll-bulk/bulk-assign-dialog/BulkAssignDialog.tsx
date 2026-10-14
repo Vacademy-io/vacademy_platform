@@ -577,7 +577,10 @@ export const BulkAssignDialog = ({
             return selectedPackageSessions.every(
                 (ps) =>
                     !getAdminDiscountValidationError(ps.adminDiscount) &&
-                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError)
+                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError) &&
+                    // An installment schedule the backend would reject (e.g. amounts that
+                    // don't add up) must be fixed before Preview.
+                    !ps.cpoScheduleError
             );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.

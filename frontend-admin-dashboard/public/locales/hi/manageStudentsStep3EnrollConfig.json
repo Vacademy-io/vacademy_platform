@@ -5,7 +5,11 @@
         "inviteLinkLabel": "आमंत्रण लिंक",
         "accessDaysLabel": "एक्सेस दिनों का ओवरराइड",
         "accessDaysPlaceholder": "आमंत्रण से",
-        "autoResolvedFromDefault": "(डिफ़ॉल्ट आमंत्रण से स्वतः हल किया गया)"
+        "autoResolvedFromDefault": "(डिफ़ॉल्ट आमंत्रण से स्वतः हल किया गया)",
+        "payInInstallments": {
+            "label": "किस्तों में भुगतान",
+            "description": "इन विद्यार्थियों के लिए यह कीमत किस्तों में बाँटें। इसमें ऊपर वाली छूट की जगह फ़ीस-प्लान की छूट लगती है।"
+        }
     },
     "globalOptions": {
         "heading": "वैश्विक विकल्प",

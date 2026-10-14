@@ -45,5 +45,34 @@
         "netDues": "Solde net dû : {{amount}}",
         "referenceLabel": "Référence (facultatif)",
         "referencePlaceholder": "ex. chèque n°1234"
+    },
+    "schedule": {
+        "modeLabel": "Échéancier",
+        "usePlan": "Utiliser l’échéancier du plan",
+        "useCustom": "Choisir un échéancier pour cette inscription",
+        "flexibleIntro": "Ce plan de frais n’a pas de dates fixes. Choisissez le nombre d’échéances et leur espacement.",
+        "oneTimeIntro": "Le prix du cours est réparti en échéances pour les apprenants de cette inscription.",
+        "courseFee": "Frais du cours",
+        "countLabel": "Échéances",
+        "everyLabel": "Tous les",
+        "firstDueLabel": "Première échéance",
+        "units": {
+            "days": "jours",
+            "months": "mois"
+        },
+        "reset": "Revenir à une répartition égale",
+        "monthsHint": "Même date chaque mois ; les mois plus courts prennent leur dernier jour.",
+        "afterDiscount": "Après remise",
+        "multiFeeHint": "Ce plan répartit plusieurs frais : seules les dates peuvent être modifiées ici. Modifiez une échéance précise depuis le plan de frais de l’élève après l’inscription.",
+        "upfront": "Payé d’avance à la première échéance : {{fees}}",
+        "errors": {
+            "nothingToSplit": "Ce plan de frais ne contient aucun frais payable en plusieurs fois.",
+            "countRange": "Choisissez entre 1 et {{max}} échéances.",
+            "missingDueDate": "L’échéance {{n}} n’a pas de date.",
+            "datesOutOfOrder": "L’échéance {{n}} tombe avant l’échéance {{prev}}.",
+            "mixedAmounts": "Indiquez un montant pour chaque échéance, ou revenez à la répartition égale.",
+            "negativeAmount": "Le montant d’une échéance ne peut pas être négatif.",
+            "amountMismatch": "Les échéances totalisent {{given}} mais les frais sont de {{total}}. Utilisez la remise ci-dessous pour changer le prix."
+        }
     }
 }

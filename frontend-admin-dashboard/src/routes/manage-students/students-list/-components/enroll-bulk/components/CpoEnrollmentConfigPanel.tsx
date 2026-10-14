@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCPOFullDetails } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import type { CPOFeeType, CPOInstallment } from '@/routes/financial-management/fee-plans/-types/cpo-types';
@@ -7,6 +7,14 @@ import type {
     InstallmentOverride,
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
 import type { DiscountSpec, DiscountType } from '@/routes/manage-students/students-list/-types/cpo-side-view-types';
+import {
+    MAX_INSTALLMENTS,
+    initialSchedule,
+    partsFromFeeTypes,
+    validateSchedule,
+    type SchedulePart,
+} from '@/routes/manage-students/students-list/-utils/installment-schedule';
+import { InstallmentScheduleEditor } from './InstallmentScheduleEditor';
 
 interface InstallmentRow {
     id: string;            // aft_installment id (matches SFP.iId)
@@ -19,8 +27,16 @@ interface InstallmentRow {
 
 interface Props {
     cpoId: string | null;
+    /**
+     * Set instead of `cpoId` when a course sold at a one-time price is being paid in
+     * installments: there is no fee plan yet (the backend builds a hidden one), so the
+     * panel splits this price and always uses a custom schedule.
+     */
+    oneTimePrice?: { amount: number; currency?: string | null } | null;
     value: CpoEnrollmentConfig | undefined;
     onChange: (next: CpoEnrollmentConfig) => void;
+    /** Reports a schedule problem (translated) so the wizard can block Preview; null when fine. */
+    onScheduleErrorChange?: (message: string | null) => void;
 }
 
 const flattenInstallments = (feeTypes: CPOFeeType[] | undefined): InstallmentRow[] => {
@@ -93,12 +109,65 @@ const blank: CpoEnrollmentConfig = {
  * <p>Output is sent to the backend on the `cpo_config` field of an
  * {@link AssignmentItem} and supersedes the legacy `cpo_payment_*` fields.
  */
-export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
+export const CpoEnrollmentConfigPanel = ({
+    cpoId,
+    oneTimePrice,
+    value,
+    onChange,
+    onScheduleErrorChange,
+}: Props) => {
     const { t } = useTranslation('manageStudentsCpoEnrollmentConfigPanel');
     const { data, isLoading, isError } = useCPOFullDetails(cpoId, !!cpoId);
     const installments = useMemo(() => flattenInstallments(data?.fee_types), [data]);
 
     const cfg = value ?? blank;
+
+    // ---- Learner-specific schedule (docs/CPO_FLEXIBLE_INSTALLMENTS.md) ----
+    const isFlexible = data?.schedule_mode === 'FLEXIBLE';
+    // A flexible plan has no fixed dates and a one-time price has no plan at all, so both
+    // always use a custom schedule; a fixed plan offers it as an alternative.
+    const customForced = isFlexible || !!oneTimePrice;
+    const customSchedule = cfg.installment_schedule ?? null;
+    const isCustom = customSchedule != null;
+    const scheduleParts: SchedulePart[] = useMemo(
+        () =>
+            oneTimePrice
+                ? [{ feeTypeName: t('schedule.courseFee'), total: oneTimePrice.amount, split: true }]
+                : partsFromFeeTypes(data?.fee_types),
+        [oneTimePrice, data, t]
+    );
+    const maxCount = data?.flexible_defaults?.max_count ?? MAX_INSTALLMENTS;
+    const templateCount = useMemo(
+        () => installments.reduce((m, r) => Math.max(m, r.installmentNumber), 0),
+        [installments]
+    );
+    const selectCustomSchedule = () =>
+        onChange({
+            ...cfg,
+            installment_overrides: [],
+            installment_schedule: initialSchedule(data?.flexible_defaults, templateCount),
+        });
+    const selectPlanSchedule = () => onChange({ ...cfg, installment_schedule: null });
+
+    useEffect(() => {
+        if (customForced && !isCustom && (oneTimePrice || data)) selectCustomSchedule();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customForced, isCustom, oneTimePrice, data]);
+
+    const scheduleError = useMemo(
+        () => (isCustom ? validateSchedule(customSchedule, scheduleParts, maxCount) : null),
+        [isCustom, customSchedule, scheduleParts, maxCount]
+    );
+    const scheduleErrorText = scheduleError ? t(scheduleError.key, scheduleError.params) : null;
+    // Report only real changes: the parent's update merges into the props it rendered with,
+    // so a redundant report in the same tick as another update would overwrite that update.
+    const reportedError = useRef<string | null>(null);
+    useEffect(() => {
+        if (reportedError.current === scheduleErrorText) return;
+        reportedError.current = scheduleErrorText;
+        onScheduleErrorChange?.(scheduleErrorText);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scheduleErrorText]);
     const overridesById = useMemo(() => {
         const m = new Map<string, InstallmentOverride>();
         for (const ov of cfg.installment_overrides ?? []) m.set(ov.aft_installment_id, ov);
@@ -106,10 +175,15 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
     }, [cfg.installment_overrides]);
 
     // Derived totals after overrides + CPO-level discount
-    const grossTotal = useMemo(
+    const templateGross = useMemo(
         () => installments.reduce((sum, r) => sum + r.amount, 0),
         [installments],
     );
+    const scheduleGross = useMemo(
+        () => scheduleParts.reduce((sum, p) => sum + p.total, 0),
+        [scheduleParts],
+    );
+    const grossTotal = isCustom ? scheduleGross : templateGross;
     /**
      * Per-row effective amount after applying installment overrides + CPO-level
      * discount (proportional share for PERCENTAGE; weighted-by-row-amount share
@@ -159,7 +233,19 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
             effectiveByRow,
         };
     }, [installments, overridesById, cfg.cpo_discount]);
-    const totals = breakdown;
+    // With a custom schedule there are no per-row overrides: the plan discount applies to
+    // the whole price and the backend spreads it over every bill in proportion to its amount.
+    const scheduleTotals = useMemo(() => {
+        const d = cfg.cpo_discount;
+        const off = d
+            ? d.type === 'PERCENTAGE'
+                ? (scheduleGross * (d.value || 0)) / 100
+                : Math.min(scheduleGross, d.value || 0)
+            : 0;
+        const net = Math.max(0, scheduleGross - off);
+        return { net, cpoDiscountAmt: off, netFactor: scheduleGross > 0 ? net / scheduleGross : 1 };
+    }, [cfg.cpo_discount, scheduleGross]);
+    const totals = isCustom ? scheduleTotals : breakdown;
 
     // Helpers ----------------------------------------------------------------
 
@@ -208,7 +294,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
         setPaymentInput(cfg.payment_amount != null ? String(cfg.payment_amount) : '');
     }, [cfg.payment_amount]);
 
-    if (!cpoId) return null;
+    if (!cpoId && !oneTimePrice) return null;
 
     return (
         <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50/40 p-3">
@@ -223,6 +309,46 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                 </span>
             </div>
 
+            {!customForced && installments.length > 0 && (
+                <div
+                    role="radiogroup"
+                    aria-label={t('schedule.modeLabel')}
+                    className="mb-2 flex flex-wrap gap-1.5"
+                >
+                    <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!isCustom}
+                        onClick={selectPlanSchedule}
+                        className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium ${
+                            !isCustom
+                                ? 'border-primary-400 bg-primary-50 text-primary-700'
+                                : 'border-neutral-200 bg-white text-neutral-600'
+                        }`}
+                    >
+                        {t('schedule.usePlan')}
+                    </button>
+                    <button
+                        type="button"
+                        role="radio"
+                        aria-checked={isCustom}
+                        onClick={() => !isCustom && selectCustomSchedule()}
+                        className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium ${
+                            isCustom
+                                ? 'border-primary-400 bg-primary-50 text-primary-700'
+                                : 'border-neutral-200 bg-white text-neutral-600'
+                        }`}
+                    >
+                        {t('schedule.useCustom')}
+                    </button>
+                </div>
+            )}
+            {customForced && (
+                <p className="mb-2 text-2xs text-neutral-600">
+                    {oneTimePrice ? t('schedule.oneTimeIntro') : t('schedule.flexibleIntro')}
+                </p>
+            )}
+
             {isLoading && <p className="py-2 text-center text-2xs text-neutral-500">{t('loading')}</p>}
             {isError && (
                 <p className="py-2 text-center text-2xs text-red-600">
@@ -230,8 +356,19 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                 </p>
             )}
 
+            {isCustom && customSchedule && (
+                <InstallmentScheduleEditor
+                    schedule={customSchedule}
+                    parts={scheduleParts}
+                    maxCount={maxCount}
+                    netFactor={scheduleTotals.netFactor}
+                    error={scheduleError}
+                    onChange={(next) => onChange({ ...cfg, installment_schedule: next })}
+                />
+            )}
+
             {/* Installments table with editable cells */}
-            {installments.length > 0 && (
+            {!isCustom && installments.length > 0 && (
                 <div className="mb-3 max-h-64 overflow-y-auto rounded border border-orange-100 bg-white">
                     <table className="w-full text-start text-2xs">
                         <thead className="sticky top-0 bg-orange-50 text-2xs uppercase text-neutral-500">
@@ -460,7 +597,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                     <label className="flex cursor-pointer items-center gap-2">
                         <input
                             type="radio"
-                            name={`cpo-cfg-mode-${cpoId}`}
+                            name={`cpo-cfg-mode-${cpoId ?? 'one-time'}`}
                             checked={(cfg.payment_mode ?? 'SKIP') === 'SKIP'}
                             onChange={() => setPayment({ payment_mode: 'SKIP', payment_amount: null })}
                             className="h-3.5 w-3.5"
@@ -472,7 +609,7 @@ export const CpoEnrollmentConfigPanel = ({ cpoId, value, onChange }: Props) => {
                     <label className="flex cursor-pointer items-center gap-2">
                         <input
                             type="radio"
-                            name={`cpo-cfg-mode-${cpoId}`}
+                            name={`cpo-cfg-mode-${cpoId ?? 'one-time'}`}
                             checked={cfg.payment_mode === 'OFFLINE'}
                             onChange={() =>
                                 setPayment({

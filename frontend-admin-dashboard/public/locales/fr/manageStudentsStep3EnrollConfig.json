@@ -5,7 +5,11 @@
         "inviteLinkLabel": "Lien d'invitation",
         "accessDaysLabel": "Remplacement des jours d'accès",
         "accessDaysPlaceholder": "Depuis l'invitation",
-        "autoResolvedFromDefault": "(résolu automatiquement à partir de l'invitation par défaut)"
+        "autoResolvedFromDefault": "(résolu automatiquement à partir de l'invitation par défaut)",
+        "payInInstallments": {
+            "label": "Payer en plusieurs fois",
+            "description": "Répartir ce prix en échéances pour ces apprenants. La remise du plan de frais remplace la remise ci-dessus."
+        }
     },
     "globalOptions": {
         "heading": "Options globales",

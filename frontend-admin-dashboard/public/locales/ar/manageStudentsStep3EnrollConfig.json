@@ -5,7 +5,11 @@
         "inviteLinkLabel": "رابط الدعوة",
         "accessDaysLabel": "تجاوز أيام الوصول",
         "accessDaysPlaceholder": "من الدعوة",
-        "autoResolvedFromDefault": "(تم الحل تلقائيًا من الدعوة الافتراضية)"
+        "autoResolvedFromDefault": "(تم الحل تلقائيًا من الدعوة الافتراضية)",
+        "payInInstallments": {
+            "label": "الدفع بالأقساط",
+            "description": "قسّم هذا السعر إلى أقساط لهؤلاء المتعلمين. يُستخدم خصم خطة الرسوم بدلًا من الخصم أعلاه."
+        }
     },
     "globalOptions": {
         "heading": "الخيارات العامة",

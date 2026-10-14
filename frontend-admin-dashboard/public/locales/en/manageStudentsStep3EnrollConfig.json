@@ -5,7 +5,11 @@
         "inviteLinkLabel": "Invite Link",
         "accessDaysLabel": "Access Days Override",
         "accessDaysPlaceholder": "From invite",
-        "autoResolvedFromDefault": "(auto-resolved from DEFAULT invite)"
+        "autoResolvedFromDefault": "(auto-resolved from DEFAULT invite)",
+        "payInInstallments": {
+            "label": "Pay in installments",
+            "description": "Split this price into installments for these learners. Uses the fee-plan discount instead of the discount above."
+        }
     },
     "globalOptions": {
         "heading": "Global Options",

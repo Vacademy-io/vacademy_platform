@@ -45,5 +45,34 @@
         "netDues": "Net dues: {{amount}}",
         "referenceLabel": "Reference (optional)",
         "referencePlaceholder": "e.g. cheque #1234"
+    },
+    "schedule": {
+        "modeLabel": "Installment schedule",
+        "usePlan": "Use the plan’s schedule",
+        "useCustom": "Choose a schedule for this enrollment",
+        "flexibleIntro": "This fee plan has no fixed dates. Choose how many installments and how far apart.",
+        "oneTimeIntro": "The course price is split into installments for the learners in this enrollment.",
+        "courseFee": "Course fee",
+        "countLabel": "Installments",
+        "everyLabel": "Every",
+        "firstDueLabel": "First due date",
+        "units": {
+            "days": "days",
+            "months": "months"
+        },
+        "reset": "Reset to even split",
+        "monthsHint": "Same date each month; short months use their last day.",
+        "afterDiscount": "After discount",
+        "multiFeeHint": "This plan splits more than one fee, so only the dates can be changed here. Edit single installments from the student’s Fee Plan after enrolling.",
+        "upfront": "Paid upfront on the first due date: {{fees}}",
+        "errors": {
+            "nothingToSplit": "This fee plan has no fee that can be paid in installments.",
+            "countRange": "Choose between 1 and {{max}} installments.",
+            "missingDueDate": "Installment {{n}} has no due date.",
+            "datesOutOfOrder": "Installment {{n}} is due before installment {{prev}}.",
+            "mixedAmounts": "Give an amount for every installment, or reset to the even split.",
+            "negativeAmount": "An installment amount can’t be negative.",
+            "amountMismatch": "Installments add up to {{given}} but the fee is {{total}}. Use the discount below to change the price."
+        }
     }
 }

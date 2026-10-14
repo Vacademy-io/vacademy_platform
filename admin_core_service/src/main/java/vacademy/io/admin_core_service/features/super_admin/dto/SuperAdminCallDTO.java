@@ -59,6 +59,8 @@ public class SuperAdminCallDTO {
 
     private Double costInr;
     private Double billedInr;
+    /** true = billedInr is what the ledger charged; false = estimated (not charged yet). */
+    private Boolean billedFromLedger;
     private Double marginInr;
     private Double marginPct;
     /** Per-component rupee breakdown: plivo / stt / tts / llm. */

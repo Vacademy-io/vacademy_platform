@@ -3,7 +3,8 @@
         "onlinePortal": "ऑनलाइन पोर्टल",
         "cash": "नकद",
         "bankTransfer": "बैंक ट्रांसफर",
-        "other": "अन्य"
+        "other": "अन्य",
+        "offlineUnspecified": "ऑफ़लाइन (तरीका दर्ज नहीं)"
     },
     "summaryCards": {
         "projectedRevenue": "अनुमानित राजस्व",

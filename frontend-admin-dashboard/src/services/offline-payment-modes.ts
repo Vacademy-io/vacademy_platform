@@ -136,3 +136,38 @@ export const toOfflinePaymentDetailsPayload = (
 export const initialOfflinePaymentDetails = (modes: OfflinePaymentModes | undefined): OfflinePaymentDetails => ({
     mode: findActiveMode(modes, modes?.default_mode)?.code ?? null,
 });
+
+/** How a recorded payment was made, read back from a payment log (labels as recorded). */
+export interface RecordedPaymentDetails {
+    /** "UPI · PhonePe", or null when no mode was recorded. */
+    label: string | null;
+    reference: string | null;
+    notes: string | null;
+    proofFileId: string | null;
+    extra: Partial<Record<OfflineExtraField, string>>;
+}
+
+export const readRecordedPaymentDetails = (log?: {
+    payment_mode?: string | null;
+    payment_reference?: string | null;
+    payment_details_json?: string | null;
+} | null): RecordedPaymentDetails | null => {
+    if (!log || (!log.payment_mode && !log.payment_reference && !log.payment_details_json)) return null;
+    let json: Record<string, string> = {};
+    try {
+        json = log.payment_details_json ? JSON.parse(log.payment_details_json) : {};
+    } catch {
+        json = {};
+    }
+    const modeLabel = json.mode_label ?? log.payment_mode ?? null;
+    const label = modeLabel ? [modeLabel, json.sub_mode_label].filter(Boolean).join(' · ') : null;
+    const extra: Partial<Record<OfflineExtraField, string>> = {};
+    for (const f of OFFLINE_EXTRA_FIELDS) if (json[f]) extra[f] = json[f];
+    return {
+        label,
+        reference: log.payment_reference ?? null,
+        notes: json.notes ?? null,
+        proofFileId: json.proof_file_id ?? null,
+        extra,
+    };
+};

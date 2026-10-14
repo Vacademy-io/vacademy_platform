@@ -3,7 +3,8 @@
         "onlinePortal": "بوابة الدفع الإلكتروني",
         "cash": "نقدًا",
         "bankTransfer": "تحويل بنكي",
-        "other": "أخرى"
+        "other": "أخرى",
+        "offlineUnspecified": "دفع يدوي (الطريقة غير مسجلة)"
     },
     "summaryCards": {
         "projectedRevenue": "الإيراد المتوقع",

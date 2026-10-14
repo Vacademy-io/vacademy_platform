@@ -17,6 +17,8 @@ import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from '../-utils/exportPaymentLogsCsv';
 import { entryPaymentStatus, paymentStatusMeta } from '../-utils/paymentStatus';
 import { GatewayBadge } from './GatewayBadge';
+import { readRecordedPaymentDetails } from '@/services/offline-payment-modes';
+import { getPublicUrl } from '@/services/upload_file';
 import type { PaymentLogEntry } from '@/types/payment-logs';
 
 interface PaymentDetailSheetProps {
@@ -100,6 +102,13 @@ export function PaymentDetailSheet({
     if (!entry) return <Sheet open={open} onOpenChange={onOpenChange} />;
 
     const { payment_log: log, user, user_plan: plan } = entry;
+    // How an offline payment was made, as the admin recorded it (null for gateway payments).
+    const recorded = readRecordedPaymentDetails(log);
+    const openProof = async (fileId: string) => {
+        const url = await getPublicUrl(fileId);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        else toast.error('Could not open the proof file.');
+    };
 
     const openStudentProfile = () => {
         if (!user?.id) {
@@ -243,6 +252,23 @@ export function PaymentDetailSheet({
                                 className="justify-end"
                             />
                         </Row>
+                        {recorded?.label && <Row label="Paid via">{recorded.label}</Row>}
+                        {recorded?.reference && <Row label="Payment reference">{recorded.reference}</Row>}
+                        {recorded?.extra.cheque_date && <Row label="Cheque date">{recorded.extra.cheque_date}</Row>}
+                        {recorded?.extra.bank_name && <Row label="Bank">{recorded.extra.bank_name}</Row>}
+                        {recorded?.extra.payer_name && <Row label="Paid by">{recorded.extra.payer_name}</Row>}
+                        {recorded?.notes && <Row label="Notes">{recorded.notes}</Row>}
+                        {recorded?.proofFileId && (
+                            <Row label="Proof">
+                                <button
+                                    type="button"
+                                    onClick={() => void openProof(recorded.proofFileId!)}
+                                    className="font-medium text-primary-600 hover:underline"
+                                >
+                                    View proof
+                                </button>
+                            </Row>
+                        )}
                         <Row label="Payment type">{derivePaymentTypeLabel(entry)}</Row>
                         <Row label="Phone">{user?.mobile_number || '—'}</Row>
                         <Row label={`${courseTerm} / membership`}>

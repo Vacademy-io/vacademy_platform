@@ -3,7 +3,8 @@
         "onlinePortal": "Portail en ligne",
         "cash": "Espèces",
         "bankTransfer": "Virement bancaire",
-        "other": "Autre"
+        "other": "Autre",
+        "offlineUnspecified": "Hors ligne (mode non renseigné)"
     },
     "summaryCards": {
         "projectedRevenue": "Revenu prévu",

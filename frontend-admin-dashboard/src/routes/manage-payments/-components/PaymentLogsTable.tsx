@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, createContext, useContext } from 'react';
+import { readRecordedPaymentDetails } from '@/services/offline-payment-modes';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -790,7 +791,9 @@ export function PaymentLogsTable({
                 accessorFn: (row) => row?.payment_log?.vendor || '',
                 cell: ({ row }) => {
                     const vendor = row.original?.payment_log?.vendor;
-                    return <GatewayBadge vendor={vendor} showLabel size="sm" />;
+                    // Offline payments show how they were paid ("UPI · PhonePe") under the badge.
+                    const paidVia = readRecordedPaymentDetails(row.original?.payment_log)?.label;
+                    return <GatewayBadge vendor={vendor} showLabel size="sm" subLabel={paidVia ?? undefined} />;
                 },
                 size: 160,
             },

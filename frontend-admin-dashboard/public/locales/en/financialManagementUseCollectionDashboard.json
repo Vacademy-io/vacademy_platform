@@ -3,7 +3,8 @@
         "onlinePortal": "Online Portal",
         "cash": "Cash",
         "bankTransfer": "Bank Transfer",
-        "other": "Other"
+        "other": "Other",
+        "offlineUnspecified": "Offline (mode not recorded)"
     },
     "summaryCards": {
         "projectedRevenue": "Projected revenue",

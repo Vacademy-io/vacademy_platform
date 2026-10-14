@@ -262,17 +262,21 @@ _HOLD_PHRASES = (
     "you have been placed on hold", "you have been put on hold",
     "the person you are speaking with", "the person you're speaking with",
     "the person you are speaking to", "the person you're speaking to",
+    "the person you are talking to", "the person you're talking to",
+    "the subscriber you are", "the subscriber you're",
     "one of our representatives", "one of our executives", "one of our agents",
     "will assist you shortly", "your call is important to us",
     # Hindi
     "आप जिस व्यक्ति से बात कर रहे हैं", "आप जिस व्यक्ति से बात कर रहे है",
-    "जिस व्यक्ति से आप बात कर रहे हैं", "hold पर रखा", "होल्ड पर रखा", "hold par rakha",
+    "जिस व्यक्ति से आप बात कर रहे हैं", "आप जिस व्यक्ति से बात कर रहे हो",
+    "आप जिनसे बात कर रहे हैं", "hold पर रखा", "होल्ड पर रखा", "hold par rakha",
     "आपकी कॉल होल्ड पर", "आपका call hold पर", "आपकी call hold पर",
 )
 _HOLD_REQUESTS = (
     "stay on the line", "hold the line", "please hold", "please wait",
     "do not disconnect", "dont disconnect", "don't disconnect",
-    "लाइन पर बने", "लाइन पर बनी", "line पर बने", "कृपया लाइन पर", "प्रतीक्षा करें",
+    "लाइन पर बने", "लाइन पर बनी", "लाइन पे बने", "लाइन पे बनी", "line पर बने",
+    "कृपया लाइन पर", "कृपया लाइन पे", "प्रतीक्षा करें",
     "प्रतीक्षा कीजिए", "डिस्कनेक्ट न करें", "कॉल डिस्कनेक्ट न",
 )
 # Every word the hold recordings say (call 6d81124d's Hindi + English loop, the
@@ -290,6 +294,21 @@ _HOLD_WORDS = frozenset({
     "not", "dont", "another", "one", "of", "our", "representatives", "representative",
     "executives", "executive", "agents", "agent", "will", "assist", "shortly", "soon",
     "see", "moment", "a", "while", "we", "connect", "connecting", "important", "us",
+    # Other operators' wording of the same loop (review 2026-10-14): "…बात कर रहे हो",
+    # "लाइन पे बने रहिए", "आप जिनसे…", "The person you are talking to", "The subscriber…".
+    "हो", "पे", "रहिए", "रहिये", "जिनसे", "रखी", "करके", "talking", "subscriber",
+    "connected", "being",
+})
+# A whole final counts as the recording only when it carries one of the words
+# that ONLY the recordings say. Every word of "आप लाइन पर हैं", "वो अभी बात कर
+# रहे हैं" (a child back to say the father is still busy) or "We will see" is
+# recording vocabulary too, and those are a person (review 2026-10-14). Short
+# generic bits ("रहे हैं।", "लाइन पर") are still caught by the scrap rule.
+_HOLD_DISTINCT_WORDS = frozenset({
+    "व्यक्ति", "उन्होंने", "जिनसे", "hold", "होल्ड", "कृपया", "कृपा", "बने", "बनी", "रहें",
+    "रहिए", "रहिये", "प्रतीक्षा", "डिस्कनेक्ट", "disconnect", "person", "speaking",
+    "talking", "subscriber", "stay", "kindly", "representatives", "representative",
+    "executives", "executive", "assist", "shortly", "important", "placed", "connecting",
 })
 # Words the recordings never say and a person coming back does: "Sorry for the
 # hold", "Thanks for holding", "I was on another call", "हाँ, लाइन पर हूँ, बोलिए".
@@ -303,6 +322,9 @@ _HOLD_PERSON_WORDS = frozenset({
     "बोलिए", "बोलिये", "बोलो", "बोलें", "बताइए", "बताइये", "बताईए", "बताओ", "बताएं",
     "कहिए", "कहिये", "मैं", "मैंने", "मेरा", "मेरी", "मेरे", "मुझे", "हूँ", "हूं",
     "सॉरी", "माफ़", "माफ", "वापस", "सर", "मैडम", "मैम", "ओके",
+    # Past tense: a person explaining the hold ("होल्ड पर रखा था", "hold par rakha
+    # tha", "I was on another call"); the recordings say "रखा है" / "has put".
+    "था", "थी", "थे", "tha", "thi", "was", "had",
 })
 # A person's short answer, two or three words long ("हाँ जी", "Yes, sure").
 _HOLD_AFFIRM_WORDS = frozenset({
@@ -349,7 +371,8 @@ def is_hold_fragment(text: str) -> bool:
     """While on hold: a piece of the looping recording — every word of it is a
     word the recordings say ("उन्होंने आपके।", "Speaking with.", "See shortly.")."""
     ws = _words(text)
-    return bool(ws) and all(w in _HOLD_WORDS for w in ws) and not sounds_like_person(text)
+    return (bool(ws) and all(w in _HOLD_WORDS for w in ws)
+            and any(w in _HOLD_DISTINCT_WORDS for w in ws) and not sounds_like_person(text))
 
 
 def hold_absorbs(text: str, secs_since_hold_line: float) -> bool:

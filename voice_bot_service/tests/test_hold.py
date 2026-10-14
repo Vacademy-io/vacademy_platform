@@ -31,6 +31,11 @@ RECORDING_ENTERS = (
     "will assist you shortly",
     "Stay on the line.",
     "The person you are speaking with has put your call on hold. Please stay on the line.",
+    # Other operators' wording (review 2026-10-14).
+    "आप जिस व्यक्ति से बात कर रहे हो, उन्होंने आपकी कॉल होल्ड पर रखी है",
+    "कृपया लाइन पे बने रहिए",
+    "The person you are talking to has put your call on hold.",
+    "आप जिनसे बात कर रहे हैं उन्होंने आपके call को hold पर रखा है",
 )
 
 PERSON_NEVER_ENTERS = (
@@ -44,6 +49,10 @@ PERSON_NEVER_ENTERS = (
     "पापा दूसरी कॉल पर हैं।",
     "He is on another call",
     "Sorry, I had put your call on hold, what were you saying?",
+    # A person explaining the hold — past tense, which the recordings never use.
+    "हाँ जी, होल्ड पर रखा था",
+    "होल्ड पर रखा था",
+    "hold par rakha tha",
 )
 
 PERSON_BACK = (
@@ -64,13 +73,24 @@ PERSON_BACK = (
     "हाँ जी",
     "Thanks for holding.",
     "नहीं चाहिए, फ़ोन रखिए",
+    # Every word is recording vocabulary, none only the recording says.
+    "आप लाइन पर हैं",
+    "You are on the line",
+    "वो दूसरी कॉल पर हैं",
+    "वो अभी बात कर रहे हैं",
+    "होल्ड पर रखा था",
 )
+
+# Two-three words of recording vocabulary and nothing only the recording says:
+# a scrap of it right after a piece, the person once the recording has paused.
+PERSON_BACK_AFTER_A_PAUSE = ("We will see", "Please connect", "आपके call को")
 
 RECORDING_PIECES = (
     "Stay on the line.", "One of our representatives will assist.", "See shortly.",
-    "please stay on the line", "उन्होंने आपके।", "आपके call को", "होल्ड।", "hold पर रखा है।",
+    "please stay on the line", "उन्होंने आपके।", "होल्ड।", "hold पर रखा है।",
     "कृपा।", "कृपया लाइन पर बने रहें।", "The person you are", "Speaking with.",
     "has put your call on hold.", "आप जिस व्यक्ति से बात कर रहे हैं।",
+    "कृपया लाइन पे बने रहिए", "The subscriber you are calling", "आप जिस व्यक्ति से बात कर रहे हो",
 )
 
 
@@ -98,6 +118,12 @@ def test_pieces_of_the_recording_stay_absorbed(piece):
     assert hold_absorbs(piece, 30.0), piece
 
 
+@pytest.mark.parametrize("line", PERSON_BACK_AFTER_A_PAUSE)
+def test_generic_recording_words_are_a_scrap_only_right_after_a_piece(line):
+    assert hold_absorbs(line, 0.4), line
+    assert not hold_absorbs(line, 30.0), line
+
+
 def test_fragments_are_whole_words_not_substrings():
     # "लाइन" inside "ऑनलाइन", "hold" inside "holding", "disconnect" inside
     # "disconnected": none of them is the recording.
@@ -112,7 +138,7 @@ def test_scraps_right_after_a_piece_are_the_recording_but_not_later():
     assert hold_absorbs("But losing art.", 2.33)
     assert not hold_absorbs("But losing art.", 5.0)
     assert not hold_absorbs("हाँ जी", 0.5), "a person's two-word answer"
-    assert not hold_absorbs("नाम ऋषभ है और वो seventh में", 0.5), "a real answer"
+    assert not hold_absorbs("नाम अर्जुन है और वो seventh में", 0.5), "a real answer"
     assert hold_absorbs("।", 0.5), "punctuation alone is nobody"
 
 
@@ -131,13 +157,13 @@ def test_ivr_and_carrier_timelines_classify_as_on_the_live_calls():
            (25.82, "Hello."), (29.46, "Yes.")]
     assert _hold_lines(ivr) == {3.65, 5.84, 6.63, 8.96}
     # Synthetic twin of 6d81124d's 44.8-61.2 s hold (Hindi + English loop).
-    carrier = [(42.6, "बात करता हूँ आपसे बाद में।"), (46.5, "आप जिस व्यक्ति से बात कर रहे हैं।"),
+    carrier = [(42.6, "मैं बात करता हूँ बाद में।"), (46.5, "आप जिस व्यक्ति से बात कर रहे हैं।"),
                (47.2, "उन्होंने आपके।"), (48.0, "आपके call को"), (48.6, "होल्ड।"),
                (49.4, "hold पर रखा है।"), (50.1, "कृपा।"), (51.6, "कृपया लाइन पर बने रहें।"),
                (53.0, "The person you are"), (53.7, "Speaking with."), (54.1, "हाँ।"),
                (55.6, "has put your call on hold."), (57.5, "Stay on the line."),
                (60.1, "आप जिस व्यक्ति से बात कर रहे हैं।"), (61.1, "Hello."),
-               (65.7, "हां जी बताइए अभी वापस।")]
+               (65.7, "हां जी बताइए, आ गया।")]
     held = _hold_lines(carrier)
     assert min(held) == 46.5 and max(held) == 60.1 and 61.1 not in held
     assert len(held) == 13
@@ -225,7 +251,7 @@ async def _say(tc, clock, at, text):
 
 
 async def _on_hold(tc, clock, rec, at=40.0):
-    await _say(tc, clock, at - 10.0, "नाम ऋषभ है और वो seventh में है")
+    await _say(tc, clock, at - 10.0, "नाम अर्जुन है और वो seventh में है")
     await _say(tc, clock, at, "आप जिस व्यक्ति से बात कर रहे हैं।")
     assert tc._hold_since == clock.t, "entered the hold"
     rec.clear()
@@ -247,8 +273,8 @@ async def test_the_carrier_loop_is_silent_and_hello_brings_the_person_back(clock
     rec = _Rec()
     tc = _collector(rec)
     tc._outcome.transcript.append({"role": "assistant",
-                                   "text": "ऋषभ के previous class में कितने marks आए थे?"})
-    await _say(tc, clock, 28.0, "नाम ऋषभ है और वो seventh में है")
+                                   "text": "अर्जुन के previous class में कितने marks आए थे?"})
+    await _say(tc, clock, 28.0, "नाम अर्जुन है और वो seventh में है")
     rec.clear()
     for at, piece in ((46.5, "आप जिस व्यक्ति से बात कर रहे हैं।"), (47.2, "उन्होंने आपके।"),
                       (48.0, "आपके call को"), (48.6, "होल्ड।"), (49.4, "hold पर रखा है।"),
@@ -318,9 +344,9 @@ async def test_the_return_line_cannot_rejoin_the_recording_into_a_new_hold(clock
     tc = _collector(rec)
     await _on_hold(tc, clock, rec)
     await _say(tc, clock, 41.0, "The person you are")
-    await _say(tc, clock, 41.5, "speaking with, नाम ऋषभ है बोलिए")
+    await _say(tc, clock, 41.5, "speaking with, नाम अर्जुन है बोलिए")
     assert tc.on_hold_for() == 0
-    assert "speaking with, नाम ऋषभ है बोलिए" in rec.forwarded()
+    assert "speaking with, नाम अर्जुन है बोलिए" in rec.forwarded()
 
 
 @pytest.mark.asyncio

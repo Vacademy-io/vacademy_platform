@@ -844,8 +844,10 @@ public class BulkAssignmentService {
         // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
         // (and uses the partial amount the admin specified instead of the full plan price).
         vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlineDetails = options != null ? options.getPaymentDetails() : null;
+        // Details alone (the dialog preselects a mode) do not mean a payment was taken; a
+        // payment date, a transaction id, or a reference in the details does.
         if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)
-                || offlineDetails != null)) {
+                || (offlineDetails != null && StringUtils.hasText(offlineDetails.getReference())))) {
             try {
                 Double grossAmount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
                 Double amount = adminDiscount != null
@@ -1920,7 +1922,7 @@ public class BulkAssignmentService {
             return;
         }
         if (options != null && (options.getPaymentDate() != null || StringUtils.hasText(options.getTransactionId())
-                || options.getPaymentDetails() != null)) {
+                || (options.getPaymentDetails() != null && StringUtils.hasText(options.getPaymentDetails().getReference())))) {
             offlinePaymentDetailsService.resolve(instituteId, options.getPaymentDetails(), options.getTransactionId());
         }
     }

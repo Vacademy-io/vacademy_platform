@@ -40,6 +40,7 @@ jobs:
           VERTEX_PROJECT_ID: vacademy-app
           VERTEX_LOCATION: asia-south1
           LLM_PROVIDER: vertex
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
         run: |
           cd voice_bot_service
           pip install -q -r requirements.txt pytest pytest-asyncio

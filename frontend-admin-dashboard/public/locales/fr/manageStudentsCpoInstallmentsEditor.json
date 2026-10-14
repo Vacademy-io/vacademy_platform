@@ -30,7 +30,15 @@
         "applyErrorToast": "Échec de l'application de la remise CPO",
         "applying": "Application en cours…",
         "apply": "Appliquer",
-        "remove": "Supprimer"
+        "remove": "Supprimer",
+        "currentSummary": "Actuellement : {{amount}} de remise · {{how}}",
+        "howLabel": "Appliquer la remise",
+        "previewError": "Impossible de calculer cette remise",
+        "customOff": "Remise sur l’échéance {{n}}",
+        "paidRow": "payée",
+        "paidRowKeeps": "−{{amount}} conservé",
+        "totalOff": "Remise totale : {{amount}}",
+        "capped": "(vous avez saisi {{requested}} ; seul le reste à payer peut être remisé)"
     },
     "offlinePayment": {
         "amountRequiredError": "Saisissez un montant positif",
@@ -84,5 +92,64 @@
         "dueDateError": "Choisissez une date d'échéance pour la nouvelle échéance",
         "successToast": "Nouvelle échéance de {{amount}} due le {{date}} ajoutée",
         "errorToast": "Impossible de scinder cette échéance"
+    },
+    "item": {
+        "due": "Échéance {{date}}",
+        "paid": "Payé {{amount}}",
+        "left": "Reste {{amount}}",
+        "overpaid": "Trop-perçu {{amount}}",
+        "planDiscount": "Remise du plan −{{amount}}",
+        "ownDiscount": "Remise −{{amount}}",
+        "was": "Avant remises {{amount}}",
+        "recordPayment": "Enregistrer un paiement",
+        "edit": "Modifier"
+    },
+    "pay": {
+        "heading": "Enregistrer un paiement · échéance {{n}}",
+        "coversEarlier_one": "Les paiements soldent d’abord les échéances les plus anciennes ; celui-ci couvre donc aussi 1 échéance précédente.",
+        "coversEarlier_other": "Les paiements soldent d’abord les échéances les plus anciennes ; celui-ci couvre donc aussi {{count}} échéances précédentes.",
+        "coversEarlier_many": "Les paiements soldent d’abord les échéances les plus anciennes ; celui-ci couvre donc aussi {{count}} échéances précédentes.",
+        "submit": "Enregistrer {{amount}}",
+        "anyAmountNote": "Tout montant ; il solde d’abord les échéances les plus anciennes."
+    },
+    "edit": {
+        "startDate": "Date de début",
+        "dueDate": "Date d’échéance",
+        "amount": "Montant",
+        "amountHint": "Laissez vide pour garder le montant du plan ({{amount}}).",
+        "discount": "Remise sur cette échéance",
+        "reason": "Motif"
+    },
+    "allocation": {
+        "UNPAID_PROPORTIONAL": {
+            "label": "Échéances impayées, au prorata",
+            "short": "répartie sur les échéances impayées",
+            "hint": "Chaque échéance impayée reçoit une part proportionnelle à ce qui reste dû. Les échéances payées ne changent pas."
+        },
+        "UNPAID_EQUAL": {
+            "label": "Échéances impayées, à parts égales",
+            "short": "à parts égales sur les impayées",
+            "hint": "Le même montant est retiré de chaque échéance impayée."
+        },
+        "LAST_FIRST": {
+            "label": "À partir de la dernière échéance",
+            "short": "à partir de la dernière échéance",
+            "hint": "Retirée d’abord de la dernière échéance, puis de la précédente, jusqu’à épuisement."
+        },
+        "NEXT_FIRST": {
+            "label": "À partir de la prochaine échéance",
+            "short": "à partir de la prochaine échéance",
+            "hint": "Retirée d’abord de la prochaine échéance, puis de la suivante."
+        },
+        "CUSTOM": {
+            "label": "Montant personnalisé par échéance",
+            "short": "montants personnalisés",
+            "hint": "Saisissez la remise de chaque échéance impayée. La remise totale est leur somme."
+        },
+        "ALL_PROPORTIONAL": {
+            "label": "Toutes les échéances, payées comprises",
+            "short": "répartie sur toutes les échéances",
+            "hint": "L’ancienne méthode : chaque échéance, payée ou non, prend une part. Une échéance payée peut se retrouver en trop-perçu."
+        }
     }
 }

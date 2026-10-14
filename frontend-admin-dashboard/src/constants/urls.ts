@@ -1582,6 +1582,8 @@ export const PUT_INSTALLMENT = (sfpId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}`;
 export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
+export const POST_USER_PLAN_CPO_DISCOUNT_PREVIEW = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount/preview`;
 export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
 export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>

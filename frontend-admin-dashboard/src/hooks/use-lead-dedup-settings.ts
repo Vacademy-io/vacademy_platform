@@ -5,7 +5,8 @@
  *   { "enabled": false, "field": "EMAIL", "scope": "CAMPAIGN", "audienceIds": [],
  *     "action": "REJECT",
  *     "repeatLead": { "counsellorMode": "SAME_AS_PREVIOUS", "specificCounsellorId": null,
- *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING" } }
+ *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING",
+ *                     "samePersonByPhone": false, "blockOwnedManualAdd": false } }
  *
  * Mirrors the backend defaults in
  * admin_core_service/.../features/audience/service/LeadDedupSettingService.java.
@@ -33,6 +34,8 @@ export interface RepeatLeadSettingsSubtree {
     specificCounsellorId?: string | null;
     specificCounsellorName?: string | null;
     statusMode?: RepeatLeadStatusMode;
+    samePersonByPhone?: boolean;
+    blockOwnedManualAdd?: boolean;
 }
 
 export interface RepeatLeadSettings {
@@ -41,6 +44,10 @@ export interface RepeatLeadSettings {
     specificCounsellorId: string | null;
     specificCounsellorName: string | null;
     statusMode: RepeatLeadStatusMode;
+    /** Match by phone only: a repeat with a new email joins the person who already holds the phone. */
+    samePersonByPhone: boolean;
+    /** Match by phone only: a counsellor cannot add by hand a phone another counsellor owns. */
+    blockOwnedManualAdd: boolean;
 }
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup (backend contract). */
@@ -69,6 +76,8 @@ export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
     specificCounsellorId: null,
     specificCounsellorName: null,
     statusMode: 'KEEP_EXISTING',
+    samePersonByPhone: false,
+    blockOwnedManualAdd: false,
 };
 
 export const LEAD_DEDUP_SETTINGS_DEFAULTS: LeadDedupSettings = {
@@ -94,6 +103,8 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
         specificCounsellorId: subtree?.specificCounsellorId ?? null,
         specificCounsellorName: subtree?.specificCounsellorName ?? null,
         statusMode: subtree?.statusMode === 'RESET_TO_NEW' ? 'RESET_TO_NEW' : 'KEEP_EXISTING',
+        samePersonByPhone: subtree?.samePersonByPhone === true,
+        blockOwnedManualAdd: subtree?.blockOwnedManualAdd === true,
     };
 }
 

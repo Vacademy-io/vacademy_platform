@@ -83,6 +83,14 @@ class ManualLeadOwnerGuardTest {
         assertDoesNotThrow(() -> guard.checkCanAdd(request("9876543210"), caller));
     }
 
+    /** Front desk and other non-counsellor staff add walk-ins as before. */
+    @Test
+    void staffWhoAreNotCounsellorsGoThrough() {
+        ownedBy("counsellor-other", "Shruti");
+        when(caller.getUserId()).thenReturn("front-desk");
+        assertDoesNotThrow(() -> guard.checkCanAdd(request("9876543210"), caller));
+    }
+
     @Test
     void ownerWhoIsNoLongerACounsellorDoesNotBlock() {
         ownedBy("counsellor-removed", "Gone");

@@ -24,11 +24,12 @@ import java.util.Optional;
  * then worked the same student. Now the add is refused with the current owner's name, so
  * the counsellor knows whom to talk to.
  *
- * <p>Only the authenticated single add-lead form ({@code POST .../v1/audience/lead/submit})
- * calls this. Admins may still add (their counsellor pick, if any, stands); a counsellor
- * may re-add their own lead; a lead whose owner is no longer a counsellor is free to take.
- * Any other dedup setting, a phone too short to match, or a failed lookup lets the add
- * through unchanged.
+ * <p>Off unless the institute's Lead Settings have dedup on PHONE with "Allow & reassign"
+ * and {@code repeatLead.blockOwnedManualAdd} switched on. Only the authenticated single
+ * add-lead form ({@code POST .../v1/audience/lead/submit}) calls this. Admins and non-
+ * counsellor staff may still add; a counsellor may re-add their own lead; a lead whose owner
+ * is no longer a counsellor is free to take. A phone too short to match, or a failed
+ * lookup, lets the add through unchanged.
  */
 @Service
 @RequiredArgsConstructor
@@ -59,9 +60,12 @@ public class ManualLeadOwnerGuard {
             owner = current.get();
             if (owner.getCounsellorId().equals(caller.getUserId())) return;
             if (counsellorScopeService.hasAdminRole(caller, instituteId)) return;
-            // An empty roster means the lookup failed; then trust the owner.
             List<String> counsellors = counsellorScopeService.allCounsellorUserIds(instituteId);
-            if (!counsellors.isEmpty() && !counsellors.contains(owner.getCounsellorId())) return;
+            // Only counsellors are held back (front desk and other staff add walk-ins as
+            // before), and only for an owner who is still a counsellor. An empty roster
+            // means the lookup failed, which lets the add through.
+            if (!counsellors.contains(caller.getUserId())) return;
+            if (!counsellors.contains(owner.getCounsellorId())) return;
         } catch (Exception e) {
             logger.warn("Manual lead add for audience {}: owner check failed, allowing the add: {}",
                     request.getAudienceId(), e.getMessage());

@@ -11,6 +11,8 @@
  *   5. Repeat lead handling (only when action = allow & reassign):
  *      - Counsellor: none / same as previous / a specific counsellor / round-robin
  *      - Status: keep their current status, or reset to New
+ *      - Match by phone only: join the existing person; stop counsellors adding a
+ *        lead another counsellor owns
  *
  * Persisted at LEAD_SETTING.data.dedup (snake_case-free, matches backend enum
  * casing directly). The save path READ-MODIFY-WRITES the whole LEAD_SETTING
@@ -457,6 +459,62 @@ export default function LeadDedupSettings() {
                                                 </SelectContent>
                                             </Select>
                                         </div>
+
+                                        {field === 'PHONE' && (
+                                            <>
+                                                <div className="flex items-start gap-3">
+                                                    <Switch
+                                                        id="repeat-same-person"
+                                                        checked={repeatLead.samePersonByPhone}
+                                                        onCheckedChange={(v) =>
+                                                            updateRepeatLead({
+                                                                samePersonByPhone: v,
+                                                            })
+                                                        }
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <Label
+                                                            htmlFor="repeat-same-person"
+                                                            className="cursor-pointer"
+                                                        >
+                                                            {t(
+                                                                'repeatLead.samePersonByPhone.label'
+                                                            )}
+                                                        </Label>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t('repeatLead.samePersonByPhone.hint')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-start gap-3">
+                                                    <Switch
+                                                        id="repeat-block-owned"
+                                                        checked={repeatLead.blockOwnedManualAdd}
+                                                        onCheckedChange={(v) =>
+                                                            updateRepeatLead({
+                                                                blockOwnedManualAdd: v,
+                                                            })
+                                                        }
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <Label
+                                                            htmlFor="repeat-block-owned"
+                                                            className="cursor-pointer"
+                                                        >
+                                                            {t(
+                                                                'repeatLead.blockOwnedManualAdd.label'
+                                                            )}
+                                                        </Label>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t(
+                                                                'repeatLead.blockOwnedManualAdd.hint'
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </>

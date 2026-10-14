@@ -66,6 +66,14 @@
                 "keepExisting": "Keep their current status",
                 "resetToNew": "Reset to New"
             }
+        },
+        "samePersonByPhone": {
+            "label": "Treat the same phone as the same person",
+            "hint": "A repeat enquiry with a new email joins the existing lead and keeps its counsellor, instead of becoming a second lead."
+        },
+        "blockOwnedManualAdd": {
+            "label": "Stop counsellors adding another counsellor's lead",
+            "hint": "When a counsellor adds a lead by hand and the phone already belongs to another counsellor's lead, show who owns it and don't add it. Admins can still add."
         }
     },
     "counsellorPicker": {

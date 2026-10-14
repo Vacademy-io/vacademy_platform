@@ -29,7 +29,11 @@ import java.util.List;
  *     "counsellorMode": "NONE" | "SAME_AS_PREVIOUS" | "SPECIFIC" | "ROUND_ROBIN",
  *     "specificCounsellorId": "...",  // only meaningful when counsellorMode = SPECIFIC
  *     "specificCounsellorName": "...",
- *     "statusMode": "KEEP_EXISTING" | "RESET_TO_NEW"
+ *     "statusMode": "KEEP_EXISTING" | "RESET_TO_NEW",
+ *     "samePersonByPhone": false,     // field = PHONE: a repeat with a new email joins the
+ *                                     // person who already holds the phone
+ *     "blockOwnedManualAdd": false    // field = PHONE: a counsellor cannot add by hand a
+ *                                     // phone whose lead another counsellor owns
  *   }
  * }
  * </pre>
@@ -68,8 +72,19 @@ public class LeadDedupSettingService {
     /** KEEP_EXISTING — don't touch conversion_status. RESET_TO_NEW — set it back to "LEAD". */
     public enum StatusMode { KEEP_EXISTING, RESET_TO_NEW }
 
+    /**
+     * {@code samePersonByPhone} and {@code blockOwnedManualAdd} only act when the dedup field
+     * is PHONE; both default to off, which keeps the behaviour from before they existed.
+     */
     public record RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
-            String specificCounsellorName, StatusMode statusMode) {
+            String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
+            boolean blockOwnedManualAdd) {
+
+        /** Both phone switches off. */
+        public RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
+                String specificCounsellorName, StatusMode statusMode) {
+            this(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode, false, false);
+        }
     }
 
     public record DedupSettings(boolean enabled, DedupField field, DedupScope scope, List<String> audienceIds,
@@ -203,6 +218,8 @@ public class LeadDedupSettingService {
             }
         }
 
-        return new RepeatLeadSettings(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode);
+        return new RepeatLeadSettings(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode,
+                node.path("samePersonByPhone").asBoolean(false),
+                node.path("blockOwnedManualAdd").asBoolean(false));
     }
 }

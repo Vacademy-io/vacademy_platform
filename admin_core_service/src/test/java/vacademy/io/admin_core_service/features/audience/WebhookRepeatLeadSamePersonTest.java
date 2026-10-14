@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import vacademy.io.admin_core_service.features.audience.dto.ProcessedFormDataDTO;
+import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
@@ -135,16 +136,54 @@ class WebhookRepeatLeadSamePersonTest {
         verify(profileService, never()).assignCounselor(any(), any(), any(), any());
     }
 
+    /** The person already has a lead in this list: the repeat still comes in as its own lead. */
     @Test
-    void sameListAgainIsTheExistingDuplicateGuard() {
+    void sameListRepeatStillComesInAsItsOwnLead() {
         repeatMatched();
         when(dedup.findExistingLeadUserIdByPhone(any(), any(), any())).thenReturn(Optional.of("user-old"));
-        when(auth.getUsersFromAuthServiceByUserIds(List.of("user-old"))).thenReturn(List.of(oldPerson()));
         when(responses.existsByAudienceIdAndUserId("aud-1", "user-old")).thenReturn(true);
 
         submit();
 
-        verify(responses, never()).save(any(AudienceResponse.class));
+        verify(auth).createUserFromAuthService(any(), eq("inst-1"), eq(false));
+        assertEquals("user-new", saved().getUserId());
+    }
+
+    private String submitByHand(String counsellorId) {
+        SubmitLeadRequestDTO request = new SubmitLeadRequestDTO();
+        request.setAudienceId("aud-1");
+        request.setSourceType("WALK_IN");
+        request.setCounsellorId(counsellorId);
+        UserDTO user = new UserDTO();
+        user.setEmail("asha@example.com");
+        user.setFullName("Asha Rao");
+        user.setMobileNumber("+919876543210");
+        request.setUserDTO(user);
+        return service.submitLead(request);
+    }
+
+    /** A hand-picked counsellor other than the owner keeps the old path, so intake never moves an owned lead. */
+    @Test
+    void manualCounsellorOtherThanTheOwnerDoesNotJoinThePerson() {
+        repeatMatched();
+        when(dedup.findExistingLeadUserIdByPhone(any(), any(), any())).thenReturn(Optional.of("user-old"));
+
+        submitByHand("counsellor-other");
+
+        verify(auth).createUserFromAuthService(any(), eq("inst-1"), eq(false));
+        assertEquals("user-new", saved().getUserId());
+    }
+
+    @Test
+    void manualCounsellorWhoIsTheOwnerJoinsThePerson() {
+        repeatMatched();
+        when(dedup.findExistingLeadUserIdByPhone(any(), any(), any())).thenReturn(Optional.of("user-old"));
+        when(auth.getUsersFromAuthServiceByUserIds(List.of("user-old"))).thenReturn(List.of(oldPerson()));
+
+        submitByHand("counsellor-previous");
+
+        verify(auth, never()).createUserFromAuthService(any(), any(), anyBoolean());
+        assertEquals("user-old", saved().getUserId());
     }
 
     @Test

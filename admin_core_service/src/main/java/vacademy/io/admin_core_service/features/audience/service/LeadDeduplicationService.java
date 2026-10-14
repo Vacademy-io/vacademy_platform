@@ -220,14 +220,15 @@ public class LeadDeduplicationService {
 
     /**
      * The person who already holds this phone in the dedup scope, when the institute dedups
-     * on PHONE with "Allow & reassign". A repeat that brings a different email then joins
-     * that person instead of becoming a second person, a second lead and often a second
-     * owner (auth_service matches people by email, not phone). Prefers a lead that has an
-     * owner, then the newest. Empty for any other setting, a short phone, or no match.
+     * on PHONE with "Allow & reassign" and has switched on repeatLead.samePersonByPhone. A
+     * repeat that brings a different email then joins that person instead of becoming a
+     * second person, a second lead and often a second owner (auth_service matches people by
+     * email, not phone). Prefers a lead that has an owner, then the newest. Empty for any
+     * other setting, a short phone, or no match.
      */
     public Optional<String> findExistingLeadUserIdByPhone(String instituteId, String audienceId, String phone) {
         LeadDedupSettingService.DedupSettings settings = phoneReassignSettings(instituteId);
-        if (settings == null) return Optional.empty();
+        if (settings == null || !settings.repeatLead().samePersonByPhone()) return Optional.empty();
         String last10 = lastNDigits(phone, 10);
         if (last10 == null) return Optional.empty();
         List<String> users = audienceResponseRepository.findLeadUserIdByPhoneLast10(
@@ -238,12 +239,13 @@ public class LeadDeduplicationService {
     /**
      * Counsellor who currently owns the lead with this phone in the dedup scope (the most
      * recent active, owned one), when the institute dedups on PHONE with "Allow &
-     * reassign". Used to stop a counsellor adding by hand a lead someone else owns.
+     * reassign" and has switched on repeatLead.blockOwnedManualAdd. Used to stop a
+     * counsellor adding by hand a lead someone else owns.
      */
     public Optional<AudienceResponseRepository.LeadOwnerRow> findCurrentOwnerByPhone(String instituteId,
             String audienceId, String phone) {
         LeadDedupSettingService.DedupSettings settings = phoneReassignSettings(instituteId);
-        if (settings == null) return Optional.empty();
+        if (settings == null || !settings.repeatLead().blockOwnedManualAdd()) return Optional.empty();
         String last10 = lastNDigits(phone, 10);
         if (last10 == null) return Optional.empty();
         List<AudienceResponseRepository.LeadOwnerRow> owners = audienceResponseRepository
@@ -255,6 +257,7 @@ public class LeadDeduplicationService {
     private LeadDedupSettingService.DedupSettings phoneReassignSettings(String instituteId) {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
         boolean applies = settings.enabled()
+                && settings.repeatLead() != null
                 && settings.field() == LeadDedupSettingService.DedupField.PHONE
                 && settings.action() == LeadDedupSettingService.DedupAction.ALLOW_REASSIGN
                 // SELECTED with no lists dedups nothing (checkDuplicate fails open), so no match either.

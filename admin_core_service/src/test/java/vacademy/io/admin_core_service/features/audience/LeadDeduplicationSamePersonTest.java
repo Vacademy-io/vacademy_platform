@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.audience.service.LeadDedupSetting
 import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService.DedupField;
 import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService.DedupScope;
 import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService.DedupSettings;
+import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService.RepeatLeadSettings;
 import vacademy.io.admin_core_service.features.audience.service.LeadDeduplicationService;
 
 import java.lang.reflect.Field;
@@ -16,12 +17,14 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
  * The same-person and current-owner lookups only answer under PHONE dedup with
- * "Allow & reassign", and in the scope the dedup check uses — any other setting keeps
- * the old behaviour (a new email is a new person; manual adds are not checked).
+ * "Allow & reassign" and their own Lead Settings switch on, in the scope the dedup check
+ * uses — any other setting keeps the old behaviour (a new email is a new person; manual
+ * adds are not checked).
  */
 class LeadDeduplicationSamePersonTest {
 
@@ -48,10 +51,35 @@ class LeadDeduplicationSamePersonTest {
         return f.get(service);
     }
 
+    private static final RepeatLeadSettings BOTH_ON = new RepeatLeadSettings(
+            LeadDedupSettingService.CounsellorMode.SAME_AS_PREVIOUS, null, null,
+            LeadDedupSettingService.StatusMode.KEEP_EXISTING, true, true);
+
     private void withSettings(boolean enabled, DedupField field, DedupScope scope, List<String> audienceIds,
             DedupAction action) {
+        withSettings(enabled, field, scope, audienceIds, action, BOTH_ON);
+    }
+
+    private void withSettings(boolean enabled, DedupField field, DedupScope scope, List<String> audienceIds,
+            DedupAction action, RepeatLeadSettings repeatLead) {
         when(settings.get("inst-1")).thenReturn(new DedupSettings(enabled, field, scope, audienceIds,
-                action, LeadDedupSettingService.DEFAULT_REPEAT_LEAD));
+                action, repeatLead));
+    }
+
+    @Test
+    void lookupsStayOffUntilTheirSwitchIsOn() {
+        withSettings(true, DedupField.PHONE, DedupScope.INSTITUTE, List.of(), DedupAction.ALLOW_REASSIGN,
+                LeadDedupSettingService.DEFAULT_REPEAT_LEAD);
+        assertEquals(Optional.empty(), service.findExistingLeadUserIdByPhone("inst-1", "aud-1", "9876543210"));
+        assertEquals(Optional.empty(), service.findCurrentOwnerByPhone("inst-1", "aud-1", "9876543210"));
+        verifyNoInteractions(responses);
+
+        // Each switch only turns on its own lookup.
+        withSettings(true, DedupField.PHONE, DedupScope.INSTITUTE, List.of(), DedupAction.ALLOW_REASSIGN,
+                new RepeatLeadSettings(LeadDedupSettingService.CounsellorMode.SAME_AS_PREVIOUS, null, null,
+                        LeadDedupSettingService.StatusMode.KEEP_EXISTING, false, true));
+        assertEquals(Optional.empty(), service.findExistingLeadUserIdByPhone("inst-1", "aud-1", "9876543210"));
+        verify(responses, never()).findLeadUserIdByPhoneLast10(any(), any(), any());
     }
 
     @Test

@@ -697,8 +697,7 @@ public class AudienceService {
         }
 
         // 1. Create/fetch the lead's user in auth_service (no credentials email).
-        UserDTO createdUser = resolveLeadUser(userDTO, audience.getInstituteId(), audience.getId(),
-                repeatLeadSettings != null);
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
         String userId = createdUser != null ? createdUser.getId() : null;
 
         // 2. Dedup per person per campaign (same behaviour as submitLeadV2).
@@ -882,8 +881,7 @@ public class AudienceService {
         }
 
         // 1. Create/fetch the lead's user in auth_service (no credentials email).
-        UserDTO createdUser = resolveLeadUser(userDTO, audience.getInstituteId(), audience.getId(),
-                repeatLeadSettings != null);
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
         String userId = createdUser != null ? createdUser.getId() : null;
 
         // 2. Per-person-per-campaign dedup — revive a soft-deleted lead rather than duplicate.
@@ -1422,7 +1420,7 @@ public class AudienceService {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
                 createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
-                        requestDTO.getAudienceId(), repeatLeadSettings != null);
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
                 // Prepare effectively final variables for lambda
                 final UserDTO userForNotification = createdUser;
@@ -1881,21 +1879,27 @@ public class AudienceService {
     }
 
     /**
-     * The lead's person record. Under phone dedup with "Allow & reassign" a repeat joins the
-     * person who already holds this phone: auth_service matches people by email, so a repeat
+     * The lead's person record. Under phone dedup with "Allow & reassign" and the Lead
+     * Settings switch repeatLead.samePersonByPhone on, a repeat joins the person who already
+     * holds this phone: auth_service matches people by email, so a repeat
      * with a new email would otherwise become a second person, a second lead and often a
      * second owner. The submission's own name, email and phone are kept on the returned DTO,
-     * so this request's notifications go where they always did. Any other case, or a failed
-     * lookup, creates or fetches by email exactly as before (no credentials email).
+     * so this request's notifications go where they always did.
+     *
+     * <p>Kept exactly as before (create or fetch by email, no credentials email) when it is
+     * not such a repeat, the lookup fails, the person already has a lead in this same list
+     * (a repeat there still comes in as its own lead), or the request names a counsellor
+     * other than the person's current owner (so intake never moves an owned lead).
      */
     private UserDTO resolveLeadUser(UserDTO userDTO, String instituteId, String audienceId,
-            boolean repeatLead) {
+            boolean repeatLead, String requestedCounsellorId) {
         if (repeatLead && userDTO != null) {
             try {
                 String existingId = leadDeduplicationService
                         .findExistingLeadUserIdByPhone(instituteId, audienceId, userDTO.getMobileNumber())
                         .orElse(null);
-                if (existingId != null) {
+                if (existingId != null && canJoinExistingPerson(existingId, instituteId, audienceId,
+                        requestedCounsellorId)) {
                     List<UserDTO> found = authService.getUsersFromAuthServiceByUserIds(List.of(existingId));
                     UserDTO existing = found == null ? null : found.stream()
                             .filter(u -> u != null && existingId.equals(u.getId()))
@@ -1917,6 +1921,24 @@ public class AudienceService {
             }
         }
         return authService.createUserFromAuthService(userDTO, instituteId, false);
+    }
+
+    /**
+     * Whether a repeat may join {@code existingId}: not when that person already has a lead
+     * in this list, and not when the request names a counsellor other than their owner.
+     */
+    private boolean canJoinExistingPerson(String existingId, String instituteId, String audienceId,
+            String requestedCounsellorId) {
+        if (audienceResponseRepository.existsByAudienceIdAndUserId(audienceId, existingId)) {
+            return false;
+        }
+        if (!StringUtils.hasText(requestedCounsellorId)) {
+            return true;
+        }
+        String owner = userLeadProfileRepository.findByUserIdAndInstituteId(existingId, instituteId)
+                .map(p -> p.getAssignedCounselorId())
+                .orElse(null);
+        return !StringUtils.hasText(owner) || owner.equals(requestedCounsellorId);
     }
 
     /**
@@ -2053,7 +2075,7 @@ public class AudienceService {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
                 createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
-                        requestDTO.getAudienceId(), repeatLeadSettings != null);
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
 
                 // Duplicate submission guard: same audience + same user
@@ -5407,7 +5429,7 @@ public class AudienceService {
                 .mobileNumber(processedData.getPhone())
                 .build();
 
-        UserDTO createdUser = resolveLeadUser(userDTO, instituteId, audienceId, repeatLeadSettings != null);
+        UserDTO createdUser = resolveLeadUser(userDTO, instituteId, audienceId, repeatLeadSettings != null, null);
         String userId = createdUser.getId();
 
         // Ensure mobile number from form is preserved (auth service might return

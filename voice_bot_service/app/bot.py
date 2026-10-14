@@ -232,6 +232,16 @@ def mostly_played(sentence: str, played_key: str, share: float = 0.6) -> bool:
     return k[:int(len(k) * share)] in played_key
 
 
+def cut_still_current(cut_t: float, bot_speaking: bool, bot_started_t: float) -> bool:
+    """Does a cut at cut_t still describe what is on the line now? A cut
+    belongs to the reply it stopped: once NEWER audio is playing, that is a
+    different reply and it was not cut. Call edbbe7b3 (2026-10-14): a "हम्म"
+    2.6 s after a barge-in counted as cutting the percent question then
+    playing, and a carry-on cue sent a second reply straight after the
+    question (bot audio continuous for 14.6 s) — the father never answered."""
+    return not (bot_speaking and bot_started_t > cut_t)
+
+
 # "करतो/करते", "सर/मॅडम", "शिकतो/शिकते": a prompt's either-or written as a
 # slash pair, copied into a reply — the voice reads the slash or both words
 # (call 7f86df90, 2026-09-25: "…खूप छान करतो/करते पण…"). Keep ONE: the address
@@ -345,7 +355,7 @@ class TranscriptCollector(FrameProcessor):
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
                  forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
                  voice_live=None, resay_opening=None, cut_after_voice_secs: float = 0.0,
-                 ack_answer_window_secs: float = 3.0):
+                 ack_answer_window_secs: float = 3.0, bot_started_t=None):
         super().__init__()
         self._outcome = outcome
         # "voice" barge-in mode (config.barge_in_mode): 0 = off (onset mode).
@@ -396,6 +406,13 @@ class TranscriptCollector(FrameProcessor):
         # _release_user_turn closes it when we swallow the final it is waiting for.
         self._user_turn_open = False
         self._vad_started_t = 0.0
+        # The VAD onset whose words already went to the model as a real
+        # barge-in. That burst's turn is taken: its VAD stop must not ALSO
+        # resume the cut words, and its voice-cut timer must not fire on what
+        # plays next. Call afa21bf4 (2026-10-14): "तो।" landed 95 ms before its
+        # own VAD stop, the model answered it AND the stop resumed the cut
+        # marks question — the caller heard that question twice back to back.
+        self._barged_onset = 0.0
         self._resumed_t = 0.0
         self._reran_for = ""
         self._resume_check = None
@@ -469,6 +486,9 @@ class TranscriptCollector(FrameProcessor):
         # the bot has said nothing since the first copy; if it asked a NEW question
         # in between, an identical short answer ("haan") is a REAL answer.
         self._bot_stopped_t = bot_stopped_t or (lambda: 0.0)
+        # When the bot's audio last STARTED (see _was_cut: a cut belongs to the
+        # reply it stopped, not to newer audio playing after it).
+        self._bot_started_t = bot_started_t or (lambda: 0.0)
         # Dedupe window for identical consecutive transcripts ("Hello" x3 while the
         # pipeline warms up): each repeat triggered its own LLM run → the intro was
         # spoken twice back-to-back on a live call.
@@ -557,6 +577,22 @@ class TranscriptCollector(FrameProcessor):
                 # Voice mode and nothing was cut: the reply is still playing
                 # (or composing). There is nothing to resume or re-ask.
                 pass
+            elif self._vad_started_t and self._barged_onset == self._vad_started_t:
+                # This burst's final arrived FIRST and already went to the
+                # model as a real barge-in — the "cut" is that barge-in's own.
+                # One burst, one response: the model's. Resuming as well put
+                # two producers on the line for one "तो।" (call afa21bf4) and
+                # one "हं?" (call 4a594125, both 2026-10-14).
+                logger.info("turn-gate: this burst's words are already the model's turn "
+                            "— not resuming the cut words as well")
+                if (time.time() - self._vad_started_t <= self._resume_on_stop_secs
+                        and not self._is_bot_speaking()):
+                    # The safety net stays: if that turn's run never makes a
+                    # sound (swallowed, or cut before a word played), the
+                    # answer is asked for once. It stands down whenever the
+                    # model's reply is pending or playing.
+                    await self._answer_check_after_stt(
+                        FrameDirection.DOWNSTREAM, time.time() - self._vad_started_t)
             elif self._resume_on_stop_secs > 0 and self._vad_started_t:  # noqa: SIM102
                 # Their voice has stopped and it was SHORT, and we were cut
                 # before finishing a question — so they cannot have been
@@ -1213,6 +1249,16 @@ class TranscriptCollector(FrameProcessor):
                             "(ducked=%s)", text[:40], ducked)
                 # They took the turn: the words we were resuming are stale.
                 self._cancel_resume_check(stale=True)
+                # …and this voice onset is spent. Its VAD stop must not resume
+                # the cut words too, and the voice-cut timer armed for it must
+                # not fire later: on calls 5e979e3e and 662d1c80 (2026-10-14)
+                # it fired 22-500 ms into the opening this barge-in re-said,
+                # cut it, and the caller got 14 s of silence.
+                if self._vad_started_t:
+                    self._barged_onset = self._vad_started_t
+                t, self._voice_cut_task = self._voice_cut_task, None
+                if t is not None and not t.done():
+                    t.cancel()
                 # Their words go downstream BEFORE the cut. The interruption's
                 # job is the bot's audio, which does not care about order; the
                 # transcript, pushed 30 ms after our own interruption, has been
@@ -1386,9 +1432,16 @@ class TranscriptCollector(FrameProcessor):
         बिल्कुल" landed 0.1 s later, read as an aside over a still-playing reply,
         and nothing resumed — 8 s of silence, then "Hello?" re-asked the marks
         question the caller had already answered, because the closing question
-        he had never heard was not the last one PLAYED."""
-        return (self._interrupt_on_vad()
-                or (self._self_cut_t > 0 and time.time() - self._self_cut_t < 3.0))
+        he had never heard was not the last one PLAYED.
+
+        Only a cut of what is on the line NOW (cut_still_current, call
+        edbbe7b3)."""
+        if self._interrupt_on_vad():
+            return True
+        if self._self_cut_t <= 0 or time.time() - self._self_cut_t >= 3.0:
+            return False
+        return cut_still_current(self._self_cut_t, self._is_bot_speaking(),
+                                 self._bot_started_t())
 
     def _voice_stopped(self) -> bool:
         """Bookkeeping for a VAD stop; always True so it can sit in an elif."""
@@ -1419,6 +1472,8 @@ class TranscriptCollector(FrameProcessor):
             await asyncio.sleep(self._cut_after)
             if not self._voice_on or self._vad_started_t != onset_t:
                 return
+            if self._barged_onset == onset_t:
+                return                  # this onset already cut the reply (a real barge-in)
             if not (self._is_bot_speaking() or self._reply_in_flight()):
                 return
             logger.info("turn-gate: caller has talked %.1fs over the reply — stopping it",
@@ -2193,6 +2248,7 @@ class NoRepeatGate(FrameProcessor):
         # What take_unplayed_tail last handed to the turn-gate, so it can be
         # given back if the caller never actually heard it.
         self._resumed_entries: list = []
+        self._resumed_at = 0.0
         self._buf = ""
         # How the bot addresses the caller so far ("f" madam / "m" sir): picks
         # the side of a "सर/मॅडम" pair the model copies from its prompt.
@@ -2437,7 +2493,33 @@ class NoRepeatGate(FrameProcessor):
                 self._asked[topic] = norm
             self._pending.append((norm, topic, prev_exemplar, said))
         self._resumed_entries = entries
+        self._resumed_at = time.time()
         return tail
+
+    # How long after a hand-over its words can still be on their way to the
+    # caller: the settle, a re-send, and a long sentence playing out.
+    _RESUME_LIVE_SECS = 12.0
+
+    def _being_resumed(self, sentence: str) -> bool:
+        """Is this one of the cut words the turn-gate is saying again right
+        now — handed over moments ago and not yet fully heard? Then a model
+        reply that repeats it is not "the caller already answered it": they
+        have not even heard it yet, and the resume will say it. Call afa21bf4
+        (2026-10-14): the model's copy of the resumed marks question was
+        dropped, the gate decided the caller had "already answered" and asked
+        for a next step, and the caller heard the question twice."""
+        if (not self._resumed_entries or self._played_text is None
+                or time.time() - self._resumed_at > self._RESUME_LIVE_SECS):
+            return False
+        try:
+            played = spoken_key(self._played_text() or "")
+        except Exception:
+            return False
+        for norm, _topic, _prev, _said in self._resumed_entries:
+            if (norm and is_repeat(sentence, [norm], threshold=0.80)
+                    and spoken_key(norm) not in played):
+                return True
+        return False
 
     def forget_resumed(self) -> bool:
         """Undo the last hand-over: the caller never heard those words, so they
@@ -2504,6 +2586,15 @@ class NoRepeatGate(FrameProcessor):
         if not (is_repeat(sentence, self._spoken, threshold=bar)
                 or same_topic_reask):
             return True
+        if self._being_resumed(sentence):
+            # Dropped, but not counted against its budget: the caller has not
+            # had the chance to "move on" from words still playing. Call
+            # 4a594125 (2026-10-14): two drops during the resume of the
+            # WhatsApp line used the budget up, and the third copy was spoken
+            # right after the resume finished.
+            logger.info("no-repeat: %r is being resumed right now — dropping the "
+                        "model's copy", sentence.strip()[:56])
+            return False
         # ONE budget per topic, not one per mechanism. Keying the two branches
         # separately let a re-asked question burn 2 drops as a near-identical
         # sentence and 2 more as an already-asked topic — four silent drops for
@@ -2771,6 +2862,18 @@ class NoRepeatGate(FrameProcessor):
             # minutes later, mid-topic).
             self._unplayed_tail = ""
             self._unplayed_entries = []
+            # A resume still on its way is cut like any reply. Its words went
+            # into _pending when handed over, but a model response starting
+            # since then emptied _pending — and the cut resume stayed "said"
+            # though never heard (afa21bf4 replayed, 2026-10-14: the barge-in
+            # cut the resumed marks question, and the model's own copy of it
+            # was then dropped as a repeat). Judge them here with the rest.
+            if (self._resumed_entries
+                    and time.time() - self._resumed_at <= self._RESUME_LIVE_SECS):
+                for e in self._resumed_entries:
+                    if e not in self._pending:
+                        self._pending.append(e)
+            self._resumed_entries = []
             # A cancelled reply's unsaid tail was never heard, so it is not
             # "already said" — but what DID play is still in _spoken.
             #
@@ -3091,7 +3194,17 @@ class NoRepeatGate(FrameProcessor):
                 self._held_tail = self._held_question
             if (not self._real_this_reply and self._held_tail
                     and not self._end_forced() and not superseded):
-                if self._consecutive_handbacks >= 1:
+                if self._being_resumed(self._held_tail):
+                    # The whole reply repeated the cut words the turn-gate is
+                    # saying again right now. The caller has not answered them
+                    # — they have not heard them yet — so there is no next
+                    # step to ask for and nothing to hand back: the resume IS
+                    # the reply (call afa21bf4, 2026-10-14). Nothing held may
+                    # be spoken on top of it either.
+                    logger.info("no-repeat: whole reply repeats the words being resumed "
+                                "right now — adding nothing, they are about to hear them")
+                    self._echo_held = self._cf_held = ""
+                elif self._consecutive_handbacks >= 1:
                     # ESCALATE (call 3148ccd4). We already handed the turn back
                     # once and the caller still has nothing to answer. Saying
                     # "you talk" a second time is how a call becomes unrecoverable
@@ -6079,6 +6192,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["last_cut_t"] = time.time()
 
     def _recently_cut() -> bool:
+        # Only a cut of what is on the line NOW (call edbbe7b3, 2026-10-14).
+        if not cut_still_current(flags["last_cut_t"], flags["bot_speaking"],
+                                 flags["bot_started_t"]):
+            return False
         return (flags["last_cut_t"] > 0
                 and time.time() - flags["last_cut_t"] <= settings.backchannel_carry_secs)
 
@@ -6301,6 +6418,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      on_transcript=on_transcript,
                                      fillers_armed=lambda: flags["bot_spoke_once"],
                                      bot_stopped_t=lambda: flags["bot_stopped_t"],
+                                     bot_started_t=lambda: flags["bot_started_t"],
                                      duck=duck, on_absorb=_absorb,
                                      backchannel_extra=settings.backchannel_extra,
                                      gate_enabled=lambda: settings.duck_enabled,

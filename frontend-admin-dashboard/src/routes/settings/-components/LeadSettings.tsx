@@ -51,6 +51,8 @@ export interface LeadSettingsData {
     /** Hide converted leads from the unfiltered "All leads" view (Recent Leads + Lead List). */
     hideConvertedInAllLeads: boolean;
     showConvertedFilterOption: boolean;
+    /** Keep LOST leads out of every Follow-ups bucket, Completed included. On by default. */
+    hideLostInFollowUps: boolean;
     /**
      * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
@@ -73,6 +75,7 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
+    hideLostInFollowUps: true,
     labels: {},
 };
 
@@ -96,6 +99,8 @@ const fetchLeadSettings = async (): Promise<LeadSettingsData> => {
         ...DEFAULT_LEAD_SETTINGS,
         ...saved,
         scoringWeights: { ...DEFAULT_LEAD_SETTINGS.scoringWeights, ...saved.scoringWeights },
+        // On unless explicitly switched off - older blobs have no key.
+        hideLostInFollowUps: saved.hideLostInFollowUps !== false,
     };
 };
 
@@ -342,6 +347,29 @@ function ConfigSection({
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 {t('allLeadsCard.showConvertedFilterHint')}
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    {/* ── Follow-ups: keep lost leads out of every bucket ── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('followUpsCard.title')}</CardTitle>
+                            <CardDescription>{t('followUpsCard.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="hideLostInFollowUps"
+                                    checked={settings.hideLostInFollowUps}
+                                    onCheckedChange={(v) => update({ hideLostInFollowUps: v })}
+                                />
+                                <Label htmlFor="hideLostInFollowUps" className="cursor-pointer">
+                                    {t('followUpsCard.hideLost')}
+                                </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('followUpsCard.hideLostHint')}
                             </p>
                         </CardContent>
                     </Card>

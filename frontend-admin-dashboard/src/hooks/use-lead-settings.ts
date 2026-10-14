@@ -108,6 +108,12 @@ export interface LeadSettingsConfig {
      * that keep their own CONVERTED status see two near-identical options without this.
      */
     showConvertedFilterOption: boolean;
+    /**
+     * Keep LOST leads out of every Follow-ups bucket (Today, Upcoming, Overdue, All and
+     * Completed). ON by default - an institute that wants them back switches it off in
+     * Lead Settings. A sidebar route that names its own statuses still wins.
+     */
+    hideLostInFollowUps: boolean;
 
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
@@ -248,6 +254,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
+    hideLostInFollowUps: true,
     followUpFields: {
         enabled: false,
         studentResponses: [],
@@ -384,6 +391,8 @@ export function mergeLeadSettings(
         },
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        // On unless explicitly switched off - a blob saved before this flag existed has no key.
+        hideLostInFollowUps: saved.hideLostInFollowUps !== false,
         followUpFields: normaliseFollowUpFields(saved.followUpFields),
         leadLookup: normaliseLeadLookup(saved.leadLookup),
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
@@ -403,6 +412,28 @@ async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
     } catch {
         return LEAD_SETTINGS_DEFAULTS;
     }
+}
+
+/** status_key of the system "Lost" status. Seeded for every institute; only the label varies. */
+export const LOST_STATUS_KEY = 'LOST';
+
+/**
+ * The lead-status filter a Follow-ups request should carry.
+ *
+ * The sidebar route's own `status` comes first. With `hideLost` on, LOST is added to an
+ * exclude list (or becomes one when the route names nothing); a route that INCLUDES
+ * specific statuses is left alone, since it already decides what shows - including a
+ * route that asks for LOST on purpose.
+ */
+export function followUpStatusFilter(
+    routeStatusKeys: string,
+    routeExcludes: boolean,
+    hideLost: boolean
+): { leadStatusId?: string; leadStatusExcludeId?: string } {
+    if (routeStatusKeys && !routeExcludes) return { leadStatusId: routeStatusKeys };
+    const keys = routeStatusKeys ? routeStatusKeys.split(',') : [];
+    if (hideLost && !keys.includes(LOST_STATUS_KEY)) keys.push(LOST_STATUS_KEY);
+    return keys.length ? { leadStatusExcludeId: keys.join(',') } : {};
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────

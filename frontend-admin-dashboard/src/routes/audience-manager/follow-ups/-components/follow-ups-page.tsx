@@ -42,7 +42,7 @@ import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { followUpStatusFilter, useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
@@ -338,13 +338,21 @@ const FollowUpsContent = () => {
     // queue covers (e.g. an institute that parks lost leads in their own tab links here
     // with status=LOST&statusExclude=1). No picker on this page; the route owns it.
     // Completed honours it too, so a lost lead's closed calls stay out of that list.
+    // On top of the route, Lead Settings -> hideLostInFollowUps (on by default) keeps
+    // LOST leads out of every bucket; see followUpStatusFilter.
     const statusKeys = (statusParam ?? '')
         .split(',')
         .map((k) => k.trim())
         .filter(Boolean)
         .join(',');
-    const leadStatusId = statusKeys && statusExclude !== '1' ? statusKeys : undefined;
-    const leadStatusExcludeId = statusKeys && statusExclude === '1' ? statusKeys : undefined;
+    const { leadStatusId, leadStatusExcludeId } = followUpStatusFilter(
+        statusKeys,
+        statusExclude === '1',
+        leadSettings.hideLostInFollowUps
+    );
+    // Hold the queries until the setting is known, so an institute that switched it off
+    // never sees a LOST-less list flash first.
+    const statusFilterReady = !leadSettings.isLoading;
 
     // Completed tile controls. Its own search and window because it queries a
     // different endpoint — the lead filters above do not apply to follow-up events.
@@ -474,7 +482,7 @@ const FollowUpsContent = () => {
                 { ...EMPTY_COUNTS, completed: completed?.totalElements ?? 0 }
             );
         },
-        enabled: !!instituteId && !noTypeAudiences,
+        enabled: !!instituteId && !noTypeAudiences && statusFilterReady,
         staleTime: 30 * 1000,
     });
 
@@ -489,7 +497,7 @@ const FollowUpsContent = () => {
                 // rather than one page of it.
                 size: view === 'calendar' ? CALENDAR_FETCH_SIZE : PAGE_SIZE,
             }),
-        enabled: !!instituteId && !noTypeAudiences && bucket !== 'completed',
+        enabled: !!instituteId && !noTypeAudiences && bucket !== 'completed' && statusFilterReady,
         staleTime: 30 * 1000,
     });
 
@@ -515,7 +523,7 @@ const FollowUpsContent = () => {
                 page,
                 size: PAGE_SIZE,
             }),
-        enabled: !!instituteId && bucket === 'completed',
+        enabled: !!instituteId && bucket === 'completed' && statusFilterReady,
         staleTime: 30 * 1000,
     });
 

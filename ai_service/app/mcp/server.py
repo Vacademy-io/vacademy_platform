@@ -139,7 +139,11 @@ SERVER_INSTRUCTIONS = (
     "confirm_token. For a bulk upload hand the admin learners(action='enroll_template') as a .csv file and pass the "
     "filled-in CSV back. To change details: learner_edit(action='preview') → show before / after → "
     "learner_edit(action='apply') on a yes. Email and username cannot be changed; never repeat a password back. "
-    "A credentials CSV comes as a private download link: hand it to the admin as is and never open it."
+    "A credentials CSV comes as a private download link: hand it to the admin as is and never open it.\n"
+    "Progress reports: YOU write a learner's report — no model runs on the server and no AI credits are used. Read "
+    "learner_report(action='guide') once, find the learner, ask the period and who the report is for, then "
+    "learner_report(action='data') and write from it; saved_reports / saved_report give earlier dashboard reports "
+    "to compare. Every number you write must come from the data; a missing section had no data — never call it 0."
 )
 
 

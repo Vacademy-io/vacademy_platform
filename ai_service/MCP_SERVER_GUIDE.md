@@ -34,6 +34,7 @@ settings tab has one toggle per feature to manage per role:
 | `course_edit` | WRITE (DRAFT only, no model, no credits) | `course_edits` | `create_course`, `add_chapter`, `add_slide`, `update_slide`, `reorder`, `import_image`, `import_pdf`, `discard_slide`, `publish_slides`, `submit_for_review` |
 | `course_drip_edit` | WRITE (non-live courses only) | `course_drip_edits` | `set_rules`, `schedule`, `remove_rules` |
 | `course_invites_edit` | WRITE (additive only) | `course_invite_edits` | `create_invite`, `create_payment_plan`, `make_default` |
+| `learner_report` | READ (no model, no credits) | `learner_reports` (own area "Progress reports", off until enabled) | `guide` (field meanings, the dashboard report's status / grade rules, how to write a grounded report), `data` (`learner_id`, window ≤ 366 days, optional `batch_id` / `modules` / `detail` / `attempt_limit`: `report` = admin-core `/internal/student-analysis/student-360` (Layer-1 facts, no narrative) and `detail` = `/internal/student-analysis/raw-detail` (per-class attendance, per-module progress vs the batch, slide-by-slide study, assignment submissions, doubt text + replies, per-attempt `processed_json`; `attempt_details` = raw_json, opt-in); both refuse a learner or batch outside the institute), `saved_reports` / `saved_report` (`student_analysis_process`, COMPLETED, institute-scoped SQL) |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so

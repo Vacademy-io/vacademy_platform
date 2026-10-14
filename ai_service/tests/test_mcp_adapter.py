@@ -50,7 +50,7 @@ def test_exposed_set_is_the_documented_one():
         "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit", "course_structure_edit",
-        "learners", "learner_enroll", "learner_edit",
+        "learners", "learner_report", "learner_enroll", "learner_edit",
     )
 
 

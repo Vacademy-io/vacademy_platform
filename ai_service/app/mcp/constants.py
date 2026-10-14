@@ -47,6 +47,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "course_invites_edit",  # WRITE: new invites / plans; edits an invite's page and form fields
     "course_structure_edit",  # WRITE (live): change a course's depth / regroup it — preview + confirm token, opt-in
     "learners",             # READ:  find learners, their profile + courses, enrol options, the bulk-enrol CSV template
+    "learner_report",       # READ:  a learner's progress-report data (facts + discarded detail) for the AI app to write the report
     "learner_enroll",       # WRITE: additive — enrols learners into courses via an invite; preview + confirm token
     "learner_edit",         # WRITE: live — edits a learner's details (never email / username); preview + confirm token
 )
@@ -153,6 +154,7 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "learners": "Learners: view",
     "learner_enrollments": "Learners: enrol into courses",
     "learner_profile_edits": "Learners: edit details",
+    "learner_reports": "Progress reports: view data",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -250,6 +252,13 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "Find learners by name, email or phone, and see their profile and the courses they are enrolled in, "
         "plus each course's invites and the bulk-enrol CSV template."
     ),
+    "learner_reports": (
+        "Let the connected AI app read the data behind a learner's progress report — attendance and every live "
+        "class, test scores with rank and class average, marks by subject, study time and what was studied, "
+        "course progress next to the batch average, assignments with feedback, doubts with their replies and "
+        "the analysis of each attempt — plus the reports already generated in the dashboard, so it can write "
+        "the report for you. Read-only. The AI app writes the report itself, so it uses no AI credits."
+    ),
     "learner_enrollments": (
         "Let the connected AI app enrol learners — one, a list or a CSV, existing or new — into one or more "
         "courses through the invite you pick. It always shows you a preview (who is new, who is already enrolled) "
@@ -277,6 +286,9 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "blog": {"label": "Blog", "summary": "Blog posts and the pages that show them."},
     "courses": {"label": "Courses", "summary": "Course content, drip rules, invite links and pricing."},
     "learners": {"label": "Learners", "summary": "Find learners, enrol them into courses and edit their details."},
+    "learner_reports": {"label": "Progress reports",
+                        "summary": "A learner's attendance, scores, study time and progress, for the AI app to write "
+                                   "their report."},
 }
 
 #: group key → where it sits on the settings page.
@@ -315,6 +327,7 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "learners": {"area": "learners", "level": "view"},
     "learner_enrollments": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Enrol into courses"},
     "learner_profile_edits": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Edit learner details"},
+    "learner_reports": {"area": "learner_reports", "level": "view"},
 }
 
 #: Groups an admin turns on ONE BY ONE: the settings page never switches them

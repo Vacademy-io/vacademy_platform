@@ -2310,6 +2310,37 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("endDate") java.sql.Timestamp endDate);
 
     /**
+     * Student report raw detail: what the learner studied in a window, one row per slide —
+     * [slide_id, title, slide_type, visits, engaged_minutes, max_percentage_watched,
+     * first_seen, last_seen], most time first. The llm_* analytics rows are not study time
+     * and are left out. READ-ONLY.
+     */
+    @Query(value = """
+            SELECT a.slide_id,
+                   s.title,
+                   s.source_type,
+                   COUNT(*) AS visits,
+                   COALESCE(SUM(a.engaged_ms), 0) / 60000.0 AS engaged_minutes,
+                   MAX(a.percentage_watched) AS max_percentage_watched,
+                   MIN(a.created_at) AS first_seen,
+                   MAX(a.created_at) AS last_seen
+            FROM activity_log a
+            LEFT JOIN slide s ON s.id = a.slide_id
+            WHERE a.user_id = :userId
+              AND a.slide_id IS NOT NULL
+              AND a.created_at BETWEEN :startDate AND :endDate
+              AND (a.source_type IS NULL OR a.source_type NOT LIKE 'llm\\_%')
+            GROUP BY a.slide_id, s.title, s.source_type
+            ORDER BY engaged_minutes DESC, last_seen DESC
+            LIMIT :maxRows
+            """, nativeQuery = true)
+    List<Object[]> findSlideActivityForUserInRange(
+            @Param("userId") String userId,
+            @Param("startDate") java.sql.Timestamp startDate,
+            @Param("endDate") java.sql.Timestamp endDate,
+            @Param("maxRows") int maxRows);
+
+    /**
      * Find processed activity logs by user_id and slide_id
      * Used by LLM analytics API to fetch processed data for specific slide
      */

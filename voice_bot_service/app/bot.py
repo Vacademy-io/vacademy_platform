@@ -81,7 +81,7 @@ from pipecat.turns.user_turn_strategies import (
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
-                        note_reply_cancelled, reply_unheard,
+                        note_reply_cancelled, reply_unheard, hold_escalation_due,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
                         LLM_BRIDGE,
@@ -101,7 +101,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
-                       is_hold_announcement, is_hold_fragment,
+                       is_hold_announcement, hold_absorbs, caller_is_busy,
                        opening_expected_secs, ends_on_question)
 
 from .sarvam_v4_voices import (SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MALE,  # noqa: E402
@@ -113,10 +113,18 @@ logger = logging.getLogger(__name__)
 HOLD_MAX_SECS = 300.0
 # Said to the model when the person comes back from putting the call on hold.
 HOLD_RESUME_CUE = ("[They had put the call on hold and are back now. Do NOT introduce yourself "
-                   "again and do not restart your pitch. Acknowledge in a few words that you "
-                   "are still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and carry "
-                   "on from exactly where the conversation was — if you had asked a question, "
-                   "ask it again briefly.]")
+                   "again and do not restart your pitch. Answer what they say next first. If "
+                   "they only greeted you or checked the line, say in a few words that you are "
+                   "still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and, if you "
+                   "had asked a question, ask it again briefly.]")
+
+# …when the hold began before the bot had spoken: an IVR answered the call
+# ("Welcome to New Light Institute. Stay on the line…", call 9519f8c6,
+# 2026-10-14), and the person now on the line has heard nothing from us.
+HOLD_FIRST_CUE = ("[A person has just come on the line after a recorded hold/queue message. "
+                  "They have NOT heard anything you said before. Answer what they say first, "
+                  "then introduce yourself briefly — your name, your institute and why you "
+                  "are calling.]")
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
@@ -424,6 +432,7 @@ class TranscriptCollector(FrameProcessor):
         # process_frame and turntake.is_hold_announcement.
         self._hold_since = 0.0
         self._hold_line_t = 0.0
+        self._hold_unheard = False     # the hold began before anyone heard the bot
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
@@ -640,6 +649,10 @@ class TranscriptCollector(FrameProcessor):
                 self._carrier_seen = True
                 if is_call_screener(text):
                     self.screener_seen = True
+                if self._hold_since:
+                    # "…has put your call on hold." is a carrier phrase too; it is
+                    # still a piece of the hold recording for the scrap timing.
+                    self._hold_line_t = now
                 # Heard, just not the callee: stamp it, or the silence after a
                 # recording reads as a swallowed utterance and the orphan
                 # re-ask apologises to a voicemail (timing sim, 2026-09-15).
@@ -648,6 +661,67 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
+            # ── on hold ──────────────────────────────────────────────────────
+            # The person put the call on hold and the network plays its looping
+            # announcement (call 6d81124d, 2026-10-14: the bot answered the
+            # recording a dozen times, logged a reply loop, then introduced itself
+            # again when the father came back). While on hold the recording is
+            # neither an answer nor a barge-in: keep quiet until something that is
+            # not the recording arrives — that is the person — then carry on from
+            # where the conversation was. Only after the call has started, so the
+            # machine window's own screener/carrier handling above keeps the start.
+            # BEFORE the machine-window scrap rules below: an IVR that answers the
+            # call ("Welcome to New Light Institute. Stay on the line…", call
+            # 9519f8c6, 2026-10-14) puts us on hold inside that window, where a
+            # 1-2 word "See shortly." or the representative's "Hello." would
+            # otherwise be dropped as a machine-greeting scrap.
+            back_from_hold = False
+            if self._hold_since:
+                if hold_absorbs(text, now - self._hold_line_t):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                held = now - self._hold_since
+                self._hold_since = 0.0
+                back_from_hold = True
+                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
+                if self._diag is not None:
+                    self._diag.bump("hold_returns")
+                if (self._hold_unheard and self._resay_opening is not None
+                        and not takes_over_opening(text)
+                        and await self._resay_opening(text, force=True)):
+                    # The IVR took our opening, as a call screener does: the
+                    # person's "Hello." gets it again from the top (the screener
+                    # pickup below, calls 612f5e37 / 91d1541e). Without this the
+                    # run-guard held their hello for an opening nobody was going
+                    # to say (replay of 9519f8c6: 2.7 s of silence, then the model
+                    # answered the SECOND hello with no introduction at all). A
+                    # question, a refusal or busy takes over, as it does over the
+                    # opening itself: the model answers it (HOLD_FIRST_CUE below).
+                    self._last_text = text.casefold()
+                    self._last_text_t = now
+                    self._outcome.transcript.append({"role": "user", "text": text})
+                    self._human_turns += 1
+                    self._on_activity(user=True)
+                    self._on_transcript(backchannel=True)
+                    if self._duck is not None and self._duck.is_ducked():
+                        await self._on_absorb(None)
+                    await self._release_user_turn(frame, direction)
+                    return
+                # Their line is a NORMAL turn from here on: the gate below forwards
+                # it to the aggregator, which runs the model on their words, and
+                # "नहीं चाहिए, फ़ोन रखिए" still gets the forced goodbye. The first
+                # cut sent it straight to the model with "carry on… ask it again"
+                # and returned, so a refusal after a hold got the question again
+                # (review of 53b6e16b04, 2026-10-14). The cue goes in first, so it
+                # reads as context for the words that follow, not instead of them.
+                if not (caller_wants_to_end(text) or caller_is_busy(text)):
+                    # A hold that began before the bot had spoken (the IVR case):
+                    # whatever we said went to the recording, so this person has
+                    # heard nothing — "do not introduce yourself" would be wrong.
+                    cue = HOLD_FIRST_CUE if self._hold_unheard else HOLD_RESUME_CUE
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": cue}]),
+                        FrameDirection.DOWNSTREAM)
             # Once we KNOW the line is playing a recording, the scraps between
             # its recognisable sentences are that same recording. Call 38536b71
             # died on a single one: 'तो।' — one word, no phrase match, so it
@@ -682,6 +756,7 @@ class TranscriptCollector(FrameProcessor):
             # voicemail twice more — 46 s of telephony.
             _toks = text.split()
             if (self._in_machine_window() and self._carrier_seen and len(_toks) <= 4
+                    and not back_from_hold
                     and (len(_toks[-1].strip(".,?!")) == 1        # cut mid-word: "at the t"
                          or text[0].islower())):                  # a tail: "is available."
                 # NOT a capitalised word on its own — "Raman", "No.", "Yeah." after
@@ -698,6 +773,7 @@ class TranscriptCollector(FrameProcessor):
                 return
             if (self._in_machine_window()
                     and not self._bot_spoke_once()
+                    and not back_from_hold
                     and len(text.split()) <= 2):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 # The premise above — "our opening is already queued and will
@@ -721,50 +797,15 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
-            # ── on hold ──────────────────────────────────────────────────────
-            # The person put the call on hold and the network plays its looping
-            # announcement (call 6d81124d, 2026-10-14: the bot answered the
-            # recording a dozen times, logged a reply loop, then introduced itself
-            # again when the father came back). While on hold the recording is
-            # neither an answer nor a barge-in: keep quiet until something that is
-            # not the recording arrives — that is the person — then carry on from
-            # where the conversation was. Only after the call has started, so the
-            # machine window's own screener/carrier handling above keeps the start.
-            if self._hold_since:
-                if is_hold_announcement(text) or is_hold_fragment(text):
-                    await self._absorb_hold_line(frame, direction, text)
-                    return
-                # A lone "हाँ।" a moment after a piece of the recording is the STT
-                # hearing the recording (54.19 s on 6d81124d, 0.4 s after
-                # "Speaking with."). The person coming back says hello, says
-                # something, or speaks into the quiet after the recording.
-                if (len(text.split()) < 2
-                        and not (caller_checking_presence(text) or is_audio_check(text))
-                        and now - self._hold_line_t < 3.0):
-                    await self._absorb_hold_line(frame, direction, text)
-                    return
-                held = now - self._hold_since
-                self._hold_since = 0.0
-                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
-                if self._diag is not None:
-                    self._diag.bump("hold_returns")
-                self._last_text = text.casefold()
-                self._last_text_t = now
-                self._outcome.transcript.append({"role": "user", "text": text})
-                self._human_turns += 1
-                self._on_activity(user=True)
-                self._on_transcript()
-                if self._duck is not None and self._duck.is_ducked():
-                    await self._on_absorb(None)
-                await self._release_user_turn(frame, direction)
-                await self.push_frame(LLMMessagesAppendFrame(
-                    messages=[{"role": "user", "content": text},
-                              {"role": "user", "content": HOLD_RESUME_CUE}],
-                    run_llm=True), direction)
-                return
-            if ((self._human_turns > 0 or self._bot_spoke_once())
+            # Not on the person's own return line: joined to the recording's last
+            # piece ("The person you are" + "speaking with, नाम ऋषभ है") it can
+            # spell a hold phrase that neither half is.
+            if ((self._human_turns > 0 or self._bot_spoke_once()) and not back_from_hold
                     and (is_hold_announcement(text) or joined_hold)):
                 self._hold_since = now
+                # Nobody has heard us yet: the bot has not spoken, or the opening
+                # is still owed (it played into the IVR, cut before half of it).
+                self._hold_unheard = not self._bot_spoke_once() or self._opening_owed()
                 if self._diag is not None:
                     self._diag.bump("holds")
                 logger.info("turn-gate: the call is on hold (%r) — quiet until the person "
@@ -6613,16 +6654,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if 0 < _held < HOLD_MAX_SECS:
             # The person put the call on hold: "Hello? Are you there?" into the
             # hold music is wrong, and hanging up on someone who asked us to wait
-            # is worse. Look again later; past HOLD_MAX_SECS the usual nudges and
-            # idle hang-up apply.
+            # is worse. No recheck task here: the watchdog loop owns the hold
+            # limit (pipecat's idle timer never re-arms on hold — the bot never
+            # speaks — and the old self-renewing rechecks stacked up, one per
+            # firing, and fired in a burst at 300 s).
             logger.info("idle: on hold for %.0fs — waiting, not nudging corr=%s", _held, corr)
-
-            async def _hold_recheck():
-                await asyncio.sleep(max(5.0, float(settings.idle_timeout_secs)))
-                if (transcript.on_hold_for() and not flags["bot_speaking"]
-                        and not flags["user_speaking"]):
-                    await _on_idle(None)
-            asyncio.get_running_loop().create_task(_hold_recheck())
             return
         if transcript.looks_like_voicemail():
             # Nothing to nudge and nobody to say goodbye to (call 24089872).
@@ -6900,6 +6936,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "(no audio %.1fs after it was cut)",
                                corr, cfg.unplayed_confirm_secs)
             _note_vendor_failover()
+            _held = transcript.on_hold_for()
+            # Before deciding: on hold, ORPHAN_ASK / LLM_BRIDGE are never decided,
+            # so apply_decision cannot book them against the call's budget.
+            flags["on_hold"] = _held > 0
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
@@ -6912,6 +6952,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                             now - flags["user_stopped_t"] if flags["user_stopped_t"] else -1.0,
                             now - flags["voice_tick_t"] if flags["voice_tick_t"] else -1.0,
                             now - flags["bot_stopped_t"], flags["orphan_asks"])
+            if d.kind == NONE and _held:
+                # HOLD_MAX_SECS is enforced HERE. pipecat's idle timer starts only
+                # on BotStoppedSpeaking, which a silent bot never sends, and every
+                # absorbed piece of a looping recording stamps transcript_t, so the
+                # idle fallback below never fires either: a forgotten hold ran to
+                # the duration cap (review of 53b6e16b04, 2026-10-14). Past the
+                # limit, the usual escalation, paced one idle period apart:
+                # _on_idle nudges max_nudges times, then says goodbye and stops.
+                if hold_escalation_due(flags, now, _held, HOLD_MAX_SECS,
+                                       settings.idle_timeout_secs):
+                    logger.info("idle: on hold for %.0fs — past the %.0fs limit, escalating "
+                                "corr=%s", _held, HOLD_MAX_SECS, corr)
+                    flags["hold_nudge_t"] = now
+                    await _on_idle(None)
+                continue
             if d.kind == NONE:
                 # Idle fallback for the turn pipecat's idle controller cannot see:
                 # its timer starts on BotStoppedSpeaking while the caller is quiet,
@@ -6959,11 +7014,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
-                continue
-            if d.kind in (LLM_BRIDGE, ORPHAN_ASK) and transcript.on_hold_for():
-                # On hold: nobody is listening for "एक सेकंड।" or "आवाज़ कट गई"
-                # (the replay of 6d81124d said "एक सेकंड।" into the hold).
-                logger.info("watchdog: %s skipped — the call is on hold corr=%s", d.kind, corr)
                 continue
             if d.kind == LLM_BRIDGE:
                 # Call c130e39f: 16s of silence while Vertex took 5.4s to the

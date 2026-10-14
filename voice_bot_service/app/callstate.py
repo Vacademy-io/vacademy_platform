@@ -118,6 +118,15 @@ class CallState:
     # reply_started_t of the reply we already covered with a latency bridge
     # ("Just a second.") — one bridge per reply, never a loop of them.
     bridged_reply_t: float = 0.0
+    # The person has put the call on hold (TranscriptCollector.on_hold_for, copied
+    # in by run_bot's watchdog every tick). Nobody is listening for "please say
+    # that again" or "एक सेकंड।" (the replay of 6d81124d said "एक सेकंड।" into the
+    # hold), and hold music must not spend the call's two orphan re-asks — so
+    # those decisions are never MADE on hold, instead of being made, booked by
+    # apply_decision and then skipped (review of 53b6e16b04, 2026-10-14).
+    on_hold: bool = False
+    # When run_bot last escalated a hold past HOLD_MAX_SECS (nudge / hang-up).
+    hold_nudge_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -253,7 +262,7 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     # would wait for that instead of the caller's actual silence. The window's
     # low edge (lo) is measured from the acoustic stop, so a caller who is
     # still talking (fresh voice ticks) can never be talked over.
-    if (not s.bot_speaking and s.deaf_streak < cfg.max_deaf_streak
+    if (not s.bot_speaking and not s.on_hold and s.deaf_streak < cfg.max_deaf_streak
             and s.user_started_t > 0 and acoustic_stop > s.user_started_t
             and not s.orphan_used and s.orphan_asks < cfg.max_orphan_asks
             and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
@@ -278,7 +287,7 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     #     are quiet (checked above) and nothing is ducked (returned above).
     #     Once per reply — bridged_reply_t remembers which one.
     st = s.reply_started_t
-    if (st > 0 and s.bot_stopped_t < st and s.bridged_reply_t != st
+    if (st > 0 and not s.on_hold and s.bot_stopped_t < st and s.bridged_reply_t != st
             and now - st >= cfg.llm_bridge_after_secs):
         return Decision(LLM_BRIDGE, now - st)
 
@@ -376,6 +385,20 @@ def stall_recovery_still_needed(s: CallState, now: float,
     if s.bot_stopped_t and now - s.bot_stopped_t <= grace_secs:
         return False
     return True
+
+
+def hold_escalation_due(s: CallState, now: float, held: float, hold_max_secs: float,
+                        idle_secs: float) -> bool:
+    """On hold past the limit: is the next step of the usual idle escalation due
+    (nudge, nudge, goodbye — run_bot's _on_idle owns which)? One step per idle
+    period: the bot's own nudge moves bot_stopped_t, the step itself stamps
+    hold_nudge_t, so a step can never fire twice for one silence.
+
+    Measured from neither transcript_t nor the caller's VAD on purpose: every
+    piece of a looping hold recording stamps both, and that is what kept the
+    old idle-based limit from ever firing (review of 53b6e16b04, 2026-10-14)."""
+    return (held >= hold_max_secs and not s.bot_speaking and s.stopping_since is None
+            and now - max(s.hold_nudge_t, s.bot_stopped_t) >= idle_secs)
 
 
 def apply_decision(s: CallState, d: Decision, now: float) -> None:

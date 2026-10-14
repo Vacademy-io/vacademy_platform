@@ -230,6 +230,13 @@ if __name__ == "__main__":
         asyncio.run(ws_tests())
     if which in ("all", "sweep"):
         sweep()
+    if which == "speakers":
+        st, audio, ms, err = synth_rest("no_such_speaker", text="नमस्ते", lang="hi-IN")
+        r = httpx.post("https://api.sarvam.ai/text-to-speech",
+                       json={"text": "नमस्ते", "target_language_code": "hi-IN", "speaker": "no_such_speaker",
+                             "model": MODEL}, headers={"api-subscription-key": KEY}, timeout=60)
+        print("SPEAKERS_STATUS", r.status_code)
+        print("SPEAKERS_BODY", r.text)
     if which == "retry":
         retry = [l.strip() for l in open(os.path.join(os.path.dirname(__file__), "sarvam_v4_retry.txt")) if l.strip()]
         sweep(retry, workers=1)

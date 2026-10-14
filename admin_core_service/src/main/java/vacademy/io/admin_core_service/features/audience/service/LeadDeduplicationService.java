@@ -202,12 +202,7 @@ public class LeadDeduplicationService {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
         if (!settings.enabled() || excludeResponseId == null) return Optional.empty();
 
-        String audienceIdsCsv = switch (settings.scope()) {
-            case INSTITUTE -> null;
-            case SELECTED -> settings.audienceIds() == null || settings.audienceIds().isEmpty()
-                    ? null : String.join(",", settings.audienceIds());
-            case CAMPAIGN -> audienceId;
-        };
+        String audienceIdsCsv = scopeAudienceIdsCsv(settings, audienceId);
 
         List<String> owners;
         if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
@@ -221,6 +216,64 @@ public class LeadDeduplicationService {
                     instituteId, audienceIdsCsv, email, excludeResponseId);
         }
         return owners.isEmpty() ? Optional.empty() : Optional.ofNullable(owners.get(0));
+    }
+
+    /**
+     * The person who already holds this phone in the dedup scope, when the institute dedups
+     * on PHONE with "Allow & reassign" and has switched on repeatLead.samePersonByPhone. A
+     * repeat that brings a different email then joins that person instead of becoming a
+     * second person, a second lead and often a second owner (auth_service matches people by
+     * email, not phone). Prefers a lead that has an owner, then the newest. Empty for any
+     * other setting, a short phone, or no match.
+     */
+    public Optional<String> findExistingLeadUserIdByPhone(String instituteId, String audienceId, String phone) {
+        LeadDedupSettingService.DedupSettings settings = phoneReassignSettings(instituteId);
+        if (settings == null || !settings.repeatLead().samePersonByPhone()) return Optional.empty();
+        String last10 = lastNDigits(phone, 10);
+        if (last10 == null) return Optional.empty();
+        List<String> users = audienceResponseRepository.findLeadUserIdByPhoneLast10(
+                instituteId, scopeAudienceIdsCsv(settings, audienceId), last10);
+        return users.isEmpty() ? Optional.empty() : Optional.ofNullable(users.get(0));
+    }
+
+    /**
+     * Counsellor who currently owns the lead with this phone in the dedup scope (the most
+     * recent active, owned one), when the institute dedups on PHONE with "Allow &
+     * reassign" and has switched on repeatLead.blockOwnedManualAdd. Used to stop a
+     * counsellor adding by hand a lead someone else owns.
+     */
+    public Optional<AudienceResponseRepository.LeadOwnerRow> findCurrentOwnerByPhone(String instituteId,
+            String audienceId, String phone) {
+        LeadDedupSettingService.DedupSettings settings = phoneReassignSettings(instituteId);
+        if (settings == null || !settings.repeatLead().blockOwnedManualAdd()) return Optional.empty();
+        String last10 = lastNDigits(phone, 10);
+        if (last10 == null) return Optional.empty();
+        List<AudienceResponseRepository.LeadOwnerRow> owners = audienceResponseRepository
+                .findCurrentOwnerByPhoneLast10(instituteId, scopeAudienceIdsCsv(settings, audienceId), last10);
+        return owners.isEmpty() ? Optional.empty() : Optional.ofNullable(owners.get(0));
+    }
+
+    /** The dedup settings when they are PHONE + ALLOW_REASSIGN and enabled, else null. */
+    private LeadDedupSettingService.DedupSettings phoneReassignSettings(String instituteId) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        boolean applies = settings.enabled()
+                && settings.repeatLead() != null
+                && settings.field() == LeadDedupSettingService.DedupField.PHONE
+                && settings.action() == LeadDedupSettingService.DedupAction.ALLOW_REASSIGN
+                // SELECTED with no lists dedups nothing (checkDuplicate fails open), so no match either.
+                && !(settings.scope() == LeadDedupSettingService.DedupScope.SELECTED
+                        && (settings.audienceIds() == null || settings.audienceIds().isEmpty()));
+        return applies ? settings : null;
+    }
+
+    /** Lists the dedup scope covers, as the CSV the native queries take; null = whole institute. */
+    private static String scopeAudienceIdsCsv(LeadDedupSettingService.DedupSettings settings, String audienceId) {
+        return switch (settings.scope()) {
+            case INSTITUTE -> null;
+            case SELECTED -> settings.audienceIds() == null || settings.audienceIds().isEmpty()
+                    ? null : String.join(",", settings.audienceIds());
+            case CAMPAIGN -> audienceId;
+        };
     }
 
     /**

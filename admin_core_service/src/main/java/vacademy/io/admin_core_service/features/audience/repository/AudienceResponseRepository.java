@@ -2249,6 +2249,63 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("email") String email,
                         @Param("excludeResponseId") String excludeResponseId);
 
+        /**
+         * Person (user id) already holding this phone, for phone dedup to reuse instead of
+         * minting a second person from a different email. Active, non-duplicate leads only;
+         * an owned lead wins, then the newest. Blank {@code audienceIdsCsv} = whole institute.
+         */
+        @Query(value = """
+                            SELECT ar.user_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.audience_status = 'ACTIVE'
+                            AND ar.user_id IS NOT NULL
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findLeadUserIdByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /**
+         * Owner of the most recent active, owned lead with this phone. Blank
+         * {@code audienceIdsCsv} = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<LeadOwnerRow> findCurrentOwnerByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /** Projection for {@link #findCurrentOwnerByPhoneLast10}; aliases are quoted camelCase. */
+        interface LeadOwnerRow {
+                String getCounsellorId();
+
+                String getCounsellorName();
+        }
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**
@@ -2831,7 +2888,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * carts, pending approvals and deleted rows are not enrolments and are ignored,
          * or a lead with only an invite would read as a finished course.
          *
-         * Newest first: a repeat enquiry should answer with its current owner.
+         * Order: a live lead before a deleted one, an owned lead before an unowned one,
+         * then newest first. Newest alone let a deleted test entry or an ownerless repeat
+         * answer for a phone whose real lead belongs to someone else.
          */
         @Query(value = """
                             SELECT ar.id                     AS "responseId",
@@ -2897,7 +2956,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND ar.parent_name IS NOT NULL
                                     AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
                               )
-                            ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
+                            ORDER BY (ar.audience_status = 'ACTIVE') DESC,
+                                     (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC,
+                                     ar.submitted_at DESC NULLS LAST, ar.created_at DESC
                             LIMIT 1
                         """, nativeQuery = true)
         java.util.Optional<LeadLookupRow> lookupByPhoneOrEmail(

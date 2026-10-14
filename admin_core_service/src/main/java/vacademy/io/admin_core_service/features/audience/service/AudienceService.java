@@ -1419,11 +1419,8 @@ public class AudienceService {
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
-                createdUser = authService.createUserFromAuthService(
-                        userDTO,
-                        audience.getInstituteId(),
-                        false // Don't send credentials email
-                );
+                createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
                 // Prepare effectively final variables for lambda
                 final UserDTO userForNotification = createdUser;
@@ -1882,6 +1879,69 @@ public class AudienceService {
     }
 
     /**
+     * The lead's person record. Under phone dedup with "Allow & reassign" and the Lead
+     * Settings switch repeatLead.samePersonByPhone on, a repeat joins the person who already
+     * holds this phone: auth_service matches people by email, so a repeat
+     * with a new email would otherwise become a second person, a second lead and often a
+     * second owner. The submission's own name, email and phone are kept on the returned DTO,
+     * so this request's notifications go where they always did.
+     *
+     * <p>Kept exactly as before (create or fetch by email, no credentials email) when it is
+     * not such a repeat, the lookup fails, the person already has a lead in this same list
+     * (a repeat there still comes in as its own lead), or the request names a counsellor
+     * other than the person's current owner (so intake never moves an owned lead).
+     */
+    private UserDTO resolveLeadUser(UserDTO userDTO, String instituteId, String audienceId,
+            boolean repeatLead, String requestedCounsellorId) {
+        if (repeatLead && userDTO != null) {
+            try {
+                String existingId = leadDeduplicationService
+                        .findExistingLeadUserIdByPhone(instituteId, audienceId, userDTO.getMobileNumber())
+                        .orElse(null);
+                if (existingId != null && canJoinExistingPerson(existingId, instituteId, audienceId,
+                        requestedCounsellorId)) {
+                    List<UserDTO> found = authService.getUsersFromAuthServiceByUserIds(List.of(existingId));
+                    UserDTO existing = found == null ? null : found.stream()
+                            .filter(u -> u != null && existingId.equals(u.getId()))
+                            .findFirst().orElse(null);
+                    if (existing != null) {
+                        if (StringUtils.hasText(userDTO.getEmail())) existing.setEmail(userDTO.getEmail());
+                        if (StringUtils.hasText(userDTO.getFullName())) existing.setFullName(userDTO.getFullName());
+                        if (StringUtils.hasText(userDTO.getMobileNumber())) {
+                            existing.setMobileNumber(userDTO.getMobileNumber());
+                        }
+                        logger.info("Repeat lead for audience {} joins existing person {} by phone",
+                                audienceId, existingId);
+                        return existing;
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Repeat lead for audience {}: person lookup by phone failed, creating by email: {}",
+                        audienceId, e.getMessage());
+            }
+        }
+        return authService.createUserFromAuthService(userDTO, instituteId, false);
+    }
+
+    /**
+     * Whether a repeat may join {@code existingId}: not when that person already has a lead
+     * in this list, and not when the request names a counsellor other than their owner.
+     */
+    private boolean canJoinExistingPerson(String existingId, String instituteId, String audienceId,
+            String requestedCounsellorId) {
+        if (audienceResponseRepository.existsByAudienceIdAndUserId(audienceId, existingId)) {
+            return false;
+        }
+        if (!StringUtils.hasText(requestedCounsellorId)) {
+            return true;
+        }
+        String owner = userLeadProfileRepository.findByUserIdAndInstituteId(existingId, instituteId)
+                .map(p -> p.getAssignedCounselorId())
+                .orElse(null);
+        return !StringUtils.hasText(owner) || owner.equals(requestedCounsellorId);
+    }
+
+    /**
      * Repeat-lead SAME_AS_PREVIOUS: the repeat goes to the counsellor who owned the matched
      * earlier lead.
      * <ul>
@@ -2014,11 +2074,8 @@ public class AudienceService {
 
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
-                createdUser = authService.createUserFromAuthService(
-                        userDTO,
-                        audience.getInstituteId(),
-                        false // Don't send credentials email
-                );
+                createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
 
                 // Duplicate submission guard: same audience + same user
@@ -5372,7 +5429,7 @@ public class AudienceService {
                 .mobileNumber(processedData.getPhone())
                 .build();
 
-        UserDTO createdUser = authService.createUserFromAuthService(userDTO, instituteId, false);
+        UserDTO createdUser = resolveLeadUser(userDTO, instituteId, audienceId, repeatLeadSettings != null, null);
         String userId = createdUser.getId();
 
         // Ensure mobile number from form is preserved (auth service might return

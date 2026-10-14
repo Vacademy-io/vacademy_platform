@@ -82,6 +82,7 @@ from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         note_reply_cancelled, reply_unheard, hold_escalation_due,
+                        opening_coming, intro_heard,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
                         LLM_BRIDGE,
@@ -355,7 +356,8 @@ class TranscriptCollector(FrameProcessor):
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
                  forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
                  voice_live=None, resay_opening=None, cut_after_voice_secs: float = 0.0,
-                 ack_answer_window_secs: float = 3.0, bot_started_t=None):
+                 ack_answer_window_secs: float = 3.0, bot_started_t=None,
+                 greet_skipped=None):
         super().__init__()
         self._outcome = outcome
         # "voice" barge-in mode (config.barge_in_mode): 0 = off (onset mode).
@@ -436,6 +438,9 @@ class TranscriptCollector(FrameProcessor):
         self._register_cue = register_cue or (lambda text: None)
         # The scripted opening is still owed (see run_bot._opening_pending).
         self._opening_owed = opening_owed or (lambda: False)
+        # The callee spoke first and the greet skipped our opening: nothing of
+        # ours is queued to answer a pickup "Hello." (call 9fd6489d, 2026-10-14).
+        self._greet_skipped = greet_skipped or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -821,10 +826,17 @@ class TranscriptCollector(FrameProcessor):
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
                 return
+            # …and the premise is false outright once the greet has SKIPPED
+            # the opening because the callee spoke first: call 9fd6489d
+            # (2026-10-14) dropped the person's "Hello." twice here, the first
+            # reply was held off the line, and they heard nothing for 15 s.
+            # A line-check from them is the person, not a recording.
             if (self._in_machine_window()
                     and not self._bot_spoke_once()
                     and not back_from_hold
-                    and len(text.split()) <= 2):
+                    and len(text.split()) <= 2
+                    and not (self._greet_skipped()
+                             and (is_audio_check(text) or caller_checking_presence(text)))):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 # The premise above — "our opening is already queued and will
                 # answer this" — is false when the VAD killed the opening before
@@ -3441,7 +3453,7 @@ class RunGuard(FrameProcessor):
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
                  supersede=None, reply_unheard=None, runs_noted=None, before_run=None,
-                 on_hold=None):
+                 on_hold=None, opening_coming=None, intro_cue=None):
         super().__init__()
         # The person has put us on hold (TranscriptCollector.on_hold_for): no run
         # goes to the LLM, whoever started it — see _let_through.
@@ -3485,6 +3497,17 @@ class RunGuard(FrameProcessor):
         # reply — a run only goes through if the caller genuinely took over
         # (a question to us, a refusal, or our own cue). Call 4243a436.
         self._opening_pending = opening_pending or (lambda: False)
+        # …but only while something will actually SAY it: this delivery is
+        # playing, or was queued a moment ago and nothing has cut it since.
+        # Otherwise nothing ever spoke: call 4cb132a2 (2026-10-14) had spent
+        # its two re-says and swallowed "no" twice, a11e6709's opening was cut
+        # by a voicemail prompt and four hellos met 18 s of silence, and
+        # 5e979e3e's re-say was killed 22 ms in — 14.6 s, no run at all.
+        self._opening_coming = opening_coming or (lambda: True)
+        self._opening_wait: Optional[asyncio.Task] = None
+        # The note a run carries while the person has not HEARD who is calling
+        # ("" = none) — added at the one exit every run takes (_let_through).
+        self._intro_cue = intro_cue or (lambda: "")
         self._enabled = enabled or (lambda: True)
         self._diag = diag
         self._last_allowed_fp = None
@@ -3619,6 +3642,7 @@ class RunGuard(FrameProcessor):
         return self._held is not None and not self._held.done()
 
     def _drop_held(self, why: str):
+        self._drop_opening_wait(why)
         if self._held is not None and not self._held.done():
             self._held.cancel()
             logger.info("run-guard: held short-answer run superseded — %s", why)
@@ -3626,6 +3650,72 @@ class RunGuard(FrameProcessor):
                 self._drop_cue(self._held_cue, "superseded by the caller's turn")
         self._held = None
         self._held_cue = None
+
+    def _drop_opening_wait(self, why: str):
+        if self._opening_wait is not None and not self._opening_wait.done():
+            self._opening_wait.cancel()
+            logger.info("run-guard: run waiting on the opening superseded — %s", why)
+        self._opening_wait = None
+
+    async def _await_opening(self, frame: Frame, direction: FrameDirection, last: str):
+        """A caller run that arrived while the opening was on its way. Not
+        held() on purpose: a held turn is "a reply on its way" to the turn-gate
+        and the bot's own runs, and the opening is not a model reply. Dropped
+        once the opening has been heard — it was the reply; let through if it
+        stops being on its way first (cut, killed before it started), because
+        then nothing would answer them. Not on the first poll that reads "not
+        coming": the cut that stops a delivery queues its re-say a moment
+        later, and the newer turn's own run supersedes this one anyway."""
+        t0 = time.time()
+        idle = 0.0
+        while self._opening_pending():
+            idle = 0.0 if self._opening_coming() else idle + 0.1
+            if idle >= 0.3:
+                break
+            await asyncio.sleep(0.1)
+        self._opening_wait = None
+        if not self._opening_pending():
+            if self._diag is not None:
+                self._diag.bump("turns_swallowed_for_opening")
+            logger.info("run-guard: the opening played over %r (%.1fs) — it was the reply",
+                        last[:32], time.time() - t0)
+            return
+        try:
+            msgs = self._context.get_messages()
+        except Exception:
+            msgs = []
+        if not msgs or self._fingerprint(msgs)[0] != "user":
+            return
+        if self._diag is not None:
+            self._diag.bump("opening_unsaid_runs")
+        logger.info("run-guard: the opening stopped unheard after %.1fs and nothing is "
+                    "saying it — %r runs", time.time() - t0, last[:32])
+        if self._caller_forming() or self._voice_live():
+            # What stopped it is usually the caller talking: their turn's own
+            # run takes these words too (replay of 662d1c80: released into the
+            # caller's next piece, two runs, the second dropped as a repeat).
+            self._held = self.create_task(self._release_when_formed(frame, direction))
+            return
+        await self._let_through(frame, direction)
+
+    def _add_intro_cue(self, cue: str):
+        """Put the note just BEFORE the caller's unanswered words, so the run's
+        last user message stays theirs (replay records, the stub LLM and the
+        turn-gate all read it); an earlier copy that never got a reply heard
+        is taken out first."""
+        try:
+            msgs = [m for m in self._context.get_messages()
+                    if not (isinstance(m, dict) and m.get("content") == cue)]
+            i = len(msgs)
+            while i > 0 and isinstance(msgs[i - 1], dict) and msgs[i - 1].get("role") == "user":
+                i -= 1
+            self._context.set_messages(msgs[:i] + [{"role": "user", "content": cue}] + msgs[i:])
+            if self._diag is not None:
+                self._diag.bump("intro_cues")
+            logger.info("run-guard: the person has not heard who is calling — the reply "
+                        "introduces")
+        except Exception:
+            logger.exception("run-guard: could not add the introduction note")
 
     def _one_door(self) -> bool:
         return True
@@ -3682,6 +3772,11 @@ class RunGuard(FrameProcessor):
             # it — 11.6 s of re-introduction to a call screener (d8146538).
             self._drop_on_hold()
             return
+        # Before the fingerprint, so a stale retrigger of this same context
+        # still reads "unchanged" and is blocked.
+        cue = self._intro_cue()
+        if cue:
+            self._add_intro_cue(cue)
         self._pushed_t = time.time()
         msgs = None
         try:
@@ -3903,11 +3998,22 @@ class RunGuard(FrameProcessor):
                 if role == "user" and self._opening_pending():
                     last = self._last_user_text(msgs)
                     if not takes_over_opening(last):
+                        if self._opening_coming():
+                            if self._diag is not None:
+                                self._diag.bump("runs_held_for_opening")
+                            logger.info("run-guard: the opening has not played yet and %r does "
+                                        "not take over — the opening is the reply", last[:32])
+                            self._drop_opening_wait("a newer turn arrived")
+                            self._opening_wait = self.create_task(
+                                self._await_opening(frame, direction, last))
+                            return
+                        # Owed, but nothing will say it: answer them, and the
+                        # reply introduces (_intro_cue). Calls 4cb132a2, a11e6709,
+                        # 5e979e3e, 662d1c80 (2026-10-14).
                         if self._diag is not None:
-                            self._diag.bump("runs_held_for_opening")
-                        logger.info("run-guard: the opening has not played yet and %r does "
-                                    "not take over — the opening is the reply", last[:32])
-                        return
+                            self._diag.bump("opening_unsaid_runs")
+                        logger.info("run-guard: the opening is owed but nothing is saying "
+                                    "it — %r runs", last[:32])
                 if role != "user":
                     # Nothing new to answer — the last word was OURS.
                     if self._diag is not None:
@@ -5008,6 +5114,36 @@ def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
     return best < len(ok) * heard_ratio
 
 
+def opening_intro_secs(opening: str, names) -> float:
+    """Seconds of the opening that must PLAY before the person has heard who
+    is calling: up to the end of the last of `names` (the agent's name, the
+    institute) found in it, at opening_expected_secs' rate. 0.0 when it names
+    neither — a bare greeting, and the prompt already has the first reply
+    introduce. Shreya's "…मैं श्रेया बोल रही हूँ Shiksha Nation से" ends at
+    ~3.3 s of 14 (2.9 s of the real 12.4 s audio)."""
+    low = (opening or "").casefold()
+    end = 0
+    for n in names or ():
+        n = (n or "").strip().casefold()
+        i = low.find(n) if n else -1
+        if i >= 0:
+            end = max(end, i + len(n))
+    return opening_expected_secs(opening[:end]) if end else 0.0
+
+
+def intro_cue_text(name: str, institute: str) -> str:
+    """The note a run carries while the person has not heard who is calling
+    (calls 9fd6489d, a11e6709, c3818b83, 2026-10-14): the context still holds
+    the opening and the prompt says it "has been said", so without it the
+    model never introduces. Names come from the agent context, never fixed."""
+    name, institute = (name or "").strip(), (institute or "").strip()
+    who = (f"you are {name}, calling from {institute}" if name and institute
+           else f"you are {name}" if name else f"you are calling from {institute}")
+    return ("[The person has NOT heard who you are — your opening never reached them, "
+            "whatever your history shows. Begin with ONE short sentence saying "
+            f"{who}, in the language of the call, then reply to what they said.]")
+
+
 _NAME_NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}")
 _ORG_NAME_WORDS = frozenset({
     "studio", "academy", "yoga", "classes", "class", "institute", "school", "college",
@@ -5668,8 +5804,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "the caller says (including a bare 'hello' mid-call — that means they are "
             "checking the line is alive, so simply continue). Resume from the point in your "
             "instructions that comes AFTER the introduction. Keep speaking the SAME LANGUAGE "
-            "as that opening unless the caller clearly asks for another one."
+            "as that opening unless the caller clearly asks for another one. ONE exception: "
+            "if a bracketed note says the person has NOT heard who you are (the opening "
+            "never reached them), follow that note and introduce yourself once, briefly."
         )
+        # The rule above is written before the call, about audio that may never
+        # play: the callee spoke first and the opening was skipped (9fd6489d),
+        # or it raced a run and both were dropped (c3818b83, 2026-10-14). What
+        # the person actually heard decides — run_bot._intro_cue sends the note.
     elif opening_line:
         already_said_rule = (
             f"ALREADY SPOKEN: this call has opened with \"{opening_line}\" — a GREETING ONLY. "
@@ -6299,6 +6441,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # too, the normal continuation path takes it from there — never a loop.
     _opening_resays = 0        # at most two: a noisy pickup can cut it twice
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
+    _greet_skipped = False     # the callee spoke first: no scripted opening will play
+    # Who is calling, as the opening says it, and how much of it must PLAY for
+    # the person to have heard that (opening_intro_secs; 0 = it does not say).
+    _intro_names = [str(agent.get("name") or "").strip(),
+                    str(context.get("instituteName") or "").strip()]
+    _intro_secs = opening_intro_secs(_opening_for_cache, _intro_names)
+    _intro_cue_text = intro_cue_text(*_intro_names)
 
     def _opening_played_secs() -> float:
         """Seconds of the opening's audio played in its current delivery —
@@ -6324,6 +6473,47 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                               played_secs=_opening_played_secs()))
         except NameError:
             return False
+
+    # A queued delivery that has not made a sound yet is still on its way for
+    # this long (a cached opening starts in ~0.1 s, a synthesized one in under
+    # a second); past it, it is not coming and RunGuard stops waiting for it.
+    _OPENING_START_GRACE_SECS = 1.5
+
+    def _opening_coming() -> bool:
+        """See callstate.opening_coming — only a scripted greet has one."""
+        return (diag.greet_path == "scripted"
+                and opening_coming(flags, _greet_queued_t, time.time(),
+                                   _OPENING_START_GRACE_SECS))
+
+    def _intro_heard() -> bool:
+        return intro_heard(flags, _opening_played_secs(), _intro_secs,
+                           outcome.transcript, _intro_names)
+
+    _intro_cue_chars = 0       # played assistant text when the note was last added
+
+    def _played_chars() -> int:
+        return sum(len(spoken_key(e.get("text") or "")) for e in outcome.transcript
+                   if e.get("role") == "assistant")
+
+    def _intro_cue() -> str:
+        """The note for a run going to the model while the opening that
+        introduces us was never heard ("" = none): the callee spoke first and
+        the opening was skipped (9fd6489d), it raced a run and both were
+        dropped (c3818b83), or it was cut before the name (a11e6709). Once
+        speech after the note has PLAYED, it is not added again — measured on
+        the played transcript, not "audio started after a reply started": in
+        the replay of c3818b83 the noted reply never played, a resumed
+        fragment did, and the next reply went out with no note."""
+        nonlocal _intro_cue_chars
+        if not _intro_secs or not (_greet_skipped or diag.greet_path == "scripted"):
+            return ""
+        if _intro_heard() or _opening_coming():
+            return ""
+        if flags["intro_cue_t"] and _played_chars() - _intro_cue_chars >= 20:
+            return ""                   # more than a bridge line has played since
+        flags["intro_cue_t"] = time.time()
+        _intro_cue_chars = _played_chars()
+        return _intro_cue_text
 
     async def _resay_opening(text, force: bool = False, cut_now: bool = False) -> bool:
         nonlocal _opening_resays
@@ -6366,6 +6556,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # ears, and none of it reached them (calls 612f5e37, 91d1541e).
         _opening_resays += 1
         diag.bump("opening_resaid")
+        flags["opening_heard_secs"] = max(flags["opening_heard_secs"], _opening_played_secs())
+        flags["opening_delivery_t"] = time.time()
         flags["opening_play_secs"] = 0.0         # a new delivery; heard is measured afresh
         flags["opening_seg_t"] = time.time() if flags["bot_speaking"] else 0.0
         # The interruption of the cut that caused THIS re-say can be stamped a
@@ -6540,7 +6732,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      forget_resume=lambda: no_repeat.forget_resumed(),
                                      release_turn=lambda: settings.turn_release_on_absorb,
                                      noise_reask_wait_secs=settings.noise_reask_wait_secs,
-                                     resay_opening=_resay_opening)
+                                     resay_opening=_resay_opening,
+                                     greet_skipped=lambda: _greet_skipped)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     async def _ask_for_next_step(held: str, kind: str = "", attempt: int = 0):
@@ -6644,7 +6837,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          reply_unheard=_reply_unheard,
                          runs_noted=lambda: no_repeat.runs_noted(),
                          before_run=lambda: _llm_return_frame(),
-                         on_hold=lambda: transcript.on_hold_for() > 0)
+                         on_hold=lambda: transcript.on_hold_for() > 0,
+                         opening_coming=_opening_coming,
+                         intro_cue=_intro_cue)
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -6893,6 +7088,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         the callee already said something substantive (their turn then drives the
         LLM). Scripted openings are spoken directly — NO manual context append on
         1.4, the assistant aggregator captures spoken text itself."""
+        nonlocal _greet_skipped
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context, full_name=True))
         connect_t = time.time()
@@ -6906,6 +7102,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         while time.time() - connect_t < settings.greet_delay_secs:
             if flags["substantive_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
+                _greet_skipped = True
                 return
             await asyncio.sleep(0.1)
         # Hold while the caller is AUDIBLY mid-utterance, then a short settle,
@@ -6929,6 +7126,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
+                _greet_skipped = True
                 return
             now = time.time()
             voiced = flags["voice_tick_t"]
@@ -6986,6 +7184,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             nonlocal _greet_queued_t
             _greet_queued_t = time.time()
             flags["greet_queued_t"] = _greet_queued_t
+            flags["opening_delivery_t"] = _greet_queued_t
             await task.queue_frames(_frames)
 
             # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
@@ -7056,7 +7255,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     logger.info("greet: opening cut short — caller heard %d of %d chars "
                                 "caller_spoke=%s corr=%s",
                                 len(_played), len(opening), _caller_spoke, corr)
-                    if not _caller_spoke:
+                    # Not when the cut came before who is calling: "do not
+                    # re-introduce yourself" would then contradict _intro_cue,
+                    # which has the next reply introduce (call a11e6709,
+                    # 2026-10-14).
+                    if not _caller_spoke and _intro_heard():
                         # No run_llm: the caller is mid-sentence. Forcing a generation
                         # here would talk straight over them.
                         await task.queue_frames([LLMMessagesAppendFrame(messages=[{

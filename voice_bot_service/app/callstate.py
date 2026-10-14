@@ -115,6 +115,15 @@ class CallState:
     opening_queued_t: float = 0.0
     opening_seg_t: float = 0.0
     opening_play_secs: float = 0.0
+    # When the current delivery was really queued (opening_queued_t carries a
+    # +0.5 s grace for the cut that caused it), and the most of the opening any
+    # delivery played — a re-say resets opening_play_secs, but what the person
+    # already HEARD stays heard (call 4cb132a2, 2026-10-14).
+    opening_delivery_t: float = 0.0
+    opening_heard_secs: float = 0.0
+    # When RunGuard last told the model the person has not heard who is
+    # calling (0 = never). Cleared in effect once a reply after it plays.
+    intro_cue_t: float = 0.0
     # reply_started_t of the reply we already covered with a latency bridge
     # ("Just a second.") — one bridge per reply, never a loop of them.
     bridged_reply_t: float = 0.0
@@ -343,6 +352,39 @@ def reply_unheard(s: CallState, since: float, in_flight) -> bool:
     if s.reply_cut_t >= since:
         return False
     return bool(in_flight() if callable(in_flight) else in_flight)
+
+
+def opening_coming(s: CallState, greet_queued_t: float, now: float,
+                   start_grace_secs: float) -> bool:
+    """Will the owed opening actually reach the caller's ears? Its current
+    delivery is playing and nothing has cut it, or it was queued less than
+    `start_grace_secs` ago, has made no sound yet and nothing has cut it since
+    (the same "killed after it was queued" test as run_bot._resay_opening).
+    Not "the opening is owed" — call 5e979e3e (2026-10-14): the re-said
+    opening was killed 22 ms in, stayed owed for 14.6 s, and RunGuard
+    swallowed every turn waiting for it."""
+    seg = s.opening_seg_t
+    if s.bot_speaking and seg and not s.last_cut_t > seg:
+        return True
+    queued = s.opening_delivery_t
+    return bool(queued
+                and s.bot_started_t < queued
+                and not s.last_cut_t > max(greet_queued_t, s.opening_queued_t)
+                and now - queued < start_grace_secs)
+
+
+def intro_heard(s: CallState, played_secs: float, intro_secs: float,
+                transcript, names) -> bool:
+    """Has the person HEARD who is calling? By the opening's audio — the most
+    any delivery played (`played_secs` is the current one) reaching
+    `intro_secs` — or the agent's name / institute in what played. Never by
+    what the context says was queued (calls 9fd6489d, c3818b83, 2026-10-14)."""
+    if max(s.opening_heard_secs, played_secs) >= intro_secs:
+        return True
+    keys = [n.casefold() for n in names or () if len(n or "") >= 3]
+    return any(e.get("role") == "assistant"
+               and any(k in (e.get("text") or "").casefold() for k in keys)
+               for e in transcript or [])
 
 
 def unplayed_confirmed(s: CallState, now: float, cfg: WatchdogConfig) -> bool:

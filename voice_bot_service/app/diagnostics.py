@@ -253,6 +253,17 @@ class CallDiagnostics:
     # Runs held because the scripted opening had not been heard yet and the
     # caller's words did not take over (room chatter at pickup, call 4243a436).
     runs_held_for_opening: int = 0
+    # Of those, caller turns that got NO model reply because the opening played
+    # over them (it was the reply). Before 2026-10-14 every held run ended this
+    # way even when nothing ever said the opening — calls 4cb132a2, a11e6709,
+    # 5e979e3e: 3.5-18 s of silence on calls that scored GREEN.
+    turns_swallowed_for_opening: int = 0
+    # Caller runs let through although the opening was still owed, because
+    # nothing was going to say it (spent re-says, a killed re-say, a voicemail
+    # prompt over it) — each was a silent swallow before 2026-10-14.
+    opening_unsaid_runs: int = 0
+    # Runs that carried "the person has not heard who you are" to the model.
+    intro_cues: int = 0
     # Short-answer holds released because the line never went quiet (noise).
     short_answer_noise_releases: int = 0
     # Voice-mode barge-in: acknowledgements the bot talked straight through, and
@@ -1017,6 +1028,9 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
                 "runsHeldForOpening": d.runs_held_for_opening,
+                "turnsSwallowedForOpening": d.turns_swallowed_for_opening,
+                "openingUnsaidRuns": d.opening_unsaid_runs,
+                "introCues": d.intro_cues,
                 "shortAnswerNoiseReleases": d.short_answer_noise_releases,
                 "acksTalkedThrough": d.acks_talked_through,
                 "placeholdersFilled": d.placeholders_filled,

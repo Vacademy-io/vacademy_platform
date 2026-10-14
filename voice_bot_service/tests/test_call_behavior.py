@@ -5607,6 +5607,8 @@ async def test_nothing_generates_before_the_opening_unless_the_caller_takes_over
         g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
                        opening_pending=lambda: pending["v"])
         g.push_frame = _push
+        # The opening is on its way (default): the run waits for it.
+        g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
         return g
     b.FrameProcessor.process_frame = _noop_super
     ctx = LLMContext(messages=[{"role": "system", "content": "x"},

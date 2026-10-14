@@ -16,6 +16,7 @@ Live shapes, re-told with synthetic lines:
     context still held the opening as said.
 """
 import asyncio
+import time
 
 import pytest
 
@@ -100,7 +101,7 @@ async def test_a_turn_held_for_the_opening_runs_once_the_opening_is_killed():
     assert seen == [], "ran over an opening that is playing"
     assert d.runs_held_for_opening == 1
     coming["v"] = False                              # killed; still owed
-    await asyncio.sleep(0.7)
+    await asyncio.sleep(1.4)                         # 1.0 s of "not coming" + a poll
     assert seen == ["LLMContextFrame"], "the held turn never ran after the opening died"
     assert d.opening_unsaid_runs == 1 and d.turns_swallowed_for_opening == 0
 
@@ -465,3 +466,35 @@ async def test_a_turn_let_go_never_answers_a_voicemail_recording():
     voice["v"] = False
     await asyncio.sleep(1.3)
     assert seen == [], "answered the voicemail recording"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gap", [0.15, 0.35, 0.5])
+async def test_a_short_gap_inside_a_playing_opening_keeps_the_pickup_held(gap):
+    """Final review 2026-10-14: a sentence-boundary gap of 0.25 s+ inside an
+    opening that is still playing (nothing cut it) released a held pickup ack to
+    the model, whose reply then talked past the opening's own question."""
+    from pipecat.frames.frames import LLMContextFrame
+    s = CallState()
+    now = time.time()
+    s.opening_delivery_t = now - 2.0
+    s.opening_seg_t = now - 1.9
+    s.bot_started_t = now - 1.9
+    s.bot_speaking = True
+    coming = lambda: cs.opening_coming(s, now - 2.0, time.time(), 1.5)
+    pending = {"v": True}
+    ctx = _opening_ctx("हाँ जी।")
+    g, seen, _d = _guard(ctx, pending, {"v": True})
+    g._opening_coming = coming
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.2)
+    s.bot_speaking = False
+    s.opening_seg_t = 0.0            # sentence boundary, nothing cut
+    await asyncio.sleep(gap)
+    s.bot_speaking = True
+    s.opening_seg_t = time.time()
+    s.bot_started_t = time.time()
+    await asyncio.sleep(0.5)
+    pending["v"] = False             # the opening reached half: heard
+    await asyncio.sleep(0.3)
+    assert seen == [], f"pickup ack sent to the model during a {gap}s gap in a playing opening"

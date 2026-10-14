@@ -689,7 +689,8 @@ class Lost(NamedTuple):
     fragment_samples: List[str]
 
 
-def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82) -> int:
+def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82,
+                       skip_like: str = "") -> int:
     """PURE. Longest run of consecutive bot turns that said the SAME thing.
 
     Post-hoc rather than frame-plumbed on purpose: the played transcript already
@@ -709,13 +710,23 @@ def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82
     breaking the run: they legitimately repeat, and on the live call a "Hmm…"
     landed in the middle of the loop. Skipping keeps the run intact; resetting
     on them hid it.
+
+    ``skip_like`` (the opening) is skipped the same way: the bot's deliberate
+    re-says of an opening cut at pickup sit next to each other in the played
+    transcript once an acknowledgement over them stops splitting the entries
+    (2026-10-14), and three deliveries of the opening read as a REPLY_LOOP —
+    which marks the outcome untrustworthy and re-dials the lead (replay of
+    7fb703a4: GREEN on the old build, RED on identical audio).
     """
+    skip = " ".join((skip_like or "").split()).casefold()[:120]
     heads: List[str] = []
     for entry in transcript or []:
         if (entry or {}).get("role") != "assistant":
             continue
         text = " ".join(((entry or {}).get("text") or "").split()).casefold()
         if len(text) < 24:
+            continue
+        if skip and difflib.SequenceMatcher(None, skip, text[:120]).ratio() >= threshold:
             continue
         heads.append(text[:120])
     best = run = 0

@@ -3843,7 +3843,12 @@ class RunGuard(FrameProcessor):
         idle = 0.0
         while self._opening_pending():
             idle = 0.0 if self._opening_coming() else idle + 0.1
-            if idle >= 0.3:
+            # A full second, not 0.3 s: a sentence-boundary gap of 0.25 s+ in
+            # an opening synthesised sentence by sentence (or an event-loop
+            # stall on the 1-vCPU box) read as "not coming" and released a held
+            # pickup "हाँ जी" — its reply then talked past the opening's own
+            # question (final review 2026-10-14, probe; the B5 shape).
+            if idle >= 1.0:
                 break
             await asyncio.sleep(0.1)
         self._opening_wait = None
@@ -7763,7 +7768,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             except Exception:
                 logger.exception("replay record failed corr=%s", corr)
             # Did the caller hear the same sentence over and over? (REPLY_LOOP)
-            diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
+            diag.max_reply_restarts = diag_mod.max_reply_restarts(
+                outcome.transcript, skip_like=_opening_for_cache)
             if diag.max_reply_restarts >= 2:
                 logger.warning("diagnostics: bot restarted the same reply %dx in a row "
                                "corr=%s", diag.max_reply_restarts, corr)

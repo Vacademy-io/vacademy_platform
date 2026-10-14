@@ -19,8 +19,21 @@ curl https://api.telleo.ai/v1/calls \
 | Same key, same body | `200 OK`: the **same** call as before, with `"idempotent_replay": true`. Nobody is called again. |
 | Same key, different body | `409 idempotency_key_reused`, with the original `call_id` in `details`. Every field counts, including `test`, so a key used for a test call cannot be reused for a real one. |
 
-- Keys are up to 255 characters and are honoured for **24 hours**. After that the same key starts a new call.
+- Keys are up to 255 characters (251 on `POST /v1/batches`) and are honoured for **24 hours**. After that the same key starts a new call.
 - Build them from your own ids (`lead-8812`, `enquiry-5521-attempt-2`) so that a retry naturally reuses the key, and a deliberate new attempt gets a new one.
 - Two requests with the same key at the same moment create one call.
 
-`POST /v1/batches` takes an `Idempotency-Key` too. Retrying the same request with the same key returns the batch it created (`200`, `"idempotent_replay": true`, with the accepted calls) instead of queueing the calls again. Without a key, a re-sent batch is still partly protected: a number that already has a waiting call is rejected as `call_already_queued`.
+## Batches
+
+`POST /v1/batches` takes an `Idempotency-Key` too, of up to 251 characters.
+
+| Situation | Response |
+|---|---|
+| Same key, same request | `200 OK` with `"idempotent_replay": true`: the same batch `id`, the same `calls` and the same `rejected` rows as the first response. Nobody is called again. |
+| Same key, different request | `409 idempotency_key_reused`, with the original `batch_id` in `details`. `test` and every row count. |
+| Same key while the first request is still running | `409 request_in_progress`. Wait the seconds in `Retry-After` (30), then retry with the same key. |
+
+- A replay never places a call. A row the first request accepted but could not place (`call_failed`, or `call_already_queued` found while queueing) comes back as `call_not_placed`. To call it, send it again in a new batch, without the key or under a new one.
+- A batch in which no call was placed at all is not remembered: retrying it is a new attempt.
+
+Without a key, a re-sent batch is still partly protected: a number that already has a waiting call is rejected as `call_already_queued`.

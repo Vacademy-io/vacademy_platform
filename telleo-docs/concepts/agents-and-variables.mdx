@@ -49,7 +49,7 @@ You fill them per call:
 
 - **`{{name}}`** comes from `contact.name`. When `uses_contact_name` is `true`, always send it: an agent that does not know the name greets the person without it.
 - **Everything else** comes from `variables`, including `{{institute_name}}`, `{{lead_source}}` and `{{booked_slot}}` when the script uses them. The `variables` list on each agent shows exactly which keys its script uses.
-- **Date and time** placeholders (`{{day}}`, `{{today}}`, `{{date}}`, `{{time}}`, `{{datetime}}`, `{{now}}`, `{{tomorrow}}`, `{{year}}`, `{{month}}`) are filled with the current date and time. These names, and `name`, are reserved: a variable with one of them is rejected.
+- **Date and time** placeholders (`{{day}}`, `{{today}}`, `{{date}}`, `{{time}}`, `{{datetime}}`, `{{now}}`, `{{tomorrow}}`, `{{year}}`, `{{month}}`) are filled with the current date and time. A variable with one of these names, or named `name` or `lead_name`, is accepted but never replaces the built-in value: `{{date}}` is always today and `{{name}}` always `contact.name`. The agent still receives it as information about the contact, and the response carries a `warnings` entry (`reserved_variable`) so you can rename it.
 
 ### Rules for variables
 

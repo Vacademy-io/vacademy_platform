@@ -49,10 +49,11 @@ Each row is accepted or rejected **on its own**; one bad row never fails the bat
 | `duplicate_in_batch` | The same number appears earlier in this batch. |
 | `call_already_queued` | The number already has a call waiting; `call_id` is that call. |
 | `call_failed` | The row could not be queued because of a problem on our side. Send it again. |
+| `call_not_placed` | Only in a replay (same `Idempotency-Key`): the first request did not place this row. Send it again in a new batch. |
 
 A row can set its own `agent_id` to override the batch's; its entry in `calls` then shows that `agent_id`. A row naming an agent that does not exist or is turned off is rejected with that agent's error code (`agent_not_found`, `agent_disabled`). The whole batch is refused only when it has no rows, more than 1,000 rows, an unknown agent, or the account has no credits.
 
-Send an `Idempotency-Key` header with the batch so a retried request does not queue the calls twice; see [Idempotency](/platform/idempotency).
+Send an `Idempotency-Key` header (up to 251 characters) with the batch so a retried request does not queue the calls twice: the retry gets the first response back. See [Idempotency](/platform/idempotency#batches).
 
 ## Follow progress
 

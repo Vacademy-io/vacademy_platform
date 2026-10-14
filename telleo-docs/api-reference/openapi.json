@@ -892,8 +892,23 @@
               }
             }
           },
+          "200": {
+            "description": "Replay: a batch with this `Idempotency-Key` already exists; the first response's calls and rejected rows are returned (`idempotent_replay: true`) and nothing is placed.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCreated"
+                }
+              }
+            }
+          },
           "400": {
-            "description": "The batch itself is not valid (no rows, more than 1,000 rows, unknown agent).",
+            "description": "The batch itself is not valid (no rows, more than 1,000 rows, unknown agent, an Idempotency-Key over 251 characters).",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/RequestId"
@@ -910,6 +925,47 @@
                       "error": {
                         "code": "invalid_request",
                         "message": "A batch holds at most 1000 calls; split it.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Idempotency-Key was used for a different batch, or its first request is still running.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "With `request_in_progress`: seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "idempotency_key_reused": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_key_reused",
+                        "message": "This Idempotency-Key was already used for a different batch.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "request_in_progress": {
+                    "value": {
+                      "error": {
+                        "code": "request_in_progress",
+                        "message": "A request with this Idempotency-Key is still being processed. Retry in 30 seconds.",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -1072,9 +1128,9 @@
             "required": false,
             "schema": {
               "type": "string",
-              "maxLength": 255
+              "maxLength": 251
             },
-            "description": "Retrying the same request with the same key returns the batch it created (200, `idempotent_replay: true`) instead of queueing the calls again. Honoured for 24 hours."
+            "description": "Retrying the same request with the same key returns the first response (200, `idempotent_replay: true`) instead of queueing the calls again; a different request is refused (409 `idempotency_key_reused`), and a retry while the first request is still running gets 409 `request_in_progress`. At most 251 characters. Honoured for 24 hours."
           }
         ],
         "requestBody": {
@@ -2477,7 +2533,7 @@
                 "boolean"
               ]
             },
-            "description": "Values for the `{{placeholders}}` in the agent's script. Keys: a letter, then letters, digits, `_` or spaces, at most 40 characters. Values: text, number or boolean, at most 500 characters.",
+            "description": "Values for the `{{placeholders}}` in the agent's script. Keys: a letter, then letters, digits, `_` or spaces, at most 40 characters. Values: text, number or boolean, at most 500 characters. A key named like a built-in placeholder (`name`, `lead_name`, `date`, `time`, `year`…) is kept but never replaces the built-in value; the response then carries a `reserved_variable` warning.",
             "example": {
               "course": "NEET 2027",
               "city": "Indore"
@@ -2746,7 +2802,7 @@
               },
               "billed": {
                 "type": "boolean",
-                "description": "false for a few minutes after a connected call ends, until the charge is made."
+                "description": "false while a charge for this call is still to be made (call minutes, then AI minutes once the outcome is processed), usually a few minutes after it ends."
               }
             }
           },
@@ -2756,6 +2812,33 @@
           "idempotent_replay": {
             "type": "boolean",
             "description": "Only on `POST /calls`: `true` when this is the call created by an earlier request with the same `Idempotency-Key`."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "description": "Only on `POST /calls`, and only when there is something to say. The call was created either way."
+          }
+        }
+      },
+      "Warning": {
+        "type": "object",
+        "description": "Something in the request that was accepted but may not do what you expect.",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "variables.date"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "reserved_variable"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "example": "{{date}} in the agent's script is always filled with the current date and time; this value does not replace it. The agent receives it only as information about the contact."
           }
         }
       },
@@ -2841,6 +2924,16 @@
                 },
                 "external_id": {
                   "type": "string"
+                },
+                "agent_id": {
+                  "type": "string",
+                  "description": "Only when the row named an agent other than the batch's."
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Warning"
+                  }
                 }
               }
             }
@@ -2863,10 +2956,12 @@
                     "duplicate_in_batch",
                     "call_already_queued",
                     "call_failed",
+                    "call_not_placed",
                     "agent_not_found",
                     "agent_disabled",
                     "agent_inbound_only"
-                  ]
+                  ],
+                  "description": "`call_not_placed` only in a replay: the first request with this `Idempotency-Key` did not place the row; send it again in a new batch."
                 },
                 "message": {
                   "type": "string"
@@ -2877,6 +2972,10 @@
                 }
               }
             }
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "description": "`true` when this is the batch created by an earlier request with the same `Idempotency-Key`."
           }
         }
       },
@@ -3075,7 +3174,7 @@
               },
               "calls_not_yet_billed": {
                 "type": "integer",
-                "description": "Connected calls whose charge has not been made yet."
+                "description": "Calls with a charge still to be made (call minutes, or AI minutes once the outcome is processed). Calls that are never charged are not counted."
               }
             }
           },

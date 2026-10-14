@@ -74,6 +74,10 @@ Idempotency-Key: lead-8812            (optional, up to 255 chars)
 - At most 50 per call.
 - Keys match `^[A-Za-z][A-Za-z0-9_ ]{0,39}$`.
 - Values are scalars of at most 500 characters.
+- Keys named like a built-in placeholder (`name`, `lead_name`, the clock words `day`, `today`,
+  `date`, `time`, `datetime`, `now`, `tomorrow`, `year`, `month`) are accepted with a
+  `warnings[]` entry (`reserved_variable`) on the create response. They reach the bot as lead
+  fields but never fill the placeholder: `_fill_placeholders` resolves its own values first.
 
 **Metadata:**
 - Any JSON object up to 8 KB.
@@ -106,6 +110,18 @@ Idempotency-Key: lead-8812            (optional, up to 255 chars)
 - **Same key, same body:** returns the first call with 200 and `idempotent_replay: true`.
 - **Same key, different body:** 409 `idempotency_key_reused`.
 - **Two requests at the same moment:** a unique index decides the winner.
+- **Batches** (v1.1.1): each accepted row is stored as `key#index`, so a batch key is at most
+  251 characters (400 otherwise; `#999` must fit `VARCHAR(255)`). A replay must match: the
+  `test` flag, and every stored row equal to the row at its index (409
+  `idempotency_key_reused`, `details.batch_id`). A matching replay places nothing and returns
+  the stored rows as `calls` plus `rejected` recomputed from the request (validation,
+  agent, `duplicate_in_batch`). A row that passes those checks but has no stored call was
+  dropped after acceptance (`call_failed` / `call_already_queued`; only accepted rows are
+  stored, no response cache) and comes back as `call_not_placed`. While the newest stored
+  row is under 2 minutes old such a row means the first request may still be running: 409
+  `request_in_progress`, `Retry-After: 30`. A concurrent first request that loses the
+  insert of a `key#index` row gets the same 409. A batch that stored no row at all is not
+  remembered.
 
 ### Test mode
 
@@ -204,7 +220,7 @@ Idempotency-Key: lead-8812            (optional, up to 255 chars)
 | 403 | `insufficient_scope`, `product_not_enabled` |
 | 404 | `not_found`, `agent_not_found` |
 | 405 | `method_not_allowed` |
-| 409 | `call_already_queued`, `idempotency_key_reused`, `call_not_cancelable`, `agent_disabled`, `agent_inbound_only`, `conflict` |
+| 409 | `call_already_queued`, `idempotency_key_reused`, `request_in_progress`, `call_not_cancelable`, `agent_disabled`, `agent_inbound_only`, `conflict` |
 | 429 | `rate_limited` |
 | 500 | `internal_error` |
 | 503 | `auth_unavailable` |
@@ -262,7 +278,8 @@ A 7-dimension review with independent verification (63 confirmed findings) led t
   - Test calls are limited to 500 per 24 h (`429 test_limit_reached`) and skip the 30 s duplicate window.
   - A create that fails after enqueue cancels the queue item it made (`abandon`).
   - Over-long contact fields are rejected.
-  - The clock placeholders and `name` / `lead_name` are reserved.
+  - The clock placeholders and `name` / `lead_name` were rejected as variables; v1.1.1
+    accepts them again with a warning (they never fill the built-in placeholder).
   - `institute_name`, `lead_source` and `booked_slot` are client variables (mirrored to the
     bot's "institute name" / "booked slot" lead-field names).
 - **Dispatch.**
@@ -282,6 +299,11 @@ A 7-dimension review with independent verification (63 confirmed findings) led t
   - `GET /v1/usage?from&to&timezone&source=api|all` joins call logs to `credit_transactions`
     through the billing `external_reference_id` keys.
   - `cost {credits, billed}` on every call object.
+  - "Not yet billed" (v1.1.1) = a leg `CallBillingService` will still charge: the voice
+    leg on PLIVO / VACADEMY_AI (COMPLETED, duration > 0, `telephony_call_log.credits_billed_at`
+    NULL), or the AI leg on VACADEMY_AI / AAVTAAR (`ai_call_result` PROCESSED, status
+    completed, duration NULL or > 0, a call_uuid or correlation_id, `credits_billed_at`
+    NULL). Reading only the call log's stamp counted every AAVTAAR call as unbilled forever.
 - **Errors.** A `/**` fallback returns 404 `not_found` / 405 `method_not_allowed` in the
   envelope. Spring's `/error` dispatch used to answer 403.
 - **Dashboard.**
@@ -290,6 +312,13 @@ A 7-dimension review with independent verification (63 confirmed findings) led t
   - The Call Queue shows `customer_name` and the source label "API (your systems)".
   - The card asks before rotating the secret and keeps the new-key dialog open until the key
     is copied.
+
+v1.1.1 (same day, review of v1.1): batch replays compare the request and return the same
+accepted and rejected rows (see Idempotency above); batch keys are at most 251 characters;
+reserved variable names are accepted with a warning; `calls_not_yet_billed` and
+`cost.billed` follow the per-provider billing rule; `AiCallingApiViews.state()` and the
+create paths no longer set fields on a managed `AiCallApiCall` (open-session-in-view is on
+in admin_core, so a setter was flushed as a whole-row UPDATE over the finaliser's columns).
 
 Not changed (noted): legacy `vak_live_` keys still authenticate; DNS-rebinding between
 validation and send is not pinned; the bot still describes API variables as "from the form

@@ -3,6 +3,12 @@ title: "Changelog"
 description: "Changes to the Telleo API."
 ---
 
+<Update label="14 October 2026" description="v1.1.1">
+  - A batch retried with the same `Idempotency-Key` must be the same request (`409 idempotency_key_reused` otherwise) and returns the same accepted **and** rejected rows; a retry while the first request is still running gets `409 request_in_progress`. Batch keys are at most 251 characters.
+  - Variables named `name`, `lead_name` or a date/time word (`date`, `time`, `year`…) are accepted again, with a `warnings` entry; they never replace the built-in values.
+  - `calls_not_yet_billed` and `cost.billed` count only charges that will actually be made.
+</Update>
+
 <Update label="14 October 2026" description="v1.1">
   - New: [`GET /v1/credits`](/platform/credits-and-usage) and [`GET /v1/usage`](/platform/credits-and-usage), and `cost` on every call.
   - New: `outcome.call_quality`; calls that broke down on our side no longer report the contact as not interested.

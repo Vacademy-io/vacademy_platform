@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallService;
+import vacademy.io.admin_core_service.features.telephony.core.CallBillingService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCallApiCall;
@@ -99,6 +100,12 @@ public class AiCallingUsageService {
         Instant end = to.plusDays(1).atStartOfDay(zone).toInstant();
 
         // telephony_call_log / credit_transactions hold naive UTC timestamps.
+        // "unbilled" = a leg CallBillingService will still charge (the same gates as
+        // voiceLegPending / aiLegPending below and the reconciliation sweep): the voice leg
+        // only on Vacademy-paid trunks (PLIVO, VACADEMY_AI), the AI leg on VACADEMY_AI and
+        // AAVTAAR. Reading only telephony_call_log.credits_billed_at counted every connected
+        // AAVTAAR call as unbilled forever (no voice leg is ever stamped for it), and called
+        // a VACADEMY_AI call billed while its AI leg was still owed.
         MapSqlParameterSource p = new MapSqlParameterSource()
                 .addValue("i", instituteId)
                 .addValue("start", Timestamp.valueOf(LocalDateTime.ofInstant(start, ZoneOffset.UTC)))
@@ -107,7 +114,17 @@ public class AiCallingUsageService {
                 .addValue("apiOnly", SOURCE_API.equals(source));
         String sql = """
                 WITH logs AS (
-                    SELECT l.id, l.created_at, l.status, l.duration_seconds, l.credits_billed_at
+                    SELECT l.id, l.created_at, l.status, l.duration_seconds,
+                           ((l.provider_type IN ('PLIVO', 'VACADEMY_AI') AND l.status = 'COMPLETED'
+                                AND COALESCE(l.duration_seconds, 0) > 0 AND l.credits_billed_at IS NULL)
+                            OR EXISTS (SELECT 1 FROM ai_call_result r
+                                        WHERE r.call_log_id = l.id
+                                          AND r.provider IN ('VACADEMY_AI', 'AAVTAAR')
+                                          AND r.processing_status = 'PROCESSED'
+                                          AND lower(trim(coalesce(r.status, ''))) IN ('completed', 'complete')
+                                          AND (r.duration_seconds IS NULL OR r.duration_seconds > 0)
+                                          AND (r.call_uuid IS NOT NULL OR r.correlation_id IS NOT NULL)
+                                          AND r.credits_billed_at IS NULL)) AS unbilled
                       FROM telephony_call_log l
                      WHERE l.institute_id = :i
                        AND l.created_at >= :start AND l.created_at < :end
@@ -131,8 +148,7 @@ public class AiCallingUsageService {
                        COUNT(*) FILTER (WHERE logs.status = 'COMPLETED') AS connected,
                        COALESCE(SUM(logs.duration_seconds) FILTER (WHERE logs.status = 'COMPLETED'), 0) AS seconds,
                        COALESCE(SUM(cost.credits), 0) AS credits,
-                       COUNT(*) FILTER (WHERE logs.status = 'COMPLETED' AND COALESCE(logs.duration_seconds, 0) > 0
-                                          AND logs.credits_billed_at IS NULL) AS unbilled
+                       COUNT(*) FILTER (WHERE logs.unbilled) AS unbilled
                   FROM logs LEFT JOIN cost ON cost.log_id = logs.id
                  GROUP BY 1
                  ORDER BY 1
@@ -218,10 +234,39 @@ public class AiCallingUsageService {
             log.warn("ai-calling-api: cost lookup failed for {}: {}", c.getId(), e.getMessage());
             return null;
         }
-        boolean billed = l.getCreditsBilledAt() != null && (r == null || r.getCreditsBilledAt() != null);
         m.put("credits", round(credits));
-        m.put("billed", billed);
+        m.put("billed", !voiceLegPending(l) && !aiLegPending(r));
         return m;
+    }
+
+    /**
+     * The voice leg is still to be charged: CallLogService.maybeBillVoiceLeg and the sweep
+     * charge it only on Vacademy-paid trunks (PLIVO, VACADEMY_AI), for a COMPLETED call with
+     * talk time, and stamp telephony_call_log.credits_billed_at. Any other provider never
+     * gets the stamp, so its absence there means nothing is owed.
+     */
+    static boolean voiceLegPending(TelephonyCallLog l) {
+        return l != null && l.getCreditsBilledAt() == null
+                && CallBillingService.isVoiceBillable(l.getProviderType())
+                && "COMPLETED".equals(l.getStatus())
+                && l.getDurationSeconds() != null && l.getDurationSeconds() > 0;
+    }
+
+    /**
+     * The AI leg is still to be charged: the same gates as AiCallOutcomeProcessor's live
+     * charge and the reconciliation sweep (an AI-billable provider, a PROCESSED report whose
+     * own status is completed, talk time unknown or positive, and a stable identity:
+     * call_uuid, or correlation_id bound to a call log). A report that fails any gate is
+     * never charged, so it is not "not yet billed" either.
+     */
+    static boolean aiLegPending(AiCallResult r) {
+        if (r == null || r.getCreditsBilledAt() != null) return false;
+        if (!CallBillingService.isAiBillable(r.getProvider())) return false;
+        if (!"PROCESSED".equals(r.getProcessingStatus())) return false;
+        String status = r.getStatus() == null ? "" : r.getStatus().trim().toLowerCase(Locale.ROOT);
+        if (!"completed".equals(status) && !"complete".equals(status)) return false;
+        if (r.getDurationSeconds() != null && r.getDurationSeconds() <= 0) return false;
+        return r.getCallUuid() != null || (r.getCorrelationId() != null && r.getCallLogId() != null);
     }
 
     private static double round(BigDecimal v) {

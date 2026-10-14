@@ -109,8 +109,16 @@ public class CallBillingService {
         return isVoiceBillable(providerType);
     }
 
-    public boolean isAiBillableProvider(String provider) {
+    /**
+     * Static twin of {@link #isAiBillableProvider}, for readers that report what is still
+     * to be charged (the public API's usage and per-call cost) and must use the same set.
+     */
+    public static boolean isAiBillable(String provider) {
         return provider != null && AI_BILLABLE_PROVIDERS.contains(provider);
+    }
+
+    public boolean isAiBillableProvider(String provider) {
+        return isAiBillable(provider);
     }
 
     /**

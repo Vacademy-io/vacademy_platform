@@ -17,7 +17,7 @@ export interface PaymentLog {
     tracking_id?: string | null;
     tracking_source?: string | null;
     order_status?: string | null;
-    /** Offline payments only: how it was paid, as recorded by an admin (V576). */
+    /** Offline payments only: how it was paid, as recorded by an admin (V577). */
     payment_mode?: string | null;
     payment_sub_mode?: string | null;
     payment_reference?: string | null;

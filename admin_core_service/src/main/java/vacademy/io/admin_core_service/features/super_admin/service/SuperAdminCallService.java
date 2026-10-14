@@ -45,7 +45,7 @@ public class SuperAdminCallService {
             LEFT JOIN telephony_call_log l ON l.id = r.call_log_id
             LEFT JOIN ai_agent a ON a.id = r.campaign_id
             LEFT JOIN institutes i ON i.id = r.institute_id
-            WHERE r.provider <> 'MOCK'
+            WHERE r.provider IS DISTINCT FROM 'MOCK'
               AND (CAST(:instituteId AS text) IS NULL OR r.institute_id = CAST(:instituteId AS text))
               AND (CAST(:fromTs AS text) IS NULL OR r.created_at >= CAST(:fromTs AS timestamp))
               AND (CAST(:toTs   AS text) IS NULL OR r.created_at <  CAST(:toTs   AS timestamp))
@@ -337,7 +337,7 @@ public class SuperAdminCallService {
                                     THEN CAST(r.diagnostics->'tts'->>'cacheSecsSaved' AS numeric) END), 0)
                 FROM ai_call_result r
                 LEFT JOIN ai_agent a ON a.id = r.campaign_id
-                WHERE r.provider <> 'MOCK'
+                WHERE r.provider IS DISTINCT FROM 'MOCK'
                   AND (CAST(:inst AS text) IS NULL OR r.institute_id = CAST(:inst AS text))
                   AND (CAST(:frm  AS text) IS NULL OR r.created_at >= CAST(:frm AS timestamp))
                   AND (CAST(:to   AS text) IS NULL OR r.created_at <  CAST(:to  AS timestamp))
@@ -572,7 +572,8 @@ public class SuperAdminCallService {
         Map<String, Double> surcharge = ttsSurcharges();
         Map<String, double[]> pricing = creditPricing();
         Query q = em.createNativeQuery("""
-                SELECT """ + ENGINE_SQL + """
+                SELECT
+                       """ + ENGINE_SQL + """
                        AS engine,
                        count(*),
                        COALESCE(sum(r.duration_seconds),0),

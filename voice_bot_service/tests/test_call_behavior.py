@@ -1273,7 +1273,10 @@ def test_build_tts_defaults_to_sarvam_and_rumik_on_request():
     # Rumik only on explicit request; Sarvam is the fall-through (founder
     # decision 2026-08-05 after Mulberry garbled phone-leg Hindi).
     assert 'startswith("rumik")' in src
-    assert "SarvamTTSService(" in src
+    # Sarvam is built through _sarvam_tts_class() (per-sentence flush + the
+    # silent-line guard, call c6847f91) — still SarvamTTSService underneath.
+    assert "_sarvam_tts_class()(" in src
+    assert issubclass(pv._sarvam_tts_class(), pv.SarvamTTSService)
 
 
 def test_interims_never_enter_the_transcript():

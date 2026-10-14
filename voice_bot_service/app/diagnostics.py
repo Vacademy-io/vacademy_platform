@@ -162,6 +162,10 @@ class CallDiagnostics:
     tts_stalls: int = 0                 # STALL_RECOVER decisions
     tts_stall_cap_hit: bool = False     # gave up: permanently silent from here
     tts_silent_generations: int = 0     # generated, no audio ever followed
+    # A paused TTS ended an utterance with zero audio and was resumed so the
+    # reply behind it could play (providers._silent_context_resume; call
+    # c6847f91, 2026-10-14: a silent bridge line held the reply ~16 s).
+    tts_silent_resumes: int = 0
 
     # ── playout truth ──
     replies_generated: int = 0
@@ -967,6 +971,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "stalls": d.tts_stalls,
                 "stallCapHit": d.tts_stall_cap_hit,
                 "silentGenerations": d.tts_silent_generations,
+                "silentResumes": d.tts_silent_resumes,
                 "ttfbP50": _p(d.tts_ttfb, 50), "ttfbP95": _p(d.tts_ttfb, 95),
                 "ttfbMax": round(max(d.tts_ttfb), 3) if d.tts_ttfb else None,
                 "vendor": d.tts_vendor or None,

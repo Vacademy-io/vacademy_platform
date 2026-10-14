@@ -494,19 +494,34 @@ def test_every_bump_call_site_names_a_real_counter():
     real on 2026-08-06 — the new carrier counter was written camelCase at the
     call site against a snake_case field and a green suite said nothing.
 
-    So read the ACTUAL call sites out of bot.py rather than restating a list
+    So read the ACTUAL call sites out of bot.py (and providers.py, whose
+    service wrappers bump through set_diagnostics) rather than restating a list
     here, which would just be a second place to make the same typo."""
     import pathlib
     import re
-    src = (pathlib.Path(__file__).resolve().parents[1] / "app" / "bot.py").read_text()
-    names = set(re.findall(r'\.bump\(\s*["\']([A-Za-z_]+)["\']', src))
-    assert names, "found no bump() call sites — the regex broke, not the code"
+    app = pathlib.Path(__file__).resolve().parents[1] / "app"
+    names = set()
+    for module in ("bot.py", "providers.py"):
+        src = (app / module).read_text()
+        found = set(re.findall(r'\.bump\(\s*["\']([A-Za-z_]+)["\']', src))
+        assert found, f"found no bump() call sites in {module} — the regex broke, not the code"
+        names |= found
+    assert "tts_silent_resumes" in names
     diag = dg.CallDiagnostics()
     for name in sorted(names):
         before = getattr(diag, name, None)
         assert before is not None, f"bot.py bumps {name!r} but no such counter exists"
         diag.bump(name)
         assert getattr(diag, name) == before + 1, name
+
+
+def test_silent_resumes_reach_the_payload():
+    """providers._silent_context_resume (call c6847f91): a paused TTS ended a
+    line with no audio and was resumed so the reply could play."""
+    diag = dg.CallDiagnostics()
+    assert dg.to_payload(diag)["tts"]["silentResumes"] == 0
+    diag.bump("tts_silent_resumes")
+    assert dg.to_payload(diag)["tts"]["silentResumes"] == 1
 
 
 def test_carrier_and_restart_counters_reach_the_payload():

@@ -34,6 +34,7 @@ import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import PackageSessionRenewalSettings from './PackageSessionRenewalSettings';
+import OfflinePaymentModesSettings from './OfflinePaymentModesSettings';
 import { useTranslation } from 'react-i18next';
 
 interface Interval {
@@ -758,6 +759,10 @@ const PaymentSettings = () => {
 
             <div className="mt-6">
                 <PackageSessionRenewalSettings />
+            </div>
+
+            <div className="mt-6">
+                <OfflinePaymentModesSettings />
             </div>
 
             <PaymentPlanCreator

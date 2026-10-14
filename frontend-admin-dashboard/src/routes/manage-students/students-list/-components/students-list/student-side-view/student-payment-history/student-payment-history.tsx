@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -248,13 +250,15 @@ const StudentMarkPaidDialog = ({
     onSuccess?: () => void;
 }) => {
     const { t } = useTranslation('manageStudentsPaymentHistory');
-    const [txnId, setTxnId] = useState('');
+    const [details, setDetails] = useState<OfflinePaymentDetails>({});
+    const [detailsError, setDetailsError] = useState<string | null>(null);
     const [notes, setNotes] = useState('');
     const mutation = useMutation({
         mutationFn: () =>
             markInvoicePaidManual(invoiceId, {
-                transaction_id: txnId.trim() || undefined,
+                transaction_id: details.reference?.trim() || undefined,
                 notes: notes.trim() || undefined,
+                payment_details: toOfflinePaymentDetailsPayload(details),
             }),
         onSuccess: () => {
             toast.success(t('markPaidDialog.successToast', { invoice: invoiceNumber || invoiceId }));
@@ -281,10 +285,8 @@ const StudentMarkPaidDialog = ({
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-1">
-                    <div className="space-y-1">
-                        <Label>{t('markPaidDialog.transactionReference')}</Label>
-                        <Input value={txnId} onChange={(e) => setTxnId(e.target.value)} placeholder={t('markPaidDialog.transactionReferencePlaceholder')} />
-                    </div>
+                    {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                    <OfflinePaymentFields value={details} onChange={setDetails} onErrorChange={setDetailsError} />
                     <div className="space-y-1">
                         <Label>{t('markPaidDialog.notes')}</Label>
                         <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('markPaidDialog.notesPlaceholder')} />
@@ -294,7 +296,7 @@ const StudentMarkPaidDialog = ({
                     <MyButton type="button" buttonType="secondary" scale="small" onClick={() => onOpenChange(false)} disable={mutation.isPending}>
                         {t('markPaidDialog.cancel')}
                     </MyButton>
-                    <MyButton type="button" buttonType="primary" scale="small" onClick={() => mutation.mutate()} disable={mutation.isPending}>
+                    <MyButton type="button" buttonType="primary" scale="small" onClick={() => mutation.mutate()} disable={mutation.isPending || !!detailsError}>
                         {mutation.isPending ? <><CircleNotch className="size-4 animate-spin" /> {t('markPaidDialog.saving')}</> : t('markPaidDialog.submit')}
                     </MyButton>
                 </DialogFooter>

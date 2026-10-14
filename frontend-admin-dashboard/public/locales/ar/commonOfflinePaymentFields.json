@@ -1,0 +1,26 @@
+{
+    "loading": "جارٍ تحميل طرق الدفع…",
+    "modeLabel": "كيف تم الدفع؟",
+    "subModeLabel": "عبر",
+    "referenceLabel": "المرجع",
+    "referencePlaceholder": "مثل مرجع UPI أو UTR أو رقم الشيك",
+    "dateLabel": "تاريخ الدفع",
+    "notesLabel": "ملاحظات",
+    "extra": {
+        "cheque_date": "تاريخ الشيك",
+        "bank_name": "البنك",
+        "payer_name": "الدافع"
+    },
+    "proof": {
+        "attach": "إرفاق إثبات",
+        "replace": "استبدال الإثبات",
+        "uploading": "جارٍ الرفع…",
+        "attached": "تم إرفاق الإثبات",
+        "remove": "إزالة"
+    },
+    "errors": {
+        "modeRequired": "اختر طريقة الدفع.",
+        "referenceRequired": "أدخل المرجع لطريقة الدفع هذه.",
+        "proofRequired": "أرفق إثبات الدفع لهذه الطريقة."
+    }
+}

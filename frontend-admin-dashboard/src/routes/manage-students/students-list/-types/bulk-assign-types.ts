@@ -2,6 +2,7 @@
 
 import type { DiscountSpec } from './cpo-side-view-types';
 import type { AdminDiscountRequest } from '@/services/admin-discounts';
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 
 /**
  * Per-installment override carried inside `cpo_config.installment_overrides`.
@@ -36,6 +37,8 @@ export interface CpoEnrollmentConfig {
      * `installment_overrides`. See docs/CPO_FLEXIBLE_INSTALLMENTS.md.
      */
     installment_schedule?: InstallmentSchedule | null;
+    /** How the offline payment was made (mode, option, reference); used when payment_mode is OFFLINE. */
+    payment_details?: OfflinePaymentDetails | null;
 }
 
 export type InstallmentIntervalUnit = 'DAYS' | 'MONTHS';
@@ -409,6 +412,8 @@ export interface SelectedPackageSession {
     cpoConfig?: CpoEnrollmentConfig;
     /** Problem with the installment schedule in `cpoConfig`; blocks Preview while set. */
     cpoScheduleError?: string | null;
+    /** Problem with the offline payment details in `cpoConfig`; blocks Preview while set. */
+    cpoPaymentError?: string | null;
 
     /**
      * Admin-granted discount for this course (Step 3). Applies to every learner in the
@@ -502,6 +507,10 @@ export interface BulkEnrollOptions {
     sendCredentials: boolean;
     transactionId: string;
     paymentDate: string;
+    /** How the payment was made; sent only with a payment date or transaction id. */
+    paymentDetails?: OfflinePaymentDetails;
+    /** What blocks Preview in those payment details (translated), if anything. */
+    paymentDetailsError?: string | null;
 }
 
 /** Full 4-step wizard state */

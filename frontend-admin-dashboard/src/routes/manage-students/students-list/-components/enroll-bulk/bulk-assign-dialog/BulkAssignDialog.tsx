@@ -34,6 +34,7 @@ import {
 } from '@/services/admin-discounts';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
+import { toOfflinePaymentDetailsPayload } from '@/services/offline-payment-modes';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -221,7 +222,15 @@ export const BulkAssignDialog = ({
                 package_session_id: ps.packageSessionId,
                 enroll_invite_id: ps.enrollInviteId ?? null,
                 access_days: ps.accessDays ?? null,
-                cpo_config: ps.cpoConfig ?? null,
+                cpo_config: ps.cpoConfig
+                    ? {
+                          ...ps.cpoConfig,
+                          payment_details:
+                              ps.cpoConfig.payment_mode === 'OFFLINE'
+                                  ? toOfflinePaymentDetailsPayload(ps.cpoConfig.payment_details)
+                                  : null,
+                      }
+                    : null,
                 // Omitted entirely when "No discount" so the request is unchanged from before.
                 ...(toAdminDiscountPayload(ps.adminDiscount)
                     ? { admin_discount: toAdminDiscountPayload(ps.adminDiscount) }
@@ -255,6 +264,10 @@ export const BulkAssignDialog = ({
                 send_credentials: showSendCredentials ? options.sendCredentials : false,
                 transaction_id: options.transactionId || undefined,
                 payment_date: options.paymentDate || undefined,
+                // Only with an actual payment: the fields preselect a mode on their own.
+                ...(options.paymentDate || options.transactionId
+                    ? { payment_details: toOfflinePaymentDetailsPayload(options.paymentDetails) }
+                    : {}),
                 dry_run: dryRun,
             },
         };
@@ -574,13 +587,17 @@ export const BulkAssignDialog = ({
         if (currentStep === 'courses') return selectedPackageSessions.length > 0;
         // An admin discount that's half filled in (no value / no reason) must not be sent.
         if (currentStep === 'config')
-            return selectedPackageSessions.every(
-                (ps) =>
-                    !getAdminDiscountValidationError(ps.adminDiscount) &&
-                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError) &&
-                    // An installment schedule the backend would reject (e.g. amounts that
-                    // don't add up) must be fixed before Preview.
-                    !ps.cpoScheduleError
+            return (
+                selectedPackageSessions.every(
+                    (ps) =>
+                        !getAdminDiscountValidationError(ps.adminDiscount) &&
+                        !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError) &&
+                        // An installment schedule the backend would reject (e.g. amounts that
+                        // don't add up) must be fixed before Preview.
+                        !ps.cpoScheduleError &&
+                        // Offline payment details the institute requires (mode, reference, proof).
+                        !(ps.cpoConfig?.payment_mode === 'OFFLINE' && ps.cpoPaymentError)
+                ) && !((options.paymentDate || options.transactionId) && options.paymentDetailsError)
             );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.

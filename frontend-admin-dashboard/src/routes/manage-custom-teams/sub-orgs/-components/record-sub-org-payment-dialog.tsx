@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { useTranslation } from 'react-i18next';
 import {
     Dialog,
@@ -48,14 +50,15 @@ export function RecordSubOrgPaymentDialog({
     const [paymentDate, setPaymentDate] = useState<string>(
         new Date().toISOString().slice(0, 10)
     );
-    const [reference, setReference] = useState<string>('');
+    const [details, setDetails] = useState<OfflinePaymentDetails>({});
+    const [detailsError, setDetailsError] = useState<string | null>(null);
     const [generateInvoice, setGenerateInvoice] = useState<boolean>(true);
 
     useEffect(() => {
         if (!open) return;
         setAmount(suggestedAmount && suggestedAmount > 0 ? String(suggestedAmount) : '');
         setPaymentDate(new Date().toISOString().slice(0, 10));
-        setReference('');
+        setDetails({});
         setGenerateInvoice(true);
     }, [open, suggestedAmount]);
 
@@ -65,11 +68,14 @@ export function RecordSubOrgPaymentDialog({
             if (!Number.isFinite(amt) || amt <= 0) {
                 throw new Error(t('errors.enterPositiveAmount'));
             }
+            if (detailsError) throw new Error(detailsError);
+            const paymentDetails = toOfflinePaymentDetailsPayload(details);
             return recordSubOrgAdminOfflinePayment(userPlanId, {
                 amount: amt,
                 payment_date: paymentDate,
-                reference: reference.trim() ? reference.trim() : null,
+                reference: paymentDetails?.reference ?? null,
                 generate_invoice: generateInvoice,
+                payment_details: paymentDetails,
             });
         },
         onSuccess: () => {
@@ -138,16 +144,8 @@ export function RecordSubOrgPaymentDialog({
                             onChange={(e) => setPaymentDate(e.target.value)}
                         />
                     </div>
-                    <div className="space-y-1">
-                        <Label htmlFor="rsop-ref">{t('fields.reference')}</Label>
-                        <Input
-                            id="rsop-ref"
-                            type="text"
-                            value={reference}
-                            onChange={(e) => setReference(e.target.value)}
-                            placeholder={t('fields.referencePlaceholder')}
-                        />
-                    </div>
+                    {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                    <OfflinePaymentFields value={details} onChange={setDetails} onErrorChange={setDetailsError} />
                     <label className="flex items-center gap-2 text-sm">
                         <Checkbox
                             checked={generateInvoice}
@@ -172,7 +170,7 @@ export function RecordSubOrgPaymentDialog({
                         buttonType="primary"
                         scale="small"
                         onClick={() => mutation.mutate()}
-                        disable={mutation.isPending}
+                        disable={mutation.isPending || !!detailsError}
                     >
                         {mutation.isPending ? (
                             <>

@@ -15,6 +15,7 @@ import {
     type SchedulePart,
 } from '@/routes/manage-students/students-list/-utils/installment-schedule';
 import { InstallmentScheduleEditor } from './InstallmentScheduleEditor';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
 
 interface InstallmentRow {
     id: string;            // aft_installment id (matches SFP.iId)
@@ -37,6 +38,8 @@ interface Props {
     onChange: (next: CpoEnrollmentConfig) => void;
     /** Reports a schedule problem (translated) so the wizard can block Preview; null when fine. */
     onScheduleErrorChange?: (message: string | null) => void;
+    /** Reports what blocks the offline payment details (translated); null when fine. */
+    onPaymentErrorChange?: (message: string | null) => void;
 }
 
 const flattenInstallments = (feeTypes: CPOFeeType[] | undefined): InstallmentRow[] => {
@@ -115,6 +118,7 @@ export const CpoEnrollmentConfigPanel = ({
     value,
     onChange,
     onScheduleErrorChange,
+    onPaymentErrorChange,
 }: Props) => {
     const { t } = useTranslation('manageStudentsCpoEnrollmentConfigPanel');
     const { data, isLoading, isError } = useCPOFullDetails(cpoId, !!cpoId);
@@ -657,16 +661,13 @@ export const CpoEnrollmentConfigPanel = ({
                                 {t('payment.netDues', { amount: fmt(totals.net) })}
                             </p>
                         </div>
-                        <div className="flex-1 min-w-40">
-                            <label className="mb-1 block text-2xs font-medium text-neutral-500">
-                                {t('payment.referenceLabel')}
-                            </label>
-                            <input
-                                type="text"
-                                placeholder={t('payment.referencePlaceholder')}
-                                value={cfg.payment_reference ?? ''}
-                                onChange={(e) => setPayment({ payment_reference: e.target.value || null })}
-                                className="w-full rounded border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-primary-300"
+                        {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                        <div className="w-full">
+                            <OfflinePaymentFields
+                                compact
+                                value={cfg.payment_details ?? {}}
+                                onChange={(v) => setPayment({ payment_details: v })}
+                                onErrorChange={onPaymentErrorChange}
                             />
                         </div>
                     </div>

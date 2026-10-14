@@ -1,3 +1,4 @@
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 // Mirrors the backend DTOs in admin_core_service for the CPO side-view
 // endpoints under /admin-core-service/v1/fee-management. Snake-case wire
 // format on both sides — Spring serializes via SnakeCaseStrategy and we
@@ -128,4 +129,6 @@ export interface RecordOfflinePaymentRequest {
     reference?: string | null;
     currency?: string | null;
     generate_invoice?: boolean;
+    /** How it was paid (mode, option, reference, proof). */
+    payment_details?: OfflinePaymentDetails | null;
 }

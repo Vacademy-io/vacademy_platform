@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { useTranslation } from 'react-i18next';
 import { MemberHistoryDrawer } from './member-history-drawer';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
@@ -364,7 +366,8 @@ export function AddUserToSubOrgSection({
     const [paymentMode, setPaymentMode] = useState<'SKIP' | 'OFFLINE'>('SKIP');
     const [offlineAmount, setOfflineAmount] = useState<string>('');
     const [offlineCurrency, setOfflineCurrency] = useState<string>('INR');
-    const [offlineReference, setOfflineReference] = useState<string>('');
+    const [offlineDetails, setOfflineDetails] = useState<OfflinePaymentDetails>({});
+    const [offlineDetailsError, setOfflineDetailsError] = useState<string | null>(null);
     const [offlineDate, setOfflineDate] = useState<string>(''); // yyyy-mm-dd
     // Default ON — admin recording an offline payment almost always wants the
     // invoice as a paper trail. Was previously `false`, which silently dropped
@@ -493,7 +496,7 @@ export function AddUserToSubOrgSection({
         setPaymentMode('SKIP');
         setOfflineAmount('');
         setOfflineCurrency('INR');
-        setOfflineReference('');
+        setOfflineDetails({});
         setOfflineDate('');
         // Match the useState initial default — ON, so admins don't lose their invoice
         // paper trail on the next Add User submit.
@@ -541,7 +544,13 @@ export function AddUserToSubOrgSection({
                 toast.error(t('addUser.offlineAmountInvalid'));
                 return;
             }
+            if (offlineDetailsError) {
+                toast.error(offlineDetailsError);
+                return;
+            }
         }
+        const offlinePaymentDetails =
+            paymentMode === 'OFFLINE' ? toOfflinePaymentDetailsPayload(offlineDetails) : null;
 
         const request: AddSubOrgMemberRequest = {
             user: {
@@ -559,9 +568,8 @@ export function AddUserToSubOrgSection({
             offline_payment_amount: paymentMode === 'OFFLINE' ? amountNum : undefined,
             offline_payment_currency:
                 paymentMode === 'OFFLINE' ? (offlineCurrency || 'INR') : undefined,
-            offline_payment_reference:
-                paymentMode === 'OFFLINE' && offlineReference.trim()
-                    ? offlineReference.trim() : undefined,
+            offline_payment_reference: offlinePaymentDetails?.reference ?? undefined,
+            offline_payment_details: offlinePaymentDetails,
             offline_payment_date:
                 paymentMode === 'OFFLINE' && offlineDate
                     ? new Date(offlineDate).toISOString()
@@ -948,12 +956,12 @@ export function AddUserToSubOrgSection({
                                         onChange={(e) => setOfflineDate(e.target.value)}
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">{t('addUser.referenceLabel')}</Label>
-                                    <Input
-                                        value={offlineReference}
-                                        onChange={(e) => setOfflineReference(e.target.value)}
-                                        placeholder={t('addUser.referencePlaceholder')}
+                                {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                                <div className="sm:col-span-2">
+                                    <OfflinePaymentFields
+                                        value={offlineDetails}
+                                        onChange={setOfflineDetails}
+                                        onErrorChange={setOfflineDetailsError}
                                     />
                                 </div>
                                 <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">

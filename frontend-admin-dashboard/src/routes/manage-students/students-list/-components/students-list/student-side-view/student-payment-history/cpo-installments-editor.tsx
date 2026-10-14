@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -482,7 +484,8 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: Offli
     const { mutateAsync, isPending } = useRecordOfflinePayment(userPlanId, userId);
     const [open, setOpen] = useState(false);
     const [amount, setAmount] = useState<string>('');
-    const [reference, setReference] = useState<string>('');
+    const [details, setDetails] = useState<OfflinePaymentDetails>({});
+    const [detailsError, setDetailsError] = useState<string | null>(null);
     const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
     const [generateInvoice, setGenerateInvoice] = useState<boolean>(true);
 
@@ -492,18 +495,24 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: Offli
             toast.error(t('offlinePayment.amountRequiredError'));
             return;
         }
+        if (detailsError) {
+            toast.error(detailsError);
+            return;
+        }
+        const paymentDetails = toOfflinePaymentDetailsPayload(details);
         const body: RecordOfflinePaymentRequest = {
             amount: amt,
             payment_date: paymentDate,
-            reference: reference || null,
+            reference: paymentDetails?.reference ?? null,
             generate_invoice: generateInvoice,
+            payment_details: paymentDetails,
         };
         try {
             await mutateAsync(body);
             toast.success(t('offlinePayment.recordedSuccessToast', { amount: fmt(amt, currency) }));
             setOpen(false);
             setAmount('');
-            setReference('');
+            setDetails({});
         } catch (e: any) {
             toast.error(e?.response?.data?.message || t('offlinePayment.recordErrorToast'));
         }
@@ -555,14 +564,13 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: Offli
                         className="rounded border border-neutral-200 px-2 py-1 text-2xs"
                     />
                 </div>
-                <div className="flex-1 min-w-36">
-                    <label className="block text-2xs text-neutral-500">{t('offlinePayment.referenceLabel')}</label>
-                    <input
-                        type="text"
-                        value={reference}
-                        onChange={(e) => setReference(e.target.value)}
-                        placeholder={t('offlinePayment.referencePlaceholder')}
-                        className="w-full rounded border border-neutral-200 px-2 py-1 text-2xs"
+                {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
+                <div className="w-full">
+                    <OfflinePaymentFields
+                        compact
+                        value={details}
+                        onChange={setDetails}
+                        onErrorChange={setDetailsError}
                     />
                 </div>
                 <label className="flex items-center gap-1 text-2xs text-neutral-700">

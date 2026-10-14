@@ -43,6 +43,7 @@ import {
 } from '@/components/common/payments/AdminDiscountField';
 import { isDiscountablePlanType } from '@/services/admin-discounts';
 import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
+import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
 
 interface Props {
     instituteId: string;
@@ -53,7 +54,8 @@ interface Props {
      */
     onSelectedPackageSessionsChange: React.Dispatch<React.SetStateAction<SelectedPackageSession[]>>;
     options: BulkEnrollOptions;
-    onOptionsChange: (opts: BulkEnrollOptions) => void;
+    /** Takes an updater too: the payment fields patch options from effects. */
+    onOptionsChange: React.Dispatch<React.SetStateAction<BulkEnrollOptions>>;
 }
 
 interface CourseConfigRowProps {
@@ -112,6 +114,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                 // a different (or no) CPO mirror.
                                 cpoConfig: undefined,
                                 cpoScheduleError: null,
+                                cpoPaymentError: null,
                                 // A discount priced against the old invite's plan no longer applies.
                                 adminDiscount: undefined,
                             })
@@ -187,7 +190,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                           adminDiscount: undefined,
                                           adminDiscountError: null,
                                       }
-                                    : { cpoConfig: undefined, cpoScheduleError: null }
+                                    : { cpoConfig: undefined, cpoScheduleError: null, cpoPaymentError: null }
                             )
                         }
                     />
@@ -217,6 +220,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     value={ps.cpoConfig}
                     onChange={(v) => onUpdate({ cpoConfig: v })}
                     onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
+                    onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
                 />
             )}
 
@@ -227,6 +231,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     value={ps.cpoConfig}
                     onChange={(v) => onUpdate({ cpoConfig: v })}
                     onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
+                    onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
                 />
             )}
         </div>
@@ -442,6 +447,20 @@ export const Step3EnrollConfig = ({
                             {t('globalOptions.transactionId.description')}
                         </p>
                     </div>
+
+                    {/* How it was paid (mode, option, proof), recorded with the payment date /
+                        transaction id above; the transaction id is the reference. */}
+                    {(options.paymentDate || options.transactionId) && (
+                        <OfflinePaymentFields
+                            showReference={false}
+                            externalReference={options.transactionId}
+                            value={options.paymentDetails ?? {}}
+                            onChange={(v) => onOptionsChange((prev) => ({ ...prev, paymentDetails: v }))}
+                            onErrorChange={(e) =>
+                                onOptionsChange((prev) => ({ ...prev, paymentDetailsError: e }))
+                            }
+                        />
+                    )}
                 </div>
             </div>
 

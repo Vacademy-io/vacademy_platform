@@ -33,6 +33,7 @@ import { PlanDiscountsConfiguration } from './PlanDiscountsConfiguration';
 import { PlanNavigation } from './PlanNavigation';
 import { CPOPlanConfiguration } from './CPOPlanConfiguration';
 import type { CPOForm } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
+import { flexibleDefaultsError } from '@/routes/financial-management/fee-plans/-utils/flexible-defaults';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 
 interface CustomInterval {
@@ -191,7 +192,8 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
             if (
                 !cpoForm ||
                 cpoForm.packageSessionIds.length === 0 ||
-                cpoForm.feeTypes.length === 0
+                cpoForm.feeTypes.length === 0 ||
+                flexibleDefaultsError(cpoForm.scheduleMode, cpoForm.flexibleDefaults) != null
             ) {
                 return;
             }

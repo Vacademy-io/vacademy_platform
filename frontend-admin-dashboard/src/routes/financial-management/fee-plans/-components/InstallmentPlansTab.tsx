@@ -224,6 +224,7 @@ function FeeTypeCard({
 
 function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: any[] }) {
     const { t } = useTranslation('financialManagementInstallmentPlansTab');
+    const { t: tFlex } = useTranslation('financialManagementFlexibleSchedule');
     const [expandedFeeTypes, setExpandedFeeTypes] = useState<Set<string>>(new Set());
     const shouldFetchFullDetails = expandedFeeTypes.size > 0;
 
@@ -257,6 +258,11 @@ function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: a
                     <div className="flex items-center gap-3">
                         <h3 className="text-base font-bold text-gray-900">{pkg.name}</h3>
                         <StatusBadge status={pkg.status} />
+                        {pkg.schedule_mode === 'FLEXIBLE' && (
+                            <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
+                                {tFlex('badge')}
+                            </span>
+                        )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-4 text-sm text-gray-500">
                         <span>

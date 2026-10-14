@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import type { CPOForm, FeeTypeForm, InstallmentForm, BatchOption } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
+import { FlexibleScheduleSettings } from '@/routes/financial-management/fee-plans/-components/FlexibleScheduleSettings';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -70,8 +71,10 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
     );
 }
 
-function FeeTypeEditor({ feeType, index, onChange, onRemove, canRemove }: { feeType: FeeTypeForm; index: number; onChange: (updated: FeeTypeForm) => void; onRemove: () => void; canRemove: boolean }) {
+function FeeTypeEditor({ feeType, index, onChange, onRemove, canRemove, flexible = false }: { feeType: FeeTypeForm; index: number; onChange: (updated: FeeTypeForm) => void; onRemove: () => void; canRemove: boolean; flexible?: boolean }) {
     const { t } = useTranslation('settingsCpoPlanConfiguration');
+    // Flexible plan: no installment table; the toggle chooses split over the learner's schedule vs upfront.
+    const { t: tFlex } = useTranslation('financialManagementFlexibleSchedule');
     const installmentPresets = React.useMemo(() => buildInstallmentPresets(t), [t]);
     const feeTypePresets = React.useMemo(() => buildFeeTypePresets(t), [t]);
     const [isExpanded, setIsExpanded] = useState(true);
@@ -132,7 +135,7 @@ function FeeTypeEditor({ feeType, index, onChange, onRemove, canRemove }: { feeT
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-500">{index + 1}</div>
                     <div>
                         <div className="text-sm font-semibold text-gray-900">{feeType.name || t('feeTypeEditor.defaultName', { number: index + 1 })}</div>
-                        {feeType.amount && <div className="text-xs text-gray-500">₹{parseFloat(feeType.amount as string).toLocaleString('en-IN')} · {t('feeTypeEditor.installmentCount', { count: feeType.installments.length })}</div>}
+                        {feeType.amount && <div className="text-xs text-gray-500">₹{parseFloat(feeType.amount as string).toLocaleString('en-IN')} · {flexible ? tFlex(feeType.hasInstallment ? 'fee.split' : 'fee.upfront') : t('feeTypeEditor.installmentCount', { count: feeType.installments.length })}</div>}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -166,7 +169,7 @@ function FeeTypeEditor({ feeType, index, onChange, onRemove, canRemove }: { feeT
                     </div>
 
                     <div className="flex flex-wrap items-center gap-6">
-                        <div className="flex items-center gap-2"><Toggle value={feeType.hasInstallment} onChange={(v) => update('hasInstallment', v)} /><span className="text-sm font-medium text-gray-700">{t('feeTypeEditor.hasInstallments')}</span></div>
+                        <div className="flex items-center gap-2"><Toggle value={feeType.hasInstallment} onChange={(v) => update('hasInstallment', v)} /><span className="text-sm font-medium text-gray-700">{flexible ? tFlex('fee.splitToggle') : t('feeTypeEditor.hasInstallments')}</span></div>
                         <div className="flex items-center gap-2"><Toggle value={feeType.isRefundable} onChange={(v) => update('isRefundable', v)} /><span className="text-sm font-medium text-gray-700">{t('feeTypeEditor.refundable')}</span></div>
                         <div className="flex items-center gap-2"><Toggle value={feeType.hasPenalty} onChange={(v) => update('hasPenalty', v)} /><span className="text-sm font-medium text-gray-700">{t('feeTypeEditor.latePenalty')}</span></div>
                         {feeType.hasPenalty && (
@@ -177,7 +180,7 @@ function FeeTypeEditor({ feeType, index, onChange, onRemove, canRemove }: { feeT
                         )}
                     </div>
 
-                    {feeType.hasInstallment && (
+                    {feeType.hasInstallment && !flexible && (
                         <div className="flex flex-col gap-3">
                             <div>
                                 <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">{t('feeTypeEditor.paymentFrequency')}</Label>
@@ -385,6 +388,9 @@ export const CPOPlanConfiguration: React.FC<CPOPlanConfigurationProps> = ({ plan
                 </Select>
             </div>
 
+            {/* Fixed dates vs chosen for each learner at enrollment */}
+            <FlexibleScheduleSettings form={cpoForm} onChange={(patch) => onChange({ ...cpoForm, ...patch })} />
+
             <div>
                 <div className="mb-3 flex items-center justify-between">
                     <Label className="text-sm font-bold text-gray-800">{t('feeTypesSection.title')}</Label>
@@ -395,7 +401,7 @@ export const CPOPlanConfiguration: React.FC<CPOPlanConfigurationProps> = ({ plan
                 </div>
                 <div className="flex flex-col gap-3">
                     {cpoForm.feeTypes.map((ft, idx) => (
-                        <FeeTypeEditor key={ft.id} feeType={ft} index={idx} onChange={(updated) => updateFeeType(ft.id, updated)} onRemove={() => removeFeeType(ft.id)} canRemove={cpoForm.feeTypes.length > 1} />
+                        <FeeTypeEditor key={ft.id} feeType={ft} index={idx} onChange={(updated) => updateFeeType(ft.id, updated)} onRemove={() => removeFeeType(ft.id)} canRemove={cpoForm.feeTypes.length > 1} flexible={cpoForm.scheduleMode === 'FLEXIBLE'} />
                     ))}
                 </div>
             </div>

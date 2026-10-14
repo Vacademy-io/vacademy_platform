@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAcce
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
+import vacademy.io.admin_core_service.features.audience.service.ManualLeadOwnerGuard;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
@@ -43,6 +44,9 @@ public class AudienceController {
 
     @Autowired
     private LeadCreatorAttributionService leadCreatorAttributionService;
+
+    @Autowired
+    private ManualLeadOwnerGuard manualLeadOwnerGuard;
 
     @Autowired
     private AudienceRoleAccessService audienceRoleAccessService;
@@ -179,6 +183,7 @@ public class AudienceController {
             @RequestBody SubmitLeadRequestDTO requestDTO,
             @RequestAttribute("user") CustomUserDetails user) {
 
+        manualLeadOwnerGuard.checkCanAdd(requestDTO, user);
         leadCreatorAttributionService.applyCreatorAsCounsellor(requestDTO, user);
         requestDTO.setCreatedByUserId(user.getUserId());
         return ResponseEntity.ok(audienceService.submitLead(requestDTO));

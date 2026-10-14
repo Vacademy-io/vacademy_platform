@@ -165,6 +165,7 @@ public class CpoSideViewService {
             rows.add(CpoInstallmentRowDTO.builder()
                     .id(sfp.getId())
                     .aftInstallmentId(sfp.getIId())
+                    .installmentNumber(sfp.getInstallmentNumber())
                     .originalAmount(originalAmount)
                     .amountExpected(amountExpected)
                     .amountPaid(amountPaid)

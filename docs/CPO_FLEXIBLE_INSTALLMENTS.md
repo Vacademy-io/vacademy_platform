@@ -1,6 +1,6 @@
 # Flexible Installments at Enrollment
 
-**Status:** Proposed (2026-10-14). Nothing here is built yet.
+**Status:** Phase 1 (backend) built 2026-10-14; phases 2–5 proposed. See [§9](#9-phases).
 
 Let an admin decide **how many installments and how far apart** while enrolling a learner,
 instead of creating one fee plan and one invite link per schedule in advance.
@@ -180,12 +180,14 @@ own and the preview groups bills by installment number; amount edits in the prev
 allowed only when the plan has a single split fee type (always true for one-time courses).
 Per-bill edits remain possible afterwards in the side view.
 
-The admin enrollment calls (fee bills, discount, payment) become one transaction on this path,
-which also closes the "partial enrollment on failure" gap for it.
+Bill generation is all-or-nothing: every bill is saved before any ledger accrual is posted, in
+one transaction. The rest of admin enrollment (UserPlan, discount, offline payment) is still not
+wrapped in a single transaction, as today.
 
 ### 6.4 Dry run
 
-`dry_run: true` returns the generated rows (`cpo_schedule_preview`) for each item, so Step 4
+`dry_run: true` returns the generated rows (`cpo_schedule` on each result item: total, bill
+count, one row per installment, and any upfront fees), so Step 4
 shows what the backend will actually write instead of the gross total only.
 
 ### 6.5 Learner self-enroll on a FLEXIBLE plan
@@ -211,6 +213,29 @@ event is appended to the `cpo_discount_state` history for audit.
 Exclude `source_payment_plan_id IS NOT NULL` from: Fee Plans list (`/cpo/{instituteId}`),
 `/package-session/{id}/cpo-options`, invite CPO pickers, and the Payment Settings plan list.
 `get-payment-options` already excludes CPO mirrors by default.
+
+### 6.8 Creating a flexible fee plan
+
+`POST /v1/fee-management/cpo` accepts two new optional fields; `GET /cpo/{id}/full` and the
+list return them:
+
+```json
+{
+  "name": "Class 10 – 2026-27 (pay in installments)",
+  "schedule_mode": "FLEXIBLE",
+  "flexible_defaults": { "count": 4, "interval": { "unit": "MONTHS", "value": 1 }, "max_count": 12 },
+  "fee_types": [
+    { "name": "Tuition", "code": "TUITION", "assigned_fee_value": { "amount": 40000 } },
+    { "name": "Admission", "code": "ADMISSION", "assigned_fee_value": { "amount": 5000, "has_installment": false } }
+  ]
+}
+```
+
+- A FLEXIBLE plan may not carry template installments (rejected).
+- Each fee is split over the learner's schedule unless `has_installment` is `false`, which makes
+  it an upfront fee due on the first due date.
+- `flexible_defaults` can be changed later through `PUT /cpo/{id}`; `schedule_mode` is fixed at
+  creation.
 
 ## 7. Admin UI
 
@@ -263,7 +288,7 @@ What phase 5 must fix before it is safe to open to learners:
 
 | Phase | Scope |
 |---|---|
-| 1 | Migration; `InstallmentScheduleService`; `installment_schedule` on admin assign (CPO FIXED/FLEXIBLE + ONE_TIME provisioning); dry-run preview; listing hygiene; `installment_number` readers |
+| 1 ✅ | Migration V575; `InstallmentScheduleService`; `installment_schedule` on admin assign (CPO FIXED/FLEXIBLE + ONE_TIME provisioning via `OneTimeInstallmentPlanProvisioner`); FLEXIBLE default schedule in `generateFeeBills`; dry-run preview; listing hygiene; `installment_number` readers; `schedule_mode` + `flexible_defaults` on the fee-plan create/read/update API |
 | 2 | Admin UI: Enroll wizard panel, Step 4 preview, FLEXIBLE option in fee plan creation |
 | 3 | Side-view "Reschedule remaining" |
 | 4 | FLEXIBLE plans on learner invite checkout (default rule) |

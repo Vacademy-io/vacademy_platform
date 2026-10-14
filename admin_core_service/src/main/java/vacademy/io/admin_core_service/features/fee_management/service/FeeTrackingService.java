@@ -363,7 +363,9 @@ public class FeeTrackingService {
                 StudentFeeAdjustmentHistory effective = adjustmentResolver.effectiveOrNull(event);
                 BigDecimal adjustmentEffect = adjustmentResolver.computeAdjustmentEffect(effective);
                 String name = feeTypeNameMap.getOrDefault(p.getAsvId(), "N/A");
-                Integer num = installmentNumberMap.getOrDefault(p.getIId(), null);
+                Integer num = p.getInstallmentNumber() != null
+                        ? p.getInstallmentNumber()
+                        : installmentNumberMap.getOrDefault(p.getIId(), null);
 
                 return vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO.builder()
                         .feeTypeName(name)

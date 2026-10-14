@@ -1466,7 +1466,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 item.put("recipientName",      recipientName);
                 item.put("studentName",        studentName);
                 item.put("mobileNumber",       recipientPhone);
-                item.put("installmentNumber",  installment != null ? installment.getInstallmentNumber() : "");
+                item.put("installmentNumber",  payment.getInstallmentNumber() != null
+                        ? payment.getInstallmentNumber()
+                        : installment != null ? installment.getInstallmentNumber() : "");
                 item.put("remainingAmount",    remaining.toPlainString());
                 item.put("amountExpected",     payment.getAmountExpected().toPlainString());
                 item.put("amountPaid",         amountPaid.toPlainString());

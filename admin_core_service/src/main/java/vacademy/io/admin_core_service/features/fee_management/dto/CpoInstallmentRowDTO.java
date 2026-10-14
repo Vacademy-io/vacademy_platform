@@ -23,6 +23,8 @@ public class CpoInstallmentRowDTO {
 
     private String id;
     private String aftInstallmentId;
+    /** Set on bills generated from a learner's installment schedule (V575); null otherwise. */
+    private Integer installmentNumber;
 
     private BigDecimal originalAmount;
     private BigDecimal amountExpected;

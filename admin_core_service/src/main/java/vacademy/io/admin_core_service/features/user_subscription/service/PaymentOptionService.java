@@ -432,6 +432,18 @@ public class PaymentOptionService {
         plan.setActualPrice(total != null ? total.doubleValue() : 0.0);
         plan.setElevatedPrice(0.0);
         plan.setValidityInDays(validityDays);
+        // A system-built installment plan behind a one-time course price (V575) has no
+        // installment dates to derive validity from; it takes the course plan's validity and
+        // currency so the learner's membership dates and amounts match the course.
+        if (cpo.getSourcePaymentPlanId() != null) {
+            PaymentPlan source = paymentPlanRepository.findById(cpo.getSourcePaymentPlanId()).orElse(null);
+            if (source != null) {
+                plan.setValidityInDays(source.getValidityInDays());
+                if (source.getCurrency() != null) {
+                    plan.setCurrency(source.getCurrency());
+                }
+            }
+        }
         paymentPlanRepository.save(plan);
     }
 

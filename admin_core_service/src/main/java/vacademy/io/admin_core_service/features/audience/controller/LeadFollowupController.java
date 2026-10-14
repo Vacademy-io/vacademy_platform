@@ -75,6 +75,10 @@ public class LeadFollowupController {
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "closedFrom", required = false) String closedFrom,
             @RequestParam(value = "closedTo", required = false) String closedTo,
+            // Lead status keys, comma-separated - the sidebar route's status /
+            // statusExclude, same as the open buckets send to the leads list.
+            @RequestParam(value = "leadStatusId", required = false) String leadStatusId,
+            @RequestParam(value = "leadStatusExcludeId", required = false) String leadStatusExcludeId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "includeLeadDetail", defaultValue = "false") boolean includeLeadDetail,
@@ -82,6 +86,7 @@ public class LeadFollowupController {
         return ResponseEntity.ok(
                 leadFollowupService.completed(user, instituteId, counsellorUserId, search,
                         toTimestamp(closedFrom), toTimestamp(closedTo),
+                        leadStatusId, leadStatusExcludeId,
                         PageRequest.of(page, size), includeLeadDetail));
     }
 

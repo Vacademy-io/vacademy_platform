@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     extractLeadSettingData,
+    followUpStatusFilter,
     mergeLeadSettings,
     LEAD_SETTINGS_DEFAULTS,
 } from '@/hooks/use-lead-settings';
@@ -212,5 +213,39 @@ describe('fieldsRequired', () => {
             followUpFields: { fieldsRequired: 'true' },
         } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
         expect(merged.followUpFields.fieldsRequired).toBe(false);
+    });
+});
+
+describe('hideLostInFollowUps', () => {
+    it('is on for an institute that never saved it, off only when switched off', () => {
+        expect(mergeLeadSettings(undefined).hideLostInFollowUps).toBe(true);
+        expect(mergeLeadSettings({}).hideLostInFollowUps).toBe(true);
+        expect(mergeLeadSettings({ hideLostInFollowUps: false }).hideLostInFollowUps).toBe(false);
+    });
+});
+
+describe('followUpStatusFilter', () => {
+    it('excludes LOST when the route names nothing and the setting is on', () => {
+        expect(followUpStatusFilter('', false, true)).toEqual({ leadStatusExcludeId: 'LOST' });
+    });
+
+    it('sends nothing when the route names nothing and the setting is off', () => {
+        expect(followUpStatusFilter('', false, false)).toEqual({});
+    });
+
+    it('adds LOST to a route exclude list once', () => {
+        expect(followUpStatusFilter('JUNK', true, true)).toEqual({
+            leadStatusExcludeId: 'JUNK,LOST',
+        });
+        expect(followUpStatusFilter('LOST', true, true)).toEqual({ leadStatusExcludeId: 'LOST' });
+    });
+
+    it('keeps a route exclude list as-is when the setting is off', () => {
+        expect(followUpStatusFilter('LOST', true, false)).toEqual({ leadStatusExcludeId: 'LOST' });
+    });
+
+    it('leaves a route that includes statuses alone', () => {
+        expect(followUpStatusFilter('LOST', false, true)).toEqual({ leadStatusId: 'LOST' });
+        expect(followUpStatusFilter('HOT,WARM', false, true)).toEqual({ leadStatusId: 'HOT,WARM' });
     });
 });

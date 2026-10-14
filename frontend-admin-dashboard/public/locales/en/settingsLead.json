@@ -33,6 +33,12 @@
         "showConvertedFilter": "Offer \"Enrolled / Converted\" in the Lead Status filter",
         "showConvertedFilterHint": "This is the built-in option that finds leads enrolled into a course. Turn it off if your own converted status already covers it — most institutes have one, and the two sit next to each other looking almost identical."
     },
+    "followUpsCard": {
+        "title": "Follow-ups",
+        "description": "Choose which leads appear in the Follow-ups page.",
+        "hideLost": "Hide lost leads from Follow-ups",
+        "hideLostHint": "Lost leads are left out of every Follow-ups tab: Today, Upcoming, Overdue, All and Completed. Turn this off to show them."
+    },
     "weightsCard": {
         "title": "Scoring Weights",
         "description": "Each factor contributes its weight percentage to the final score (0–100). Weights must sum to exactly 100.",

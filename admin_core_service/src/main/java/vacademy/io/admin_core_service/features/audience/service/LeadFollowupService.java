@@ -207,6 +207,7 @@ public class LeadFollowupService {
     public Page<LeadFollowupDto> completed(CustomUserDetails user, String instituteId,
                                            String counsellorUserId, String search,
                                            Timestamp closedFrom, Timestamp closedTo,
+                                           String leadStatusCsv, String leadStatusExcludeCsv,
                                            Pageable pageable, boolean includeLeadDetail) {
         // ORDER BY lives in the query, so the Pageable stays unsorted.
         Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -256,7 +257,7 @@ public class LeadFollowupService {
         return hydrate(leadFollowupRepository.findCompleted(
                 instituteId, createdByCsv, closedFrom, closedTo,
                 search == null || search.isBlank() ? null : search.trim(),
-                searchUserIdsCsv, paged), includeLeadDetail);
+                searchUserIdsCsv, leadStatusCsv, leadStatusExcludeCsv, paged), includeLeadDetail);
     }
 
     /** Map a page of entities through the same lead-name hydration the lists use. */

@@ -76,6 +76,10 @@
             "label": "Stop counsellors adding another counsellor's lead",
             "hint": "When a counsellor adds a lead by hand and the phone already belongs to another counsellor's lead, show who owns it and don't add it. Admins can still add."
         },
+        "blockOpenLeadManualAdd": {
+            "label": "Stop counsellors adding a lead that is still open",
+            "hint": "When a counsellor adds a lead by hand and it already exists and is still being worked (not converted or discarded), show a message and don't add it, whoever owns it. A discarded or converted lead can be added again. Admins can still add."
+        },
         "reattempt": {
             "title": "Reattempt (an existing lead enquires again)",
             "hint": "What a repeat enquiry leaves behind. Each switch works on its own.",

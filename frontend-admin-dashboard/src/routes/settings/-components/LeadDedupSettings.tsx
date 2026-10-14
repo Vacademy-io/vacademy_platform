@@ -548,6 +548,24 @@ export default function LeadDedupSettings() {
                                             </>
                                         )}
 
+                                        <div className="flex items-start gap-3">
+                                            <Switch
+                                                id="repeat-block-open"
+                                                checked={repeatLead.blockOpenLeadManualAdd}
+                                                onCheckedChange={(v) =>
+                                                    updateRepeatLead({ blockOpenLeadManualAdd: v })
+                                                }
+                                            />
+                                            <div className="flex flex-col gap-0.5">
+                                                <Label htmlFor="repeat-block-open" className="cursor-pointer">
+                                                    {t('repeatLead.blockOpenLeadManualAdd.label')}
+                                                </Label>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {t('repeatLead.blockOpenLeadManualAdd.hint')}
+                                                </p>
+                                            </div>
+                                        </div>
+
                                         <div className="flex flex-col gap-3 border-t pt-4">
                                             <div className="flex flex-col gap-0.5">
                                                 <p className="text-sm font-medium">

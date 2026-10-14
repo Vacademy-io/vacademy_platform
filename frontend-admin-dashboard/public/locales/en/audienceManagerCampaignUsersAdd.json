@@ -44,5 +44,9 @@
         "empty": "No counsellor found.",
         "hint": "If left empty, the lead follows your usual lead routing.",
         "optional": "(optional)"
+    },
+    "duplicateBlock": {
+        "title": "This lead already exists",
+        "ok": "OK"
     }
 }

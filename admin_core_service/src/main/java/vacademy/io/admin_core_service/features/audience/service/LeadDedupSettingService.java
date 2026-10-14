@@ -34,6 +34,8 @@ import java.util.List;
  *                                     // person who already holds the phone
  *     "blockOwnedManualAdd": false,   // field = PHONE: a counsellor cannot add by hand a
  *                                     // phone whose lead another counsellor owns
+ *     "blockOpenLeadManualAdd": false, // a counsellor cannot add by hand a lead (dedup field)
+ *                                     // that is still open — not converted, not LOST
  *     "reattempt": {                  // what a repeat enquiry leaves behind; all off by default
  *       "markDuplicate": false,       // flag the new enquiry as a duplicate of the lead it repeats
  *       "duplicateOpenOnly": true,    // ...only while that lead is open (not converted / LOST);
@@ -126,10 +128,18 @@ public class LeadDedupSettingService {
      */
     public record RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
             String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
-            boolean blockOwnedManualAdd, ReattemptSettings reattempt) {
+            boolean blockOwnedManualAdd, ReattemptSettings reattempt, boolean blockOpenLeadManualAdd) {
 
         public RepeatLeadSettings {
             if (reattempt == null) reattempt = ReattemptSettings.OFF;
+        }
+
+        /** {@code blockOpenLeadManualAdd} off. */
+        public RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
+                String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
+                boolean blockOwnedManualAdd, ReattemptSettings reattempt) {
+            this(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode, samePersonByPhone,
+                    blockOwnedManualAdd, reattempt, false);
         }
 
         /** Reattempt switches off. */
@@ -281,7 +291,8 @@ public class LeadDedupSettingService {
         return new RepeatLeadSettings(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode,
                 node.path("samePersonByPhone").asBoolean(false),
                 node.path("blockOwnedManualAdd").asBoolean(false),
-                parseReattempt(node.path("reattempt")));
+                parseReattempt(node.path("reattempt")),
+                node.path("blockOpenLeadManualAdd").asBoolean(false));
     }
 
     private ReattemptSettings parseReattempt(JsonNode node) {

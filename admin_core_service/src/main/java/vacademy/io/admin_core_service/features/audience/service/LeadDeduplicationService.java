@@ -310,6 +310,37 @@ public class LeadDeduplicationService {
         );
     }
 
+    /**
+     * The open lead (not converted, not LOST) this manual add would repeat, under the
+     * dedup field and scope, when the institute dedups with "Allow & reassign" and has
+     * switched on repeatLead.blockOpenLeadManualAdd. Empty for any other setting, a blank
+     * or short identifier, or when every matching lead is closed.
+     */
+    public Optional<AudienceResponseRepository.OpenLeadRow> findOpenLeadForManualAdd(String instituteId,
+            String audienceId, String email, String phone) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        if (!settings.enabled() || settings.repeatLead() == null
+                || settings.action() != LeadDedupSettingService.DedupAction.ALLOW_REASSIGN
+                || !settings.repeatLead().blockOpenLeadManualAdd()) {
+            return Optional.empty();
+        }
+        if (settings.scope() == LeadDedupSettingService.DedupScope.SELECTED
+                && (settings.audienceIds() == null || settings.audienceIds().isEmpty())) {
+            return Optional.empty();
+        }
+        String audienceIdsCsv = scopeAudienceIdsCsv(settings, audienceId);
+        List<AudienceResponseRepository.OpenLeadRow> rows;
+        if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
+            String last10 = lastNDigits(phone, 10);
+            if (last10 == null) return Optional.empty();
+            rows = audienceResponseRepository.findOpenLeadByPhoneLast10(instituteId, audienceIdsCsv, last10);
+        } else {
+            if (email == null || email.isBlank()) return Optional.empty();
+            rows = audienceResponseRepository.findOpenLeadByEmail(instituteId, audienceIdsCsv, email.trim());
+        }
+        return rows.isEmpty() ? Optional.empty() : Optional.ofNullable(rows.get(0));
+    }
+
     /** The dedup settings when they are PHONE + ALLOW_REASSIGN and enabled, else null. */
     private LeadDedupSettingService.DedupSettings phoneReassignSettings(String instituteId) {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);

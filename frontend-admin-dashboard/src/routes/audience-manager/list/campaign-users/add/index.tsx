@@ -27,7 +27,20 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { submitAudienceLeadAsAdmin, SubmitLeadRequest } from '../../-services/submit-audience-lead';
+import {
+    ServerMessageError,
+    submitAudienceLeadAsAdmin,
+    SubmitLeadRequest,
+} from '../../-services/submit-audience-lead';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -187,6 +200,8 @@ export function AddResponsePage() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Server refused the add because the lead already exists (409) — shown as a dialog.
+    const [duplicateBlock, setDuplicateBlock] = useState<string | null>(null);
 
     // Form state
     const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -538,7 +553,11 @@ export function AddResponsePage() {
             handleBack();
         } catch (error) {
             console.error('Error submitting response:', error);
-            toast.error(error instanceof Error ? error.message : t('toast.genericError'));
+            if (error instanceof ServerMessageError && error.status === 409) {
+                setDuplicateBlock(error.message);
+            } else {
+                toast.error(error instanceof Error ? error.message : t('toast.genericError'));
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -707,6 +726,24 @@ export function AddResponsePage() {
                     )}
                 </Card>
             </div>
+            <AlertDialog
+                open={duplicateBlock !== null}
+                onOpenChange={(open) => {
+                    if (!open) setDuplicateBlock(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t('duplicateBlock.title')}</AlertDialogTitle>
+                        <AlertDialogDescription>{duplicateBlock}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setDuplicateBlock(null)}>
+                            {t('duplicateBlock.ok')}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </LayoutContainer>
     );
 }

@@ -1871,15 +1871,67 @@ public class AudienceService {
                             leadUserId, e.getMessage());
                 }
             }
-            case SAME_AS_PREVIOUS -> {
-                // No-op by design — leave whatever counsellor the lead already had untouched.
-            }
+            case SAME_AS_PREVIOUS -> assignPreviousCounsellor(savedResponse, leadUserId, instituteId,
+                    leadFullName, campaignName);
             case SPECIFIC -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId,
                     repeatLeadSettings.specificCounsellorId(), repeatLeadSettings.specificCounsellorName(),
                     leadFullName, campaignName);
             case ROUND_ROBIN -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, null, null,
                     leadFullName, campaignName);
         }
+    }
+
+    /**
+     * Repeat-lead SAME_AS_PREVIOUS: the repeat goes to the counsellor who owned the matched
+     * earlier lead.
+     * <ul>
+     *   <li>Same person record that already has an owner (repeat with the same email) —
+     *       left untouched, as before.</li>
+     *   <li>Otherwise (typically a phone match carrying a new email, which creates a new
+     *       user with an ownerless profile) — copy the owner of the most recent matched
+     *       lead, as long as they are still an active counsellor.</li>
+     *   <li>No usable previous owner — fall back to the list's pool, so a repeat lead never
+     *       arrives unowned.</li>
+     * </ul>
+     * Failures are swallowed like every other assignment step.
+     */
+    private void assignPreviousCounsellor(AudienceResponse savedResponse, String leadUserId,
+            String instituteId, String leadFullName, String campaignName) {
+        try {
+            boolean alreadyOwned = userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
+                    .map(p -> StringUtils.hasText(p.getAssignedCounselorId()))
+                    .orElse(false);
+            if (alreadyOwned) {
+                return;
+            }
+        } catch (Exception e) {
+            // Can't tell whether the lead is already owned, so don't risk replacing an owner.
+            logger.error("Repeat lead {}: profile lookup failed, leaving the counsellor untouched: {}",
+                    savedResponse.getId(), e.getMessage());
+            return;
+        }
+        String previousCounsellorId = null;
+        try {
+            previousCounsellorId = leadDeduplicationService.findPreviousCounsellorId(instituteId,
+                    savedResponse.getAudienceId(), savedResponse.getParentEmail(),
+                    savedResponse.getParentMobile(), savedResponse.getId()).orElse(null);
+            if (previousCounsellorId != null) {
+                // An owner whose counsellor role was removed would make the lead invisible to
+                // every counsellor. An empty roster means the lookup failed, so trust the owner.
+                List<String> activeCounsellors = counsellorScopeService.allCounsellorUserIds(instituteId);
+                if (!activeCounsellors.isEmpty() && !activeCounsellors.contains(previousCounsellorId)) {
+                    logger.info("Repeat lead {}: previous counsellor {} is no longer active, using the pool",
+                            savedResponse.getId(), previousCounsellorId);
+                    previousCounsellorId = null;
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Repeat lead {}: previous counsellor lookup failed: {}",
+                    savedResponse.getId(), e.getMessage());
+            previousCounsellorId = null;
+        }
+        autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, previousCounsellorId, null,
+                leadFullName, campaignName);
     }
 
     /**

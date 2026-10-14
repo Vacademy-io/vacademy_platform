@@ -79,20 +79,62 @@ public class SuperAdminCallService {
             END""";
 
     /**
-     * What the wallet ACTUALLY charged for the call: the ledger rows CallBillingService
-     * wrote under its idempotency keys (AI leg by the report's call uuid or the call
-     * log, telephony leg by the call log). chr(58) is ':' — see ENGINE_SQL.
-     * NULL when nothing has been charged (yet), and only then is revenue estimated.
+     * What the wallet ACTUALLY charged for the call, PER LEG: the ledger rows
+     * CallBillingService wrote under its idempotency keys (AI leg by the report's call
+     * uuid or the call log, telephony leg by the call log). chr(58) is ':' — see
+     * ENGINE_SQL. Each column is NULL while that leg has no ledger row.
+     *
+     * <p>Per leg, not one sum: the two legs are charged independently (voice from the
+     * Plivo status webhook, AI from the bot's report, each through its own ai_service
+     * deduct), so for seconds — or ~15 min when ai_service is mid-deploy and the
+     * reconciliation sweep has to heal it — only one of them is in. A single sum then
+     * passed for the final charge: the voice leg alone (1 credit/min of 1 + 5) was shown
+     * without "est." and the summary dropped the missing AI leg altogether.
      */
     private static final String LEDGER_JOIN = """
             LEFT JOIN LATERAL (
-                SELECT SUM(ABS(t.amount)) AS credits FROM credit_transactions t
+                SELECT SUM(ABS(t.amount)) FILTER (WHERE t.external_reference_id LIKE 'voice%') AS voice_credits,
+                       SUM(ABS(t.amount)) FILTER (WHERE t.external_reference_id LIKE 'ai%') AS ai_credits
+                  FROM credit_transactions t
                  WHERE t.institute_id = r.institute_id AND t.transaction_type = 'USAGE_DEDUCTION'
                    AND t.external_reference_id IN (
                        'ai_call' || chr(58) || 'uuid' || chr(58) || r.provider || chr(58) || r.call_uuid,
                        'ai_call' || chr(58) || r.call_log_id,
                        'voice_call' || chr(58) || r.call_log_id)) led ON TRUE
             """;
+
+    /**
+     * The telephony leg is still to be charged: no ledger row, the call log not
+     * stamped, a Vacademy-paid trunk (CallBillingService.VOICE_BILLABLE_PROVIDERS) and a
+     * connected call. Only such a leg is estimated. A log STAMPED with no ledger row was
+     * charged 0 on purpose — bill() stamps a 0-rate (negotiated override) call without
+     * writing a row — so it earns 0, not an estimate at the global rate forever.
+     *
+     * <p>Shared verbatim by list() and summary() so a row and the total it rolls into
+     * can never disagree about which legs are estimated.
+     */
+    static final String VOICE_PENDING_SQL = "(led.voice_credits IS NULL AND l.credits_billed_at IS NULL"
+            + " AND COALESCE(l.provider_type, '') IN ('PLIVO', 'VACADEMY_AI')"
+            + " AND r.status ILIKE 'complete%' AND r.duration_seconds > 0)";
+
+    /**
+     * The AI leg is still to be charged — the same gates the live hook
+     * (AiCallOutcomeProcessor) and CallBillingReconciliationJob apply: a metered
+     * provider, a report that was not rejected, and a stable identity to bill under
+     * (no call uuid and no pre-call correlation = never billed, so never pending).
+     * ai_call_result.credits_billed_at with no ledger row = charged 0, as for the voice leg.
+     */
+    static final String AI_PENDING_SQL = "(led.ai_credits IS NULL AND r.credits_billed_at IS NULL"
+            + " AND r.provider IN ('VACADEMY_AI', 'AAVTAAR')"
+            + " AND COALESCE(r.processing_status, '') NOT IN ('REJECTED_UNVERIFIED', 'PARSE_FAILED')"
+            + " AND (r.call_uuid IS NOT NULL OR (r.correlation_id IS NOT NULL AND r.call_log_id IS NOT NULL))"
+            + " AND r.status ILIKE 'complete%' AND r.duration_seconds > 0)";
+
+    /** Billing pulses of the calls matching {@code cond}, summed (summary columns). */
+    private static String pulsesWhere(String cond) {
+        return "COALESCE(sum(CASE WHEN " + cond
+                + " THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0)";
+    }
 
     /** BASE_FROM with the ledger join (list and summary only — the count needs neither). */
     private static String fromWithLedger() {
@@ -130,7 +172,32 @@ public class SuperAdminCallService {
     }
 
     /**
-     * What this call ACTUALLY billed, in rupees — mirroring CallBillingService.
+     * What one call billed, and whether any of it is still an estimate.
+     *
+     * @param estimated true while some leg is still to be charged — the portal marks
+     *                  the figure "est." exactly then
+     */
+    record Billed(double inr, boolean estimated) {}
+
+    /**
+     * Per leg: the ledger amount where that leg was charged, the pulse estimate only
+     * for a leg still pending ({@link #VOICE_PENDING_SQL} / {@link #AI_PENDING_SQL}),
+     * and 0 for anything else — a leg stamped billed with no ledger row (0-rate), a
+     * leg that does not apply (own carrier, MOCK), a call that never connected.
+     */
+    Billed billed(Map<String, Double> card, Map<String, Double> surcharge,
+                  Map<String, double[]> pricing, String engine, String direction, int seconds,
+                  Number voiceLedger, Number aiLedger, boolean voicePending, boolean aiPending) {
+        double creditInr = card.getOrDefault("credit_inr", 0d);
+        double inr = 0d;
+        if (voiceLedger != null) inr += voiceLedger.doubleValue() * creditInr;
+        if (aiLedger != null) inr += aiLedger.doubleValue() * creditInr;
+        inr += estimatedInr(card, surcharge, pricing, engine, direction, seconds, voicePending, aiPending);
+        return new Billed(inr, voicePending || aiPending);
+    }
+
+    /**
+     * What the PENDING legs of this call will bill, in rupees — mirroring CallBillingService.
      *
      * <p>Modelling this as a flat rupees-per-minute was wrong twice over, and the
      * founder caught both on a 30-second call the page priced at Rs 1.86 when the
@@ -150,11 +217,15 @@ public class SuperAdminCallService {
      * so this cannot drift from what the wallet actually charged. It is still a
      * RECONSTRUCTION, not the ledger: a negotiated per-institute override
      * suppresses the surcharge in the real path and is not modelled here.
+     *
+     * <p>Which legs apply (Vacademy-paid trunk, metered AI provider, connected, not
+     * yet charged) is decided in SQL by the pending predicates, so list and summary
+     * share one definition; this only prices them.
      */
-    double billedInr(Map<String, Double> card, Map<String, Double> surcharge,
-                             Map<String, double[]> pricing, String engine,
-                             String direction, String providerType, int seconds) {
-        if (seconds <= 0) return 0d;
+    double estimatedInr(Map<String, Double> card, Map<String, Double> surcharge,
+                        Map<String, double[]> pricing, String engine, String direction,
+                        int seconds, boolean voicePending, boolean aiPending) {
+        if (seconds <= 0 || (!voicePending && !aiPending)) return 0d;
         // Billed in pulses (30 s by default), as CallBillingService does:
         // ceil(secs / pulse) pulses at perMinute x pulse/60. It was ceil-MINUTES,
         // which overstated every call that was not a whole number of minutes
@@ -165,14 +236,15 @@ public class SuperAdminCallService {
         String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
         // An escape hatch for an engine priced outside the credit stack entirely.
         // Edge USED one while its discount was report-only; it now rides the same
-        // negative surcharge the wallet charges, so no engine sets this today.
+        // negative surcharge the wallet charges, so no engine sets this today. It
+        // replaces the whole credit stack, so it rides the leg the engine prices (AI)
+        // and the telephony leg adds nothing — summary() applies it the same way.
         Double flat = card.get("billed_inr_per_min_" + e);
-        if (flat != null && flat > 0) return flat * minutes;
+        if (flat != null && flat > 0) return aiPending ? flat * minutes : 0d;
 
         double credits = 0d;
-        // Telephony leg — only on trunks Vacademy pays for.
-        String pt = providerType == null ? "" : providerType.toUpperCase();
-        if (pt.contains("PLIVO") || pt.contains("VACADEMY")) {
+        // Telephony leg — VOICE_PENDING_SQL already requires a Vacademy-paid trunk.
+        if (voicePending) {
             double[] v = pricing.get(inbound ? "voice_call_in" : "voice_call_out");
             if (v != null) credits += Math.max(v[1], v[0] * minutes);
         }
@@ -180,7 +252,7 @@ public class SuperAdminCallService {
         // free to run, so it sells at 2 credits against the standard 5). Floor the
         // per-minute at zero exactly as CallBillingService does, so a surcharge
         // deeper than the base rate can never make this report a refund.
-        double[] a = pricing.get(inbound ? "ai_call_in" : "ai_call_out");
+        double[] a = aiPending ? pricing.get(inbound ? "ai_call_in" : "ai_call_out") : null;
         if (a != null) {
             double perMin = Math.max(0d, a[0] + surcharge.getOrDefault(e, 0d));
             credits += Math.max(a[1], perMin * minutes);
@@ -464,8 +536,10 @@ public class SuperAdminCallService {
                        COALESCE(l.recording_url, r.recording_url),
                        r.diag_health, r.diag_faults, CAST(r.diagnostics AS text),
                        l.provider_type, COALESCE(l.provider_call_id, r.call_uuid),
-                       led.credits
-                """ + fromWithLedger() + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
+                       led.voice_credits, led.ai_credits,
+                """ + " CASE WHEN " + VOICE_PENDING_SQL + " THEN 1 ELSE 0 END,"
+                + " CASE WHEN " + AI_PENDING_SQL + " THEN 1 ELSE 0 END\n"
+                + fromWithLedger() + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
         bind(q, instituteId, from, to, health, disposition, agentId);
         q.setParameter("lim", size);
         q.setParameter("off", (long) page * size);
@@ -480,18 +554,16 @@ public class SuperAdminCallService {
             Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars,
                     llmUsage((String) r[18]));
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
-            // The ledger when the call has been charged; the pulse reconstruction
-            // only while it has not (billing runs after the call and is swept every
-            // 10 minutes), so the page never shows a guess where the truth exists.
-            // A call that did not connect is never charged (billing requires
+            // Per leg: the ledger where that leg has been charged; the pulse
+            // reconstruction only for a leg still pending (billing runs after the
+            // call and is swept every 10 minutes), so the page never shows a guess
+            // where the truth exists — nor passes one charged leg off as the whole
+            // call. A call that did not connect is never charged (billing requires
             // "completed"), so it earns 0, not an estimate: 386 unanswered calls in
             // one week carried ~11 s of ring each and were being booked as revenue.
-            boolean fromLedger = r[21] != null;
-            boolean connected = r[11] != null && ((String) r[11]).toLowerCase(Locale.ROOT).startsWith("complete");
-            double billed = round(fromLedger
-                    ? ((Number) r[21]).doubleValue() * card.getOrDefault("credit_inr", 0d)
-                    : connected ? billedInr(card, surcharge, pricing, tts, (String) r[10], (String) r[19], secs)
-                    : 0d);
+            Billed bill = billed(card, surcharge, pricing, tts, (String) r[10], secs,
+                    (Number) r[21], (Number) r[22], flag(r[23]), flag(r[24]));
+            double billed = round(bill.inr());
             double margin = round(billed - cost);
             String recording = (String) r[15];
             String diagJson = (String) r[18];
@@ -511,7 +583,9 @@ public class SuperAdminCallService {
                     .faults(splitFaults((String) r[17]))
                     .diagnostics((String) r[18])
                     .costInr(cost).billedInr(billed).marginInr(margin)
-                    .billedFromLedger(fromLedger)
+                    // true = final (every leg charged, stamped at 0 or not
+                    // applicable); false = some leg is still an estimate.
+                    .billedFromLedger(!bill.estimated())
                     .marginPct(billed > 0 ? round(margin / billed * 100) : null)
                     // Still true overall: plivo, stt and llm remain duration-modelled.
                     // ttsCharsMeasured is what tells the UI that the TTS line, at least,
@@ -555,6 +629,12 @@ public class SuperAdminCallService {
         return null;
     }
 
+    /** A 0/1 (or boolean) column; NULL reads as false. */
+    private static boolean flag(Object o) {
+        if (o instanceof Boolean b) return b;
+        return o instanceof Number n && n.intValue() != 0;
+    }
+
     private static List<String> splitFaults(String csv) {
         if (csv == null || csv.isBlank()) return List.of();
         return Arrays.stream(csv.split("[,\\s]+")).filter(s -> !s.isBlank()).toList();
@@ -581,18 +661,13 @@ public class SuperAdminCallService {
                        count(*) FILTER (WHERE r.diag_health = 'AMBER'),
                        count(*) FILTER (WHERE r.diag_health = 'GREEN'),
                        count(*) FILTER (WHERE COALESCE(l.recording_url, r.recording_url) IS NOT NULL),
-                       -- [7..9] billing PULSES of the calls the ledger has not charged
-                       -- (yet): only those are reconstructed; charged calls use [21].
-                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.duration_seconds > 0 AND r.status ILIKE 'complete%'
-                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
-                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.status ILIKE 'complete%'
-                                          AND COALESCE(l.provider_type,'') ~* '(plivo|vacademy)'
-                                          AND r.duration_seconds > 0
-                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
-                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.status ILIKE 'complete%'
-                                          AND COALESCE(r.direction,'') ILIKE 'INBOUND'
-                                          AND r.duration_seconds > 0
-                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
+                       -- [7] AI-leg, [8] voice-leg, [9] inbound AI-leg billing PULSES of
+                       -- the legs still to be charged (the same predicates list() uses),
+                       -- only those are reconstructed, charged legs come from [21].
+                """ + pulsesWhere(AI_PENDING_SQL) + ",\n"
+                + pulsesWhere(VOICE_PENDING_SQL) + ",\n"
+                + pulsesWhere(AI_PENDING_SQL + " AND COALESCE(r.direction, '') ILIKE 'INBOUND'") + ",\n"
+                + """
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
                                          THEN CAST(r.diagnostics->'tts'->>'cacheHits' AS bigint) END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheMisses' ~ '^[0-9]+$'
@@ -617,10 +692,12 @@ public class SuperAdminCallService {
                                          THEN CAST(r.diagnostics->'infra'->'llmUsage'->>'completionTokens' AS bigint) END), 0),
                        COALESCE(sum(r.duration_seconds) FILTER (
                            WHERE NOT COALESCE(r.diagnostics->'infra'->'llmUsage'->>'promptTokens' ~ '^[0-9]+$', false)), 0),
-                       -- [21] what the ledger charged, [22] calls charged
-                       COALESCE(sum(led.credits), 0),
-                       count(*) FILTER (WHERE led.credits IS NOT NULL)
-                """ + fromWithLedger() + " GROUP BY 1");
+                       -- [21] what the ledger charged (both legs), [22] calls with any charge,
+                       -- [23] inbound voice-leg pulses still to be charged
+                       COALESCE(sum(led.voice_credits), 0) + COALESCE(sum(led.ai_credits), 0),
+                       count(*) FILTER (WHERE led.voice_credits IS NOT NULL OR led.ai_credits IS NOT NULL),
+                """ + pulsesWhere(VOICE_PENDING_SQL + " AND COALESCE(r.direction, '') ILIKE 'INBOUND'") + "\n"
+                + fromWithLedger() + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
         q.setParameter("pulse", Math.max(1, pulseSeconds));
 
@@ -646,11 +723,12 @@ public class SuperAdminCallService {
             green += ((Number) r[5]).longValue();
             rec += ((Number) r[6]).longValue();
             byEngine.merge(engine, n, Long::sum);
-            // Pulses → billed minutes, for the calls not yet charged (see [7..9]).
+            // Pulses → billed minutes, per leg, for the legs not yet charged (see [7..9], [23]).
             double pulseMinutes = Math.max(1, pulseSeconds) / 60.0;
-            double billedMins = ((Number) r[7]).longValue() * pulseMinutes;
-            double trunkMins = ((Number) r[8]).longValue() * pulseMinutes;
-            double inboundMins = ((Number) r[9]).longValue() * pulseMinutes;
+            double aiMins = ((Number) r[7]).longValue() * pulseMinutes;
+            double voiceMins = ((Number) r[8]).longValue() * pulseMinutes;
+            double aiInMins = ((Number) r[9]).longValue() * pulseMinutes;
+            double voiceInMins = ((Number) r[23]).longValue() * pulseMinutes;
             double ledgerCredits = ((Number) r[21]).doubleValue();
             billedTotal += ledgerCredits * card.getOrDefault("credit_inr", 0d);
 
@@ -695,22 +773,27 @@ public class SuperAdminCallService {
             Double gSaved = ttsCacheSavingInr(card, engine, (int) Math.min(gChars, Integer.MAX_VALUE));
             if (gSaved != null) cacheSaved += gSaved;
 
-            // Revenue of the calls the ledger has not charged yet, per engine and per
-            // meter, in billing pulses (the charged ones were added above). The
-            // per-call minimum is not modelled in this aggregate (every row is 0).
+            // Revenue of the legs the ledger has not charged yet, per engine and per
+            // meter, in billing pulses (the charged ones were added above; a leg
+            // stamped at 0 is in neither). Each leg carries its own inbound split: the
+            // old single inbound count, taken over ALL calls, priced inbound minutes
+            // of own-carrier calls at the voice_call_in rate. The per-call minimum is
+            // not modelled in this aggregate (every row is 0).
             double credits = 0d;
             double[] vOut = pricing.get("voice_call_out"), vIn = pricing.get("voice_call_in");
             double[] aOut = pricing.get("ai_call_out"), aIn = pricing.get("ai_call_in");
-            if (vOut != null) credits += vOut[0] * Math.max(0, trunkMins - inboundMins);
-            if (vIn != null) credits += vIn[0] * Math.min(trunkMins, inboundMins);
             Double flatEngine = card.get("billed_inr_per_min_" + engine);
             if (flatEngine != null && flatEngine > 0) {
-                billedTotal += flatEngine * billedMins;
-                continue;                      // flat rate replaces the credit stack
+                // Flat rate replaces the credit stack; it rides the AI leg, as in estimatedInr().
+                billedTotal += flatEngine * aiMins;
+                continue;
             }
+            if (vOut != null) credits += vOut[0] * Math.max(0, voiceMins - voiceInMins);
+            if (vIn != null) credits += vIn[0] * voiceInMins;
+            // Floored at zero per minute, as CallBillingService and estimatedInr() do.
             double sur = surcharge.getOrDefault(engine, 0d);
-            if (aOut != null) credits += (aOut[0] + sur) * Math.max(0, billedMins - inboundMins);
-            if (aIn != null) credits += (aIn[0] + sur) * inboundMins;
+            if (aOut != null) credits += Math.max(0d, aOut[0] + sur) * Math.max(0, aiMins - aiInMins);
+            if (aIn != null) credits += Math.max(0d, aIn[0] + sur) * aiInMins;
             billedTotal += credits * card.getOrDefault("credit_inr", 0d);
         }
         agg.replaceAll((k, v) -> round(v));

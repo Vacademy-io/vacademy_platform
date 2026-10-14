@@ -59,7 +59,12 @@ public class SuperAdminCallDTO {
 
     private Double costInr;
     private Double billedInr;
-    /** true = billedInr is what the ledger charged; false = estimated (not charged yet). */
+    /**
+     * true = billedInr is final: every billable leg is in the ledger or was stamped
+     * billed at 0 (0-rate override), or nothing was billable (not connected).
+     * false = at least one leg is still to be charged and its share is an estimate
+     * (billedInr = ledger of the charged leg + estimate of the pending one).
+     */
     private Boolean billedFromLedger;
     private Double marginInr;
     private Double marginPct;

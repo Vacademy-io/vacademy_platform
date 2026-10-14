@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.timeline.service.TimelineEventSer
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -184,6 +185,42 @@ public class LeadDeduplicationService {
                 LeadDedupSettingService.DedupAction.REJECT,
                 "A lead with this " + matchedFieldLabel + " already exists " + scopeLabel + ".",
                 null));
+    }
+
+    /**
+     * Counsellor who owns the most recent OTHER lead matching this submission, under the
+     * same field (email / phone) and scope the dedup check used — the "previous" counsellor
+     * for the repeat-lead SAME_AS_PREVIOUS policy. Empty when the setting is off, the
+     * identifier is blank, or no matching lead has an owner.
+     *
+     * <p>Needed because a repeat that matches on phone but carries a different email is a
+     * NEW auth user with a fresh, ownerless profile — the previous owner lives on the
+     * other lead's profile, not this one.
+     */
+    public Optional<String> findPreviousCounsellorId(String instituteId, String audienceId, String email,
+            String phone, String excludeResponseId) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        if (!settings.enabled() || excludeResponseId == null) return Optional.empty();
+
+        String audienceIdsCsv = switch (settings.scope()) {
+            case INSTITUTE -> null;
+            case SELECTED -> settings.audienceIds() == null || settings.audienceIds().isEmpty()
+                    ? null : String.join(",", settings.audienceIds());
+            case CAMPAIGN -> audienceId;
+        };
+
+        List<String> owners;
+        if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
+            String last10 = lastNDigits(phone, 10);
+            if (last10 == null) return Optional.empty();
+            owners = audienceResponseRepository.findPreviousCounsellorIdByPhoneLast10(
+                    instituteId, audienceIdsCsv, last10, excludeResponseId);
+        } else {
+            if (email == null || email.isBlank()) return Optional.empty();
+            owners = audienceResponseRepository.findPreviousCounsellorIdByEmail(
+                    instituteId, audienceIdsCsv, email, excludeResponseId);
+        }
+        return owners.isEmpty() ? Optional.empty() : Optional.ofNullable(owners.get(0));
     }
 
     /**

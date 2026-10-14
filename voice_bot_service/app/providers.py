@@ -10,6 +10,8 @@ from __future__ import annotations
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
+
+from .sarvam_v4_voices import SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MODEL, SARVAM_V4_VOICES
 from pipecat.services.tts_service import InterruptibleTTSService, TTSService
 
 
@@ -1393,6 +1395,8 @@ def default_engine_model(engine: str, voice: str = "") -> str:
     """
     s = get_settings()
     e = (engine or "").strip().lower()
+    if e == "sarvam_v4":
+        return SARVAM_V4_MODEL
     if e == "sarvam":
         return s.sarvam_tts_model
     if e.startswith("smallest") or e.startswith("lightning"):
@@ -1429,6 +1433,20 @@ def rumik_term_map_version() -> str:
         return ""
     return hashlib.sha1(repr(tm).encode("utf-8")).hexdigest()[:8]
 
+
+
+def _register_sarvam_v4() -> None:
+    """pipecat 1.4 knows bulbul v2/v3 only and REJECTS any other model at construction
+    ("Unsupported model 'bulbul:v4-flash'"). v4 takes the v3 parameter set (no
+    pitch/loudness, temperature 0.01-1.0, pace 0.5-2.0), so register it alongside."""
+    from pipecat.services.sarvam import tts as _sarvam_tts
+    if SARVAM_V4_MODEL in _sarvam_tts.TTS_MODEL_CONFIGS:
+        return
+    _sarvam_tts.TTS_MODEL_CONFIGS[SARVAM_V4_MODEL] = _sarvam_tts.TTSModelConfig(
+        supports_pitch=False, supports_loudness=False, supports_temperature=True,
+        default_sample_rate=24000, default_speaker=SARVAM_V4_DEFAULT_VOICE,
+        pace_range=(0.5, 2.0), preprocessing_always_enabled=True,
+        speakers=tuple(sorted(SARVAM_V4_VOICES)))
 
 
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
@@ -1564,6 +1582,30 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 model="mulberry",
                 description=rumik_pace_description(eff_pace),
             ), "rumik", "mulberry")
+    if model.startswith(("sarvam_v4", "sarvam-v4", "bulbul:v4", "bulbul_v4", "bulbul-v4")):
+        # Sarvam Bulbul v4 Flash: the same websocket contract as v3 (probed live
+        # 2026-10-14 with this exact config at 8 kHz: hi / enhi / en voices, first
+        # audio 0.36 s vs v3's 0.39 s), but its OWN voice ids. A v3 name here is a
+        # 400 and a silent call, so anything outside the v4 palette gets the default.
+        _register_sarvam_v4()
+        v4_voice = (voice or "").strip().lower()
+        if v4_voice not in SARVAM_V4_VOICES:
+            if v4_voice:
+                logger.warning("tts: %r is not a Bulbul v4 voice — using %s", v4_voice,
+                               SARVAM_V4_DEFAULT_VOICE)
+            v4_voice = SARVAM_V4_DEFAULT_VOICE
+        v4_kwargs = {"pace": eff_pace, "enable_preprocessing": True}
+        if temperature is not None:
+            v4_kwargs["temperature"] = _clamp(temperature, 0.01, 1.0)
+        if s.sarvam_tts_min_buffer > 0:
+            v4_kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
+        return _tag_engine(SarvamTTSService(
+            api_key=s.sarvam_api_key,
+            model=SARVAM_V4_MODEL,
+            voice_id=v4_voice,
+            sample_rate=sample_rate,
+            params=SarvamTTSService.InputParams(**v4_kwargs),
+        ), "sarvam_v4", SARVAM_V4_MODEL)
     kwargs = {"pace": eff_pace, "enable_preprocessing": True}
     if temperature is not None:
         kwargs["temperature"] = _clamp(temperature, 0.01, 2.0)

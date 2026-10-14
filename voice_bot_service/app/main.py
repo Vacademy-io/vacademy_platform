@@ -39,6 +39,8 @@ from .report import build_and_post_report, report_spool_sweeper
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
+from .sarvam_v4_voices import SARVAM_V4_MODEL  # noqa: E402
+
 logger = logging.getLogger("voice_bot")
 
 # Live-call admission control. The event loop is single-threaded, so a plain int
@@ -159,7 +161,6 @@ def _tts_chunks(text: str, limit: int = 450) -> list[str]:
 
 async def _synth_chunk(session, chunk: str, speaker: str, model: str, lang: str, sample_rate: int):
     body = {
-        "inputs": [chunk],
         "target_language_code": lang,
         "speaker": speaker,
         "model": model,
@@ -169,6 +170,11 @@ async def _synth_chunk(session, chunk: str, speaker: str, model: str, lang: str,
         # containers, but plays MP3 reliably. MP3 is also the telephony default.
         "output_audio_codec": "mp3",
     }
+    # v4 takes the documented "text"; v2/v3 keep the "inputs" list they were built on.
+    if str(model).startswith("bulbul:v4"):
+        body["text"] = chunk
+    else:
+        body["inputs"] = [chunk]
     async with session.post(_SARVAM_TTS_URL, json=body,
                             headers={"api-subscription-key": get_settings().sarvam_api_key},
                             timeout=aiohttp.ClientTimeout(total=20)) as resp:
@@ -678,7 +684,7 @@ async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float | None) 
 @router.get("/preview.mp3")
 async def preview(
     text: str = Query(..., max_length=300),
-    voice: str = Query(..., max_length=32),
+    voice: str = Query(..., max_length=48),
     lang: str = Query("hi-IN", max_length=8),
     pace: float = Query(1.0, ge=0.5, le=2.0),
     temperature: float | None = Query(None, ge=0.01, le=2.0),
@@ -813,23 +819,30 @@ async def preview(
                 return Response(content=raw, media_type="audio/wav")
             await _evict_tts_cache_async()
         return _serve_audio(path, "audio/wav")
+    is_v4 = engine.startswith(("sarvam_v4", "sarvam-v4", "bulbul:v4", "bulbul_v4", "bulbul-v4"))
+    sarvam_model = SARVAM_V4_MODEL if is_v4 else s.sarvam_tts_model
+    if is_v4 and temperature is not None:
+        temperature = min(temperature, 1.0)  # v4's documented range is 0.01-1.0
     key = hashlib.sha1(
-        f"pv|{s.sarvam_tts_model}|{voice}|{lang}|{pace}|{temperature}|{text}".encode("utf-8")
+        f"pv|{sarvam_model}|{voice}|{lang}|{pace}|{temperature}|{text}".encode("utf-8")
     ).hexdigest()
     path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
     if not os.path.exists(path):
         session = app.state.http_session
         body = {
-            "inputs": [text],
             "target_language_code": lang,
             "speaker": voice.strip().lower(),
-            "model": s.sarvam_tts_model,
+            "model": sarvam_model,
             "speech_sample_rate": s.tts_prompt_sample_rate,
             "output_audio_codec": "mp3",
             "pace": pace,
         }
         if temperature is not None:
             body["temperature"] = temperature
+        if is_v4:
+            body["text"] = text
+        else:
+            body["inputs"] = [text]
         try:
             async with session.post(_SARVAM_TTS_URL, json=body,
                                     headers={"api-subscription-key": s.sarvam_api_key},

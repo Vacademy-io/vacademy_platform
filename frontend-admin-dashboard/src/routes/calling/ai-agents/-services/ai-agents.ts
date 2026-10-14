@@ -20,6 +20,7 @@ export {
     creditLine,
     normalizeTtsModel,
     resolveTtsModel,
+    voiceLabel,
     voicesForModel,
     defaultVoiceFor,
     patchForModelChange,
@@ -28,7 +29,6 @@ import { FALLBACK_VOICES, resolveTtsModel } from './tts-catalog';
 import type { VoiceOption } from './tts-catalog';
 
 export const AI_AGENTS_URL = `${BASE_URL}/admin-core-service/v1/telephony/ai-agents`;
-
 
 /** Expressiveness presets → Bulbul v3 temperature. */
 export const EXPRESSIVENESS_OPTIONS: { label: string; value: string; temperature?: number }[] = [

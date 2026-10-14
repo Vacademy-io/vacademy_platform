@@ -16,13 +16,16 @@ export type TtsModelId =
     | 'deepgram'
     | 'navana'
     | 'rumik'
-    | 'sarvam';
+    | 'sarvam'
+    | 'sarvam_v4';
 
 export interface VoiceOption {
     id: string;
     gender: string;
     /** Which engine this voice belongs to. Palettes do not overlap. */
     model: string;
+    /** Display name when the id is not readable on its own (Bulbul v4: "Shubh · Hinglish · ads"). */
+    label?: string;
 }
 
 export interface TtsModelMeta {
@@ -102,6 +105,15 @@ export const TTS_MODELS: TtsModelMeta[] = [
         label: 'Rumik Silk Mulberry 1.5',
         note: 'Cheapest, but mispronounces some Hindi words over the phone.',
         defaultVoice: 'ira',
+    },
+    {
+        id: 'sarvam_v4',
+        label: 'Sarvam Bulbul v4 Flash',
+        // Its OWN engine, not a v3 variant: persona voices ("shubh_enhi_ads") share
+        // no id with v3 and the API rejects a v3 name — a silent call. Rs 1/1K chars,
+        // a third of v3, so no surcharge. Voices come from GET /ai-agents/voices.
+        note: 'New — 200+ persona voices in 10 Indian languages, no extra charge. Audition first.',
+        defaultVoice: 'shubh_enhi_ads',
     },
     {
         id: 'sarvam',
@@ -319,6 +331,8 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
     if (m === 'muga' || m.startsWith('silk-muga') || m.startsWith('silk_muga')) return null;
     if (m === 'rumik' || m.startsWith('rumik') || m.startsWith('silk') || m.startsWith('mulberry'))
         return 'rumik';
+    // v4 FIRST — 'sarvam_v4' also startsWith('sarvam'), and a v4 voice on v3 is silence.
+    if (/^(sarvam[_-]v4|bulbul[:_-]v4)/.test(m)) return 'sarvam_v4';
     if (m === 'sarvam' || m.startsWith('sarvam') || m.startsWith('bulbul')) return 'sarvam';
     if (m === 'google' || m.startsWith('google') || m.startsWith('chirp')) return 'google';
     if (m === 'edge' || m.startsWith('edge') || m.startsWith('microsoft')) return 'edge';
@@ -365,6 +379,12 @@ export function resolveTtsModel(agent: { id?: string; ttsModel?: string }): TtsM
     // both read a missing value as sarvam — so show that, not a cheerier guess.
     // An unsaved draft has no history to preserve and gets the default engine.
     return normalizeTtsModel(agent.ttsModel) ?? (agent.id ? 'sarvam' : 'google');
+}
+
+/** What the picker shows for a voice: its label when it has one, else the capitalised id. */
+export function voiceLabel(v: VoiceOption): string {
+    if (v.label) return v.label;
+    return v.id.charAt(0).toUpperCase() + v.id.slice(1);
 }
 
 export function voicesForModel(voices: VoiceOption[], model: TtsModelId): VoiceOption[] {

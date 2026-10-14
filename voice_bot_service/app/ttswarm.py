@@ -84,6 +84,10 @@ async def synthesize(*, engine: str, model: str, voice: str, pace, temperature,
         elif eng == "sarvam":
             raw = await _main._synth_audio(text, voice or s.sarvam_tts_voice,
                                            model or s.sarvam_tts_model, "hi-IN")
+        elif eng == "sarvam_v4":
+            from .sarvam_v4_voices import SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MODEL
+            raw = await _main._synth_audio(text, voice or SARVAM_V4_DEFAULT_VOICE,
+                                           SARVAM_V4_MODEL, "hi-IN")
         else:
             logger.warning("tts-warm: no one-shot renderer for engine {!r}", eng)
             return None

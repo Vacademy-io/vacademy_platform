@@ -31,6 +31,33 @@ from sim.timing import Say, Scenario
 
 # ── record → scenario ──────────────────────────────────────────────────────
 
+def _hold_lines(finals) -> set:
+    """Times of the finals that are the network's hold recording, by the same
+    rules as the live gate: a hold line starts it; while on hold, pieces of the
+    recording and lone words within 3 s of one stay in it; anything else is the
+    person coming back."""
+    from app.turntake import (is_hold_announcement, is_hold_fragment,
+                              caller_checking_presence, is_audio_check)
+    out, holding, last = set(), False, -99.0
+    for t, x in finals:
+        x = (x or "").strip()
+        if not x:
+            continue
+        if holding:
+            if (is_hold_announcement(x) or is_hold_fragment(x)
+                    or (len(x.split()) < 2 and t - last < 3.0
+                        and not (caller_checking_presence(x) or is_audio_check(x)))):
+                out.add(t)
+                last = t
+                continue
+            holding = False
+            continue
+        if is_hold_announcement(x):
+            holding, last = True, t
+            out.add(t)
+    return out
+
+
 def _segments(vad: List[List[float]]) -> List[List[float]]:
     """[t, 1/0] events → [[start, stop], …]. An unclosed start ends 0.5 s later."""
     out, start = [], None
@@ -151,6 +178,7 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     f: List[str] = []
     tr = res.get("transcript", [])
     bot_texts = [t["text"] for t in tr if t["role"] == "assistant"]
+    finals = res.get("finals", [])
     # 1. the opening is said once. After the person has spoken, its first
     #    words must not come back (screener flag, re-greet).
     # The OPENING TEXT when the replay knows it: a cut cached opening never
@@ -185,8 +213,29 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     for s in res.get("tts_texts", []):
         if not any(ch.isalnum() for ch in s):
             f.append(f"letterless text sent to TTS: {s!r}")
-    # 4. reply latency (caller stop → bot audio)
+    # 4. reply latency (caller stop → bot audio). A turn that was only the hold
+    #    recording owes no reply: the person is away.
+    on_hold = _hold_lines(finals)
+
+    def _held_after(ce: float) -> bool:
+        # The person put us on hold right after this turn: its reply was cut by
+        # the hold, and the answer comes when they are back.
+        return any(ce - 0.5 <= t <= ce + 6.0 for t in on_hold)
+
     lat = res.get("turn_latency", [])
+    if on_hold:
+        # Recompute without the hold: a turn that was only the recording, or one
+        # the hold cut off, owes no reply until the person is back.
+        lat = []
+        for cs, ce in res.get("caller", []):
+            mine = [t for t, x in finals if cs <= t <= ce + 3.0 and (x or "").strip()]
+            if (mine and all(t in on_hold for t in mine)) or _held_after(ce):
+                continue
+            nxt = [b for b, _ in res.get("bot", []) if b >= ce]
+            if nxt and any(ce <= t <= nxt[0] for t in on_hold):
+                continue  # the hold came before the reply could play
+            if nxt:
+                lat.append(round(nxt[0] - ce, 2))
     slow = [x for x in lat if x > 4.0]
     if slow:
         f.append(f"reply latency over 4 s: {slow}")
@@ -295,12 +344,16 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         if n >= 4:
             f.append(f"{n} steering-cue runs within 30 s from {cues[i]:.1f}s")
             break
+    # The network's hold recording is not the caller: its pieces need no reply
+    # and must not reach the model (see TranscriptCollector's hold branch).
     # 7. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     for cs, ce in res.get("caller", []):
-        heard = any(cs <= t <= ce + 3.0 and x.strip() for t, x in finals)
+        heard = any(cs <= t <= ce + 3.0 and x.strip() and t not in on_hold for t, x in finals)
         if not heard:
             continue
         if ended is not None and ce > ended - 1.0:
+            continue
+        if _held_after(ce):
             continue
         # Bot audio PLAYING at or after the end of their turn counts — a reply
         # that talks on through an absorbed "हाँ" answered it. Only a new
@@ -330,7 +383,7 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     for t, x in finals:
         x = (x or "").strip()
         if (not x or mid_reply_action(x) == ABSORB or is_carrier_announcement(x)
-                or is_call_screener(x)):
+                or is_call_screener(x) or t in on_hold):
             continue
         if ended is not None and t > ended - 8.0:
             continue

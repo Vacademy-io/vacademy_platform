@@ -19,6 +19,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import AddCourseStep2StructureTypes from './add-course-step2-structure-types';
 import { MyButton } from '@/components/design-system/button';
 import SessionLevelMappingDialog from './SessionLevelMappingDialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import MultiSelectDropdown from '@/components/common/multi-select-dropdown';
 import { fetchInstituteDashboardUsers } from '@/routes/dashboard/-services/dashboard-services';
 import { getInstituteId } from '@/constants/helper';
@@ -395,6 +405,11 @@ export const AddCourseStep2 = ({
     const [newLevelName, setNewLevelName] = useState('');
     const [showInviteDialog, setShowInviteDialog] = useState(false);
     const [showMappingDialog, setShowMappingDialog] = useState(false);
+    const [pendingRemoval, setPendingRemoval] = useState<{
+        term: string;
+        name: string;
+        confirm: () => void;
+    } | null>(null);
     const [selectedInstructorId, setSelectedInstructorId] = useState('');
     const [selectedInstructorEmail, setSelectedInstructorEmail] = useState('');
     const [selectedInstructors, setSelectedInstructors] = useState<Instructor[]>([]);
@@ -693,6 +708,41 @@ export const AddCourseStep2 = ({
             newSet.delete(batchId);
             return newSet;
         });
+    };
+
+    // In edit mode, removing an already-saved session/level deletes its batch on
+    // save, so ask first. Unsaved (new) rows are removed straight away.
+    const requestRemoveSession = (batchId: string) => {
+        const session = sessions.find((s) => (s.batchId || s.id) === batchId);
+        if (!isEdit || !session || session.newSession === true) {
+            removeSession(batchId);
+            return;
+        }
+        setPendingRemoval({
+            term: getTerminology(ContentTerms.Session, SystemTerms.Session),
+            name: session.name,
+            confirm: () => removeSession(batchId),
+        });
+    };
+
+    const requestRemoveLevel = (sessionId: string, batchId: string) => {
+        const level = sessions
+            .find((s) => s.id === sessionId)
+            ?.levels.find((l) => l.batchId === batchId);
+        if (!isEdit || !level || level.newLevel === true) {
+            removeLevel(sessionId, batchId);
+            return;
+        }
+        setPendingRemoval({
+            term: getTerminology(ContentTerms.Level, SystemTerms.Level),
+            name: level.name,
+            confirm: () => removeLevel(sessionId, batchId),
+        });
+    };
+
+    const confirmPendingRemoval = () => {
+        pendingRemoval?.confirm();
+        setPendingRemoval(null);
     };
 
     const getRenameShareWarning = (rowType: RenameRowType, rowId?: string): string | null =>
@@ -2911,7 +2961,7 @@ export const AddCourseStep2 = ({
                                                     session={session}
                                                     hasLevels={hasLevels === 'yes'}
                                                     onRemoveSession={() =>
-                                                        removeSession(
+                                                        requestRemoveSession(
                                                             (
                                                                 session.batchId || session.id
                                                             ).toString()
@@ -2919,7 +2969,7 @@ export const AddCourseStep2 = ({
                                                     }
                                                     onAddLevel={addLevel}
                                                     onRemoveLevel={(sessionId, batchId) =>
-                                                        removeLevel(
+                                                        requestRemoveLevel(
                                                             sessionId,
                                                             (batchId || '').toString()
                                                         )
@@ -4800,6 +4850,32 @@ export const AddCourseStep2 = ({
                 sessions={sessions}
                 onSave={handleSessionLevelMappingSave}
             />
+            <AlertDialog
+                open={pendingRemoval !== null}
+                onOpenChange={(next) => !next && setPendingRemoval(null)}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            Remove {pendingRemoval?.term} &quot;{pendingRemoval?.name}&quot;?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This {pendingRemoval?.term.toLowerCase()} is already saved. When you
+                            save the course, its batch is deleted and the course stops showing it to
+                            admins and learners. To keep it, choose Cancel.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-danger-600 hover:bg-danger-500"
+                            onClick={confirmPendingRemoval}
+                        >
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 };

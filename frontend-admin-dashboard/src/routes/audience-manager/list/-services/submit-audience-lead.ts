@@ -96,17 +96,31 @@ interface ServerErrorBody {
     error?: string;
 }
 
+/** The server's own message plus the HTTP status, so a caller can treat e.g. 409 specially. */
+export class ServerMessageError extends Error {
+    readonly status?: number;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'ServerMessageError';
+        this.status = status;
+    }
+}
+
 export const throwWithServerMessage = (error: unknown, fallback: string): never => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = (error as any)?.response?.data;
-    if (typeof data === 'string' && data.trim()) throw new Error(data);
+    const response = (error as any)?.response;
+    const data = response?.data;
+    const status: number | undefined =
+        typeof response?.status === 'number' ? response.status : undefined;
+    if (typeof data === 'string' && data.trim()) throw new ServerMessageError(data, status);
     if (data && typeof data === 'object') {
         const body = data as ServerErrorBody;
         const message = body.ex ?? body.message ?? body.error;
-        if (message) throw new Error(message);
+        if (message) throw new ServerMessageError(message, status);
     }
     if (error instanceof Error && error.message) throw error;
-    throw new Error(fallback);
+    throw new ServerMessageError(fallback, status);
 };
 
 /** A saved lead's response id (UUID) — the only success body of the admin submit. */

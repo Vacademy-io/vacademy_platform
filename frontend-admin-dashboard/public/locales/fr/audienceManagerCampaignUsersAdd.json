@@ -44,5 +44,9 @@
         "empty": "Aucun conseiller trouvé.",
         "hint": "Laissé vide, le prospect suit votre routage habituel.",
         "optional": "(facultatif)"
+    },
+    "duplicateBlock": {
+        "title": "Ce prospect existe déjà",
+        "ok": "OK"
     }
 }

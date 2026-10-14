@@ -2382,6 +2382,67 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("email") String email,
                         @Param("excludeResponseId") String excludeResponseId);
 
+        /**
+         * The open lead (not converted, not LOST) with this phone, for the manual-add block:
+         * active, non-duplicate, an owned one first, then the newest. Blank
+         * {@code audienceIdsCsv} = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName",
+                                   COALESCE(ls.label, ulp.conversion_status) AS "statusLabel"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(UPPER(COALESCE(ls.status_key, ulp.conversion_status)), '') NOT IN ('CONVERTED', 'LOST')
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<OpenLeadRow> findOpenLeadByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /** Email twin of {@link #findOpenLeadByPhoneLast10}. */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName",
+                                   COALESCE(ls.label, ulp.conversion_status) AS "statusLabel"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(:email))
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(UPPER(COALESCE(ls.status_key, ulp.conversion_status)), '') NOT IN ('CONVERTED', 'LOST')
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<OpenLeadRow> findOpenLeadByEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("email") String email);
+
+        /** Projection for {@link #findOpenLeadByPhoneLast10}; aliases are quoted camelCase. */
+        interface OpenLeadRow {
+                String getCounsellorId();
+
+                String getCounsellorName();
+
+                /** Lead status label, else the profile conversion status. */
+                String getStatusLabel();
+        }
+
         /** Projection for {@link #findPrimaryLeadByPhoneLast10}; aliases are quoted camelCase. */
         interface PrimaryLeadRow {
                 String getResponseId();

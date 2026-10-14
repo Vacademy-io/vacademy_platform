@@ -7,6 +7,7 @@
  *     "repeatLead": { "counsellorMode": "SAME_AS_PREVIOUS", "specificCounsellorId": null,
  *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING",
  *                     "samePersonByPhone": false, "blockOwnedManualAdd": false,
+ *                     "blockOpenLeadManualAdd": false,
  *                     "reattempt": { "markDuplicate": false, "journeyEntry": false,
  *                                    "notifyOwner": false, "showBadge": false,
  *                                    "followUp": false, "tier": null,
@@ -61,6 +62,7 @@ export interface RepeatLeadSettingsSubtree {
     statusMode?: RepeatLeadStatusMode;
     samePersonByPhone?: boolean;
     blockOwnedManualAdd?: boolean;
+    blockOpenLeadManualAdd?: boolean;
     reattempt?: Partial<ReattemptSettings>;
 }
 
@@ -74,6 +76,8 @@ export interface RepeatLeadSettings {
     samePersonByPhone: boolean;
     /** Match by phone only: a counsellor cannot add by hand a phone another counsellor owns. */
     blockOwnedManualAdd: boolean;
+    /** A counsellor cannot add by hand a lead that is still open (not converted / discarded). */
+    blockOpenLeadManualAdd: boolean;
     reattempt: ReattemptSettings;
 }
 
@@ -115,6 +119,7 @@ export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
     statusMode: 'KEEP_EXISTING',
     samePersonByPhone: false,
     blockOwnedManualAdd: false,
+    blockOpenLeadManualAdd: false,
     reattempt: REATTEMPT_SETTINGS_DEFAULTS,
 };
 
@@ -146,6 +151,7 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
                 : 'KEEP_EXISTING',
         samePersonByPhone: subtree?.samePersonByPhone === true,
         blockOwnedManualAdd: subtree?.blockOwnedManualAdd === true,
+        blockOpenLeadManualAdd: subtree?.blockOpenLeadManualAdd === true,
         reattempt: {
             markDuplicate: subtree?.reattempt?.markDuplicate === true,
             journeyEntry: subtree?.reattempt?.journeyEntry === true,

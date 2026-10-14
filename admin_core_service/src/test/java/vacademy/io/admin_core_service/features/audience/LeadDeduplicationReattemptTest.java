@@ -57,6 +57,32 @@ class LeadDeduplicationReattemptTest {
                 DedupAction.ALLOW_REASSIGN, LeadDedupSettingService.DEFAULT_REPEAT_LEAD));
     }
 
+    private void withOpenLeadBlock(boolean on, DedupField field, DedupAction action) {
+        when(settings.get("inst-1")).thenReturn(new DedupSettings(true, field, DedupScope.INSTITUTE, List.of(),
+                action, new LeadDedupSettingService.RepeatLeadSettings(
+                        LeadDedupSettingService.CounsellorMode.SAME_AS_PREVIOUS, null, null,
+                        LeadDedupSettingService.StatusMode.KEEP_EXISTING, false, false, ReattemptSettings.OFF, on)));
+    }
+
+    @Test
+    void openLeadLookupOnlyRunsWhenItsSwitchIsOn() {
+        withOpenLeadBlock(false, DedupField.PHONE, DedupAction.ALLOW_REASSIGN);
+        assertEquals(Optional.empty(), service.findOpenLeadForManualAdd("inst-1", "aud-1", null, "9876543210"));
+        withOpenLeadBlock(true, DedupField.PHONE, DedupAction.REJECT);
+        assertEquals(Optional.empty(), service.findOpenLeadForManualAdd("inst-1", "aud-1", null, "9876543210"));
+        verifyNoInteractions(responses);
+
+        withOpenLeadBlock(true, DedupField.PHONE, DedupAction.ALLOW_REASSIGN);
+        when(responses.findOpenLeadByPhoneLast10(any(), any(), any())).thenReturn(List.of());
+        service.findOpenLeadForManualAdd("inst-1", "aud-1", null, "+91 98765-43210");
+        verify(responses).findOpenLeadByPhoneLast10("inst-1", null, "9876543210");
+
+        withOpenLeadBlock(true, DedupField.EMAIL, DedupAction.ALLOW_REASSIGN);
+        when(responses.findOpenLeadByEmail(any(), any(), any())).thenReturn(List.of());
+        service.findOpenLeadForManualAdd("inst-1", "aud-1", " a@x.com ", null);
+        verify(responses).findOpenLeadByEmail("inst-1", null, "a@x.com");
+    }
+
     @Test
     void phoneLookupUsesTheLast10DigitsAndTheDedupScope() {
         withSettings(true, DedupField.PHONE, DedupScope.INSTITUTE);
@@ -124,6 +150,18 @@ class LeadDeduplicationReattemptTest {
         when(institutes.findById("inst-1")).thenReturn(Optional.of(institute));
         assertEquals(LeadDedupSettingService.StatusMode.RESET_CLOSED_TO_NEW,
                 new LeadDedupSettingService(institutes, new ObjectMapper()).get("inst-1").repeatLead().statusMode());
+    }
+
+    @Test
+    void blockOpenLeadManualAddIsReadAndDefaultsOff() {
+        InstituteRepository institutes = mock(InstituteRepository.class);
+        Institute institute = new Institute();
+        institute.setSetting("{\"setting\":{\"LEAD_SETTING\":{\"data\":{\"dedup\":{\"enabled\":true,"
+                + "\"action\":\"ALLOW_REASSIGN\",\"repeatLead\":{\"blockOpenLeadManualAdd\":true}}}}}}");
+        when(institutes.findById("inst-1")).thenReturn(Optional.of(institute));
+        assertEquals(true, new LeadDedupSettingService(institutes, new ObjectMapper()).get("inst-1")
+                .repeatLead().blockOpenLeadManualAdd());
+        assertEquals(false, LeadDedupSettingService.DEFAULT_REPEAT_LEAD.blockOpenLeadManualAdd());
     }
 
     @Test

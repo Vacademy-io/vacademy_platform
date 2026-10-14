@@ -76,6 +76,10 @@
             "label": "Empêcher les conseillers d'ajouter le prospect d'un autre conseiller",
             "hint": "Quand un conseiller ajoute un prospect à la main et que le téléphone appartient déjà au prospect d'un autre conseiller, afficher le propriétaire et ne pas l'ajouter. Les administrateurs peuvent toujours l'ajouter."
         },
+        "blockOpenLeadManualAdd": {
+            "label": "Empêcher les conseillers d'ajouter un prospect encore ouvert",
+            "hint": "Quand un conseiller ajoute un prospect à la main alors qu'il existe déjà et est encore en cours (ni converti ni écarté), afficher un message et ne pas l'ajouter, quel que soit son propriétaire. Un prospect écarté ou converti peut être ajouté à nouveau. Les administrateurs peuvent toujours l'ajouter."
+        },
         "reattempt": {
             "title": "Nouvelle tentative (un prospect existant se manifeste à nouveau)",
             "hint": "Ce que laisse une demande répétée. Chaque option fonctionne seule.",

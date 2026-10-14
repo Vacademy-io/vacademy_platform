@@ -333,6 +333,19 @@ const FollowUpsContent = () => {
     // Search runs on the server with the rest of the filter, so it searches every
     // follow-up rather than whatever happened to be on screen. Debounced rather
     // than button-driven, same as Recent Leads — a queue is scanned, not queried.
+
+    // ?status=…[&statusExclude=1] — the sidebar sub-tab decides which lead statuses its
+    // queue covers (e.g. an institute that parks lost leads in their own tab links here
+    // with status=LOST&statusExclude=1). No picker on this page; the route owns it.
+    // Completed honours it too, so a lost lead's closed calls stay out of that list.
+    const statusKeys = (statusParam ?? '')
+        .split(',')
+        .map((k) => k.trim())
+        .filter(Boolean)
+        .join(',');
+    const leadStatusId = statusKeys && statusExclude !== '1' ? statusKeys : undefined;
+    const leadStatusExcludeId = statusKeys && statusExclude === '1' ? statusKeys : undefined;
+
     // Completed tile controls. Its own search and window because it queries a
     // different endpoint — the lead filters above do not apply to follow-up events.
     const [completedRange, setCompletedRange] = useState(COMPLETED_DEFAULT_RANGE);
@@ -350,8 +363,17 @@ const FollowUpsContent = () => {
         () => ({
             search: completedSearch || undefined,
             ...completedWindow(completedRange, completedFrom, completedTo),
+            leadStatusId,
+            leadStatusExcludeId,
         }),
-        [completedSearch, completedRange, completedFrom, completedTo]
+        [
+            completedSearch,
+            completedRange,
+            completedFrom,
+            completedTo,
+            leadStatusId,
+            leadStatusExcludeId,
+        ]
     );
 
     // Due-date filter for the open buckets; see due-range.ts. Empty = any date.
@@ -380,17 +402,6 @@ const FollowUpsContent = () => {
             dueWindow,
         ]
     );
-
-    // ?status=…[&statusExclude=1] — the sidebar sub-tab decides which lead statuses its
-    // queue covers (e.g. an institute that parks lost leads in their own tab links here
-    // with status=LOST&statusExclude=1). No picker on this page; the route owns it.
-    const statusKeys = (statusParam ?? '')
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean)
-        .join(',');
-    const leadStatusId = statusKeys && statusExclude !== '1' ? statusKeys : undefined;
-    const leadStatusExcludeId = statusKeys && statusExclude === '1' ? statusKeys : undefined;
 
     /** One request shape for every bucket; only the window moves. */
     const baseFilter = useMemo(

@@ -36,13 +36,14 @@ class Sock:
         except Exception as e:  # noqa: BLE001
             self.q.put_nowait((time.time(), {"type": "closed", "err": str(e)[:120]}))
 
-    async def say(self, texts, wait=20.0):
+    async def say(self, texts, wait=20.0, flush=True):
         while not self.q.empty():
             self.q.get_nowait()
         t0 = time.time()
         for t in texts:
             await self.ws.send(json.dumps({"type": "text", "data": {"text": t}}))
-        await self.ws.send(json.dumps({"type": "flush"}))
+        if flush:
+            await self.ws.send(json.dumps({"type": "flush"}))
         first, secs, final, other = None, 0.0, None, []
         while time.time() - t0 < wait:
             try:
@@ -83,7 +84,32 @@ async def session(name, min_buf, gap, short):
         s.task.cancel()
 
 
+async def noflush():
+    """Production with the speech cache sends NO flush (per-sentence contexts)."""
+    for name in ("v4", "v3"):
+        for min_buf in (30, 50):
+            for texts in (["एक सेकंड।"], ["Hmm…"], ["जी सर, मैं सुन रही हूँ।"], LONG[:1], LONG):
+                model, voice, lang, temp = MODELS[name]
+                url = f"wss://api.sarvam.ai/text-to-speech/ws?model={model}&send_completion_event=true"
+                cfg = {"target_language_code": lang, "speaker": voice, "speech_sample_rate": "8000",
+                       "enable_preprocessing": True, "min_buffer_size": min_buf, "max_chunk_length": 150,
+                       "output_audio_codec": "linear16", "output_audio_bitrate": "128k", "pace": 1.04,
+                       "model": model, "temperature": temp}
+                try:
+                    async with websockets.connect(url, additional_headers={"api-subscription-key": KEY}) as ws:
+                        await ws.send(json.dumps({"type": "config", "data": cfg}))
+                        s = Sock(ws)
+                        r = await s.say(texts, wait=12.0, flush=False)
+                        print(f"NOFLUSH,{name},buf={min_buf},chars={sum(len(t) for t in texts)},{texts[0][:20]!r},{r}", flush=True)
+                        s.task.cancel()
+                except Exception as e:  # noqa: BLE001
+                    print(f"ERR,NOFLUSH,{name},{min_buf},{type(e).__name__}: {str(e)[:160]}", flush=True)
+
+
 async def main():
+    if os.environ.get("ONLY_NOFLUSH"):
+        await noflush()
+        return
     for name in ("v4", "v3"):
         for min_buf in (30, 50):
             for short in SHORTS:

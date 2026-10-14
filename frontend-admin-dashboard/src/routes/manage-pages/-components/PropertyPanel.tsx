@@ -4160,6 +4160,53 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
+            {(props.layout || 'carousel') === 'carousel' && (
+                <div className="space-y-3 rounded border p-3">
+                    <div className="space-y-2">
+                        <Label>{t('testimonials.cardsPerView')}</Label>
+                        <select
+                            className="w-full rounded border px-3 py-2 text-sm"
+                            value={String(props.cardsPerView || 1)}
+                            onChange={(e) => {
+                                const n = Number(e.target.value);
+                                // 1 is the renderer's default — drop the key so old sites stay byte-identical
+                                updateProp('cardsPerView', n > 1 ? n : undefined);
+                            }}
+                        >
+                            {[1, 2, 3, 4].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500">{t('testimonials.cardsPerViewHint')}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <Label>{t('testimonials.autoplay')}</Label>
+                        <Switch
+                            checked={!!props.autoplay}
+                            onCheckedChange={(c) => updateProp('autoplay', c || undefined)}
+                        />
+                    </div>
+                    {props.autoplay && (
+                        <div className="space-y-2">
+                            <Label>{t('testimonials.autoplaySeconds')}</Label>
+                            <Input
+                                type="number"
+                                min={3}
+                                max={30}
+                                step={1}
+                                className="w-24"
+                                value={Math.round((props.autoplayIntervalMs || 5000) / 1000)}
+                                onChange={(e) => {
+                                    // The live carousel floors the interval at 2.5s; keep the editor within a readable range
+                                    const s = Math.min(30, Math.max(3, Math.round(Number(e.target.value) || 5)));
+                                    updateProp('autoplayIntervalMs', s === 5 ? undefined : s * 1000);
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label>{t('testimonials.testimonials')}</Label>
@@ -4190,16 +4237,30 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                             value={item.role}
                             onChange={(e) => updateTestimonial(index, 'role', e.target.value)}
                         />
+                        {/* The live card reads feedback || text || quote || content, and sites
+                            written by the AI/MCP store `quote` — show whichever is set, and on edit
+                            write `feedback` alone so a stale key can't shadow the new text. */}
                         <Textarea
                             placeholder={t('testimonials.feedbackPlaceholder')}
-                            rows={2}
-                            value={item.feedback}
-                            onChange={(e) => updateTestimonial(index, 'feedback', e.target.value)}
+                            rows={3}
+                            value={item.feedback || item.text || item.quote || item.content || ''}
+                            onChange={(e) => {
+                                const next = [...(props.testimonials || [])];
+                                next[index] = {
+                                    ...next[index],
+                                    feedback: e.target.value,
+                                    text: undefined,
+                                    quote: undefined,
+                                    content: undefined,
+                                };
+                                updateProp('testimonials', next);
+                            }}
                         />
-                        <Input
-                            placeholder={t('testimonials.avatarUrlPlaceholder')}
-                            value={item.avatar}
-                            onChange={(e) => updateTestimonial(index, 'avatar', e.target.value)}
+                        <ImageUploadField
+                            slot="avatar"
+                            label={t('testimonials.photo')}
+                            value={item.avatar || ''}
+                            onChange={(url) => updateTestimonial(index, 'avatar', url)}
                         />
                         <div className="flex items-center gap-3">
                             <Label className="text-xs">{t('hero.ratingLabel')}</Label>

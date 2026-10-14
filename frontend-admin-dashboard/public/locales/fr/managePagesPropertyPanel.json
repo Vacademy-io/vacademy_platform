@@ -863,7 +863,12 @@
     "rolePlaceholder": "Rôle",
     "feedbackPlaceholder": "Avis",
     "avatarUrlPlaceholder": "URL de l'avatar",
-    "featured": "Mis en avant"
+    "featured": "Mis en avant",
+    "cardsPerView": "Cartes visibles à la fois (ordinateur)",
+    "cardsPerViewHint": "Les tablettes en affichent 2 au maximum et les téléphones 1.",
+    "autoplay": "Défilement automatique",
+    "autoplaySeconds": "Secondes entre les diapositives",
+    "photo": "Photo"
   },
   "policy": {
     "defaults": {

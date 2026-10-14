@@ -862,7 +862,12 @@
     "rolePlaceholder": "रोल",
     "feedbackPlaceholder": "फ़ीडबैक",
     "avatarUrlPlaceholder": "अवतार URL",
-    "featured": "फ़ीचर्ड"
+    "featured": "फ़ीचर्ड",
+    "cardsPerView": "एक साथ दिखने वाले कार्ड (डेस्कटॉप)",
+    "cardsPerViewHint": "टैबलेट पर अधिकतम 2 और फ़ोन पर 1 कार्ड दिखेगा।",
+    "autoplay": "अपने आप स्लाइड करें",
+    "autoplaySeconds": "हर स्लाइड के बीच सेकंड",
+    "photo": "फ़ोटो"
   },
   "policy": {
     "defaults": {

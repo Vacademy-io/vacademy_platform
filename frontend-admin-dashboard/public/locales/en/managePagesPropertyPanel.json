@@ -866,7 +866,12 @@
     "rolePlaceholder": "Role",
     "feedbackPlaceholder": "Feedback",
     "avatarUrlPlaceholder": "Avatar URL",
-    "featured": "Featured"
+    "featured": "Featured",
+    "cardsPerView": "Cards visible at once (desktop)",
+    "cardsPerViewHint": "Tablets show up to 2 and phones show 1.",
+    "autoplay": "Auto-slide",
+    "autoplaySeconds": "Seconds between slides",
+    "photo": "Photo"
   },
   "policy": {
     "defaults": {

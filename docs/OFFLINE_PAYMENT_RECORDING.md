@@ -1,6 +1,6 @@
 # Recording Offline Payments: Mode, Sub-mode and Reference
 
-**Status:** Phase 1 (backend) built 2026-10-14; phases 2–4 proposed. See [§8](#8-phases).
+**Status:** Phases 1–3 built 2026-10-14; phase 4 proposed. See [§8](#8-phases).
 
 When an admin marks a payment as received (cash at the counter, a UPI transfer to the
 institute's PhonePe, a cheque), record **how** it was paid in a structured way, using options
@@ -178,8 +178,8 @@ fields:
 | Phase | Scope |
 |---|---|
 | 1 ✅ | Migration V576; `institute_offline_payment_setting` + defaults + GET/PUT endpoint (`OfflinePaymentModeService`); `OfflinePaymentDetailsService`; `payment_details` on paths A, B, C, E, F, G; `mapToDTO` fields; Pay-installments receipts print the mode and reference |
-| 2 | Settings UI; shared `OfflinePaymentFields`; wire the dialogs for A, B, C, E, F, G |
-| 3 | Manage Payments column, filter, detail sheet, CSV; dashboards group by mode; receipts and invoices |
+| 2 ✅ | Settings UI (`OfflinePaymentModesSettings`); shared `OfflinePaymentFields`; dialogs for A, B, C, E, F, G wired (Pay installments' hard-coded mode buttons replaced) |
+| 3 ✅ | Manage Payments: method column shows "UPI · PhonePe", detail sheet shows mode, reference, extras, notes and proof; CSV adds Paid Via and Payment Reference; collection dashboard groups by recorded mode (manual payments without one show as "Offline (mode not recorded)", no longer "Cash"); invoices print the mode and the admin's reference. Not yet: a filter by mode, and the payment dashboard |
 | 4 | Remaining paths H, I, J, K (K logged as MANUAL) and path D |
 
 ## 9. Open points

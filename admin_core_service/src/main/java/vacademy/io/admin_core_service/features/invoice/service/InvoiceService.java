@@ -925,8 +925,8 @@ public class InvoiceService {
 
         log.info("Final currency used for invoice: '{}'", currency);
 
-        String paymentMethod = firstPaymentLog.getVendor();
-        String transactionId = firstPaymentLog.getVendorId();
+        String paymentMethod = invoicePaymentMethod(firstPaymentLog);
+        String transactionId = invoiceTransactionId(firstPaymentLog);
         LocalDateTime paymentDate = firstPaymentLog.getDate() != null
                 ? firstPaymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
                 : LocalDateTime.now();
@@ -1646,8 +1646,8 @@ public class InvoiceService {
                 .taxIncluded(taxIncluded)
                 .taxRate(taxRate)
                 .taxLabel(taxLabel)
-                .paymentMethod(paymentLog.getVendor())
-                .transactionId(paymentLog.getVendorId())
+                .paymentMethod(invoicePaymentMethod(paymentLog))
+                .transactionId(invoiceTransactionId(paymentLog))
                 .paymentDate(paymentLog.getDate() != null
                         ? paymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
                         : LocalDateTime.now())
@@ -7121,4 +7121,36 @@ public class InvoiceService {
         return n % 10 == 0 ? tens : tens + " " + WORDS_BELOW_TWENTY[n % 10];
     }
 
+
+    /**
+     * What the invoice prints as the payment method: for an offline payment recorded with a
+     * mode, the mode as the admin chose it ("UPI · PhonePe"); otherwise the gateway, as before.
+     */
+    static String invoicePaymentMethod(PaymentLog paymentLog) {
+        if (paymentLog == null) return null;
+        if (StringUtils.hasText(paymentLog.getPaymentMode())) {
+            String mode = paymentLog.getPaymentMode();
+            String sub = paymentLog.getPaymentSubMode();
+            if (StringUtils.hasText(paymentLog.getPaymentDetailsJson())) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode json =
+                            new ObjectMapper().readTree(paymentLog.getPaymentDetailsJson());
+                    mode = json.path("mode_label").asText(mode);
+                    sub = json.path("sub_mode_label").asText(sub);
+                } catch (Exception ignored) {
+                    // Fall back to the codes.
+                }
+            }
+            return StringUtils.hasText(sub) ? mode + " · " + sub : mode;
+        }
+        return paymentLog.getVendor();
+    }
+
+    /** The admin's reference for an offline payment; the gateway's id otherwise. */
+    static String invoiceTransactionId(PaymentLog paymentLog) {
+        if (paymentLog == null) return null;
+        return StringUtils.hasText(paymentLog.getPaymentReference())
+                ? paymentLog.getPaymentReference()
+                : paymentLog.getVendorId();
+    }
 }

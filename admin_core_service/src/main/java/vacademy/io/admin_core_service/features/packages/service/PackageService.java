@@ -44,6 +44,9 @@ public class PackageService {
     @Autowired
     private SessionService sessionService;
 
+    @Autowired
+    private PackagePageContentService packagePageContentService;
+
     @Transactional(readOnly = true)
     public Page<PackageDetailDTO> getcourseCatalogDetail(
             LearnerPackageFilterDTO learnerPackageFilterDTO,
@@ -275,6 +278,9 @@ public class PackageService {
     public void addOrUpdatePackage(AddCourseDTO addCourseDTO, String instituteId, CustomUserDetails userDetails) {
         PackageEntity packageEntity;
 
+        // Reject a malformed course_page_json (HTTP 400) before anything is written.
+        PackagePageContentService.validate(addCourseDTO.getCoursePageJson());
+
         // Set created_by_user_id from user context if not already set in DTO
         if (!StringUtils.hasText(addCourseDTO.getCreatedByUserId()) && userDetails != null) {
             addCourseDTO.setCreatedByUserId(userDetails.getId());
@@ -286,6 +292,11 @@ public class PackageService {
             packageEntity = packageRepository.findById(addCourseDTO.getId())
                     .orElseThrow(() -> new VacademyException("Package not found"));
             updateCourse(addCourseDTO, packageEntity);
+        }
+        if (Boolean.TRUE.equals(addCourseDTO.getNewCourse())) {
+            packagePageContentService.applyOnCreate(packageEntity.getId(), addCourseDTO.getCoursePageJson());
+        } else {
+            packagePageContentService.applyOnUpdate(packageEntity.getId(), addCourseDTO.getCoursePageJson());
         }
         for (AddNewSessionDTO addNewSessionDTO : addCourseDTO.getSessions()) {
             sessionService.addOrUpdateSession(addNewSessionDTO, packageEntity, instituteId, userDetails);

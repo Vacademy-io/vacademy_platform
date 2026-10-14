@@ -36,9 +36,10 @@ TEXT = {
     "te": "నమస్కారం, మీ పిల్లల తరగతుల గురించి రెండు నిమిషాలు మాట్లాడవచ్చా?",
     "gu": "નમસ્તે, શું હું તમારા બાળકના અભ્યાસ વિશે બે મિનિટ વાત કરી શકું?",
     "bn": "নমস্কার, আপনার সন্তানের পড়াশোনা নিয়ে দুই মিনিট কথা বলতে পারি?",
+    "as": "নমস্কাৰ, আপোনাৰ সন্তানৰ পঢ়া-শুনাৰ বিষয়ে দুই মিনিট কথা পাতিব পাৰোনে?",
 }
 LANG = {"hi": "hi-IN", "enhi": "hi-IN", "en": "en-IN", "mr": "mr-IN", "kn": "kn-IN", "pa": "pa-IN",
-        "ta": "ta-IN", "te": "te-IN", "gu": "gu-IN", "bn": "bn-IN"}
+        "ta": "ta-IN", "te": "te-IN", "gu": "gu-IN", "bn": "bn-IN", "as": "as-IN"}
 
 
 def lang_of(voice_id: str) -> str:
@@ -230,6 +231,9 @@ if __name__ == "__main__":
         asyncio.run(ws_tests())
     if which in ("all", "sweep"):
         sweep()
+    if which == "new5":
+        sweep(["aravind_ta_ads", "aravind_ta_suspense", "arnab_bn_conversation",
+               "kangkana_as_conversational", "mouchumi_as_conversational"], workers=1)
     if which == "speakers":
         st, audio, ms, err = synth_rest("no_such_speaker", text="नमस्ते", lang="hi-IN")
         r = httpx.post("https://api.sarvam.ai/text-to-speech",

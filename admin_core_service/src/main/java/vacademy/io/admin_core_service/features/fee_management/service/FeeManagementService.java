@@ -100,6 +100,10 @@ public class FeeManagementService {
             throw new VacademyException("A flexible fee plan has no fixed installments; "
                     + "the schedule is chosen for each learner at enrollment");
         }
+        if (flexible && !hasSplitFee(request)) {
+            // Every enrollment on such a plan would fail: there is nothing to schedule.
+            throw new VacademyException("A flexible fee plan needs at least one fee that is split into installments");
+        }
 
         ComplexPaymentOption cpo = new ComplexPaymentOption();
         cpo.setName(request.getName());
@@ -205,6 +209,14 @@ public class FeeManagementService {
         }
 
         return result;
+    }
+
+    /** On a flexible plan a fee is split unless it is explicitly marked has_installment = false. */
+    private static boolean hasSplitFee(ComplexPaymentOptionDTO request) {
+        if (request.getFeeTypes() == null) return false;
+        return request.getFeeTypes().stream()
+                .map(ComplexPaymentOptionDTO.FeeTypeDTO::getAssignedFeeValue)
+                .anyMatch(afv -> afv != null && !Boolean.FALSE.equals(afv.getHasInstallment()));
     }
 
     private static boolean hasTemplateInstallments(ComplexPaymentOptionDTO request) {

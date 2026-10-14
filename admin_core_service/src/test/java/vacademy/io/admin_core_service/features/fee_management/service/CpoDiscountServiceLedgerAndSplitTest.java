@@ -99,7 +99,8 @@ class CpoDiscountServiceLedgerAndSplitTest {
                         .map(Row::amount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
 
-        service = new CpoDiscountService(userPlanRepository, sfpRepository, ledgerService, ledgerRepository);
+        service = new CpoDiscountService(userPlanRepository, sfpRepository, ledgerService, ledgerRepository,
+                mock(vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository.class));
     }
 
     // ------------------------------------------------------------------ fixtures

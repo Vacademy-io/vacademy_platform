@@ -224,6 +224,24 @@ class InstallmentScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("A fee too small for the chosen count is rejected instead of writing zero bills")
+    void feeTooSmallToSplit() {
+        VacademyException e = assertThrows(VacademyException.class, () -> InstallmentScheduleService.buildPlan(
+                List.of(split("a", "2")), rule(3, "MONTHS", 1, TODAY), TODAY));
+        assertTrue(e.getMessage().contains("too small"));
+    }
+
+    @Test
+    @DisplayName("Edited rows must all be above zero")
+    void zeroRowRejected() {
+        InstallmentScheduleDTO s = InstallmentScheduleDTO.builder()
+                .rows(List.of(row("2026-10-15", "40000"), row("2026-11-15", "0")))
+                .build();
+        assertThrows(VacademyException.class, () -> InstallmentScheduleService.buildPlan(
+                List.of(split("a", "40000")), s, TODAY));
+    }
+
+    @Test
     @DisplayName("A plan with no splittable fee is rejected")
     void nothingToSplit() {
         assertThrows(VacademyException.class, () -> InstallmentScheduleService.buildPlan(
@@ -317,6 +335,10 @@ class InstallmentScheduleServiceTest {
     @DisplayName("Invalid defaults are rejected")
     void invalidDefaultsRejected() {
         ComplexPaymentOption cpo = new ComplexPaymentOption();
+        assertThrows(VacademyException.class, () -> CpoFlexibleDefaults.write(cpo,
+                FlexibleScheduleDefaultsDTO.builder().count(3)
+                        .interval(InstallmentScheduleDTO.IntervalDTO.builder().unit("DAYS").value(5000).build())
+                        .build()));
         assertThrows(VacademyException.class, () -> CpoFlexibleDefaults.write(cpo,
                 FlexibleScheduleDefaultsDTO.builder().count(10).maxCount(6).build()));
         assertThrows(VacademyException.class, () -> CpoFlexibleDefaults.write(cpo,

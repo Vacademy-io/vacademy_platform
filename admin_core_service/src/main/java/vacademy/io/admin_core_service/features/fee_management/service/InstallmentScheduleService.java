@@ -54,8 +54,8 @@ public class InstallmentScheduleService {
     public static final int MAX_INSTALLMENTS = 60;
 
     /** Longest allowed gap in days (10 years); guards against typos like 3000 instead of 30. */
-    private static final int MAX_INTERVAL_DAYS = 3660;
-    private static final int MAX_INTERVAL_MONTHS = 120;
+    static final int MAX_INTERVAL_DAYS = 3660;
+    static final int MAX_INTERVAL_MONTHS = 120;
 
     private static final String DELETED = "DELETED";
     private static final String DEFAULT_CURRENCY = "INR";
@@ -125,8 +125,10 @@ public class InstallmentScheduleService {
     /**
      * Writes the learner's bills from a schedule and posts one ledger accrual per bill, the
      * same way {@link StudentFeePaymentGenerationService#generateFeeBills} does for the
-     * template. All bills are saved before any accrual is posted, so a validation or save
-     * failure leaves neither behind.
+     * template. The schedule is validated and every bill saved before any accrual is posted,
+     * so a validation or save failure leaves neither behind. Accruals commit on their own
+     * (REQUIRES_NEW), as on the template path: a failure part-way through posting them keeps
+     * the ones already posted.
      *
      * @return ids of the created bills
      */
@@ -291,6 +293,13 @@ public class InstallmentScheduleService {
             shares.add(equalSplit(part.total(), count));
         }
 
+        for (int p = 0; p < splitParts.size(); p++) {
+            if (shares.get(p).stream().anyMatch(a -> a.signum() == 0) && splitParts.get(p).total().signum() > 0) {
+                throw new VacademyException(splitParts.get(p).feeTypeName() + " is too small to split into "
+                        + count + " installments");
+            }
+        }
+
         List<BigDecimal> rowAmounts = explicitRowAmounts(schedule);
         if (rowAmounts != null) {
             BigDecimal splitTotal = splitParts.stream().map(FeePart::total).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -409,8 +418,8 @@ public class InstallmentScheduleService {
         List<BigDecimal> amounts = new ArrayList<>(rows.size());
         for (int k = 0; k < rows.size(); k++) {
             BigDecimal amount = rows.get(k).getAmount();
-            if (amount.signum() < 0) {
-                throw new VacademyException("Installment " + (k + 1) + " has a negative amount");
+            if (amount.signum() <= 0) {
+                throw new VacademyException("Installment " + (k + 1) + " must have an amount above zero");
             }
             if (amount.stripTrailingZeros().scale() > 2) {
                 throw new VacademyException("Installment " + (k + 1) + " has more than 2 decimal places");

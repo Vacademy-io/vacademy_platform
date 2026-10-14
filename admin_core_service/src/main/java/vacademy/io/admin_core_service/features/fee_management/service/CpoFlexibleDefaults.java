@@ -71,8 +71,12 @@ public final class CpoFlexibleDefaults {
             } catch (IllegalArgumentException e) {
                 throw new VacademyException("Default gap must be in DAYS or MONTHS");
             }
-            if (d.getInterval().getValue() == null || d.getInterval().getValue() < 1) {
-                throw new VacademyException("Default gap must be at least 1");
+            boolean days = InstallmentIntervalUnit.DAYS.name().equalsIgnoreCase(d.getInterval().getUnit().trim());
+            int maxGap = days ? InstallmentScheduleService.MAX_INTERVAL_DAYS : InstallmentScheduleService.MAX_INTERVAL_MONTHS;
+            if (d.getInterval().getValue() == null || d.getInterval().getValue() < 1
+                    || d.getInterval().getValue() > maxGap) {
+                throw new VacademyException("Default gap must be between 1 and " + maxGap
+                        + (days ? " days" : " months"));
             }
         }
     }

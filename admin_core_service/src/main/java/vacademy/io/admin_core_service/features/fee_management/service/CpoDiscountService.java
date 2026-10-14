@@ -60,6 +60,7 @@ public class CpoDiscountService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository userAccountLedgerRepository;
+    private final vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository aftInstallmentRepository;
 
     private static final int SCALE = 2;
     private static final RoundingMode RM = RoundingMode.HALF_UP;
@@ -302,6 +303,15 @@ public class CpoDiscountService {
         added.setCpoId(source.getCpoId());
         added.setAsvId(source.getAsvId());
         added.setIId(null);
+        // Keep the position on screen and in reminders: both halves read "installment N".
+        // A template bill takes N from its template row; the new half has none to look up.
+        Integer number = source.getInstallmentNumber();
+        if (number == null && source.getIId() != null) {
+            number = aftInstallmentRepository.findById(source.getIId())
+                    .map(vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment::getInstallmentNumber)
+                    .orElse(null);
+        }
+        added.setInstallmentNumber(number);
         added.setPackageSessionIds(source.getPackageSessionIds());
         added.setFeeTypeId(source.getFeeTypeId());
         added.setIsSkippable(source.getIsSkippable());

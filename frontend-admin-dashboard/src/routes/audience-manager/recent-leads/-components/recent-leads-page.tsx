@@ -33,6 +33,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
+import { useActiveSidebarSection } from '@/components/common/layout-container/sidebar/use-active-sidebar-section';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
@@ -259,9 +260,14 @@ const SlaOptionLabel = ({ label, helper }: { label: string; helper?: string }) =
 export const RecentLeadsPage = () => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const { setNavHeading } = useNavHeadingStore();
+    // Every Enquiry sub-tab (Untouched, Processed, All Leads, …) is this page, so
+    // name the one the user opened rather than "Recent Leads" for all of them. The
+    // built-in "Recent Leads" entry adds nothing, so that page reads as it always did.
+    const activeLabel = useActiveSidebarSection()?.label;
+    const sectionLabel = activeLabel && activeLabel !== t('nav.title') ? activeLabel : undefined;
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">{t('nav.title')}</h1>);
-    }, [setNavHeading, t]);
+        setNavHeading(<h1 className="text-lg">{sectionLabel || t('nav.title')}</h1>);
+    }, [setNavHeading, t, sectionLabel]);
 
     // Every sidebar sub-tab points at THIS pathname and differs only in its query
     // string, so moving between them never unmounts the content — its filter state is
@@ -281,17 +287,24 @@ export const RecentLeadsPage = () => {
 
     return (
         <StudentSidebarProvider>
-            <RecentLeadsContent key={entryKey} selfWriteRef={selfWriteRef} />
+            <RecentLeadsContent
+                key={entryKey}
+                selfWriteRef={selfWriteRef}
+                sectionLabel={sectionLabel}
+            />
         </StudentSidebarProvider>
     );
 };
 
 const RecentLeadsContent = ({
     selfWriteRef,
+    sectionLabel,
 }: {
     /** Set to the signature of every search object this component writes, so the
      *  parent can tell those apart from a sub-tab click. */
     selfWriteRef: React.MutableRefObject<string>;
+    /** The sidebar sub-tab this list was opened from ("All Leads"), if any. */
+    sectionLabel?: string;
 }) => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
@@ -1657,6 +1670,14 @@ const RecentLeadsContent = ({
                 a spinner avoids flashing a misleading "0 Leads". */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
+                    {/* The section name stays put while filters change, so the user
+                        always knows which list the count belongs to. */}
+                    {sectionLabel && (
+                        <>
+                            <span>{sectionLabel}</span>
+                            <span className="font-normal text-neutral-300">·</span>
+                        </>
+                    )}
                     {isLoading ? (
                         <>
                             <CircleNotch className="size-5 animate-spin text-neutral-400" />

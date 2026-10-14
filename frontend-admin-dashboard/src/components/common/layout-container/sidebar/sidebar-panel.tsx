@@ -61,11 +61,11 @@ import { MyInput } from '@/components/design-system/input';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
-import { parseSidebarLink } from './helper';
+import { parseSidebarLink, pickActiveSidebarLink } from './helper';
 import { filterRecentEntries } from '@/lib/capabilities/nav-access';
 import { useEntitlement } from '@/lib/capabilities/use-entitlement';
 import { filterSettingsTabs } from '@/routes/settings/-utils/settings-entitlements';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import type { CategoryId } from './category-rail';
@@ -309,11 +309,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                         onItemClick={onItemClick}
                     />
                 ) : activeCategory === 'RECENT' ? (
-                    <RecentTabsList
-                        entries={recentTabs}
-                        currentRoute={currentRoute}
-                        onItemClick={onItemClick}
-                    />
+                    <RecentTabsList entries={recentTabs} onItemClick={onItemClick} />
                 ) : (
                     <SidebarMenu className="flex flex-col gap-0.5">
                         {filteredItems.map((obj, key) => (
@@ -347,12 +343,19 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
 
 interface RecentTabsListProps {
     entries: RecentTabEntry[];
-    currentRoute: string;
     onItemClick?: () => void;
 }
 
-const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, onItemClick }) => {
+const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, onItemClick }) => {
     const { t } = useTranslation('sidebarPanel');
+    // Recorded routes carry their query (?status=…&lock=status), so match them the
+    // way the panel does rather than by pathname.
+    const { pathname, search } = useLocation();
+    const activeRoute = pickActiveSidebarLink(
+        entries.map((entry) => entry.route),
+        pathname,
+        search as Record<string, unknown>
+    );
 
     if (entries.length === 0) {
         return (
@@ -370,7 +373,7 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, 
             </p>
             {entries.map((entry, idx) => {
                 const colors = getCategoryColors(entry.category);
-                const isActive = currentRoute.includes(entry.route);
+                const isActive = entry.route === activeRoute;
                 // Recorded routes can include a query ("/settings?selectedTab=…").
                 const { to: entryTo, search: entrySearch } = parseSidebarLink(entry.route);
                 return (

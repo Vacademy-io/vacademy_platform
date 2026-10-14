@@ -39,6 +39,8 @@ import {
 } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { filterMenuItems } from './helper';
+import { useActiveSidebarSection } from './use-active-sidebar-section';
+import { useTitleStore } from '@/stores/useTitleStore';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY,
@@ -536,6 +538,15 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // finalSidebarItems/roleDisplay are captured through the signatures.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [navSignature, categoriesSignature, data?.id, setNavSnapshot]);
+
+    // Browser tab title leads with the section ("All Leads · I2CAN"), so several
+    // tabs open on lists that share one page can still be told apart.
+    const activeSectionLabel = useActiveSidebarSection()?.label ?? null;
+    const setSectionTitle = useTitleStore((s) => s.setSectionTitle);
+    useEffect(() => {
+        setSectionTitle(activeSectionLabel);
+    }, [activeSectionLabel, setSectionTitle]);
+    useEffect(() => () => setSectionTitle(null), [setSectionTitle]);
 
     // Logo
     const { getPublicUrl } = useFileUpload();

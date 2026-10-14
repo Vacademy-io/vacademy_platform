@@ -15,8 +15,9 @@ import type { CPOFeeType, CPOFlexibleDefaults } from '@/routes/financial-managem
  * See docs/CPO_FLEXIBLE_INSTALLMENTS.md.
  */
 
-/** Same cap as InstallmentScheduleService.MAX_INSTALLMENTS. */
+/** Same caps as InstallmentScheduleService (MAX_INSTALLMENTS, MAX_INTERVAL_DAYS/MONTHS). */
 export const MAX_INSTALLMENTS = 60;
+export const MAX_GAP: Record<InstallmentIntervalUnit, number> = { DAYS: 3660, MONTHS: 120 };
 
 /** One fee of a plan and how a schedule treats it (split over the schedule, or paid upfront). */
 export interface SchedulePart {
@@ -147,6 +148,13 @@ export const validateSchedule = (
     const splitParts = parts.filter((p) => p.split);
     if (parts.length > 0 && splitParts.length === 0) return { key: 'schedule.errors.nothingToSplit' };
     const max = Math.min(maxCount, MAX_INSTALLMENTS);
+    if (!schedule.rows && (schedule.count ?? 0) > 1) {
+        const unit = schedule.interval?.unit ?? 'MONTHS';
+        const value = schedule.interval?.value ?? 0;
+        if (!Number.isInteger(value) || value < 1 || value > MAX_GAP[unit]) {
+            return { key: 'schedule.errors.gapRange', params: { max: MAX_GAP[unit] } };
+        }
+    }
     const rows = schedule.rows ?? rowsFromRule(schedule, splitParts);
     if (rows.length < 1 || rows.length > max) return { key: 'schedule.errors.countRange', params: { max } };
     for (let k = 0; k < rows.length; k++) {
@@ -155,10 +163,22 @@ export const validateSchedule = (
             return { key: 'schedule.errors.datesOutOfOrder', params: { n: k + 1, prev: k } };
         }
     }
+    // A fee smaller than the count would leave installments of zero.
+    for (const part of splitParts) {
+        if (part.total > 0 && equalSplit(part.total, rows.length).some((a) => a === 0)) {
+            return {
+                key: 'schedule.errors.tooSmall',
+                params: { fee: part.feeTypeName, count: rows.length },
+            };
+        }
+    }
     const withAmount = rows.filter((r) => r.amount != null).length;
     if (withAmount > 0 && withAmount !== rows.length) return { key: 'schedule.errors.mixedAmounts' };
     if (withAmount > 0) {
-        if (rows.some((r) => (r.amount ?? 0) < 0)) return { key: 'schedule.errors.negativeAmount' };
+        if (rows.some((r) => (r.amount ?? 0) <= 0)) return { key: 'schedule.errors.negativeAmount' };
+        if (rows.some((r) => Math.abs((r.amount ?? 0) * 100 - Math.round((r.amount ?? 0) * 100)) > 1e-6)) {
+            return { key: 'schedule.errors.decimals' };
+        }
         const splitTotal = splitParts.reduce((s, p) => s + p.total, 0);
         const given = rows.reduce((s, r) => s + (r.amount ?? 0), 0);
         if (Math.round(given * 100) !== Math.round(splitTotal * 100)) {

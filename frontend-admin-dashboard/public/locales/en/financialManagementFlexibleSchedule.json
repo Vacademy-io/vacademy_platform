@@ -25,5 +25,11 @@
         "upfront": "paid upfront"
     },
     "perLearner": "Per learner",
-    "badge": "Installments chosen at enrollment"
+    "badge": "Installments chosen at enrollment",
+    "errors": {
+        "count": "Default installments must be between 1 and the maximum ({{max}} at most).",
+        "value": "The gap must be between 1 and {{gap}}.",
+        "maxCount": "Most installments allowed must be between 1 and {{max}}.",
+        "noSplitFee": "Turn on “Split into installments” for at least one fee."
+    }
 }

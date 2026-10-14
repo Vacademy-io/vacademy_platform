@@ -71,8 +71,11 @@
             "missingDueDate": "Installment {{n}} has no due date.",
             "datesOutOfOrder": "Installment {{n}} is due before installment {{prev}}.",
             "mixedAmounts": "Give an amount for every installment, or reset to the even split.",
-            "negativeAmount": "An installment amount can’t be negative.",
-            "amountMismatch": "Installments add up to {{given}} but the fee is {{total}}. Use the discount below to change the price."
+            "negativeAmount": "Every installment needs an amount above zero.",
+            "amountMismatch": "Installments add up to {{given}} but the fee is {{total}}. Use the discount below to change the price.",
+            "gapRange": "The gap must be between 1 and {{max}}.",
+            "tooSmall": "{{fee}} is too small to split into {{count}} installments.",
+            "decimals": "Amounts can have at most 2 decimal places."
         }
     }
 }

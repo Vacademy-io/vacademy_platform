@@ -104,3 +104,43 @@ describe('validateSchedule', () => {
         expect(validateSchedule(rule, [fee(5000, false)], 60)?.key).toBe('schedule.errors.nothingToSplit');
     });
 });
+
+describe('validateSchedule — review follow-ups', () => {
+    it('rejects a gap beyond the backend limit', () => {
+        expect(
+            validateSchedule(
+                { count: 3, interval: { unit: 'DAYS', value: 5000 }, first_due_date: '2026-10-15' },
+                [fee(30000)],
+                60
+            )?.key
+        ).toBe('schedule.errors.gapRange');
+    });
+
+    it('rejects a fee too small for the count', () => {
+        expect(
+            validateSchedule(
+                { count: 3, interval: { unit: 'MONTHS', value: 1 }, first_due_date: '2026-10-15' },
+                [fee(2)],
+                60
+            )?.key
+        ).toBe('schedule.errors.tooSmall');
+    });
+
+    it('rejects zero rows and more than 2 decimals', () => {
+        const base = { count: 2, interval: { unit: 'MONTHS' as const, value: 1 }, first_due_date: '2026-10-15' };
+        expect(
+            validateSchedule(
+                { ...base, rows: [{ due_date: '2026-10-15', amount: 1000 }, { due_date: '2026-11-15', amount: 0 }] },
+                [fee(1000)],
+                60
+            )?.key
+        ).toBe('schedule.errors.negativeAmount');
+        expect(
+            validateSchedule(
+                { ...base, rows: [{ due_date: '2026-10-15', amount: 500.005 }, { due_date: '2026-11-15', amount: 499.995 }] },
+                [fee(1000)],
+                60
+            )?.key
+        ).toBe('schedule.errors.decimals');
+    });
+});

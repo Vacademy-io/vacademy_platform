@@ -1,6 +1,6 @@
 # Flexible Installments at Enrollment
 
-**Status:** Phase 1 (backend) built 2026-10-14; phases 2–5 proposed. See [§9](#9-phases).
+**Status:** Phases 1 (backend) and 2 (admin UI) built 2026-10-14; phases 3–5 proposed. See [§9](#9-phases).
 
 Let an admin decide **how many installments and how far apart** while enrolling a learner,
 instead of creating one fee plan and one invite link per schedule in advance.
@@ -295,7 +295,7 @@ What phase 5 must fix before it is safe to open to learners:
 | Phase | Scope |
 |---|---|
 | 1 ✅ | Migration V575; `InstallmentScheduleService`; `installment_schedule` on admin assign (CPO FIXED/FLEXIBLE + ONE_TIME provisioning via `OneTimeInstallmentPlanProvisioner`); FLEXIBLE default schedule in `generateFeeBills`; dry-run preview; listing hygiene; `installment_number` readers; `schedule_mode` + `flexible_defaults` on the fee-plan create/read/update API |
-| 2 | Admin UI: Enroll wizard panel, Step 4 preview, FLEXIBLE option in fee plan creation |
+| 2 ✅ | Admin UI: Enroll wizard panel (`InstallmentScheduleEditor`, plan vs custom schedule, "Pay in installments" for one-time prices), Step 4 preview, FLEXIBLE option in Fee Plans → Create and Settings → Payment Settings (`FlexibleScheduleSettings`), flexible badge in the fee-plans list |
 | 3 | Side-view "Reschedule remaining" |
 | 4 | FLEXIBLE plans on learner invite checkout (default rule); until then learner self-enrollment on them is refused (§6.5) |
 | 5 | Learner "Pay dues" page behind an institute setting (§8) |

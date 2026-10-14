@@ -25,5 +25,11 @@
         "upfront": "payé d’avance"
     },
     "perLearner": "Par apprenant",
-    "badge": "Échéances choisies à l’inscription"
+    "badge": "Échéances choisies à l’inscription",
+    "errors": {
+        "count": "Le nombre d’échéances par défaut doit être compris entre 1 et le maximum ({{max}} au plus).",
+        "value": "L’espacement doit être compris entre 1 et {{gap}}.",
+        "maxCount": "Le maximum d’échéances doit être compris entre 1 et {{max}}.",
+        "noSplitFee": "Activez « Payer en plusieurs fois » pour au moins un frais."
+    }
 }

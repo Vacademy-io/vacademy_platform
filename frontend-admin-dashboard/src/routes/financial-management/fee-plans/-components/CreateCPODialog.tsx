@@ -16,6 +16,7 @@ import {
 import {
     DEFAULT_FLEXIBLE_DEFAULTS,
     flexibleDefaultsError,
+    flexibleHasNoSplitFee,
     type FlexibleDefaultsForm,
 } from '../-utils/flexible-defaults';
 import { FlexibleScheduleSettings } from './FlexibleScheduleSettings';
@@ -960,7 +961,8 @@ export default function CreateCPODialog({
         form.name.trim() !== '' &&
         form.feeTypes.length > 0 &&
         form.feeTypes.every((ft) => ft.name.trim() !== '' && parseFloat(ft.amount as string) > 0) &&
-        !flexibleDefaultsError(form.scheduleMode, form.flexibleDefaults);
+        !flexibleDefaultsError(form.scheduleMode, form.flexibleDefaults) &&
+        !flexibleHasNoSplitFee(form.scheduleMode, form.feeTypes);
 
     const totalPackageAmount = form.feeTypes.reduce(
         (sum, ft) => sum + (parseFloat(ft.amount as string) || 0),

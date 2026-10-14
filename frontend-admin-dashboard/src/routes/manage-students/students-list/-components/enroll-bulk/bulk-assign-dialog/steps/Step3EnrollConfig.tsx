@@ -21,7 +21,7 @@ import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
@@ -47,7 +47,11 @@ import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
 interface Props {
     instituteId: string;
     selectedPackageSessions: SelectedPackageSession[];
-    onSelectedPackageSessionsChange: (sessions: SelectedPackageSession[]) => void;
+    /**
+     * Takes an updater: rows patch themselves from effects (the fee-plan panel), and two
+     * rows can do so in the same commit — a plain value would let the second overwrite the first.
+     */
+    onSelectedPackageSessionsChange: React.Dispatch<React.SetStateAction<SelectedPackageSession[]>>;
     options: BulkEnrollOptions;
     onOptionsChange: (opts: BulkEnrollOptions) => void;
 }
@@ -246,10 +250,8 @@ export const Step3EnrollConfig = ({
     const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
 
     const updateSession = (packageSessionId: string, patch: Partial<SelectedPackageSession>) => {
-        onSelectedPackageSessionsChange(
-            selectedPackageSessions.map((ps) =>
-                ps.packageSessionId === packageSessionId ? { ...ps, ...patch } : ps
-            )
+        onSelectedPackageSessionsChange((prev) =>
+            prev.map((ps) => (ps.packageSessionId === packageSessionId ? { ...ps, ...patch } : ps))
         );
     };
 

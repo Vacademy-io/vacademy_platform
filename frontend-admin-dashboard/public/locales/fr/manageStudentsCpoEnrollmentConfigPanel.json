@@ -71,8 +71,11 @@
             "missingDueDate": "L’échéance {{n}} n’a pas de date.",
             "datesOutOfOrder": "L’échéance {{n}} tombe avant l’échéance {{prev}}.",
             "mixedAmounts": "Indiquez un montant pour chaque échéance, ou revenez à la répartition égale.",
-            "negativeAmount": "Le montant d’une échéance ne peut pas être négatif.",
-            "amountMismatch": "Les échéances totalisent {{given}} mais les frais sont de {{total}}. Utilisez la remise ci-dessous pour changer le prix."
+            "negativeAmount": "Chaque échéance doit avoir un montant supérieur à zéro.",
+            "amountMismatch": "Les échéances totalisent {{given}} mais les frais sont de {{total}}. Utilisez la remise ci-dessous pour changer le prix.",
+            "gapRange": "L’espacement doit être compris entre 1 et {{max}}.",
+            "tooSmall": "{{fee}} est trop faible pour être réparti en {{count}} échéances.",
+            "decimals": "Les montants ont au plus 2 décimales."
         }
     }
 }

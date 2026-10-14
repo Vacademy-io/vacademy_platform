@@ -5,6 +5,8 @@ import type { CPOForm } from './CreateCPODialog';
 import {
     DEFAULT_FLEXIBLE_DEFAULTS,
     MAX_INSTALLMENTS,
+    flexibleDefaultsError,
+    flexibleHasNoSplitFee,
     type FlexibleDefaultsForm,
 } from '../-utils/flexible-defaults';
 
@@ -114,6 +116,19 @@ export function FlexibleScheduleSettings({ form, onChange }: Props) {
                         />
                     </div>
                     <p className="w-full text-xs text-neutral-500">{t('flexible.feesHint')}</p>
+                    {flexibleDefaultsError(form.scheduleMode, defaults) && (
+                        <p role="alert" className="w-full text-xs font-medium text-danger-600">
+                            {t(`errors.${flexibleDefaultsError(form.scheduleMode, defaults)}`, {
+                                max: MAX_INSTALLMENTS,
+                                gap: defaults.unit === 'DAYS' ? 3660 : 120,
+                            })}
+                        </p>
+                    )}
+                    {flexibleHasNoSplitFee(form.scheduleMode, form.feeTypes) && (
+                        <p role="alert" className="w-full text-xs font-medium text-danger-600">
+                            {t('errors.noSplitFee')}
+                        </p>
+                    )}
                 </div>
             )}
         </div>

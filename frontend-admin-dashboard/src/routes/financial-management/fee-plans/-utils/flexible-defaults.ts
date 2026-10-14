@@ -34,6 +34,15 @@ export function flexibleDefaultsError(
     const count = Number(d.count);
     if (!Number.isInteger(count) || count < 1 || count > max) return 'count';
     const value = Number(d.value);
-    if (!Number.isInteger(value) || value < 1) return 'value';
+    const maxGap = d.unit === 'DAYS' ? 3660 : 120;
+    if (!Number.isInteger(value) || value < 1 || value > maxGap) return 'value';
     return null;
+}
+
+/** A flexible plan must split at least one fee, or there is nothing to schedule. */
+export function flexibleHasNoSplitFee(
+    scheduleMode: 'FIXED' | 'FLEXIBLE' | undefined,
+    feeTypes: Array<{ hasInstallment: boolean }>
+): boolean {
+    return scheduleMode === 'FLEXIBLE' && feeTypes.length > 0 && !feeTypes.some((f) => f.hasInstallment);
 }

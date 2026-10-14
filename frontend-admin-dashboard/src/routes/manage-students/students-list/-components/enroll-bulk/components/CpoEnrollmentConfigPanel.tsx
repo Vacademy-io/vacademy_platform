@@ -162,6 +162,11 @@ export const CpoEnrollmentConfigPanel = ({
     // Report only real changes: the parent's update merges into the props it rendered with,
     // so a redundant report in the same tick as another update would overwrite that update.
     const reportedError = useRef<string | null>(null);
+    // A different plan starts from "nothing reported": the wizard clears the error when the
+    // invite changes, so the same text on the new plan must be reported again.
+    useEffect(() => {
+        reportedError.current = null;
+    }, [cpoId, oneTimePrice?.amount]);
     useEffect(() => {
         if (reportedError.current === scheduleErrorText) return;
         reportedError.current = scheduleErrorText;

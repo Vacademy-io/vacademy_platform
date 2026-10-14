@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowsOut, DownloadSimple, FilePdf, SpinnerGap, X } from "@phosphor-icons/react";
@@ -300,7 +301,7 @@ export const DocumentViewerComponent: React.FC<DocumentViewerProps> = ({
                 className="group relative w-full max-w-xs overflow-hidden rounded-xl border border-catalogue-border shadow-lg sm:w-64"
                 aria-label={resolvedButtonText}
               >
-                <img src={cover} alt="" className="w-full object-cover transition group-hover:scale-105" style={{ aspectRatio: "4/3" }} />{/* design-lint-ignore: same 4:3 crop as ImageGallery */}
+                <FitImage src={cover} alt="" className="w-full transition group-hover:scale-105" style={{ aspectRatio: "4/3" }} />{/* design-lint-ignore: same 4:3 crop as ImageGallery */}
                 <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/25">
                   <ArrowsOut className="size-8 text-white opacity-0 drop-shadow transition group-hover:opacity-100" aria-hidden="true" />
                 </span>

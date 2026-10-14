@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
@@ -35,7 +36,7 @@ const SimpleImage = ({ src, fallbackSrc, alt }: { src?: string; fallbackSrc?: st
   }, [src, fallbackSrc]);
 
   if (!finalSrc) return <div className="w-full h-full bg-gray-200" />;
-  return <img src={finalSrc} alt={alt} className="w-full h-full object-cover" />;
+  return <FitImage src={finalSrc} alt={alt} className="w-full h-full" />;
 };
 
 interface CartItemCardProps {
@@ -98,10 +99,10 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               <div className="text-gray-400 text-xs">...</div>
             </div>
           ) : currentImageUrl ? (
-            <img
+            <FitImage
               src={currentImageUrl}
               alt={item.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full"
               onError={() => setCurrentImageUrl(null)}
             />
           ) : (

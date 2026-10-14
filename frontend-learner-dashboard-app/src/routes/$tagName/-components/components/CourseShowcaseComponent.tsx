@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { RouteMatcher } from "../../-services/route-matcher";
 import axios from "axios";
 import { useNavigate } from "@tanstack/react-router";
@@ -130,7 +131,7 @@ const ShowcaseImage: React.FC<{ fileId: string; alt: string }> = ({ fileId, alt 
         );
     }
     if (!url) return <div className="h-full w-full animate-pulse bg-catalogue-bg-muted" />;
-    return <img src={url} alt={alt} loading="lazy" className="h-full w-full object-cover" />;
+    return <FitImage src={url} alt={alt} loading="lazy" className="h-full w-full" />;
 };
 
 export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({

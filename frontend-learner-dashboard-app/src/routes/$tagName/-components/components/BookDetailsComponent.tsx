@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { User, ShoppingCart, Plus, Minus, ShoppingBag, CheckCircle } from "@phosphor-icons/react";
@@ -181,10 +182,10 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             )}
 
                             {coverUrl ? (
-                                <img
+                                <FitImage
                                     src={coverUrl}
                                     alt={courseData.title || t("bookDetails.bookAltFallback")}
-                                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.02]"
+                                    className="w-full h-full transition-transform duration-300 hover:scale-[1.02]"
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">{t("bookDetails.loadingCover")}</div>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ImageFitProvider, siteImageFit } from "@/components/common/fit-image/FitImage";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
@@ -2709,6 +2710,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = (props) => {
       settings={catalogueData?.globalSettings?.i18n}
       scope={tagName}
     >
+      <ImageFitProvider fit={siteImageFit(catalogueData?.globalSettings)}>
       <CourseDetailsPageContent
         {...props}
         // Both mounts hand over search params the router parsed as JSON
@@ -2721,6 +2723,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = (props) => {
         productPageCode={searchText(props.productPageCode)}
         catalogueData={catalogueData}
       />
+      </ImageFitProvider>
     </CatalogueLocaleProvider>
   );
 };

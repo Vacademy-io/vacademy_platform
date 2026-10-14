@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import axios from "axios";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -541,7 +542,7 @@ const CourseDetailSheet = ({
 
         {/* Banner */}
         {resolvedBannerUrl ? (
-          <img src={resolvedBannerUrl} alt={title} className="w-full aspect-video object-cover" />
+          <FitImage src={resolvedBannerUrl} alt={title} className="w-full aspect-video" />
         ) : (
           <div className="flex aspect-video w-full items-center justify-center" style={{ backgroundColor: `${primaryColor}22` }}>
             <span className="text-5xl font-bold" style={{ color: primaryColor }}>{getInitials(title)}</span>
@@ -808,7 +809,7 @@ const CourseCard = ({
           style={{ backgroundColor: `${primaryColor}12` }}
         >
           {imageUrl ? (
-            <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
+            <FitImage src={imageUrl} alt={title} className="h-full w-full" />
           ) : (
             <BookOpen className="size-10 transition-transform duration-200 group-hover:scale-110" style={{ color: primaryColor, opacity: 0.75 }} />
           )}

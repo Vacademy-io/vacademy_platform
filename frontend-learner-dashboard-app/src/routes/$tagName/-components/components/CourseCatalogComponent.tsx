@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
+import type { ImageFit } from "@/components/common/fit-image/fit-mode";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -180,6 +182,8 @@ interface CourseImageProps {
   previewImageUrl: string;
   alt: string;
   className?: string;
+  /** Unset: FitImage's automatic fill-or-fit (the site's default). */
+  fit?: ImageFit;
 }
 
 const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
@@ -195,6 +199,7 @@ const CourseImage: React.FC<CourseImageProps> = ({
   previewImageUrl,
   alt,
   className,
+  fit,
 }) => {
   const isPlaceholder =
     !previewImageUrl ||
@@ -212,6 +217,7 @@ const CourseImage: React.FC<CourseImageProps> = ({
       previewImageUrl={previewImageUrl}
       alt={alt}
       className={className}
+      fit={fit}
     />
   );
 };
@@ -221,6 +227,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   previewImageUrl,
   alt,
   className,
+  fit,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const [courseImageUrl, setCourseImageUrl] = useState<string>("");
@@ -285,10 +292,11 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
 
   return (
     <div className="aspect-video">
-      <img
+      <FitImage
         src={courseImageUrl}
         alt={alt}
         className={className}
+        fit={fit}
         loading="lazy"
         onError={() => {
           setImageError(true);
@@ -2239,12 +2247,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
                 <CourseImage
                   previewImageUrl={course.thumbnail}
                   alt={courseTitle}
-                  className={cn(
-                    "w-full h-full",
-                    imageFit === "contain"
-                      ? "object-contain"
-                      : "object-cover",
-                  )}
+                  className="w-full h-full"
+                  // The authored "contain" stays a plain fit; the default fills
+                  // the band, or fits an image that filling would cut too much.
+                  fit={imageFit === "contain" ? "contain" : undefined}
                 />
               </div>
             ) : (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect ,useMemo} from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -189,10 +190,10 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderImage = () => {
     const imageSrc = resolvedUrl || "/api/placeholder/400/300";
     return (
-      <img
+      <FitImage
         src={imageSrc}
         alt={item.caption}
-        className={`w-full aspect-video object-cover shadow-lg ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}
+        className={`w-full aspect-video shadow-lg ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}
         onError={(e) => {
           if (!hasTriedLoading) {
             e.currentTarget.src = "/api/placeholder/400/300";

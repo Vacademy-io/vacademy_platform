@@ -43,6 +43,7 @@ import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogu
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
 import { PreviewPathProvider } from "../-utils/preview-path";
+import { ImageFitProvider, siteImageFit } from "@/components/common/fit-image/FitImage";
 import {
   isEditorMessage,
   isFramed,
@@ -752,6 +753,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       persist={!isPreviewMode}
     >
     <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
+    {/* Content images fill their box or fit it whole (FitImage); a site can
+        keep every image filling with globalSettings.images.fit = "cover". */}
+    <ImageFitProvider fit={siteImageFit(catalogueData?.globalSettings)}>
     <div
       ref={wrapperRef}
       className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
@@ -949,6 +953,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {/* The headless preview (not framed) shoots the page as visitors see it. */}
       {isPreviewMode && isFramed() && <PreviewRibbon notice={previewNotice} />}
     </div>
+    </ImageFitProvider>
     </CatalogueNamingProvider>
     </CatalogueLocaleProvider>
   );

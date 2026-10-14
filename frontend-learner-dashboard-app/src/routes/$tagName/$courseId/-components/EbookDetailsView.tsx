@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { BookOpen, CaretRight, CheckCircle, FilePdf, Lightning } from "@phosphor-icons/react";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
@@ -196,7 +197,7 @@ export const EbookDetailsView: React.FC<EbookDetailsViewProps> = ({
             <div className="lg:col-span-7">
               <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-catalogue-border bg-catalogue-bg-muted shadow-lg">
                 {coverUrl ? (
-                  <img src={coverUrl} alt={title} className="h-full w-full object-cover" />
+                  <FitImage src={coverUrl} alt={title} className="h-full w-full" />
                 ) : coverFailed ? (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center text-catalogue-text-muted">
                     <FilePdf size={48} weight="duotone" className="text-primary-500" aria-hidden />

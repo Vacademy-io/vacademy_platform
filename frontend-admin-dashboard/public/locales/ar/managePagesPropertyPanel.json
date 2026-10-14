@@ -866,7 +866,12 @@
     "rolePlaceholder": "الدور",
     "feedbackPlaceholder": "الرأي",
     "avatarUrlPlaceholder": "رابط الصورة الرمزية",
-    "featured": "مميّز"
+    "featured": "مميّز",
+    "cardsPerView": "عدد البطاقات الظاهرة معًا (سطح المكتب)",
+    "cardsPerViewHint": "تعرض الأجهزة اللوحية بطاقتين كحد أقصى والهواتف بطاقة واحدة.",
+    "autoplay": "تمرير تلقائي",
+    "autoplaySeconds": "الثواني بين الشرائح",
+    "photo": "الصورة"
   },
   "policy": {
     "defaults": {

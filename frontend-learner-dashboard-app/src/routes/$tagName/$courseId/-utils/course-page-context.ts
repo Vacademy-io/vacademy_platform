@@ -75,7 +75,8 @@ export interface CoursePageContext {
   formatKeys: string[];
   /** Base-language format labels, in the site's format order. */
   formatLabels: string[];
-  stream: { slug: string; label: string } | null;
+  /** The stream, with its icon and colour for the header's eyebrow. */
+  stream: { slug: string; label: string; imageUrl: string | null; accentColor: string | null } | null;
   category: { slug: string; label: string } | null;
   /** The trail above the course; empty when the site has no Courses section. */
   breadcrumb: Crumb[];
@@ -165,7 +166,9 @@ export const coursePageContext = (input: {
   return {
     formatKeys,
     formatLabels,
-    stream: stream ? { slug: stream.slug, label: streamLabel } : null,
+    stream: stream
+      ? { slug: stream.slug, label: streamLabel, imageUrl: stream.imageUrl ?? null, accentColor: stream.accentColor ?? null }
+      : null,
     category: category ? { slug: category.slug, label: categoryLabel } : null,
     breadcrumb,
     related: relatedTag && relatedLabel ? { tag: relatedTag, label: relatedLabel } : null,
@@ -218,4 +221,43 @@ export const relatedCardStyle = (
     ...(isObject(render.card) ? { card: render.card as CatalogEditorialCardConfig } : {}),
     ...(streams?.source === "folderLibrary" && streams.libraryId ? { streamsLibraryId: streams.libraryId } : {}),
   };
+};
+
+/**
+ * The library the site's Learning Paths come from (its first learningPath
+ * section with a folder library), or null — the course page's series.
+ */
+export const findPathLibraryId = (pages: PageLike[] | null | undefined): string | null => {
+  for (const page of pages || []) {
+    for (const c of page.components || []) {
+      if (c?.type !== "learningPath" || c.enabled === false) continue;
+      const id = isObject(c.props) && typeof c.props.libraryId === "string" ? c.props.libraryId.trim() : "";
+      if (id) return id;
+    }
+  }
+  return null;
+};
+
+/**
+ * The site's app banner, which also closes the course page: its first CTA band
+ * with a phone mockup ("Get the app"). globalSettings.courseDetails.appBanner
+ * = false leaves it off.
+ */
+export const findAppBanner = (
+  pages: PageLike[] | null | undefined,
+  globalSettings?: unknown,
+): { id?: string; type: string; enabled?: boolean; props: Record<string, unknown> } | null => {
+  const gs = isObject(globalSettings) ? globalSettings : {};
+  const cd = isObject(gs.courseDetails) ? gs.courseDetails : {};
+  if (cd.appBanner === false) return null;
+  for (const page of pages || []) {
+    for (const c of page.components || []) {
+      if (c?.type !== "ctaBanner" || c.enabled === false || !isObject(c.props)) continue;
+      const mockup = c.props.mockup;
+      if (isObject(mockup) && mockup.kind === "phone") {
+        return c as { id?: string; type: string; enabled?: boolean; props: Record<string, unknown> };
+      }
+    }
+  }
+  return null;
 };

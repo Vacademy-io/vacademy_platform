@@ -63,7 +63,7 @@ describe("coursePageContext", () => {
     });
     expect(ctx.formatKeys).toEqual(["ebook"]);
     expect(ctx.formatLabels).toEqual(["E-books"]);
-    expect(ctx.stream).toEqual({ slug: "swasthya", label: "Swasthya" });
+    expect(ctx.stream).toEqual({ slug: "swasthya", label: "Swasthya", imageUrl: null, accentColor: null });
     expect(ctx.category).toEqual({ slug: "garbha-vigyan", label: "Garbha Vigyan" });
     expect(ctx.breadcrumb).toEqual([
       { label: "All courses", route: "courses" },

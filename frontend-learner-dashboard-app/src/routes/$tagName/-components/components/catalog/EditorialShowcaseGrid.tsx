@@ -54,6 +54,7 @@ interface ShowcaseRow extends CatalogRowLike {
 }
 
 export const SHOWCASE_EDITORIAL_GRID_CLASS = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4";
+export const SHOWCASE_EDITORIAL_GRID_CLASS_4 = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6";
 
 export interface EditorialShowcaseGridProps {
   /** Every course the showcase fetched (language versions fold across all of them). */
@@ -66,6 +67,8 @@ export interface EditorialShowcaseGridProps {
   excludeIds?: readonly string[];
   /** Told how many cards there are once known, so the section can hide when none is left. */
   onCardCount?: (count: number) => void;
+  /** Cards per row on large screens (default 3). */
+  columns?: 3 | 4;
   card?: CatalogEditorialCardConfig;
   streamsLibraryId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,6 +84,7 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
   loading,
   excludeIds,
   onCardCount,
+  columns,
   card,
   streamsLibraryId,
   globalSettings,
@@ -155,7 +159,7 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
 
   if (loading) {
     return (
-      <div className={SHOWCASE_EDITORIAL_GRID_CLASS}>
+      <div className={columns === 4 ? SHOWCASE_EDITORIAL_GRID_CLASS_4 : SHOWCASE_EDITORIAL_GRID_CLASS}>
         {Array.from({ length: Math.min(Math.max(1, limit), 6) }, (_, i) => (
           <EditorialCardSkeleton key={i} />
         ))}
@@ -180,7 +184,7 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
   };
 
   return (
-    <div className={SHOWCASE_EDITORIAL_GRID_CLASS}>
+    <div className={columns === 4 ? SHOWCASE_EDITORIAL_GRID_CLASS_4 : SHOWCASE_EDITORIAL_GRID_CLASS}>
       {cards.map(({ card: c, priceRow }, index) => {
         const view = buildEditorialCardView(c, deps, { priceRow });
         const course = c.primary.course;

@@ -89,6 +89,18 @@ export interface CourseShowcaseProps {
      *  win over the section-wide badgeText/badgeTone above. */
     courseBadges?: Record<string, { text?: string; tone?: CourseShowcaseBadgeTone }>;
     backgroundColor?: string;
+    /**
+     * A strip placed inside another page section (the course page's "You may
+     * also like"): this header replaces the centred title and subtitle, and
+     * the band takes `sectionClassName` / `shellClassName` instead of the
+     * catalogue section's. The whole band, header included, still hides when
+     * nothing is left to show.
+     */
+    header?: React.ReactNode;
+    sectionClassName?: string;
+    shellClassName?: string;
+    /** Editorial cards per row on large screens (default 3). */
+    columns?: 3 | 4;
     /** "editorial" = the catalogue's editorial course card (opt-in; absent = this strip's own card). */
     cardStyle?: "default" | "editorial";
     /** Editorial card options — same shape as courseCatalog render.card. */
@@ -152,6 +164,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     badgeTone = "hot",
     courseBadges,
     backgroundColor,
+    header,
+    sectionClassName,
+    shellClassName,
+    columns,
     cardStyle,
     card,
     streamsLibraryId,
@@ -309,14 +325,15 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     return (
         <section
             hidden={emptyAfterExclusion || undefined}
-            className="catalogue-section bg-catalogue-bg"
+            className={sectionClassName ?? "catalogue-section bg-catalogue-bg"}
             style={backgroundColor ? { backgroundColor } : undefined} // design-lint-ignore: author-picked page-builder color
         >
-            <div className="catalogue-shell">
-                {title && (
+            <div className={shellClassName ?? "catalogue-shell"}>
+                {header}
+                {!header && title && (
                     <h2 className="catalogue-h2 mb-2 text-center text-catalogue-text-primary">{title}</h2>
                 )}
-                {subtitle && (
+                {!header && subtitle && (
                     <p className="catalogue-lead catalogue-measure mx-auto mb-10 text-center text-catalogue-text-muted">
                         {subtitle}
                     </p>
@@ -330,6 +347,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                         loading={loading}
                         excludeIds={excludeCourseIds}
                         onCardCount={setEditorialCount}
+                        columns={columns}
                         card={card}
                         streamsLibraryId={streamsLibraryId}
                         globalSettings={globalSettings}

@@ -46,6 +46,7 @@ import {
 } from "@/lib/invite-availability";
 import { getBackendCourseDuration } from "@/utils/courseTime";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
+import { formatAmountLabel } from "../../-components/components/catalog/catalog-format";
 import {
   getTerminology,
   getTerminologyPlural,
@@ -53,9 +54,12 @@ import {
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { cn, sanitizeHtml } from "@/lib/utils";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { CourseDetailsView, CoursePurchasePanel } from "./CourseDetailsView";
+import { CourseDetailsView, RelatedHeader, RELATED_SECTION_CLASS, RELATED_SHELL_CLASS } from "./CourseDetailsView";
+import { courseLanguageLabel, parseCoursePageJson, previewVideoOf } from "../-utils/course-page-content";
+import { useCourseSeries } from "../-hooks/use-course-series";
+import { courseFormatKeys, resolveCourseFormats } from "../../-utils/course-format";
 import { CourseShowcaseComponent } from "../../-components/components/CourseShowcaseComponent";
-import { coursePageContext, findCatalogSection, relatedCardStyle, showsDuration } from "../-utils/course-page-context";
+import { coursePageContext, findAppBanner, findCatalogSection, findPathLibraryId, plainText, relatedCardStyle, showsDuration, summaryOf } from "../-utils/course-page-context";
 import { resolveCatalogDiscovery } from "../../-components/components/catalog/catalog-config";
 import { useCatalogStreams } from "../../-components/components/catalog/use-catalog-discovery";
 import {
@@ -144,6 +148,17 @@ const displayLevelName = (raw?: string | null): string => {
 // enrol flow (the version's invite) sells the version once, as it is. So a
 // version goes to the site cart exactly when the store sells it as it is.
 const enrolFlowSellsVersion = () => true;
+
+// The default layout's primary action (Figma "Button / Primary": 15/23, px 28, py 14).
+const FIGMA_CTA =
+  "w-full rounded-lg bg-palette-primary px-7 py-3.5 text-[15px] font-medium leading-[23px] text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] sm:whitespace-nowrap"; // design-lint-ignore: Figma primary button 15/23
+// Formats read as a book: the E-book design (Table of Contents, About the Author, "Order now").
+const BOOK_FORMATS = new Set(["ebook", "e-book", "book", "pdf"]);
+// A course's language when the site names none of its own (tags like "hindi").
+const FALLBACK_LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "hi", label: "Hindi" },
+];
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
@@ -572,6 +587,10 @@ interface CourseData {
   about_the_course_html?: string;
   currency?: string;
   available_slots?: number;
+  /** course_media_id as stored: a preview video (Watch preview) or an image. */
+  courseMediaRaw?: string;
+  /** course_page_json (admin "Course page" section): mode and FAQs. */
+  coursePageJson?: string | null;
 }
 
 interface CourseDetailsPageContentProps extends CourseDetailsPageProps {
@@ -1121,6 +1140,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           enrollInviteAvailability: fetchedInviteAvailability,
           unavailableMessageHtml: extractUnavailableMessageHtml(fetchedInviteSettingJson),
           comingSoon: readComingSoon(courseResponse.coming_soon),
+          courseMediaRaw: typeof course.course_media_id === "string" ? course.course_media_id : undefined,
+          coursePageJson: typeof course.course_page_json === "string" ? course.course_page_json : null,
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
           course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
@@ -1392,6 +1413,34 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       catalogStreamsConfig?.labelMode,
       siteLocale.locale,
     ],
+  );
+  // The Figma page's series (a Learning Path the course is a step of), the
+  // site's formats (series step labels) and its app banner.
+  const siteFormats = useMemo(
+    () => resolveCourseFormats(catalogueData?.globalSettings ?? null),
+    [catalogueData?.globalSettings],
+  );
+  const pathLibraryId = useMemo(
+    () =>
+      standardLayout
+        ? findPathLibraryId(catalogueData?.pages) ||
+          (catalogStreamsConfig?.source === "folderLibrary" ? catalogStreamsConfig.libraryId : null)
+        : null,
+    [standardLayout, catalogueData?.pages, catalogStreamsConfig],
+  );
+  const courseSeries = useCourseSeries({
+    enabled: standardLayout,
+    instituteId,
+    libraryId: pathLibraryId,
+    streamSlug: coursePlace.stream?.slug,
+    courseId,
+    groupVersions: courseLanguagesEnabled,
+    languages: configuredLanguages,
+    preferredLanguage: courseLanguagesEnabled ? preferredCourseLanguage(siteLocale.locale, configuredLanguages) : null,
+  });
+  const appBanner = useMemo(
+    () => (standardLayout ? findAppBanner(catalogueData?.pages, catalogueData?.globalSettings) : null),
+    [standardLayout, catalogueData?.pages, catalogueData?.globalSettings],
   );
   const storeSale = useStoreSale(
     instituteId,
@@ -1826,6 +1875,56 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   // Keyed by the version: its load chain has no cancellation, so a slower
   // load for the version the visitor just left must not land over the new
   // one's syllabus. The key never changes on a site without versions.
+  // The default layout's facts strip, "includes" rows, language, authors and
+  // page content (mode, FAQs). Labels in the visitor's language.
+  const pageView = (() => {
+    const content = parseCoursePageJson(courseData.coursePageJson);
+    const isBook =
+      coursePlace.formatKeys.length > 0 && coursePlace.formatKeys.every((k) => BOOK_FORMATS.has(k));
+    const authors = visibleCourseAuthors(
+      courseData.instructors || [],
+      showInstructors,
+      courseData.instructor,
+    ).map((a) => ({
+      ...a,
+      name: siteT(a.name),
+      subtitle: a.subtitle ? siteT(a.subtitle) : a.subtitle,
+      description: a.description ? siteT(a.description) : a.description,
+    }));
+    const languageLabel = courseLanguageLabel({
+      levelName: selectedVersion?.levelName ?? courseData.level,
+      tags: courseData.tags,
+      languages: configuredLanguages.length ? configuredLanguages : FALLBACK_LANGUAGES,
+    });
+    const format = coursePlace.formatLabels[0] ? siteT(coursePlace.formatLabels[0]) : "";
+    const duration = showsDuration(courseData.duration, coursePlace.formatKeys) ? courseData.duration : null;
+    const mode =
+      content.mode === "LIVE"
+        ? t("courseDetails.page.modeLive", "Live")
+        : content.mode === "SELF_PACED"
+          ? t("courseDetails.page.modeSelfPaced", "Self-paced")
+          : "";
+    const author = authors[0]?.name || "";
+    const category = coursePlace.category ? siteT(coursePlace.category.label) : "";
+    const row = (label: string, value: string | null | undefined) => (value ? [{ label, value }] : []);
+    const L = {
+      mode: t("courseDetails.page.mode", "Mode"),
+      language: t("courseDetails.page.language", "Language"),
+      format: t("courseDetails.page.format", "Format"),
+      duration: t("courseDetails.duration"),
+      author: t("courseDetails.page.author", "Author"),
+      instructor: t("courseDetails.page.instructor", "Instructor"),
+      category: t("courseDetails.page.category", "Category"),
+    };
+    const facts = isBook
+      ? [...row(L.author, author), ...row(L.language, languageLabel), ...row(L.format, format), ...row(L.category, category)]
+      : [...row(L.mode, mode), ...row(L.language, languageLabel), ...row(L.format, format), ...row(L.duration, duration)];
+    const includes = isBook
+      ? [...row(L.format, format), ...row(L.language, languageLabel), ...row(L.author, author), ...row(L.category, category)]
+      : [...row(L.format, format), ...row(L.duration, duration), ...row(L.language, languageLabel), ...row(L.instructor, author)];
+    return { content, isBook, authors, languageLabel, facts, includes };
+  })();
+
   const courseStructure = (
     <CourseStructureDetails
       key={courseData.packageSessionId}
@@ -1998,100 +2097,130 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         )}
 
       {/* Course Content */}
-      {/* The default layout (CourseDetailsView): header, open sections,
-          purchase card, "More in …". Same actions, outline and dialogs. */}
+      {/* The default layout (CourseDetailsView, the Figma course page):
+          hero, sticky tabs and enrol card, series, "You may also like",
+          the site's app banner. Same actions, outline and dialogs. */}
       {standardLayout &&
         (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
           true && (
           <CourseDetailsView
             title={siteT(courseData.title)}
+            subtitle={courseData.description ? plainText(siteT(courseData.description)) : summaryOf(courseData.aboutCourse)}
             aboutHtml={siteT(courseData.aboutCourse || "")}
             whyLearnHtml={courseData.whyLearn ? siteT(courseData.whyLearn) : ""}
             whoShouldLearnHtml={courseData.whoShouldLearn ? siteT(courseData.whoShouldLearn) : ""}
             imageCandidates={[courseData.thumbnail, courseData.previewImage, courseData.bannerImage]}
+            previewVideo={previewVideoOf(courseData.courseMediaRaw)}
+            isBook={pageView.isBook}
             showHeader={
               !catalogueData?.pages?.some(
                 (page) => page.id === "details" || page.route === "course-details",
               )
             }
             context={coursePlace}
-            authors={visibleCourseAuthors(
-              courseData.instructors || [],
-              showInstructors,
-              courseData.instructor,
-            ).map((a) => ({
-              ...a,
-              name: siteT(a.name),
-              subtitle: a.subtitle ? siteT(a.subtitle) : a.subtitle,
-              description: a.description ? siteT(a.description) : a.description,
-            }))}
-            purchase={
-              <CoursePurchasePanel
-                showPrice={catalogueData?.globalSettings?.payment?.enabled !== false}
-                pricePending={pricePending}
-                price={courseData.price}
-                elevatedPrice={courseData.elevatedPrice}
-                currency={courseData.currency}
-                picker={languagePicker}
-                level={
-                  showLevelRow && displayLevelName(courseData.level)
-                    ? siteT(displayLevelName(courseData.level))
-                    : null
-                }
-                duration={showsDuration(courseData.duration, coursePlace.formatKeys) ? courseData.duration : null}
-                rating={courseData.rating}
-                actions={
-                  showCartActions ? (
-                    <CourseCartActions
-                      inCart={inSiteCart}
-                      ready={cartActionsReady}
-                      onAdd={handleAddToCart}
-                      onBuyNow={handleBuyNow}
-                      onViewCart={() => openSiteCart("view")}
-                      note={cartNote}
-                    />
-                  ) : storeCheckPending ? (
-                    <CourseCartPending />
-                  ) : (
-                    <>
-                      <button
-                        onClick={handleEnrollClick}
-                        disabled={enrolPending}
-                        aria-busy={enrolPending || undefined}
-                        className={enrolButtonClass(
-                          "w-full rounded-catalogue-md bg-primary-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:opacity-90 active:scale-[0.98]",
-                        )}
-                      >
-                        {comingSoonCta ??
-                          (catalogueData?.globalSettings?.payment?.enabled !== false
-                            ? courseData.price === 0 && !pricePending
-                              ? t("courseDetails.enrollForFree")
-                              : t("courseDetails.enrollNow")
-                            : t("courseDetails.getStarted"))}
-                      </button>
-                      {comingSoon && comingSoonHint && (
-                        <p className="text-center text-xs text-catalogue-text-muted">{comingSoonHint}</p>
-                      )}
-                    </>
-                  )
-                }
-                formatLabels={coursePlace.formatLabels}
-                free={courseData.price === 0 && !pricePending}
-                comingSoon={!!comingSoon}
-              />
+            facts={pageView.facts}
+            includes={pageView.includes}
+            authors={pageView.authors}
+            faqs={pageView.content.faqs}
+            languageLabel={pageView.languageLabel}
+            languagePicker={languagePicker}
+            price={{
+              show: catalogueData?.globalSettings?.payment?.enabled !== false,
+              pending: pricePending,
+              free: courseData.price === 0,
+              text:
+                courseData.price === 0
+                  ? t("courseDetails.page.free", "Free")
+                  : formatAmountLabel(courseData.price, courseData.currency, siteLocale.locale),
+              mrpText:
+                typeof courseData.elevatedPrice === "number" && courseData.elevatedPrice > courseData.price
+                  ? formatAmountLabel(courseData.elevatedPrice, courseData.currency, siteLocale.locale)
+                  : "",
+              hint: comingSoon
+                ? comingSoonHint || ""
+                : courseData.price === 0
+                  ? t("courseDetails.page.freeHint", "Start now, no payment needed")
+                  : pageView.isBook
+                    ? t("courseDetails.page.bookHint", {
+                        price: formatAmountLabel(courseData.price, courseData.currency, siteLocale.locale),
+                        defaultValue: "Just for {{price}}. Order now and enjoy reading.",
+                      })
+                    : t("courseDetails.page.paidHint", "Instant access after payment"),
+            }}
+            heroActions={
+              showCartActions ? (
+                <CourseCartActions
+                  layout="row"
+                  inCart={inSiteCart}
+                  ready={cartActionsReady}
+                  onAdd={handleAddToCart}
+                  onBuyNow={handleBuyNow}
+                  onViewCart={() => openSiteCart("view")}
+                  note={cartNote}
+                />
+              ) : undefined
             }
+            actions={
+              showCartActions ? (
+                <CourseCartActions
+                  inCart={inSiteCart}
+                  ready={cartActionsReady}
+                  onAdd={handleAddToCart}
+                  onBuyNow={handleBuyNow}
+                  onViewCart={() => openSiteCart("view")}
+                  note={cartNote}
+                />
+              ) : storeCheckPending ? (
+                <CourseCartPending />
+              ) : (
+                <button
+                  onClick={handleEnrollClick}
+                  disabled={enrolPending}
+                  aria-busy={enrolPending || undefined}
+                  className={enrolButtonClass(FIGMA_CTA)}
+                >
+                  {comingSoonCta ??
+                    (catalogueData?.globalSettings?.payment?.enabled === false
+                      ? t("courseDetails.getStarted")
+                      : courseData.price === 0 && !pricePending
+                        ? pageView.isBook
+                          ? t("courseDetails.ebook.getFree", "Get it free")
+                          : t("courseDetails.page.getFree", "Get course for free")
+                        : pageView.isBook
+                          ? t("courseDetails.page.orderNow", "Order now")
+                          : t("courseDetails.enrollNow"))}
+                </button>
+              )
+            }
+            series={courseSeries}
+            formatStepPrice={(step) =>
+              step.price === null
+                ? ""
+                : step.price === 0
+                  ? t("courseDetails.page.free", "Free")
+                  : formatAmountLabel(step.price, step.currency, siteLocale.locale)
+            }
+            stepFormat={(step) => {
+              const key = courseFormatKeys({ tags: step.tags, level_name: step.levelName }, siteFormats)[0];
+              const label = key ? siteFormats?.byKey.get(key)?.label : "";
+              return label ? siteT(label) : "";
+            }}
             outline={courseStructure}
-            outlineFirst={isOutlineView}
             related={
               coursePlace.related ? (
                 <CourseShowcaseComponent
-                  title={t("courseDetails.page.moreIn", {
-                    topic: siteT(coursePlace.related.label),
-                    defaultValue: "More in {{topic}}",
-                  })}
+                  header={
+                    <RelatedHeader
+                      allHref={catalogSection ? RouteMatcher.pagePath(tagName, catalogSection.route) : null}
+                    />
+                  }
+                  sectionClassName={RELATED_SECTION_CLASS}
+                  shellClassName={RELATED_SHELL_CLASS}
+                  columns={4}
                   source="tag"
                   tag={coursePlace.related.tag}
-                  limit={3}
+                  limit={4}
+                  layout="grid"
                   // Neither this course nor its other listings (the same book in another language).
                   excludeCourseIds={[courseData.courseId || courseId]}
                   excludeTitles={[courseData.title]}
@@ -2099,6 +2228,22 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                   tagName={tagName}
                   globalSettings={catalogueData?.globalSettings}
                   {...relatedCardStyle(catalogSection?.props, catalogStreamsConfig)}
+                />
+              ) : null
+            }
+            closingBanner={
+              appBanner && catalogueData ? (
+                <JsonRenderer
+                  page={{
+                    id: "course-app-banner",
+                    route: "course-app-banner",
+                    title: "",
+                    components: [appBanner as unknown as (typeof catalogueData.pages)[number]["components"][number]],
+                  }}
+                  globalSettings={catalogueData.globalSettings}
+                  instituteId={instituteId}
+                  tagName={tagName}
+                  catalogueData={catalogueData}
                 />
               ) : null
             }

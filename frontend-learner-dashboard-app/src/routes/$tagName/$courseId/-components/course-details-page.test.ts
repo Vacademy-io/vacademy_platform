@@ -349,7 +349,8 @@ describe("CourseDetailsPage — language versions", () => {
 
     expect(net.post.mock.calls[0][1].package_ids).toEqual([c]);
     // Desktop + mobile cards each carry the picker.
-    expect(radios().map((r) => r.textContent)).toEqual(["ENEnglish", "हिंHindi", "ENEnglish", "हिंHindi"]);
+    // One picker, in the enrol card beside the price.
+    expect(radios().map((r) => r.textContent)).toEqual(["ENEnglish", "हिंHindi"]);
     expect(radios()[0].getAttribute("aria-checked")).toBe("true");
 
     act(() => radios()[1].click());
@@ -446,7 +447,7 @@ describe("CourseDetailsPage — language versions: links, syllabus, levels", () 
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
     expect(syllabus.mounts).toEqual([`${c}-en`]);
     const durationRows = () => (host!.textContent?.match(/courseDetails\.duration/g) ?? []).length;
-    expect(durationRows()).toBe(2); // English: 90 min, on both cards
+    expect(durationRows()).toBe(1); // English: 90 min, in the enrol card
 
     act(() => radios()[1].click());
     await settle();
@@ -471,9 +472,9 @@ describe("CourseDetailsPage — language versions: links, syllabus, levels", () 
     await renderPage({ courseId: c, packageSessionId: `${c}-hb`, enrollInviteId: "i-hb" });
 
     const labels = radios().map((r) => r.textContent);
-    // Language (EN / हिं) then Level (two Hindi versions), on both cards.
-    expect(labels.filter((l) => l === "Beginner Hindi")).toHaveLength(2);
-    expect(labels.filter((l) => l === "Advanced Hindi")).toHaveLength(2);
+    // Language (EN / हिं) then Level (two Hindi versions), in the enrol card.
+    expect(labels.filter((l) => l === "Beginner Hindi")).toHaveLength(1);
+    expect(labels.filter((l) => l === "Advanced Hindi")).toHaveLength(1);
     act(() => radios().find((r) => r.textContent === "Advanced Hindi")!.click());
     await settle();
     expect(lastUrlParams().get("packageSessionId")).toBe(`${c}-ha`);
@@ -840,7 +841,7 @@ describe("CourseDetailsPage — site cart and what the store page sells", () => 
 
     // Both overview cards and the mobile bar wait, with nothing to press.
     const waiting = pendingButtons();
-    expect(waiting).toHaveLength(3);
+    expect(waiting).toHaveLength(2); // the enrol card and the mobile bar
     expect(waiting.every((b) => b.disabled && b.getAttribute("aria-busy") === "true")).toBe(true);
     expect(buttonByText("Add to cart")).toHaveLength(0);
     expect(buttonByText("courseDetails.enrollNow")).toHaveLength(0);
@@ -1008,7 +1009,7 @@ describe("CourseDetailsPage — default layout", () => {
     catalogue.data = noDetailsPage();
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
     expect(host!.querySelector("h1")?.textContent).toBe("Yoga");
-    expect(host!.textContent).toContain("What you get");
+    expect(host!.textContent).toContain("This course includes");
     // No folded highlights box, and no rating the course does not have.
     expect(host!.textContent).not.toContain("courseDetails.accordion.highlightsTitle");
     expect(host!.textContent).not.toContain("courseDetails.rating");
@@ -1029,7 +1030,7 @@ describe("CourseDetailsPage — default layout", () => {
     catalogue.data = noDetailsPage({ courseDetails: { layout: "classic" } });
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
     expect(host!.textContent).toContain("courseDetails.courseOverview");
-    expect(host!.textContent).not.toContain("What you get");
+    expect(host!.textContent).not.toContain("This course includes");
     // Even there, no invented 5.0.
     expect(host!.textContent).not.toContain("courseDetails.rating");
   });

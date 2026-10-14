@@ -5867,6 +5867,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                             temperature=_as_float(agent.get("temperature")),
                                             tts_model=_agent_tts_model(agent),
                                             language=agent.get("language"))
+    # No bridge line on Sarvam: pipecat builds SarvamTTSService with
+    # pause_frame_processing, so a line spoken while the model is still composing
+    # holds the TTS until that line's audio has played. Call c6847f91 (2026-10-14,
+    # bulbul:v4-flash): the bridge's audio never came, the fallback model's reply sat
+    # behind it from 06:07:57 and the caller heard 16 s of nothing until they spoke.
+    # Smallest pauses the same way but has not failed like this; the stamp (not
+    # engine_of's unstamped default) keeps the timing sim's stub TTS bridging.
+    bridge_freezes_tts = (getattr(tts, "_vacademy_engine", ("", ""))[0]
+                          in ("sarvam", "sarvam_v4")
+                          and bool(getattr(tts, "_pause_frame_processing", False)))
     # The STT waterfall's own services too (stalls are counted on them — the
     # switcher has no set_diagnostics); `stt` IS the primary without a fallback.
     _diag_set = set()
@@ -6877,7 +6887,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
             duck_max_hold_secs=settings.duck_max_hold_secs,
             llm_bridge_after_secs=(settings.llm_bridge_after_secs
-                                   if settings.llm_bridge_after_secs > 0 else _OFF),
+                                   if settings.llm_bridge_after_secs > 0 and not bridge_freezes_tts
+                                   else _OFF),
         )
         while True:
             await asyncio.sleep(1.0)

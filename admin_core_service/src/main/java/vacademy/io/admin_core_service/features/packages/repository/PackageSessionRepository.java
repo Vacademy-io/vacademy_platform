@@ -574,6 +574,9 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
      */
     boolean existsByContentCopiedFromPackageSessionId(String sourcePackageSessionId);
 
+    /** True when any batch of any course still uses this session in one of the given statuses. */
+    boolean existsBySession_IdAndStatusIn(String sessionId, List<String> statuses);
+
     /**
      * Reverse-lookup for content-copy lineage with package/session/level joined
      * in one round-trip (avoids the 1+3N fan-out you get from the LAZY relations

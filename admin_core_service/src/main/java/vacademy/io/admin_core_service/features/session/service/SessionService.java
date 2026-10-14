@@ -344,6 +344,18 @@ public class SessionService {
         for (AddLevelWithSessionDTO levelDTO : sessionDTO.getLevels()) {
             levelService.addOrUpdateLevel(levelDTO, session, packageEntity, instituteId, user);
         }
+        // Removing a session from ONE course's edit only deletes that course's
+        // batches (done by the level loop above). The session row itself is
+        // shared across courses, so retire it only once no live batch uses it.
+        if (!sessionDTO.isNewSession() && !isDefaultSession(sessionDTO)
+                && SessionStatusEnum.DELETED.name().equalsIgnoreCase(sessionDTO.getStatus())
+                && !packageSessionRepository.existsBySession_IdAndStatusIn(session.getId(),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(),
+                                PackageSessionStatusEnum.HIDDEN.name(),
+                                PackageSessionStatusEnum.DRAFT.name()))) {
+            session.setStatus(SessionStatusEnum.DELETED.name());
+            sessionRepository.save(session);
+        }
     }
 
     private Session resolveSession(AddNewSessionDTO sessionDTO) {
@@ -375,7 +387,10 @@ public class SessionService {
         if (StringUtils.hasText(sessionDTO.getSessionName())) {
             session.setSessionName(sessionDTO.getSessionName());
         }
-        if (StringUtils.hasText(sessionDTO.getStatus())) {
+        // DELETED is applied in addOrUpdateSession, after this course's batches
+        // are removed, and only if no other course still uses the session.
+        if (StringUtils.hasText(sessionDTO.getStatus())
+                && !SessionStatusEnum.DELETED.name().equalsIgnoreCase(sessionDTO.getStatus())) {
             session.setStatus(sessionDTO.getStatus());
         }
         if (sessionDTO.getStartDate() != null) {

@@ -173,9 +173,19 @@ public class CpoDiscountService {
         }
 
         List<CpoDiscountAllocator.Row> rows = new ArrayList<>(sfps.size());
+        boolean hasDiscount = snapshot.getCpoDiscount() != null;
         for (StudentFeePayment sfp : sfps) {
-            rows.add(new CpoDiscountAllocator.Row(sfp.getId(), step3.get(sfp.getId()), nz(sfp.getAmountPaid()),
-                    toLocalDate(sfp.getDueDate()), "WAIVED".equalsIgnoreCase(sfp.getStatus())));
+            BigDecimal expected = nz(sfp.getAmountExpected());
+            BigDecimal paid = nz(sfp.getAmountPaid());
+            // Paid in full by the learner, or waived. A row the discount itself took to zero
+            // reads PAID but nobody paid it, so it stays open to a new spread.
+            boolean settled = "WAIVED".equalsIgnoreCase(sfp.getStatus())
+                    || (paid.signum() > 0 && paid.compareTo(expected) >= 0);
+            BigDecimal currentShare = hasDiscount
+                    ? step3.get(sfp.getId()).subtract(expected).max(BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
+            rows.add(new CpoDiscountAllocator.Row(sfp.getId(), step3.get(sfp.getId()), paid,
+                    toLocalDate(sfp.getDueDate()), settled, currentShare));
         }
         BigDecimal requested = custom ? null : requestedAmount(spec, total);
         Map<String, BigDecimal> shares = CpoDiscountAllocator.allocate(mode, rows, requested, customShares);

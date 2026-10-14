@@ -474,4 +474,48 @@ class CpoDiscountServiceLedgerAndSplitTest {
         assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(100),
                 CpoDiscountAllocator.UNPAID_EQUAL, null, "admin"));
     }
+
+    /** The I2CAN learner on prod: 3,900 / 3,050 / 3,050, 1,000 off the original way, first paid at 3,510. */
+    private void paidAfterOriginalDiscount() {
+        installment("q1", "3900.00", "0", LocalDate.of(2026, 10, 14));
+        installment("q2", "3050.00", "0", LocalDate.of(2026, 10, 29));
+        installment("q3", "3050.00", "0", LocalDate.of(2026, 11, 13));
+        snapshot(UserPlanDiscountJson.builder().build());
+        service.setCpoDiscount(PLAN, flat(1000), "admin");
+        StudentFeePayment q1 = sfps.get("q1");
+        q1.setAmountPaid(new BigDecimal("3510.00"));
+        q1.setStatus("PAID");
+    }
+
+    @Test
+    @DisplayName("re-spreading keeps the discount a paid installment already carries")
+    void paidInstallmentKeepsItsShare() {
+        paidAfterOriginalDiscount();
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+
+        service.setCpoDiscount(PLAN, flat(1000), CpoDiscountAllocator.LAST_FIRST, null, "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertEquals("PAID", sfps.get("q1").getStatus());
+        assertMoney("3050.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2440.00", sfps.get("q3").getAmountExpected());
+        assertBooksAgree();
+
+        service.setCpoDiscount(PLAN, flat(1500), CpoDiscountAllocator.UNPAID_EQUAL, null, "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertMoney("2495.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2495.00", sfps.get("q3").getAmountExpected());
+        assertBooksAgree();
+
+        // Less than the 390 already on the paid installment cannot be spread over unpaid ones.
+        assertThrows(VacademyException.class, () -> service.setCpoDiscount(PLAN, flat(300),
+                CpoDiscountAllocator.UNPAID_PROPORTIONAL, null, "admin"));
+        // Custom: the paid one keeps its 390, the typed amounts add to it.
+        service.setCpoDiscount(PLAN, flat(0), CpoDiscountAllocator.CUSTOM,
+                Map.of("q3", new BigDecimal("110")), "admin");
+        assertMoney("3510.00", sfps.get("q1").getAmountExpected());
+        assertMoney("3050.00", sfps.get("q2").getAmountExpected());
+        assertMoney("2940.00", sfps.get("q3").getAmountExpected());
+        assertEquals(500.0, PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount().getValue());
+        assertBooksAgree();
+    }
 }

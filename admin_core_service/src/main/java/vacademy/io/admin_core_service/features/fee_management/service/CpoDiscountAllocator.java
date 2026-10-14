@@ -18,10 +18,11 @@ import java.util.Set;
  * except the original one ({@link #ALL_PROPORTIONAL}: every installment, paid or not, in
  * proportion to its amount — still computed live in {@link CpoDiscountService}).
  *
- * <p>The other ways only touch what is still unpaid, so a discount never pushes an installment
- * the learner already paid below what they paid. Their result is frozen into per-installment
- * amounts when the discount is applied: a later payment must not move the discount from one
- * installment to another.
+ * <p>The other ways only touch what is still unpaid. An installment already settled (paid in
+ * full, or waived) keeps exactly the discount it carries now, so it neither drops below what
+ * was paid nor reopens; the rest of the discount is spread over the open installments, never
+ * taking one below what has been paid on it. The result is frozen into per-installment amounts
+ * when the discount is applied: a later payment must not move the discount around.
  */
 public final class CpoDiscountAllocator {
 
@@ -47,12 +48,17 @@ public final class CpoDiscountAllocator {
     private CpoDiscountAllocator() {
     }
 
-    /** One installment as the allocator sees it. {@code amount} is its value before the plan discount. */
-    public record Row(String id, BigDecimal amount, BigDecimal paid, LocalDate dueDate, boolean waived) {
+    /**
+     * One installment as the allocator sees it. {@code amount} is its value before the plan
+     * discount; {@code currentShare} the plan discount on it now; {@code settled} = paid in full
+     * or waived.
+     */
+    public record Row(String id, BigDecimal amount, BigDecimal paid, LocalDate dueDate, boolean settled,
+                      BigDecimal currentShare) {
 
         /** What can still come off this installment without dropping it below what was paid. */
         BigDecimal room() {
-            if (waived) return BigDecimal.ZERO;
+            if (settled) return BigDecimal.ZERO;
             BigDecimal r = nz(amount).subtract(nz(paid));
             return r.signum() < 0 ? BigDecimal.ZERO : r.setScale(SCALE, RM);
         }
@@ -80,34 +86,67 @@ public final class CpoDiscountAllocator {
         if (ALL_PROPORTIONAL.equals(m)) {
             throw new IllegalArgumentException("ALL_PROPORTIONAL is computed live, not allocated");
         }
+        // Settled installments keep what they carry; only the rest is spread.
+        Map<String, BigDecimal> kept = new LinkedHashMap<>();
+        BigDecimal keptTotal = BigDecimal.ZERO;
+        for (Row r : rows) {
+            BigDecimal share = nz(r.currentShare()).setScale(SCALE, RM);
+            if (r.settled() && share.signum() > 0) {
+                kept.put(r.id(), share);
+                keptTotal = keptTotal.add(share);
+            }
+        }
         BigDecimal capacity = rows.stream().map(Row::room).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (capacity.signum() == 0) {
-            throw new VacademyException("Nothing is left unpaid on this plan, so there is nothing to discount");
-        }
         if (CUSTOM.equals(m)) {
-            return custom(rows, custom);
+            return merge(rows, kept, custom(rows, custom));
         }
-        BigDecimal total = nz(requested).setScale(SCALE, RM).min(capacity);
-        if (total.signum() <= 0) return new LinkedHashMap<>();
-        return switch (m) {
+        BigDecimal wanted = nz(requested).setScale(SCALE, RM);
+        if (wanted.compareTo(keptTotal) < 0) {
+            throw new VacademyException(keptTotal.toPlainString()
+                    + " of the current discount is on installments already paid. Enter at least that,"
+                    + " or choose all installments to take it back from them.");
+        }
+        BigDecimal total = wanted.subtract(keptTotal).min(capacity);
+        if (capacity.signum() == 0 && wanted.compareTo(keptTotal) > 0) {
+            throw new VacademyException("Nothing is left unpaid on this plan, so there is nothing more to discount");
+        }
+        if (total.signum() <= 0) return merge(rows, kept, Map.of());
+        Map<String, BigDecimal> spread = switch (m) {
             case UNPAID_PROPORTIONAL -> proportional(rows, total, capacity);
             case UNPAID_EQUAL -> equal(rows, total);
             case LAST_FIRST -> waterfall(rows, total, true);
             case NEXT_FIRST -> waterfall(rows, total, false);
             default -> throw new IllegalStateException(m);
         };
+        return merge(rows, kept, spread);
     }
 
+    private static Map<String, BigDecimal> merge(List<Row> rows, Map<String, BigDecimal> kept,
+                                                 Map<String, BigDecimal> spread) {
+        Map<String, BigDecimal> all = new LinkedHashMap<>(spread);
+        kept.forEach((id, v) -> all.merge(id, v, BigDecimal::add));
+        return ordered(rows, all);
+    }
+
+    /** The open installments' amounts as typed; a settled one may only repeat what it carries. */
     private static Map<String, BigDecimal> custom(List<Row> rows, Map<String, BigDecimal> custom) {
-        if (custom == null || custom.isEmpty()) {
-            throw new VacademyException("Enter how much comes off at least one installment");
-        }
         Map<String, Row> byId = new LinkedHashMap<>();
         rows.forEach(r -> byId.put(r.id(), r));
+        Map<String, BigDecimal> in = custom == null ? Map.of() : custom;
+        for (String id : in.keySet()) {
+            if (!byId.containsKey(id)) throw new VacademyException("Installment not in this plan: " + id);
+        }
         Map<String, BigDecimal> out = new LinkedHashMap<>();
         BigDecimal sum = BigDecimal.ZERO;
         for (Row r : rows) {
-            BigDecimal v = custom.get(r.id());
+            BigDecimal v = in.get(r.id());
+            if (r.settled()) {
+                if (v != null && v.setScale(SCALE, RM).compareTo(nz(r.currentShare()).setScale(SCALE, RM)) != 0) {
+                    throw new VacademyException("An installment that is already paid keeps its discount");
+                }
+                sum = sum.add(nz(r.currentShare()));
+                continue;
+            }
             if (v == null || v.signum() == 0) continue;
             if (v.signum() < 0) throw new VacademyException("A discount amount cannot be negative");
             BigDecimal share = v.setScale(SCALE, RM);
@@ -117,9 +156,6 @@ public final class CpoDiscountAllocator {
             }
             out.put(r.id(), share);
             sum = sum.add(share);
-        }
-        for (String id : custom.keySet()) {
-            if (!byId.containsKey(id)) throw new VacademyException("Installment not in this plan: " + id);
         }
         if (sum.signum() == 0) throw new VacademyException("Enter how much comes off at least one installment");
         return out;

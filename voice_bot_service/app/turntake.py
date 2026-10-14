@@ -230,6 +230,54 @@ _SCREENER_HOLD_PHRASES = ("stay on the line", "please hold", "hold on the line",
                           "one moment please")
 
 
+# ── call on hold (mid-call) ────────────────────────────────────────────────
+# The person put us on hold and the NETWORK plays its announcement, in both
+# languages, on a loop: "आप जिस व्यक्ति से बात कर रहे हैं, उन्होंने आपके call को
+# hold पर रखा है। कृपया लाइन पर बने रहें। The person you are speaking with has put
+# your call on hold. Please stay on the line." (call 6d81124d, 2026-10-14). Read as
+# the caller, every fragment was a turn: the bot answered the recording ("कोई बात
+# नहीं", fillers, a REPLY_LOOP), then re-introduced itself when the person came
+# back. Unlike the machine window, this can start at any point in the call.
+#
+# Strong lines ENTER the hold. They are network recordings (or the person asking
+# us to hold), not something a caller says as an answer.
+_HOLD_PHRASES = (
+    # English (Airtel / Jio / Vi / BSNL)
+    "put your call on hold", "has put your call", "your call on hold", "call is on hold",
+    "call on hold", "placed on hold", "put on hold", "you are on hold", "you're on hold",
+    "stay on the line", "please hold the line", "hold the line", "please hold",
+    "the person you are speaking", "the person you're speaking", "person you are speaking with",
+    "is on another call", "busy on another call", "do not disconnect", "don't disconnect",
+    # Hindi
+    "hold पर", "होल्ड पर", "hold par", "होल्ड किया", "hold किया", "कॉल होल्ड", "call hold",
+    "लाइन पर बने", "लाइन पर बनी", "line पर बने", "कृपया लाइन पर", "आप जिस व्यक्ति से",
+    "जिस व्यक्ति से आप", "दूसरी कॉल पर", "दूसरी call पर", "कृपया प्रतीक्षा", "प्रतीक्षा करें",
+    "प्रतीक्षा कीजिए", "डिस्कनेक्ट न करें", "कॉल डिस्कनेक्ट न",
+)
+# Pieces of the same recordings. Only consulted WHILE on hold: the STT cuts the
+# announcement at different points on every loop ("उन्होंने आपके।", "कृपा।",
+# "Speaking with."), and none of these is how a person comes back to a call.
+_HOLD_FRAGMENTS = (
+    "आप जिस", "व्यक्ति", "बात कर रहे", "उन्होंने", "आपके call", "आपके कॉल", "call को",
+    "कॉल को", "hold", "होल्ड", "रखा है", "रखा गया", "कृपा", "कृपया", "लाइन", "बने रह",
+    "प्रतीक्षा", "the person", "person you", "speaking with", "speaking to", "you are speaking",
+    "has put", "your call", "on hold", "stay on", "the line", "on the line", "please wait",
+    "another call", "disconnect",
+)
+
+
+def is_hold_announcement(text: str) -> bool:
+    """A line that puts the call on hold (the network's hold recording)."""
+    t = (text or "").casefold()
+    return bool(t.strip()) and any(p in t for p in _HOLD_PHRASES)
+
+
+def is_hold_fragment(text: str) -> bool:
+    """While on hold: a piece of the looping hold recording, not the person."""
+    t = (text or "").casefold()
+    return bool(t.strip()) and any(p in t for p in _HOLD_FRAGMENTS)
+
+
 def is_screener_hold(text: str) -> bool:
     t = (text or "").casefold()
     return any(p in t for p in _SCREENER_HOLD_PHRASES)

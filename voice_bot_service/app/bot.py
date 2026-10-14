@@ -101,9 +101,19 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
+                       is_hold_announcement, is_hold_fragment,
                        opening_expected_secs, ends_on_question)
 
 logger = logging.getLogger(__name__)
+
+# How long the bot waits on hold before the usual idle nudges/hang-up apply again.
+HOLD_MAX_SECS = 300.0
+# Said to the model when the person comes back from putting the call on hold.
+HOLD_RESUME_CUE = ("[They had put the call on hold and are back now. Do NOT introduce yourself "
+                   "again and do not restart your pitch. Acknowledge in a few words that you "
+                   "are still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and carry "
+                   "on from exactly where the conversation was — if you had asked a question, "
+                   "ask it again briefly.]")
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
@@ -407,6 +417,10 @@ class TranscriptCollector(FrameProcessor):
         self._human_turns = 0          # finals that reached the model as the callee's
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
+        # When the person put us on hold (0 = not on hold); see the hold branch in
+        # process_frame and turntake.is_hold_announcement.
+        self._hold_since = 0.0
+        self._hold_line_t = 0.0
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
@@ -590,6 +604,10 @@ class TranscriptCollector(FrameProcessor):
             joined_carrier = (bool(prev_final) and now - self._prev_final_t < 4.0
                               and not is_carrier_announcement(prev_final)
                               and is_carrier_announcement(prev_final + " " + text))
+            # Same for the hold recording ("The person you are" + "speaking with.").
+            joined_hold = (bool(prev_final) and now - self._prev_final_t < 4.0
+                           and not is_hold_announcement(prev_final)
+                           and is_hold_announcement(prev_final + " " + text))
             self._prev_final_t = now
             # The OPERATOR's recorded message is not the callee. Record it (the
             # answering-machine detector reads these markers) then stop: it must
@@ -699,6 +717,59 @@ class TranscriptCollector(FrameProcessor):
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
+                return
+            # ── on hold ──────────────────────────────────────────────────────
+            # The person put the call on hold and the network plays its looping
+            # announcement (call 6d81124d, 2026-10-14: the bot answered the
+            # recording a dozen times, logged a reply loop, then introduced itself
+            # again when the father came back). While on hold the recording is
+            # neither an answer nor a barge-in: keep quiet until something that is
+            # not the recording arrives — that is the person — then carry on from
+            # where the conversation was. Only after the call has started, so the
+            # machine window's own screener/carrier handling above keeps the start.
+            if self._hold_since:
+                if is_hold_announcement(text) or is_hold_fragment(text):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                # A lone "हाँ।" a moment after a piece of the recording is the STT
+                # hearing the recording (54.19 s on 6d81124d, 0.4 s after
+                # "Speaking with."). The person coming back says hello, says
+                # something, or speaks into the quiet after the recording.
+                if (len(text.split()) < 2
+                        and not (caller_checking_presence(text) or is_audio_check(text))
+                        and now - self._hold_line_t < 3.0):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                held = now - self._hold_since
+                self._hold_since = 0.0
+                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
+                if self._diag is not None:
+                    self._diag.bump("hold_returns")
+                self._last_text = text.casefold()
+                self._last_text_t = now
+                self._outcome.transcript.append({"role": "user", "text": text})
+                self._human_turns += 1
+                self._on_activity(user=True)
+                self._on_transcript()
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
+                await self.push_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": text},
+                              {"role": "user", "content": HOLD_RESUME_CUE}],
+                    run_llm=True), direction)
+                return
+            if ((self._human_turns > 0 or self._bot_spoke_once())
+                    and (is_hold_announcement(text) or joined_hold)):
+                self._hold_since = now
+                if self._diag is not None:
+                    self._diag.bump("holds")
+                logger.info("turn-gate: the call is on hold (%r) — quiet until the person "
+                            "is back", text[:40])
+                if self._is_bot_speaking() or self._reply_in_flight():
+                    # Nobody is listening to the rest of it.
+                    await self.broadcast_interruption()
+                await self._absorb_hold_line(frame, direction, text)
                 return
             ducked = self._duck is not None and self._duck.is_ducked()
             # A final with no letter or digit ("।", "?") is punctuation the engine
@@ -1215,6 +1286,24 @@ class TranscriptCollector(FrameProcessor):
                                "Nothing before that — no filler, no question.]"}]), direction)
         if not forwarded:
             await self.push_frame(frame, direction)
+
+    def on_hold_for(self) -> float:
+        """Seconds the person has had us on hold (0 when not on hold)."""
+        return time.time() - self._hold_since if self._hold_since else 0.0
+
+    async def _absorb_hold_line(self, frame, direction, text: str) -> None:
+        """A piece of the hold recording: on the record, out of the model's context,
+        and not a barge-in. Stamped as heard, so the silence around it is not taken
+        for a swallowed utterance (the VAD-orphan re-ask)."""
+        self._outcome.transcript.append({"role": "user", "text": text})
+        self._hold_line_t = time.time()
+        if self._diag is not None:
+            self._diag.bump("hold_lines")
+        self._on_activity(user=True)
+        self._on_transcript(backchannel=True)
+        if self._duck is not None and self._duck.is_ducked():
+            await self._on_absorb(None)
+        await self._release_user_turn(frame, direction)
 
     def looks_like_voicemail(self) -> bool:
         """The carrier's recording is the only thing that has spoken. Call
@@ -5640,7 +5729,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # VAD ticks say how long they REALLY spoke.
             _voice = flags["voice_tick_t"] - flags["user_started_t"]
             if (_dur >= 4.0 and _voice >= settings.orphan_min_utterance_secs
-                    and flags["transcript_t"] < flags["user_started_t"]):
+                    and flags["transcript_t"] < flags["user_started_t"]
+                    # Hold music is not an unheard caller.
+                    and not transcript.on_hold_for()):
                 # They spoke for a real span, the aggregator gave up on the turn
                 # and no words ever came: we did not hear them.
                 flags["unheard_turn_t"] = time.time()
@@ -6499,6 +6590,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             asyncio.get_running_loop().create_task(_recheck())
             return
         flags["idle_rechecks"] = 0
+        _held = transcript.on_hold_for()
+        if 0 < _held < HOLD_MAX_SECS:
+            # The person put the call on hold: "Hello? Are you there?" into the
+            # hold music is wrong, and hanging up on someone who asked us to wait
+            # is worse. Look again later; past HOLD_MAX_SECS the usual nudges and
+            # idle hang-up apply.
+            logger.info("idle: on hold for %.0fs — waiting, not nudging corr=%s", _held, corr)
+
+            async def _hold_recheck():
+                await asyncio.sleep(max(5.0, float(settings.idle_timeout_secs)))
+                if (transcript.on_hold_for() and not flags["bot_speaking"]
+                        and not flags["user_speaking"]):
+                    await _on_idle(None)
+            asyncio.get_running_loop().create_task(_hold_recheck())
+            return
         if transcript.looks_like_voicemail():
             # Nothing to nudge and nobody to say goodbye to (call 24089872).
             diag.idle_hangup = True
@@ -6833,6 +6939,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
+                continue
+            if d.kind in (LLM_BRIDGE, ORPHAN_ASK) and transcript.on_hold_for():
+                # On hold: nobody is listening for "एक सेकंड।" or "आवाज़ कट गई"
+                # (the replay of 6d81124d said "एक सेकंड।" into the hold).
+                logger.info("watchdog: %s skipped — the call is on hold corr=%s", d.kind, corr)
                 continue
             if d.kind == LLM_BRIDGE:
                 # Call c130e39f: 16s of silence while Vertex took 5.4s to the

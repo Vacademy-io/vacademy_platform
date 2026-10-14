@@ -64,7 +64,8 @@
             "placeholder": "चुनें",
             "options": {
                 "keepExisting": "उनकी वर्तमान स्थिति बनाए रखें",
-                "resetToNew": "नए पर रीसेट करें"
+                "resetToNew": "नए पर रीसेट करें",
+                "resetClosedToNew": "सिर्फ़ कन्वर्ट या डिस्कार्ड होने पर नया करें"
             }
         },
         "samePersonByPhone": {

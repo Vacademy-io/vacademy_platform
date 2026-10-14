@@ -483,6 +483,11 @@ export default function LeadDedupSettings() {
                                                     <SelectItem value="RESET_TO_NEW">
                                                         {t('repeatLead.statusMode.options.resetToNew')}
                                                     </SelectItem>
+                                                    <SelectItem value="RESET_CLOSED_TO_NEW">
+                                                        {t(
+                                                            'repeatLead.statusMode.options.resetClosedToNew'
+                                                        )}
+                                                    </SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>

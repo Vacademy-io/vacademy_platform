@@ -64,7 +64,8 @@
             "placeholder": "Select",
             "options": {
                 "keepExisting": "Keep their current status",
-                "resetToNew": "Reset to New"
+                "resetToNew": "Reset to New",
+                "resetClosedToNew": "Reset to New only if converted or discarded"
             }
         },
         "samePersonByPhone": {

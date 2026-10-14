@@ -64,7 +64,8 @@
             "placeholder": "Sélectionner",
             "options": {
                 "keepExisting": "Conserver leur statut actuel",
-                "resetToNew": "Réinitialiser à Nouveau"
+                "resetToNew": "Réinitialiser à Nouveau",
+                "resetClosedToNew": "Remettre à Nouveau seulement si converti ou écarté"
             }
         },
         "samePersonByPhone": {

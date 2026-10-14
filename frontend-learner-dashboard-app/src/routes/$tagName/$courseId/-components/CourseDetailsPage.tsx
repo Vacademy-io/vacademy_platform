@@ -52,7 +52,12 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { cn, sanitizeHtml } from "@/lib/utils";
-import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { AuthorAvatar } from "./AuthorAvatar";
+import { CourseDetailsView, CoursePurchasePanel } from "./CourseDetailsView";
+import { CourseShowcaseComponent } from "../../-components/components/CourseShowcaseComponent";
+import { coursePageContext, findCatalogSection, relatedCardStyle, showsDuration } from "../-utils/course-page-context";
+import { resolveCatalogDiscovery } from "../../-components/components/catalog/catalog-config";
+import { useCatalogStreams } from "../../-components/components/catalog/use-catalog-discovery";
 import {
   type CourseAuthor as CourseInstructor,
   type RawCourseInstructor,
@@ -142,50 +147,6 @@ const enrolFlowSellsVersion = () => true;
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
-// Profile photo resolved through the public media endpoint (no login on this
-// page); the author's initial stands in while it loads or when there is none.
-const AuthorAvatar: React.FC<{ author: CourseInstructor; sizeClass: string }> = ({
-  author,
-  sizeClass,
-}) => {
-  const [url, setUrl] = useState<string>("");
-  useEffect(() => {
-    let cancelled = false;
-    setUrl("");
-    if (!author.profilePicId) return;
-    getPublicUrlWithoutLogin(author.profilePicId)
-      .then((resolved) => {
-        if (!cancelled && resolved) setUrl(resolved);
-      })
-      .catch(() => {
-        /* fall back to the initial */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [author.profilePicId]);
-  const initial = author.name ? author.name.charAt(0).toUpperCase() : "I";
-  return url ? (
-    <img
-      src={url}
-      alt={author.name}
-      className={cn(
-        "shrink-0 rounded-full object-cover bg-catalogue-bg-subtle",
-        sizeClass,
-      )}
-    />
-  ) : (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white",
-        sizeClass,
-      )}
-    >
-      {initial}
-    </span>
-  );
-};
 
 const hasContent = (htmlString: string | undefined | null): boolean => {
   if (!htmlString) return false;
@@ -1149,7 +1110,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
             }),
           ),
-          rating: course.rating || 5,
+          // A real average only: none is 0, and the page shows no rating then.
+          rating: typeof course.rating === "number" && course.rating > 0 ? course.rating : 0,
           tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet
           courseDepth: course.course_depth || 5, // Default to 5 to show full structure
@@ -1246,6 +1208,12 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const ebookLayout =
     (catalogueData?.globalSettings as { courseDetails?: { layout?: string } } | undefined)
       ?.courseDetails?.layout === "ebook" || learnerCourseDetails?.layout === "ebook";
+  // The page as it was before CourseDetailsView (folded highlights, overview
+  // card): kept for a site that asks for it (courseDetails.layout "classic").
+  const classicLayout =
+    (catalogueData?.globalSettings as { courseDetails?: { layout?: string } } | undefined)
+      ?.courseDetails?.layout === "classic" || learnerCourseDetails?.layout === "classic";
+  const standardLayout = !ebookLayout && !classicLayout;
   const configuredLanguages = useMemo(
     () => courseLanguagesOf(courseLanguageSettings),
     [courseLanguageSettings],
@@ -1389,6 +1357,42 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     productPageCode,
     tags: courseData?.tags,
   });
+  // The default layout's header: breadcrumb, chips and "More in …", from the
+  // site's Courses section (its stream library) and course formats. Reads
+  // nothing on the ebook or classic layouts.
+  const catalogSection = useMemo(
+    () => (standardLayout ? findCatalogSection(catalogueData?.pages) : null),
+    [standardLayout, catalogueData?.pages],
+  );
+  const catalogStreamsConfig = useMemo(
+    () =>
+      catalogSection
+        ? resolveCatalogDiscovery(catalogSection.props, catalogueData?.globalSettings).streams
+        : null,
+    [catalogSection, catalogueData?.globalSettings],
+  );
+  const { streams: catalogStreams } = useCatalogStreams(instituteId ?? "", catalogStreamsConfig);
+  const coursePlace = useMemo(
+    () =>
+      coursePageContext({
+        tags: courseData?.tags,
+        levelName: courseData?.level,
+        globalSettings: catalogueData?.globalSettings,
+        streams: catalogStreams,
+        catalog: catalogSection,
+        labelMode: catalogStreamsConfig?.labelMode,
+        locale: siteLocale.locale,
+      }),
+    [
+      courseData?.tags,
+      courseData?.level,
+      catalogueData?.globalSettings,
+      catalogStreams,
+      catalogSection,
+      catalogStreamsConfig?.labelMode,
+      siteLocale.locale,
+    ],
+  );
   const storeSale = useStoreSale(
     instituteId,
     catalogueData?.globalSettings?.siteCart,
@@ -1994,7 +1998,117 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         )}
 
       {/* Course Content */}
+      {/* The default layout (CourseDetailsView): header, open sections,
+          purchase card, "More in …". Same actions, outline and dialogs. */}
+      {standardLayout &&
+        (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
+          true && (
+          <CourseDetailsView
+            title={siteT(courseData.title)}
+            aboutHtml={siteT(courseData.aboutCourse || "")}
+            whyLearnHtml={courseData.whyLearn ? siteT(courseData.whyLearn) : ""}
+            whoShouldLearnHtml={courseData.whoShouldLearn ? siteT(courseData.whoShouldLearn) : ""}
+            imageCandidates={[courseData.thumbnail, courseData.previewImage, courseData.bannerImage]}
+            showHeader={
+              !catalogueData?.pages?.some(
+                (page) => page.id === "details" || page.route === "course-details",
+              )
+            }
+            context={coursePlace}
+            authors={visibleCourseAuthors(
+              courseData.instructors || [],
+              showInstructors,
+              courseData.instructor,
+            ).map((a) => ({
+              ...a,
+              name: siteT(a.name),
+              subtitle: a.subtitle ? siteT(a.subtitle) : a.subtitle,
+              description: a.description ? siteT(a.description) : a.description,
+            }))}
+            purchase={
+              <CoursePurchasePanel
+                showPrice={catalogueData?.globalSettings?.payment?.enabled !== false}
+                pricePending={pricePending}
+                price={courseData.price}
+                elevatedPrice={courseData.elevatedPrice}
+                currency={courseData.currency}
+                picker={languagePicker}
+                level={
+                  showLevelRow && displayLevelName(courseData.level)
+                    ? siteT(displayLevelName(courseData.level))
+                    : null
+                }
+                duration={showsDuration(courseData.duration, coursePlace.formatKeys) ? courseData.duration : null}
+                rating={courseData.rating}
+                actions={
+                  showCartActions ? (
+                    <CourseCartActions
+                      inCart={inSiteCart}
+                      ready={cartActionsReady}
+                      onAdd={handleAddToCart}
+                      onBuyNow={handleBuyNow}
+                      onViewCart={() => openSiteCart("view")}
+                      note={cartNote}
+                    />
+                  ) : storeCheckPending ? (
+                    <CourseCartPending />
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleEnrollClick}
+                        disabled={enrolPending}
+                        aria-busy={enrolPending || undefined}
+                        className={enrolButtonClass(
+                          "w-full rounded-catalogue-md bg-primary-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:opacity-90 active:scale-[0.98]",
+                        )}
+                      >
+                        {comingSoonCta ??
+                          (catalogueData?.globalSettings?.payment?.enabled !== false
+                            ? courseData.price === 0 && !pricePending
+                              ? t("courseDetails.enrollForFree")
+                              : t("courseDetails.enrollNow")
+                            : t("courseDetails.getStarted"))}
+                      </button>
+                      {comingSoon && comingSoonHint && (
+                        <p className="text-center text-xs text-catalogue-text-muted">{comingSoonHint}</p>
+                      )}
+                    </>
+                  )
+                }
+                formatLabels={coursePlace.formatLabels}
+                free={courseData.price === 0 && !pricePending}
+                comingSoon={!!comingSoon}
+              />
+            }
+            outline={courseStructure}
+            outlineFirst={isOutlineView}
+            related={
+              coursePlace.related ? (
+                <CourseShowcaseComponent
+                  title={t("courseDetails.page.moreIn", {
+                    topic: siteT(coursePlace.related.label),
+                    defaultValue: "More in {{topic}}",
+                  })}
+                  source="tag"
+                  tag={coursePlace.related.tag}
+                  limit={3}
+                  // Neither this course nor its other listings (the same book in another language).
+                  excludeCourseIds={[courseData.courseId || courseId]}
+                  excludeTitles={[courseData.title]}
+                  instituteId={instituteId}
+                  tagName={tagName}
+                  globalSettings={catalogueData?.globalSettings}
+                  {...relatedCardStyle(catalogSection?.props, catalogStreamsConfig)}
+                />
+              ) : null
+            }
+            tagName={tagName}
+          />
+        )}
+
+      {/* The classic layout (courseDetails.layout "classic"). */}
       {!ebookLayout &&
+        classicLayout &&
         (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
         <div className="pt-4 pb-24 sm:pt-6 bg-catalogue-bg-subtle w-full">
@@ -2077,7 +2191,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                         </div>
                       )}
 
-                      {/* Rating */}
+                      {/* Rating: a real average only */}
+                      {courseData.rating > 0 && (
                       <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
@@ -2099,12 +2214,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                             ))}
                           </div>
                           <span className="text-xs font-semibold text-catalogue-text-primary">
-                            {courseData.rating > 0
-                              ? courseData.rating.toFixed(1)
-                              : "—"}
+                            {courseData.rating.toFixed(1)}
                           </span>
                         </div>
                       </div>
+                      )}
 
                       {/* Level (hidden when the level is a sentinel like "Default",
                           and when a Language / Level picker already names it) */}
@@ -2242,7 +2356,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                         </div>
                       )}
 
-                      {/* Rating */}
+                      {/* Rating: a real average only */}
+                      {courseData.rating > 0 && (
                       <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
@@ -2264,12 +2379,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                             ))}
                           </div>
                           <span className="text-xs font-semibold text-catalogue-text-primary">
-                            {courseData.rating > 0
-                              ? courseData.rating.toFixed(1)
-                              : "—"}
+                            {courseData.rating.toFixed(1)}
                           </span>
                         </div>
                       </div>
+                      )}
 
                       {/* Level (hidden when the level is a sentinel like "Default",
                           and when a Language / Level picker already names it) */}
@@ -2574,7 +2688,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         true && (
         <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg-elevated border-t border-catalogue-border p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? "mb-8" : ""}`}>
-            {/* Login Button */}
+            {/* Login Button (the classic layout; the default one leaves it to the header) */}
+            {classicLayout && (
             <div className="flex flex-col gap-1">
               <button
                 onClick={() => navigate({ to: "/login" })}
@@ -2587,6 +2702,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                 {t("header.login")}
               </button>
             </div>
+            )}
 
             {/* Get Started / Enroll Button */}
             {showCartActions ? (

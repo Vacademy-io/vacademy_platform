@@ -998,3 +998,39 @@ describe("CourseDetailsPage — site languages", () => {
     expect(children.dialog).toMatchObject({ courseData: expect.objectContaining({ title: "Yoga" }) });
   });
 });
+
+describe("CourseDetailsPage — default layout", () => {
+  const noDetailsPage = (extra: Record<string, unknown> = {}) => ({ ...settings(extra), pages: [] });
+
+  it("says what the course is: a title heading when the site has no course header of its own", async () => {
+    const c = "c-head";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = noDetailsPage();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.querySelector("h1")?.textContent).toBe("Yoga");
+    expect(host!.textContent).toContain("What you get");
+    // No folded highlights box, and no rating the course does not have.
+    expect(host!.textContent).not.toContain("courseDetails.accordion.highlightsTitle");
+    expect(host!.textContent).not.toContain("courseDetails.rating");
+  });
+
+  it("leaves the header to a site that built its own course header", async () => {
+    const c = "c-own-head";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = settings();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.querySelector("h1")).toBeNull();
+    expect(host!.querySelector('[data-json="details"]')).toBeTruthy();
+  });
+
+  it("keeps the classic layout for a site that asks for it", async () => {
+    const c = "c-classic";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = noDetailsPage({ courseDetails: { layout: "classic" } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.textContent).toContain("courseDetails.courseOverview");
+    expect(host!.textContent).not.toContain("What you get");
+    // Even there, no invented 5.0.
+    expect(host!.textContent).not.toContain("courseDetails.rating");
+  });
+});

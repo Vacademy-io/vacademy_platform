@@ -74,6 +74,10 @@ export interface CourseShowcaseProps {
     tag?: string;
     /** Course ids to show, in order, when source is "picked". */
     courseIds?: string[];
+    /** Courses never listed (the course page's own course, in its "More in …" strip). */
+    excludeCourseIds?: string[];
+    /** Titles never listed, ignoring case and spacing (the same book's other listings). */
+    excludeTitles?: string[];
     limit?: number;
     layout?: "row" | "grid";
     /** Optional ribbon on each card — "Hot", "Only 5 seats", anything. */
@@ -140,6 +144,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     source = "newest",
     tag,
     courseIds,
+    excludeCourseIds,
+    excludeTitles,
     limit = 3,
     layout = "row",
     badgeText,
@@ -247,9 +253,19 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
             const byId = new Map(list.map((c) => [c.id, c]));
             list = order.map((id) => byId.get(id)).filter(Boolean) as ShowcaseCourse[];
         }
+        if (excludeCourseIds?.length) {
+            const skip = new Set(excludeCourseIds);
+            list = list.filter((c) => !skip.has(c.id));
+        }
+        if (excludeTitles?.length) {
+            const key = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
+            const skip = new Set(excludeTitles.map(key).filter(Boolean));
+            list = list.filter((c) => !skip.has(key(c.title)));
+        }
         return list;
-    }, [courses, source, tag, courseIds]);
+    }, [courses, source, tag, courseIds, excludeCourseIds, excludeTitles]);
     const shown = useMemo(() => selected.slice(0, Math.max(1, limit)), [selected, limit]);
+    const [editorialCount, setEditorialCount] = useState<number | null>(null);
     const selectedIds = useMemo(() => selected.map((c) => c.id), [selected]);
 
     // A curated strip is often ONE or TWO courses. Left-aligning those in a
@@ -286,9 +302,13 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     // An empty curated strip is a configuration mistake (a tag that matches
     // nothing, say) — render nothing rather than an empty titled band.
     if (!loading && shown.length === 0) return null;
+    // Editorial cards fold language versions, so leaving a course out can
+    // leave no card at all: the band then hides (only a strip that excludes).
+    const emptyAfterExclusion = editorial && !!excludeCourseIds?.length && editorialCount === 0;
 
     return (
         <section
+            hidden={emptyAfterExclusion || undefined}
             className="catalogue-section bg-catalogue-bg"
             style={backgroundColor ? { backgroundColor } : undefined} // design-lint-ignore: author-picked page-builder color
         >
@@ -308,6 +328,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                         selectedIds={selectedIds}
                         limit={limit}
                         loading={loading}
+                        excludeIds={excludeCourseIds}
+                        onCardCount={setEditorialCount}
                         card={card}
                         streamsLibraryId={streamsLibraryId}
                         globalSettings={globalSettings}

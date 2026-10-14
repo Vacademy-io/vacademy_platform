@@ -362,6 +362,19 @@
     transform: translateY(-4px);
   }
 
+  /* Course page text (CourseDetailsView): authored descriptions arrive with
+     paragraphs centred or justified one by one in the editor; on the course
+     page they read as one column aligned to the start. Indents stay. */
+  .course-richtext p,
+  .course-richtext div,
+  .course-richtext h1,
+  .course-richtext h2,
+  .course-richtext h3,
+  .course-richtext h4,
+  .course-richtext li {
+    text-align: start !important;
+  }
+
   /* Image zoom-on-hover: wrapper clips, inner <img> scales on card hover. */
   .catalogue-img-zoom {
     overflow: hidden;

@@ -587,6 +587,18 @@
             "notAdded": "Could not add this to your cart.",
             "replacesOther": "Adding this replaces the version already in your cart.",
             "replacesVersion": "Your cart has the {{version}} version. Adding this one replaces it."
+        },
+        "page": {
+            "readMore": "Read more",
+            "showLess": "Show less",
+            "whatYouGet": "What you get",
+            "perkInstant": "Instant access after payment",
+            "perkFree": "Free to enrol",
+            "perkPlatform": "Learn on the web and in the app",
+            "level": "Level",
+            "breadcrumb": "Breadcrumb",
+            "by": "By {{name}}",
+            "moreIn": "More in {{topic}}"
         }
     },
     "blog": {

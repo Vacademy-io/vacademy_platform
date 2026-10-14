@@ -48,7 +48,9 @@
             "pages": [
               "introduction",
               "quickstart",
-              "authentication"
+              "getting-api-access",
+              "authentication",
+              "dashboard"
             ]
           },
           {
@@ -86,6 +88,7 @@
               "platform/rate-limits",
               "platform/idempotency",
               "platform/pagination",
+              "platform/credits-and-usage",
               "platform/billing",
               "platform/changelog"
             ]

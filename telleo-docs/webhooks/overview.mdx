@@ -7,7 +7,7 @@ Instead of polling, give Telleo one HTTPS endpoint. When a call reaches a final 
 
 ## Setting the endpoint
 
-In the dashboard: **Settings → AI calling → API & webhooks → Webhook**. Enter the URL and save. Or with the API:
+In the dashboard: **CRM → Calling → AI Calling Settings → API & webhooks**, **Webhook** section. Enter the URL and save. Or with the API:
 
 ```bash
 curl -X PUT https://api.telleo.ai/v1/webhook \
@@ -20,7 +20,7 @@ The first time, the response contains the **signing secret** (`whsec_…`). It i
 
 Requirements for the URL:
 
-- `https://`, with a valid certificate;
+- `https://` on port 443 (or 8443), with a valid certificate;
 - a public address (private, loopback and link-local addresses are refused);
 - no username or password in the URL; redirects are not followed.
 
@@ -58,5 +58,5 @@ If your endpoint was down for longer than the retry window, catch up with `GET /
 | See it | Webhook section | `GET /v1/webhook` |
 | Change the URL (keeps the secret) | Edit and save | `PUT /v1/webhook` |
 | New secret | **New secret** | `POST /v1/webhook/rotate-secret` |
-| Send a test event | **Send test event** | `POST /v1/webhook/test` |
+| Send a test event (up to 5 a minute) | **Send test event** | `POST /v1/webhook/test` |
 | Stop deliveries | **Remove** | `DELETE /v1/webhook` |

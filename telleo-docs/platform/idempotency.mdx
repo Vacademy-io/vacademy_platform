@@ -17,10 +17,10 @@ curl https://api.telleo.ai/v1/calls \
 |---|---|
 | First request with this key | `201 Created`: the new call. |
 | Same key, same body | `200 OK`: the **same** call as before, with `"idempotent_replay": true`. Nobody is called again. |
-| Same key, different body | `409 idempotency_key_reused`, with the original `call_id` in `details`. |
+| Same key, different body | `409 idempotency_key_reused`, with the original `call_id` in `details`. Every field counts, including `test`, so a key used for a test call cannot be reused for a real one. |
 
-- Keys are up to 255 characters and are kept for your account indefinitely.
+- Keys are up to 255 characters and are honoured for **24 hours**. After that the same key starts a new call.
 - Build them from your own ids (`lead-8812`, `enquiry-5521-attempt-2`) so that a retry naturally reuses the key, and a deliberate new attempt gets a new one.
 - Two requests with the same key at the same moment create one call.
 
-`POST /v1/batches` does not take an `Idempotency-Key`. Its rows are protected differently: a number that already has a waiting call is rejected as `call_already_queued`, so re-sending a batch does not queue its calls twice while they are still waiting.
+`POST /v1/batches` takes an `Idempotency-Key` too. Retrying the same request with the same key returns the batch it created (`200`, `"idempotent_replay": true`, with the accepted calls) instead of queueing the calls again. Without a key, a re-sent batch is still partly protected: a number that already has a waiting call is rejected as `call_already_queued`.

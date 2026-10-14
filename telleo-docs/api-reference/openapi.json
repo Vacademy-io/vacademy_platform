@@ -26,6 +26,9 @@
       "name": "Agents"
     },
     {
+      "name": "Credits"
+    },
+    {
       "name": "Webhook"
     }
   ],
@@ -331,7 +334,7 @@
               "type": "string",
               "maxLength": 255
             },
-            "description": "Any unique string, e.g. your lead id. Retrying with the same key and body returns the first call instead of calling twice."
+            "description": "Any unique string per attempt, e.g. `lead-8812-1`. Retrying with the same key and the same body returns the first call instead of calling twice; a different body is refused (409). Honoured for 24 hours."
           }
         ],
         "requestBody": {
@@ -539,7 +542,12 @@
                   "ended_at": "2026-10-13T09:32:31Z",
                   "recording_url": "https://media.example-cdn.com/recordings/abc.mp3?X-Amz-Signature=…",
                   "recording_expires_at": "2026-10-14T09:40:00Z",
+                  "cost": {
+                    "credits": 12.5,
+                    "billed": true
+                  },
                   "outcome": {
+                    "call_quality": "ok",
                     "disposition": "Interested",
                     "summary": "Asha wants the NEET 2027 weekend batch and asked for the fee structure on WhatsApp.",
                     "answers": {
@@ -1057,6 +1065,18 @@
           }
         },
         "operationId": "createBatch",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "description": "Retrying the same request with the same key returns the batch it created (200, `idempotent_replay: true`) instead of queueing the calls again. Honoured for 24 hours."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1316,6 +1336,271 @@
           }
         },
         "operationId": "listAgents"
+      }
+    },
+    "/credits": {
+      "get": {
+        "summary": "Get credit balance",
+        "description": "Your account's credit balance, whether new real calls are accepted, and how many calls are waiting. Read straight from your wallet; charges for a call are made shortly after it ends.\n\nScope: `calls:read`.",
+        "tags": [
+          "Credits"
+        ],
+        "responses": {
+          "200": {
+            "description": "Your balance.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credits"
+                },
+                "example": {
+                  "object": "credits",
+                  "balance": 1834.25,
+                  "low_balance_threshold": 10.0,
+                  "low_balance": false,
+                  "can_place_calls": true,
+                  "calls_waiting": 42,
+                  "updated_at": "2026-10-14T05:12:40Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCredits"
+      }
+    },
+    "/usage": {
+      "get": {
+        "summary": "Get usage",
+        "description": "Calls, connected calls, talk time and credits charged per day. Credits come from your account's ledger; test calls are not included.\n\nScope: `calls:read`.",
+        "tags": [
+          "Credits"
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage per day.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Usage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A parameter is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "A usage range is at most 92 days.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getUsage",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "First day, `YYYY-MM-DD`. Default: 6 days before `to`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Last day (included). Default: today. At most 92 days after `from`."
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "UTC"
+            },
+            "description": "IANA zone the days are cut in, e.g. `Asia/Kolkata`."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api",
+                "all"
+              ],
+              "default": "api"
+            },
+            "description": "`api`: calls placed through the API. `all`: every AI call on your account."
+          }
+        ]
       }
     },
     "/webhook": {
@@ -2016,7 +2301,12 @@
                   "ended_at": "2026-10-13T09:32:31Z",
                   "recording_url": "https://media.example-cdn.com/recordings/abc.mp3?X-Amz-Signature=…",
                   "recording_expires_at": "2026-10-14T09:40:00Z",
+                  "cost": {
+                    "credits": 12.5,
+                    "billed": true
+                  },
                   "outcome": {
+                    "call_quality": "ok",
                     "disposition": "Interested",
                     "summary": "Asha wants the NEET 2027 weekend batch and asked for the fee structure on WhatsApp.",
                     "answers": {
@@ -2230,6 +2520,14 @@
         ],
         "description": "What the AI took from the conversation. `null` until it has been processed (usually within a minute of the call ending), and for calls that did not connect.",
         "properties": {
+          "call_quality": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "description": "`failed` when the call broke down on our side; then `disposition` is `Incomplete` and `lead_rating` is null. Call the contact again rather than changing their stage."
+          },
           "disposition": {
             "type": [
               "string",
@@ -2435,6 +2733,23 @@
             ],
             "format": "date-time"
           },
+          "cost": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "What the call cost, once it has ended. `null` while it is still running.",
+            "properties": {
+              "credits": {
+                "type": "number",
+                "description": "Credits charged. 0 for test calls and calls that did not connect."
+              },
+              "billed": {
+                "type": "boolean",
+                "description": "false for a few minutes after a connected call ends, until the charge is made."
+              }
+            }
+          },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
           },
@@ -2547,7 +2862,10 @@
                     "invalid_request",
                     "duplicate_in_batch",
                     "call_already_queued",
-                    "call_failed"
+                    "call_failed",
+                    "agent_not_found",
+                    "agent_disabled",
+                    "agent_inbound_only"
                   ]
                 },
                 "message": {
@@ -2656,6 +2974,116 @@
           },
           "has_more": {
             "type": "boolean"
+          }
+        }
+      },
+      "Credits": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "credits"
+          },
+          "balance": {
+            "type": "number",
+            "example": 1834.25
+          },
+          "low_balance_threshold": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "low_balance": {
+            "type": "boolean"
+          },
+          "can_place_calls": {
+            "type": "boolean",
+            "description": "false when new real calls would be refused with 402."
+          },
+          "calls_waiting": {
+            "type": "integer",
+            "description": "Calls queued and not yet dialled (API and dashboard)."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "UsageDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-10-01"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "connected": {
+            "type": "integer"
+          },
+          "talk_seconds": {
+            "type": "integer"
+          },
+          "credits": {
+            "type": "number"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "usage"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "all"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "connected": {
+                "type": "integer"
+              },
+              "talk_seconds": {
+                "type": "integer"
+              },
+              "credits": {
+                "type": "number"
+              },
+              "calls_not_yet_billed": {
+                "type": "integer",
+                "description": "Connected calls whose charge has not been made yet."
+              }
+            }
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            }
           }
         }
       },

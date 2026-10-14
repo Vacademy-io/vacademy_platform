@@ -28,14 +28,14 @@ stateDiagram-v2
 | `completed` | The call connected and has ended. The outcome is attached. | Yes |
 | `no_answer` | Rang out, or was not picked up. | Yes |
 | `busy` | The line was busy or the call was rejected. | Yes |
-| `failed` | The call could not be placed. `status_reason` says why. | Yes |
-| `canceled` | Canceled before it was dialled, by you or by a limit (see below). | Yes |
+| `failed` | The call could not be placed, or no result came back for it within 2 hours. `status_reason` says why. | Yes |
+| `canceled` | Canceled before it was dialled: by you, from the dashboard queue, by a limit, or because its agent was turned off. | Yes |
 | `expired` | No line became free before the call's time in the queue ran out (48 hours). | Yes |
 
 A call in a **final** status never changes again, and its webhook is sent exactly once when it gets there.
 
 <Note>
-`completed` becomes final when the AI has finished analysing the call, usually within a minute of hanging up. If the analysis never arrives, the call is finalised 10 minutes after it ended, with `outcome: null`.
+A call shows `completed` as soon as it ends, but it becomes **final** (and its webhook is sent) once the outcome and the recording are attached, usually within a minute or two of hanging up. If either never arrives, the call is finalised 10 minutes after it ended, with what is available. Until then, `GET /v1/calls/{id}` may show `completed` with `outcome: null`.
 </Note>
 
 ## Reading a call
@@ -52,7 +52,8 @@ curl https://api.telleo.ai/v1/calls/call_6f1d2c9a8b7e4f3a2d1c0b9a -H "X-API-Key:
 <ResponseField name="batch_id" type="string | null">The batch it belongs to, if any.</ResponseField>
 <ResponseField name="test" type="boolean">`true` for a [test call](/concepts/test-mode).</ResponseField>
 <ResponseField name="duration_seconds" type="integer | null">Length of the conversation.</ResponseField>
-<ResponseField name="created_at, dialed_at, ended_at" type="string | null">ISO-8601 UTC timestamps.</ResponseField>
+<ResponseField name="created_at, dialed_at, ended_at" type="string | null">ISO-8601 UTC timestamps. `ended_at` is set once the call is final: when the call itself ended, or, for a call that was never dialled, when it was canceled, expired or failed.</ResponseField>
+<ResponseField name="cost" type="object | null">`{credits, billed}`: what the call cost. See [Credits and usage](/platform/credits-and-usage#cost-of-one-call).</ResponseField>
 <ResponseField name="recording_url" type="string | null">A temporary link to the recording, valid until `recording_expires_at` (24 hours). Read the call again for a fresh link.</ResponseField>
 <ResponseField name="outcome" type="object | null">What the agent learned. See [Outcomes](/concepts/outcomes).</ResponseField>
 

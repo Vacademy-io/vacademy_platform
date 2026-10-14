@@ -3,7 +3,7 @@ title: "Agents and variables"
 description: "Choose who calls, and fill their script with your data."
 ---
 
-An **agent** is a configured AI caller: its voice, language, opening line, script, the questions it asks and the labels it can give a call. You create and edit agents in the dashboard (Settings → AI calling); the API chooses which one makes each call with `agent_id`.
+An **agent** is a configured AI caller: its voice, language, opening line, script, the questions it asks and the labels it can give a call. You create and edit agents in the dashboard (**CRM → Calling → AI Agents**); the API chooses which one makes each call with `agent_id`.
 
 ## Listing agents
 
@@ -28,7 +28,7 @@ curl https://api.telleo.ai/v1/agents -H "X-API-Key: $TELLEO_API_KEY"
 }
 ```
 
-Only agents that are **turned on** and can **call out** are listed. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`.
+Only agents that are **turned on** and can **call out** are listed. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`. If an agent is turned off or deleted while its calls are waiting in the queue, those calls are canceled, not dialled with another voice.
 
 ## Personalising the call
 
@@ -48,8 +48,8 @@ You fill them per call:
 ```
 
 - **`{{name}}`** comes from `contact.name`. When `uses_contact_name` is `true`, always send it: an agent that does not know the name greets the person without it.
-- **Everything else** comes from `variables`. The `variables` list on each agent shows exactly which keys its script uses.
-- The agent also knows the current date and time on its own; you do not send those.
+- **Everything else** comes from `variables`, including `{{institute_name}}`, `{{lead_source}}` and `{{booked_slot}}` when the script uses them. The `variables` list on each agent shows exactly which keys its script uses.
+- **Date and time** placeholders (`{{day}}`, `{{today}}`, `{{date}}`, `{{time}}`, `{{datetime}}`, `{{now}}`, `{{tomorrow}}`, `{{year}}`, `{{month}}`) are filled with the current date and time. These names, and `name`, are reserved: a variable with one of them is rejected.
 
 ### Rules for variables
 
@@ -65,10 +65,14 @@ Variables are spoken by the agent, so send them the way a person would say them:
 Keep data the agent should **not** say in `metadata` instead. It is stored with the call and returned to you, but never shown to the agent.
 </Tip>
 
+## What agents do differently on API calls
+
+Agents can be set up in the dashboard to send WhatsApp messages or emails, or to book meetings, during or after a call. On API calls they do **not** offer or send these: the contact belongs to your CRM, not to Telleo's. When the contact agrees to a meeting, the agreed time comes back in [`outcome.meeting`](/concepts/outcomes); book it and send any follow-up from your own systems.
+
 ## The contact
 
 | Field | Purpose |
 |---|---|
-| `contact.name` | How the agent addresses the person (up to 120 characters). |
+| `contact.name` | How the agent addresses the person (up to 120 characters; longer is rejected). |
 | `contact.email` | Stored with the call and returned to you. |
-| `contact.external_id` | Your id for this person (CRM record id, lead id). Filter calls with `GET /v1/calls?external_id=`. |
+| `contact.external_id` | Your id for this person (CRM record id, lead id; up to 255 characters). Filter calls with `GET /v1/calls?external_id=`. |

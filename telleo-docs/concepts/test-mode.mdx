@@ -9,7 +9,8 @@ Add `"test": true` to `POST /v1/calls` or `POST /v1/batches`, and Telleo runs th
 - No credits are used, and the [limits](/concepts/queue-and-limits) do not apply.
 - The call completes at once: the response already has `status: "completed"` and a sample `outcome`.
 - Your webhook receives `call.completed` for it, signed exactly like a real one.
-- It appears in `GET /v1/calls` with `"test": true`.
+- It appears in `GET /v1/calls` with `"test": true`, and you can repeat a test to the same number as often as you like.
+- Up to 500 test calls per 24 hours per account; beyond that, test requests get `429 test_limit_reached`.
 
 ```bash
 curl https://api.telleo.ai/v1/calls \

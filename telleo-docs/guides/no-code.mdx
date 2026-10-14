@@ -45,7 +45,7 @@ Replace `{{…}}` with the fields your tool offers from the trigger (a new Googl
 ## Receive the result
 
 1. Create a webhook trigger in your tool: **Webhooks by Zapier → Catch Hook**, Make **Webhooks → Custom webhook**, or the n8n **Webhook** node (method `POST`).
-2. Copy its URL into **Settings → AI calling → API & webhooks → Webhook** and save.
+2. Copy its URL into **Webhook** on the **CRM → Calling → AI Calling Settings → API & webhooks** card and save.
 3. Click **Send test event** so the tool learns the shape of the data. For a realistic sample, also place a [test call](/concepts/test-mode).
 4. Map `data.contact.external_id`, `data.outcome.disposition`, `data.outcome.summary` and the other fields into the next step (update a row, a CRM record, send a WhatsApp…).
 

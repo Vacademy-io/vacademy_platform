@@ -15,7 +15,7 @@ While a call waits, it is `queued`. When something is holding it, `status_reason
 
 ## Calling hours
 
-Calls are only dialled inside the calling windows set in your AI calling settings. A call created outside them stays `queued` with `scheduled_for` set to the next window, and goes out then. You do not need to schedule anything yourself.
+Calls are only dialled inside the calling windows set in your AI calling settings. A call created outside them stays `queued`, with `status_reason` *Outside this institute's calling hours.* and `scheduled_for` set to the next window, and goes out then. You do not need to schedule anything yourself.
 
 ## Limits
 
@@ -29,6 +29,8 @@ Calls are only dialled inside the calling windows set in your AI calling setting
 | **Credits** | Without credits, new calls are refused with `402 insufficient_credits`. Calls already queued wait, and resume after a top-up. |
 
 These guards apply to every call made through the API. [Test calls](/concepts/test-mode) skip them.
+
+Your team's controls in the dashboard's **Call Queue** apply too: **Pause queue** holds API calls (they stay `queued`), and **Cancel** cancels them (`canceled`). See [Your dashboard](/dashboard#call-queue).
 
 ## Throughput
 

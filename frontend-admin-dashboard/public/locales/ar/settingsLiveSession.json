@@ -23,7 +23,8 @@
     "toast": {
         "atLeastOnePlatform": "يجب السماح بمنصة بث واحدة على الأقل.",
         "saveSuccess": "تم حفظ إعدادات الجلسات المباشرة",
-        "saveFailed": "فشل حفظ إعدادات الجلسات المباشرة."
+        "saveFailed": "فشل حفظ إعدادات الجلسات المباشرة.",
+        "googleAutoRecordSaveFailed": "تم حفظ الإعدادات، لكن لم يُحفظ تغيير التسجيل التلقائي لحساب Google. حاول الحفظ مرة أخرى."
     },
     "timezone": {
         "title": "المنطقة الزمنية الافتراضية",
@@ -173,6 +174,33 @@
         "autoRecordingCloud": "التسجيل على سحابة Zoom",
         "autoRecordingLocal": "تسجيل محلي (جهاز المضيف)",
         "autoRecordingNone": "عدم التسجيل"
+    },
+    "googleMeet": {
+        "title": "عناصر تحكم Google Meet",
+        "description": "قيم افتراضية تُملأ مسبقًا في لوحة Google Meet عند استضافة صف منفرد على Google Meet بحساب متصل. يمكن للمسؤولين تغييرها لكل صف. (الجدولة الجماعية لا تنشئ روابط Meet.)",
+        "recordingGroup": "التسجيل والملاحظات",
+        "noAccount": "اربط حساب Google Workspace في تكامل Google Meet أعلاه لتفعيل التسجيل التلقائي.",
+        "autoRecordTitle": "تسجيل الصفوف تلقائيًا على {{email}}",
+        "autoRecordDescription": "يبدأ التسجيل تلقائيًا عندما ينضم المنظِّم أو معلم من Google Workspace الخاص بالمؤسسة. يُحفظ على حساب Google هذا.",
+        "transcriptionTitle": "إنشاء نص مكتوب تلقائيًا",
+        "transcriptionDescription": "يكتب Google نصًا للصف في Drive الخاص بالمنظِّم.",
+        "smartNotesTitle": "ملاحظات Gemini (\"دوّن الملاحظات نيابةً عني\")",
+        "smartNotesDescription": "يكتب Gemini ملخصًا للصف في Drive الخاص بالمنظِّم.",
+        "attendanceReportTitle": "تقرير الحضور من Google",
+        "attendanceReportDescription": "يرسل Google ورقة الحضور إلى المنظِّم بعد الصف.",
+        "planHint": "يتطلب التسجيل والنص المكتوب خطة Workspace تتضمن التسجيل (Business Standard أو أعلى، Education Plus)، وتتطلب ملاحظات Gemini ترخيص Gemini. إذا لم تتضمن الخطة ميزة ما، يُنشأ الصف بدونها.",
+        "hostControlsGroup": "عناصر تحكم المضيف",
+        "hostManagementTitle": "تفعيل عناصر تحكم المضيف",
+        "hostManagementDescription": "يسمح بتطبيق القيود أدناه. حساب المنظِّم هو المضيف الوحيد؛ المعلم بحساب Google آخر يُعد مشاركًا.",
+        "chatHostsOnlyTitle": "المضيفون فقط يمكنهم الدردشة",
+        "chatHostsOnlyDescription": "يمكن للمتعلمين قراءة الدردشة دون إرسال رسائل.",
+        "reactionsHostsOnlyTitle": "المضيفون فقط يمكنهم إرسال التفاعلات",
+        "reactionsHostsOnlyDescription": "لا يمكن للمتعلمين إرسال تفاعلات الرموز التعبيرية.",
+        "presentHostsOnlyTitle": "المضيفون فقط يمكنهم مشاركة الشاشة",
+        "presentHostsOnlyDescription": "اتركه متوقفًا إذا كان المعلمون يعرضون من حساباتهم على Google.",
+        "joinAsViewerTitle": "ينضم المتعلمون كمشاهدين",
+        "joinAsViewerDescription": "ينضم المتعلمون دون ميكروفون أو كاميرا.",
+        "disabledBecauseHostControlsOff": "معطّل لأن عناصر تحكم المضيف متوقفة."
     },
     "notifications": {
         "title": "الإشعارات",

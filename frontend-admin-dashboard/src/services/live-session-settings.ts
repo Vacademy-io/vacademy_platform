@@ -305,6 +305,28 @@ export interface LiveSessionSettings {
     defaultZoomAllowMultipleDevices: boolean;
     /** Default "add identity watermark". */
     defaultZoomWatermark: boolean;
+    /*
+     * Google Meet defaults, pre-filled in the Google Meet panel of a single class hosted on
+     * Meet with a connected account (keys read by GoogleMeetManager.buildSpaceConfig).
+     * Auto-record and join access are NOT here: they live on each connected Google account.
+     * Admins can still change them per class.
+     */
+    /** Default "auto-generate transcript". */
+    defaultGoogleMeetTranscription: boolean;
+    /** Default "Gemini notes (Take notes for me)". */
+    defaultGoogleMeetSmartNotes: boolean;
+    /** Default "Google attendance report". */
+    defaultGoogleMeetAttendanceReport: boolean;
+    /** Default "turn on host controls" — the four restrictions below apply only with it on. */
+    defaultGoogleMeetHostManagement: boolean;
+    /** Default "only hosts can chat". */
+    defaultGoogleMeetChatHostsOnly: boolean;
+    /** Default "only hosts can send reactions". */
+    defaultGoogleMeetReactionsHostsOnly: boolean;
+    /** Default "only hosts can share screen". */
+    defaultGoogleMeetPresentHostsOnly: boolean;
+    /** Default "learners join as viewers". */
+    defaultGoogleMeetJoinAsViewer: boolean;
     /**
      * Master switch for the disclaimer video. Off for every institute by default,
      * so nothing changes for anyone until an admin turns it on here.
@@ -404,6 +426,14 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultZoomFocusMode: false,
     defaultZoomAllowMultipleDevices: false,
     defaultZoomWatermark: false,
+    defaultGoogleMeetTranscription: false,
+    defaultGoogleMeetSmartNotes: false,
+    defaultGoogleMeetAttendanceReport: false,
+    defaultGoogleMeetHostManagement: false,
+    defaultGoogleMeetChatHostsOnly: false,
+    defaultGoogleMeetReactionsHostsOnly: false,
+    defaultGoogleMeetPresentHostsOnly: false,
+    defaultGoogleMeetJoinAsViewer: false,
     // Off by default: no institute gets a disclaimer in front of its learners,
     // and the per-class control stays hidden, until an admin turns this on.
     disclaimerVideoEnabled: false,

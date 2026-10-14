@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { VideoCamera, Info, LinkSimple, CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Trans, useTranslation } from 'react-i18next';
@@ -11,7 +12,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { listGoogleAccounts, initiateGoogleOAuth, type GoogleAccountSummary } from '@/services/google-accounts';
+import { listGoogleAccounts, initiateGoogleOAuth } from '@/services/google-accounts';
 import { GoogleAccountList } from './GoogleAccountList';
 
 /**
@@ -22,26 +23,25 @@ import { GoogleAccountList } from './GoogleAccountList';
  */
 export function GoogleMeetIntegrationCard() {
     const { t } = useTranslation('settingsGoogleMeetIntegrationCard');
-    const [accounts, setAccounts] = useState<GoogleAccountSummary[] | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    // Shared with the Google Meet defaults card and the live-class wizard, so an auto-record
+    // change made in one place shows everywhere.
+    const {
+        data: accounts,
+        isLoading: loading,
+        isError,
+        refetch,
+    } = useQuery({
+        queryKey: ['google-accounts'],
+        queryFn: listGoogleAccounts,
+        // Show a load error straight away, as before (no silent retries).
+        retry: false,
+    });
+    const error = isError ? t('errors.loadAccounts') : null;
     const [connecting, setConnecting] = useState(false);
 
     const refresh = async () => {
-        setError(null);
-        try {
-            setAccounts(await listGoogleAccounts());
-        } catch (e) {
-            console.error(e);
-            setError(t('errors.loadAccounts'));
-        } finally {
-            setLoading(false);
-        }
+        await refetch();
     };
-
-    useEffect(() => {
-        void refresh();
-    }, []);
 
     // Handle the "Connect Google Workspace" OAuth return (server bounced the browser back here).
     useEffect(() => {
@@ -118,7 +118,6 @@ export function GoogleMeetIntegrationCard() {
                             type="button"
                             className="ml-1 underline"
                             onClick={() => {
-                                setLoading(true);
                                 void refresh();
                             }}
                         >

@@ -358,6 +358,7 @@ public class SubOrgLearnerService {
         // How the offline payment was made: validated now, before the learner is created,
         // so a bad mode fails the request instead of leaving an enrollment without its payment.
         OfflinePaymentDetailsService.Resolved offlinePaidVia = "OFFLINE".equalsIgnoreCase(request.getPaymentMode())
+                && request.getOfflinePaymentAmount() != null && request.getOfflinePaymentAmount() > 0.0
                 ? offlinePaymentDetailsService.resolve(request.getInstituteId(),
                         request.getOfflinePaymentDetails(), request.getOfflinePaymentReference())
                 : null;

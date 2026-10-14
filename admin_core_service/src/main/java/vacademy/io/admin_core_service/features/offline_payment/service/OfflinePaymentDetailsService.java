@@ -51,6 +51,17 @@ public class OfflinePaymentDetailsService {
      * used when the details give none. Returns null when there is nothing to record.
      */
     public Resolved resolve(String instituteId, OfflinePaymentDetailsDTO details, String legacyReference) {
+        return resolve(instituteId, details, legacyReference, true);
+    }
+
+    /**
+     * As {@link #resolve(String, OfflinePaymentDetailsDTO, String)}; with
+     * {@code enforceRequireMode = false} a missing mode is accepted even when the institute
+     * requires one — for paths whose request cannot carry a mode (a payment date from a CSV
+     * column). A mode that IS given is still validated in full.
+     */
+    public Resolved resolve(String instituteId, OfflinePaymentDetailsDTO details, String legacyReference,
+                            boolean enforceRequireMode) {
         OfflinePaymentModesDTO modes = modeService.getEffective(instituteId);
         String modeCode = details != null && StringUtils.hasText(details.getMode())
                 ? details.getMode().trim().toUpperCase(Locale.ROOT) : null;
@@ -62,7 +73,7 @@ public class OfflinePaymentDetailsService {
         }
 
         if (modeCode == null) {
-            if (modes.isRequireMode()) {
+            if (modes.isRequireMode() && enforceRequireMode) {
                 throw new VacademyException("Choose how the payment was made");
             }
             if (details != null && StringUtils.hasText(details.getSubMode())) {

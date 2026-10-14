@@ -2,6 +2,12 @@
 -- into a given account, cheque ...), set by admins when they mark a payment as received.
 -- See docs/OFFLINE_PAYMENT_RECORDING.md. All additive and nullable: gateway payments and
 -- payments recorded before this migration keep null here.
+
+-- payment_log is busy: never queue behind a long transaction holding it (and block every
+-- payment behind us meanwhile). If the lock is not free within 10 s the migration fails
+-- cleanly and the next deploy retries; the old pods keep serving.
+SET LOCAL lock_timeout = '10s';
+
 ALTER TABLE payment_log
     ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(40) NULL,
     ADD COLUMN IF NOT EXISTS payment_sub_mode VARCHAR(80) NULL,

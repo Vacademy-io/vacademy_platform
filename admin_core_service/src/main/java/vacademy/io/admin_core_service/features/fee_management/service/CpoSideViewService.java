@@ -294,7 +294,9 @@ public class CpoSideViewService {
         String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
                 .map(StudentFeePayment::getInstituteId)
                 .filter(s -> s != null && !s.isBlank())
-                .findFirst().orElse(null);
+                .findFirst()
+                // A plan with no fee bills (e.g. a sub-org admin plan): its invite knows the institute.
+                .orElse(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getInstituteId() : null);
 
         // Validate how it was paid before anything is written.
         OfflinePaymentDetailsService.Resolved paymentDetails =
@@ -368,6 +370,11 @@ public class CpoSideViewService {
             invoicePayReq.setNotes("Auto-settled via offline payment log " + paymentLogId
                     + (req.getReference() != null && !req.getReference().isBlank()
                        ? " (ref: " + req.getReference() + ")" : ""));
+            // Same "how it was paid" as the payment that settles them. Without it, an institute
+            // that requires a mode would reject this inner call, and because it joins this
+            // transaction, the whole offline payment would roll back.
+            invoicePayReq.setPaymentDetails(req.getPaymentDetails());
+            invoicePayReq.setTransactionId(req.getReference());
             List<Invoice> pendingAdminInvoices =
                     invoiceRepository.findPendingAdminManualInvoices(plan.getUserId(), instituteId);
             for (Invoice inv : pendingAdminInvoices) {

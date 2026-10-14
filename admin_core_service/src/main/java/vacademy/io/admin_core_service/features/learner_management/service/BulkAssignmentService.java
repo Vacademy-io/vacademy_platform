@@ -638,7 +638,7 @@ public class BulkAssignmentService {
                 // row for the same (user, package session) would trip
                 // uq_dest_pkg_inst_user_status where that index exists.
                 return handleReEnroll(mapping, userId, userEmail, config,
-                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment);
+                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment, options);
             }
 
             // Case C: No existing mapping → create new
@@ -855,8 +855,12 @@ public class BulkAssignmentService {
                         : grossAmount;
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
                         : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
-                OfflinePaymentDetailsService.Resolved paidVia =
-                        offlinePaymentDetailsService.resolve(instituteId, offlineDetails, transactionId);
+                // Validated up front when the run-wide date / transaction id asked for a payment;
+                // a payment date that only comes from a CSV column cannot carry a mode, so
+                // "require a mode" is not enforced for it.
+                OfflinePaymentDetailsService.Resolved paidVia = offlinePaymentDetailsService.resolve(
+                        instituteId, offlineDetails, transactionId,
+                        globalPaymentDate != null || StringUtils.hasText(transactionId));
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
                         : globalPaymentDate != null ? globalPaymentDate
                         : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
@@ -957,7 +961,8 @@ public class BulkAssignmentService {
             String instituteId, boolean dryRun,
             UserDTO userDTO, StudentExtraDetails extraDetails,
             String adminUserId,
-            AssignmentItemDTO assignment) {
+            AssignmentItemDTO assignment,
+            BulkAssignOptionsDTO options) {
 
         boolean isCpo = isCpoOption(config.getPaymentOption());
         CpoTemplateSummary cpoSummary = isCpo ? summarizeCpo(config, assignment) : null;
@@ -1076,8 +1081,8 @@ public class BulkAssignmentService {
         if (isCpo) {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
-                    null, null, null,
-                    false, offlinePaymentDetailsFor(assignment, null));
+                    null, null, options != null ? options.getTransactionId() : null,
+                    false, offlinePaymentDetailsFor(assignment, options));
         }
 
         BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()

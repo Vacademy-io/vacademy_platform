@@ -156,6 +156,17 @@ class OfflinePaymentServicesTest {
     }
 
     @Test
+    @DisplayName("A path that cannot carry a mode may skip 'require a mode'; a given mode is still checked")
+    void lenientRequireMode() {
+        OfflinePaymentModesDTO modes = OfflinePaymentModeService.systemDefaults();
+        modes.setRequireMode(true);
+        OfflinePaymentDetailsService svc = detailsService(modes, null);
+        assertNull(svc.resolve("i", null, null, false));
+        assertThrows(VacademyException.class, () -> svc.resolve("i", null, null, true));
+        assertThrows(VacademyException.class, () -> svc.resolve("i", details("BITCOIN", null, null), null, false));
+    }
+
+    @Test
     @DisplayName("Without a mode, a legacy reference alone is still recorded; nothing at all returns null")
     void legacyReferenceOnly() {
         OfflinePaymentDetailsService svc = detailsService(OfflinePaymentModeService.systemDefaults(), null);

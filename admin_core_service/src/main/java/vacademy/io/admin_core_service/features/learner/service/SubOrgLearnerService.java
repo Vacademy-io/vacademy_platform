@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
+import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -74,6 +76,7 @@ import java.util.Calendar;
 public class SubOrgLearnerService {
 
     private final AuthService authService;
+    private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final InstituteStudentRepository instituteStudentRepository;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final PackageSessionRepository packageSessionRepository;
@@ -352,6 +355,12 @@ public class SubOrgLearnerService {
         }
         Institute subOrg = validateSubOrg(request.getSubOrgId());
         validateInstitute(request.getInstituteId());
+        // How the offline payment was made: validated now, before the learner is created,
+        // so a bad mode fails the request instead of leaving an enrollment without its payment.
+        OfflinePaymentDetailsService.Resolved offlinePaidVia = "OFFLINE".equalsIgnoreCase(request.getPaymentMode())
+                ? offlinePaymentDetailsService.resolve(request.getInstituteId(),
+                        request.getOfflinePaymentDetails(), request.getOfflinePaymentReference())
+                : null;
 
         // 3. Create or fetch user
         UserDTO user = createOrFetchUser(request);
@@ -434,7 +443,7 @@ public class SubOrgLearnerService {
 
         // 12. Optional offline payment record + invoice.
         ManualPaymentResult paymentResult = recordOfflinePaymentIfRequested(
-                request, user.getId(), learnerUserPlanId, admin.getUserId(), resolvedLearnerOption);
+                request, user.getId(), learnerUserPlanId, admin.getUserId(), resolvedLearnerOption, offlinePaidVia);
 
         // Hydrate password back from auth-service so the LMS create-user webhook
         // (workflow node referencing #ctx['member']['password']) receives the real
@@ -485,7 +494,8 @@ public class SubOrgLearnerService {
                                                                 String learnerUserId,
                                                                 String learnerUserPlanId,
                                                                 String recordedByUserId,
-                                                                PaymentOption resolvedOption) {
+                                                                PaymentOption resolvedOption,
+                                                                OfflinePaymentDetailsService.Resolved paidVia) {
         boolean offlineRequested = "OFFLINE".equalsIgnoreCase(request.getPaymentMode())
                 && request.getOfflinePaymentAmount() != null
                 && request.getOfflinePaymentAmount() > 0.0
@@ -504,8 +514,9 @@ public class SubOrgLearnerService {
         double amount = request.getOfflinePaymentAmount();
         String currency = StringUtils.hasText(request.getOfflinePaymentCurrency())
                 ? request.getOfflinePaymentCurrency() : "INR";
-        Date paymentDate = request.getOfflinePaymentDate() != null
-                ? request.getOfflinePaymentDate() : new Date();
+        Date paymentDate = request.getOfflinePaymentDate() != null ? request.getOfflinePaymentDate()
+                : paidVia != null && paidVia.paymentDate() != null
+                        ? java.sql.Date.valueOf(paidVia.paymentDate()) : new Date();
 
         String paymentLogId;
         try {
@@ -539,6 +550,7 @@ public class SubOrgLearnerService {
                     PaymentLogStatusEnum.SUCCESS.name(),
                     PaymentStatusEnum.PAID.name(),
                     specificJson);
+            offlinePaymentDetailsService.apply(paymentLogId, paidVia, recordedByUserId);
             log.info("Recorded manual offline payment={} currency={} for learner={} userPlan={} logId={}",
                     amount, currency, learnerUserId, learnerUserPlanId, paymentLogId);
         } catch (Exception e) {

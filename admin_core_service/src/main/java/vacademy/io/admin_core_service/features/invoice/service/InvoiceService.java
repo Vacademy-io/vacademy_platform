@@ -80,6 +80,9 @@ import java.util.stream.Collectors;
 public class InvoiceService {
 
     @Autowired
+    private vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService offlinePaymentDetailsService;
+
+    @Autowired
     private InvoiceRepository invoiceRepository;
 
     @Autowired
@@ -5224,6 +5227,13 @@ public class InvoiceService {
         double amount = invoice.getTotalAmount() != null
                 ? invoice.getTotalAmount().doubleValue() : 0d;
 
+        // How it was paid, validated against the institute's offline payment modes before
+        // anything is written.
+        vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService.Resolved paidVia =
+                offlinePaymentDetailsService.resolve(invoice.getInstituteId(),
+                        request != null ? request.getPaymentDetails() : null,
+                        request != null ? request.getTransactionId() : null);
+
         // 1. PaymentLog — userPlan=null because admin invoices aren't bound to enrollments.
         String paymentLogId = paymentLogService.createPaymentLog(
                 invoice.getUserId(),
@@ -5233,7 +5243,8 @@ public class InvoiceService {
                 currency,
                 null,
                 null,
-                new java.util.Date());
+                paidVia != null && paidVia.paymentDate() != null
+                        ? java.sql.Date.valueOf(paidVia.paymentDate()) : new java.util.Date());
 
         // 2. Promote to SUCCESS/PAID + audit metadata
         Map<String, Object> paymentSpecificData = new HashMap<>();
@@ -5257,6 +5268,8 @@ public class InvoiceService {
         } catch (Exception e) {
             throw new VacademyException("Failed to promote payment log to SUCCESS: " + e.getMessage());
         }
+        offlinePaymentDetailsService.apply(paymentLogId, paidVia,
+                userDetails != null ? userDetails.getUserId() : null);
 
         // 3. A proforma becomes a real invoice at the moment it is paid — this is where the
         // institute's actual invoice number gets drawn. Runs before the PAID flip so the

@@ -50,6 +50,12 @@ public class CpoEnrollmentConfigDTO {
     private String paymentReference;
 
     /**
+     * How the offline payment was made (mode, sub-option, reference, date). Falls back to
+     * {@code options.payment_details}. See OfflinePaymentDetailsService.
+     */
+    private vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO paymentDetails;
+
+    /**
      * Learner-specific installment schedule chosen by the admin (count, gap, first due
      * date, optionally edited rows). When set, the learner's bills are generated from it
      * instead of the plan's fixed template; it also lets a one-time course price be paid

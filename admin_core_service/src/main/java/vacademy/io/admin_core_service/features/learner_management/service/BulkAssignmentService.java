@@ -37,6 +37,7 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Complex
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.InstallmentScheduleService;
 import vacademy.io.admin_core_service.features.fee_management.service.OneTimeInstallmentPlanProvisioner;
+import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -121,6 +122,7 @@ public class BulkAssignmentService {
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final InstallmentScheduleService installmentScheduleService;
     private final OneTimeInstallmentPlanProvisioner oneTimeInstallmentPlanProvisioner;
+    private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final SubOrgService subOrgService;
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     // Used only to resolve a sub-org's own leader for the workflow context — see resolveSubOrgLeader.
@@ -309,6 +311,18 @@ public class BulkAssignmentService {
                     }
                     continue;
                 }
+            }
+
+            // How the payment was made: validated once per assignment, before anyone is
+            // enrolled, so a bad mode fails cleanly instead of leaving enrollments behind.
+            try {
+                resolveOfflinePaymentDetails(assignment, config, options, request.getInstituteId());
+            } catch (Exception e) {
+                for (String userId : allUserIds) {
+                    results.add(buildFailedResult(userId, userMap,
+                            assignment.getPackageSessionId(), "Payment details: " + e.getMessage()));
+                }
+                continue;
             }
 
             for (String userId : allUserIds) {
@@ -823,13 +837,15 @@ public class BulkAssignmentService {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     perUserPaymentDate, globalPaymentDate, transactionId,
-                    generateInvoiceOnManualEnroll);
+                    generateInvoiceOnManualEnroll, offlinePaymentDetailsFor(assignment, options));
         }
 
         // Create payment log if any payment date or transaction ID is provided.
         // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
         // (and uses the partial amount the admin specified instead of the full plan price).
-        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId))) {
+        vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlineDetails = options != null ? options.getPaymentDetails() : null;
+        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)
+                || offlineDetails != null)) {
             try {
                 Double grossAmount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
                 Double amount = adminDiscount != null
@@ -837,8 +853,12 @@ public class BulkAssignmentService {
                         : grossAmount;
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
                         : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
+                OfflinePaymentDetailsService.Resolved paidVia =
+                        offlinePaymentDetailsService.resolve(instituteId, offlineDetails, transactionId);
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
-                        : (globalPaymentDate != null ? globalPaymentDate : new Date());
+                        : globalPaymentDate != null ? globalPaymentDate
+                        : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
+                        : new Date();
 
                 String paymentLogId = paymentLogService.createPaymentLog(
                         userId,
@@ -868,6 +888,7 @@ public class BulkAssignmentService {
                         vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                         vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                         vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+                offlinePaymentDetailsService.apply(paymentLogId, paidVia, adminUserId);
 
                 // Book the payment on the learner's account ledger as a charge raised and
                 // settled at once. Without it the plan (created ACTIVE, so never accrued) left
@@ -1054,7 +1075,7 @@ public class BulkAssignmentService {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     null, null, null,
-                    false);
+                    false, offlinePaymentDetailsFor(assignment, null));
         }
 
         BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
@@ -1874,6 +1895,36 @@ public class BulkAssignmentService {
         return assignment.getCpoPaymentAmount();
     }
 
+    /** The assignment's own payment details, else the run-wide ones. */
+    private static vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlinePaymentDetailsFor(AssignmentItemDTO assignment, BulkAssignOptionsDTO options) {
+        if (assignment != null && assignment.getCpoConfig() != null && assignment.getCpoConfig().getPaymentDetails() != null) {
+            return assignment.getCpoConfig().getPaymentDetails();
+        }
+        return options != null ? options.getPaymentDetails() : null;
+    }
+
+    /**
+     * Validates how the payment was made for an assignment that records one: an offline
+     * payment on a fee plan, or a payment date / transaction id / details on any other plan.
+     * Throws with an admin-readable message; does nothing when no payment is recorded.
+     */
+    private void resolveOfflinePaymentDetails(AssignmentItemDTO assignment, DefaultInviteResolver.ResolvedConfig config,
+                                              BulkAssignOptionsDTO options, String instituteId) {
+        if (isCpoOption(config.getPaymentOption())) {
+            Double amount = "OFFLINE".equals(resolveCpoMode(assignment)) ? resolveCpoAmount(assignment) : null;
+            if (amount == null || amount <= 0) return;
+            String reference = assignment.getCpoConfig() != null && StringUtils.hasText(assignment.getCpoConfig().getPaymentReference())
+                    ? assignment.getCpoConfig().getPaymentReference()
+                    : options != null ? options.getTransactionId() : null;
+            offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetailsFor(assignment, options), reference);
+            return;
+        }
+        if (options != null && (options.getPaymentDate() != null || StringUtils.hasText(options.getTransactionId())
+                || options.getPaymentDetails() != null)) {
+            offlinePaymentDetailsService.resolve(instituteId, options.getPaymentDetails(), options.getTransactionId());
+        }
+    }
+
     private static InstallmentScheduleDTO scheduleOf(AssignmentItemDTO assignment) {
         return assignment != null && assignment.getCpoConfig() != null
                 ? assignment.getCpoConfig().getInstallmentSchedule()
@@ -2038,7 +2089,8 @@ public class BulkAssignmentService {
             String cpoMode, Double cpoAmount,
             CpoEnrollmentConfigDTO cpoConfig, String adminUserId,
             Date perUserPaymentDate, Date globalPaymentDate, String transactionId,
-            boolean generateInvoiceOnManualEnroll) {
+            boolean generateInvoiceOnManualEnroll,
+            vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlinePaymentDetails) {
 
         String cpoId = config.getPaymentOption().getComplexPaymentOptionId();
         if (!StringUtils.hasText(cpoId)) {
@@ -2094,8 +2146,14 @@ public class BulkAssignmentService {
         //    via FeeLedgerAllocationService.allocatePaymentForNewLog (same engine the
         //    learner pay-installments + admin allocate paths use).
         try {
+            String reference = cpoConfig != null && StringUtils.hasText(cpoConfig.getPaymentReference())
+                    ? cpoConfig.getPaymentReference() : transactionId;
+            OfflinePaymentDetailsService.Resolved paidVia =
+                    offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetails, reference);
             Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
-                    : (globalPaymentDate != null ? globalPaymentDate : new Date());
+                    : globalPaymentDate != null ? globalPaymentDate
+                    : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
+                    : new Date();
             String currency = config.getPaymentPlan() != null && config.getPaymentPlan().getCurrency() != null
                     ? config.getPaymentPlan().getCurrency()
                     : (config.getEnrollInvite() != null && config.getEnrollInvite().getCurrency() != null
@@ -2126,6 +2184,7 @@ public class BulkAssignmentService {
                     vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                     vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                     vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+            offlinePaymentDetailsService.apply(paymentLogId, paidVia, adminUserId);
 
             // Ledger credit for the money just taken. Without this the Account Summary
             // tiles (which read user_account_ledger via sumCredits) report Total Paid 0

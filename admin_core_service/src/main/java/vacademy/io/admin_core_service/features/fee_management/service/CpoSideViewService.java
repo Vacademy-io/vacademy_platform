@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.fee_management.service;
 
+import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -63,6 +65,7 @@ public class CpoSideViewService {
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final InvoiceService invoiceService;
     private final InvoiceRepository invoiceRepository;
+    private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
@@ -287,11 +290,24 @@ public class CpoSideViewService {
         UserPlan plan = userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new VacademyException("UserPlan not found: " + userPlanId));
 
+        // Resolve institute_id from SFP rows — UserPlan has no instituteId column.
+        String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
+                .map(StudentFeePayment::getInstituteId)
+                .filter(s -> s != null && !s.isBlank())
+                .findFirst().orElse(null);
+
+        // Validate how it was paid before anything is written.
+        OfflinePaymentDetailsService.Resolved paymentDetails =
+                offlinePaymentDetailsService.resolve(instituteId, req.getPaymentDetails(), req.getReference());
+
         String currency = req.getCurrency() != null
                 ? req.getCurrency()
                 : (plan.getPaymentPlan() != null && plan.getPaymentPlan().getCurrency() != null
                         ? plan.getPaymentPlan().getCurrency() : "INR");
-        Date paymentDate = req.getPaymentDate() != null ? req.getPaymentDate() : new Date();
+        Date paymentDate = req.getPaymentDate() != null ? req.getPaymentDate()
+                : paymentDetails != null && paymentDetails.paymentDate() != null
+                        ? java.sql.Date.valueOf(paymentDetails.paymentDate())
+                        : new Date();
 
         String paymentLogId = paymentLogService.createPaymentLog(
                 plan.getUserId(),
@@ -314,12 +330,7 @@ public class CpoSideViewService {
                 PaymentLogStatusEnum.SUCCESS.name(),
                 PaymentStatusEnum.PAID.name(),
                 JsonUtil.toJson(paymentSpecificData));
-
-        // Resolve institute_id from SFP rows — UserPlan has no instituteId column.
-        String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
-                .map(StudentFeePayment::getInstituteId)
-                .filter(s -> s != null && !s.isBlank())
-                .findFirst().orElse(null);
+        offlinePaymentDetailsService.apply(paymentLogId, paymentDetails, appliedBy);
 
         // Ledger: credit payment for CPO offline settlement
         if (instituteId != null) {

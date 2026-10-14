@@ -1,6 +1,6 @@
 # Recording Offline Payments: Mode, Sub-mode and Reference
 
-**Status:** Proposed (2026-10-14). Nothing here is built yet.
+**Status:** Phase 1 (backend) built 2026-10-14; phases 2–4 proposed. See [§8](#8-phases).
 
 When an admin marks a payment as received (cash at the counter, a UPI transfer to the
 institute's PhonePe, a cheque), record **how** it was paid in a structured way, using options
@@ -76,8 +76,11 @@ New nullable columns on `payment_log` (additive; existing rows stay as they are)
 
 ## 4. Settings
 
-A new institute setting key `OFFLINE_PAYMENT_SETTING`, readable by institute staff only (it can
-hold bank account labels). When the key is absent, the system defaults below apply.
+Stored per institute in its own table, `institute_offline_payment_setting` (V576), **not** in
+`institutes.setting_json`: parts of that blob are served to learners and the public, and these
+options can name bank accounts. Read by institute staff, written by institute admins, through
+`GET`/`PUT /admin-core-service/v1/institute/offline-payment-modes?instituteId=`. An institute
+that has not saved its own gets the system defaults below.
 
 ```json
 {
@@ -111,9 +114,9 @@ Rules:
   account received the transfer, which POS machine.
 - `require_mode = true` makes the mode mandatory in every record-payment dialog; otherwise it
   is optional and defaults to `default_mode`.
-- Saved through the existing generic setting endpoint
-  (`/institute/setting/v1/save-setting?settingKey=OFFLINE_PAYMENT_SETTING`), sending the whole
-  object, like the other payment settings.
+- Per mode, `reference_required` and `proof_required` make the reference or a proof file
+  mandatory for that mode.
+- The PUT sends the whole object; codes left blank are derived from the label.
 
 ## 5. API
 
@@ -138,8 +141,10 @@ fields:
   keep working. When both are sent, `payment_details` wins.
 - One writer, `OfflinePaymentDetailsService.apply(paymentLogId, details, instituteId, adminUserId)`,
   called right after each path creates its PaymentLog, so the eleven paths cannot drift again.
-- `GET /v1/institute/offline-payment-modes?instituteId=` returns the effective options (setting
-  or system defaults) for the dialogs.
+- Wired into paths A, B, C, E, F and G: `cpo_config.payment_details` / `options.payment_details`
+  (Enroll wizard), `payment_details` on record-offline-payment, allocate-selected and
+  mark-paid-manual, `offline_payment_details` on sub-org add member. The bulk-assign and sub-org
+  paths validate before anyone is enrolled.
 
 ## 6. Where it shows
 
@@ -172,7 +177,7 @@ fields:
 
 | Phase | Scope |
 |---|---|
-| 1 | Migration; `OFFLINE_PAYMENT_SETTING` (staff-only) + defaults + read endpoint; `OfflinePaymentDetailsService`; `payment_details` on paths A, B, C, E, F, G; `mapToDTO` fields |
+| 1 ✅ | Migration V576; `institute_offline_payment_setting` + defaults + GET/PUT endpoint (`OfflinePaymentModeService`); `OfflinePaymentDetailsService`; `payment_details` on paths A, B, C, E, F, G; `mapToDTO` fields; Pay-installments receipts print the mode and reference |
 | 2 | Settings UI; shared `OfflinePaymentFields`; wire the dialogs for A, B, C, E, F, G |
 | 3 | Manage Payments column, filter, detail sheet, CSV; dashboards group by mode; receipts and invoices |
 | 4 | Remaining paths H, I, J, K (K logged as MANUAL) and path D |

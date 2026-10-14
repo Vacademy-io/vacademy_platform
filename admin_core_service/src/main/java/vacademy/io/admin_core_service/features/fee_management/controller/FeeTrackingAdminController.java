@@ -260,7 +260,8 @@ public class FeeTrackingAdminController {
 
         String invoiceId = feeLedgerAllocationService.allocatePaymentForSelectedInstallments(
                 userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
-                request.getAmount(), request.getRemarks());
+                request.getAmount(), request.getRemarks(),
+                request.getPaymentDetails(), user != null ? user.getUserId() : null);
 
         if (invoiceId == null) {
             return ResponseEntity.ok(new java.util.HashMap<>());

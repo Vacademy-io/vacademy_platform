@@ -17,6 +17,12 @@ import {
     ChalkboardTeacher,
     Student,
     ArrowLeft,
+    AddressBook,
+    EnvelopeSimple,
+    IdentificationCard,
+    PencilSimple,
+    Phone,
+    UserCircle,
 } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useSidebarStore } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/global-states';
@@ -44,7 +50,7 @@ import { useInstituteQuery } from '@/services/student-list-section/getInstituteD
 import { Separator } from '@/components/ui/separator';
 import EditDashboardProfileComponent from '@/routes/dashboard/-components/EditDashboardProfileComponent';
 import AdminProfile from '@/routes/dashboard/-components/AdminProfile';
-import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { handleGetAdminDetails } from '@/services/student-list-section/getAdminDetails';
 import useAdminLogoStore from '../sidebar/admin-logo-zustand';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -95,13 +101,6 @@ import { Alarm } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
-    const roleColors: Record<string, string> = {
-        ADMIN: '#F4F9FF',
-        'CONTENT CREATOR': '#F4FFF9',
-        'ASSESSMENT CREATOR': '#FFF4F5',
-        TEACHER: '#FFF4F5',
-        EVALUATOR: '#F5F0FF',
-    };
     const queryClient = useQueryClient();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const { data: adminDetails } = useSuspenseQuery(handleGetAdminDetails());
@@ -1011,46 +1010,50 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         <SheetTitle className="text-primary-500">
                                             {t('profile.profileDetails')}
                                         </SheetTitle>
-                                        <div className="flex flex-col gap-8">
-                                            <div className="flex flex-col items-center justify-center gap-4">
-                                                {adminLogo !== '' && (
-                                                    <img
-                                                        src={adminLogo}
-                                                        alt={t('profile.logo')}
-                                                        className="size-32 rounded-full object-cover md:size-48"
-                                                    />
-                                                )}
-                                                <h1 className="text-center">
-                                                    {adminDetails?.full_name}
-                                                </h1>
-                                                <div className="flex flex-wrap items-center justify-center gap-2">
-                                                    <h1 className="whitespace-nowrap">
-                                                        {t('profile.roleType')}
-                                                    </h1>
-                                                    {adminDetails.roles?.map((role, idx) => {
-                                                        const bgColor =
-                                                            roleColors[
-                                                                role.role_name.toUpperCase()
-                                                            ] || '#EDEDED';
-                                                        return (
-                                                            <Badge
-                                                                key={idx}
-                                                                className={`whitespace-nowrap rounded-lg border border-neutral-300 py-1.5 font-thin shadow-none`}
-                                                                style={{ backgroundColor: bgColor }}
-                                                            >
-                                                                {role.role_name}
-                                                            </Badge>
-                                                        );
-                                                    })}
+                                        <div className="mt-6 flex flex-col gap-4">
+                                            <div className="flex flex-col items-center gap-4 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+                                                <Avatar className="size-24 border-4 border-primary-50 md:size-28">
+                                                    {adminLogo !== '' && (
+                                                        <AvatarImage
+                                                            src={adminLogo}
+                                                            alt={t('profile.logo')}
+                                                            className="object-cover"
+                                                        />
+                                                    )}
+                                                    <AvatarFallback className="bg-primary-100 text-h2 font-semibold text-primary-500">
+                                                        {getInitials(adminDetails?.full_name)}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <h2 className="break-words text-h3 font-semibold text-neutral-700">
+                                                        {adminDetails?.full_name}
+                                                    </h2>
+                                                    {adminDetails.roles?.length ? (
+                                                        <div
+                                                            className="flex flex-wrap items-center justify-center gap-2"
+                                                            aria-label={t('profile.roleType')}
+                                                        >
+                                                            {adminDetails.roles.map((role, idx) => (
+                                                                <span
+                                                                    key={idx}
+                                                                    className="whitespace-nowrap rounded-md border border-primary-200 bg-primary-50 px-2 py-0.5 text-caption font-semibold uppercase text-primary-500"
+                                                                >
+                                                                    {role.role_name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                                 {canEditProfile ? (
                                                     <AdminProfile adminDetails={adminDetails} />
                                                 ) : null}
                                             </div>
-                                            <Separator />
-                                            <div className="flex flex-col gap-2">
+                                            <section className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <h1>{t('profile.accountInformation')}</h1>
+                                                    <h3 className="flex items-center gap-2 text-subtitle font-semibold text-neutral-700">
+                                                        <IdentificationCard className="size-5 text-primary-500" />
+                                                        {t('profile.accountInformation')}
+                                                    </h3>
                                                     <MyButton
                                                         buttonType="secondary"
                                                         scale="small"
@@ -1058,37 +1061,46 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                             setShowEditAccountDetails(true);
                                                         }}
                                                     >
+                                                        <PencilSimple className="size-3.5" />
                                                         {t('profile.editDetails')}
                                                     </MyButton>
                                                 </div>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('profile.username')}&nbsp;</span>
-                                                    <span className="break-all">
-                                                        {getUserName()}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                            <Separator />
-                                            <div className="flex flex-col gap-2">
-                                                <h1>{t('profile.contactInformation')}</h1>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('profile.email')}&nbsp;</span>
-                                                    <span className="break-all">
-                                                        {adminDetails?.email}
-                                                    </span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('profile.mobile')}&nbsp;</span>
-                                                    <span>+{adminDetails?.mobile_number}</span>
-                                                </p>
-                                            </div>
+                                                <ProfileDetailRow
+                                                    icon={<UserCircle className="size-5" />}
+                                                    label={t('profile.usernameLabel')}
+                                                    value={getUserName()}
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                            </section>
+                                            <section className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
+                                                <h3 className="flex items-center gap-2 text-subtitle font-semibold text-neutral-700">
+                                                    <AddressBook className="size-5 text-primary-500" />
+                                                    {t('profile.contactInformation')}
+                                                </h3>
+                                                <ProfileDetailRow
+                                                    icon={<EnvelopeSimple className="size-5" />}
+                                                    label={t('profile.emailLabel')}
+                                                    value={adminDetails?.email}
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                                <ProfileDetailRow
+                                                    icon={<Phone className="size-5" />}
+                                                    label={t('profile.mobileLabel')}
+                                                    value={
+                                                        adminDetails?.mobile_number
+                                                            ? `+${adminDetails.mobile_number}`
+                                                            : ''
+                                                    }
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                            </section>
                                         </div>
                                     </SheetContent>
                                 </Sheet>
                             )}
                             {canViewInstitute && (
                                 <Sheet>
-                                    <SheetTrigger className="w-full p-2 text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
+                                    <SheetTrigger className="w-full p-2 text-left text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
                                         {t('institute.viewInstituteDetails')}
                                     </SheetTrigger>
                                     <SheetContent
@@ -1203,6 +1215,45 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     onOpenChange={setShowInstituteSwitcher}
                 />
             )}
+        </div>
+    );
+}
+
+function getInitials(name?: string | null) {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    return parts
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join('');
+}
+
+function ProfileDetailRow({
+    icon,
+    label,
+    value,
+    emptyText,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value?: string | null;
+    emptyText: string;
+}) {
+    return (
+        <div className="flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                {icon}
+            </span>
+            <div className="flex min-w-0 flex-col">
+                <span className="text-caption text-neutral-500">{label}</span>
+                {value ? (
+                    <span className="break-all text-body font-semibold text-neutral-700">
+                        {value}
+                    </span>
+                ) : (
+                    <span className="text-body italic text-neutral-400">{emptyText}</span>
+                )}
+            </div>
         </div>
     );
 }

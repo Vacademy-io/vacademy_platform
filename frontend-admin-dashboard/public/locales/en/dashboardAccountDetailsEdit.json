@@ -1,5 +1,6 @@
 {
     "dialogTitle": "Edit Account Details",
+    "signOutNote": "You'll be signed out after updating and will need to log in again with your new details.",
     "username": {
         "sectionTitle": "Username",
         "label": "Username*",

@@ -56,7 +56,11 @@
         "username": "اسم المستخدم:",
         "contactInformation": "معلومات الاتصال",
         "email": "البريد الإلكتروني:",
-        "mobile": "الجوال:"
+        "mobile": "الجوال:",
+        "usernameLabel": "اسم المستخدم",
+        "emailLabel": "البريد الإلكتروني",
+        "mobileLabel": "الجوال",
+        "notProvided": "غير متوفر"
     },
     "institute": {
         "viewInstituteDetails": "عرض تفاصيل المؤسسة",

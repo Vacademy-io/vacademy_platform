@@ -50,7 +50,11 @@
         "username": "Nom d'utilisateur :",
         "contactInformation": "Informations de contact",
         "email": "E-mail :",
-        "mobile": "Mobile :"
+        "mobile": "Mobile :",
+        "usernameLabel": "Nom d'utilisateur",
+        "emailLabel": "E-mail",
+        "mobileLabel": "Mobile",
+        "notProvided": "Non renseigné"
     },
     "institute": {
         "viewInstituteDetails": "Voir les détails de l'établissement",

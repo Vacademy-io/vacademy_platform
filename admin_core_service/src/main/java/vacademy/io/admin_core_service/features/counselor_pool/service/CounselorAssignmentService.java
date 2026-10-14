@@ -45,7 +45,9 @@ import java.util.stream.Collectors;
  *   5. Pick next via the POOL-WIDE last-assigned counselor (latest
  *      last_assigned_at across the pool's lists) + display_order, resuming
  *      from the last-assigned member's true order even if they've since gone
- *      INACTIVE or off-shift, so a status flip never re-biases the rotation
+ *      INACTIVE or off-shift, so a status flip never re-biases the rotation.
+ *      With unified_rotation_order on, "next" comes from the pool's single
+ *      order (PoolRotationOrder) instead of this list's display_order.
  *   6. Persist pointer update
  *
  * New leads always go to a currently-ACTIVE member chosen by fair rotation —
@@ -163,8 +165,11 @@ public class CounselorAssignmentService {
 
         // Step 5: pick the next ACTIVE member by rotation. picked is always eligible — no backup
         // redirection needed for routing a new lead.
-        CounselorPoolMember picked = pickNext(candidates, allMembers,
-                resolveRotationPointer(poolId, allMembers, locked.getLastAssignedCounselorId()));
+        Optional<CounselorPoolMember> inPoolOrder = Boolean.TRUE.equals(pool.getUnifiedRotationOrder())
+                ? pickNextInPoolOrder(poolId, candidates)
+                : Optional.empty();
+        CounselorPoolMember picked = inPoolOrder.orElseGet(() -> pickNext(candidates, allMembers,
+                resolveRotationPointer(poolId, allMembers, locked.getLastAssignedCounselorId())));
 
         // Step 6: persist pointer as the actual recipient.
         poolAudienceRepository.updateLastAssigned(
@@ -289,6 +294,40 @@ public class CounselorAssignmentService {
     // ────────────────────────────────────────────────────────────────
     // Pointer-based rotation
     // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Pools with {@code unified_rotation_order} on: the first candidate after the pool's
+     * last-assigned counselor in the pool's single rotation order ({@link PoolRotationOrder}),
+     * wrapping around. A list's own {@code display_order} can drift from the others, and reading
+     * "next" from it skipped some counselors indefinitely. INACTIVE / off-shift rows still hold
+     * their place in the order, so a status flip never re-biases the rotation. Empty when the
+     * pool has no assignment yet or the last-assigned counselor has left the pool; the caller
+     * then falls back to the per-list rotation.
+     */
+    private Optional<CounselorPoolMember> pickNextInPoolOrder(String poolId,
+                                                              List<CounselorPoolMember> candidates) {
+        String poolPointer = poolAudienceRepository
+                .findFirstByPoolIdAndLastAssignedAtIsNotNullOrderByLastAssignedAtDesc(poolId)
+                .map(CounselorPoolAudience::getLastAssignedCounselorId)
+                .orElse(null);
+        if (poolPointer == null) {
+            return Optional.empty();
+        }
+        List<String> order = PoolRotationOrder.canonical(poolMemberRepository.findByPoolId(poolId));
+        int pointerIndex = order.indexOf(poolPointer);
+        if (pointerIndex < 0) {
+            return Optional.empty();
+        }
+        Map<String, CounselorPoolMember> candidateById = candidates.stream()
+                .collect(Collectors.toMap(CounselorPoolMember::getCounselorUserId, m -> m, (a, b) -> a));
+        for (int step = 1; step <= order.size(); step++) {
+            CounselorPoolMember next = candidateById.get(order.get((pointerIndex + step) % order.size()));
+            if (next != null) {
+                return Optional.of(next);
+            }
+        }
+        return Optional.empty();
+    }
 
     /**
      * Whose turn it was last. The rotation is pool-wide: the counselor who got the pool's most

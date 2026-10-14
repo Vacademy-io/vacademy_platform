@@ -118,6 +118,9 @@ public class CounselorPoolService {
         if (request.getShiftAware() != null) {
             pool.setShiftAware(request.getShiftAware());
         }
+        if (request.getUnifiedRotationOrder() != null) {
+            pool.setUnifiedRotationOrder(request.getUnifiedRotationOrder());
+        }
         poolRepository.save(pool);
 
         return getPool(poolId);
@@ -227,8 +230,20 @@ public class CounselorPoolService {
         }
 
         // Seed member rows for the new audience using existing pool members.
-        // Display order matches the member's position when listed by added_at.
         List<CounselorPoolMember> existingRows = poolMemberRepository.findByPoolId(poolId);
+        boolean unifiedRotation = poolRepository.findById(poolId)
+                .map(p -> Boolean.TRUE.equals(p.getUnifiedRotationOrder()))
+                .orElse(false);
+        if (unifiedRotation) {
+            // Pool-wide rotation: the new list takes the pool's rotation order, so it matches the
+            // others instead of whatever order the rows come back in.
+            List<String> poolOrder = PoolRotationOrder.canonical(existingRows);
+            for (int i = 0; i < poolOrder.size(); i++) {
+                createMemberRow(poolId, audienceId, poolOrder.get(i), i + 1, addedByUserId);
+            }
+            return;
+        }
+        // Display order matches the member's position when listed by added_at.
         // Distinct counselors in this pool (order: first appearance in existing rows)
         LinkedHashMap<String, Integer> counselorToOrder = new LinkedHashMap<>();
         for (CounselorPoolMember row : existingRows) {
@@ -705,6 +720,7 @@ public class CounselorPoolService {
                 .assignmentMode(p.getAssignmentMode())
                 .schedulePattern(p.getSchedulePattern())
                 .shiftAware(p.getShiftAware())
+                .unifiedRotationOrder(p.getUnifiedRotationOrder())
                 .createdBy(p.getCreatedBy())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())

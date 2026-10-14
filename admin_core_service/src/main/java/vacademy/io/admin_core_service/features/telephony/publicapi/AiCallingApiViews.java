@@ -189,7 +189,7 @@ public class AiCallingApiViews {
                 ? s.queueItem().getDispatchedAt()
                 : l != null && l.getCreatedAt() != null ? l.getCreatedAt().toInstant() : null;
         m.put("dialed_at", dialedAt == null ? null : dialedAt.toString());
-        Instant endedAt = s.isFinal() ? endedAt(c, l, r, dialedAt, duration) : null;
+        Instant endedAt = s.isFinal() ? endedAt(c, l, r, dialedAt, duration, s.queueItem()) : null;
         m.put("ended_at", endedAt == null ? null : endedAt.toString());
 
         String recordingUrl = recordingUrl(l);
@@ -201,13 +201,25 @@ public class AiCallingApiViews {
         return m;
     }
 
-    /** When the call ended: the carrier's end time, else start + duration, else when we saw it end. */
-    static Instant endedAt(AiCallApiCall c, TelephonyCallLog l, AiCallResult r, Instant dialedAt, Integer duration) {
-        if (l != null && l.getEndTime() != null) return l.getEndTime().toInstant();
+    /**
+     * When the call ended: the carrier's end time, else start + duration, else when we
+     * saw it end, else when its queue item last changed (a call canceled before it was
+     * dialed, until the finaliser stamps it). Never a time that has not come yet: a test
+     * call carries a made-up duration and finishes the moment it starts.
+     */
+    static Instant endedAt(AiCallApiCall c, TelephonyCallLog l, AiCallResult r, Instant dialedAt, Integer duration,
+                           AiCallQueueItem item) {
+        Instant now = Instant.now();
+        if (l != null && l.getEndTime() != null && !l.getEndTime().toInstant().isAfter(now)) {
+            return l.getEndTime().toInstant();
+        }
         Instant start = r != null && r.getCallStart() != null ? r.getCallStart() : dialedAt;
-        if (start != null && duration != null && l != null) return start.plusSeconds(duration);
+        if (start != null && duration != null && l != null && !start.plusSeconds(duration).isAfter(now)) {
+            return start.plusSeconds(duration);
+        }
         if (c.getTerminalSeenAt() != null) return c.getTerminalSeenAt();
-        return c.getFinalizedAt();
+        if (c.getFinalizedAt() != null) return c.getFinalizedAt();
+        return item != null && item.getUpdatedAt() != null ? item.getUpdatedAt() : now;
     }
 
     private Map<String, Object> outcome(AiCallResult r) {

@@ -190,10 +190,28 @@ class AiCallingApiViewsTest {
     void endedAtPrefersTheCarriersEndTime() {
         Instant end = Instant.parse("2026-10-14T05:00:00Z");
         TelephonyCallLog l = TelephonyCallLog.builder().id("l1").endTime(Timestamp.from(end)).build();
-        assertEquals(end, AiCallingApiViews.endedAt(call(null, "l1"), l, null, null, 90));
+        assertEquals(end, AiCallingApiViews.endedAt(call(null, "l1"), l, null, null, 90, null));
         TelephonyCallLog noEnd = TelephonyCallLog.builder().id("l1").build();
         Instant dialed = Instant.parse("2026-10-14T04:58:00Z");
-        assertEquals(dialed.plusSeconds(90), AiCallingApiViews.endedAt(call(null, "l1"), noEnd, null, dialed, 90));
+        assertEquals(dialed.plusSeconds(90), AiCallingApiViews.endedAt(call(null, "l1"), noEnd, null, dialed, 90, null));
+    }
+
+    @Test
+    void endedAtIsNeverInTheFuture() {
+        // A test call: dialed now with a made-up 90 s duration, already final.
+        Instant dialed = Instant.now();
+        AiCallApiCall c = call(null, "l1");
+        c.setTerminalSeenAt(dialed);
+        TelephonyCallLog noEnd = TelephonyCallLog.builder().id("l1").build();
+        assertEquals(dialed, AiCallingApiViews.endedAt(c, noEnd, null, dialed, 90, null));
+    }
+
+    @Test
+    void canceledBeforeDialingEndsWhenItsQueueItemChanged() {
+        Instant canceled = Instant.parse("2026-10-14T05:10:00Z");
+        AiCallQueueItem item = new AiCallQueueItem();
+        item.setUpdatedAt(canceled);
+        assertEquals(canceled, AiCallingApiViews.endedAt(call(null, null), null, null, null, null, item));
     }
 
     @Test

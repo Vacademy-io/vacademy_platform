@@ -80,7 +80,7 @@ public class AiCallingUsageService {
     public Map<String, Object> usage(String instituteId, String fromRaw, String toRaw, String tzRaw, String sourceRaw) {
         ZoneId zone;
         try {
-            zone = tzRaw == null || tzRaw.isBlank() ? ZoneOffset.UTC : ZoneId.of(tzRaw.trim());
+            zone = tzRaw == null || tzRaw.isBlank() ? ZoneId.of("UTC") : ZoneId.of(tzRaw.trim());
         } catch (DateTimeException e) {
             throw AiCallingApiException.invalid("timezone must be an IANA name, e.g. Asia/Kolkata.");
         }

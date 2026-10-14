@@ -29,7 +29,7 @@ import java.util.List;
  *     "counsellorMode": "NONE" | "SAME_AS_PREVIOUS" | "SPECIFIC" | "ROUND_ROBIN",
  *     "specificCounsellorId": "...",  // only meaningful when counsellorMode = SPECIFIC
  *     "specificCounsellorName": "...",
- *     "statusMode": "KEEP_EXISTING" | "RESET_TO_NEW",
+ *     "statusMode": "KEEP_EXISTING" | "RESET_TO_NEW" | "RESET_CLOSED_TO_NEW",
  *     "samePersonByPhone": false,     // field = PHONE: a repeat with a new email joins the
  *                                     // person who already holds the phone
  *     "blockOwnedManualAdd": false,   // field = PHONE: a counsellor cannot add by hand a
@@ -79,8 +79,12 @@ public class LeadDedupSettingService {
      */
     public enum CounsellorMode { NONE, SAME_AS_PREVIOUS, SPECIFIC, ROUND_ROBIN }
 
-    /** KEEP_EXISTING — don't touch conversion_status. RESET_TO_NEW — set it back to "LEAD". */
-    public enum StatusMode { KEEP_EXISTING, RESET_TO_NEW }
+    /**
+     * KEEP_EXISTING — don't touch conversion_status. RESET_TO_NEW — set it back to "LEAD".
+     * RESET_CLOSED_TO_NEW — set it back to "LEAD" only when the lead the enquiry repeats is
+     * closed (converted or LOST); a lead still being worked keeps its status.
+     */
+    public enum StatusMode { KEEP_EXISTING, RESET_TO_NEW, RESET_CLOSED_TO_NEW }
 
     /**
      * What a repeat enquiry leaves behind, each switch on its own (all off by default):

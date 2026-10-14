@@ -750,7 +750,8 @@ public class AudienceService {
         recordReattempt(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 dto.getEmail(), dto.getMobileNumber(),
                 createdUser != null ? createdUser.getFullName() : null, audience.getCampaignName());
-        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
+        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId(), savedResponse,
+                dto.getEmail(), dto.getMobileNumber());
 
         return savedResponse.getId();
     }
@@ -960,7 +961,8 @@ public class AudienceService {
         recordReattempt(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 email, mobileNumber,
                 createdUser != null ? createdUser.getFullName() : null, audience.getCampaignName());
-        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
+        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId(), savedResponse,
+                email, mobileNumber);
 
         return savedResponse.getId();
     }
@@ -1501,7 +1503,8 @@ public class AudienceService {
                 recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
                         userDTO.getEmail(), userDTO.getMobileNumber(),
                         userForNotification.getFullName(), audience.getCampaignName());
-                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
+                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId, savedResponse,
+                        userDTO.getEmail(), userDTO.getMobileNumber());
 
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -2030,11 +2033,38 @@ public class AudienceService {
      * RESET_TO_NEW resets the lead's profile-level conversion status back to "LEAD" (the
      * platform's default/new-lead status), which mirrors onto every audience_response row
      * for that user via {@link UserLeadProfileService#updateConversionStatus}.
+     * RESET_CLOSED_TO_NEW resets only when the lead this enquiry repeats is closed (converted
+     * or LOST) or no active one is left; a lead still being worked keeps its status. A
+     * failed lookup leaves the status untouched.
+     *
+     * @param savedResponse the repeat enquiry, excluded from the "lead it repeats" lookup
+     * @param email the submission's email, as passed to the dedup check
+     * @param phone the submission's phone, as passed to the dedup check
      */
     private void applyRepeatLeadStatus(LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings,
-            String leadUserId, String instituteId) {
-        if (repeatLeadSettings == null
-                || repeatLeadSettings.statusMode() != LeadDedupSettingService.StatusMode.RESET_TO_NEW) {
+            String leadUserId, String instituteId, AudienceResponse savedResponse, String email, String phone) {
+        if (repeatLeadSettings == null) {
+            return;
+        }
+        LeadDedupSettingService.StatusMode mode = repeatLeadSettings.statusMode();
+        if (mode == LeadDedupSettingService.StatusMode.RESET_CLOSED_TO_NEW) {
+            if (savedResponse == null || savedResponse.getId() == null) {
+                return;
+            }
+            try {
+                boolean earlierLeadOpen = leadDeduplicationService.findPrimaryLead(instituteId,
+                                savedResponse.getAudienceId(), email, phone, savedResponse.getId())
+                        .map(p -> isOpenLeadStatus(p.getStatusKey()))
+                        .orElse(false);
+                if (earlierLeadOpen) {
+                    return;
+                }
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: could not tell whether the earlier lead is open, status kept: {}",
+                        savedResponse.getId(), e.getMessage());
+                return;
+            }
+        } else if (mode != LeadDedupSettingService.StatusMode.RESET_TO_NEW) {
             return;
         }
         try {
@@ -2344,7 +2374,8 @@ public class AudienceService {
                 recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
                         userDTO.getEmail(), userDTO.getMobileNumber(),
                         createdUser.getFullName(), audience.getCampaignName());
-                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
+                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId, savedResponse,
+                        userDTO.getEmail(), userDTO.getMobileNumber());
 
                 // 4. Build custom field map for email (to pass to workflow)
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -2904,7 +2935,8 @@ public class AudienceService {
         }
 
         linkCounsellorToEnquiry(instituteId, requestDTO.getAudienceId(), enquiry, requestDTO.getCounsellorId());
-        applyRepeatLeadStatus(repeatLeadSettings, parentUserId, instituteId);
+        applyRepeatLeadStatus(repeatLeadSettings, parentUserId, instituteId, savedResponse,
+                requestDTO.getParentEmail(), requestDTO.getParentMobile());
 
         // STEP 6: Build custom field map for email
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -5730,7 +5762,8 @@ public class AudienceService {
         recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
                 processedData.getEmail(), processedData.getPhone(),
                 createdUser.getFullName(), audience.getCampaignName());
-        applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
+        applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId, savedResponse,
+                processedData.getEmail(), processedData.getPhone());
 
         // 4. Build custom field map for workflow
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());

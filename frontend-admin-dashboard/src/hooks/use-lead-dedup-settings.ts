@@ -29,8 +29,11 @@ export type LeadDedupScope = 'CAMPAIGN' | 'SELECTED' | 'INSTITUTE';
 export type LeadDedupAction = 'REJECT' | 'ALLOW_REASSIGN';
 /** Counsellor handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
 export type RepeatLeadCounsellorMode = 'NONE' | 'SAME_AS_PREVIOUS' | 'SPECIFIC' | 'ROUND_ROBIN';
-/** Status handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
-export type RepeatLeadStatusMode = 'KEEP_EXISTING' | 'RESET_TO_NEW';
+/**
+ * Status handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'.
+ * RESET_CLOSED_TO_NEW resets only when the earlier lead is converted or discarded.
+ */
+export type RepeatLeadStatusMode = 'KEEP_EXISTING' | 'RESET_TO_NEW' | 'RESET_CLOSED_TO_NEW';
 
 /** What a repeat enquiry leaves behind; every switch is off unless set. */
 export interface ReattemptSettings {
@@ -137,7 +140,10 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
         counsellorMode,
         specificCounsellorId: subtree?.specificCounsellorId ?? null,
         specificCounsellorName: subtree?.specificCounsellorName ?? null,
-        statusMode: subtree?.statusMode === 'RESET_TO_NEW' ? 'RESET_TO_NEW' : 'KEEP_EXISTING',
+        statusMode:
+            subtree?.statusMode === 'RESET_TO_NEW' || subtree?.statusMode === 'RESET_CLOSED_TO_NEW'
+                ? subtree.statusMode
+                : 'KEEP_EXISTING',
         samePersonByPhone: subtree?.samePersonByPhone === true,
         blockOwnedManualAdd: subtree?.blockOwnedManualAdd === true,
         reattempt: {

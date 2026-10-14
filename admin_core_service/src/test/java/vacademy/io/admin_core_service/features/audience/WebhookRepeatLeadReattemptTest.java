@@ -365,4 +365,62 @@ class WebhookRepeatLeadReattemptTest {
         order.verify(dedup).findPrimaryLead(any(), any(), any(), any(), any());
         order.verify(profileService).updateConversionStatus("user-new", "inst-1", "LEAD", "SYSTEM");
     }
+
+    /** RESET_CLOSED_TO_NEW: a lead still being worked keeps its status on a repeat. */
+    @Test
+    void resetClosedKeepsAnOpenLeadsStatus() {
+        repeatWith(ReattemptSettings.OFF, StatusMode.RESET_CLOSED_TO_NEW);
+        primaryStatus = "CALL_BACK";
+
+        submit();
+
+        verify(profileService, never()).updateConversionStatus(any(), any(), any(), any());
+    }
+
+    /** RESET_CLOSED_TO_NEW: a converted or discarded lead's repeat starts again as New. */
+    @Test
+    void resetClosedResetsAClosedLead() {
+        repeatWith(ReattemptSettings.OFF, StatusMode.RESET_CLOSED_TO_NEW);
+
+        for (String closed : List.of("LOST", "CONVERTED")) {
+            primaryStatus = closed;
+            submit();
+        }
+
+        verify(profileService, times(2)).updateConversionStatus("user-new", "inst-1", "LEAD", "SYSTEM");
+    }
+
+    /** No active lead left to repeat (only a deleted one matched) — treated as a new lead. */
+    @Test
+    void resetClosedResetsWhenNoActiveLeadIsLeft() {
+        repeatWith(ReattemptSettings.OFF, StatusMode.RESET_CLOSED_TO_NEW);
+        when(dedup.findPrimaryLead(any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+
+        submit();
+
+        verify(profileService).updateConversionStatus("user-new", "inst-1", "LEAD", "SYSTEM");
+    }
+
+    /** Can't tell whether the earlier lead is open — leave the status alone. */
+    @Test
+    void resetClosedKeepsStatusWhenTheLookupFails() {
+        repeatWith(ReattemptSettings.OFF, StatusMode.RESET_CLOSED_TO_NEW);
+        when(dedup.findPrimaryLead(any(), any(), any(), any(), any())).thenThrow(new RuntimeException("db down"));
+
+        submit();
+
+        verify(profileService, never()).updateConversionStatus(any(), any(), any(), any());
+    }
+
+    /** RESET_TO_NEW is unchanged: it resets even an open lead, with no lookup. */
+    @Test
+    void resetToNewStillResetsEveryRepeat() {
+        repeatWith(ReattemptSettings.OFF, StatusMode.RESET_TO_NEW);
+        primaryStatus = "CALL_BACK";
+
+        submit();
+
+        verify(profileService).updateConversionStatus("user-new", "inst-1", "LEAD", "SYSTEM");
+        verify(dedup, never()).findPrimaryLead(any(), any(), any(), any(), any());
+    }
 }

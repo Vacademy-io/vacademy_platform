@@ -116,6 +116,17 @@ class LeadDeduplicationReattemptTest {
     }
 
     @Test
+    void resetClosedStatusModeIsRead() {
+        InstituteRepository institutes = mock(InstituteRepository.class);
+        Institute institute = new Institute();
+        institute.setSetting("{\"setting\":{\"LEAD_SETTING\":{\"data\":{\"dedup\":{\"enabled\":true,"
+                + "\"action\":\"ALLOW_REASSIGN\",\"repeatLead\":{\"statusMode\":\"RESET_CLOSED_TO_NEW\"}}}}}}");
+        when(institutes.findById("inst-1")).thenReturn(Optional.of(institute));
+        assertEquals(LeadDedupSettingService.StatusMode.RESET_CLOSED_TO_NEW,
+                new LeadDedupSettingService(institutes, new ObjectMapper()).get("inst-1").repeatLead().statusMode());
+    }
+
+    @Test
     void duplicateOpenOnlyDefaultsOn() {
         assertEquals(true, parse("{\"reattempt\":{\"markDuplicate\":true}}").duplicateOpenOnly());
         assertEquals(false, parse("{\"reattempt\":{\"duplicateOpenOnly\":false}}").duplicateOpenOnly());

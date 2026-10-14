@@ -100,7 +100,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
-                       is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
+                       is_echo_of_answer, is_call_screener, is_call_connect, caller_asks_who,
+                       caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
                        is_hold_announcement, hold_absorbs, caller_is_busy,
                        opening_expected_secs, ends_on_question)
@@ -295,6 +296,12 @@ def _canonical_markers(text: str) -> str:
 # If a graceful stop (stop_when_done) hasn't ended the runner within this many
 # seconds, hard-cancel — a chatty caller can otherwise starve the drain forever.
 _GRACEFUL_STOP_DEADLINE_SECS = 25.0
+# A short "turn" followed this soon by another carrier line was a piece of that
+# recording (TranscriptCollector.looks_like_voicemail). The six voicemails of
+# 2026-10-14 put 0.9-2.5 s between a piece and the next carrier line; a person
+# who came on after the recording (a11e6709) spoke 3.6 s after its LAST line,
+# with no carrier line following.
+RECORDING_PIECE_SECS = 4.0
 
 
 @dataclass
@@ -448,6 +455,14 @@ class TranscriptCollector(FrameProcessor):
         # FIRST one and it is never the recognisable one.
         self._carrier_seen = False
         self._human_turns = 0          # finals that reached the model as the callee's
+        # …of which turned out to be the operator's recording: a short turn that
+        # another carrier line followed within RECORDING_PIECE_SECS (a number, a
+        # Devanagari syllable or four capitalised words the STT made of the
+        # voicemail between its sentences, 2026-10-14). Only looks_like_voicemail
+        # and the carrier-adjacent guard read it; everything else keeps counting
+        # _human_turns as before.
+        self._recording_turns = 0
+        self._turns_after_carrier = []  # times of short turns since the last carrier line
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
         # When the person put us on hold (0 = not on hold); see the hold branch in
@@ -455,6 +470,12 @@ class TranscriptCollector(FrameProcessor):
         self._hold_since = 0.0
         self._hold_line_t = 0.0
         self._hold_unheard = False     # the hold began before anyone heard the bot
+        # Transcript entries that are the hold recording, absorbed on purpose: on
+        # the record, never meant for the model, so not a "deleted answer" either
+        # (ANSWER_DELETED quoted "Please stay on the line." on 22f80a85, d8146538
+        # and 68bdcbcf, 2026-10-14). The entry dicts themselves, matched by
+        # identity: an equal-text line the person says later is still theirs.
+        self._absorbed = []
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
@@ -660,6 +681,10 @@ class TranscriptCollector(FrameProcessor):
             # "at the t" + "one, please record…" — 2026-09-15) and a piece may
             # match only when joined to the one before it.
             prev_final, self._prev_final = self._prev_final, text
+            # When the PREVIOUS final landed — read below by the carrier-adjacent
+            # guard, after self._prev_final_t has become this final's own time
+            # (that guard's "< 1.0 s" was always true; 2026-10-14 review).
+            prev_final_t = self._prev_final_t
             # Only a phrase that SPANS the boundary counts: a previous final that
             # matched on its own would otherwise make everything after it a
             # carrier line ("…forwarded to voicemail." + "haan ji bol raha hoon").
@@ -684,7 +709,7 @@ class TranscriptCollector(FrameProcessor):
             if self.screener_seen and self._human_turns == 0 and is_screener_hold(text):
                 # The screen is still talking ("Please stay on the line") —
                 # not the person. Keep waiting for their "Hello".
-                self._outcome.transcript.append({"role": "user", "text": text})
+                self._record_absorbed(text)
                 logger.info("turn-gate: screener hold line %r — waiting for the person", text[:40])
                 self._on_activity(user=True)
                 self._on_transcript(backchannel=True)
@@ -696,6 +721,24 @@ class TranscriptCollector(FrameProcessor):
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: carrier announcement %r — not the callee, "
                             "dropping from context", text[:48])
+                # The recording is still talking, so the short "turns" just
+                # before this line were pieces of it, not a person: six
+                # voicemails on 2026-10-14 (a5e314ee, 1c138e52, 36ac8abe,
+                # 2ba1ff7a, 5a180c97, 960251f2 — even a "Hello." between two
+                # of its sentences) disarmed the voicemail hang-up this way and
+                # ran 42-57 s of nudges and a farewell into the recorder. Only
+                # turns BEFORE a carrier line:
+                # whoever speaks after the recording's last line is a person.
+                # Not a screener or a call-connect bridge: those play while a
+                # person may be picking up, and their "Hello." is the person.
+                _pieces = ([] if is_call_screener(text) or is_call_connect(text) else
+                           [t for t in self._turns_after_carrier
+                            if now - t <= RECORDING_PIECE_SECS])
+                if _pieces:
+                    self._recording_turns += len(_pieces)
+                    logger.info("turn-gate: %d short turn(s) just before this carrier line "
+                                "were the recording, not the callee", len(_pieces))
+                self._turns_after_carrier = []
                 self._carrier_seen = True
                 if is_call_screener(text):
                     self.screener_seen = True
@@ -963,6 +1006,11 @@ class TranscriptCollector(FrameProcessor):
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._human_turns += 1
+            if (self._carrier_seen and self._in_machine_window()
+                    and len(text.split()) <= 4):
+                # Possibly a piece of the recording: decided by the next carrier
+                # line, if one follows (see the carrier branch above).
+                self._turns_after_carrier.append(now)
             # The person is on the line and talking to us: the screener is
             # history. Left armed, a mid-conversation "Hello?" replayed the whole
             # opening 2 min 20 s into call 196838de and the caller hung up. A
@@ -1271,8 +1319,9 @@ class TranscriptCollector(FrameProcessor):
                 # re-opening seen on 8e1e00ad). The transcript is then forwarded
                 # below as a fresh, normal turn.
                 if (self._in_machine_window() and self._carrier_seen
-                        and self._prev_final_t and now - self._prev_final_t < 1.0
-                        and len(text.split()) <= 2 and self._human_turns <= 1):
+                        and prev_final_t and now - prev_final_t < 1.0
+                        and len(text.split()) <= 2
+                        and self._human_turns - self._recording_turns <= 1):
                     # Call 9050a3e1 (2026-09-21): the operator's "…is not
                     # available" landed as "The person you're trying to reach."
                     # / "Not." / "Not available." — the middle piece is
@@ -1430,7 +1479,7 @@ class TranscriptCollector(FrameProcessor):
         """A piece of the hold recording: on the record, out of the model's context,
         and not a barge-in. Stamped as heard, so the silence around it is not taken
         for a swallowed utterance (the VAD-orphan re-ask)."""
-        self._outcome.transcript.append({"role": "user", "text": text})
+        self._record_absorbed(text)
         self._hold_line_t = time.time()
         if self._diag is not None:
             self._diag.bump("hold_lines")
@@ -1440,14 +1489,59 @@ class TranscriptCollector(FrameProcessor):
             await self._on_absorb(None)
         await self._release_user_turn(frame, direction)
 
+    def answers_heard(self) -> List[str]:
+        """The caller lines the model was meant to receive — ANSWER_DELETED's
+        `heard` side (diagnostics.split_lost), read once at the end of the call."""
+        tr = self._outcome.transcript
+        # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
+        # those markers) but are deliberately NOT in the context — so they
+        # are not "answers the model never saw". Without this exclusion the
+        # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
+        # 14029bd6's panel read "2 caller answers were discarded", quoting
+        # the voicemail system back at us.
+        # Pickup noises said before the bot's first word are dropped ON
+        # PURPOSE — the opening is their answer (machine-greeting scrap) —
+        # so they are not answers the model missed either. Counting them
+        # put "हम दस।" and "कोन दीदी?" on the 23 Sep panel as lost answers.
+        first_bot = next((i for i, t in enumerate(tr)
+                          if t.get("role") == "assistant"), len(tr))
+        return [t.get("text") or "" for i, t in enumerate(tr)
+                if i > first_bot
+                and t.get("role") == "user"
+                and not (t.get("text") or "").lstrip().startswith("[")
+                and not is_carrier_announcement(t.get("text") or "")
+                # The hold recording, absorbed on purpose (_absorbed).
+                and not self.is_absorbed(t)
+                # An acknowledgement ("ठीक।", "Okay जी") is talked
+                # through in voice mode and kept OUT of the model's
+                # context on purpose — not a lost answer. 8 of the 11
+                # ANSWER_DELETED samples on 24 Sep were exactly these.
+                and mid_reply_action(t.get("text") or "") != ABSORB]
+
+    def _record_absorbed(self, text: str) -> None:
+        entry = {"role": "user", "text": text}
+        self._outcome.transcript.append(entry)
+        self._absorbed.append(entry)
+
+    def is_absorbed(self, entry) -> bool:
+        """A transcript entry the gate kept from the model on purpose (the hold
+        recording): not a caller answer the model lost."""
+        return any(entry is e for e in self._absorbed)
+
     def looks_like_voicemail(self) -> bool:
         """The carrier's recording is the only thing that has spoken. Call
         24089872 (2026-09-12): "forwarded to voicemail… at the tone" was the
         whole caller side, and the bot still nudged twice and left a
         "lost you" farewell — 40 s of telephony and three TTS lines to a
         machine. Only carrier PHRASES arm this (is_carrier_announcement), never
-        a scrap or silence, so a quiet human is not mistaken for a recording."""
-        return self._carrier_seen and self._human_turns == 0
+        a scrap or silence, so a quiet human is not mistaken for a recording.
+
+        Turns the recording itself produced (a piece that another carrier line
+        followed — see RECORDING_PIECE_SECS) do not count as the callee: a5e314ee,
+        1c138e52, 36ac8abe, 2ba1ff7a, 5a180c97 and 960251f2 (2026-10-14) each had
+        one or two and ran 42-57 s. Anything said after the recording's last
+        line still does, so a person who says "Hello" then is never hung up on."""
+        return self._carrier_seen and self._human_turns <= self._recording_turns
 
     def _last_reply_had_question(self) -> bool:
         """Did the bot's most recent played reply ask anything?"""
@@ -3277,8 +3371,10 @@ class NoRepeatGate(FrameProcessor):
                     # बोलिए". A question is never handed back; it is answered.
                     # Once per turn, outside the per-call next-step budget.
                     self._next_step_for = normalize_spoken(self._last_caller_text() or "")
+                    # A request, not a handback: nothing was said to the caller
+                    # (call 4a594125, 2026-10-14 — see next_step_requests).
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     logger.info("no-repeat: whole reply was a repeat but the caller asked a "
                                 "question — asking the model to answer it")
                     try:
@@ -3290,6 +3386,8 @@ class NoRepeatGate(FrameProcessor):
                         logger.exception("no-repeat: answer-question request failed — handing back")
                         line = self._handbacks[self._handback % len(self._handbacks)]
                         self._handback += 1
+                        if self._diag is not None:
+                            self._diag.bump("handbacks")
                         await self._emit(line, direction)
                 elif (self._request_next_step is not None and self._may_ask_next_step()
                       and (self._last_caller_text() or "").strip()
@@ -3306,8 +3404,10 @@ class NoRepeatGate(FrameProcessor):
                     self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                     logger.info("no-repeat: whole reply repeated what they just answered "
                                 "— asking for the next step instead of handing back")
+                    # Not a handback: no line reached the caller. Call 4a594125
+                    # (2026-10-14) headlined HANDBACK_LOOP over two of these.
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     self._next_step_this_reply = True
                     if "?" in self._held_tail or "？" in self._held_tail:
                         self._reask_ok_topic = (question_topic(self._held_tail),
@@ -3320,6 +3420,8 @@ class NoRepeatGate(FrameProcessor):
                         logger.exception("no-repeat: next-step request failed — handing back")
                         line = self._handbacks[self._handback % len(self._handbacks)]
                         self._handback += 1
+                        if self._diag is not None:
+                            self._diag.bump("handbacks")
                         await self._emit(line, direction)
                 else:
                     # Everything was a repeat. Do NOT say it again — hand the turn
@@ -3351,7 +3453,7 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-echo: restatement was the whole reply — asking for "
                                 "the next step (%d/2)", self._next_steps)
                     if self._diag is not None:
-                        self._diag.bump("handbacks")
+                        self._diag.bump("next_step_requests")
                     try:
                         await self._request_next_step(held, kind="restatement",
                                                       attempt=self._next_steps)
@@ -6033,8 +6135,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last and not flags["user_speaking"]:
                 _gap = max(0.0, time.time() - _last)
-                diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
+                # The same rule as set_user_speaking's "caller_thinking": a
+                # silence after OUR question that the caller let run until the
+                # idle nudge is the caller's, not ours. Call afa21bf4
+                # (2026-10-14) went RED on four "dead air 8.0s — both_quiet",
+                # each the 8 s idle wait ended by "हेलो? क्या आप मुझे सुन पा
+                # रहे हैं?". Only when the idle timer said so (idle_nudge_t):
+                # a hole between two bot lines with nothing in flight — a TTS
+                # stall mid-reply, the owed next line after "जी सर।" — is
+                # still ours and still counted.
+                if _why == "both_quiet" and flags["idle_nudge_t"] >= _last:
+                    _why = "caller_silent"
+                if _why != "caller_silent":
+                    diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
                     logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
@@ -7075,10 +7189,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["nudge_count"] += 1
             diag.bump("nudges")
             logger.info("idle: nudge %d corr=%s", flags["nudge_count"], corr)
+            # The caller owed this turn (no_repeat.owes_line() was False): the
+            # silence the nudge ends is theirs — see set_bot_speaking.
+            flags["idle_nudge_t"] = time.time()
             await task.queue_frames([TTSSpeakFrame(nudge_text)])
         else:
             diag.idle_hangup = True
             logger.info("idle: hangup corr=%s", corr)
+            if not no_repeat.owes_line():
+                flags["idle_nudge_t"] = time.time()
             outcome.end_requested = True
             await task.queue_frames([TTSSpeakFrame(idle_farewell)])
             await _begin_stop()
@@ -7462,29 +7581,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         try:
             _delivered = [m.get("content") or "" for m in llm_context.get_messages()
                           if isinstance(m, dict) and m.get("role") == "user"]
-            # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
-            # those markers) but are deliberately NOT in the context — so they
-            # are not "answers the model never saw". Without this exclusion the
-            # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
-            # 14029bd6's panel read "2 caller answers were discarded", quoting
-            # the voicemail system back at us.
-            # Pickup noises said before the bot's first word are dropped ON
-            # PURPOSE — the opening is their answer (machine-greeting scrap) —
-            # so they are not answers the model missed either. Counting them
-            # put "हम दस।" and "कोन दीदी?" on the 23 Sep panel as lost answers.
-            _first_bot = next((i for i, t in enumerate(outcome.transcript)
-                               if t.get("role") == "assistant"), len(outcome.transcript))
-            _heard = [t.get("text") or "" for i, t in enumerate(outcome.transcript)
-                      if i > _first_bot
-                      and t.get("role") == "user"
-                      and not (t.get("text") or "").lstrip().startswith("[")
-                      and not is_carrier_announcement(t.get("text") or "")
-                      # An acknowledgement ("ठीक।", "Okay जी") is talked
-                      # through in voice mode and kept OUT of the model's
-                      # context on purpose — not a lost answer. 8 of the 11
-                      # ANSWER_DELETED samples on 24 Sep were exactly these.
-                      and mid_reply_action(t.get("text") or "") != ABSORB]
-            _lost = diag_mod.split_lost(_heard, _delivered)
+            _lost = diag_mod.split_lost(transcript.answers_heard(), _delivered)
             diag.answers_deleted = _lost.answers
             diag.answers_deleted_samples = _lost.answer_samples
             # Sub-floor scraps are a measured loss but not a lost ANSWER, and

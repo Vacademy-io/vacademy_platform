@@ -4954,8 +4954,10 @@ def test_an_opening_after_pickup_noises_is_not_a_replay():
 
 def test_pickup_scraps_are_not_counted_as_lost_answers():
     import inspect
-    src = inspect.getsource(b.run_bot)
-    assert "if i > _first_bot" in src, "pickup scraps before the opening must not count as lost"
+    # The filter lives in TranscriptCollector.answers_heard since 2026-10-14.
+    src = inspect.getsource(b.TranscriptCollector.answers_heard)
+    assert "if i > first_bot" in src, "pickup scraps before the opening must not count as lost"
+    assert "transcript.answers_heard()" in inspect.getsource(b.run_bot)
 
 
 def test_played_invariants_name_todays_faults():

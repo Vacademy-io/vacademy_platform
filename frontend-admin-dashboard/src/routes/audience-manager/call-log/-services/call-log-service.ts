@@ -112,6 +112,7 @@ export const CALL_FAULT_CODES = [
     'CRASH',
     'BOT_SILENT',
     'STT_DEAF',
+    'CALLER_IGNORED',
     'REPLY_LOOP',
     'OPENING_REPLAYED',
     'HANDBACK_LOOP',
@@ -190,6 +191,11 @@ export interface CallDiagnostics {
          * HANDBACK_LOOP. Absent on rows written before rules v3.
          */
         handbacks?: number | null;
+        /**
+         * Caller turns the agent swallowed while waiting for an opening it then
+         * never said (CALLER_IGNORED). Absent on rows written before rules v7.
+         */
+        swallowedTurns?: number | null;
         /** Times a repeat was said anyway rather than hand back twice running. */
         repeatEscalations?: number | null;
         /** The opening said again after the caller had already spoken (OPENING_REPLAYED). */

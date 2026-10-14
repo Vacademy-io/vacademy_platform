@@ -30,6 +30,10 @@ class CallState:
     # (VAD blips re-arming it made the hangup escalation unreachable — A10).
     nudged: bool = False
     nudge_count: int = 0
+    # When the idle timer last decided the CALLER owed the turn (a nudge, or the
+    # idle farewell, after a question the bot asked). The silence that line ends
+    # is theirs, not dead air (call afa21bf4, 2026-10-14).
+    idle_nudge_t: float = 0.0
     # Idle fired while a reply was on its way: times it looked again (≤3).
     idle_rechecks: int = 0
     # True while bot audio is playing / caller is audibly speaking (VAD).

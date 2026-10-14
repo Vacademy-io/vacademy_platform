@@ -46,7 +46,15 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # person then answered past (person_turns, see machine_score) — a call screener
 # followed by a real conversation (calls b5b43ae1, 34452119). Compare
 # LIKELY_MACHINE rates across the v5/v6 boundary with care.
-RULES_VERSION = 6
+# v7 (2026-10-14): four labels that misled on the 2026-10-14 sweep. ANSWER_DELETED
+# no longer counts the hold recording the gate absorbed on purpose (22f80a85,
+# d8146538, 68bdcbcf) nor a stutter whose two halves reached the model in
+# separate messages (4a594125); HANDBACK_LOOP counts only handback lines the
+# caller heard, not internal next-step requests (4a594125); DEAD_AIR no longer
+# charges the bot for the idle wait on a caller who did not answer its question
+# (afa21bf4, d8146538: "dead air 8.0s" at every nudge). New fault CALLER_IGNORED.
+# Compare all four across the v6/v7 boundary with care.
+RULES_VERSION = 7
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -99,11 +107,17 @@ OPENING_REPLAYED = "OPENING_REPLAYED"
 # asked for it (calls f28888b2, af7e93bd: heard lines un-recorded and said
 # again; 71e8f39b: the same restatement five times).
 REPEATED_LINE = "REPEATED_LINE"
+# The caller spoke and the bot swallowed their turn, waiting for an opening that
+# nothing was going to say (2026-10-14: 5e979e3e, 662d1c80, 4cb132a2, a11e6709 —
+# 14-18 s of silence while the person kept saying hello, and three of the four
+# scored GREEN because no counter here saw it).
+CALLER_IGNORED = "CALLER_IGNORED"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
     BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP, OPENING_REPLAYED, REPEATED_LINE,
+    CALLER_IGNORED,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -113,8 +127,11 @@ ALL_FAULTS = (
 # "hybrid model" four times and we never once transcribed it.
 # HANDBACK_LOOP outranks ANSWER_DELETED and DEAD_AIR deliberately: on call
 # 3148ccd4 all three fired, and the other two describe consequences of it.
+# CALLER_IGNORED sits with BOT_SILENT and STT_DEAF: the caller talked and got
+# nothing back, which is the whole story of those calls.
 HEADLINE_PRIORITY = (
-    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, OPENING_REPLAYED, HANDBACK_LOOP, REPEATED_LINE,
+    CRASH, BOT_SILENT, STT_DEAF, CALLER_IGNORED, REPLY_LOOP, OPENING_REPLAYED, HANDBACK_LOOP,
+    REPEATED_LINE,
     TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE,
     SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
 )
@@ -221,6 +238,12 @@ class CallDiagnostics:
     # the caller could not answer.
     handbacks: int = 0
     empty_replies: int = 0        # genuinely empty model answers re-asked for the next line
+    # The gate suppressed the whole reply and asked the model for a fresh line
+    # (all-repeat / answer-question / restatement). Nothing was said to the
+    # caller, so not a handback — HANDBACK_LOOP counted these until call
+    # 4a594125 (2026-10-14) headlined "kept asking the caller to talk" over two
+    # of them with no handback line ever spoken.
+    next_step_requests: int = 0
     forming_holds: int = 0        # runs held because the caller's turn was still forming
     forming_hold_cap_releases: int = 0   # …released by the cap, not by the turn (expect ~0)
     retired_runs_dropped: int = 0  # requests a failed LLM primary dropped (the fallback answered)
@@ -264,6 +287,9 @@ class CallDiagnostics:
     opening_unsaid_runs: int = 0
     # Runs that carried "the person has not heard who you are" to the model.
     intro_cues: int = 0
+    # Caller turns swallowed for an opening that was then never said (the
+    # opening-pending mute; bumped by RunGuard). Drives CALLER_IGNORED.
+    swallowed_turns: int = 0
     # Short-answer holds released because the line never went quiet (noise).
     short_answer_noise_releases: int = 0
     # Voice-mode barge-in: acknowledgements the bot talked straight through, and
@@ -635,6 +661,21 @@ def _consume_words(words: List[List[Optional[str]]], seq: List[str]) -> bool:
     return False
 
 
+def _delivered_in_two_pieces(words: List[List[Optional[str]]], hw: List[str]) -> bool:
+    """Split `hw` once so each half is a whole-word run of the unconsumed
+    messages (any order, any message); consume both and return True. All or
+    nothing: a half that does not fit leaves `words` untouched."""
+    for i in range(1, len(hw)):
+        head, tail = hw[:i], hw[i:]
+        if min(len("".join(head)), len("".join(tail))) < _CONTAIN_MIN_CHARS:
+            continue
+        trial = [list(ws) for ws in words]
+        if _consume_words(trial, head) and _consume_words(trial, tail):
+            words[:] = trial
+            return True
+    return False
+
+
 class Lost(NamedTuple):
     """What the reconciliation found, split by whether losing it cost anything."""
     answers: int
@@ -780,6 +821,21 @@ def split_lost(heard: List[str], delivered: List[str]) -> Lost:
             else:
                 still.append(h)
         missing = still
+    # Pass 4, the same join out of order: a stutter's tail went to the model the
+    # moment it landed (a fragment continuation), its head later with the rest of
+    # the turn, while the transcript glued them into one line (two words + the
+    # same two words again). Call 4a594125 (2026-10-14) reported that line lost;
+    # the run that followed had every word and the reply answered it. Both
+    # halves must be a whole-word run of some unconsumed message and at least
+    # _CONTAIN_MIN_CHARS long, so a real lost "हाँ जी" is never explained away by
+    # a stray "हाँ" and "जी" somewhere else.
+    if missing and words:
+        still = []
+        for h in missing:
+            hw = [w for w in (_norm_answer(t) for t in h.split()) if w]
+            if not _delivered_in_two_pieces(words, hw):
+                still.append(h)
+        missing = still
     answers = [h for h in missing if _lost_carries_meaning(h)]
     scraps = [h for h in missing if not _lost_carries_meaning(h)]
     return Lost(len(answers), answers[:_MAX_DELETED_ANSWERS],
@@ -868,6 +924,14 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
         fire(HANDBACK_LOOP, RED)
     elif d.handbacks >= 2:
         fire(HANDBACK_LOOP, AMBER)
+
+    # A swallowed turn is a person talking into silence; one is already a fault
+    # the caller felt, two is the 14-18 s lock of 2026-10-14 (a11e6709: four
+    # hellos, two swallowed runs, then a reply with no introduction).
+    if d.swallowed_turns >= 2:
+        fire(CALLER_IGNORED, RED)
+    elif d.swallowed_turns >= 1:
+        fire(CALLER_IGNORED, AMBER)
 
     if d.answers_deleted is not None:          # None = not measured: never fires
         if d.answers_deleted >= 3:
@@ -962,6 +1026,7 @@ _HEADLINE_TEXT = {
     OPENING_REPLAYED: "The agent said its opening again mid-call",
     REPEATED_LINE: "The agent said the same line twice",
     HANDBACK_LOOP: "The agent had nothing to say and kept asking the caller to talk",
+    CALLER_IGNORED: "The caller spoke and the agent stayed silent",
 }
 
 
@@ -1023,6 +1088,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "repeatsSuppressed": d.repeats_suppressed,
                 "echoesTrimmed": d.echoes_trimmed,
                 "handbacks": d.handbacks,
+                "nextStepRequests": d.next_step_requests,
                 "repeatEscalations": d.repeat_escalations,
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
@@ -1031,6 +1097,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "turnsSwallowedForOpening": d.turns_swallowed_for_opening,
                 "openingUnsaidRuns": d.opening_unsaid_runs,
                 "introCues": d.intro_cues,
+                "swallowedTurns": d.swallowed_turns,
                 "shortAnswerNoiseReleases": d.short_answer_noise_releases,
                 "acksTalkedThrough": d.acks_talked_through,
                 "placeholdersFilled": d.placeholders_filled,

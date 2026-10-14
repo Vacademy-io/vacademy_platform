@@ -54,26 +54,35 @@ export function OfflinePaymentFields({
     const [uploading, setUploading] = useState(false);
     const [proofName, setProofName] = useState<string | null>(null);
 
-    // Preselect the institute's default mode once, unless the admin already chose (or cleared) one.
+    // Preselect the institute's default mode whenever nothing has been chosen yet (undefined) —
+    // also after a parent resets the value on reopen. Clearing a choice sets null, so this
+    // never fights the admin.
     useEffect(() => {
         if (modes && value.mode === undefined) {
             onChange({ ...value, mode: findActiveMode(modes, modes.default_mode)?.code ?? null });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [modes]);
+    }, [modes, value.mode]);
 
     const errorKey = offlinePaymentDetailsError(
         showReference ? value : { ...value, reference: externalReference ?? null },
         modes
     );
     const errorText = errorKey ? t(errorKey) : null;
-    const reported = useRef<string | null>(null);
+    // Report on mount and on every change, and clear on unmount: a parent that hides these
+    // fields must not keep blocking on an error nobody can see any more.
+    const reported = useRef<string | null | undefined>(undefined);
     useEffect(() => {
         if (reported.current === errorText) return;
         reported.current = errorText;
         onErrorChange?.(errorText);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [errorText]);
+    useEffect(
+        () => () => onErrorChange?.(null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        []
+    );
 
     if (isLoading || !modes) {
         return <p className="text-xs text-neutral-500">{t('loading')}</p>;

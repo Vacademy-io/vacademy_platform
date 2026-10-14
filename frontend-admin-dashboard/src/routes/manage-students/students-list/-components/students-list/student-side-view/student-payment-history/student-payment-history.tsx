@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
 import { toOfflinePaymentDetailsPayload, type OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -253,6 +253,12 @@ const StudentMarkPaidDialog = ({
     const [details, setDetails] = useState<OfflinePaymentDetails>({});
     const [detailsError, setDetailsError] = useState<string | null>(null);
     const [notes, setNotes] = useState('');
+    // Start fresh for each invoice: this dialog stays mounted between invoices.
+    useEffect(() => {
+        if (!open) return;
+        setDetails({});
+        setNotes('');
+    }, [open, invoiceId]);
     const mutation = useMutation({
         mutationFn: () =>
             markInvoicePaidManual(invoiceId, {

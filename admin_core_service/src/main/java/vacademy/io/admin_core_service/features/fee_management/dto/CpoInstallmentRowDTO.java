@@ -38,6 +38,9 @@ public class CpoInstallmentRowDTO {
     /** Per-installment discount currently in effect (from user_plan.discount_json). */
     private UserPlanDiscountJson.InstallmentDiscountEntry installmentDiscount;
 
+    /** This installment's part of the whole-plan discount; null when it takes none. */
+    private BigDecimal planDiscountShare;
+
     /** Manual amount override currently in effect (from user_plan.discount_json). */
     private UserPlanDiscountJson.ManualAmountOverrideEntry manualAmountOverride;
 }

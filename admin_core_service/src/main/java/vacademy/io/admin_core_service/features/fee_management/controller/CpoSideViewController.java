@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.fee_management.dto.ApplyCpoDiscountRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CpoDiscountPreviewDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoSideViewInstallmentsResponseDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoUserPlanSummaryDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.ModifyInstallmentRequestDTO;
@@ -102,6 +103,14 @@ public class CpoSideViewController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         String adminUserId = userDetails != null ? userDetails.getUserId() : null;
         return ResponseEntity.ok(cpoSideViewService.setCpoDiscount(userPlanId, request, adminUserId));
+    }
+
+    /** What a plan discount would take off each installment, before it is applied. Saves nothing. */
+    @PostMapping("/user-plan/{userPlanId}/cpo-discount/preview")
+    public ResponseEntity<CpoDiscountPreviewDTO> previewCpoDiscount(
+            @PathVariable String userPlanId,
+            @RequestBody ApplyCpoDiscountRequestDTO request) {
+        return ResponseEntity.ok(cpoSideViewService.previewCpoDiscount(userPlanId, request));
     }
 
     @PostMapping("/user-plan/{userPlanId}/record-offline-payment")

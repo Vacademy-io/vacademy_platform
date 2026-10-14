@@ -206,7 +206,7 @@ export const FolderNodeEditorDialog = ({
                         placeholder={isFolder ? 'One line on what is inside' : 'Shown above the courses'}
                     />
                 </div>
-                <ImageUploadField
+                <ImageUploadField slot="card"
                     label="Image (optional)"
                     value={imageUrl}
                     onChange={setImageUrl}

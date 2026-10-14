@@ -508,7 +508,7 @@ export const PropertyPanel = () => {
                                 {page.seo?.metaDescription || t('pageSettings.seo.previewNoDescription')}
                             </p>
                         </div>
-                        <ImageUploadField
+                        <ImageUploadField slot="social"
                             label={t('pageSettings.seo.ogImage')}
                             value={page.seo?.ogImage || ''}
                             onChange={(url) => updatePageSeo(page.id, { ogImage: url })}
@@ -1616,7 +1616,7 @@ const GlobalSettingsEditor = ({
                         <Label className="text-xs">{t('global.seo.orgAddress')}</Label>
                         <Input className="mt-1" value={gs.seo?.organization?.address || ''} onChange={(e) => updateField('seo.organization.address', e.target.value)} />
                     </div>
-                    <ImageUploadField
+                    <ImageUploadField slot="logo"
                         label={t('global.seo.orgLogo')}
                         value={gs.seo?.organization?.logo || ''}
                         onChange={(url) => updateField('seo.organization.logo', url)}
@@ -2363,7 +2363,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
                                 {expandedSlide === index && (
                                     <div className="mt-3 space-y-3 border-t pt-3">
-                                        <ImageUploadField
+                                        <ImageUploadField slot="background"
                                             label={t('mediaShowcase.backgroundImage')}
                                             value={slide.backgroundImage || ''}
                                             onChange={(url) => updateSlide(index, 'backgroundImage', url)}
@@ -2915,7 +2915,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
             />
 
-            <ImageUploadField
+            <ImageUploadField slot="logo"
                 label={t('header.logo')}
                 value={props.logo || ''}
                 onChange={(url) => updateProp('logo', url)}
@@ -3534,7 +3534,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
-            <ImageUploadField
+            <ImageUploadField slot="background"
                 label={t('hero.backgroundImage')}
                 value={props.backgroundImage || ''}
                 onChange={(url) => updateProp('backgroundImage', url)}
@@ -3843,7 +3843,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                     {t('hero.videoHint')}
                 </p>
                 {props.right?.video && (
-                    <ImageUploadField
+                    <ImageUploadField slot="card"
                         label={t('hero.posterField')}
                         value={props.right?.videoPoster || ''}
                         onChange={(url) => updateRight('videoPoster', url)}
@@ -4446,7 +4446,7 @@ const DocumentViewerEditor = ({ component, pageId, updateComponent }: any) => {
                         <Label>{t('documentViewer.buttonText')}</Label>
                         <Input value={props.buttonText || ''} placeholder={t('mediaShowcase.buttonTextPlaceholder')} onChange={(e) => updateProp('buttonText', e.target.value)} />
                     </div>
-                    <ImageUploadField
+                    <ImageUploadField slot="gallery"
                         label={t('documentViewer.coverImage')}
                         value={props.coverImage || ''}
                         onChange={(url) => updateProp('coverImage', url)}
@@ -4687,7 +4687,7 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {expandedMember === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <ImageUploadField label={t('team.avatar')} value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
+                                <ImageUploadField slot="avatar" label={t('team.avatar')} value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
                                 <Input placeholder={t('testimonials.namePlaceholder')} value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
                                 <Input placeholder={t('team.roleTitlePlaceholder')} value={m.role} onChange={(e) => updateMember(i, 'role', e.target.value)} />
                                 <Textarea placeholder={t('team.shortBioPlaceholder')} rows={2} value={m.bio || ''} onChange={(e) => updateMember(i, 'bio', e.target.value)} />
@@ -4926,7 +4926,7 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
                             <span className="text-xs font-medium">{t('imageGallery.imageN', { n: i + 1 })}</span>
                             <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
-                        <ImageUploadField label={t('hero.imageField')} value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
+                        <ImageUploadField slot="gallery" label={t('hero.imageField')} value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
                         <Input placeholder={t('hero.altTextPlaceholder')} value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
                         {props.showCaptions && <Input placeholder={t('videoEmbed.caption')} value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
@@ -6374,7 +6374,7 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
                     {avatars.map((src: string, i: number) => (
                         <div key={i} className="flex items-center gap-2">
                             <div className="flex-1">
-                                <ImageUploadField label="" value={src} onChange={(url) => {
+                                <ImageUploadField slot="avatar" label="" value={src} onChange={(url) => {
                                     const next = [...avatars];
                                     next[i] = url;
                                     updateProp('avatars', next);
@@ -6574,7 +6574,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                                     <span className="text-xs font-medium">{t('logoCloud.logoN', { n: i + 1 })}</span>
                                     <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                                 </div>
-                                <ImageUploadField label={t('hero.imageField')} value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
+                                <ImageUploadField slot="logo" label={t('hero.imageField')} value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
                                 <Input placeholder={t('hero.altTextPlaceholder')} value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
                                 <Input placeholder={t('logoCloud.labelPlaceholder')} value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
                                 <Input placeholder={t('logoCloud.linkUrlPlaceholder')} value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
@@ -7124,7 +7124,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder={t('header.title')} />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
-                                    <ImageUploadField label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
+                                    <ImageUploadField slot="card" label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
                                     {isResource && (
                                         <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder={t('featureGrid.resourceBadgePlaceholder')} />
                                     )}

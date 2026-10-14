@@ -91,22 +91,29 @@ def synth_rest(voice_id: str, text: str | None = None, lang: str | None = None, 
     return 200, (pcm, rate), ms, None
 
 
-def sweep():
+def sweep(ids=None, workers=6):
     print("== A. gender sweep (REST, 16 kHz)")
     rows = []
 
     def one(v):
-        try:
-            st, audio, ms, err = synth_rest(v)
-        except Exception as e:  # noqa: BLE001
-            return v, "ERR", None, 0, str(e)[:120]
+        for attempt in range(6):
+            try:
+                st, audio, ms, err = synth_rest(v)
+            except Exception as e:  # noqa: BLE001
+                return v, "ERR", None, 0, str(e)[:120]
+            if st == 429:
+                time.sleep(3 * (attempt + 1))
+                continue
+            break
         if st != 200:
             return v, st, None, ms, err
         pcm, rate = audio
+        if workers == 1:
+            time.sleep(0.8)
         return v, 200, f0_median(pcm, rate), ms, round(pcm.size / rate, 2)
 
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        for v, st, f0, ms, info in ex.map(one, IDS):
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for v, st, f0, ms, info in ex.map(one, ids or IDS):
             g = "?" if f0 is None else ("male" if f0 < 155 else "female" if f0 > 175 else "CHECK")
             rows.append((v, st, f0, g))
             print(f"VOICE,{v},{st},{'' if f0 is None else round(f0)},{g},{ms},{info}")
@@ -223,3 +230,6 @@ if __name__ == "__main__":
         asyncio.run(ws_tests())
     if which in ("all", "sweep"):
         sweep()
+    if which == "retry":
+        retry = [l.strip() for l in open(os.path.join(os.path.dirname(__file__), "sarvam_v4_retry.txt")) if l.strip()]
+        sweep(retry, workers=1)

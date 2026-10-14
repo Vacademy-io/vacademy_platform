@@ -868,6 +868,8 @@ export const convertQuestionsToExportSchema = (rawQuestions: QuestionResponse[])
             },
         })),
         marking_json: q.auto_evaluation_json,
+        evaluation_json: q.auto_evaluation_json,
+        explanation_text: q.explanation_text?.content || q.explanation_text_data?.content || '',
         question_type: q.question_type,
         section_id: q.section_id ?? '',
         question_duration: q.default_question_time_mins ?? 1, // default to 1 if null

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -855,7 +856,7 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
                 style={accent ? { backgroundColor: accent } : undefined} // design-lint-ignore: path accent colour is admin data (validated hex)
               >
                 {entry.node.image_url ? (
-                  <img src={entry.node.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                  <FitImage src={entry.node.image_url} alt="" loading="lazy" className="absolute inset-0 size-full" />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-catalogue-brand-ink">
                     <Path className="size-10 opacity-60" weight="duotone" aria-hidden="true" />

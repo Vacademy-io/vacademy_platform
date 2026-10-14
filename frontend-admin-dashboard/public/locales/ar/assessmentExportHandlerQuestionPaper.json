@@ -6,7 +6,8 @@
     "setLabel": " (المجموعة {{letter}})",
     "fileName": {
         "base": "ورقة الأسئلة",
-        "withSet": "ورقة الأسئلة {{letter}}"
+        "withSet": "ورقة الأسئلة {{letter}}",
+        "answerKeySuffix": "(مفتاح الإجابة)"
     },
     "progress": {
         "title": "جارٍ إنشاء ملف PDF",

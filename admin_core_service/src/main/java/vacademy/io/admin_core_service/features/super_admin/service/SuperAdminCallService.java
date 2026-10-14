@@ -45,13 +45,64 @@ public class SuperAdminCallService {
             LEFT JOIN telephony_call_log l ON l.id = r.call_log_id
             LEFT JOIN ai_agent a ON a.id = r.campaign_id
             LEFT JOIN institutes i ON i.id = r.institute_id
-            WHERE (CAST(:instituteId AS text) IS NULL OR r.institute_id = CAST(:instituteId AS text))
+            WHERE r.provider IS DISTINCT FROM 'MOCK'
+              AND (CAST(:instituteId AS text) IS NULL OR r.institute_id = CAST(:instituteId AS text))
               AND (CAST(:fromTs AS text) IS NULL OR r.created_at >= CAST(:fromTs AS timestamp))
               AND (CAST(:toTs   AS text) IS NULL OR r.created_at <  CAST(:toTs   AS timestamp))
               AND (CAST(:health AS text) IS NULL OR r.diag_health = CAST(:health AS text))
               AND (CAST(:disposition AS text) IS NULL OR r.disposition = CAST(:disposition AS text))
               AND (CAST(:agentId AS text) IS NULL OR r.campaign_id = CAST(:agentId AS text))
             """;
+
+    /**
+     * The TTS engine the call ACTUALLY used, from what the bot recorded on it
+     * (diagnostics.tts.vendor = the service's model name), not the agent's current
+     * setting: switching an agent's voice used to reprice every past call it made
+     * (1,195 lightning_v3.1_pro calls belong to agents now on navana). The agent's
+     * engine is only the fallback for a call that recorded nothing.
+     *
+     * <p>'bulbul_v4%' (LIKE's one-character wildcard), not 'bulbul:v4%': Hibernate
+     * reads a ':' in native SQL as a parameter marker.
+     */
+    static final String ENGINE_SQL = """
+            CASE
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'bulbul_v4%' THEN 'sarvam_v4'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'bulbul%' THEN 'sarvam'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'lightning%pro%' THEN 'smallest_pro'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'lightning%' THEN 'smallest'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE '%bodhi%' THEN 'navana'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'google%' OR r.diagnostics->'tts'->>'vendor' ILIKE 'chirp%' THEN 'google'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'edge%' THEN 'edge'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE '%mulberry%' OR r.diagnostics->'tts'->>'vendor' ILIKE 'rumik%' THEN 'rumik'
+              WHEN r.diagnostics->'tts'->>'vendor' ILIKE 'aura%' OR r.diagnostics->'tts'->>'vendor' ILIKE '%deepgram%' THEN 'deepgram'
+              ELSE COALESCE(a.tts_model, 'sarvam')
+            END""";
+
+    /**
+     * What the wallet ACTUALLY charged for the call: the ledger rows CallBillingService
+     * wrote under its idempotency keys (AI leg by the report's call uuid or the call
+     * log, telephony leg by the call log). chr(58) is ':' — see ENGINE_SQL.
+     * NULL when nothing has been charged (yet), and only then is revenue estimated.
+     */
+    private static final String LEDGER_JOIN = """
+            LEFT JOIN LATERAL (
+                SELECT SUM(ABS(t.amount)) AS credits FROM credit_transactions t
+                 WHERE t.institute_id = r.institute_id AND t.transaction_type = 'USAGE_DEDUCTION'
+                   AND t.external_reference_id IN (
+                       'ai_call' || chr(58) || 'uuid' || chr(58) || r.provider || chr(58) || r.call_uuid,
+                       'ai_call' || chr(58) || r.call_log_id,
+                       'voice_call' || chr(58) || r.call_log_id)) led ON TRUE
+            """;
+
+    /** BASE_FROM with the ledger join (list and summary only — the count needs neither). */
+    private static String fromWithLedger() {
+        int at = BASE_FROM.indexOf("WHERE r.provider");
+        return BASE_FROM.substring(0, at) + LEDGER_JOIN + BASE_FROM.substring(at);
+    }
+
+    /** The billing pulse (telephony.billing.pulse-seconds; 30 s since 2026-09-30). */
+    @org.springframework.beans.factory.annotation.Value("${telephony.billing.pulse-seconds:30}")
+    private int pulseSeconds = 30;
 
     /** engine -> credits/min surcharge, read live so it cannot drift from billing. */
     @Transactional(readOnly = true)
@@ -100,11 +151,16 @@ public class SuperAdminCallService {
      * RECONSTRUCTION, not the ledger: a negotiated per-institute override
      * suppresses the surcharge in the real path and is not modelled here.
      */
-    private double billedInr(Map<String, Double> card, Map<String, Double> surcharge,
+    double billedInr(Map<String, Double> card, Map<String, Double> surcharge,
                              Map<String, double[]> pricing, String engine,
                              String direction, String providerType, int seconds) {
         if (seconds <= 0) return 0d;
-        long minutes = (seconds + 59) / 60;                 // ceil, min 1 — as billed
+        // Billed in pulses (30 s by default), as CallBillingService does:
+        // ceil(secs / pulse) pulses at perMinute x pulse/60. It was ceil-MINUTES,
+        // which overstated every call that was not a whole number of minutes
+        // (a 77 s call: 2 minutes = 12 credits; the wallet took 9).
+        int pulse = Math.max(1, pulseSeconds);
+        double minutes = Math.ceil(seconds / (double) pulse) * pulse / 60.0;
         boolean inbound = "INBOUND".equalsIgnoreCase(direction);
         String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
         // An escape hatch for an engine priced outside the credit stack entirely.
@@ -267,7 +323,8 @@ public class SuperAdminCallService {
         Map<String, Double> card = rateCard();
         Query q = em.createNativeQuery("""
                 SELECT to_char(date_trunc('day', r.created_at), 'YYYY-MM-DD') AS d,
-                       COALESCE(a.tts_model, 'sarvam') AS engine,
+                       """ + ENGINE_SQL + """
+                       AS engine,
                        count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'),
                        count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' IS NULL),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
@@ -280,7 +337,8 @@ public class SuperAdminCallService {
                                     THEN CAST(r.diagnostics->'tts'->>'cacheSecsSaved' AS numeric) END), 0)
                 FROM ai_call_result r
                 LEFT JOIN ai_agent a ON a.id = r.campaign_id
-                WHERE (CAST(:inst AS text) IS NULL OR r.institute_id = CAST(:inst AS text))
+                WHERE r.provider IS DISTINCT FROM 'MOCK'
+                  AND (CAST(:inst AS text) IS NULL OR r.institute_id = CAST(:inst AS text))
                   AND (CAST(:frm  AS text) IS NULL OR r.created_at >= CAST(:frm AS timestamp))
                   AND (CAST(:to   AS text) IS NULL OR r.created_at <  CAST(:to  AS timestamp))
                   AND (CAST(:agt  AS text) IS NULL OR r.campaign_id = CAST(:agt AS text))
@@ -399,13 +457,15 @@ public class SuperAdminCallService {
 
         Query q = em.createNativeQuery("""
                 SELECT r.id, r.correlation_id, r.institute_id, i.name,
-                       r.campaign_id, a.name, a.tts_model, a.voice,
+                       r.campaign_id, a.name, """ + ENGINE_SQL + """
+                       , a.voice,
                        r.phone_number, r.customer_name, r.direction, r.status, r.disposition,
                        r.call_start, r.duration_seconds,
                        COALESCE(l.recording_url, r.recording_url),
                        r.diag_health, r.diag_faults, CAST(r.diagnostics AS text),
-                       l.provider_type, COALESCE(l.provider_call_id, r.call_uuid)
-                """ + BASE_FROM + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
+                       l.provider_type, COALESCE(l.provider_call_id, r.call_uuid),
+                       led.credits
+                """ + fromWithLedger() + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
         bind(q, instituteId, from, to, health, disposition, agentId);
         q.setParameter("lim", size);
         q.setParameter("off", (long) page * size);
@@ -420,8 +480,18 @@ public class SuperAdminCallService {
             Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars,
                     llmUsage((String) r[18]));
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
-            double billed = round(billedInr(card, surcharge, pricing, tts,
-                    (String) r[10], (String) r[19], secs));
+            // The ledger when the call has been charged; the pulse reconstruction
+            // only while it has not (billing runs after the call and is swept every
+            // 10 minutes), so the page never shows a guess where the truth exists.
+            // A call that did not connect is never charged (billing requires
+            // "completed"), so it earns 0, not an estimate: 386 unanswered calls in
+            // one week carried ~11 s of ring each and were being booked as revenue.
+            boolean fromLedger = r[21] != null;
+            boolean connected = r[11] != null && ((String) r[11]).toLowerCase(Locale.ROOT).startsWith("complete");
+            double billed = round(fromLedger
+                    ? ((Number) r[21]).doubleValue() * card.getOrDefault("credit_inr", 0d)
+                    : connected ? billedInr(card, surcharge, pricing, tts, (String) r[10], (String) r[19], secs)
+                    : 0d);
             double margin = round(billed - cost);
             String recording = (String) r[15];
             String diagJson = (String) r[18];
@@ -441,6 +511,7 @@ public class SuperAdminCallService {
                     .faults(splitFaults((String) r[17]))
                     .diagnostics((String) r[18])
                     .costInr(cost).billedInr(billed).marginInr(margin)
+                    .billedFromLedger(fromLedger)
                     .marginPct(billed > 0 ? round(margin / billed * 100) : null)
                     // Still true overall: plivo, stt and llm remain duration-modelled.
                     // ttsCharsMeasured is what tells the UI that the TTS line, at least,
@@ -501,21 +572,27 @@ public class SuperAdminCallService {
         Map<String, Double> surcharge = ttsSurcharges();
         Map<String, double[]> pricing = creditPricing();
         Query q = em.createNativeQuery("""
-                SELECT COALESCE(a.tts_model,'sarvam') AS engine,
+                SELECT
+                       """ + ENGINE_SQL + """
+                       AS engine,
                        count(*),
                        COALESCE(sum(r.duration_seconds),0),
                        count(*) FILTER (WHERE r.diag_health = 'RED'),
                        count(*) FILTER (WHERE r.diag_health = 'AMBER'),
                        count(*) FILTER (WHERE r.diag_health = 'GREEN'),
                        count(*) FILTER (WHERE COALESCE(l.recording_url, r.recording_url) IS NOT NULL),
-                       COALESCE(sum(CASE WHEN r.duration_seconds > 0
-                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
-                       COALESCE(sum(CASE WHEN COALESCE(l.provider_type,'') ~* '(plivo|vacademy)'
+                       -- [7..9] billing PULSES of the calls the ledger has not charged
+                       -- (yet): only those are reconstructed; charged calls use [21].
+                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.duration_seconds > 0 AND r.status ILIKE 'complete%'
+                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
+                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.status ILIKE 'complete%'
+                                          AND COALESCE(l.provider_type,'') ~* '(plivo|vacademy)'
                                           AND r.duration_seconds > 0
-                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
-                       COALESCE(sum(CASE WHEN COALESCE(r.direction,'') ILIKE 'INBOUND'
+                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
+                       COALESCE(sum(CASE WHEN led.credits IS NULL AND r.status ILIKE 'complete%'
+                                          AND COALESCE(r.direction,'') ILIKE 'INBOUND'
                                           AND r.duration_seconds > 0
-                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
+                                         THEN (r.duration_seconds + :pulse - 1) / :pulse ELSE 0 END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
                                          THEN CAST(r.diagnostics->'tts'->>'cacheHits' AS bigint) END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheMisses' ~ '^[0-9]+$'
@@ -539,9 +616,13 @@ public class SuperAdminCallService {
                        COALESCE(sum(CASE WHEN r.diagnostics->'infra'->'llmUsage'->>'completionTokens' ~ '^[0-9]+$'
                                          THEN CAST(r.diagnostics->'infra'->'llmUsage'->>'completionTokens' AS bigint) END), 0),
                        COALESCE(sum(r.duration_seconds) FILTER (
-                           WHERE NOT COALESCE(r.diagnostics->'infra'->'llmUsage'->>'promptTokens' ~ '^[0-9]+$', false)), 0)
-                """ + BASE_FROM + " GROUP BY 1");
+                           WHERE NOT COALESCE(r.diagnostics->'infra'->'llmUsage'->>'promptTokens' ~ '^[0-9]+$', false)), 0),
+                       -- [21] what the ledger charged, [22] calls charged
+                       COALESCE(sum(led.credits), 0),
+                       count(*) FILTER (WHERE led.credits IS NOT NULL)
+                """ + fromWithLedger() + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
+        q.setParameter("pulse", Math.max(1, pulseSeconds));
 
         long calls = 0, red = 0, amber = 0, green = 0, rec = 0;
         double minutes = 0, cost = 0, billedTotal = 0;
@@ -565,9 +646,13 @@ public class SuperAdminCallService {
             green += ((Number) r[5]).longValue();
             rec += ((Number) r[6]).longValue();
             byEngine.merge(engine, n, Long::sum);
-            long billedMins = ((Number) r[7]).longValue();     // ceil-minutes, as billed
-            long trunkMins = ((Number) r[8]).longValue();
-            long inboundMins = ((Number) r[9]).longValue();
+            // Pulses → billed minutes, for the calls not yet charged (see [7..9]).
+            double pulseMinutes = Math.max(1, pulseSeconds) / 60.0;
+            double billedMins = ((Number) r[7]).longValue() * pulseMinutes;
+            double trunkMins = ((Number) r[8]).longValue() * pulseMinutes;
+            double inboundMins = ((Number) r[9]).longValue() * pulseMinutes;
+            double ledgerCredits = ((Number) r[21]).doubleValue();
+            billedTotal += ledgerCredits * card.getOrDefault("credit_inr", 0d);
 
             Map<String, Double> b = new LinkedHashMap<>();
             // 30-second pulses, exactly as breakdown() prices each row. This used
@@ -610,7 +695,9 @@ public class SuperAdminCallService {
             Double gSaved = ttsCacheSavingInr(card, engine, (int) Math.min(gChars, Integer.MAX_VALUE));
             if (gSaved != null) cacheSaved += gSaved;
 
-            // Revenue, per engine and per meter, on CEIL-minutes as billing does.
+            // Revenue of the calls the ledger has not charged yet, per engine and per
+            // meter, in billing pulses (the charged ones were added above). The
+            // per-call minimum is not modelled in this aggregate (every row is 0).
             double credits = 0d;
             double[] vOut = pricing.get("voice_call_out"), vIn = pricing.get("voice_call_in");
             double[] aOut = pricing.get("ai_call_out"), aIn = pricing.get("ai_call_in");

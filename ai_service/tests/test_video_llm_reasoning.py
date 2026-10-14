@@ -82,9 +82,15 @@ def _router():
     os.environ.setdefault("OPENROUTER_API_KEY", "or-platform")
     os.environ.setdefault("ISOQUANT_API_KEY", "iq-key")
     try:
+        from ai_service.app.config import get_settings
         from ai_service.app.services import llm_router
     except Exception as exc:  # pragma: no cover - app deps not installed
         pytest.skip(f"ai_service app not importable here: {exc}")
+    # get_settings is lru_cached: a test file that ran first (test_blog_tools,
+    # test_video_glm_release) built it before these keys were in the env, and
+    # the Isoquant route then read as "key not set" and fell to OpenRouter.
+    if not (get_settings().isoquant_api_key and get_settings().openrouter_api_key):
+        get_settings.cache_clear()
     llm_router._FAILED_UNTIL.clear()
     return llm_router
 
@@ -167,7 +173,12 @@ def _as_in_production(monkeypatch):
     `ai_service.app`, and `import app` fails. A None entry in sys.modules makes
     that import raise exactly as it does there. The first version of these tests
     aliased `app` to `ai_service.app` instead — which made the broken import
-    pass here while every video call in production went to OpenRouter."""
+    pass here while every video call in production went to OpenRouter.
+    Submodules another test file already imported under `app.` (e.g.
+    `app.services.llm_router`) are blocked too — import_module returns a cached
+    submodule without touching its parent."""
+    for name in [n for n in list(sys.modules) if n == "app" or n.startswith("app.")] or ["app"]:
+        monkeypatch.setitem(sys.modules, name, None)
     monkeypatch.setitem(sys.modules, "app", None)
 
 
@@ -287,7 +298,8 @@ def test_no_router_inside_ai_service_is_reported_not_swallowed(monkeypatch, caps
 
 def test_the_client_sends_the_setting_and_opens_through_the_failover():
     src = PIPELINE.read_text()
-    assert "_reasoning = _reasoning_for(model_to_use)" in src
+    assert "_reasoning, _gateway_effort, _planned_max_tokens = _plan_reasoning(" in src
+    assert "_effective_max_tokens = _planned_max_tokens" in src
     assert 'payload["reasoning"] = _reasoning' in src
     assert "with self._open_chat(_url, _headers, _wire, payload, _route," in src
     # the bare urlopen of the routed request is gone

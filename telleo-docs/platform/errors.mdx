@@ -1,0 +1,54 @@
+---
+title: "Errors"
+description: "Every error has the same shape and a stable code."
+---
+
+Errors use standard HTTP status codes and always return this body:
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "phone_number must be in E.164 format, e.g. +919876543210.",
+    "request_id": "req_8f2c1a7e",
+    "details": {
+      "errors": [{ "field": "phone_number", "message": "phone_number must be in E.164 format, e.g. +919876543210." }]
+    }
+  }
+}
+```
+
+- **`code`** is stable. Branch on it in your code.
+- **`message`** is a readable sentence for logs and operators. It may change wording.
+- **`request_id`** is also in the `X-Request-Id` response header. Quote it when you contact support.
+- **`details`** is present when there is more to say: every field error, the existing `call_id`, the current `status`.
+
+## Codes
+
+| HTTP | Code | What to do |
+|---|---|---|
+| 400 | `invalid_request` | Fix the request. `details.errors` lists each problem field. Also returned for malformed JSON. |
+| 415 | `invalid_request` | Send the body with `Content-Type: application/json`. |
+| 401 | `missing_api_key` | Send the key in `X-API-Key`. |
+| 401 | `invalid_api_key` | The key is wrong, revoked or expired. Check it in the dashboard. |
+| 402 | `insufficient_credits` | Top up. Already queued calls resume by themselves. |
+| 403 | `insufficient_scope` | The key cannot make this request. |
+| 403 | `product_not_enabled` | This key is not an AI calling key. |
+| 404 | `not_found` | No call, batch or webhook with this id in your account, or no such endpoint. |
+| 404 | `agent_not_found` | Check `agent_id` against `GET /v1/agents`. |
+| 405 | `method_not_allowed` | Wrong HTTP method for this path. |
+| 409 | `call_already_queued` | The number already has a waiting call (`details.call_id`). Usually safe to ignore. |
+| 409 | `idempotency_key_reused` | This `Idempotency-Key` was used with a different body. Use a new key for a new call. |
+| 409 | `call_not_cancelable` | The call is past `queued`. |
+| 409 | `agent_disabled` | Turn the agent on in the dashboard, or use another one. |
+| 409 | `agent_inbound_only` | This agent only answers calls. Use an outbound agent. |
+| 429 | `rate_limited` | Wait the seconds in `Retry-After`, then retry. |
+| 429 | `test_limit_reached` | More than 500 test calls in 24 hours. |
+| 500 | `internal_error` | Retry with backoff. If it persists, contact us with the `request_id`. |
+| 503 | `auth_unavailable` | Keys could not be checked for a moment. Retry shortly. |
+
+## Retrying safely
+
+Retry `429`, `500` and `503`, with exponential backoff (1 s, 2 s, 4 s… up to a minute). Other `4xx` errors will fail again until the request changes.
+
+`POST /v1/calls` is safe to retry when it carries an [Idempotency-Key](/platform/idempotency): if the first attempt did create the call, the retry returns it instead of calling again.

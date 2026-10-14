@@ -23,8 +23,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Periodic, EMIT-ONLY scan for all lead automation triggers — TAT/SLA windows plus
@@ -348,7 +350,14 @@ public class LeadAutomationScheduler {
         // Releasing the claim lets the next scan retry -- but ONLY when the failure happened
         // before the trigger was dispatched, because the trigger's idempotency strategy is
         // institute config and its default (UUID) dedups nothing. See EmitOutcome.
-        for (LeadFollowup fu : leadFollowupRepository.findDueCandidates(nowTs)) {
+        List<LeadFollowup> dueCandidates = leadFollowupRepository.findDueCandidates(nowTs);
+        List<LeadFollowup> overdueCandidates = leadFollowupRepository.findOverdueCandidates(overdueAt);
+        // A follow-up on a lead that has since been marked Lost / Converted is moot: don't remind
+        // anyone about it. Left unclaimed (not closed) so it comes back if the lead is reopened.
+        Set<String> closedLeadIds = closedLeadIds(dueCandidates, overdueCandidates);
+
+        for (LeadFollowup fu : dueCandidates) {
+            if (closedLeadIds.contains(fu.getAudienceResponseId())) continue;
             if (leadFollowupRepository.claimDueTransition(fu.getId()) != 1) continue;
             EmitOutcome outcome = emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_DUE.name(),
                     LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE);
@@ -361,7 +370,8 @@ public class LeadAutomationScheduler {
             }
         }
 
-        for (LeadFollowup fu : leadFollowupRepository.findOverdueCandidates(overdueAt)) {
+        for (LeadFollowup fu : overdueCandidates) {
+            if (closedLeadIds.contains(fu.getAudienceResponseId())) continue;
             if (leadFollowupRepository.claimOverdueTransition(fu.getId()) != 1) continue;
             EmitOutcome outcome = emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(),
                     LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE);
@@ -377,6 +387,25 @@ public class LeadAutomationScheduler {
         if (dueEmitted > 0 || overdueEmitted > 0) {
             log.info("[LeadFollowup] Emitted {} due + {} overdue triggers this run",
                     dueEmitted, overdueEmitted);
+        }
+    }
+
+    /** Leads (audience_response ids) behind these follow-ups that are now Lost / Converted. */
+    @SafeVarargs
+    private Set<String> closedLeadIds(List<LeadFollowup>... batches) {
+        Set<String> leadIds = new HashSet<>();
+        for (List<LeadFollowup> batch : batches) {
+            for (LeadFollowup fu : batch) {
+                if (fu.getAudienceResponseId() != null) leadIds.add(fu.getAudienceResponseId());
+            }
+        }
+        if (leadIds.isEmpty()) return Set.of();
+        try {
+            return new HashSet<>(audienceResponseRepository.findClosedLeadIds(leadIds));
+        } catch (Exception e) {
+            // Fail open: a lookup blip must not stop every counsellor's reminders.
+            log.warn("[LeadFollowup] Closed-lead lookup failed, reminding all candidates: {}", e.getMessage());
+            return Set.of();
         }
     }
 

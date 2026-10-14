@@ -23,7 +23,8 @@
     "toast": {
         "atLeastOnePlatform": "कम से कम एक स्ट्रीमिंग प्लेटफ़ॉर्म की अनुमति होनी चाहिए।",
         "saveSuccess": "लाइव सेशन सेटिंग्स सहेजी गईं",
-        "saveFailed": "लाइव सेशन सेटिंग्स सहेजने में विफल।"
+        "saveFailed": "लाइव सेशन सेटिंग्स सहेजने में विफल।",
+        "googleAutoRecordSaveFailed": "सेटिंग्स सेव हो गईं, पर Google अकाउंट का ऑटो-रिकॉर्ड बदलाव सेव नहीं हुआ। फिर से Save करें।"
     },
     "timezone": {
         "title": "डिफ़ॉल्ट टाइमज़ोन",
@@ -173,6 +174,33 @@
         "autoRecordingCloud": "Zoom क्लाउड में रिकॉर्ड करें",
         "autoRecordingLocal": "स्थानीय रिकॉर्डिंग (होस्ट मशीन)",
         "autoRecordingNone": "रिकॉर्ड न करें"
+    },
+    "googleMeet": {
+        "title": "Google Meet कंट्रोल",
+        "description": "जब कोई सिंगल क्लास कनेक्टेड अकाउंट के साथ Google Meet पर होती है, तो ये डिफ़ॉल्ट Google Meet पैनल में पहले से भरे आते हैं। एडमिन हर क्लास में इन्हें बदल सकते हैं। (बल्क शेड्यूलिंग Meet लिंक नहीं बनाती।)",
+        "recordingGroup": "रिकॉर्डिंग और नोट्स",
+        "noAccount": "ऑटो-रिकॉर्डिंग चालू करने के लिए ऊपर Google Meet Integration में Google Workspace अकाउंट कनेक्ट करें।",
+        "autoRecordTitle": "{{email}} पर क्लास अपने आप रिकॉर्ड करें",
+        "autoRecordDescription": "ऑर्गनाइज़र या संस्थान के Google Workspace का कोई टीचर जॉइन करते ही रिकॉर्डिंग अपने आप शुरू होती है। यह इस Google अकाउंट पर सेव होता है।",
+        "transcriptionTitle": "अपने आप ट्रांसक्रिप्ट बनाएं",
+        "transcriptionDescription": "Google क्लास का ट्रांसक्रिप्ट ऑर्गनाइज़र की Drive में लिखता है।",
+        "smartNotesTitle": "Gemini नोट्स (\"Take notes for me\")",
+        "smartNotesDescription": "Gemini क्लास का सारांश ऑर्गनाइज़र की Drive में लिखता है।",
+        "attendanceReportTitle": "Google अटेंडेंस रिपोर्ट",
+        "attendanceReportDescription": "क्लास के बाद Google ऑर्गनाइज़र को अटेंडेंस शीट भेजता है।",
+        "planHint": "रिकॉर्डिंग और ट्रांसक्रिप्ट के लिए रिकॉर्डिंग वाला Workspace प्लान चाहिए (Business Standard या ऊपर, Education Plus); Gemini नोट्स के लिए Gemini लाइसेंस चाहिए। अगर प्लान में कोई फीचर नहीं है, तो क्लास उसके बिना बन जाएगी।",
+        "hostControlsGroup": "होस्ट कंट्रोल",
+        "hostManagementTitle": "होस्ट कंट्रोल चालू करें",
+        "hostManagementDescription": "इससे नीचे की पाबंदियां लागू होती हैं। सिर्फ ऑर्गनाइज़र अकाउंट होस्ट है; दूसरे Google अकाउंट वाला टीचर participant माना जाता है।",
+        "chatHostsOnlyTitle": "सिर्फ होस्ट चैट कर सकते हैं",
+        "chatHostsOnlyDescription": "लर्नर चैट पढ़ सकते हैं, पर मैसेज नहीं भेज सकते।",
+        "reactionsHostsOnlyTitle": "सिर्फ होस्ट रिएक्शन भेज सकते हैं",
+        "reactionsHostsOnlyDescription": "लर्नर इमोजी रिएक्शन नहीं भेज सकते।",
+        "presentHostsOnlyTitle": "सिर्फ होस्ट स्क्रीन शेयर कर सकते हैं",
+        "presentHostsOnlyDescription": "अगर टीचर अपने Google अकाउंट से प्रेज़ेंट करते हैं तो इसे बंद रखें।",
+        "joinAsViewerTitle": "लर्नर व्यूअर के रूप में जुड़ें",
+        "joinAsViewerDescription": "लर्नर बिना माइक या कैमरा के जुड़ते हैं।",
+        "disabledBecauseHostControlsOff": "होस्ट कंट्रोल बंद होने के कारण उपलब्ध नहीं।"
     },
     "notifications": {
         "title": "सूचनाएं",

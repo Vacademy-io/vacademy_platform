@@ -5,6 +5,7 @@ import {
     CalendarBlank,
     Check,
     Copy,
+    CurrencyCircleDollar,
     DotsThreeVertical,
     LinkSimple,
     PencilSimple,
@@ -29,9 +30,13 @@ import { formatDateTime } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { InviteLinkDataInterface } from '@/schemas/study-library/invite-links-schema';
 import { InviteQrDialog } from './invite-qr-dialog';
+import { InvitePaymentSummaryLine, findPaymentSummary } from './invite-payment-summary';
+import { ConfigurePaymentDialog } from './configure-payment-dialog';
 
 interface InviteLinkCardProps {
     invite: InviteLinkDataInterface;
+    /** The batch this card is rendered under — picks which payment summary to show. */
+    packageSessionId: string;
     /** Full learner-portal URL for this invite, built by the parent. */
     inviteUrl: string;
     onEdit: () => void;
@@ -69,6 +74,7 @@ const actorLabel = (name?: string | null, userId?: string | null): string | null
  */
 export const InviteLinkCard = ({
     invite,
+    packageSessionId,
     inviteUrl,
     onEdit,
     onDelete,
@@ -79,11 +85,15 @@ export const InviteLinkCard = ({
     const [linkCopied, setLinkCopied] = useState(false);
     const [qrOpen, setQrOpen] = useState(false);
     const [utmOpen, setUtmOpen] = useState(false);
+    const [paymentOpen, setPaymentOpen] = useState(false);
 
     const isDefault = invite.tag === 'DEFAULT';
     const shortUrl = invite.short_url || null;
 
     const createdBy = actorLabel(invite.created_by_name, invite.created_by_user_id);
+
+    // The card is rendered per batch, so show that batch's payment option.
+    const payment = findPaymentSummary(invite, packageSessionId);
 
     const copyLink = useCallback(async () => {
         const didCopy = await copyTextToClipboard(inviteUrl);
@@ -168,6 +178,17 @@ export const InviteLinkCard = ({
                                     </>
                                 )}
                             </div>
+                            {payment && (
+                                <div className="flex flex-wrap items-center gap-x-1.5">
+                                    <dt className="flex items-center gap-1">
+                                        <CurrencyCircleDollar className="size-3.5" />
+                                        {t('payment.label')}
+                                    </dt>
+                                    <dd className="min-w-0 text-neutral-700">
+                                        <InvitePaymentSummaryLine summary={payment} />
+                                    </dd>
+                                </div>
+                            )}
                         </dl>
                     </div>
 
@@ -228,6 +249,14 @@ export const InviteLinkCard = ({
                                     {t('menu.utmGenerator')}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    disabled={!payment}
+                                    onSelect={() => setPaymentOpen(true)}
+                                >
+                                    <CurrencyCircleDollar className="me-2 size-4" />
+                                    {t('menu.configurePayment')}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem className="cursor-pointer" onSelect={onEdit}>
                                     <PencilSimple className="me-2 size-4" />
                                     {t('edit')}
@@ -288,6 +317,16 @@ export const InviteLinkCard = ({
                     inviteUrl={inviteUrl}
                     shortUrl={shortUrl}
                 />
+                {/* Mounted only while open: its form, queries and plan picker are
+                    per card, and a list of cards should not hold them all idle. */}
+                {paymentOpen && (
+                    <ConfigurePaymentDialog
+                        open={paymentOpen}
+                        onOpenChange={setPaymentOpen}
+                        invite={invite}
+                        packageSessionId={packageSessionId}
+                    />
+                )}
                 <UtmBuilderDialog
                     open={utmOpen}
                     onOpenChange={setUtmOpen}

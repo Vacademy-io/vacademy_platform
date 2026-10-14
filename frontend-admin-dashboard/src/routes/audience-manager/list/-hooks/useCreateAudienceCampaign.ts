@@ -1,5 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createAudienceCampaign, AudienceCampaignPayload } from '../-services/create-audience-campaign';
+import {
+    createAudienceCampaign,
+    AudienceCampaignPayload,
+    getCampaignSaveErrorMessage,
+} from '../-services/create-audience-campaign';
 import { toast } from 'sonner';
 import type { TFunction } from 'i18next';
 
@@ -15,9 +19,8 @@ export function useCreateAudienceCampaign(t: TFunction) {
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
             toast.success(t('success.createCampaign'));
         },
-        onError: (error: any) => {
-            const message = error?.response?.data?.message || error?.message || t('errors.createCampaign');
-            toast.error(message);
+        onError: (error: unknown) => {
+            toast.error(getCampaignSaveErrorMessage(error, t('errors.createCampaign')));
             // optionally log for debugging
             console.error('useCreateAudienceCampaign error', error);
         },

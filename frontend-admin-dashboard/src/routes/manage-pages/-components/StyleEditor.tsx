@@ -431,7 +431,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                     value={style.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor default seed
                     onChange={(c) => update({ backgroundColor: c })}
                 />
-                <ImageUploadField
+                <ImageUploadField slot="background"
                     label={t('background.image.label')}
                     value={style.backgroundImage || ''}
                     onChange={(url) => update({ backgroundImage: url })}

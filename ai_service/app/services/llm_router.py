@@ -391,8 +391,233 @@ class open_chat_stream:
         return False
 
 
+# --------------------------------------------------------------------------
+# Use-case chains
+# --------------------------------------------------------------------------
+
+# Models whose endpoint cannot turn reasoning off and that spend the whole
+# max_tokens budget thinking when no reasoning shape is sent (see
+# chat_llm_client._REASONING_MODE). Every leg of a chain call must carry
+# `reasoning: {enabled, effort: low}` plus a max_tokens allowance for them.
+REASONING_MANDATORY_PREFIXES = ("z-ai/glm-5", "z-ai/glm-4.6v")
+
+
+class ChainExhausted(RuntimeError):
+    """Every model in the chain failed. `attempts` = [(model, reason), ...]."""
+
+    def __init__(self, use_case: Optional[str], attempts):
+        self.use_case = use_case
+        self.attempts = list(attempts)
+        detail = "; ".join(f"{m}: {r}" for m, r in self.attempts) or "empty model chain"
+        super().__init__(f"LLM chain failed for {use_case or 'explicit models'}: {detail}")
+
+
+@dataclass
+class ChainResult:
+    content: str
+    model: str                 # REGISTRY id that answered — bill and record under this
+    usage: Dict[str, Any]      # the gateway's usage object ({} when it sent none)
+    router: str                # gateway that served the answer ("isoquant" / "openrouter")
+    finish_reason: Optional[str] = None
+    message: Dict[str, Any] = field(default_factory=dict)  # full choices[0].message
+    raw: Dict[str, Any] = field(default_factory=dict)      # full response JSON
+    attempts: list = field(default_factory=list)           # [(model, reason)] that failed first
+
+
+def _reasoning_mode(model: str) -> Optional[str]:
+    try:
+        from .chat_llm_client import reasoning_mode_for
+        known = reasoning_mode_for(model)
+    except Exception:  # noqa: BLE001
+        known = None
+    if known:
+        return known
+    return "on-low" if any((model or "").startswith(p) for p in REASONING_MANDATORY_PREFIXES) else None
+
+
+def chain_payload(model: str, payload: Dict[str, Any], reasoning_effort: Optional[str] = None) -> Dict[str, Any]:
+    """The OpenRouter-shaped payload for one chain leg. For reasoning-mandatory
+    models (GLM) this applies chat_llm_client.apply_reasoning_mode — reasoning
+    on at low effort and a max_tokens allowance on top of the caller's cap — so
+    the Isoquant leg (mapped to `reasoning_effort`) AND the OpenRouter failover
+    leg (which sends the payload as-is) both reason briefly. Other models get
+    the caller's payload unchanged. Never mutates `payload`."""
+    p = dict(payload)
+    p["model"] = model
+    mode = _reasoning_mode(model)
+    if mode:
+        from .chat_llm_client import apply_reasoning_mode
+        p = apply_reasoning_mode(p, mode)
+        if reasoning_effort:
+            p["reasoning"] = {**(p.get("reasoning") or {}), "enabled": True,
+                              "effort": str(reasoning_effort).lower()}
+    return p
+
+
+def _resolve_chain(use_case, models, db, preferred_model):
+    if models:
+        chain = [m for m in models if m]
+    elif use_case:
+        from .model_selection import resolve_model_sync, resolve_models
+        if db is not None:
+            primary, fallbacks = resolve_models(db, use_case, preferred_model)
+        else:
+            primary, fallbacks = resolve_model_sync(use_case, preferred_model)
+        chain = [primary, *fallbacks]
+    else:
+        raise ValueError("chat_with_chain needs a use_case or a models list")
+    out: list = []
+    for m in chain:
+        if m not in out:
+            out.append(m)
+    return out
+
+
+def _parse_completion(model: str, router: str, response, attempts) -> Tuple[Optional[ChainResult], str]:
+    """(result, failure_reason). A 2xx with neither content nor tool calls is
+    a failure — GLM that spent its whole budget thinking returns exactly that."""
+    status = response.status_code
+    if status >= 400:
+        return None, f"HTTP {status}: {response.text[:200]}"
+    try:
+        data = response.json()
+    except Exception:  # noqa: BLE001
+        return None, f"non-JSON body: {response.text[:200]}"
+    if isinstance(data, dict) and data.get("error"):
+        return None, f"error body: {str(data.get('error'))[:200]}"
+    choices = (data or {}).get("choices") or []
+    if not choices:
+        return None, "no choices in response"
+    message = choices[0].get("message") or {}
+    content = message.get("content") or ""
+    if isinstance(content, list):  # some gateways return content parts
+        content = "".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content)
+    if not str(content).strip() and not message.get("tool_calls"):
+        return None, f"empty content (finish_reason={choices[0].get('finish_reason')})"
+    return ChainResult(
+        content=str(content), model=model, usage=data.get("usage") or {}, router=router,
+        finish_reason=choices[0].get("finish_reason"), message=message, raw=data,
+        attempts=list(attempts),
+    ), ""
+
+
+async def chat_with_chain(
+    payload: Dict[str, Any],
+    use_case: Optional[str] = None,
+    models: Optional[list] = None,
+    *,
+    db=None,
+    preferred_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    client=None,
+    timeout: float = 120.0,
+) -> ChainResult:
+    """One chat completion that walks a model chain.
+
+    `payload` is OpenRouter-shaped (messages, max_tokens, temperature,
+    response_format, ...); its `model` is ignored. The chain is `models` when
+    given, else resolve_models(db, use_case, preferred_model) (or
+    resolve_model_sync without a session) — i.e. [default, fallback,
+    (GLM hard fallback), (NON_GLM_FALLBACK)].
+
+    Per model: the routed gateway (Isoquant for GLM) → the same model on
+    OpenRouter (post_chat's failover) → the next model in the chain on any
+    error, transport failure or empty answer. Reasoning-mandatory models get
+    reasoning effort low (or `reasoning_effort`) and a max_tokens allowance on
+    both legs. Returns ChainResult(content, model=<registry id>, usage, ...);
+    raises ChainExhausted when every model failed. Charges nothing — the
+    caller bills `result.model` with `result.usage`."""
+    import asyncio
+    import httpx
+
+    if models or db is not None or not use_case:
+        chain = _resolve_chain(use_case, models, db, preferred_model)
+    else:  # session-less resolve may open a DB connection: keep it off the event loop
+        chain = await asyncio.to_thread(_resolve_chain, use_case, None, None, preferred_model)
+    attempts: list = []
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=timeout)
+    try:
+        for model in chain:
+            wire = chain_payload(model, payload, reasoning_effort)
+            try:
+                response = await post_chat(client, wire, api_key)
+            except httpx.HTTPError as exc:
+                attempts.append((model, f"{type(exc).__name__}: {exc}"[:200]))
+                logger.warning("chat_with_chain(%s): %s failed (%s); trying next model",
+                               use_case, model, attempts[-1][1])
+                continue
+            router = _router_of(response)
+            result, reason = _parse_completion(model, router, response, attempts)
+            if result is not None:
+                if attempts:
+                    logger.info("chat_with_chain(%s): answered by %s after %d failed model(s)",
+                                use_case, model, len(attempts))
+                return result
+            attempts.append((model, reason))
+            logger.warning("chat_with_chain(%s): %s failed (%s); trying next model", use_case, model, reason)
+    finally:
+        if own_client:
+            await client.aclose()
+    raise ChainExhausted(use_case, attempts)
+
+
+def chat_with_chain_sync(
+    payload: Dict[str, Any],
+    use_case: Optional[str] = None,
+    models: Optional[list] = None,
+    *,
+    db=None,
+    preferred_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    timeout: float = 120.0,
+) -> ChainResult:
+    """`chat_with_chain` for synchronous code paths (uses post_chat_sync)."""
+    import httpx
+
+    chain = _resolve_chain(use_case, models, db, preferred_model)
+    attempts: list = []
+    for model in chain:
+        wire = chain_payload(model, payload, reasoning_effort)
+        try:
+            response = post_chat_sync(wire, api_key, timeout=timeout)
+        except httpx.HTTPError as exc:
+            attempts.append((model, f"{type(exc).__name__}: {exc}"[:200]))
+            logger.warning("chat_with_chain_sync(%s): %s failed (%s); trying next model",
+                           use_case, model, attempts[-1][1])
+            continue
+        result, reason = _parse_completion(model, _router_of(response), response, attempts)
+        if result is not None:
+            return result
+        attempts.append((model, reason))
+        logger.warning("chat_with_chain_sync(%s): %s failed (%s); trying next model", use_case, model, reason)
+    raise ChainExhausted(use_case, attempts)
+
+
+def _router_of(response) -> str:
+    """Which gateway answered, from the request URL (post_chat hides the route)."""
+    try:
+        url = str(response.request.url)
+    except Exception:  # noqa: BLE001
+        return DEFAULT_ROUTER
+    for name, spec in ROUTERS.items():
+        if name == DEFAULT_ROUTER:
+            continue
+        try:
+            if url.startswith(spec.chat_url().rsplit("/chat/completions", 1)[0]):
+                return name
+        except Exception:  # noqa: BLE001
+            continue
+    return DEFAULT_ROUTER
+
+
 __all__ = [
     "ROUTERS", "ROUTES_SETTING_KEY", "ChatRoute", "parse_routes", "model_routes",
     "route_for", "route_chat", "openrouter_chat", "should_fail_over", "mark_router_failed",
     "post_chat", "post_chat_sync", "open_chat_stream",
+    "REASONING_MANDATORY_PREFIXES", "ChainExhausted", "ChainResult", "chain_payload",
+    "chat_with_chain", "chat_with_chain_sync",
 ]

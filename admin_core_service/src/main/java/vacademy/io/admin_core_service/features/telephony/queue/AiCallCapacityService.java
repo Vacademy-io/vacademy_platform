@@ -194,6 +194,18 @@ public class AiCallCapacityService {
             perProvider.merge(provider, count, Integer::sum);
             perLane.merge(instituteId, count, Integer::sum);
         }
+        // Claimed-but-not-yet-logged dials (an inline "dial now" between its claim and its
+        // call-log insert). Without them, parallel inline dials all see the same free slot.
+        // A dial that is both claimed and logged counts twice for a moment, which only
+        // costs a tick of throughput.
+        for (Object[] row : queueRepository.countDispatchingByLane(since.toInstant())) {
+            String instituteId = (String) row[0];
+            String provider = (String) row[1];
+            int count = ((Number) row[2]).intValue();
+            if (provider == null) continue;
+            perProvider.merge(provider, count, Integer::sum);
+            perLane.merge(instituteId, count, Integer::sum);
+        }
 
         Map<String, Integer> capacityByProvider = new HashMap<>();
         for (String p : AI_PROVIDERS) capacityByProvider.put(p, fleetCapacity(p));

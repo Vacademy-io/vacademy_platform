@@ -114,11 +114,12 @@ const buildEvaluatorActions = (t: TFunction): QuickAction[] => [
 
 export const quickActionsForRoles = (roles: string[], t: TFunction): QuickAction[] => {
     if (!roles?.length) return [];
-    // Match against the role names emitted by getUserRoles().
+    // Match against the backend role names in the token (current institute's roles).
+    // The course-authoring role is 'CONTENT CREATOR' — there is no 'COURSE CREATOR' role.
     const roleToActions: Record<string, () => QuickAction[]> = {
         ADMIN: () => buildAdminActions(t),
         TEACHER: () => buildTeacherActions(t),
-        'COURSE CREATOR': () => buildCourseCreatorActions(t),
+        'CONTENT CREATOR': () => buildCourseCreatorActions(t),
         'ASSESSMENT CREATOR': () => buildAssessmentCreatorActions(t),
         EVALUATOR: () => buildEvaluatorActions(t),
     };

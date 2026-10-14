@@ -199,6 +199,11 @@ class CallDiagnostics:
     # context. NOTE the name must match bump()'s argument EXACTLY — bump() is
     # getattr/setattr with a bare except, so a typo silently counts nothing.
     carrier_announcements: int = 0
+    # The person put the call on hold: holds entered, pieces of the network's hold
+    # recording kept out of the model, and returns from hold (call 6d81124d).
+    holds: int = 0
+    hold_lines: int = 0
+    hold_returns: int = 0
     # Sentences dropped because the bot had already said them this call.
     repeats_suppressed: int = 0
     # Replies that were ENTIRELY suppressed, so the caller got "Ji, boliye." —
@@ -350,6 +355,7 @@ class CallDiagnostics:
     stt_stalls: int = 0
     stt_vendor_final: str = ""
     llm_failovers: int = 0
+    llm_returns: int = 0          # turns handed back to the primary after a failover
     llm_vendor_final: str = ""
     # Token usage summed over the call's LLM runs, from pipecat's usage
     # metrics. cached = prompt tokens the vendor served from its prompt cache
@@ -991,6 +997,9 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "duckAbsorbs": d.duck_absorbs,
                 "duckTimeoutResumes": d.duck_timeout_resumes,
                 "carrierAnnouncements": d.carrier_announcements,
+                "holds": d.holds,
+                "holdLines": d.hold_lines,
+                "holdReturns": d.hold_returns,
                 "repeatsSuppressed": d.repeats_suppressed,
                 "echoesTrimmed": d.echoes_trimmed,
                 "handbacks": d.handbacks,
@@ -1067,6 +1076,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "sttStalls": d.stt_stalls,
                 "sttVendorFinal": d.stt_vendor_final or None,
                 "llmFailovers": d.llm_failovers,
+                "llmReturns": d.llm_returns,
                 "llmVendorFinal": d.llm_vendor_final or None,
                 "llmUsage": {
                     "runs": d.llm_runs,

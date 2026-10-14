@@ -57,6 +57,10 @@ export async function fetchCompletedFollowUps(params: {
     /** closed_at window, ISO instants. Both optional — omit for all time. */
     closedFrom?: string;
     closedTo?: string;
+    /** Lead status keys, comma-separated — the sidebar route's `status`. */
+    leadStatusId?: string;
+    /** Same, but "every lead except these" (`statusExclude=1`). */
+    leadStatusExcludeId?: string;
     page: number;
     size: number;
     /**
@@ -75,6 +79,8 @@ export async function fetchCompletedFollowUps(params: {
             search: params.search || undefined,
             closedFrom: params.closedFrom,
             closedTo: params.closedTo,
+            leadStatusId: params.leadStatusId,
+            leadStatusExcludeId: params.leadStatusExcludeId,
             page: params.page,
             size: params.size,
             includeLeadDetail: params.includeLeadDetail || undefined,

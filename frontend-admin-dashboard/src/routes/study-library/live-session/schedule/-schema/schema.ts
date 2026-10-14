@@ -148,6 +148,18 @@ export const sessionFormSchema = z
         // Google Meet account integration (only used when sessionPlatform = 'google meet' and a
         // connected account is selected; otherwise Meet falls back to the manual defaultLink paste).
         googleMeetAccountId: z.string().optional(),
+        // Per-class Meet space settings (GoogleMeetManager.buildSpaceConfig). Recording and
+        // access start from the account defaults; restrictions apply only with host management on.
+        googleAccessType: z.enum(['OPEN', 'TRUSTED', 'RESTRICTED']).optional(),
+        googleRecord: z.boolean().optional(),
+        googleTranscription: z.boolean().optional(),
+        googleSmartNotes: z.boolean().optional(),
+        googleAttendanceReport: z.boolean().optional(),
+        googleHostManagement: z.boolean().optional(),
+        googleChatHostsOnly: z.boolean().optional(),
+        googleReactionsHostsOnly: z.boolean().optional(),
+        googlePresentHostsOnly: z.boolean().optional(),
+        googleJoinAsViewer: z.boolean().optional(),
         // Entry / security
         zoomWaitingRoom: z.boolean().optional(),
         zoomJoinBeforeHost: z.boolean().optional(),

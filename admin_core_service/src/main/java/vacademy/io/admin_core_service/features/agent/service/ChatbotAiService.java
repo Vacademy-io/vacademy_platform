@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,7 +31,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ChatbotAiService {
 
-    private static final String DEFAULT_MODEL = "google/gemini-2.5-flash";
+    /** ai_model_defaults row that picks the model when the flow node names none. */
+    static final String USE_CASE = "chatbot_flow";
+
+    /**
+     * notification_service gives this call 30 s (InternalClientUtils read timeout). The
+     * chain walk must finish inside that, failover included, or the learner gets nothing.
+     */
+    private static final Duration ATTEMPT_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration TIME_BUDGET = Duration.ofSeconds(27);
 
     /**
      * Attribution role on the credit transaction. The bot is answering a learner/lead over
@@ -64,7 +73,10 @@ public class ChatbotAiService {
                     .build();
         }
 
-        String model = request.getModelId() != null ? request.getModelId() : DEFAULT_MODEL;
+        // A model saved on the flow node is the author's pick and wins; otherwise the
+        // chatbot_flow row decides (GLM by default), with its fallback behind it.
+        String model = request.getModelId() != null && !request.getModelId().isBlank()
+                ? request.getModelId().trim() : null;
 
         // Build a ConversationSession from the request
         ConversationSession session = ConversationSession.create(
@@ -79,6 +91,9 @@ public class ChatbotAiService {
         // its id can link the credit transaction back to the tokens that caused it.
         session.getContext().put(LLMService.CTX_REQUEST_TYPE, RequestType.CHATBOT);
         session.getContext().put(LLMService.CTX_USAGE_LOG_SYNC, Boolean.TRUE);
+        session.getContext().put(LLMService.CTX_USE_CASE, USE_CASE);
+        session.getContext().put(LLMService.CTX_ATTEMPT_TIMEOUT, ATTEMPT_TIMEOUT);
+        session.getContext().put(LLMService.CTX_TIME_BUDGET, TIME_BUDGET);
 
         // Add system prompt
         session.addMessage(ConversationSession.ChatMessage.system(
@@ -114,7 +129,8 @@ public class ChatbotAiService {
 
             // 2. Charge for the tokens actually burned. Fire-and-forget: the reply is
             // already generated and must not wait on (or be lost to) the billing hop.
-            charge(request, model, response);
+            // Under the registry id that answered: the chain may have failed over.
+            charge(request, response.getModelUsed(), response);
 
             log.info("Chatbot AI response generated successfully ({} prompt / {} completion tokens)",
                     response.getPromptTokens(), response.getCompletionTokens());

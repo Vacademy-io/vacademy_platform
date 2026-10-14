@@ -130,6 +130,21 @@ public class AiCallService {
      * True only when the institute can actually pay for a call. Fails CLOSED on
      * any error — see the call site.
      */
+    /**
+     * Whether a new AI call could be paid for right now — the same gate placeCall applies
+     * (and false when the gate is off is never returned: off means always affordable).
+     * The public API asks before queueing so a client hears "insufficient credits" at
+     * request time instead of finding a call parked in the queue.
+     */
+    public boolean canAffordCall(String instituteId) {
+        return !creditGateEnabled || hasAffordableCredits(instituteId);
+    }
+
+    /** Whether placing an AI call requires a positive balance (the kill switch is off). */
+    public boolean isCreditGateEnabled() {
+        return creditGateEnabled;
+    }
+
     private boolean hasAffordableCredits(String instituteId) {
         try {
             return creditClient.hasActiveCredits(instituteId);
@@ -176,7 +191,12 @@ public class AiCallService {
         // balance cannot be read, so an unreachable credits service stops calls
         // rather than letting unpriced ones through. A blocked call is
         // recoverable (top up and re-run); an unbilled one is not.
-        if (creditGateEnabled && !hasAffordableCredits(req.getInstituteId())) {
+        //
+        // A request that names the MOCK provider never dials and is never billed (the
+        // public API's test mode), so it passes: a new account must be able to test its
+        // integration before its first top-up.
+        boolean mockRequest = ProviderType.MOCK.equalsIgnoreCase(req.getProvider());
+        if (creditGateEnabled && !mockRequest && !hasAffordableCredits(req.getInstituteId())) {
             log.warn("AI call BLOCKED — no credits for institute {} (responseId={}, phone=***{})",
                     req.getInstituteId(), req.getResponseId(),
                     req.getPhoneNumber() == null ? "" :
@@ -363,7 +383,9 @@ public class AiCallService {
             // ACCIDENTAL double dispatch, and a person clicking twice is asking for a
             // second call, not repeating themselves by mistake. Bulk keeps it — a
             // campaign overlapping a workflow node is precisely the accident it catches.
-            if (trigger.enforcesDuplicateWindow()
+            // MOCK (the public API's test mode) never dials, so there is no double dial to
+            // collapse: a developer repeating a test to the same number must get a call.
+            if (!mock && trigger.enforcesDuplicateWindow()
                     && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);

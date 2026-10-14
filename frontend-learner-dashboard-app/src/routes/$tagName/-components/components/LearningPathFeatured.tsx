@@ -1,4 +1,5 @@
 import React from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -276,7 +277,7 @@ const CardImage: React.FC<{ src: string | null; className: string; children?: Re
 }) => (
   <div className={className}>
     {src ? (
-      <img src={src} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+      <FitImage src={src} alt="" loading="lazy" className="absolute inset-0 size-full" />
     ) : (
       <div className="absolute inset-0 flex items-center justify-center text-palette-gold">
         <Path className="size-10 opacity-60" weight="duotone" aria-hidden="true" />

@@ -20,6 +20,7 @@ import {
     DownloadSimple,
     Eye,
     PencilSimple,
+    CaretDown,
     CaretLeft,
     CaretRight,
     Receipt,
@@ -302,6 +303,9 @@ const StudentMarkPaidDialog = ({
     );
 };
 
+/** Discount reasons longer than this are cut short with a More toggle. */
+const REASON_PREVIEW_CHARS = 60;
+
 /** Invoice list with client-side pagination + source-based actions. */
 const InvoicesList = ({
     invoices,
@@ -336,6 +340,17 @@ const InvoicesList = ({
         new Set(paged.map((inv) => inv.discount_granted_by_user_id).filter((id): id is string => !!id))
     );
     const { data: grantedByUsers } = useGetUserBasicDetails(grantedByIds);
+    // Compact rows: details (amount breakdown, discount, actions) open per invoice on "More".
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [expandedReasons, setExpandedReasons] = useState<Set<string>>(new Set());
+    const toggleIn = (set: Set<string>, id: string) => {
+        const next = new Set(set);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+    };
+    const toggleExpanded = (id: string) => setExpandedIds((s) => toggleIn(s, id));
+    const toggleReason = (id: string) => setExpandedReasons((s) => toggleIn(s, id));
     const grantedByName = (id?: string | null) =>
         id ? grantedByUsers?.find((u) => u.id === id)?.name : undefined;
 
@@ -414,12 +429,12 @@ const InvoicesList = ({
                             !isSyntheticRow &&
                             inv.source !== 'LIVE_SESSION' &&
                             status !== 'PAID';
+                        const hasDiscount = (inv.discount_amount ?? 0) > 0;
+                        const isExpanded = expandedIds.has(inv.id);
                         return (
-                            <li
-                                key={inv.id}
-                                className="flex flex-col gap-2 px-3 py-2.5 transition-colors hover:bg-neutral-50"
-                            >
-                                <div className="flex items-center gap-3">
+                            <li key={inv.id} className="px-3 py-2.5 transition-colors hover:bg-neutral-50">
+                                {/* Compact row: number, status, date, amount. Everything else is under More. */}
+                                <div className="flex items-center gap-2">
                                     <div className="min-w-0 flex-1">
                                         <div className="flex min-w-0 items-center gap-2">
                                             <span
@@ -442,12 +457,58 @@ const InvoicesList = ({
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
+                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-500">
                                             <span>{formatDate(inv.due_date || inv.invoice_date)}</span>
                                             <span aria-hidden>·</span>
-                                            {/* Discounted invoice: show gross struck through so the
-                                                coupon's effect is visible next to the charged amount. */}
-                                            {(inv.discount_amount ?? 0) > 0 && (
+                                            <span className="font-medium text-neutral-700">
+                                                {formatCurrency(inv.total_amount, inv.currency)}
+                                            </span>
+                                            {hasDiscount && (
+                                                <span className="text-success-700">
+                                                    −{formatCurrency(inv.discount_amount, inv.currency)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {canDownload && (
+                                        <>
+                                            <button
+                                                onClick={() => setPreviewTarget(inv)}
+                                                className="inline-flex shrink-0 items-center rounded-md border border-neutral-300 bg-white p-1.5 text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                                                title={t('invoicesList.previewTitle')}
+                                                aria-label={t('invoicesList.preview')}
+                                            >
+                                                <Eye className="size-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => void handleDownload(inv)}
+                                                className="inline-flex shrink-0 items-center rounded-md border border-neutral-300 bg-white p-1.5 text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                                                title={t('invoicesList.downloadTitle')}
+                                                aria-label={t('invoicesList.download')}
+                                            >
+                                                <DownloadSimple className="size-3.5" />
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => toggleExpanded(inv.id)}
+                                        className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50"
+                                        aria-expanded={isExpanded}
+                                    >
+                                        {isExpanded
+                                            ? t('invoicesList.less', { defaultValue: 'Less' })
+                                            : t('invoicesList.more', { defaultValue: 'More' })}
+                                        <CaretDown
+                                            className={`size-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                        />
+                                    </button>
+                                </div>
+
+                                {isExpanded && (
+                                    <div className="mt-2 flex flex-col gap-2 rounded-md border border-neutral-100 bg-neutral-50 p-2.5 text-xs">
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-neutral-600">
+                                            {/* Discounted invoice: gross struck through next to what was charged. */}
+                                            {hasDiscount && (
                                                 <span className="text-neutral-400 line-through">
                                                     {formatCurrency(
                                                         (inv.total_amount ?? 0) + (inv.discount_amount ?? 0),
@@ -455,34 +516,9 @@ const InvoicesList = ({
                                                     )}
                                                 </span>
                                             )}
-                                            <span className="font-medium text-neutral-700">
+                                            <span className="font-medium text-neutral-800">
                                                 {formatCurrency(inv.total_amount, inv.currency)}
                                             </span>
-                                            {(inv.discount_amount ?? 0) > 0 &&
-                                                (() => {
-                                                    const couponItem = inv.line_items?.find(
-                                                        (li) =>
-                                                            li.item_type?.includes('COUPON') ||
-                                                            li.item_type?.includes('DISCOUNT') ||
-                                                            li.item_type?.includes('REFERRAL')
-                                                    );
-                                                    const label = couponItem?.description || t('invoicesList.discountFallback');
-                                                    // Admin-granted: say who gave it.
-                                                    const byAdmin = inv.discount_granted_by_user_id
-                                                        ? grantedByName(inv.discount_granted_by_user_id)
-                                                            ? `Discount by ${grantedByName(inv.discount_granted_by_user_id)}`
-                                                            : 'Admin discount'
-                                                        : null;
-                                                    return (
-                                                        <span
-                                                            className="inline-flex shrink-0 items-center rounded border border-success-200 bg-success-50 px-1.5 py-0.5 text-caption font-medium text-success-700"
-                                                            title={`${label}: ${formatCurrency(inv.discount_amount, inv.currency)} off${byAdmin ? ` (${byAdmin})` : ''}`}
-                                                        >
-                                                            {byAdmin ?? label} −
-                                                            {formatCurrency(inv.discount_amount, inv.currency)}
-                                                        </span>
-                                                    );
-                                                })()}
                                             {inv.source && (() => {
                                                 const srcMeta: Record<string, { label: string; cls: string }> = {
                                                     ADMIN_MANUAL: { label: t('invoicesList.sourceAdminInvoice'), cls: 'bg-purple-50 text-purple-700 border-purple-200' },
@@ -497,94 +533,129 @@ const InvoicesList = ({
                                                 );
                                             })()}
                                         </div>
-                                    </div>
-                                    {canDownload && (
-                                        <>
-                                            <button
-                                                onClick={() => setPreviewTarget(inv)}
-                                                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-                                                title={t('invoicesList.previewTitle')}
-                                            >
-                                                <Eye className="size-3.5" />
-                                                {t('invoicesList.preview')}
-                                            </button>
-                                            <button
-                                                onClick={() => void handleDownload(inv)}
-                                                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-                                                title={t('invoicesList.downloadTitle')}
-                                            >
-                                                <DownloadSimple className="size-3.5" />
-                                                {t('invoicesList.download')}
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                                {/* Action row: payment link + mark paid for actionable invoices */}
-                                {(paymentLink || (isAdminManual && isPending) || canCancel || canDeleteInvoice) && (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        {paymentLink && (
-                                            <button
-                                                onClick={() => handleCopyLink(inv.id, paymentLink)}
-                                                className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
-                                                title={t('invoicesList.copyPaymentLinkTitle')}
-                                            >
-                                                {copiedId === inv.id ? (
-                                                    <><Check className="size-3 text-success-600" /> {t('invoicesList.copied')}</>
-                                                ) : (
-                                                    <><Copy className="size-3" /> {t('invoicesList.copyPaymentLink')}</>
+
+                                        {hasDiscount && (() => {
+                                            const discountItem = inv.line_items?.find(
+                                                (li) =>
+                                                    li.item_type?.includes('COUPON') ||
+                                                    li.item_type?.includes('DISCOUNT') ||
+                                                    li.item_type?.includes('REFERRAL')
+                                            );
+                                            const label = discountItem?.description || t('invoicesList.discountFallback');
+                                            const grantedBy = inv.discount_granted_by_user_id
+                                                ? grantedByName(inv.discount_granted_by_user_id) ||
+                                                  t('invoicesList.anAdmin', { defaultValue: 'an admin' })
+                                                : null;
+                                            const reason = inv.discount_reason?.trim() || '';
+                                            const longReason = reason.length > REASON_PREVIEW_CHARS;
+                                            const showFullReason = expandedReasons.has(inv.id);
+                                            return (
+                                                <div className="rounded border border-success-200 bg-success-50 px-2 py-1.5 text-success-800">
+                                                    <div className="font-medium">
+                                                        {label} −{formatCurrency(inv.discount_amount, inv.currency)}
+                                                    </div>
+                                                    {grantedBy && (
+                                                        <div className="mt-0.5 text-success-700">
+                                                            {t('invoicesList.discountGivenBy', {
+                                                                defaultValue: 'Given by {{name}}',
+                                                                name: grantedBy,
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                    {reason && (
+                                                        <div className="mt-0.5 text-success-700">
+                                                            <span className="font-medium">
+                                                                {t('invoicesList.discountReason', { defaultValue: 'Reason' })}:
+                                                            </span>{' '}
+                                                            <span className="break-words">
+                                                                {longReason && !showFullReason
+                                                                    ? `${reason.slice(0, REASON_PREVIEW_CHARS)}…`
+                                                                    : reason}
+                                                            </span>
+                                                            {longReason && (
+                                                                <button
+                                                                    onClick={() => toggleReason(inv.id)}
+                                                                    className="ms-1 font-medium text-primary-600 hover:underline"
+                                                                >
+                                                                    {showFullReason
+                                                                        ? t('invoicesList.less', { defaultValue: 'Less' })
+                                                                        : t('invoicesList.more', { defaultValue: 'More' })}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Action row: payment link + mark paid for actionable invoices */}
+                                        {(paymentLink || (isAdminManual && isPending) || canCancel || canDeleteInvoice) && (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {paymentLink && (
+                                                    <button
+                                                        onClick={() => handleCopyLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
+                                                        title={t('invoicesList.copyPaymentLinkTitle')}
+                                                    >
+                                                        {copiedId === inv.id ? (
+                                                            <><Check className="size-3 text-success-600" /> {t('invoicesList.copied')}</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> {t('invoicesList.copyPaymentLink')}</>
+                                                        )}
+                                                    </button>
                                                 )}
-                                            </button>
-                                        )}
-                                        {isAdminManual && isPending && onEdit && (
-                                            <button
-                                                onClick={() => onEdit(inv.id)}
-                                                className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
-                                                title={t('invoicesList.editTitle')}
-                                            >
-                                                <PencilSimple className="size-3" />
-                                                {t('invoicesList.edit')}
-                                            </button>
-                                        )}
-                                        {isAdminManual && isPending && (
-                                            <button
-                                                onClick={() => setMarkPaidTarget({ id: inv.id, number: inv.invoice_number || inv.id })}
-                                                className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-2xs uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                title={t('invoicesList.markPaidTitle')}
-                                            >
-                                                {t('invoicesList.markPaid')}
-                                            </button>
-                                        )}
-                                        {canCancel && (
-                                            <button
-                                                onClick={() =>
-                                                    setCancelTarget({
-                                                        id: inv.id,
-                                                        number: inv.invoice_number || inv.id,
-                                                    })
-                                                }
-                                                disabled={cancellingId === inv.id}
-                                                className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
-                                                title={t('invoicesList.cancelInvoiceTitle')}
-                                            >
-                                                <XCircle className="size-3" />
-                                                {cancellingId === inv.id ? t('invoicesList.cancelling') : t('invoicesList.cancelAction')}
-                                            </button>
-                                        )}
-                                        {canDeleteInvoice && (
-                                            <button
-                                                onClick={() =>
-                                                    setDeleteTarget({
-                                                        kind: 'invoice',
-                                                        id: inv.id,
-                                                        label: inv.invoice_number || inv.id,
-                                                    })
-                                                }
-                                                className="inline-flex items-center gap-1 rounded border border-danger-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-50"
-                                                title={t('permanentDelete.action')}
-                                            >
-                                                <Trash className="size-3" />
-                                                {t('permanentDelete.action')}
-                                            </button>
+                                                {isAdminManual && isPending && onEdit && (
+                                                    <button
+                                                        onClick={() => onEdit(inv.id)}
+                                                        className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
+                                                        title={t('invoicesList.editTitle')}
+                                                    >
+                                                        <PencilSimple className="size-3" />
+                                                        {t('invoicesList.edit')}
+                                                    </button>
+                                                )}
+                                                {isAdminManual && isPending && (
+                                                    <button
+                                                        onClick={() => setMarkPaidTarget({ id: inv.id, number: inv.invoice_number || inv.id })}
+                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-2xs uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                        title={t('invoicesList.markPaidTitle')}
+                                                    >
+                                                        {t('invoicesList.markPaid')}
+                                                    </button>
+                                                )}
+                                                {canCancel && (
+                                                    <button
+                                                        onClick={() =>
+                                                            setCancelTarget({
+                                                                id: inv.id,
+                                                                number: inv.invoice_number || inv.id,
+                                                            })
+                                                        }
+                                                        disabled={cancellingId === inv.id}
+                                                        className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
+                                                        title={t('invoicesList.cancelInvoiceTitle')}
+                                                    >
+                                                        <XCircle className="size-3" />
+                                                        {cancellingId === inv.id ? t('invoicesList.cancelling') : t('invoicesList.cancelAction')}
+                                                    </button>
+                                                )}
+                                                {canDeleteInvoice && (
+                                                    <button
+                                                        onClick={() =>
+                                                            setDeleteTarget({
+                                                                kind: 'invoice',
+                                                                id: inv.id,
+                                                                label: inv.invoice_number || inv.id,
+                                                            })
+                                                        }
+                                                        className="inline-flex items-center gap-1 rounded border border-danger-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-50"
+                                                        title={t('permanentDelete.action')}
+                                                    >
+                                                        <Trash className="size-3" />
+                                                        {t('permanentDelete.action')}
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 )}

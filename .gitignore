@@ -148,3 +148,6 @@ vacademy_devops/hetzner/values-prod-hetzner.yaml
 # Local dev config per service (hardcoded secrets for terminal runs) — never commit
 **/src/main/resources/application-local.properties
 loadtest/answer-sheet.pdf
+
+# Replay output holds callers' words — never commit it.
+voice_bot_service/sim_replay.json

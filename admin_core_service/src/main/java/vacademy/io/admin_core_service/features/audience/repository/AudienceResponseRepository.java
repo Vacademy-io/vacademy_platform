@@ -381,6 +381,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -754,6 +759,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -1123,6 +1133,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -1496,6 +1511,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --   * Follow-up buckets read the lead_followup table (open rows
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
+                              -- Lost / converted leads are off the SLA clock (the row badge shows Closed), so no SLA
+                              -- bucket may match them. Status = the same per-response-then-profile COALESCE the
+                              -- status column and the lead-status filter use.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status, '') NOT IN ('LOST', 'CONVERTED'))
                               AND (COALESCE(:slaFilter, '') = ''
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
@@ -2179,6 +2199,113 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10,
                         @Param("excludeResponseId") String excludeResponseId);
 
+        /**
+         * Owner of the most recent OTHER lead with this phone (same match rules as the
+         * dedup exists-queries above), for the repeat-lead SAME_AS_PREVIOUS policy.
+         * Deleted leads are skipped. Blank {@code audienceIdsCsv} = whole institute.
+         * At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findPreviousCounsellorIdByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
+
+        /** Email twin of {@link #findPreviousCounsellorIdByPhoneLast10}. */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(:email))
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.id <> :excludeResponseId
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findPreviousCounsellorIdByEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
+
+        /**
+         * Person (user id) already holding this phone, for phone dedup to reuse instead of
+         * minting a second person from a different email. Active, non-duplicate leads only;
+         * an owned lead wins, then the newest. Blank {@code audienceIdsCsv} = whole institute.
+         */
+        @Query(value = """
+                            SELECT ar.user_id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.audience_status = 'ACTIVE'
+                            AND ar.user_id IS NOT NULL
+                            ORDER BY (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<String> findLeadUserIdByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /**
+         * Owner of the most recent active, owned lead with this phone. Blank
+         * {@code audienceIdsCsv} = whole institute. At most one row.
+         */
+        @Query(value = """
+                            SELECT ulp.assigned_counselor_id   AS "counsellorId",
+                                   ulp.assigned_counselor_name AS "counsellorName"
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                            AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND ar.audience_status = 'ACTIVE'
+                            AND COALESCE(ulp.assigned_counselor_id, '') <> ''
+                            ORDER BY ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        List<LeadOwnerRow> findCurrentOwnerByPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
+                        @Param("last10") String last10);
+
+        /** Projection for {@link #findCurrentOwnerByPhoneLast10}; aliases are quoted camelCase. */
+        interface LeadOwnerRow {
+                String getCounsellorId();
+
+                String getCounsellorName();
+        }
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**
@@ -2196,7 +2323,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<String> findInstituteIdsWithActiveLeads();
 
         /**
-         * All open, assigned, unconverted leads for an institute, with the resolved counselor and the
+         * Of the given audience_response ids, the ones whose lead is closed — lost or converted.
+         * Status is the same COALESCE(per-response lead_status key, profile conversion_status) the
+         * leads list shows, so a lead the list calls Lost is exactly a lead this returns. Closed
+         * leads are off the SLA clock: their open follow-ups are not reminded or listed as pending.
+         */
+        @Query(value = """
+                            SELECT ar.id
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE ar.id IN (:ids)
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id),
+                                           ulp.conversion_status, '') IN ('LOST', 'CONVERTED')
+                        """, nativeQuery = true)
+        List<String> findClosedLeadIds(@Param("ids") java.util.Collection<String> ids);
+
+        /**
+         * All open, assigned, not-lost, unconverted leads for an institute, with the resolved counselor and the
          * timestamp of the last response event on the lead (the RESPONSE EVENT definition on
          * {@link #findCounselorActionsByResponseIds}; null = never responded, i.e. still on the TAT
          * clock — the column keeps its historical name). The scheduler decides which SLA stage
@@ -2246,7 +2391,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               AND ar.audience_status = 'ACTIVE'
-                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              -- Closed leads (lost or converted in EITHER the per-response status or the profile) are off
+                              -- the SLA clock: no TAT / follow-up reminder, no OVERDUE stage stamped on the row.
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED', 'LOST'))
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), '') NOT IN ('LOST', 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                             ) c
                         """, nativeQuery = true)
@@ -2299,7 +2447,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               AND ar.audience_status = 'ACTIVE'
-                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              -- Closed leads (lost or converted in EITHER the per-response status or the profile) are off
+                              -- the SLA clock: no TAT / follow-up reminder, no OVERDUE stage stamped on the row.
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED', 'LOST'))
+                              AND COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), '') NOT IN ('LOST', 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                               -- Narrowing for the 1-minute scan: still on the TAT clock, not yet
                               -- flagged overdue, and recent enough that its deadline can still be
@@ -2396,7 +2547,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN ulp.conversion_status = 'LOST'      THEN 1 ELSE 0 END)                  AS lostLeads,
                                    SUM(CASE WHEN ulp.conversion_status IS NULL
                                               OR ulp.conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)    AS activeLeads,
-                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE')
+                                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status NOT IN ('CONVERTED','LOST')) THEN 1 ELSE 0 END) AS overdueLeads
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN LATERAL (
@@ -2651,7 +2803,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                 THEN 1 ELSE 0 END)                                                       AS tatMetCount,
                                    SUM(CASE WHEN conversion_status IS NULL
                                               OR conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)        AS openLeads,
-                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE')
+                                              AND (conversion_status IS NULL OR conversion_status NOT IN ('CONVERTED','LOST')) THEN 1 ELSE 0 END) AS overdueLeads
                             FROM lead_meta
                             WHERE counselor_id IS NOT NULL
                             GROUP BY counselor_id
@@ -2723,35 +2876,107 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * about to dial someone who opted out is exactly who needs telling.
          * Duplicates are still skipped, since they point at the same person.
          *
-         * Course comes from a custom field, not destination_package_session_id —
+         * Course and branch come from custom fields, not destination_package_session_id —
          * that column is unset on every lead for the institutes using this, because
-         * the course is collected as a form answer. Which field is per-institute
-         * config, matched on the field's id (stable across renames); a null id
-         * leaves the column null rather than guessing.
+         * both are collected as form answers. Which field is per-institute config,
+         * matched on the field's id (stable across renames); a null id leaves the
+         * column null rather than guessing.
          *
-         * Newest first: a repeat enquiry should answer with its current owner.
+         * enrolmentState is only meaningful for an admitted lead: ONGOING when the
+         * person holds an ACTIVE enrolment that has not expired, COMPLETED when every
+         * real enrolment has lapsed, NONE when there is none at all. Invites, abandoned
+         * carts, pending approvals and deleted rows are not enrolments and are ignored,
+         * or a lead with only an invite would read as a finished course.
+         *
+         * Order: a live lead before a deleted one, an owned lead before an unowned one,
+         * then newest first. Newest alone let a deleted test entry or an ownerless repeat
+         * answer for a phone whose real lead belongs to someone else.
          */
         @Query(value = """
-                            SELECT ar.parent_name            AS "leadName",
+                            SELECT ar.id                     AS "responseId",
+                                   ar.user_id                AS "userId",
+                                   ar.parent_name            AS "leadName",
                                    ar.parent_email           AS "leadEmail",
                                    ar.parent_mobile          AS "leadMobile",
+                                   ulp.assigned_counselor_id AS "counsellorId",
                                    ulp.assigned_counselor_name AS "counsellorName",
+                                   ar.created_by_user_id     AS "createdByUserId",
                                    a.campaign_type           AS "campaignType",
                                    a.campaign_name           AS "campaignName",
                                    ls.label                  AS "statusLabel",
+                                   ls.status_key             AS "statusKey",
+                                   ulp.conversion_status     AS "conversionStatus",
+                                   COALESCE(lt.label, ulp.lead_tier) AS "interestLevel",
                                    course.value              AS "courseValue",
-                                   ar.overall_status         AS "overallStatus"
+                                   branch.value              AS "branchValue",
+                                   ar.overall_status         AS "overallStatus",
+                                   COALESCE(ar.submitted_at, ar.created_at) AS "createdAt",
+                                   CASE
+                                       WHEN enrol.active_count > 0 THEN 'ONGOING'
+                                       WHEN enrol.total_count > 0 THEN 'COMPLETED'
+                                       ELSE 'NONE'
+                                   END                       AS "enrolmentState"
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN user_lead_profile ulp
                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            LEFT JOIN lead_tier lt
+                                   ON lt.institute_id = a.institute_id AND lt.tier_key = ulp.lead_tier
                             LEFT JOIN LATERAL (
                                    SELECT cfv.value FROM custom_field_values cfv
                                    WHERE cfv.source_id = ar.id
                                      AND CAST(:courseFieldId AS text) IS NOT NULL
                                      AND cfv.custom_field_id = CAST(:courseFieldId AS text)
                                    LIMIT 1) course ON true
+                            LEFT JOIN LATERAL (
+                                   SELECT cfv.value FROM custom_field_values cfv
+                                   WHERE cfv.source_id = ar.id
+                                     AND CAST(:branchFieldId AS text) IS NOT NULL
+                                     AND cfv.custom_field_id = CAST(:branchFieldId AS text)
+                                   LIMIT 1) branch ON true
+                            LEFT JOIN LATERAL (
+                                   SELECT COUNT(*) AS total_count,
+                                          COUNT(*) FILTER (WHERE m.status = 'ACTIVE'
+                                                 AND (m.expiry_date IS NULL OR m.expiry_date > NOW())) AS active_count
+                                   FROM student_session_institute_group_mapping m
+                                   WHERE m.user_id = ar.user_id
+                                     AND m.institute_id = a.institute_id
+                                     AND m.status IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')) enrol ON true
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                              AND (
+                                   (CAST(:last10 AS text) IS NOT NULL
+                                    AND ar.parent_mobile IS NOT NULL
+                                    AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = CAST(:last10 AS text))
+                                OR (CAST(:email AS text) IS NOT NULL
+                                    AND ar.parent_email IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(CAST(:email AS text))))
+                                OR (CAST(:name AS text) IS NOT NULL
+                                    AND ar.parent_name IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
+                              )
+                            ORDER BY (ar.audience_status = 'ACTIVE') DESC,
+                                     (COALESCE(ulp.assigned_counselor_id, '') <> '') DESC,
+                                     ar.submitted_at DESC NULLS LAST, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        java.util.Optional<LeadLookupRow> lookupByPhoneOrEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10,
+                        @Param("email") String email,
+                        @Param("name") String name,
+                        @Param("courseFieldId") String courseFieldId,
+                        @Param("branchFieldId") String branchFieldId);
+
+        /**
+         * Every enquiry by the same person as {@link #lookupByPhoneOrEmail}, same
+         * match rules, newest first — Check Lead's follow-up history spans them all,
+         * so a repeat enquiry still shows the calls made on the earlier one.
+         */
+        @Query(value = """
+                            SELECT ar.id FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
                             WHERE a.institute_id = :instituteId
                               AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                               AND (
@@ -2766,14 +2991,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND LOWER(TRIM(ar.parent_name)) = LOWER(TRIM(CAST(:name AS text))))
                               )
                             ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
-                            LIMIT 1
+                            LIMIT 50
                         """, nativeQuery = true)
-        java.util.Optional<LeadLookupRow> lookupByPhoneOrEmail(
+        List<String> lookupMatchingResponseIds(
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10,
                         @Param("email") String email,
-                        @Param("name") String name,
-                        @Param("courseFieldId") String courseFieldId);
+                        @Param("name") String name);
 
         /**
          * Projection for {@link #lookupByPhoneOrEmail}.
@@ -2785,14 +3009,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * nothing about it".
          */
         interface LeadLookupRow {
+                String getResponseId();
+                String getUserId();
                 String getLeadName();
                 String getLeadEmail();
                 String getLeadMobile();
+                String getCounsellorId();
                 String getCounsellorName();
+                String getCreatedByUserId();
                 String getCampaignType();
                 String getCampaignName();
                 String getStatusLabel();
+                String getStatusKey();
+                String getConversionStatus();
+                String getInterestLevel();
                 String getCourseValue();
+                String getBranchValue();
                 String getOverallStatus();
+                java.sql.Timestamp getCreatedAt();
+                String getEnrolmentState();
         }
 }

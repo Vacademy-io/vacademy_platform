@@ -101,9 +101,22 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
+                       is_hold_announcement, is_hold_fragment,
                        opening_expected_secs, ends_on_question)
 
+from .sarvam_v4_voices import (SARVAM_V4_DEFAULT_VOICE, SARVAM_V4_MALE,  # noqa: E402
+                               SARVAM_V4_VOICES)
+
 logger = logging.getLogger(__name__)
+
+# How long the bot waits on hold before the usual idle nudges/hang-up apply again.
+HOLD_MAX_SECS = 300.0
+# Said to the model when the person comes back from putting the call on hold.
+HOLD_RESUME_CUE = ("[They had put the call on hold and are back now. Do NOT introduce yourself "
+                   "again and do not restart your pitch. Acknowledge in a few words that you "
+                   "are still here (e.g. 'जी, मैं यहीं हूँ।' / 'Yes, I'm still here.') and carry "
+                   "on from exactly where the conversation was — if you had asked a question, "
+                   "ask it again briefly.]")
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
@@ -407,6 +420,10 @@ class TranscriptCollector(FrameProcessor):
         self._human_turns = 0          # finals that reached the model as the callee's
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
+        # When the person put us on hold (0 = not on hold); see the hold branch in
+        # process_frame and turntake.is_hold_announcement.
+        self._hold_since = 0.0
+        self._hold_line_t = 0.0
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
@@ -590,6 +607,10 @@ class TranscriptCollector(FrameProcessor):
             joined_carrier = (bool(prev_final) and now - self._prev_final_t < 4.0
                               and not is_carrier_announcement(prev_final)
                               and is_carrier_announcement(prev_final + " " + text))
+            # Same for the hold recording ("The person you are" + "speaking with.").
+            joined_hold = (bool(prev_final) and now - self._prev_final_t < 4.0
+                           and not is_hold_announcement(prev_final)
+                           and is_hold_announcement(prev_final + " " + text))
             self._prev_final_t = now
             # The OPERATOR's recorded message is not the callee. Record it (the
             # answering-machine detector reads these markers) then stop: it must
@@ -699,6 +720,59 @@ class TranscriptCollector(FrameProcessor):
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 await self._release_user_turn(frame, direction)
+                return
+            # ── on hold ──────────────────────────────────────────────────────
+            # The person put the call on hold and the network plays its looping
+            # announcement (call 6d81124d, 2026-10-14: the bot answered the
+            # recording a dozen times, logged a reply loop, then introduced itself
+            # again when the father came back). While on hold the recording is
+            # neither an answer nor a barge-in: keep quiet until something that is
+            # not the recording arrives — that is the person — then carry on from
+            # where the conversation was. Only after the call has started, so the
+            # machine window's own screener/carrier handling above keeps the start.
+            if self._hold_since:
+                if is_hold_announcement(text) or is_hold_fragment(text):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                # A lone "हाँ।" a moment after a piece of the recording is the STT
+                # hearing the recording (54.19 s on 6d81124d, 0.4 s after
+                # "Speaking with."). The person coming back says hello, says
+                # something, or speaks into the quiet after the recording.
+                if (len(text.split()) < 2
+                        and not (caller_checking_presence(text) or is_audio_check(text))
+                        and now - self._hold_line_t < 3.0):
+                    await self._absorb_hold_line(frame, direction, text)
+                    return
+                held = now - self._hold_since
+                self._hold_since = 0.0
+                logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
+                if self._diag is not None:
+                    self._diag.bump("hold_returns")
+                self._last_text = text.casefold()
+                self._last_text_t = now
+                self._outcome.transcript.append({"role": "user", "text": text})
+                self._human_turns += 1
+                self._on_activity(user=True)
+                self._on_transcript()
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
+                await self.push_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": text},
+                              {"role": "user", "content": HOLD_RESUME_CUE}],
+                    run_llm=True), direction)
+                return
+            if ((self._human_turns > 0 or self._bot_spoke_once())
+                    and (is_hold_announcement(text) or joined_hold)):
+                self._hold_since = now
+                if self._diag is not None:
+                    self._diag.bump("holds")
+                logger.info("turn-gate: the call is on hold (%r) — quiet until the person "
+                            "is back", text[:40])
+                if self._is_bot_speaking() or self._reply_in_flight():
+                    # Nobody is listening to the rest of it.
+                    await self.broadcast_interruption()
+                await self._absorb_hold_line(frame, direction, text)
                 return
             ducked = self._duck is not None and self._duck.is_ducked()
             # A final with no letter or digit ("।", "?") is punctuation the engine
@@ -1215,6 +1289,24 @@ class TranscriptCollector(FrameProcessor):
                                "Nothing before that — no filler, no question.]"}]), direction)
         if not forwarded:
             await self.push_frame(frame, direction)
+
+    def on_hold_for(self) -> float:
+        """Seconds the person has had us on hold (0 when not on hold)."""
+        return time.time() - self._hold_since if self._hold_since else 0.0
+
+    async def _absorb_hold_line(self, frame, direction, text: str) -> None:
+        """A piece of the hold recording: on the record, out of the model's context,
+        and not a barge-in. Stamped as heard, so the silence around it is not taken
+        for a swallowed utterance (the VAD-orphan re-ask)."""
+        self._outcome.transcript.append({"role": "user", "text": text})
+        self._hold_line_t = time.time()
+        if self._diag is not None:
+            self._diag.bump("hold_lines")
+        self._on_activity(user=True)
+        self._on_transcript(backchannel=True)
+        if self._duck is not None and self._duck.is_ducked():
+            await self._on_absorb(None)
+        await self._release_user_turn(frame, direction)
 
     def looks_like_voicemail(self) -> bool:
         """The carrier's recording is the only thing that has spoken. Call
@@ -3155,8 +3247,11 @@ class RunGuard(FrameProcessor):
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
-                 supersede=None, reply_unheard=None, runs_noted=None):
+                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None):
         super().__init__()
+        # A frame to push ahead of a run that goes through (the LLM switch back
+        # to the primary after a failover) — None for nothing.
+        self._before_run = before_run or (lambda: None)
         # ONE REPLY PER CALLER TURN (config.run_supersede). A parent who speaks
         # in pieces — "आप।" / "आप teachers से कहें मुझसे भी direct बात करें।" /
         # "बात करें।", finals 0.3-1 s apart — reaches us as several runs. A run
@@ -3373,6 +3468,7 @@ class RunGuard(FrameProcessor):
         of being let through as a second run over the same context with
         nothing to supersede (review 2026-10-08, finding 5)."""
         self._pushed_t = time.time()
+        msgs = None
         try:
             msgs = self._context.get_messages()
             self._pushed_words = self._all_caller_words(msgs)
@@ -3381,6 +3477,15 @@ class RunGuard(FrameProcessor):
         except Exception:
             self._pushed_words = 0
         self._note_run()
+        try:
+            # Only a run that answers the caller: the bot's own nudges and cues
+            # (no caller words since the last reply) never move the model.
+            pre = self._before_run() if self._caller_words(msgs or []) > 0 else None
+        except Exception:
+            logger.exception("run-guard: before_run failed")
+            pre = None
+        if pre is not None:
+            await self.push_frame(pre, direction)
         await self.push_frame(frame, direction)
 
     async def _supersede_unheard(self, msgs=None) -> bool:
@@ -4222,7 +4327,7 @@ NAVANA_VOICES = _NAVANA_MALE | _NAVANA_FEMALE
 # all four. Missing a name here means a male voice speaking feminine Hindi —
 # the #1 immersion complaint from live calls.
 _MALE_VOICES |= (_GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
-                 | _DEEPGRAM_MALE_VOICES | _NAVANA_MALE)
+                 | _DEEPGRAM_MALE_VOICES | _NAVANA_MALE | SARVAM_V4_MALE)
 
 
 def _engine_of(model: str) -> str:
@@ -4240,6 +4345,10 @@ def _engine_of(model: str) -> str:
         return "deepgram"
     if m.startswith(("navana", "bodhi")):
         return "navana"
+    # Before the Sarvam fallback: v4 is its own engine (disjoint voices, see
+    # app/sarvam_v4_voices.py) and must never be read as v3.
+    if m.startswith(("sarvam_v4", "sarvam-v4", "bulbul:v4", "bulbul_v4", "bulbul-v4")):
+        return "sarvam_v4"
     return "sarvam"
 
 
@@ -4255,6 +4364,7 @@ _ENGINE_DEFAULT_VOICE = {
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
     "navana": "bhavana",
+    "sarvam_v4": SARVAM_V4_DEFAULT_VOICE,
 }
 
 
@@ -4263,7 +4373,8 @@ def _engine_palette(engine: str):
             "smallest": SMALLEST_VOICES,
             "smallest_pro": SMALLEST_PRO_VOICES,
             "deepgram": DEEPGRAM_VOICES,
-            "navana": NAVANA_VOICES}.get(engine)
+            "navana": NAVANA_VOICES,
+            "sarvam_v4": SARVAM_V4_VOICES}.get(engine)
 
 
 def _default_voice_for(agent) -> str:
@@ -4317,7 +4428,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES, SARVAM_V4_VOICES):
         if low in other:
             return None
     return voice
@@ -4932,7 +5043,22 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
     # synthesizes worse than Devanagari — Sarvam docs), the live lead facts, and the
     # machine end/transfer MARKERS (the agent prompt has no idea these tokens exist).
-    if is_english:
+    if is_english and _agent_tts_model(agent) == "navana":
+        # Call a4ce0279 (2026-10-13, Riya): the caller asked for Hindi, the script
+        # said "switch", and this rule said "never Devanagari" — so the model wrote
+        # "main ab Hindi mein baat karungi" in Latin letters and the English voice
+        # read it as gibberish ("I don't understand you"). Navana reads Devanagari
+        # in Hindi on its own (lang_corrected, verified on her earlier calls), so
+        # Hindi the caller ASKED for goes out in Devanagari.
+        script_rule = (
+            "- SCRIPT: Write your replies in English (Latin letters). If you must echo an "
+            "Indian-language word the caller used, keep it romanized. ONE exception: if the "
+            "caller has asked you to speak Hindi and your instructions let you switch, write "
+            "every Hindi sentence in DEVANAGARI (हिंदी लिपि), keeping English business words in "
+            "English letters (demo, link, WhatsApp) — NEVER write Hindi in Latin letters like "
+            "'main aapko batati hoon'; the voice cannot pronounce romanized Hindi."
+        )
+    elif is_english:
         script_rule = (
             "- SCRIPT: Write every reply in English (Latin letters) only. If you must echo an "
             "Indian-language word the caller used, keep it romanized in Latin letters — never "
@@ -5612,7 +5738,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # VAD ticks say how long they REALLY spoke.
             _voice = flags["voice_tick_t"] - flags["user_started_t"]
             if (_dur >= 4.0 and _voice >= settings.orphan_min_utterance_secs
-                    and flags["transcript_t"] < flags["user_started_t"]):
+                    and flags["transcript_t"] < flags["user_started_t"]
+                    # Hold music is not an unheard caller.
+                    and not transcript.on_hold_for()):
                 # They spoke for a real span, the aggregator gave up on the turn
                 # and no words ever came: we did not hear them.
                 flags["unheard_turn_t"] = time.time()
@@ -5719,6 +5847,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
     flags["llm_failed_over"] = False
     flags["llm_failed_over_t"] = 0.0
+    flags["llm_failovers_n"] = 0
     if (llm_fallback is not None and settings.llm_retire_primary
             and hasattr(llm_primary, "retire_on_error")):
         llm_primary.retire_on_error = True
@@ -5738,6 +5867,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                             temperature=_as_float(agent.get("temperature")),
                                             tts_model=_agent_tts_model(agent),
                                             language=agent.get("language"))
+    # No bridge line on Sarvam: pipecat builds SarvamTTSService with
+    # pause_frame_processing, so a line spoken while the model is still composing
+    # holds the TTS until that line's audio has played. Call c6847f91 (2026-10-14,
+    # bulbul:v4-flash): the bridge's audio never came, the fallback model's reply sat
+    # behind it from 06:07:57 and the caller heard 16 s of nothing until they spoke.
+    # Smallest pauses the same way but has not failed like this; the stamp (not
+    # engine_of's unstamped default) keeps the timing sim's stub TTS bridging.
+    bridge_freezes_tts = (getattr(tts, "_vacademy_engine", ("", ""))[0]
+                          in ("sarvam", "sarvam_v4")
+                          and bool(getattr(tts, "_pause_frame_processing", False)))
     # The STT waterfall's own services too (stalls are counted on them — the
     # switcher has no set_diagnostics); `stt` IS the primary without a fallback.
     _diag_set = set()
@@ -6266,7 +6405,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                              and time.time() - flags["voice_tick_t"] < 0.4),
                          supersede=lambda: settings.run_supersede,
                          reply_unheard=_reply_unheard,
-                         runs_noted=lambda: no_repeat.runs_noted())
+                         runs_noted=lambda: no_repeat.runs_noted(),
+                         before_run=lambda: _llm_return_frame())
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -6347,6 +6487,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         observers=[TtfbObserver(corr, diag).observer],
     )
 
+    def _llm_return_frame():
+        """After a failover, hand the caller's next turn back to the primary.
+
+        Call a4ce0279 (2026-10-13): Vertex missed its 3 s first-token deadline
+        once, at 0:21, and the rest of the call ran on the fallback, which
+        repeated a pitch line verbatim. The stall is per request — Vertex
+        answers in ~0.6 s again a moment later — so it is the next turn's
+        model too. Not inside LLM_RETURN_AFTER_SECS of the failover (its own
+        re-run must stay on the fallback), and never after LLM_MAX_FAILOVERS
+        stalls: a primary that keeps stalling is left. The switch frame goes
+        AHEAD of the run (RunGuard pushes it first); the switcher then hands
+        the primary its metadata frame, which also un-retires it
+        (providers.with_retire)."""
+        if not (settings.llm_return_to_primary and llm_fallback is not None
+                and flags["llm_failed_over"]):
+            return None
+        if flags["llm_failovers_n"] >= settings.llm_max_failovers:
+            return None
+        if time.time() - flags["llm_failed_over_t"] < settings.llm_return_after_secs:
+            return None
+        flags["llm_failed_over"] = False
+        if hasattr(llm_primary, "retired"):
+            llm_primary.retired = False
+        diag.bump("llm_returns")
+        diag.llm_vendor_final = ""
+        logger.info("llm: back on %s for this turn (failover %.0f s ago) corr=%s",
+                    type(llm_primary).__name__, time.time() - flags["llm_failed_over_t"], corr)
+        return ManuallySwitchServiceFrame(service=llm_primary)
+
     @task.event_handler("on_pipeline_error")
     async def _on_pipeline_error(_task, frame):
         """The primary LLM failed (a timeout, a 403, a 5xx). pipecat's failover
@@ -6362,11 +6531,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 return
             flags["llm_failed_over"] = True
             flags["llm_failed_over_t"] = time.time()
+            flags["llm_failovers_n"] += 1
             diag.bump("llm_failovers")
             diag.llm_vendor_final = type(llm_fallback).__name__
-            logger.warning("llm failover: %s — switching %s → %s for the rest of the call corr=%s",
+            back = (settings.llm_return_to_primary
+                    and flags["llm_failovers_n"] < settings.llm_max_failovers)
+            logger.warning("llm failover: %s — switching %s → %s %s corr=%s",
                            str(getattr(frame, "error", ""))[:90], type(llm_primary).__name__,
-                           type(llm_fallback).__name__, corr)
+                           type(llm_fallback).__name__,
+                           "until the caller's next turn" if back else "for the rest of the call",
+                           corr)
             run_guard.allow_rerun()
             await task.queue_frames([ManuallySwitchServiceFrame(service=llm_fallback), LLMRunFrame()])
         except Exception:
@@ -6435,6 +6609,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             asyncio.get_running_loop().create_task(_recheck())
             return
         flags["idle_rechecks"] = 0
+        _held = transcript.on_hold_for()
+        if 0 < _held < HOLD_MAX_SECS:
+            # The person put the call on hold: "Hello? Are you there?" into the
+            # hold music is wrong, and hanging up on someone who asked us to wait
+            # is worse. Look again later; past HOLD_MAX_SECS the usual nudges and
+            # idle hang-up apply.
+            logger.info("idle: on hold for %.0fs — waiting, not nudging corr=%s", _held, corr)
+
+            async def _hold_recheck():
+                await asyncio.sleep(max(5.0, float(settings.idle_timeout_secs)))
+                if (transcript.on_hold_for() and not flags["bot_speaking"]
+                        and not flags["user_speaking"]):
+                    await _on_idle(None)
+            asyncio.get_running_loop().create_task(_hold_recheck())
+            return
         if transcript.looks_like_voicemail():
             # Nothing to nudge and nobody to say goodbye to (call 24089872).
             diag.idle_hangup = True
@@ -6698,7 +6887,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
             duck_max_hold_secs=settings.duck_max_hold_secs,
             llm_bridge_after_secs=(settings.llm_bridge_after_secs
-                                   if settings.llm_bridge_after_secs > 0 else _OFF),
+                                   if settings.llm_bridge_after_secs > 0 and not bridge_freezes_tts
+                                   else _OFF),
         )
         while True:
             await asyncio.sleep(1.0)
@@ -6769,6 +6959,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
+                continue
+            if d.kind in (LLM_BRIDGE, ORPHAN_ASK) and transcript.on_hold_for():
+                # On hold: nobody is listening for "एक सेकंड।" or "आवाज़ कट गई"
+                # (the replay of 6d81124d said "एक सेकंड।" into the hold).
+                logger.info("watchdog: %s skipped — the call is on hold corr=%s", d.kind, corr)
                 continue
             if d.kind == LLM_BRIDGE:
                 # Call c130e39f: 16s of silence while Vertex took 5.4s to the

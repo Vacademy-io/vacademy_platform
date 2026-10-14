@@ -430,3 +430,28 @@ def test_a_reply_ends_on_its_question_with_a_short_sentence_after_it():
               "उसी दिन आपके WhatsApp पर आ जाता है।",
               "Who is it right now? one two three four five six seven eight nine"):
         assert not ends_on_question(t), t
+
+
+# ── call on hold (call 6d81124d, 2026-10-14) ───────────────────────────────
+
+def test_hold_announcements_enter_the_hold():
+    from app.turntake import is_hold_announcement
+    for line in ("आप जिस व्यक्ति से बात कर रहे हैं।", "hold पर रखा है।", "कृपया लाइन पर बने रहें।",
+                 "has put your call on hold.", "Stay on the line.", "Please hold.",
+                 "The person you are speaking with has put your call on hold"):
+        assert is_hold_announcement(line), line
+
+
+def test_ordinary_answers_are_not_hold_lines():
+    from app.turntake import is_hold_announcement, is_hold_fragment
+    for line in ("हाँ जी बताइए", "Hello.", "मैं बच्चे का पिता बोल रहा हूँ", "नाम ऋषभ है",
+                 "seventh में है", "ठीक है", "Yes, tell me", "हां जी बताइए अभी वापस।"):
+        assert not is_hold_announcement(line), line
+        assert not is_hold_fragment(line), line
+
+
+def test_pieces_of_the_recording_are_fragments():
+    from app.turntake import is_hold_fragment
+    for piece in ("उन्होंने आपके।", "आपके call को", "होल्ड।", "कृपा।", "The person you are",
+                  "Speaking with."):
+        assert is_hold_fragment(piece), piece

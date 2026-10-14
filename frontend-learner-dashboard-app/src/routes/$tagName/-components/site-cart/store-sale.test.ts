@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pageSells, storeCartRoute, storeSaleFrom } from "./store-sale";
+import { pageSells, sameOffer, storeCartRoute, storeSaleFrom } from "./store-sale";
 
 const store = {
   mappings: [
@@ -101,5 +101,37 @@ describe("storeCartRoute", () => {
       expect(storeCartRoute(failed, ["twice"], own)).toBe("page");
       expect(storeCartRoute(off, ["twice"], own)).toBe("page");
     }
+  });
+});
+
+describe("store offer for a product page visit", () => {
+  const priced = {
+    mappings: [
+      { package_session_id: "pdf", status: "ACTIVE", payment_plan: { actual_price: 10, currency: "INR" } },
+      { package_session_id: "twice", status: "ACTIVE", payment_plan: { actual_price: 5, currency: "INR" } },
+      { package_session_id: "twice", status: "ACTIVE", payment_plan: { actual_price: 5, currency: "INR" } },
+    ],
+  };
+
+  it("is the price the store charges for a version it sells once, else nothing", () => {
+    const sale = storeSaleFrom(true, { data: priced, isError: false });
+    expect(sale.offer?.("pdf")).toEqual({ price: 10, currency: "INR" });
+    expect(sale.offer?.("twice")).toBeNull();
+    expect(sale.offer?.("missing")).toBeNull();
+    expect(storeSaleFrom(true, { isError: false }).offer?.("pdf")).toBeNull();
+    expect(storeSaleFrom(false, { data: priced, isError: false }).offer?.("pdf")).toBeNull();
+  });
+
+  it("matches the page's price only when the store charges the same", () => {
+    const sale = storeSaleFrom(true, { data: priced, isError: false });
+    expect(sameOffer(sale.offer!("pdf"), { price: 10, currency: "INR" })).toBe(true);
+    expect(sameOffer(sale.offer!("pdf"), { price: 10, currency: "inr" })).toBe(true);
+    expect(sameOffer(sale.offer!("pdf"), { price: 10 })).toBe(true);
+    // A promo page at its own price keeps its own checkout.
+    expect(sameOffer(sale.offer!("pdf"), { price: 8, currency: "INR" })).toBe(false);
+    expect(sameOffer(sale.offer!("pdf"), { price: 10, currency: "USD" })).toBe(false);
+    expect(sameOffer(sale.offer!("pdf"), { price: null })).toBe(false);
+    expect(sameOffer(null, { price: 10 })).toBe(false);
+    expect(sameOffer({ price: null, currency: "INR" }, { price: 10 })).toBe(false);
   });
 });

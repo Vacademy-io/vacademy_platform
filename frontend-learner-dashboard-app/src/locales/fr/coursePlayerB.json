@@ -408,6 +408,18 @@
             "fullName": "Nom complet",
             "email": "E-mail",
             "phone": "Numéro de téléphone"
+        },
+        "page": {
+            "readMore": "Lire la suite",
+            "showLess": "Afficher moins",
+            "whatYouGet": "Ce que vous obtenez",
+            "perkInstant": "Accès immédiat après paiement",
+            "perkFree": "Inscription gratuite",
+            "perkPlatform": "Sur le web et dans l'application",
+            "level": "Niveau",
+            "breadcrumb": "Fil d'Ariane",
+            "by": "Par {{name}}",
+            "moreIn": "Plus dans {{topic}}"
         }
     },
     "blog": {

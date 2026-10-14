@@ -23,6 +23,9 @@ import java.util.List;
 public class InvoiceController {
 
     @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountPermissionService adminDiscountPermissionService;
+
+    @Autowired
     private InvoiceService invoiceService;
 
     @Autowired
@@ -164,10 +167,10 @@ public class InvoiceController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
         // Cross-tenant guard: the caller must belong to the institute they are billing under.
         instituteAccessValidator.validateUserAccess(userDetails, request.getInstituteId());
-        // Giving a discount is an admin decision, not just any institute member's.
+        // Only roles allowed to by Display Settings (learnerManagement.canApplyDiscounts).
         if (vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService
                 .isRequested(request.getAdminDiscount())) {
-            instituteAccessValidator.requireAdminAccess(userDetails, request.getInstituteId());
+            adminDiscountPermissionService.requireCanApplyDiscounts(userDetails, request.getInstituteId());
         }
         List<AdminInvoicePaymentLinkResponseDTO> result =
                 invoiceService.createAdminInvoices(request, userDetails.getUserId());

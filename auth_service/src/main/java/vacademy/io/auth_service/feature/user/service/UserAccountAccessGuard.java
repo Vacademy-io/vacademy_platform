@@ -232,6 +232,41 @@ public class UserAccountAccessGuard {
         }
     }
 
+    /**
+     * ADMIN of {@code instituteId} (or super-admin): an ACTIVE/INVITED "ADMIN" (or legacy "Admin")
+     * row there. For changes that shape what other members may do, e.g. a custom role's permissions.
+     */
+    public void requireAdminOf(CustomUserDetails caller, String instituteId) {
+        if (!isAdminOf(caller, instituteId)) {
+            throw forbidden("Only an admin of this institute can do this");
+        }
+    }
+
+    /** Non-throwing form of {@link #requireAdminOf}. */
+    public boolean isAdminOf(CustomUserDetails caller, String instituteId) {
+        if (isSuperAdmin(caller)) {
+            return true;
+        }
+        if (caller == null || caller.getUserId() == null || isBlank(instituteId)) {
+            return false;
+        }
+        return callerMemberships(caller).isAdmin(instituteId);
+    }
+
+    /**
+     * Any ACTIVE/INVITED role in {@code instituteId}, learner roles included (or super-admin).
+     * For reads that only need to keep one institute's data away from outsiders.
+     */
+    public void requireMemberOf(CustomUserDetails caller, String instituteId) {
+        if (isSuperAdmin(caller)) {
+            return;
+        }
+        Memberships callerRoles = callerMemberships(requireCaller(caller, "You do not belong to this institute"));
+        if (isBlank(instituteId) || !callerRoles.callerRoleNames.containsKey(instituteId)) {
+            throw forbidden("You do not belong to this institute");
+        }
+    }
+
     /** Staff of an institute the target belongs to, and ADMIN wherever the target is staff. */
     private static boolean canManageLogin(Memberships callerRoles, Memberships target) {
         return target.belongs.stream().anyMatch(callerRoles::isStaff)

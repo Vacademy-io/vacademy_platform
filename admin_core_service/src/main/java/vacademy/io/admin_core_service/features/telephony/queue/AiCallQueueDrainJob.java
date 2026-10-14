@@ -109,6 +109,7 @@ public class AiCallQueueDrainJob {
     private final AiCallCapacityService capacityService;
     private final AiCallQueueService queueService;
     private final AiCallingSettingsService settingsService;
+    private final vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository agentRepository;
 
     /**
      * {@code @Lazy} for the same reason {@code CallAiNodeHandler} needs it: the AI call
@@ -280,7 +281,13 @@ public class AiCallQueueDrainJob {
         String instituteId = item.getInstituteId();
         String provider = item.getProvider();
         if (snap.isPaused(instituteId)) return Optional.empty();
-        if (snap.inFlightFor(provider) >= snap.capacityFor(provider)) return Optional.empty();
+        // Same reservation as the drain loop: a non-manual dial leaves the reserved
+        // interactive slots to counsellors.
+        int capacity = snap.capacityFor(provider);
+        if (parseTrigger(item.getCallTrigger()) != CallTrigger.MANUAL) {
+            capacity -= capacityService.reservedInteractiveSlots();
+        }
+        if (snap.inFlightFor(provider) >= capacity) return Optional.empty();
         if (snap.inFlightForLane(instituteId) >= snap.laneCapacityFor(instituteId, provider)) {
             return Optional.empty();
         }
@@ -323,6 +330,13 @@ public class AiCallQueueDrainJob {
      */
     private DispatchOutcome dispatch(AiCallQueueItem item, CallTrigger trigger,
                                      boolean surfaceConflicts) {
+        // A public API call names its agent (campaign_id = ai_agent.id). If that agent was
+        // turned off or deleted while the call waited, dialling would reach the contact
+        // with the built-in generic persona instead: cancel it, visibly, without a dial.
+        if (trigger == CallTrigger.API && !agentCanCall(item)) {
+            finish(item, AiCallQueueStatus.CANCELLED, "The agent was turned off or deleted.");
+            return DispatchOutcome.ITEM_HANDLED;
+        }
         AiCallRequestDTO req = toRequest(item);
         try {
             AiCallResponseDTO resp = aiCallService.placeCall(req, item.getActorUserId(), trigger);
@@ -473,6 +487,13 @@ public class AiCallQueueDrainJob {
         req.setCustomerEmail(item.getCustomerEmail());
         req.setMetadata(queueService.readMetadata(item.getMetadata()));
         return req;
+    }
+
+    private boolean agentCanCall(AiCallQueueItem item) {
+        if (item.getCampaignId() == null || item.getCampaignId().isBlank()) return false;
+        return agentRepository.findByIdAndInstituteId(item.getCampaignId(), item.getInstituteId())
+                .map(a -> Boolean.TRUE.equals(a.getEnabled()) && !"INBOUND".equalsIgnoreCase(a.getDirection()))
+                .orElse(false);
     }
 
     private static CallTrigger parseTrigger(String value) {

@@ -5526,6 +5526,21 @@ public class InvoiceService {
 
     /** Read a single string field out of {@code invoice_data_json}, or null if absent/unparseable. */
     @SuppressWarnings("unchecked")
+    /** The reason saved under {@code admin_discount} by createAdminInvoices, or null. */
+    private String readAdminDiscountReason(String json) {
+        if (!StringUtils.hasText(json)) return null;
+        try {
+            Map<String, Object> parsed = INVOICE_JSON_MAPPER.readValue(json, Map.class);
+            Object discount = parsed.get("admin_discount");
+            if (discount instanceof Map<?, ?> d && d.get("reason") != null) {
+                return d.get("reason").toString();
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private String readInvoiceDataJsonField(String json, String key) {
         if (!StringUtils.hasText(json)) return null;
         try {
@@ -6646,6 +6661,10 @@ public class InvoiceService {
         List<String> paymentLogIds = new ArrayList<>();
         String primaryPaymentLogId = null;
         String userPlanId = null;
+        // Who gave the discount, and why: an admin invoice carries it itself; an enrollment
+        // invoice inherits it from the plan it bills (set when an admin discounted that plan).
+        String discountGrantedBy = invoice.getDiscountGrantedByUserId();
+        String discountReason = readAdminDiscountReason(invoice.getInvoiceDataJson());
         if (invoice.getPaymentLogMappings() != null && !invoice.getPaymentLogMappings().isEmpty()) {
             paymentLogIds = invoice.getPaymentLogMappings().stream()
                     .map(m -> m.getPaymentLog().getId())
@@ -6657,6 +6676,13 @@ public class InvoiceService {
                 PaymentLog firstPaymentLog = invoice.getPaymentLogMappings().get(0).getPaymentLog();
                 if (firstPaymentLog.getUserPlan() != null) {
                     userPlanId = firstPaymentLog.getUserPlan().getId();
+                    if (discountGrantedBy == null
+                            && StringUtils.hasText(firstPaymentLog.getUserPlan().getDiscountGrantedByUserId())) {
+                        discountGrantedBy = firstPaymentLog.getUserPlan().getDiscountGrantedByUserId();
+                        var snapshot = vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
+                                .fromJson(firstPaymentLog.getUserPlan().getAppliedCouponDiscountJson());
+                        discountReason = snapshot != null ? snapshot.getGrantReason() : null;
+                    }
                 }
             }
         }
@@ -6674,7 +6700,8 @@ public class InvoiceService {
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())
                 .discountAmount(invoice.getDiscountAmount())
-                .discountGrantedByUserId(invoice.getDiscountGrantedByUserId())
+                .discountGrantedByUserId(discountGrantedBy)
+                .discountReason(discountReason)
                 .taxAmount(invoice.getTaxAmount())
                 .totalAmount(invoice.getTotalAmount())
                 .currency(invoice.getCurrency())

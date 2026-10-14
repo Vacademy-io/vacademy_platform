@@ -1,13 +1,7 @@
 {
-    "overduePayment": {
-        "title": "{{name}} — {{amount}} متأخر السداد",
-        "subtitle_zero": "{{count}} يوم متأخر · {{feeType}}",
-        "subtitle_one": "{{count}} يوم واحد متأخر · {{feeType}}",
-        "subtitle_two": "{{count}} يومان متأخران · {{feeType}}",
-        "subtitle_few": "{{count}} أيام متأخرة · {{feeType}}",
-        "subtitle_many": "{{count}} يومًا متأخرًا · {{feeType}}",
-        "subtitle_other": "{{count}} يوم متأخر · {{feeType}}",
-        "defaultFeeType": "رسوم"
+    "overdueSummary": {
+        "title": "{{amount}} رسوم متأخرة",
+        "subtitle": "مستحقة وغير مدفوعة على مستوى المؤسسة"
     },
     "pendingApproval": {
         "title": "الموافقة على التسوية لـ {{name}}",

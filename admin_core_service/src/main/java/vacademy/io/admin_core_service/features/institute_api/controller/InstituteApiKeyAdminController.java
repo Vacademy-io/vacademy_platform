@@ -59,7 +59,7 @@ public class InstituteApiKeyAdminController {
 
     /**
      * List the institute's keys: metadata only, never the key or its hash. {@code ?product=}
-     * narrows to one product (evaluation | login_links); omitted = every key.
+     * narrows to one product (evaluation | login_links | ai_calling); omitted = every key.
      */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> list(

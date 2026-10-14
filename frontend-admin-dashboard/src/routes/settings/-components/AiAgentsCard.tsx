@@ -31,6 +31,7 @@ import {
     patchForModelChange,
     resolveTtsModel,
     voicesForModel,
+    voiceLabel,
 } from '@/routes/calling/ai-agents/-services/tts-catalog';
 import type { TtsModelId, VoiceOption } from '@/routes/calling/ai-agents/-services/tts-catalog';
 import { VOICE_MODULATION_OPTIONS } from '@/routes/calling/ai-agents/-services/ai-agents';
@@ -504,7 +505,7 @@ export function AiAgentsCard({
                                     <SelectContent>
                                         {voices.map((v) => (
                                             <SelectItem key={v.id} value={v.id}>
-                                                {v.id.charAt(0).toUpperCase() + v.id.slice(1)} ·{' '}
+                                                {voiceLabel(v)} ·{' '}
                                                 {v.gender === 'male'
                                                     ? t('form.voice.genderMale')
                                                     : t('form.voice.genderFemale')}

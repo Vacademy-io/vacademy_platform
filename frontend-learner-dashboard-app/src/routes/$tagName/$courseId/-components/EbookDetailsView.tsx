@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { BookOpen, CaretRight, CheckCircle, FilePdf, Lightning } from "@phosphor-icons/react";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import { cn, sanitizeHtml } from "@/lib/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { CourseShowcaseComponent } from "../../-components/components/CourseShowcaseComponent";
+import { RouteMatcher } from "../../-services/route-matcher";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
+import { useSiteT } from "../../-utils/catalogue-locale";
+import type { FolderCrumb } from "../-utils/folder-trail";
 
 /**
  * The course page as a single-file product ("ebook" layout, opt-in per site
@@ -28,6 +33,11 @@ export interface EbookDetailsViewProps {
   audienceHtml?: string | null;
   /** Course tags; the institute files each PDF under its folder names. */
   tags?: string[];
+  /**
+   * The folders above this PDF, each linking to the page that shows it (see
+   * folder-trail). Absent: the tags, as plain text.
+   */
+  crumbs?: FolderCrumb[] | null;
   price?: number | null;
   elevatedPrice?: number | null;
   currency?: string | null;
@@ -96,6 +106,7 @@ export const EbookDetailsView: React.FC<EbookDetailsViewProps> = ({
   learnHtml,
   audienceHtml,
   tags = [],
+  crumbs,
   price,
   elevatedPrice,
   currency,
@@ -108,8 +119,29 @@ export const EbookDetailsView: React.FC<EbookDetailsViewProps> = ({
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const { url: coverUrl, failed: coverFailed } = useResolvedCover(coverFileId);
+  const siteT = useSiteT();
+  const siteNavigate = useSiteNavigate();
+  const trail: Array<{ key: string; label: string; href: string | null }> = crumbs?.length
+    ? crumbs.map((c) => ({
+        key: c.key,
+        // Folder names are live library data, translated where shown (as the Folder Browser does).
+        label: siteT(c.title),
+        href:
+          c.route === null
+            ? null
+            : `${RouteMatcher.pagePath(tagName, c.route)}${
+                c.folderId ? `?folder=${encodeURIComponent(c.folderId)}` : ""
+              }`,
+      }))
+    : tags.filter(Boolean).map((name, i) => ({ key: `${name}-${i}`, label: name, href: null }));
   const folders = tags.filter(Boolean);
   const folder = folders[folders.length - 1];
+  const openCrumb = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    // A new tab / window keeps the browser's own behaviour.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void siteNavigate(href);
+  };
   const about = useMemo(
     () => (aboutHtml?.trim() ? withoutTitleRepeat(sanitizeHtml(aboutHtml), title) : ""),
     [aboutHtml, title],
@@ -131,23 +163,33 @@ export const EbookDetailsView: React.FC<EbookDetailsViewProps> = ({
     <div className="w-full bg-catalogue-bg-subtle pb-24">
       <section className="w-full border-b border-catalogue-border bg-catalogue-bg">
         <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          {folders.length > 0 && (
+          {trail.length > 0 && (
             <nav
               aria-label={t("courseDetails.ebook.folderPath", "Folder")}
               className="mb-6 flex flex-wrap items-center gap-1 text-xs font-medium text-catalogue-text-muted"
             >
-              {folders.map((name, i) => (
-                <React.Fragment key={`${name}-${i}`}>
-                  {i > 0 && <CaretRight size={12} weight="bold" aria-hidden />}
-                  <span
-                    className={cn(
-                      i === folders.length - 1 && "text-primary-500",
+              {trail.map((crumb, i) => {
+                const last = i === trail.length - 1;
+                return (
+                  <React.Fragment key={crumb.key}>
+                    {i > 0 && <CaretRight size={12} weight="bold" aria-hidden />}
+                    {crumb.href ? (
+                      <a
+                        href={crumb.href}
+                        onClick={(event) => openCrumb(event, crumb.href!)}
+                        className={cn(
+                          "rounded-sm no-underline transition-colors hover:text-primary-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
+                          last && "text-primary-500",
+                        )}
+                      >
+                        {crumb.label}
+                      </a>
+                    ) : (
+                      <span className={cn(last && "text-primary-500")}>{crumb.label}</span>
                     )}
-                  >
-                    {name}
-                  </span>
-                </React.Fragment>
-              ))}
+                  </React.Fragment>
+                );
+              })}
             </nav>
           )}
 
@@ -155,7 +197,7 @@ export const EbookDetailsView: React.FC<EbookDetailsViewProps> = ({
             <div className="lg:col-span-7">
               <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-catalogue-border bg-catalogue-bg-muted shadow-lg">
                 {coverUrl ? (
-                  <img src={coverUrl} alt={title} className="h-full w-full object-cover" />
+                  <FitImage src={coverUrl} alt={title} className="h-full w-full" />
                 ) : coverFailed ? (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center text-catalogue-text-muted">
                     <FilePdf size={48} weight="duotone" className="text-primary-500" aria-hidden />

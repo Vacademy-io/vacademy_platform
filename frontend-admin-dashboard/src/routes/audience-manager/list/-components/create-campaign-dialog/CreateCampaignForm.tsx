@@ -33,6 +33,7 @@ import { getCampaignCustomFieldsAsync } from '../../-utils/getCampaignCustomFiel
 import {
     convertExistingCustomFields,
     convertFieldsToPayload,
+    nextFieldId,
 } from '../../-utils/campaignFormFields';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -417,10 +418,14 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     });
     const formAppearanceEnabled = audienceFormSettings?.formAppearanceEnabled === true;
 
-    // Custom fields array management
-    const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
+    // Custom fields array management. keyName: with the default ('id') RHF puts
+    // its own generated key on every row's `id`, and the handlers below wrote
+    // those rows back with setValue — replacing each field's real id on every
+    // delete / Required toggle / edit. CampaignCustomFieldsCard uses the same key.
+    useFieldArray({
         control,
         name: 'custom_fields',
+        keyName: '_rhfKey',
     });
     const customFields = getValues('custom_fields');
 
@@ -559,9 +564,11 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         });
     };
 
+    // The handlers below read the form value, not the field-array rows: those
+    // carry RHF's `_rhfKey`, which must not be written back into the value.
     const handleDeleteOpenField = (id: number) => {
         // Instead of removing the field, set its status to DELETED
-        const updatedFields = customFieldsArray.map((field, idx) => {
+        const updatedFields = (getValues('custom_fields') ?? []).map((field, idx) => {
             if (idx === id) {
                 return {
                     ...field,
@@ -574,7 +581,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     };
 
     const toggleIsRequired = (id: number) => {
-        const updatedFields = customFieldsArray?.map((field, idx) =>
+        const updatedFields = (getValues('custom_fields') ?? []).map((field, idx) =>
             idx === id ? { ...field, isRequired: !field.isRequired } : field
         );
         setValue('custom_fields', updatedFields);
@@ -582,7 +589,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
     const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
-        const updatedFields = customFieldsArray?.map((field, idx) =>
+        const updatedFields = (getValues('custom_fields') ?? []).map((field, idx) =>
             idx === index ? { ...field, ...patch } : field
         );
         setValue('custom_fields', updatedFields as typeof customFields);
@@ -613,7 +620,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
-            id: String(customFields.length),
+            id: nextFieldId(customFields),
             type,
             name,
             oldKey,
@@ -636,7 +643,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         const updatedFields = [
             ...customFields,
             {
-                id: String(customFields.length),
+                id: nextFieldId(customFields),
                 type,
                 name,
                 oldKey,
@@ -651,7 +658,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     // Handler for adding Phone Number (similar to handleAddGender)
     const handleAddPhoneNumber = (type: string, name: string, oldKey: boolean) => {
         const newField = {
-            id: String(customFields.length),
+            id: nextFieldId(customFields),
             type,
             name,
             oldKey,
@@ -718,7 +725,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             value: opt.value,
         }));
         const newField = {
-            id: String(customFields.length),
+            id: nextFieldId(customFields),
             type,
             name,
             oldKey,

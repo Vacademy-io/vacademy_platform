@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -415,11 +416,11 @@ const BlogCard: React.FC<BlogCardProps> = ({
           tabIndex={-1}
           aria-hidden="true"
         >
-          <img
+          <FitImage
             src={post.cover_image_url as string}
             alt=""
             loading="lazy"
-            className={`h-full w-full object-cover ${horizontal ? "aspect-video sm:aspect-auto" : "aspect-video"}`}
+            className={`h-full w-full ${horizontal ? "aspect-video sm:aspect-auto" : "aspect-video"}`}
           />
         </a>
       )}

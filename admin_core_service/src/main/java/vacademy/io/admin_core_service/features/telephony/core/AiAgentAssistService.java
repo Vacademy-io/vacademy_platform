@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.agent.service.LLMService;
+import vacademy.io.admin_core_service.features.ai_models.service.AiModelDefaultsResolver;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgentAssistJob;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
@@ -43,7 +44,7 @@ import java.util.regex.Pattern;
  * regenerate the whole prompt + opening line from the admin's free-form notes.
  *
  * Every operation is one LLM round-trip with a STRICT-JSON contract and one re-emit
- * retry, on {@link #model} first and {@link #fallbackModel} if that fails. Each result
+ * retry, on the 'agent_assist' default model first and its fallback if that fails. Each result
  * also carries {@code lint}: deterministic checks for the spoken-line defects we kept
  * finding on live calls, so the admin sees them even when the model misses them.
  *
@@ -84,6 +85,12 @@ public class AiAgentAssistService {
     @Autowired
     private AiAgentAssistJobRepository jobRepository;
 
+    @Autowired
+    private AiModelDefaultsResolver modelDefaults;
+
+    /** ai_model_defaults row for the prompt assistant (GLM default, gemini-2.5-flash fallback). */
+    static final String USE_CASE = "agent_assist";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ExecutorService jobs = Executors.newFixedThreadPool(4, r -> {
@@ -96,18 +103,27 @@ public class AiAgentAssistService {
      * GLM-5.3 Flash: always reasons, ~$0.005 per full rewrite of a 25k-char prompt (~2 min).
      * Probed 2026-09-29 on the live Shreya prompt: effort=low wrote "के बाद में" for "के बारे
      * में" three times; medium got the Hindi right. Sonnet: same quality class, 40x the cost.
+     *
+     * Optional override. Blank (the default) = the agent_assist row in ai_model_defaults.
      */
-    @Value("${agent.assist.model:z-ai/glm-5.3-flash}")
+    @Value("${agent.assist.model:}")
     private String model;
 
-    /** Used when the primary model errors, truncates, or twice returns unreadable JSON. */
-    @Value("${agent.assist.fallback-model:anthropic/claude-sonnet-5}")
+    /**
+     * Optional override of the model used when the primary errors, truncates, or twice returns
+     * unreadable JSON. Blank (the default) = the agent_assist row's fallback.
+     */
+    @Value("${agent.assist.fallback-model:}")
     private String fallbackModel;
 
     /** Output budget. A full rewrite of a ~20k-char Hindi prompt plus reasoning needs ~20k. */
     @Value("${agent.assist.max-tokens:32000}")
     private int maxTokens;
 
+    /**
+     * Kept at medium for the Hindi quality noted above. Isoquant has no "medium", so the
+     * Isoquant leg runs at "high" and an OpenRouter leg at "medium" (LlmGatewayRouter).
+     */
     @Value("${agent.assist.reasoning-effort:medium}")
     private String reasoningEffort;
 
@@ -345,7 +361,7 @@ public class AiAgentAssistService {
                 .agentId(agentId)
                 .operation(operation)
                 .status(AiAgentAssistJob.RUNNING)
-                .model(model)
+                .model(primaryModel())
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
@@ -703,7 +719,7 @@ public class AiAgentAssistService {
                     program); numbers become words; a dash inside a spoken line becomes a full stop;
                     an either/or pair becomes one form. Keep "derived" in sync with the fixed prompt.
                     Reply with the COMPLETE JSON object again, same keys.""");
-            String usedModel = out.get("_model") instanceof String m ? m : model;
+            String usedModel = out.get("_model") instanceof String m ? m : primaryModel();
             Map<String, Object> copy = new LinkedHashMap<>(out);
             copy.remove("_model");
             List<ConversationSession.ChatMessage> history = new ArrayList<>(List.of(
@@ -734,18 +750,37 @@ public class AiAgentAssistService {
                 .toList();
     }
 
+    /**
+     * [primary, fallback]: the property overrides when set, else the agent_assist row in
+     * ai_model_defaults (the super-admin portal edits it).
+     */
+    private List<String> models() {
+        List<String> chain = modelDefaults.resolve(USE_CASE).withPreferred(model).models();
+        String primary = chain.get(0);
+        String fallback = notBlank(fallbackModel) ? fallbackModel.trim()
+                : chain.size() > 1 ? chain.get(1) : null;
+        return fallback == null || fallback.equals(primary) ? List.of(primary) : List.of(primary, fallback);
+    }
+
+    private String primaryModel() {
+        return models().get(0);
+    }
+
     /** Primary model, then the fallback model; each with a strict-JSON contract + one re-emit. */
     private Map<String, Object> callJson(String instituteId, String system, String user, String op) {
+        List<String> chain = models();
+        String primary = chain.get(0);
         try {
-            return callJsonOn(model, instituteId, system, user, op);
+            return callJsonOn(primary, instituteId, system, user, op);
         } catch (Exception primaryFailure) {
-            if (fallbackModel == null || fallbackModel.isBlank() || fallbackModel.equals(model)) {
+            if (chain.size() < 2) {
                 throw asAssistError(primaryFailure);
             }
-            log.warn("agent-assist {} on {} failed ({}); retrying on {}", op, model,
-                    primaryFailure.getMessage(), fallbackModel);
+            String fallback = chain.get(1);
+            log.warn("agent-assist {} on {} failed ({}); retrying on {}", op, primary,
+                    primaryFailure.getMessage(), fallback);
             try {
-                return callJsonOn(fallbackModel, instituteId, system, user, op);
+                return callJsonOn(fallback, instituteId, system, user, op);
             } catch (Exception fallbackFailure) {
                 throw asAssistError(fallbackFailure);
             }
@@ -771,6 +806,9 @@ public class AiAgentAssistService {
                     .build();
             session.getContext().put(LLMService.CTX_LONG_RUNNING, Boolean.TRUE);
             session.getContext().put(LLMService.CTX_TEMPERATURE, 0.4);
+            session.getContext().put(LLMService.CTX_USE_CASE, USE_CASE);
+            // This class runs its own primary -> fallback loop (callJson); one model per call.
+            session.getContext().put(LLMService.CTX_NO_FAILOVER, Boolean.TRUE);
             // Anthropic via OpenRouter: extended thinking rejects a non-1 temperature and
             // json_object is not uniformly supported — the fallback runs plain.
             if (!useModel.startsWith("anthropic/")) {

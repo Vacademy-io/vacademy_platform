@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { BookOpen } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -85,15 +86,15 @@ const CardImage: React.FC<{ image: string | null; fit: "cover" | "contain"; titl
   }
   if (!url) return <div className="catalogue-skeleton-shimmer absolute inset-0 rounded-none" aria-hidden="true" />;
   return (
-    <img
+    <FitImage
       src={url}
       alt={title}
       loading="lazy"
       onError={() => setFailed(true)}
-      className={cn(
-        "absolute inset-0 h-full w-full",
-        fit === "contain" ? "bg-palette-cream object-contain" : "object-cover",
-      )}
+      // The authored "contain" keeps its cream surface; the default fills the
+      // band, or fits an image that filling would cut too much.
+      fit={fit === "contain" ? "contain" : undefined}
+      className={cn("absolute inset-0 h-full w-full", fit === "contain" && "bg-palette-cream")}
     />
   );
 };

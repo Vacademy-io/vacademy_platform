@@ -37,6 +37,7 @@ import { OffersStrip } from './OffersStrip';
 import { MobileCheckoutBar } from './MobileCheckoutBar';
 
 import { offerStatuses, parseOffers } from '../-utils/offers';
+import { displayName } from '../-utils/cart-item-display';
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -321,7 +322,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                     const initials = (m.package_name || plan?.name || 'C')
                                         .trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
                                     const label = m.package_name
-                                        ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
+                                        ? `${m.package_name}${displayName(m.session_name) ? ` · ${displayName(m.session_name)}` : ''}`
                                         : plan?.name || course;
                                     return (
                                         <div

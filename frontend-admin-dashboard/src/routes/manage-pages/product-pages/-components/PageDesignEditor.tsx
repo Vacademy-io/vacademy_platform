@@ -410,7 +410,7 @@ const HeroSectionEditor = ({ props: p, onChange }: EditorProps) => {
             {layout === 'centered' && (
                 <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 space-y-2">
                     <Label className="text-xs font-semibold text-neutral-500">{t('heroEditor.backgroundImageOptional')}</Label>
-                    <ImageUploadField label="" value={p['backgroundImage'] || ''} onChange={(url) => onChange({ ...p, backgroundImage: url })} />
+                    <ImageUploadField slot="background" label="" value={p['backgroundImage'] || ''} onChange={(url) => onChange({ ...p, backgroundImage: url })} />
                     <p className="text-2xs text-neutral-400">{t('heroEditor.backgroundImageHint')}</p>
                 </div>
             )}
@@ -437,7 +437,7 @@ const HeaderEditor = ({ props: p, onChange }: EditorProps) => {
                 <Label className="text-xs text-neutral-500">{t('headerEditor.siteTitle')}</Label>
                 <Input value={p['title'] || ''} onChange={(e) => onChange({ ...p, title: e.target.value })} placeholder={t('headerEditor.siteTitlePlaceholder')} />
             </div>
-            <ImageUploadField label={t('headerEditor.logo')} value={p['logo'] || ''} onChange={(url) => onChange({ ...p, logo: url })} />
+            <ImageUploadField slot="logo" label={t('headerEditor.logo')} value={p['logo'] || ''} onChange={(url) => onChange({ ...p, logo: url })} />
 
             {/* Nav Links */}
             <div className="space-y-2">

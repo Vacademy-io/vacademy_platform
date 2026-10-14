@@ -175,6 +175,7 @@
         "sectionLabel": "AI Conversation",
         "modelLabel": "Model",
         "model": {
+            "platformDefault": "Platform default (GLM 5.3 Flash)",
             "gemini20Flash": "Gemini 2.0 Flash (fast)",
             "gemini25Flash": "Gemini 2.5 Flash",
             "gemini25Pro": "Gemini 2.5 Pro",

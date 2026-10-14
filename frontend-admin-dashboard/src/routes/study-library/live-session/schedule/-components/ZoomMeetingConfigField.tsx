@@ -269,7 +269,7 @@ export function ZoomMeetingConfigField({
     );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
         <div className="mt-4 rounded-md border border-neutral-200 bg-white p-3">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -280,7 +280,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     );
 }
 
-function ToggleField({
+export function ToggleField({
     control,
     name,
     label,

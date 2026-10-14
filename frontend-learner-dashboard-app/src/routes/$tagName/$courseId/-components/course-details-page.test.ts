@@ -377,11 +377,16 @@ describe("CourseDetailsPage — language versions", () => {
       { package_id: c, package_session_id: `${c}-hi`, enroll_invite_id: "pp-hi", level_name: "Hindi", status: "ACTIVE", display_order: 2, payment_plan: { actual_price: 500, currency: "INR" } },
     ];
     routeNetwork(c, { "pp-en": invite("pp-en", `${c}-en`, 1), "pp-hi": invite("pp-hi", `${c}-hi`, 1) }, mappings);
+    // The store sells both versions, at another price than this page's.
+    const route = net.get.getMockImplementation()!;
+    net.get.mockImplementation((url: string) =>
+      url.includes("by-code?code=STORE") ? Promise.resolve({ data: { mappings: storeSells(c, "en", "hi") } }) : route(url),
+    );
     catalogue.data = settings({ courseLanguages: { enabled: true }, siteCart: { enabled: true, storeProductPageCode: "STORE" } });
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "pp-en", productPageCode: "PATH", price: "600" });
 
     expect(net.post).not.toHaveBeenCalled(); // the product page's own mappings, not the catalogue
-    expect(buttonByText("Add to cart")).toHaveLength(0); // its own checkout, not the site cart
+    expect(buttonByText("Add to cart")).toHaveLength(0); // its own checkout: the store charges another price
     act(() => radios()[1].click());
     await settle();
     expect(host!.textContent).toContain("500"); // that page's price for the Hindi version
@@ -873,7 +878,7 @@ describe("CourseDetailsPage — site cart and what the store page sells", () => 
     });
   });
 
-  it("reads no store page on a site without a site cart, nor on a product page visit", async () => {
+  it("reads no store page on a site without a site cart", async () => {
     const c = "c-no-store";
     routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) });
     catalogue.data = settings({ courseLanguages: { enabled: true } });
@@ -883,18 +888,45 @@ describe("CourseDetailsPage — site cart and what the store page sells", () => 
     const enrol = buttonByText("courseDetails.enrollNow");
     expect(enrol.length).toBeGreaterThan(0);
     expect(enrol.every((b) => !b.disabled)).toBe(true);
-    unmountPage();
+  });
 
-    // A product page visit keeps that page's own checkout: its page is read, never the store.
-    const p = "c-pp-visit";
-    routeNetwork(p, { "pp-en": invite("pp-en", `${p}-en`, 600) }, [
-      { package_id: p, package_session_id: `${p}-en`, enroll_invite_id: "pp-en", level_name: "English", status: "ACTIVE", display_order: 1, payment_plan: { actual_price: 600, currency: "INR" } },
-    ]);
+  // A folder card's "View" link carries its product page's code.
+  const pageMapping = (p: string, price: number) => ({
+    package_id: p,
+    package_session_id: `${p}-en`,
+    enroll_invite_id: "pp-en",
+    level_name: "English",
+    status: "ACTIVE",
+    display_order: 1,
+    payment_plan: { actual_price: price, currency: "INR" },
+  });
+
+  it("puts a product page visit in the site cart when the store sells it at the page's price", async () => {
+    const p = "c-pp-same";
+    // The store and the page answer with the same mapping: same version, same price.
+    routeNetwork(p, { "pp-en": invite("pp-en", `${p}-en`, 600) }, [pageMapping(p, 600)]);
     catalogue.data = settings(siteCart);
     await renderPage({ courseId: p, packageSessionId: `${p}-en`, enrollInviteId: "pp-en", productPageCode: "PATH" });
-    expect(storePageReads()).toHaveLength(0);
+    expect(storePageReads().length).toBeGreaterThan(0);
+    expect(buttonByText("Add to cart").length).toBeGreaterThan(0);
+    expect(buttonByText("Buy now").length).toBeGreaterThan(0);
+    expect(buttonByText("courseDetails.enrollNow")).toHaveLength(0);
+  });
+
+  it("keeps a product page visit on the page's own checkout when the store charges another price", async () => {
+    const p = "c-pp-promo";
+    routeNetwork(p, { "pp-en": invite("pp-en", `${p}-en`, 600) }, [pageMapping(p, 600)]);
+    storePageAnswers(async (url) =>
+      url.includes("code=STORE") ? { data: { mappings: [pageMapping(p, 999)] } } : { data: { mappings: [pageMapping(p, 600)] } },
+    );
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: p, packageSessionId: `${p}-en`, enrollInviteId: "pp-en", productPageCode: "PATH" });
     expect(pendingButtons()).toHaveLength(0);
-    expect(buttonByText("courseDetails.enrollNow").length).toBeGreaterThan(0);
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/product-pages/$productPageCode", params: { productPageCode: "PATH" } }),
+    );
   });
 });
 
@@ -964,5 +996,41 @@ describe("CourseDetailsPage — site languages", () => {
 
     expect(host!.querySelector('[data-json="details"]')?.textContent).toBe("योग");
     expect(children.dialog).toMatchObject({ courseData: expect.objectContaining({ title: "Yoga" }) });
+  });
+});
+
+describe("CourseDetailsPage — default layout", () => {
+  const noDetailsPage = (extra: Record<string, unknown> = {}) => ({ ...settings(extra), pages: [] });
+
+  it("says what the course is: a title heading when the site has no course header of its own", async () => {
+    const c = "c-head";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = noDetailsPage();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.querySelector("h1")?.textContent).toBe("Yoga");
+    expect(host!.textContent).toContain("What you get");
+    // No folded highlights box, and no rating the course does not have.
+    expect(host!.textContent).not.toContain("courseDetails.accordion.highlightsTitle");
+    expect(host!.textContent).not.toContain("courseDetails.rating");
+  });
+
+  it("leaves the header to a site that built its own course header", async () => {
+    const c = "c-own-head";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = settings();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.querySelector("h1")).toBeNull();
+    expect(host!.querySelector('[data-json="details"]')).toBeTruthy();
+  });
+
+  it("keeps the classic layout for a site that asks for it", async () => {
+    const c = "c-classic";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = noDetailsPage({ courseDetails: { layout: "classic" } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(host!.textContent).toContain("courseDetails.courseOverview");
+    expect(host!.textContent).not.toContain("What you get");
+    // Even there, no invented 5.0.
+    expect(host!.textContent).not.toContain("courseDetails.rating");
   });
 });

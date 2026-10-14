@@ -47,7 +47,7 @@ export interface ExportSettings {
 
 const defaultSettings: ExportSettings = {
     exportQuestionPaper: true,
-    exportSolutionKey: true,
+    exportSolutionKey: false,
     exportFormat: 'pdf',
     columnsPerPage: 1,
     questionsPerPage: 3,

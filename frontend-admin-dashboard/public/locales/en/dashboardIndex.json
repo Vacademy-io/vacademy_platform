@@ -36,7 +36,8 @@
         "roleFallback": "Admin"
     },
     "welcomeVideo": {
-        "text": "Welcome aboard! We're excited to have you here. Let's set up your admin dashboard and make learning seamless and engaging."
+        "text": "Welcome aboard! We're excited to have you here. Let's set up your admin dashboard and make learning seamless and engaging.",
+        "textGeneral": "Welcome aboard! We're excited to have you here. Let's set up your admin dashboard so your institute runs smoothly."
     },
     "profileCard": {
         "title": "Complete your institute profile",
@@ -113,7 +114,8 @@
             },
             "help": {
                 "label": "Help with a task",
-                "prompt": "How do I create a course?"
+                "prompt": "How do I create a course?",
+                "promptGeneral": "How do I add a team member?"
             }
         },
         "instituteName": "{{instituteName}} Institute Chatbot",
@@ -124,5 +126,9 @@
     },
     "overview": {
         "title": "Institute overview"
+    },
+    "sourceError": {
+        "message": "Couldn't load",
+        "retry": "Retry"
     }
 }

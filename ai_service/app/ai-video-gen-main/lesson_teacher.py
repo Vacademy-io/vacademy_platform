@@ -39,8 +39,12 @@ GREEN_RGB = (0x00, 0xB1, 0x40)
 # Vendor: 50 credits per generated minute; ≈ $0.0009 per credit on Starter.
 SPATIUS_CREDITS_PER_MINUTE = 50
 VENDOR_USD_PER_MINUTE = 0.045
-# What the institute is charged (1 platform credit = $0.01): 8 per started minute.
-PLATFORM_CREDITS_PER_MINUTE = 8
+# Display estimate only. The institute is charged by video_generation_service:
+# the returned video's seconds × ai_models 'spatius/video' price × the live
+# credit ratio (credit_rate_config: 100 credits per $ + 50% margin = 150 per $,
+# so 1 platform credit ≈ $0.0067). This module stays free of app imports, so
+# the estimate uses the seeded ratio.
+DISPLAY_CREDITS_PER_USD = 150.0
 
 DEFAULT_OFFSET_S = 0.20
 CACHE_NAME = "lesson_teacher.json"
@@ -412,16 +416,17 @@ def render_track(
         "render_seconds": round(render_s, 1),
         "vendor_credits": round(video_s / 60.0 * SPATIUS_CREDITS_PER_MINUTE, 1),
         "vendor_usd": round(video_s / 60.0 * VENDOR_USD_PER_MINUTE, 4),
-        "platform_credits": platform_credits_for(audio_s),
+        "platform_credits": platform_credits_for(video_s / 60.0 * VENDOR_USD_PER_MINUTE),
         "clips": [],
     }
     cache.write_text(json.dumps(result, indent=2))
     return result
 
 
-def platform_credits_for(audio_seconds: float) -> int:
-    minutes = max(1, int(-(-float(audio_seconds) // 60)))  # started minutes
-    return minutes * PLATFORM_CREDITS_PER_MINUTE
+def platform_credits_for(vendor_usd: float, credits_per_usd: float = DISPLAY_CREDITS_PER_USD) -> float:
+    """Display estimate of what the teacher costs the institute: vendor USD ×
+    the credit ratio. Not the charge (see DISPLAY_CREDITS_PER_USD)."""
+    return round(max(0.0, float(vendor_usd or 0.0)) * float(credits_per_usd), 2)
 
 
 def build_clips(

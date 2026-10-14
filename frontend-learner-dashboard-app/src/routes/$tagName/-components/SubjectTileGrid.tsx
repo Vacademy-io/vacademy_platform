@@ -1,4 +1,5 @@
 import React from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { CaretLeft, CaretRight, FolderOpen } from "@phosphor-icons/react";
 
 export interface ContentTile {
@@ -58,11 +59,11 @@ export const SubjectTileGrid: React.FC<SubjectTileGridProps> = ({
         >
           <div className="aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
             {thumb ? (
-              <img
+              <FitImage
                 src={thumb}
                 alt=""
                 loading="lazy"
-                className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                className="size-full transition-transform duration-200 group-hover:scale-[1.03]"
                 onError={(e) => {
                   // A dead media id must not leave a broken-image glyph on a
                   // sales page; the card reads fine as text alone.

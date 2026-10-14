@@ -217,7 +217,7 @@ export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => 
                         />
                         {hasMockup && (
                             <>
-                                <ImageUploadField
+                                <ImageUploadField slot="card"
                                     label={t('ctaBand.phoneImage')}
                                     value={typeof mockup.image === 'string' ? mockup.image : ''}
                                     onChange={(url) => setMockup({ image: url })}

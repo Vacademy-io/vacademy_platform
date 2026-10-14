@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -56,6 +56,7 @@ import {
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
+import { listGoogleAccounts, updateGoogleAccountSettings } from '@/services/google-accounts';
 import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
 import { LiveSessionVisibilityCard } from './LiveSessionVisibilityCard';
 import { getInstituteId } from '@/constants/helper';
@@ -125,6 +126,16 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
     const [initial, setInitial] = useState<LiveSessionSettingsType>(DEFAULT_LIVE_SESSION_SETTINGS);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    // Google Meet auto-record lives on each connected Google account (not in this settings
+    // document). Unsaved switch changes are kept here, keyed by account id, and written with
+    // the rest of the page on Save.
+    const { data: googleAccounts = [], isSuccess: googleAccountsLoaded } = useQuery({
+        queryKey: ['google-accounts'],
+        queryFn: listGoogleAccounts,
+        retry: false,
+    });
+    const activeGoogleAccounts = googleAccounts.filter((a) => a.status === 'ACTIVE');
+    const [googleRecordDrafts, setGoogleRecordDrafts] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         let cancelled = false;
@@ -144,7 +155,17 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
         };
     }, []);
 
-    const dirty = JSON.stringify(settings) !== JSON.stringify(initial);
+    const dirty =
+        JSON.stringify(settings) !== JSON.stringify(initial) ||
+        Object.keys(googleRecordDrafts).length > 0;
+
+    const setGoogleRecordDraft = (accountId: string, saved: boolean, next: boolean) => {
+        setGoogleRecordDrafts((prev) => {
+            const rest = { ...prev };
+            delete rest[accountId];
+            return next === saved ? rest : { ...rest, [accountId]: next };
+        });
+    };
 
     const togglePlatform = (key: PlatformKey, allowed: boolean) => {
         setSettings((prev) => {
@@ -175,7 +196,10 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
         }));
     };
 
-    const reset = () => setSettings(initial);
+    const reset = () => {
+        setSettings(initial);
+        setGoogleRecordDrafts({});
+    };
 
     const save = async () => {
         // Single/Bulk schedule entry-point visibility is now configured
@@ -201,6 +225,25 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
             setSettings(toSave);
             setInitial(toSave);
             await queryClient.invalidateQueries({ queryKey: LIVE_SESSION_SETTINGS_QUERY_KEY });
+            // The settings document is saved by now; the Google accounts are separate writes.
+            // Keep only the drafts that failed so a retry re-sends just those.
+            const recordChanges = Object.entries(googleRecordDrafts);
+            if (recordChanges.length > 0) {
+                const results = await Promise.allSettled(
+                    recordChanges.map(([id, recordingEnabled]) =>
+                        updateGoogleAccountSettings(id, { recordingEnabled })
+                    )
+                );
+                const failed = Object.fromEntries(
+                    recordChanges.filter((_, i) => results[i]?.status === 'rejected')
+                );
+                setGoogleRecordDrafts(failed);
+                await queryClient.invalidateQueries({ queryKey: ['google-accounts'] });
+                if (Object.keys(failed).length > 0) {
+                    toast.error(t('toast.googleAutoRecordSaveFailed'));
+                    return;
+                }
+            }
             toast.success(t('toast.saveSuccess'));
         } catch (err) {
             console.error(err);
@@ -983,6 +1026,112 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                             </SelectContent>
                         </Select>
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Google Meet control defaults (single-class Meet sessions with a connected account) */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <VideoCamera size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">{t('googleMeet.title')}</CardTitle>
+                        <CardDescription>{t('googleMeet.description')}</CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {t('googleMeet.recordingGroup')}
+                    </div>
+                    {/* Load errors are shown by the Google Meet Integration card above. */}
+                    {googleAccountsLoaded && activeGoogleAccounts.length === 0 && (
+                        <div className="py-3 text-xs text-neutral-500">
+                            {t('googleMeet.noAccount')}
+                        </div>
+                    )}
+                    {activeGoogleAccounts.map((a) => (
+                        <div key={a.id}>
+                            <SettingRow
+                                title={t('googleMeet.autoRecordTitle', {
+                                    email: a.organizerEmail,
+                                })}
+                                description={t('googleMeet.autoRecordDescription')}
+                                checked={googleRecordDrafts[a.id] ?? !!a.recordingEnabled}
+                                onChange={(v) =>
+                                    setGoogleRecordDraft(a.id, !!a.recordingEnabled, v)
+                                }
+                            />
+                            <Separator />
+                        </div>
+                    ))}
+                    <SettingRow
+                        title={t('googleMeet.transcriptionTitle')}
+                        description={t('googleMeet.transcriptionDescription')}
+                        checked={settings.defaultGoogleMeetTranscription}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetTranscription', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.smartNotesTitle')}
+                        description={t('googleMeet.smartNotesDescription')}
+                        checked={settings.defaultGoogleMeetSmartNotes}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetSmartNotes', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.attendanceReportTitle')}
+                        description={t('googleMeet.attendanceReportDescription')}
+                        checked={settings.defaultGoogleMeetAttendanceReport}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetAttendanceReport', v)}
+                    />
+                    <div className="py-2 text-xs text-neutral-500">{t('googleMeet.planHint')}</div>
+
+                    <div className="mt-4 border-t border-neutral-100 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {t('googleMeet.hostControlsGroup')}
+                    </div>
+                    <SettingRow
+                        title={t('googleMeet.hostManagementTitle')}
+                        description={t('googleMeet.hostManagementDescription')}
+                        checked={settings.defaultGoogleMeetHostManagement}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetHostManagement', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.chatHostsOnlyTitle')}
+                        description={t('googleMeet.chatHostsOnlyDescription')}
+                        checked={settings.defaultGoogleMeetChatHostsOnly}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetChatHostsOnly', v)}
+                        disabled={!settings.defaultGoogleMeetHostManagement}
+                        disabledReason={t('googleMeet.disabledBecauseHostControlsOff')}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.reactionsHostsOnlyTitle')}
+                        description={t('googleMeet.reactionsHostsOnlyDescription')}
+                        checked={settings.defaultGoogleMeetReactionsHostsOnly}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetReactionsHostsOnly', v)}
+                        disabled={!settings.defaultGoogleMeetHostManagement}
+                        disabledReason={t('googleMeet.disabledBecauseHostControlsOff')}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.presentHostsOnlyTitle')}
+                        description={t('googleMeet.presentHostsOnlyDescription')}
+                        checked={settings.defaultGoogleMeetPresentHostsOnly}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetPresentHostsOnly', v)}
+                        disabled={!settings.defaultGoogleMeetHostManagement}
+                        disabledReason={t('googleMeet.disabledBecauseHostControlsOff')}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title={t('googleMeet.joinAsViewerTitle')}
+                        description={t('googleMeet.joinAsViewerDescription')}
+                        checked={settings.defaultGoogleMeetJoinAsViewer}
+                        onChange={(v) => togglePrimitive('defaultGoogleMeetJoinAsViewer', v)}
+                        disabled={!settings.defaultGoogleMeetHostManagement}
+                        disabledReason={t('googleMeet.disabledBecauseHostControlsOff')}
+                    />
                 </CardContent>
             </Card>
 

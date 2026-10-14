@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { BookOpen } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -41,12 +42,12 @@ export const CourseThumbnail: React.FC<{
       aria-hidden="true"
     >
       {url && !failed ? (
-        <img
+        <FitImage
           src={url}
           alt=""
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
+          className="absolute inset-0 size-full"
           onError={() => setFailed(true)}
         />
       ) : (

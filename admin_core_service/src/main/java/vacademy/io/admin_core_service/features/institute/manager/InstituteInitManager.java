@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
+import vacademy.io.admin_core_service.features.institute.util.PublicSettingRedactor;
 import vacademy.io.admin_core_service.features.institute.dto.PaginatedPackageSessionResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchesSummaryResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchLookupResponse;
@@ -156,7 +157,11 @@ public class InstituteInitManager {
                 dto.setInstituteLogoFileId(institute.getLogoFileId());
                 dto.setCoverImageFileId(institute.getCoverImageFileId());
                 dto.setCoverTextJson(institute.getCoverTextJson());
-                dto.setSetting(institute.getSetting());
+                // The public (no login) details carry no credentials: the blob holds the
+                // SMTP password, WhatsApp apiKey and LMS tokens alongside display settings.
+                dto.setSetting(includePrivateFields
+                                ? institute.getSetting()
+                                : PublicSettingRedactor.redact(institute.getSetting()));
 
                 // School-specific fields
                 dto.setBoard(institute.getBoard());

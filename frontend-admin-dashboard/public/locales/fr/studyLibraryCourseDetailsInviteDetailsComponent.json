@@ -52,9 +52,42 @@
     "menu": {
         "copyShortUrl": "Copier l'URL courte",
         "qrCode": "Code QR",
-        "utmGenerator": "Générateur UTM"
+        "utmGenerator": "Générateur UTM",
+        "configurePayment": "Configurer la formule de paiement"
     },
     "loading": "Chargement",
     "loadError": "Impossible de charger les liens d'invitation.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "payment": {
+        "label": "Paiement",
+        "needsApproval": "approbation requise",
+        "planCount_one": "{{count}} formule",
+        "planCount_other": "{{count}} formules",
+        "type": {
+            "free": "Gratuit",
+            "oneTime": "Paiement unique",
+            "subscription": "Abonnement",
+            "donation": "Don",
+            "feeStructure": "Structure de frais",
+            "unknown": "Inconnu"
+        }
+    },
+    "configurePayment": {
+        "heading": "Configurer la formule de paiement",
+        "description": "Choisissez la formule de paiement proposée aux apprenants qui s’inscrivent via « {{name}} » pour ce groupe.",
+        "current": "Formule actuelle",
+        "new": "Nouvelle formule",
+        "noCurrent": "Aucune formule de paiement n’est associée à ce groupe. Utilisez Modifier pour en définir une.",
+        "currencyMismatch": "Cette formule facture en {{planCurrency}}, mais ce lien d’invitation facture en {{inviteCurrency}}. Changez-la depuis Modifier pour que la devise du lien change aussi.",
+        "referralNote": "Les récompenses de parrainage de l’ancienne formule ne sont pas reprises. Ajoutez-les à nouveau depuis Modifier si ce lien utilise le parrainage.",
+        "cancel": "Annuler",
+        "save": "Enregistrer",
+        "saving": "Enregistrement…",
+        "saved": "Formule de paiement mise à jour pour « {{name}} »",
+        "saveFailed": "Impossible de mettre à jour la formule de paiement",
+        "pickerFailed": "Impossible de charger les formules de paiement. Utilisez Modifier pour changer la formule.",
+        "chooseNew": "Choisir une nouvelle formule",
+        "chooseHint": "Choisissez parmi les formules de paiement de votre établissement, ou créez-en une.",
+        "change": "Changer"
+    }
 }

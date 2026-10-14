@@ -46,10 +46,11 @@ export const ModelSelector = ({
         setOpen(false);
     };
 
+    // "Use default" clears the pick rather than pinning today's default id: the request
+    // then carries no model and the backend resolves the feature's use-case default, so a
+    // later default change (e.g. by a super admin) applies. Callers drop an empty value.
     const handleUseDefault = () => {
-        if (defaultModelId) {
-            onChange(defaultModelId);
-        }
+        onChange('');
         setOpen(false);
     };
 

@@ -90,11 +90,15 @@ def test_a_failed_job_raises():
         lt.wait_for_video("j", timeout_s=60, client=_client(handler), sleep=lambda s: None)
 
 
-def test_billing_is_per_started_minute():
-    assert lt.platform_credits_for(30) == 8
-    assert lt.platform_credits_for(60) == 8
-    assert lt.platform_credits_for(61) == 16
-    assert lt.platform_credits_for(600) == 80
+def test_platform_credits_are_a_display_estimate_of_vendor_usd():
+    """The charge is made in video_generation_service from the DB price and
+    ratio; this is only the estimate written into lesson_outputs.json."""
+    assert lt.platform_credits_for(0.1106) == 16.59          # a real 145.7 s render
+    assert lt.platform_credits_for(0.126, credits_per_usd=100) == 12.6
+    assert lt.platform_credits_for(0) == 0.0
+    assert lt.platform_credits_for(None) == 0.0
+    # 168 s of video at $0.045/min ≈ 18.9 credits, not the old 8/started minute (24).
+    assert lt.platform_credits_for(168 / 60.0 * lt.VENDOR_USD_PER_MINUTE) == 18.9
 
 
 # ── framing ──────────────────────────────────────────────────────────────────

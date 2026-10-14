@@ -84,6 +84,7 @@ export interface CampaignUserTable {
     _tat_overdue?: boolean | null;
     _tat_due_soon?: boolean | null;
     _follow_up_overdue?: boolean | null;
+    _sla_closed?: boolean | null; // Lost / Converted: no Pending / Overdue
     // Custom pipeline status (enquiry_status)
     _lead_status?: string | null;
     // Audience response id — required to update the lead status inline.
@@ -455,6 +456,7 @@ export const generateDynamicColumns = (
                         baselineAt={row.original.submittedAt}
                         responseId={row.original._response_id}
                         dueOverridden={row.original._tat_due_overridden}
+                        closed={row.original._sla_closed}
                     />
                 </div>
             ),
@@ -470,6 +472,7 @@ export const generateDynamicColumns = (
                     <SlaDeadlineCell
                         dueAt={row.original._follow_up_due_at}
                         overdue={row.original._follow_up_overdue}
+                        closed={row.original._sla_closed}
                     />
                 </div>
             ),

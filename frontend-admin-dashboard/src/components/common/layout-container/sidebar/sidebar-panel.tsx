@@ -61,8 +61,11 @@ import { MyInput } from '@/components/design-system/input';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
-import { parseSidebarLink } from './helper';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { parseSidebarLink, pickActiveSidebarLink } from './helper';
+import { filterRecentEntries } from '@/lib/capabilities/nav-access';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
+import { filterSettingsTabs } from '@/routes/settings/-utils/settings-entitlements';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import type { CategoryId } from './category-rail';
@@ -134,7 +137,20 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                   return (!show || show === instituteId) && category === activeCategory;
               });
 
-    const recentTabs = activeCategory === 'RECENT' ? getRecentTabs() : [];
+    // Recent offers only what the sidebar shows right now and is not locked: an
+    // entry recorded before a tab was hidden, locked or left the plan would
+    // otherwise be a way around it. Settings screens follow the rail's gear rule.
+    const hasSettings = sidebarItems.some((item) => item.id === 'settings');
+    const recentTabs =
+        activeCategory === 'RECENT'
+            ? filterRecentEntries(getRecentTabs(), sidebarItems, {
+                  instituteId,
+                  sidebarCategories: roleDisplay?.sidebarCategories,
+                  canOpenSettings: hasSettings
+                      ? roleDisplay?.ui?.showSettings !== false
+                      : roleDisplay?.ui?.showSettings === true,
+              })
+            : [];
 
     // On mobile, the panel is always rendered at full width inside the Sheet
     const panelOpen = isMobile ? true : isOpen;
@@ -153,8 +169,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     const logoSpansFullWidth =
         logoWidthPx != null && logoWidthPx >= PANEL_WIDTH_PX && logoHeightPx == null;
 
-    // Settings tabs for the SETTINGS category
-    const settingsTabs = activeCategory === 'SETTINGS' ? getAvailableSettingsTabs() : [];
+    // Settings tabs for the SETTINGS category (MANAGED: only the plan's screens)
+    const entitlement = useEntitlement();
+    const settingsTabs =
+        activeCategory === 'SETTINGS'
+            ? filterSettingsTabs(getAvailableSettingsTabs(), entitlement)
+            : [];
     // Reactively read the selectedTab search param from the URL
     const routerState = useRouterState({ select: (s) => s.location.search });
     const activeSettingsTab =
@@ -289,11 +309,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                         onItemClick={onItemClick}
                     />
                 ) : activeCategory === 'RECENT' ? (
-                    <RecentTabsList
-                        entries={recentTabs}
-                        currentRoute={currentRoute}
-                        onItemClick={onItemClick}
-                    />
+                    <RecentTabsList entries={recentTabs} onItemClick={onItemClick} />
                 ) : (
                     <SidebarMenu className="flex flex-col gap-0.5">
                         {filteredItems.map((obj, key) => (
@@ -327,12 +343,19 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
 
 interface RecentTabsListProps {
     entries: RecentTabEntry[];
-    currentRoute: string;
     onItemClick?: () => void;
 }
 
-const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, onItemClick }) => {
+const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, onItemClick }) => {
     const { t } = useTranslation('sidebarPanel');
+    // Recorded routes carry their query (?status=…&lock=status), so match them the
+    // way the panel does rather than by pathname.
+    const { pathname, search } = useLocation();
+    const activeRoute = pickActiveSidebarLink(
+        entries.map((entry) => entry.route),
+        pathname,
+        search as Record<string, unknown>
+    );
 
     if (entries.length === 0) {
         return (
@@ -350,7 +373,7 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, 
             </p>
             {entries.map((entry, idx) => {
                 const colors = getCategoryColors(entry.category);
-                const isActive = currentRoute.includes(entry.route);
+                const isActive = entry.route === activeRoute;
                 // Recorded routes can include a query ("/settings?selectedTab=…").
                 const { to: entryTo, search: entrySearch } = parseSidebarLink(entry.route);
                 return (

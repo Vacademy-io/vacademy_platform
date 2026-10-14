@@ -757,6 +757,15 @@ class Settings:
     # request — a request queued behind the failure is dropped, not run beside
     # the fallback's re-run (providers.with_retire).
     llm_retire_primary: bool = field(default_factory=lambda: _env("LLM_RETIRE_PRIMARY", "1") == "1")
+    # After a failover, the caller's next turn goes back to the PRIMARY (call
+    # a4ce0279, 2026-10-13: one 3 s Vertex stall at 0:21 put the rest of the
+    # call on the fallback, which repeated a pitch line verbatim and wrote Hindi
+    # in Latin letters). Not before LLM_RETURN_AFTER_SECS — the failover re-run
+    # itself must stay on the fallback — and not after LLM_MAX_FAILOVERS stalls
+    # in one call: a primary that keeps stalling is left alone.
+    llm_return_to_primary: bool = field(default_factory=lambda: _env("LLM_RETURN_TO_PRIMARY", "1") == "1")
+    llm_return_after_secs: float = field(default_factory=lambda: float(_env("LLM_RETURN_AFTER_SECS", "5")))
+    llm_max_failovers: int = field(default_factory=lambda: int(_env("LLM_MAX_FAILOVERS", "2")))
     # Single-flight step 5: the bot's OWN runs (next-step cues, the noise
     # re-ask, the lost-resume cue) pass one door — RunGuard drops them when a
     # reply is already on its way or the call is ending, holds them while the

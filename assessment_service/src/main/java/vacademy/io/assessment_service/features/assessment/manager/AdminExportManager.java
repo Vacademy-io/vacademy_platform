@@ -1079,7 +1079,7 @@ public class AdminExportManager {
         try {
             // ---- the one paid call ----
             ClassAiNarrativeService.Narrative narrative = classAiNarrativeService.generate(
-                    buildClassFacts(assessmentId, instituteId), assessment.getName());
+                    buildClassFacts(assessmentId, instituteId), assessment.getName(), instituteId);
 
             byte[] pdf = renderPdf(buildClassReportHtml(assessment, assessmentId, instituteId,
                     narrative.json()));

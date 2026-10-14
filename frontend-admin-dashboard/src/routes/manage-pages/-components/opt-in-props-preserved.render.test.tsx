@@ -25,10 +25,30 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/stores/students/students-list/useInstituteDetailsStore', () => ({
     useInstituteDetailsStore: () => ({
         getAllLevels: () => [],
-        getCourseFromPackage: () => [],
+        getCourseFromPackage: () => instituteCourses,
         instituteDetails: null,
     }),
 }));
+// The course picker as a plain field: what it is offered, and what it picks.
+vi.mock('@/components/design-system/searchable-select', () => ({
+    SearchableSelect: ({
+        options,
+        value,
+        onChange,
+    }: {
+        options: Array<{ label: string; value: string }>;
+        value: string;
+        onChange: (v: string) => void;
+    }) => (
+        <input
+            data-testid="course-picker"
+            data-options={JSON.stringify(options)}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+        />
+    ),
+}));
+const instituteCourses: Array<{ id: string; name: string }> = [];
 vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst-1' }));
 const { toast, generateSectionVariants } = vi.hoisted(() => ({
     toast: vi.fn(),
@@ -396,6 +416,32 @@ describe('Brahm Varchas: editing keeps every setting the panel does not manage',
         const props = live('courses', 'home-start-free').props;
         expect(props.courseIds).toEqual(['course-new', ...START_FREE.props.courseIds.slice(1)]);
         expect(props).not.toHaveProperty('courseBadges');
+    });
+
+    it('course strip: courses are picked by name, each offered once, and an unknown id stays listed', () => {
+        const [firstId, secondId] = START_FREE.props.courseIds;
+        instituteCourses.splice(0, instituteCourses.length,
+            { id: secondId, name: 'Second course' },
+            { id: 'course-other', name: 'Other course' },
+        );
+        try {
+            useEditorStore.getState().selectComponent('home-start-free');
+            render(<PropertyPanel />);
+            const pickers = screen.getAllByTestId('course-picker');
+            const offered = (i: number) => JSON.parse(pickers[i]!.getAttribute('data-options')!);
+            // Row 1 holds an id the institute no longer has: listed under its id,
+            // and the course picked on row 2 is not offered again.
+            expect(offered(0)).toEqual([
+                { label: firstId, value: firstId },
+                { label: 'Other course', value: 'course-other' },
+            ]);
+            expect(offered(1)).toContainEqual({ label: 'Second course', value: secondId });
+
+            fireEvent.change(pickers[0]!, { target: { value: 'course-other' } });
+            expect(live('courses', 'home-start-free').props.courseIds[0]).toBe('course-other');
+        } finally {
+            instituteCourses.splice(0, instituteCourses.length);
+        }
     });
 
     it('course strip: a ribbon follows the id when the field is cleared and retyped', () => {

@@ -23,7 +23,8 @@
     "toast": {
         "atLeastOnePlatform": "At least one streaming platform must be allowed.",
         "saveSuccess": "Live session settings saved",
-        "saveFailed": "Failed to save live session settings."
+        "saveFailed": "Failed to save live session settings.",
+        "googleAutoRecordSaveFailed": "Settings saved, but the Google account auto-record change didn't save. Try Save again."
     },
     "timezone": {
         "title": "Default Timezone",
@@ -173,6 +174,33 @@
         "autoRecordingCloud": "Record to Zoom cloud",
         "autoRecordingLocal": "Local recording (host machine)",
         "autoRecordingNone": "Don't record"
+    },
+    "googleMeet": {
+        "title": "Google Meet Controls",
+        "description": "Defaults pre-filled in the Google Meet panel when a single class is hosted on Google Meet with a connected account. Admins can still change them per class. (Bulk scheduling doesn't create Meet links.)",
+        "recordingGroup": "Recording & notes",
+        "noAccount": "Connect a Google Workspace account in Google Meet Integration above to turn on auto-recording.",
+        "autoRecordTitle": "Auto-record classes on {{email}}",
+        "autoRecordDescription": "Recording starts by itself when the organizer or a teacher on the institute's Google Workspace joins. Saved on this Google account.",
+        "transcriptionTitle": "Auto-generate transcript",
+        "transcriptionDescription": "Google writes a transcript of the class into the organizer's Drive.",
+        "smartNotesTitle": "Gemini notes (\"Take notes for me\")",
+        "smartNotesDescription": "Gemini writes a summary of the class into the organizer's Drive.",
+        "attendanceReportTitle": "Google attendance report",
+        "attendanceReportDescription": "Google sends the organizer an attendance sheet after the class.",
+        "planHint": "Recording and transcripts need a Workspace plan with recording (Business Standard or higher, Education Plus); Gemini notes need a Gemini licence. If the plan lacks a feature, the class is still created without it.",
+        "hostControlsGroup": "Host controls",
+        "hostManagementTitle": "Turn on host controls",
+        "hostManagementDescription": "Lets the restrictions below apply. Only the organizer account is a host; a teacher on another Google account is a participant.",
+        "chatHostsOnlyTitle": "Only hosts can chat",
+        "chatHostsOnlyDescription": "Learners can read the chat but not send messages.",
+        "reactionsHostsOnlyTitle": "Only hosts can send reactions",
+        "reactionsHostsOnlyDescription": "Learners can't send emoji reactions.",
+        "presentHostsOnlyTitle": "Only hosts can share screen",
+        "presentHostsOnlyDescription": "Keep this off if teachers present from their own Google accounts.",
+        "joinAsViewerTitle": "Learners join as viewers",
+        "joinAsViewerDescription": "Learners join without mic or camera.",
+        "disabledBecauseHostControlsOff": "Disabled because host controls are off."
     },
     "notifications": {
         "title": "Notifications",

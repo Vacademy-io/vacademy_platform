@@ -18,6 +18,9 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
 
     List<LeadFollowup> findByAudienceResponseIdOrderByScheduleTimeAsc(String audienceResponseId);
 
+    /** Check Lead's follow-up history: every follow-up across one person's enquiries. */
+    List<LeadFollowup> findByAudienceResponseIdInOrderByScheduleTimeDesc(List<String> audienceResponseIds);
+
     List<LeadFollowup> findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(String createdBy);
 
     List<LeadFollowup> findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(String instituteId);
@@ -47,12 +50,20 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
      * ar.parent_name, so name search without searchUserIdsCsv finds nothing for
      * it, which is a bug this codebase has already been bitten by.
      *
+     * leadStatusCsv / leadStatusExcludeCsv are lead status keys, read the same
+     * way the leads query reads them (lead_status first, then the profile
+     * conversion status), so a sidebar tab that leaves LOST leads out of the
+     * open buckets can leave them out of this one too.
+     *
      * No semicolon anywhere in the string: Hibernate appends its own limit
      * clause to a paged native query and a stray one makes it a runtime error.
      */
     @Query(value = """
             SELECT f.* FROM lead_followup f
             LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+            LEFT JOIN user_lead_profile ulp
+                   ON ulp.user_id = ar.user_id AND ulp.institute_id = f.institute_id
             WHERE f.institute_id = :instituteId
               AND f.is_closed = TRUE
               AND (COALESCE(:createdByCsv, '') = ''
@@ -67,11 +78,21 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                    OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
                    OR (COALESCE(:searchUserIdsCsv, '') <> ''
                        AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+              AND (COALESCE(:leadStatusCsv, '') = ''
+                   OR COALESCE(ls.status_key, ulp.conversion_status)
+                      = ANY(STRING_TO_ARRAY(:leadStatusCsv, ',')))
+              AND (COALESCE(:leadStatusExcludeCsv, '') = ''
+                   OR COALESCE(ls.status_key, ulp.conversion_status) IS NULL
+                   OR NOT (COALESCE(ls.status_key, ulp.conversion_status)
+                           = ANY(STRING_TO_ARRAY(:leadStatusExcludeCsv, ','))))
             ORDER BY f.closed_at DESC
             """,
             countQuery = """
             SELECT COUNT(*) FROM lead_followup f
             LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+            LEFT JOIN user_lead_profile ulp
+                   ON ulp.user_id = ar.user_id AND ulp.institute_id = f.institute_id
             WHERE f.institute_id = :instituteId
               AND f.is_closed = TRUE
               AND (COALESCE(:createdByCsv, '') = ''
@@ -86,6 +107,13 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                    OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
                    OR (COALESCE(:searchUserIdsCsv, '') <> ''
                        AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+              AND (COALESCE(:leadStatusCsv, '') = ''
+                   OR COALESCE(ls.status_key, ulp.conversion_status)
+                      = ANY(STRING_TO_ARRAY(:leadStatusCsv, ',')))
+              AND (COALESCE(:leadStatusExcludeCsv, '') = ''
+                   OR COALESCE(ls.status_key, ulp.conversion_status) IS NULL
+                   OR NOT (COALESCE(ls.status_key, ulp.conversion_status)
+                           = ANY(STRING_TO_ARRAY(:leadStatusExcludeCsv, ','))))
             """,
             nativeQuery = true)
     Page<LeadFollowup> findCompleted(@Param("instituteId") String instituteId,
@@ -94,6 +122,8 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
                                      @Param("closedTo") Timestamp closedTo,
                                      @Param("searchQuery") String searchQuery,
                                      @Param("searchUserIdsCsv") String searchUserIdsCsv,
+                                     @Param("leadStatusCsv") String leadStatusCsv,
+                                     @Param("leadStatusExcludeCsv") String leadStatusExcludeCsv,
                                      Pageable pageable);
 
     /**

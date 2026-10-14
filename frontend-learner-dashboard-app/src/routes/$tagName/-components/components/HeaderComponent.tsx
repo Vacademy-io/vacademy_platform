@@ -7,7 +7,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
-import { useState, useEffect, useRef } from "react";
+import { createElement, useState, useEffect, useRef } from "react";
 import { MagnifyingGlass, ShoppingCart } from "@phosphor-icons/react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
@@ -89,6 +89,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
   /** Editor preview only: the real route of the page shown at the site root
    *  ("" = home), so the right nav item is marked active. */
   previewPath?: string;
+  /** Where the logo and site name lead: a page route or URL; "none" = not a
+   *  link. Unset = the institute's home-icon route, else the site's home page. */
+  logoLink?: string;
 } & HeaderChromeProps> = ({
   navigation = [],
   authLinks = [],
@@ -104,6 +107,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   showSearch,
   showLanguageSwitcher,
   previewPath,
+  logoLink,
   barSize,
   contentWidth,
   navStyle,
@@ -365,9 +369,32 @@ export const HeaderComponent: React.FC<HeaderProps & {
     // (when there is one) so the bar keeps room for the logo and the toggle.
     const hasStandardMenu = visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated;
     const switcherInMenu = showSwitcher && (isCourseCatalogeTypeEnabled || hasStandardMenu);
-    const handleInstituteLogoClick = () => {
-      if (domainRouting.homeIconClickRoute) {
+    // Where the logo (and the site name beside it) leads. The site's own
+    // "Logo click" setting wins ("none" = not a link); else the institute's
+    // home-icon route, as before; else the site's home page. Read untranslated
+    // (baseProps): it is a route, not text.
+    const authoredLogoLink = (() => {
+      const raw = (baseProps as { logoLink?: unknown } | undefined)?.logoLink ?? logoLink;
+      return typeof raw === "string" ? raw.trim() : "";
+    })();
+    const logoHref =
+      authoredLogoLink.toLowerCase() === "none"
+        ? null
+        : authoredLogoLink
+          ? RouteMatcher.isExternalLink(authoredLogoLink)
+            ? authoredLogoLink
+            : RouteMatcher.pagePath(effectiveTagName, authoredLogoLink)
+          : domainRouting.homeIconClickRoute || RouteMatcher.pagePath(effectiveTagName);
+    const handleLogoClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+      // Let the browser open a new tab / window as it would for any link.
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (authoredLogoLink) {
+        handleNavigation(authoredLogoLink, "", true);
+      } else if (domainRouting.homeIconClickRoute) {
         window.location.href = domainRouting.homeIconClickRoute;
+      } else {
+        void siteNavigate(RouteMatcher.pagePath(effectiveTagName));
       }
     };
 
@@ -649,16 +676,21 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
             {/* Logo and Brand. With the bar's extras it may shrink (min-w-0),
                 so the title truncates instead of pushing the controls off-screen. */}
-            <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? bp.catalogLogo : ''}${hasHeaderExtras ? ' min-w-0' : ''}`}>
+            {/* The logo and site name lead home (or where the site points them). */}
+            {createElement(
+              logoHref ? "a" : "div",
+              {
+                className: `flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? bp.catalogLogo : ''}${hasHeaderExtras ? ' min-w-0' : ''}${logoHref ? ' no-underline' : ''}`,
+                ...(logoHref ? { href: logoHref, onClick: handleLogoClick } : {}),
+              },
+              <>
               {/* JSON logo (from page builder) */}
               {jsonLogoUrl ? (
                 <>
                   <img
                     src={jsonLogoUrl}
                     alt={t("header.logoAlt")}
-                    onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                    className={`${chrome.compact ? HEADER_COMPACT_LOGO : 'max-h-12 md:max-h-16'} w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                      }${hasHeaderExtras ? ' min-w-0' : ''}`}
+                    className={`${chrome.compact ? HEADER_COMPACT_LOGO : 'max-h-12 md:max-h-16'} w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90${hasHeaderExtras ? ' min-w-0' : ''}`}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}
@@ -676,9 +708,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <img
                       src={instituteLogoUrl}
                       alt={t("header.instituteLogoAlt")}
-                      onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-catalogue-border ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                        }`}
+                      className="h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-catalogue-border"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -692,7 +722,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   )}
                 </>
               )}
-            </div>
+              </>,
+            )}
 
             {/* Desktop Navigation */}
             {visibleNavigation.length > 0 && (

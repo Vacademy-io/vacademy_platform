@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FORM_APPEARANCE,
+  hasStructuredHeroContent,
   MAX_FORM_HIGHLIGHTS,
   parseAudienceFormAppearance,
   resolveFormSubtitle,
@@ -81,6 +82,19 @@ describe("parseAudienceFormAppearance — a public form must always render", () 
     expect(parsed.showObjective).toBe(false);
     expect(parsed.showProgress).toBe(true);
     expect(parsed.showRequiredLegend).toBe(true);
+  });
+
+  it("shows the header bar and page heading unless switched off", () => {
+    expect(parseAudienceFormAppearance(wrap({}))).toMatchObject({
+      showHeader: true,
+      showHeadline: true,
+    });
+    expect(
+      parseAudienceFormAppearance(wrap({ showHeader: false, showHeadline: false }))
+    ).toMatchObject({ showHeader: false, showHeadline: false });
+    expect(
+      parseAudienceFormAppearance(wrap({ showHeader: "no", showHeadline: 0 }))
+    ).toMatchObject({ showHeader: true, showHeadline: true });
   });
 
   it("ignores non-booleans", () => {
@@ -343,5 +357,36 @@ describe("resolveHeroHtml", () => {
     });
     expect(html).toContain('class="my-hero"');
     expect(html).toContain("text-align");
+  });
+});
+
+describe("hasStructuredHeroContent", () => {
+  const campaign = { name: "GLP1-Nutrition-IN", description: "", objective: "Lead" };
+  const allOff = {
+    ...DEFAULT_FORM_APPEARANCE,
+    showHeadline: false,
+    showDescription: false,
+    showObjective: false,
+  };
+
+  it("is true by default — the campaign name is the heading", () => {
+    expect(hasStructuredHeroContent(DEFAULT_FORM_APPEARANCE, campaign)).toBe(true);
+  });
+
+  it("is false once heading, intro and objective are all switched off", () => {
+    expect(hasStructuredHeroContent(allOff, campaign)).toBe(false);
+  });
+
+  it("stays true while any other block is authored", () => {
+    expect(hasStructuredHeroContent({ ...allOff, eyebrow: "Admissions" }, campaign)).toBe(true);
+    expect(
+      hasStructuredHeroContent({ ...allOff, showObjective: true }, campaign)
+    ).toBe(true);
+    expect(
+      hasStructuredHeroContent(
+        { ...allOff, highlights: [{ id: "a", icon: "check", text: "Free" }] },
+        campaign
+      )
+    ).toBe(true);
   });
 });

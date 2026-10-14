@@ -25,6 +25,7 @@ from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..schemas.auth import CustomUserDetails
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..constants.model_defaults import GLM_DEFAULT
 from ..services.ai_models_service import AIModelsService
 from ..services.api_key_resolver import ApiKeyResolver
 from ..services.chat_llm_client import ChatLLMClient
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/coding-question", tags=["coding-question-generation"])
 
 # Fallback if ai_model_defaults isn't populated.
-FALLBACK_MODEL = "google/gemini-2.5-flash"
+FALLBACK_MODEL = GLM_DEFAULT
 
 
 # ---------------------------------------------------------------------------

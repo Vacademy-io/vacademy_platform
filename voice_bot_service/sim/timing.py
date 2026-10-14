@@ -860,6 +860,7 @@ async def _run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool,
         "replies_scripted": list(scenario.replies),
         "stt_failovers": getattr(d, "stt_failovers", 0) or 0,
         "llm_failovers": getattr(d, "llm_failovers", 0) or 0,
+        "llm_returns": getattr(d, "llm_returns", 0) or 0,
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
@@ -1776,6 +1777,35 @@ def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8,
     return chk
 
 
+def chk_vertex_stall_then_back(res):
+    """Call a4ce0279 (2026-10-13): one Vertex stall put the rest of the call on
+    the fallback. The failed turn is answered on the fallback (as before) and the
+    caller's NEXT turn goes back to the primary — once, and not for the bot's
+    own runs."""
+    f = []
+    gens = res.get("llm_gens") or []
+    if res.get("llm_failovers") != 1:
+        f.append(f"llm_failovers = {res.get('llm_failovers')} (want 1)")
+    if res.get("llm_returns") != 1:
+        f.append(f"llm_returns = {res.get('llm_returns')} (want 1)")
+    errs = [g for g in gens if g.get("errored") is not None]
+    if not errs:
+        return f + ["the primary never errored — the scenario did not stall"]
+    t_err = errs[0]["errored"]
+    if len(res.get("caller") or []) < 2:
+        return f + ["the caller's second turn never came"]
+    second_end = res["caller"][1][1]
+    after = [g for g in gens if g["requested"] >= second_end - 0.5]
+    if not after:
+        f.append("nothing answered the caller's second turn")
+    elif after[0].get("service") != "primary":
+        f.append(f"the second turn went to {after[0].get('service')} (want primary)")
+    fb = [g for g in gens if g.get("service") == "fallback" and t_err <= g["requested"] < second_end]
+    if len(fb) != 1:
+        f.append(f"{len(fb)} fallback generations for the failed turn (want 1)")
+    return f
+
+
 def chk_vertex_stall_failover(res, bar: float = 7.0, bridge_bar: float = 5.0):
     """Call c05f6c83 and 12 more on 2026-10-01: no Vertex first token within
     3 s → a non-fatal ErrorFrame → the switcher moves to the fallback and
@@ -2350,6 +2380,13 @@ SCENARIOS: List[Scenario] = [
     # takes the fallback, and RunGuard then blocks on_pipeline_error's re-run
     # as "context unchanged" — the failed turn is answered under the cue. With
     # the bridge heard first (the scenario above) the same code passes.
+    Scenario("vertex_stall_then_back",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Okay, and how much does it cost?", 1.6, after_bot_stop=3, offset=0.8)],
+             replies=[PITCH_Q, "It depends on your batch size. Shall I send the details?"],
+             llm_stalls=[4.0], fallback_ttft=0.8,
+             checks=chk_vertex_stall_then_back, max_secs=40,
+             note="a4ce0279: after one stall the caller's next turn goes back to the primary"),
     Scenario("vertex_stall_failover_slow_tts",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[PITCH_Q],

@@ -35,7 +35,7 @@ import httpx
 from ..db import db_session
 from ..models.file_conversion import FileConversionRepository
 from ..utils.html_images import convert_base64_to_urls, extract_body
-from . import mathpix_pdf_service, media_file_client, pdf_questions_service
+from . import docx_numbering, mathpix_pdf_service, media_file_client, pdf_questions_service
 from .md_to_html import convert_markdown_to_html
 
 logger = logging.getLogger(__name__)
@@ -349,6 +349,11 @@ async def start_for_extraction(file_id: str) -> Dict[str, Any]:
     the whole-file MathPix path."""
     url = await media_file_client.get_file_url(file_id)
     data = await _download(url)
+    if docx_numbering.is_docx(data):
+        # A Word file has no PDF text layer to read; MathPix converts it, and
+        # the file is tagged so its printed question numbers are put back.
+        pdf_id = await pdf_questions_service.start_from_file_id(file_id, pdf_questions_service.DOCX)
+        return {"pdf_id": pdf_id, "vendor": "mathpix", "pages": None, "ocr": True, "ocr_pages": None}
     try:
         return await _start_local(file_id, data)
     except Exception as exc:  # noqa: BLE001

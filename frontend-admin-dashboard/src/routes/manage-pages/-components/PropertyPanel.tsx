@@ -57,6 +57,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/design-system/searchable-select';
 import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
@@ -507,7 +508,7 @@ export const PropertyPanel = () => {
                                 {page.seo?.metaDescription || t('pageSettings.seo.previewNoDescription')}
                             </p>
                         </div>
-                        <ImageUploadField
+                        <ImageUploadField slot="social"
                             label={t('pageSettings.seo.ogImage')}
                             value={page.seo?.ogImage || ''}
                             onChange={(url) => updatePageSeo(page.id, { ogImage: url })}
@@ -1615,7 +1616,7 @@ const GlobalSettingsEditor = ({
                         <Label className="text-xs">{t('global.seo.orgAddress')}</Label>
                         <Input className="mt-1" value={gs.seo?.organization?.address || ''} onChange={(e) => updateField('seo.organization.address', e.target.value)} />
                     </div>
-                    <ImageUploadField
+                    <ImageUploadField slot="logo"
                         label={t('global.seo.orgLogo')}
                         value={gs.seo?.organization?.logo || ''}
                         onChange={(url) => updateField('seo.organization.logo', url)}
@@ -2362,7 +2363,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
                                 {expandedSlide === index && (
                                     <div className="mt-3 space-y-3 border-t pt-3">
-                                        <ImageUploadField
+                                        <ImageUploadField slot="background"
                                             label={t('mediaShowcase.backgroundImage')}
                                             value={slide.backgroundImage || ''}
                                             onChange={(url) => updateSlide(index, 'backgroundImage', url)}
@@ -2914,7 +2915,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
             />
 
-            <ImageUploadField
+            <ImageUploadField slot="logo"
                 label={t('header.logo')}
                 value={props.logo || ''}
                 onChange={(url) => updateProp('logo', url)}
@@ -3533,7 +3534,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
-            <ImageUploadField
+            <ImageUploadField slot="background"
                 label={t('hero.backgroundImage')}
                 value={props.backgroundImage || ''}
                 onChange={(url) => updateProp('backgroundImage', url)}
@@ -3842,7 +3843,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                     {t('hero.videoHint')}
                 </p>
                 {props.right?.video && (
-                    <ImageUploadField
+                    <ImageUploadField slot="card"
                         label={t('hero.posterField')}
                         value={props.right?.videoPoster || ''}
                         onChange={(url) => updateRight('videoPoster', url)}
@@ -4159,6 +4160,53 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
+            {(props.layout || 'carousel') === 'carousel' && (
+                <div className="space-y-3 rounded border p-3">
+                    <div className="space-y-2">
+                        <Label>{t('testimonials.cardsPerView')}</Label>
+                        <select
+                            className="w-full rounded border px-3 py-2 text-sm"
+                            value={String(props.cardsPerView || 1)}
+                            onChange={(e) => {
+                                const n = Number(e.target.value);
+                                // 1 is the renderer's default — drop the key so old sites stay byte-identical
+                                updateProp('cardsPerView', n > 1 ? n : undefined);
+                            }}
+                        >
+                            {[1, 2, 3, 4].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500">{t('testimonials.cardsPerViewHint')}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <Label>{t('testimonials.autoplay')}</Label>
+                        <Switch
+                            checked={!!props.autoplay}
+                            onCheckedChange={(c) => updateProp('autoplay', c || undefined)}
+                        />
+                    </div>
+                    {props.autoplay && (
+                        <div className="space-y-2">
+                            <Label>{t('testimonials.autoplaySeconds')}</Label>
+                            <Input
+                                type="number"
+                                min={3}
+                                max={30}
+                                step={1}
+                                className="w-24"
+                                value={Math.round((props.autoplayIntervalMs || 5000) / 1000)}
+                                onChange={(e) => {
+                                    // The live carousel floors the interval at 2.5s; keep the editor within a readable range
+                                    const s = Math.min(30, Math.max(3, Math.round(Number(e.target.value) || 5)));
+                                    updateProp('autoplayIntervalMs', s === 5 ? undefined : s * 1000);
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label>{t('testimonials.testimonials')}</Label>
@@ -4189,16 +4237,30 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                             value={item.role}
                             onChange={(e) => updateTestimonial(index, 'role', e.target.value)}
                         />
+                        {/* The live card reads feedback || text || quote || content, and sites
+                            written by the AI/MCP store `quote` — show whichever is set, and on edit
+                            write `feedback` alone so a stale key can't shadow the new text. */}
                         <Textarea
                             placeholder={t('testimonials.feedbackPlaceholder')}
-                            rows={2}
-                            value={item.feedback}
-                            onChange={(e) => updateTestimonial(index, 'feedback', e.target.value)}
+                            rows={3}
+                            value={item.feedback || item.text || item.quote || item.content || ''}
+                            onChange={(e) => {
+                                const next = [...(props.testimonials || [])];
+                                next[index] = {
+                                    ...next[index],
+                                    feedback: e.target.value,
+                                    text: undefined,
+                                    quote: undefined,
+                                    content: undefined,
+                                };
+                                updateProp('testimonials', next);
+                            }}
                         />
-                        <Input
-                            placeholder={t('testimonials.avatarUrlPlaceholder')}
-                            value={item.avatar}
-                            onChange={(e) => updateTestimonial(index, 'avatar', e.target.value)}
+                        <ImageUploadField
+                            slot="avatar"
+                            label={t('testimonials.photo')}
+                            value={item.avatar || ''}
+                            onChange={(url) => updateTestimonial(index, 'avatar', url)}
                         />
                         <div className="flex items-center gap-3">
                             <Label className="text-xs">{t('hero.ratingLabel')}</Label>
@@ -4445,7 +4507,7 @@ const DocumentViewerEditor = ({ component, pageId, updateComponent }: any) => {
                         <Label>{t('documentViewer.buttonText')}</Label>
                         <Input value={props.buttonText || ''} placeholder={t('mediaShowcase.buttonTextPlaceholder')} onChange={(e) => updateProp('buttonText', e.target.value)} />
                     </div>
-                    <ImageUploadField
+                    <ImageUploadField slot="gallery"
                         label={t('documentViewer.coverImage')}
                         value={props.coverImage || ''}
                         onChange={(url) => updateProp('coverImage', url)}
@@ -4686,7 +4748,7 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {expandedMember === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <ImageUploadField label={t('team.avatar')} value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
+                                <ImageUploadField slot="avatar" label={t('team.avatar')} value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
                                 <Input placeholder={t('testimonials.namePlaceholder')} value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
                                 <Input placeholder={t('team.roleTitlePlaceholder')} value={m.role} onChange={(e) => updateMember(i, 'role', e.target.value)} />
                                 <Textarea placeholder={t('team.shortBioPlaceholder')} rows={2} value={m.bio || ''} onChange={(e) => updateMember(i, 'bio', e.target.value)} />
@@ -4925,7 +4987,7 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
                             <span className="text-xs font-medium">{t('imageGallery.imageN', { n: i + 1 })}</span>
                             <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
-                        <ImageUploadField label={t('hero.imageField')} value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
+                        <ImageUploadField slot="gallery" label={t('hero.imageField')} value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
                         <Input placeholder={t('hero.altTextPlaceholder')} value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
                         {props.showCaptions && <Input placeholder={t('videoEmbed.caption')} value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
@@ -5959,6 +6021,8 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
         },
     ];
     const source = props.source || 'newest';
+    const { getCourseFromPackage } = useInstituteDetailsStore();
+    const allCourses = getCourseFromPackage();
 
     return (
         <div className="space-y-4">
@@ -6004,6 +6068,20 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                     <Label className="text-xs">{coursesTerm}</Label>
                     {(props.courseIds || []).map((id: string, i: number) => {
                         const badges = props.courseBadges || {};
+                        // Picked by name from the institute's courses (the package
+                        // id is what the catalogue's cards carry); a course picked on
+                        // another row is not offered twice. An id no longer among the
+                        // institute's courses stays listed under its id, or the row
+                        // would render blank and the next pick would silently move it.
+                        const taken = new Set(
+                            (props.courseIds || []).filter((x: string, j: number) => j !== i && x)
+                        );
+                        const options: SearchableSelectOption[] = allCourses
+                            .filter((c) => !taken.has(c.id))
+                            .map((c) => ({ label: c.name, value: c.id }));
+                        if (id && !allCourses.some((c) => c.id === id)) {
+                            options.unshift({ label: id, value: id });
+                        }
                         // A keystroke that leaves the id as it was (a space, trimmed
                         // away) writes nothing; courseBadges is only written when a
                         // ribbon really moves to the new id.
@@ -6029,12 +6107,17 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                             });
                         return (
                             <div key={i} className="space-y-1 rounded border border-gray-100 p-2">
-                                <div className="flex gap-1">
-                                    <Input
-                                        value={id}
-                                        placeholder={`${courseLower} id`}
-                                        onChange={(e) => setId(e.target.value.trim())}
-                                    />
+                                <div className="flex items-center gap-1">
+                                    <div className="min-w-0 flex-1">
+                                        <SearchableSelect
+                                            options={options}
+                                            value={id}
+                                            onChange={(v) => setId(v.trim())}
+                                            placeholder={`Choose a ${courseLower}`}
+                                            searchPlaceholder={`Search ${coursesLower}…`}
+                                            emptyText={`No ${coursesLower} found`}
+                                        />
+                                    </div>
                                     <button
                                         onClick={() => {
                                             const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);
@@ -6352,7 +6435,7 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
                     {avatars.map((src: string, i: number) => (
                         <div key={i} className="flex items-center gap-2">
                             <div className="flex-1">
-                                <ImageUploadField label="" value={src} onChange={(url) => {
+                                <ImageUploadField slot="avatar" label="" value={src} onChange={(url) => {
                                     const next = [...avatars];
                                     next[i] = url;
                                     updateProp('avatars', next);
@@ -6552,7 +6635,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                                     <span className="text-xs font-medium">{t('logoCloud.logoN', { n: i + 1 })}</span>
                                     <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                                 </div>
-                                <ImageUploadField label={t('hero.imageField')} value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
+                                <ImageUploadField slot="logo" label={t('hero.imageField')} value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
                                 <Input placeholder={t('hero.altTextPlaceholder')} value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
                                 <Input placeholder={t('logoCloud.labelPlaceholder')} value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
                                 <Input placeholder={t('logoCloud.linkUrlPlaceholder')} value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
@@ -7102,7 +7185,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder={t('header.title')} />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
-                                    <ImageUploadField label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
+                                    <ImageUploadField slot="card" label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
                                     {isResource && (
                                         <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder={t('featureGrid.resourceBadgePlaceholder')} />
                                     )}

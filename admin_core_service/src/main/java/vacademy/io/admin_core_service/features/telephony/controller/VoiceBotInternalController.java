@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.telephony.core.TelephonyConfigCac
 import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.publicapi.entity.AiCallApiCall;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -69,7 +70,40 @@ public class VoiceBotInternalController {
     private static final int IMPORT_WINDOW_MINUTES = 5;
     private static final int IMPORT_MIN_ROWS = 40;
 
+    @Autowired private vacademy.io.admin_core_service.features.telephony.publicapi.repository.AiCallApiCallRepository
+            apiCallRepo;
+
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /** The public-API call behind this call-log row, or null for every other call. */
+    /**
+     * An API call's variables as the bot's lead fields. The bot fills {{institute_name}} from
+     * a field named "institute name" and {{booked_slot}} from "booked slot", so the client's
+     * snake_case names are mirrored under those spellings too.
+     */
+    static Map<String, String> apiVariablesForBot(Map<String, String> variables) {
+        if (variables == null || variables.isEmpty()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>(variables);
+        for (Map.Entry<String, String> e : variables.entrySet()) {
+            String k = e.getKey() == null ? "" : e.getKey().trim().toLowerCase(java.util.Locale.ROOT);
+            if ("institute_name".equals(k)) out.putIfAbsent("institute name", e.getValue());
+            if ("booked_slot".equals(k)) out.putIfAbsent("booked slot", e.getValue());
+        }
+        return out;
+    }
+
+    private AiCallApiCall apiCallFor(TelephonyCallLog row) {
+        if (row == null || !vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType
+                .API_CONTACT.name().equals(row.getSubjectType()) || row.getSubjectId() == null) {
+            return null;
+        }
+        try {
+            return apiCallRepo.findByIdAndInstituteId(row.getSubjectId(), row.getInstituteId()).orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("call-context: API call lookup failed for {}: {}", row.getSubjectId(), e.getMessage());
+            return null;
+        }
+    }
 
     @GetMapping("/call-context")
     public ResponseEntity<Map<String, Object>> callContext(
@@ -82,13 +116,18 @@ public class VoiceBotInternalController {
 
         String instituteName = instituteRepository.findById(instituteId)
                 .map(i -> i.getInstituteName()).orElse("our institute");
-        String leadName = row.getUserId() == null || "UNKNOWN".equals(row.getUserId())
+        // A call placed through the public AI calling API: the client sent the contact's
+        // name and template variables with the request. Its user id is a pseudo id that
+        // exists nowhere, so the auth-service lookups below would only find nothing.
+        AiCallApiCall apiCall = apiCallFor(row);
+        String leadName = apiCall != null ? apiCall.getContactName()
+                : row.getUserId() == null || "UNKNOWN".equals(row.getUserId())
                 ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
         // Gender for how the bot addresses the lead (honorific + Hindi second-person):
         // the stored record gender wins; else a conservative name guess (null when
         // unknown, so the bot uses gender-neutral address instead of defaulting to "sir").
-        String leadGender = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId()))
+        String leadGender = (apiCall != null || row.getUserId() == null || "UNKNOWN".equals(row.getUserId()))
                 ? vacademy.io.admin_core_service.features.telephony.core.NameGender.of(leadName)
                 : userMobileResolver.findGender(row.getUserId())
                         .orElseGet(() -> vacademy.io.admin_core_service.features.telephony.core
@@ -105,6 +144,11 @@ public class VoiceBotInternalController {
         Map<String, Object> agent = registryAgent
                 .map(a -> registryAgentMap(a, instituteName, settings))
                 .orElseGet(() -> defaultAgent(agentId, instituteName, settings));
+        if (apiCall != null) {
+            // The contact belongs to the client's CRM, not ours: there is no lead to send a
+            // WhatsApp/email to or to book against, so the agent must not offer either.
+            agent.keySet().removeAll(List.of("sendArtefacts", "sendArtefactsMidCall", "sendOffers", "sendConditions"));
+        }
 
         // Handoff targets: per-agent numbers win; else the institute's voicemail/
         // fallback number (already a "reach a human" concept on the telephony config).
@@ -134,7 +178,11 @@ public class VoiceBotInternalController {
         if (leadGender != null) out.put("leadGender", leadGender);
         // The lead's captured form/custom fields (company, role, …) so the agent can
         // reference what it already knows instead of re-asking. Empty for unknown callers.
-        Map<String, String> leadFields = row.getResponseId() == null
+        // For an API call, the client's variables play this part: they fill the agent's
+        // {{placeholders}} and are listed to the model as what it already knows.
+        Map<String, String> leadFields = apiCall != null
+                ? apiVariablesForBot(apiCall.getVariables())
+                : row.getResponseId() == null
                 ? Map.of() : audienceService.getLeadCustomFields(row.getResponseId());
         if (leadFields != null && !leadFields.isEmpty()) out.put("leadFields", leadFields);
         // When and how the lead enquired, so the agent can answer "when did I fill a form?"
@@ -233,6 +281,12 @@ public class VoiceBotInternalController {
             return ResponseEntity.ok(Map.of("ok", true, "created", 0));
         }
 
+        AiCallApiCall apiCall = apiCallFor(row);
+        if (apiCall != null) {
+            // No sends on API calls (see callContext): a marker the model emits anyway is ignored.
+            log.info("vacademy-ai: mid-call action {} for API call {} ignored", artefact, apiCall.getId());
+            return ResponseEntity.ok(Map.of("ok", true, "created", 0));
+        }
         String leadName = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
         String leadPhone = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null

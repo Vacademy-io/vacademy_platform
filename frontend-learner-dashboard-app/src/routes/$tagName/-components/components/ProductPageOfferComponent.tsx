@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -316,14 +317,16 @@ const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt
 
   // Reserve the band either way so cards don't reflow when images resolve.
   return (
-    <div className="catalogue-img-zoom aspect-[16/9] w-full overflow-hidden rounded-catalogue-lg bg-catalogue-bg-muted">
+    // No zoom on hover: course covers carry their title and text to the edges,
+    // and scaling the image inside this clipped band cut them off.
+    <div className="aspect-[16/9] w-full overflow-hidden rounded-catalogue-lg bg-catalogue-bg-muted">
       {url && (
-        <img
+        <FitImage
           src={url}
           alt={alt}
           loading="lazy"
           decoding="async"
-          className="size-full object-cover"
+          className="size-full"
           onError={() => setFailed(true)}
         />
       )}

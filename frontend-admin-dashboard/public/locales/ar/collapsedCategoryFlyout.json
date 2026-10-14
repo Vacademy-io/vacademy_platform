@@ -2,6 +2,7 @@
     "categoryLabels": {
         "crm": "CRM",
         "lms": "LMS",
-        "aiTools": "أدوات الذكاء الاصطناعي"
+        "aiTools": "أدوات الذكاء الاصطناعي",
+        "erp": "ERP"
     }
 }

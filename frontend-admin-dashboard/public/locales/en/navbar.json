@@ -64,5 +64,29 @@
         "state": "State:",
         "country": "Country:",
         "pincode": "Pincode:"
+    },
+    "instituteSwitcher": {
+        "currentInstitute": "Current institute",
+        "unnamedInstitute": "Your institute",
+        "switchInstitute": "Switch institute",
+        "dialogTitle": "Switch institute",
+        "dialogDescription": "Choose the institute to work in. The app reloads into it, just as if you had signed in there.",
+        "searchPlaceholder": "Search institutes",
+        "fallbackName": "Institute {{idPrefix}}…",
+        "current": "Current",
+        "noMatches": "No institutes match \"{{query}}\"",
+        "loadError": "Couldn't load institute names. You can still switch.",
+        "retry": "Retry",
+        "switching": "Switching institute…",
+        "switchFailed": "Couldn't switch institute. Please try again.",
+        "adminRequired": "This portal needs the Admin role in that institute.",
+        "subOrgTitle": "Choose an organisation",
+        "subOrgDescription": "You work with several organisations in {{institute}}. Pick one to continue.",
+        "cancelSwitch": "Cancel switch",
+        "roleWithMore": "{{role}} +{{count}}",
+        "roles": {
+            "ADMIN": "Admin",
+            "TEACHER": "Teacher"
+        }
     }
 }

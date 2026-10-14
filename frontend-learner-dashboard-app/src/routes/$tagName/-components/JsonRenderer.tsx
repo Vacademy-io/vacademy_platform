@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "@tanstack/react-router";
 import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
@@ -1183,7 +1184,7 @@ const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns 
         {images.map((img: any, i: number) => (
           <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className="group overflow-hidden rounded-xl">
             {img.src ? (
-              <img src={img.src} alt={img.alt || ''} className="w-full object-cover transition group-hover:scale-105" style={{ aspectRatio: '4/3' }} />
+              <FitImage src={img.src} alt={img.alt || ''} className="w-full transition group-hover:scale-105" style={{ aspectRatio: '4/3' }} />
             ) : (
               <div className="flex w-full items-center justify-center rounded-xl bg-catalogue-bg-muted text-catalogue-text-muted" style={{ aspectRatio: '4/3' }}>{t("jsonRenderer.noImage")}</div>
             )}
@@ -1721,11 +1722,11 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
     >
       {f.image && (
         <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
-          <img
+          <FitImage
             src={f.image}
             alt=""
             loading="lazy"
-            className="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+            className="size-full transition-transform duration-500 ease-out group-hover:scale-105"
           />
           {badge && (
             <span className="absolute start-3 top-3 inline-flex items-center rounded-full bg-catalogue-bg-elevated px-3 py-1 text-xs font-semibold text-primary-500 shadow-sm">

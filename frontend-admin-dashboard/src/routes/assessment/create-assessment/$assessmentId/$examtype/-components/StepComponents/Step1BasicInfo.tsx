@@ -1048,6 +1048,10 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     <FormField
                                         control={control}
                                         name="testCreation.liveDateRange.startDate"
+                                        // onChange mode only re-validates the edited field;
+                                        // the ordering error lives on endDate, so re-check it
+                                        // too or it stays stale and keeps Next disabled.
+                                        rules={{ deps: ['testCreation.liveDateRange.endDate'] }}
                                         render={({ field: { ...field } }) => (
                                             <FormItem className="w-full sm:w-72">
                                                 <FormControl>

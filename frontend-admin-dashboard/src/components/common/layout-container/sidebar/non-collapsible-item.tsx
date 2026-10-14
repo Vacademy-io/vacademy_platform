@@ -1,8 +1,7 @@
 import React from 'react';
 import { useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { SidebarItemProps } from '../../../../types/layout-container/layout-container-types';
-import { useRouter } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { LockKey } from '@phosphor-icons/react';
 import { getCategoryColors } from './sidebar-colors';
@@ -11,12 +10,14 @@ import { isSidebarLinkActive } from './helper';
 
 export const NonCollapsibleItem = ({ icon, title, to, locked, category }: SidebarItemProps) => {
     const [hover, setHover] = useState<boolean>(false);
-    const router = useRouter();
     const navigate = useNavigate();
-    const currentRoute = router.state.location.pathname;
-    const currentSearch = router.state.location.search as Record<string, unknown> | undefined;
+    const { pathname: currentRoute, search: currentSearch } = useLocation();
     const colors = getCategoryColors(category as 'CRM' | 'LMS' | 'AI');
-    const isActive = isSidebarLinkActive(to, currentRoute, currentSearch);
+    const isActive = isSidebarLinkActive(
+        to,
+        currentRoute,
+        currentSearch as Record<string, unknown>
+    );
 
     const handleLockedClick = (e: React.MouseEvent) => {
         if (locked) {

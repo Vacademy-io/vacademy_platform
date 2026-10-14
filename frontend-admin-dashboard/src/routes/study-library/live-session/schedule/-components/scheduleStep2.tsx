@@ -1197,6 +1197,26 @@ export default function ScheduleStep2() {
                         // advisory only — never block meeting creation
                     }
 
+                    // Meet space settings — keys read by GoogleMeetManager.buildSpaceConfig.
+                    // Unset values fall back to the account defaults on the backend.
+                    const hostOnly = (on?: boolean) => (on ? 'HOSTS_ONLY' : 'NO_RESTRICTION');
+                    const googleConfig = {
+                        accessType: s?.googleAccessType,
+                        recording: s?.googleRecord,
+                        transcription: s?.googleTranscription ?? false,
+                        smartNotes: s?.googleSmartNotes ?? false,
+                        attendanceReport: s?.googleAttendanceReport ?? false,
+                        hostManagement: s?.googleHostManagement ?? false,
+                        ...(s?.googleHostManagement
+                            ? {
+                                  chatRestriction: hostOnly(s?.googleChatHostsOnly),
+                                  reactionRestriction: hostOnly(s?.googleReactionsHostsOnly),
+                                  presentRestriction: hostOnly(s?.googlePresentHostsOnly),
+                                  joinAsViewer: s?.googleJoinAsViewer ?? false,
+                              }
+                            : {}),
+                    };
+
                     const fallbackDuration =
                         Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
                     await createProviderMeetingsForSession({
@@ -1208,6 +1228,7 @@ export default function ScheduleStep2() {
                         timezone: step1Data.timeZone || 'Asia/Kolkata',
                         provider: 'GOOGLE_MEET',
                         providerAccountId: s.googleMeetAccountId,
+                        providerConfig: googleConfig,
                     });
                 } catch (err) {
                     console.error('Error creating Google Meet meetings for session:', err);

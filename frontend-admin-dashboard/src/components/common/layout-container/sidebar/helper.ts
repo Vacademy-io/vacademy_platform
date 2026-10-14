@@ -2,8 +2,7 @@ import { SidebarItemsType } from '@/types/layout-container/layout-container-type
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { SubModuleType } from '@/schemas/student/student-list/institute-schema';
 import { SUB_MODULE_SIDEBAR_MAPPING, controlledTabs, modules } from './constant';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import {
     SUB_ORG_MODULE_SUB_ITEM_ID,
     SUB_ORG_MODULE_TAB_ID,
@@ -83,8 +82,8 @@ export function filterSidebarByRole(
     menuList: SidebarItemsType[],
     roleDisplay?: DisplaySettingsData | null
 ): SidebarItemsType[] {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const userRoles = getUserRoles(accessToken);
+    // Roles are per institute: an ADMIN of another institute is not an admin here.
+    const userRoles = getRolesForCurrentInstitute();
     const isAdmin = userRoles.includes('ADMIN');
 
     // If user is admin, return all items
@@ -327,27 +326,106 @@ export function parseSidebarLink(link?: string): {
  * matched, so the highlight stayed on whichever sibling had a bare path and
  * clicking "All Follow Ups" left it on "Today's Pending Follow-ups".
  *
- * A link's own params must all be satisfied; extra params in the URL (lock=,
- * date=, a filter the user added) don't stop it matching.
+ * A link's identifying params must all be satisfied (see sidebarLinkIdentity);
+ * extra params in the URL (date=, a filter the user added) don't stop it matching.
  */
 export function isSidebarLinkActive(
     link: string | undefined,
     currentPath: string,
     currentSearch: Record<string, unknown> | undefined
 ): boolean {
-    if (!link) return false;
-    const { to, search } = parseSidebarLink(link);
-    if (!to) return false;
-    if (!(currentPath === to || currentPath.startsWith(to + '/'))) return false;
-    if (!search) return true;
-    return Object.entries(search).every(
-        ([key, value]) => String(currentSearch?.[key] ?? '') === String(value)
+    if (!sidebarLinkPathMatches(link, currentPath)) return false;
+    const identity = sidebarLinkIdentity(parseSidebarLink(link).search);
+    if (!identity) return true;
+    return Object.entries(identity).every(([key, value]) =>
+        sameSearchValue(currentSearch?.[key], value)
     );
 }
 
-/** How specific a link is, for picking a winner when several match. */
-export function sidebarLinkSpecificity(link: string | undefined): number {
+/** Does the link's path (query ignored) cover the current pathname? */
+function sidebarLinkPathMatches(link: string | undefined, currentPath: string): boolean {
+    if (!link) return false;
+    const { to } = parseSidebarLink(link);
+    if (!to) return false;
+    return currentPath === to || currentPath.startsWith(to + '/');
+}
+
+/**
+ * The params that say WHICH sub-tab a link is.
+ *
+ * A link that pins filters with `lock=` is identified by those, plus `lock`
+ * itself (it tells "All Leads", which pins status, apart from "Shortlisted",
+ * which pins tier AND the same status). Its other params are only the values the
+ * page opens with, and the user is free to change them: every I2CAN Enquiry link
+ * opens on `range=ALL`, so picking a date used to drop the highlight and leave
+ * nothing in the sidebar saying which list was open.
+ *
+ * A link without `lock=` is identified by all of its params, as before.
+ */
+function sidebarLinkIdentity(
+    search: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+    if (!search || search.lock == null || search.lock === '') return search;
+    const pinned = new Set(['lock', ...splitSearchList(search.lock)]);
+    return Object.fromEntries(Object.entries(search).filter(([key]) => pinned.has(key)));
+}
+
+const splitSearchList = (value: unknown): string[] =>
+    String(value ?? '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+/**
+ * Comma lists compare as sets: the page writes back the statuses it holds, which
+ * need not be in the order the route listed them.
+ */
+const sameSearchValue = (a: unknown, b: unknown): boolean =>
+    splitSearchList(a).sort().join(',') === splitSearchList(b).sort().join(',');
+
+/** How many of the link's own params the current URL still carries unchanged. */
+function matchedParamCount(link: string, currentSearch: Record<string, unknown> | undefined) {
+    const { search } = parseSidebarLink(link);
+    return Object.entries(search ?? {}).filter(([key, value]) =>
+        sameSearchValue(currentSearch?.[key], value)
+    ).length;
+}
+
+/**
+ * How specific a link is, for picking a winner when several match. With the
+ * current URL given, only params it still carries count, so between two links
+ * that pin the same filters the one whose opening values are untouched wins.
+ */
+export function sidebarLinkSpecificity(
+    link: string | undefined,
+    currentSearch?: Record<string, unknown>
+): number {
     if (!link) return 0;
     const { to, search } = parseSidebarLink(link);
-    return to.length + Object.keys(search ?? {}).length * 1000;
+    const params = currentSearch
+        ? matchedParamCount(link, currentSearch)
+        : Object.keys(search ?? {}).length;
+    return to.length + params * 1000;
+}
+
+/**
+ * Which of `links` is the page the user is on, or null. The most specific match
+ * wins; on a tie the earlier link does, as the panel always picked.
+ */
+export function pickActiveSidebarLink(
+    links: Array<string | undefined>,
+    currentPath: string,
+    currentSearch: Record<string, unknown> | undefined
+): string | null {
+    let best: string | null = null;
+    let bestScore = -1;
+    for (const link of links) {
+        if (!link || !isSidebarLinkActive(link, currentPath, currentSearch)) continue;
+        const score = sidebarLinkSpecificity(link, currentSearch);
+        if (score > bestScore) {
+            best = link;
+            bestScore = score;
+        }
+    }
+    return best;
 }

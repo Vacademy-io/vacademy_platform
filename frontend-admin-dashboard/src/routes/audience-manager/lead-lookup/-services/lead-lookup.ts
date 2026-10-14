@@ -20,9 +20,55 @@ export interface LeadLookupResult {
     /** The institute's "Campaign" / "Label". */
     campaign_name?: string;
     status?: string;
+    /** Bucket shown next to the status label; sent with it. */
+    stage?: LeadLookupStage;
     course?: string;
+    branch?: string;
+    /** Staff member who entered the lead by hand. Absent for form / ad leads. */
+    enquired_by?: string;
     /** Sent on every match regardless of the field config — it's a warning, not lead data. */
     opted_out?: boolean;
+    /**
+     * True for an admin or the lead's own counsellor — the fields below are then
+     * filled. False means another counsellor's lead: the history exists but is
+     * withheld, so the page must not read it as "never followed up".
+     */
+    follow_ups_visible?: boolean;
+    lead_created_at?: string;
+    next_follow_up_at?: string;
+    interest_level?: string;
+    /** Newest first, across every enquiry by this person. */
+    follow_ups?: LeadLookupFollowUp[];
+}
+
+export type LeadLookupStage =
+    | 'ADMISSION_ONGOING'
+    | 'ADMISSION_COMPLETED'
+    | 'ADMISSION_TAKEN'
+    | 'DISCARDED'
+    | 'PENDING';
+
+export const LEAD_LOOKUP_STAGE_LABEL: Record<LeadLookupStage, string> = {
+    ADMISSION_ONGOING: 'Admission Taken · Ongoing',
+    ADMISSION_COMPLETED: 'Admission Taken · Completed',
+    ADMISSION_TAKEN: 'Admission Taken',
+    DISCARDED: 'Discarded',
+    PENDING: 'Pending',
+};
+
+export interface LeadLookupFollowUp {
+    schedule_time?: string;
+    /** PENDING / ONGOING / OVERDUE / COMPLETED. */
+    status?: string;
+    counsellor_name?: string;
+    action_label?: string;
+    mode?: string;
+    /** May be HTML from the rich-text editor. */
+    comments?: string;
+    student_response?: string;
+    closer_reason?: string;
+    closed_at?: string;
+    created_at?: string;
 }
 
 /** What the person is searching by. The input adapts to the one they pick. */

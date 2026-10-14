@@ -59,6 +59,58 @@ class CourseOutlineGenerationService:
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
+    def _resolve_outline_llm(self, request: CourseOutlineRequest):
+        """(openai_key, gemini_key, model, fallback_models) for an outline call.
+
+        Model precedence: request.model (wizard pick; honoured when it is an
+        active registry model) > institute/user ai_api_keys.default_model >
+        the 'outline' use case row > GLM — with the use case chain behind it
+        as failover. Keys keep the ApiKeyResolver waterfall (user > institute
+        > env)."""
+        from ..config import get_settings
+        from .model_selection import resolve_models
+
+        settings = get_settings()
+        openai_key = settings.openrouter_api_key
+        gemini_key = settings.gemini_api_key
+        if not self._db_session:
+            from .model_selection import resolve_model_sync
+            primary, chain = resolve_model_sync("outline", request.model)
+            return openai_key, gemini_key, primary, chain
+
+        byo_model = None
+        try:
+            key_resolver = ApiKeyResolver(self._db_session)
+            openai_key, gemini_key, _resolved = key_resolver.resolve_keys(
+                institute_id=request.institute_id,
+                user_id=request.user_id,
+                request_model=request.model,
+            )
+            if not request.model:
+                byo_model = key_resolver.byo_default_model(request.institute_id, request.user_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
+
+        primary, chain = resolve_models(self._db_session, "outline", request.model)
+        if byo_model:
+            return openai_key, gemini_key, byo_model, [m for m in [primary, *chain] if m != byo_model]
+        return openai_key, gemini_key, primary, chain
+
+    async def _outline_llm_call(self, prompt, model, api_key, fallback_models, with_usage: bool):
+        """generate_outline[_with_usage] with the failover chain, tolerating
+        OutlineLLMClient implementations that predate `fallback_models`."""
+        method = (
+            self._llm_client.generate_outline_with_usage if with_usage
+            else self._llm_client.generate_outline
+        )
+        if fallback_models:
+            try:
+                return await method(prompt=prompt, model=model, api_key=api_key, fallback_models=fallback_models)
+            except TypeError as exc:
+                if "fallback_models" not in str(exc):
+                    raise
+        return await method(prompt=prompt, model=model, api_key=api_key)
+
     def _apply_kb_grounding(self, request: CourseOutlineRequest) -> bool:
         """Ground the outline in a knowledge base's topic tree.
 
@@ -540,44 +592,14 @@ class CourseOutlineGenerationService:
             ai_course_prompt=ai_course_prompt
         )
 
-        # Resolve API keys (request -> database -> defaults)
-        openai_key = None
-        gemini_key = None
-        model = request.model
-        
-        if self._db_session:
-            try:
-                key_resolver = ApiKeyResolver(self._db_session)
-                openai_key, gemini_key, model = key_resolver.resolve_keys(
-                    institute_id=request.institute_id,
-                    user_id=request.user_id,
-                    request_model=request.model
-                )
-                if not model:
-                    from ..services.ai_models_service import AIModelsService
-                    model = request.model or AIModelsService(self._db_session).get_models_for_use_case("outline").default_model.model_id
-            except Exception as e:
-                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
-                # Fallback to environment defaults
-                from ..config import get_settings
-                settings = get_settings()
-                openai_key = settings.openrouter_api_key
-                gemini_key = settings.gemini_api_key
-                model = request.model or settings.llm_default_model
-        else:
-            # No DB session, use environment defaults only
-            from ..config import get_settings
-            settings = get_settings()
-            openai_key = settings.openrouter_api_key
-            gemini_key = settings.gemini_api_key
-            model = request.model or settings.llm_default_model
+        # Resolve API key + model: request model > institute/user default >
+        # the 'outline' use case (super-admin portal; GLM by default).
+        openai_key, gemini_key, model, fallback_models = self._resolve_outline_llm(request)
 
         # Generate outline and capture token usage
         if hasattr(self._llm_client, 'generate_outline_with_usage'):
-            raw_output, usage_info = await self._llm_client.generate_outline_with_usage(
-                prompt=prompt,
-                model=model,
-                api_key=openai_key,
+            raw_output, usage_info = await self._outline_llm_call(
+                prompt, model, openai_key, fallback_models, with_usage=True,
             )
 
             # Parametric course_outline charge: max(flat DB rate, actual tokens).
@@ -599,10 +621,8 @@ class CourseOutlineGenerationService:
                 )
         else:
             # Fallback for clients that don't support usage tracking
-            raw_output = await self._llm_client.generate_outline(
-                prompt=prompt,
-                model=model,
-                api_key=openai_key,
+            raw_output = await self._outline_llm_call(
+                prompt, model, openai_key, fallback_models, with_usage=False,
             )
 
         outline_response = self._parser.parse(raw_output)
@@ -722,37 +742,9 @@ class CourseOutlineGenerationService:
             ai_course_prompt=ai_course_prompt
         )
 
-        # Resolve API keys (request -> database -> defaults)
-        openai_key = None
-        gemini_key = None
-        model = request.model
-        
-        if self._db_session:
-            try:
-                key_resolver = ApiKeyResolver(self._db_session)
-                openai_key, gemini_key, model = key_resolver.resolve_keys(
-                    institute_id=request.institute_id,
-                    user_id=request.user_id,
-                    request_model=request.model
-                )
-                if not model:
-                    from ..services.ai_models_service import AIModelsService
-                    model = request.model or AIModelsService(self._db_session).get_models_for_use_case("outline").default_model.model_id
-            except Exception as e:
-                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
-                # Fallback to environment defaults
-                from ..config import get_settings
-                settings = get_settings()
-                openai_key = settings.openrouter_api_key
-                gemini_key = settings.gemini_api_key
-                model = request.model or settings.llm_default_model
-        else:
-            # No DB session, use environment defaults only
-            from ..config import get_settings
-            settings = get_settings()
-            openai_key = settings.openrouter_api_key
-            gemini_key = settings.gemini_api_key
-            model = request.model or settings.llm_default_model
+        # Resolve API key + model: request model > institute/user default >
+        # the 'outline' use case (super-admin portal; GLM by default).
+        openai_key, gemini_key, model, fallback_models = self._resolve_outline_llm(request)
 
         # (requestId already emitted at the top, before grounding)
 
@@ -761,10 +753,8 @@ class CourseOutlineGenerationService:
         try:
             # Generate outline and capture token usage
             if hasattr(self._llm_client, 'generate_outline_with_usage'):
-                full_content, usage_info = await self._llm_client.generate_outline_with_usage(
-                    prompt=prompt,
-                    model=model,
-                    api_key=openai_key,
+                full_content, usage_info = await self._outline_llm_call(
+                    prompt, model, openai_key, fallback_models, with_usage=True,
                 )
 
                 # Parametric course_outline charge: max(flat DB rate, actual
@@ -785,10 +775,8 @@ class CourseOutlineGenerationService:
                     )
             else:
                 # Fallback for clients that don't support usage tracking
-                full_content = await self._llm_client.generate_outline(
-                    prompt=prompt,
-                    model=model,
-                    api_key=openai_key,
+                full_content = await self._outline_llm_call(
+                    prompt, model, openai_key, fallback_models, with_usage=False,
                 )
 
             # Yield some thinking-like events to simulate streaming

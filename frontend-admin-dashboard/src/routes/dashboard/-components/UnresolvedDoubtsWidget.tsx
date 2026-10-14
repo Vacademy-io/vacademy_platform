@@ -1,10 +1,12 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowSquareOut, Info } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import { Trans, useTranslation } from 'react-i18next';
 import { getUnresolvedDoubtsCount } from '../-services/dashboard-services';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import SourceErrorNotice from './SourceErrorNotice';
 
 interface UnresolvedDoubtsWidgetProps {
     instituteId: string;
@@ -18,7 +20,17 @@ export const UnresolvedDoubtsWidget = ({ instituteId }: UnresolvedDoubtsWidgetPr
     // Get all batch IDs from institute details
     const batchIds = instituteDetails?.batches_for_sessions.map((batch) => batch.id) || [];
 
-    const { data: doubtsData } = useSuspenseQuery(getUnresolvedDoubtsCount(instituteId, batchIds));
+    // useQuery, not useSuspenseQuery: this widget has no Suspense boundary of its own, so
+    // suspending held up the whole dashboard on one count. It also honours `enabled` (no
+    // batches → nothing to count), which useSuspenseQuery ignores.
+    const {
+        data: doubtsData,
+        isPending,
+        isError,
+        fetchStatus,
+        refetch,
+    } = useQuery(getUnresolvedDoubtsCount(instituteId, batchIds));
+    const isLoading = isPending && fetchStatus !== 'idle';
 
     const handleNavigateToDoubts = () => {
         router.navigate({
@@ -27,7 +39,7 @@ export const UnresolvedDoubtsWidget = ({ instituteId }: UnresolvedDoubtsWidgetPr
     };
 
     // Always render the widget, but with different content based on doubt status
-    const hasDoubts = doubtsData.hasUnresolvedDoubts;
+    const hasDoubts = !isError && !!doubtsData?.hasUnresolvedDoubts;
 
     return (
         <Card
@@ -57,14 +69,18 @@ export const UnresolvedDoubtsWidget = ({ instituteId }: UnresolvedDoubtsWidgetPr
                 <CardDescription
                     className={`mt-1 text-xs ${hasDoubts ? 'text-orange-700' : 'text-neutral-600'}`}
                 >
-                    {hasDoubts ? (
+                    {isLoading ? (
+                        <Skeleton className="h-3 w-3/4" />
+                    ) : isError ? (
+                        <SourceErrorNotice onRetry={() => void refetch()} />
+                    ) : hasDoubts ? (
                         <Trans
                             i18nKey="dashboardUnresolvedDoubtsWidget:message.unresolved"
-                            count={doubtsData.count}
+                            count={doubtsData?.count}
                         >
                             You have{' '}
                             <span className="font-semibold text-orange-800">
-                                {doubtsData.count}
+                                {doubtsData?.count}
                             </span>{' '}
                             unresolved doubts from the last 7 days that need attention.
                         </Trans>

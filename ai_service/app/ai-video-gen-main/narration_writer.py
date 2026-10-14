@@ -768,6 +768,15 @@ def write_narration(
             print(f"   ⚠️ Corrective rewrite failed ({_corr_err}) — keeping first draft")
             _apply(narration_by_idx)
 
+    # total_tokens is always prompt + completion (the billing contract): a
+    # provider that omits it must not hide these tokens from billing.
+    try:
+        total_usage["total_tokens"] = (
+            int(total_usage.get("prompt_tokens", 0) or 0)
+            + int(total_usage.get("completion_tokens", 0) or 0)
+        )
+    except (TypeError, ValueError):
+        pass
     return {"shots": shots, "usage": total_usage, "raw": text or ""}
 
 

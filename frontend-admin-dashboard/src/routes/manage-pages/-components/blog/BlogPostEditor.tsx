@@ -478,7 +478,7 @@ export const BlogPostEditor = ({ postId, onBack, onCreated, onDirtyChange }: Blo
                 <aside className="flex flex-col gap-5">
                     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
                         <h3 className="text-sm font-semibold text-neutral-800">Card & listing</h3>
-                        <ImageUploadField label="Cover image" value={form.coverImageUrl} onChange={(url) => set('coverImageUrl', url)} />
+                        <ImageUploadField slot="card" label="Cover image" value={form.coverImageUrl} onChange={(url) => set('coverImageUrl', url)} />
                         <div className="space-y-2">
                             <Label>Excerpt</Label>
                             <Textarea

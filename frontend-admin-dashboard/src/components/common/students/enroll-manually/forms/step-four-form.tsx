@@ -16,8 +16,8 @@ import { formatPlanPrice } from '@/utils/finance-utils';
 import { MyDropdown } from '../dropdownForPackageItems';
 import { DropdownValueType } from '../dropdownTypesForPackageItems';
 import { AdminDiscountField, EMPTY_ADMIN_DISCOUNT } from '@/components/common/payments/AdminDiscountField';
+import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
 import {
-    canGrantAdminDiscounts,
     getAdminDiscountValidationError,
     isDiscountablePlanType,
     type AdminDiscountPreview,
@@ -47,7 +47,8 @@ export const StepFourForm = ({
     const paymentPlans: PaymentPlan[] = stepThreeData?.invite?.payment_plans || [];
     // Admin discounts only apply to ONE_TIME / SUBSCRIPTION plans (never FREE/DONATION/CPO).
     const paymentOptionType = stepThreeData?.invite?.payment_option_type;
-    const canDiscount = isDiscountablePlanType(paymentOptionType) && canGrantAdminDiscounts();
+    const canApplyDiscounts = useCanApplyDiscounts();
+    const canDiscount = isDiscountablePlanType(paymentOptionType) && canApplyDiscounts;
     const isSubscription = (paymentOptionType || '').toUpperCase() === 'SUBSCRIPTION';
 
     // File upload using useFileUpload hook

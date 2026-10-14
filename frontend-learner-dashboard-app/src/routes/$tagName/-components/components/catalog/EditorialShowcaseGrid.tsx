@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { CatalogEditorialCardConfig } from "../../../-types/catalog-cards-types";
 import { useCatalogueLocale, useSiteT } from "../../../-utils/catalogue-locale";
@@ -62,6 +62,10 @@ export interface EditorialShowcaseGridProps {
   selectedIds: readonly string[];
   limit: number;
   loading: boolean;
+  /** A card holding any of these courses (one of its language versions) is left out. */
+  excludeIds?: readonly string[];
+  /** Told how many cards there are once known, so the section can hide when none is left. */
+  onCardCount?: (count: number) => void;
   card?: CatalogEditorialCardConfig;
   streamsLibraryId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +79,8 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
   selectedIds,
   limit,
   loading,
+  excludeIds,
+  onCardCount,
   card,
   streamsLibraryId,
   globalSettings,
@@ -127,7 +133,9 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
     });
     const rankOf = (rs: ShowcaseRow[]) =>
       Math.min(...rs.map((r) => order.get(r.id) ?? Number.POSITIVE_INFINITY));
+    const skip = new Set(excludeIds ?? []);
     return buildCatalogCards(rows, { grouping, languages, preferredLanguage, versionGroups })
+      .filter((c) => !c.rows.some((r) => skip.has(r.id)))
       .map((c) => ({ card: c, rank: rankOf(c.rows) }))
       .filter((x) => Number.isFinite(x.rank))
       .sort((a, b) => a.rank - b.rank)
@@ -137,7 +145,11 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
         const picked = c.rows.filter((r) => order.has(r.id));
         return { card: c, priceRow: editorialPriceRow(c, cardPriceView(c, picked), picked, false) };
       });
-  }, [courses, selectedIds, grouping, languages, preferredLanguage, versionGroups, limit]);
+  }, [courses, selectedIds, grouping, languages, preferredLanguage, versionGroups, limit, excludeIds]);
+
+  useEffect(() => {
+    if (!loading) onCardCount?.(cards.length);
+  }, [loading, cards.length, onCardCount]);
 
   if (!design) return null;
 

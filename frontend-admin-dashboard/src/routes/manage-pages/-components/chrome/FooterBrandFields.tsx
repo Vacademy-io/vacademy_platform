@@ -47,7 +47,7 @@ export const FooterBrandFields: FC<FooterBrandFieldsProps> = ({ props, updatePro
                 <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                     {t('footerBrand.brandHeading')}
                 </h5>
-                <ImageUploadField
+                <ImageUploadField slot="square"
                     label={t('footerBrand.logo')}
                     value={typeof left.logo === 'string' ? left.logo : ''}
                     onChange={(url) => setLeft('logo', url)}

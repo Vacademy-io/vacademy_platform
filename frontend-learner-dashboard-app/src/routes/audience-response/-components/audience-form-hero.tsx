@@ -65,8 +65,13 @@ export const AudienceFormHero = ({
 }: AudienceFormHeroProps) => {
   // Rich text from the admin's editor wins; otherwise the plain override, else
   // the campaign's own name — which is all this page showed before.
-  const headlineHtml = resolveHeadlineHtml(appearance);
-  const headline = resolveHeadline(appearance, campaignName);
+  // `showHeadline: false` drops the heading outright — override and name alike.
+  const headlineHtml = appearance.showHeadline
+    ? resolveHeadlineHtml(appearance)
+    : "";
+  const headline = appearance.showHeadline
+    ? resolveHeadline(appearance, campaignName)
+    : "";
   const align = appearance.headingAlign;
   const bodyHtml = resolveHeroBodyHtml(appearance, campaignDescription);
   const objective = appearance.showObjective

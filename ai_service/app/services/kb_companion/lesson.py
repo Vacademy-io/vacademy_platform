@@ -21,7 +21,7 @@ from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ..ai_billing import charge_tool
 from ..kb.repository import KbRepository
-from . import llm
+from . import llm, model_choice
 from .repository import CompanionRepository
 from .shell import KIT_GUIDE, fallback_fragment, figure_label, sanitize_fragment, wrap_card
 
@@ -365,6 +365,7 @@ async def _compile_safely(job: CompileJob) -> None:
 
 
 async def compile_lesson(job: CompileJob) -> None:
+    model_choice.refresh()  # the 'kb_companion' use case (env overrides still win)
     with db_session() as db:
         material = gather_material(db, job.kb, job.node)
     if material.chars < MIN_MATERIAL_CHARS:

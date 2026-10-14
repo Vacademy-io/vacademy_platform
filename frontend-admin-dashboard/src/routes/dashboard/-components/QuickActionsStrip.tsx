@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { quickActionsForRoles, type QuickAction } from '../-config/dashboard-quick-actions';
+import { useEntitlement } from '@/lib/capabilities/use-entitlement';
 
 interface QuickActionsStripProps {
     roles: string[];
@@ -10,7 +11,11 @@ export default function QuickActionsStrip({ roles }: QuickActionsStripProps) {
     const navigate = useNavigate();
     const { t } = useTranslation('dashboardQuickActions');
     const { t: dashboardT } = useTranslation('dashboardIndex');
-    const actions = quickActionsForRoles(roles, t);
+    const entitlement = useEntitlement();
+    // Plan filter (MANAGED only; every action is entitled otherwise).
+    const actions = quickActionsForRoles(roles, t).filter((a) =>
+        entitlement.isQuickActionEntitled(a.id)
+    );
     if (actions.length === 0) return null;
 
     return (

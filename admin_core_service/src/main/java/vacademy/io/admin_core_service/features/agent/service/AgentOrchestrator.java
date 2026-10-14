@@ -57,11 +57,13 @@ public class AgentOrchestrator {
             }
             conversationManager.resumeSession(session);
         } else {
+            // A model picked in the UI wins; null lets the admin_agent row decide (GLM by default).
             session = conversationManager.createSession(
                     userId,
                     request.getInstituteId(),
-                    request.getModel(),
+                    request.getModel() == null || request.getModel().isBlank() ? null : request.getModel().trim(),
                     userToken);
+            session.getContext().put(LLMService.CTX_USE_CASE, LLMService.DEFAULT_USE_CASE);
         }
 
         // Add context if provided

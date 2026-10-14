@@ -1,8 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
-import { ADMIN_DISCOUNT_PREVIEW } from '@/constants/urls';
+import { ADMIN_DISCOUNT_CAN_APPLY, ADMIN_DISCOUNT_PREVIEW } from '@/constants/urls';
 
 // =============================================================================
 // Admin-granted discounts — types mirror the backend DTOs (snake_case JSON).
@@ -54,24 +52,6 @@ export interface AdminDiscountPreview {
 // =============================================================================
 // Helpers
 // =============================================================================
-
-/**
- * May the signed-in user give admin discounts in this institute? Mirrors the server's
- * InstituteAccessValidator.requireAdminAccess, which matches the ADMIN role
- * case-insensitively — the token can carry a legacy "Admin" role name, which the stricter
- * `isAdminForInstitute` (exact 'ADMIN') would hide the UI from. UI gate only; the server
- * re-checks every call.
- */
-export const canGrantAdminDiscounts = (instituteId?: string | null): boolean => {
-    const id = instituteId || getCurrentInstituteId();
-    if (!id) return false;
-    const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
-    const roles = tokenData?.authorities?.[id]?.roles;
-    return (
-        Array.isArray(roles) &&
-        roles.some((r: unknown) => typeof r === 'string' && r.toUpperCase() === 'ADMIN')
-    );
-};
 
 /** The discount to send, or undefined when "No discount" is chosen / nothing filled in. */
 export const toAdminDiscountPayload = (
@@ -176,4 +156,24 @@ export const previewAdminDiscount = async (
         { params: { instituteId: resolveInstituteId(instituteId) } }
     );
     return data;
+};
+
+/**
+ * Whether the server will let this user apply admin discounts at the institute — the same
+ * check the discount-taking endpoints run. False on any failure (fail closed).
+ */
+export const fetchCanApplyAdminDiscounts = async (
+    instituteId?: string | null
+): Promise<boolean> => {
+    const id = resolveInstituteId(instituteId);
+    if (!id) return false;
+    try {
+        const { data } = await authenticatedAxiosInstance.get<{ can_apply?: boolean }>(
+            ADMIN_DISCOUNT_CAN_APPLY,
+            { params: { instituteId: id } }
+        );
+        return data?.can_apply === true;
+    } catch {
+        return false;
+    }
 };

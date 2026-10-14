@@ -55,8 +55,9 @@ from .mathpix_fallback import _download, _rasterize_pages
 
 logger = logging.getLogger(__name__)
 
-# Vision-capable, cheap, and strong on handwriting. Same family as the grading
-# default so a copy is read and graded by one model.
+# Vision-capable, cheap, and strong on handwriting. Same model as the grading
+# default so a copy is read and graded by one model: the 'evaluation' use case
+# (grader.evaluation_model). This literal is only the hard fallback.
 VISION_MODEL = "z-ai/glm-5.3-flash"
 
 # Bound the spend on a pathological upload. Beyond this, later pages keep their
@@ -577,7 +578,9 @@ async def enrich_layout_with_vision(
     Best effort per page: a page whose read fails keeps its PaddleOCR text and
     is left out of the legible count, so `assess_quality` still sees the truth.
     """
-    model = model or VISION_MODEL
+    if not model:
+        from .grader import evaluation_model
+        model = evaluation_model() or VISION_MODEL
     pages = layout_map.get("pages", []) or []
     if not pages:
         return layout_map

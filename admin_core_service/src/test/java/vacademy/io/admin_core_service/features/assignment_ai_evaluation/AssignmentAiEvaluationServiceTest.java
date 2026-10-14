@@ -8,7 +8,13 @@ import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.client.AssignmentCopyCheckClient;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.dto.AssignmentAiEvaluationDTO;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.entity.AssignmentAiEvaluation;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationBatchRepository;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationRepository;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.repository.AssignmentAiEvaluationRepository.LatestSubmissionRow;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.dto.AssignmentAiBulkDTO;
+import vacademy.io.admin_core_service.features.assignment_ai_evaluation.entity.AssignmentAiEvaluationBatch;
+import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.PlatformTransactionManager;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.service.AssignmentAiEvaluationNotifier;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.service.AssignmentAiEvaluationService;
 import vacademy.io.admin_core_service.features.assignment_ai_evaluation.service.AssignmentCopyPdfBuilder;
@@ -36,6 +42,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AssignmentAiEvaluationServiceTest {
@@ -54,6 +61,7 @@ class AssignmentAiEvaluationServiceTest {
     private AssignmentCopyPdfBuilder pdfBuilder;
     private AssignmentCopyCheckClient copyCheckClient;
     private AssignmentAiEvaluationNotifier notifier;
+    private AssignmentAiEvaluationBatchRepository batchRepository;
     private AssignmentAiEvaluationService service;
     private CustomUserDetails teacher;
     private final Map<String, AssignmentAiEvaluation> rows = new HashMap<>();
@@ -70,9 +78,26 @@ class AssignmentAiEvaluationServiceTest {
         pdfBuilder = mock(AssignmentCopyPdfBuilder.class);
         copyCheckClient = mock(AssignmentCopyCheckClient.class);
         notifier = mock(AssignmentAiEvaluationNotifier.class);
-        service = new AssignmentAiEvaluationService(evaluationRepository, trackedRepository, slideRepository,
-                assignmentSlideRepository, mediaService, creditClient, accessValidator, pdfBuilder,
-                copyCheckClient, new ObjectMapper(), notifier);
+        batchRepository = mock(AssignmentAiEvaluationBatchRepository.class);
+        service = new AssignmentAiEvaluationService(evaluationRepository, batchRepository, trackedRepository,
+                slideRepository, assignmentSlideRepository, mediaService, creditClient, accessValidator, pdfBuilder,
+                copyCheckClient, new ObjectMapper(), notifier, mock(PlatformTransactionManager.class));
+        when(batchRepository.findLatest(any(), any(), any())).thenReturn(Optional.empty());
+        // Queue reads served from the in-memory table.
+        when(evaluationRepository.countByStatus(anyString())).thenAnswer(inv -> rows.values().stream()
+                .filter(e -> e.getStatus().equals(inv.getArgument(0))).count());
+        when(evaluationRepository.findByStatusOrderByCreatedAtAsc(anyString(), any(Pageable.class))).thenAnswer(inv -> rows.values().stream()
+                .filter(e -> e.getStatus().equals(inv.getArgument(0)))
+                .sorted(Comparator.comparing(AssignmentAiEvaluation::getCreatedAt))
+                .limit(((Pageable) inv.getArgument(1)).getPageSize()).toList());
+        when(evaluationRepository.countByStatusForBatch(anyString())).thenAnswer(inv -> {
+            Map<String, Long> counts = new HashMap<>();
+            rows.values().stream().filter(e -> inv.getArgument(0).equals(e.getBatchId()))
+                    .forEach(e -> counts.merge(e.getStatus(), 1L, Long::sum));
+            List<Object[]> out = new ArrayList<>();
+            counts.forEach((k, v) -> out.add(new Object[]{k, v}));
+            return out;
+        });
         teacher = mock(CustomUserDetails.class);
         when(teacher.getUserId()).thenReturn("teacher-1");
 
@@ -128,7 +153,7 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void triggerSendsTheWholeAssignmentAsOneQuestionOutOfTotalMarks() {
-        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, "model-x", INSTITUTE, teacher);
+        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, INSTITUTE, teacher);
 
         verify(accessValidator).requireInstituteStaff(teacher, INSTITUTE);
         @SuppressWarnings("unchecked")
@@ -141,6 +166,7 @@ class AssignmentAiEvaluationServiceTest {
         assertEquals("https://cdn/answer.pdf", body.get("pdf_url"));
         assertEquals("COPY", body.get("answer_mode"));
         assertEquals(true, body.get("skip_answer_location"));
+        assertFalse(body.containsKey("preferred_model"), "the grader's default model is used");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> questions = (List<Map<String, Object>>) body.get("questions");
         assertEquals(1, questions.size());
@@ -170,7 +196,7 @@ class AssignmentAiEvaluationServiceTest {
         when(mediaService.uploadFileV2(any())).thenReturn(merged);
         when(mediaService.getFilePublicUrlById("merged-1")).thenReturn("https://cdn/merged.pdf");
 
-        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, null, INSTITUTE, teacher);
+        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, INSTITUTE, teacher);
 
         assertEquals("merged-1", rows.get(result.getId()).getSourceFileId());
         @SuppressWarnings("unchecked")
@@ -181,8 +207,8 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void aRunningEvaluationIsReturnedInsteadOfStartingAnother() {
-        AssignmentAiEvaluationDTO first = service.trigger(TRACKED, null, INSTITUTE, teacher);
-        AssignmentAiEvaluationDTO second = service.trigger(TRACKED, null, INSTITUTE, teacher);
+        AssignmentAiEvaluationDTO first = service.trigger(TRACKED, INSTITUTE, teacher);
+        AssignmentAiEvaluationDTO second = service.trigger(TRACKED, INSTITUTE, teacher);
 
         assertEquals(first.getId(), second.getId());
         verify(copyCheckClient, times(1)).submitGrade(any());
@@ -191,36 +217,173 @@ class AssignmentAiEvaluationServiceTest {
     @Test
     void refusesWithoutTotalMarks() {
         assignmentSlideRepository.findById("asg-1").get().setTotalMarks(null);
-        assertThrows(VacademyException.class, () -> service.trigger(TRACKED, null, INSTITUTE, teacher));
+        assertThrows(VacademyException.class, () -> service.trigger(TRACKED, INSTITUTE, teacher));
         verifyNoInteractions(copyCheckClient);
     }
 
     @Test
     void refusesWhenOutOfCredits() {
         when(creditClient.readBalance(INSTITUTE)).thenReturn(Optional.of(0.0));
-        assertThrows(VacademyException.class, () -> service.trigger(TRACKED, null, INSTITUTE, teacher));
+        assertThrows(VacademyException.class, () -> service.trigger(TRACKED, INSTITUTE, teacher));
         verifyNoInteractions(copyCheckClient);
     }
 
     @Test
     void refusesASubmissionFromAnotherInstitute() {
-        assertThrows(ForbiddenException.class, () -> service.trigger(TRACKED, null, "other-inst", teacher));
+        assertThrows(ForbiddenException.class, () -> service.trigger(TRACKED, "other-inst", teacher));
         verifyNoInteractions(copyCheckClient);
     }
 
     @Test
-    void busyAiServiceFailsTheRunWithAFriendlyMessage() {
+    void aBusyGraderLeavesTheRunQueuedForTheJob() {
         when(copyCheckClient.submitGrade(any())).thenThrow(new AssignmentCopyCheckClient.AiServiceBusyException("429"));
 
-        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, null, INSTITUTE, teacher);
+        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, INSTITUTE, teacher);
+
+        assertEquals(AssignmentAiEvaluation.STATUS_QUEUED, result.getStatus());
+        verifyNoInteractions(notifier);
+
+        reset(copyCheckClient);
+        when(copyCheckClient.submitGrade(any())).thenReturn("job-2");
+        assertEquals(1, service.dispatchQueued(3));
+        assertEquals(AssignmentAiEvaluation.STATUS_PROCESSING, rows.get(result.getId()).getStatus());
+    }
+
+    @Test
+    void anUnreadableUploadFailsTheRunAndTellsTheTeacher() {
+        FileDetailsDTO doc = new FileDetailsDTO();
+        doc.setId("f1");
+        doc.setFileName("essay.docx");
+        doc.setFileType("application/msword");
+        doc.setUrl("https://cdn/essay.docx");
+        when(mediaService.getFilesByIds(List.of("f1"))).thenReturn(List.of(doc));
+        when(pdfBuilder.build(any())).thenThrow(new VacademyException("The AI Evaluator reads PDF and image uploads only"));
+
+        AssignmentAiEvaluationDTO result = service.trigger(TRACKED, INSTITUTE, teacher);
 
         assertEquals(AssignmentAiEvaluation.STATUS_FAILED, result.getStatus());
-        assertTrue(result.getErrorMessage().contains("busy"));
+        assertTrue(result.getErrorMessage().contains("PDF and image"));
+        verify(notifier).notifyFinished(result.getId());
+    }
+
+    // ------------------------------------------------------------------ bulk
+
+    @Test
+    void bulkQueuesOnlyUngradedUncheckedSubmissionsWithFiles() {
+        stubLatest(row(TRACKED, false, true, null), row("graded", true, true, null),
+                row("ai-done", false, true, "COMPLETED"), row("no-files", false, false, null),
+                row("running", false, true, "PROCESSING"));
+
+        AssignmentAiBulkDTO result = service.bulkTrigger(SLIDE, "ps-1", false, INSTITUTE, teacher);
+
+        assertEquals(5, result.getSubmissions());
+        assertEquals(1, result.getInProgress());
+        assertEquals(1, result.getToCheck());
+        assertEquals(1, result.getAlreadyGraded());
+        assertEquals(1, result.getAlreadyAiChecked());
+        assertEquals(1, result.getNoFiles());
+        verify(accessValidator).requireInstituteStaff(teacher, INSTITUTE);
+        verify(batchRepository).save(any(AssignmentAiEvaluationBatch.class));
+        assertEquals(1, rows.size());
+        AssignmentAiEvaluation queued = rows.values().iterator().next();
+        assertEquals(TRACKED, queued.getTrackedId());
+        assertEquals(AssignmentAiEvaluation.STATUS_QUEUED, queued.getStatus());
+        assertNotNull(queued.getBatchId());
+        // Nothing goes to the grader from the request - the job sends it.
+        verifyNoInteractions(copyCheckClient);
+    }
+
+    @Test
+    void reCheckIncludesAiCheckedButNeverInProgressOrGraded() {
+        Optional<AssignmentSlideTracked> tracked = trackedRepository.findById(TRACKED);
+        when(trackedRepository.findById("ai-done")).thenReturn(tracked);
+        stubLatest(row("ai-done", false, true, "COMPLETED"), row("running", false, true, "PROCESSING"),
+                row("graded", true, true, "COMPLETED"));
+
+        AssignmentAiBulkDTO result = service.bulkTrigger(SLIDE, null, true, INSTITUTE, teacher);
+
+        assertEquals(1, result.getToCheck());
+        assertEquals(1, rows.size());
+        assertEquals("ai-done", rows.values().iterator().next().getTrackedId());
+    }
+
+    @Test
+    void bulkWithNothingToCheckIsRefused() {
+        stubLatest(row("graded", true, true, null), row("running", false, true, "QUEUED"));
+        assertThrows(VacademyException.class, () -> service.bulkTrigger(SLIDE, null, true, INSTITUTE, teacher));
+        verify(batchRepository, never()).save(any());
+    }
+
+    @Test
+    void bulkPreviewQueuesNothing() {
+        stubLatest(row(TRACKED, false, true, null));
+
+        AssignmentAiBulkDTO preview = service.bulkPreview(SLIDE, null, false, INSTITUTE, teacher);
+
+        assertEquals(1, preview.getToCheck());
+        assertTrue(preview.isTotalMarksSet());
+        assertTrue(rows.isEmpty());
+        verify(batchRepository, never()).save(any());
+    }
+
+    @Test
+    void theJobNeverHasMoreThanMaxActiveCopiesWithTheGrader() {
+        for (int i = 0; i < 5; i++) {
+            AssignmentAiEvaluation e = new AssignmentAiEvaluation();
+            e.setId("q" + i);
+            e.setTrackedId(TRACKED);
+            e.setSlideId(SLIDE);
+            e.setInstituteId(INSTITUTE);
+            e.setBatchId("batch-1");
+            e.setStatus(AssignmentAiEvaluation.STATUS_QUEUED);
+            e.setMaxMarks(20.0);
+            e.setCreatedAt(Instant.now().plusMillis(i));
+            e.setUpdatedAt(Instant.now());
+            rows.put(e.getId(), e);
+        }
+
+        assertEquals(3, service.dispatchQueued(3));
+        assertEquals(0, service.dispatchQueued(3), "all three slots are taken");
+        verify(copyCheckClient, times(3)).submitGrade(any());
+    }
+
+    @Test
+    void bulkRunsAnnounceTheBatchNotEachLearner() {
+        AssignmentAiEvaluation e = new AssignmentAiEvaluation();
+        e.setId("b1");
+        e.setTrackedId(TRACKED);
+        e.setSlideId(SLIDE);
+        e.setInstituteId(INSTITUTE);
+        e.setBatchId("batch-1");
+        e.setStatus(AssignmentAiEvaluation.STATUS_PROCESSING);
+        e.setCreatedAt(Instant.now());
+        e.setUpdatedAt(Instant.now());
+        rows.put("b1", e);
+
+        service.onQuestion(Map.of("process_id", "b1", "marks_awarded", 12, "feedback", "ok", "status", "COMPLETED"));
+        service.onComplete(Map.of("process_id", "b1", "total_marks_awarded", 12));
+
+        verify(notifier).notifyBatchFinished("batch-1");
+        verify(notifier, never()).notifyFinished(anyString());
+        verify(trackedRepository, never()).save(any());
+    }
+
+    @Test
+    void aQueuedRunIsNeverStaleOnlyOneWithTheGrader() {
+        AssignmentAiEvaluation e = new AssignmentAiEvaluation();
+        e.setId("old");
+        e.setTrackedId(TRACKED);
+        e.setStatus(AssignmentAiEvaluation.STATUS_QUEUED);
+        e.setCreatedAt(Instant.now().minus(2, ChronoUnit.HOURS));
+        e.setUpdatedAt(Instant.now().minus(2, ChronoUnit.HOURS));
+        rows.put("old", e);
+
+        assertEquals(AssignmentAiEvaluation.STATUS_QUEUED, service.latest(TRACKED, INSTITUTE, teacher).getStatus());
     }
 
     @Test
     void questionThenCompleteCallbacksLeaveASuggestion() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
 
         service.onQuestion(Map.of("process_id", id, "marks_awarded", 14.5, "feedback", "Good diagram",
                 "status", "COMPLETED"));
@@ -238,7 +401,7 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void aRetriedCompleteCallbackDoesNotNotifyTwice() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
         service.onQuestion(Map.of("process_id", id, "marks_awarded", 10, "feedback", "ok", "status", "COMPLETED"));
         service.onComplete(Map.of("process_id", id, "total_marks_awarded", 10));
         service.onComplete(Map.of("process_id", id, "total_marks_awarded", 10));
@@ -248,7 +411,7 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void aFailedRunNotifiesTheTeacherToo() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
         service.onFailed(Map.of("process_id", id, "error_message", "unreadable copy"));
 
         verify(notifier, times(1)).notifyFinished(id);
@@ -257,7 +420,7 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void aFailedQuestionEndsTheRunFailedNotAsZero() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
 
         service.onQuestion(Map.of("process_id", id, "marks_awarded", 0, "feedback", "",
                 "status", "FAILED", "error_detail", "TimeoutError"));
@@ -270,7 +433,7 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void callbacksAfterTheEndAreIgnored() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
         service.onFailed(Map.of("process_id", id, "error_message", "unreadable"));
         service.onComplete(Map.of("process_id", id, "total_marks_awarded", 9));
 
@@ -280,12 +443,25 @@ class AssignmentAiEvaluationServiceTest {
 
     @Test
     void aSilentRunIsReportedFailed() {
-        String id = service.trigger(TRACKED, null, INSTITUTE, teacher).getId();
+        String id = service.trigger(TRACKED, INSTITUTE, teacher).getId();
         rows.get(id).setUpdatedAt(Instant.now().minus(30, ChronoUnit.MINUTES));
 
         AssignmentAiEvaluationDTO latest = service.latest(TRACKED, INSTITUTE, teacher);
 
         assertEquals(AssignmentAiEvaluation.STATUS_FAILED, latest.getStatus());
+    }
+
+    private void stubLatest(LatestSubmissionRow... latest) {
+        when(evaluationRepository.findLatestSubmissions(eq(SLIDE), any())).thenReturn(List.of(latest));
+    }
+
+    private static LatestSubmissionRow row(String trackedId, boolean graded, boolean hasFiles, String aiStatus) {
+        return new LatestSubmissionRow() {
+            public String getTrackedId() { return trackedId; }
+            public Boolean getGraded() { return graded; }
+            public Boolean getHasFiles() { return hasFiles; }
+            public String getAiStatus() { return aiStatus; }
+        };
     }
 
     private static RichTextData richText(String content) {

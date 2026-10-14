@@ -856,6 +856,12 @@ export function mergeDisplayWithDefaults(
         // Explicit pass-through, or the flag is dropped on read and can never be switched on.
         // Anything but an explicit `true` is OFF.
         allowDeletePayments: incoming?.learnerManagement?.allowDeletePayments === true,
+        // Explicit pass-through. A saved boolean wins; absent (blobs saved before this flag)
+        // falls back to the role's default — ON for the admin card, OFF for teacher/custom.
+        canApplyDiscounts:
+            typeof incoming?.learnerManagement?.canApplyDiscounts === 'boolean'
+                ? incoming?.learnerManagement?.canApplyDiscounts
+                : defLearnerManagement.canApplyDiscounts === true,
     };
 
     // Learner Management header action buttons (hide Enroll/Invite per role +

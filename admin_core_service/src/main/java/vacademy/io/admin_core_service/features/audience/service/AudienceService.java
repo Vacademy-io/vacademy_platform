@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -314,9 +315,11 @@ public class AudienceService {
             audienceDTO.setStatus("ACTIVE");
         }
 
+        assertCampaignNameFree(audienceDTO.getInstituteId(), audienceDTO.getCampaignName(), null);
+
         // 1. Create and save audience entity
         Audience audienceToSave = new Audience(audienceDTO);
-        final Audience savedAudience = audienceRepository.save(audienceToSave);
+        final Audience savedAudience = saveCampaign(audienceToSave);
 
         logger.info("Saved audience with ID: {}", savedAudience.getId());
 
@@ -344,6 +347,9 @@ public class AudienceService {
 
         // Update fields
         if (StringUtils.hasText(audienceDTO.getCampaignName())) {
+            if (!audienceDTO.getCampaignName().equals(audience.getCampaignName())) {
+                assertCampaignNameFree(audience.getInstituteId(), audienceDTO.getCampaignName(), audienceId);
+            }
             audience.setCampaignName(audienceDTO.getCampaignName());
         }
         if (StringUtils.hasText(audienceDTO.getDescription())) {
@@ -382,7 +388,7 @@ public class AudienceService {
         audience.setSendRespondentEmail(audienceDTO.getSendRespondentEmail());
         audience.setCampaignObjective(audienceDTO.getCampaignObjective());
 
-        Audience updated = audienceRepository.save(audience);
+        Audience updated = saveCampaign(audience);
 
         // Update custom fields — admin's full picked list, including any toggled-off
         // entries which will be soft-deleted by the unified sync.
@@ -391,6 +397,45 @@ public class AudienceService {
 
         logger.info("Updated audience: {}", updated.getId());
         return updated.getId();
+    }
+
+    /**
+     * Campaign names are unique per institute (unique_institute_campaign), and a deleted
+     * campaign keeps its row and name. Without this check a clash reached the admin as the
+     * raw Postgres batch error. Exact match, like the constraint: "Testing" and "testing"
+     * may coexist.
+     */
+    private void assertCampaignNameFree(String instituteId, String campaignName, String excludeAudienceId) {
+        audienceRepository.findByInstituteIdAndCampaignNameIgnoreCase(instituteId, campaignName).stream()
+                .filter(existing -> campaignName.equals(existing.getCampaignName()))
+                .filter(existing -> !existing.getId().equals(excludeAudienceId))
+                .findFirst()
+                .ifPresent(existing -> {
+                    throw new ConflictException(duplicateCampaignNameMessage(campaignName,
+                            CampaignStatusEnum.DELETED.name().equals(existing.getStatus())));
+                });
+    }
+
+    /**
+     * Flushes so a name clash the check above could not see (a double-clicked submit, two
+     * admins at once) is caught here and answered like the check, not as a 511 at commit.
+     */
+    private Audience saveCampaign(Audience audience) {
+        try {
+            return audienceRepository.saveAndFlush(audience);
+        } catch (DataIntegrityViolationException e) {
+            if (String.valueOf(e.getMessage()).contains("unique_institute_campaign")) {
+                throw new ConflictException(duplicateCampaignNameMessage(audience.getCampaignName(), false));
+            }
+            throw e;
+        }
+    }
+
+    private static String duplicateCampaignNameMessage(String campaignName, boolean deleted) {
+        return deleted
+                ? "A deleted campaign is still using the name \"" + campaignName
+                        + "\". Please choose a different name."
+                : "A campaign named \"" + campaignName + "\" already exists. Please choose a different name.";
     }
 
     /**
@@ -1374,11 +1419,8 @@ public class AudienceService {
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
-                createdUser = authService.createUserFromAuthService(
-                        userDTO,
-                        audience.getInstituteId(),
-                        false // Don't send credentials email
-                );
+                createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
                 // Prepare effectively final variables for lambda
                 final UserDTO userForNotification = createdUser;
@@ -1408,6 +1450,7 @@ public class AudienceService {
                         .parentMobile(truncateForParentMobileColumn(userDTO.getMobileNumber()))
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
+                        .createdByUserId(requestDTO.getCreatedByUserId())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
@@ -1825,15 +1868,130 @@ public class AudienceService {
                             leadUserId, e.getMessage());
                 }
             }
-            case SAME_AS_PREVIOUS -> {
-                // No-op by design — leave whatever counsellor the lead already had untouched.
-            }
+            case SAME_AS_PREVIOUS -> assignPreviousCounsellor(savedResponse, leadUserId, instituteId,
+                    leadFullName, campaignName);
             case SPECIFIC -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId,
                     repeatLeadSettings.specificCounsellorId(), repeatLeadSettings.specificCounsellorName(),
                     leadFullName, campaignName);
             case ROUND_ROBIN -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, null, null,
                     leadFullName, campaignName);
         }
+    }
+
+    /**
+     * The lead's person record. Under phone dedup with "Allow & reassign" and the Lead
+     * Settings switch repeatLead.samePersonByPhone on, a repeat joins the person who already
+     * holds this phone: auth_service matches people by email, so a repeat
+     * with a new email would otherwise become a second person, a second lead and often a
+     * second owner. The submission's own name, email and phone are kept on the returned DTO,
+     * so this request's notifications go where they always did.
+     *
+     * <p>Kept exactly as before (create or fetch by email, no credentials email) when it is
+     * not such a repeat, the lookup fails, the person already has a lead in this same list
+     * (a repeat there still comes in as its own lead), or the request names a counsellor
+     * other than the person's current owner (so intake never moves an owned lead).
+     */
+    private UserDTO resolveLeadUser(UserDTO userDTO, String instituteId, String audienceId,
+            boolean repeatLead, String requestedCounsellorId) {
+        if (repeatLead && userDTO != null) {
+            try {
+                String existingId = leadDeduplicationService
+                        .findExistingLeadUserIdByPhone(instituteId, audienceId, userDTO.getMobileNumber())
+                        .orElse(null);
+                if (existingId != null && canJoinExistingPerson(existingId, instituteId, audienceId,
+                        requestedCounsellorId)) {
+                    List<UserDTO> found = authService.getUsersFromAuthServiceByUserIds(List.of(existingId));
+                    UserDTO existing = found == null ? null : found.stream()
+                            .filter(u -> u != null && existingId.equals(u.getId()))
+                            .findFirst().orElse(null);
+                    if (existing != null) {
+                        if (StringUtils.hasText(userDTO.getEmail())) existing.setEmail(userDTO.getEmail());
+                        if (StringUtils.hasText(userDTO.getFullName())) existing.setFullName(userDTO.getFullName());
+                        if (StringUtils.hasText(userDTO.getMobileNumber())) {
+                            existing.setMobileNumber(userDTO.getMobileNumber());
+                        }
+                        logger.info("Repeat lead for audience {} joins existing person {} by phone",
+                                audienceId, existingId);
+                        return existing;
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Repeat lead for audience {}: person lookup by phone failed, creating by email: {}",
+                        audienceId, e.getMessage());
+            }
+        }
+        return authService.createUserFromAuthService(userDTO, instituteId, false);
+    }
+
+    /**
+     * Whether a repeat may join {@code existingId}: not when that person already has a lead
+     * in this list, and not when the request names a counsellor other than their owner.
+     */
+    private boolean canJoinExistingPerson(String existingId, String instituteId, String audienceId,
+            String requestedCounsellorId) {
+        if (audienceResponseRepository.existsByAudienceIdAndUserId(audienceId, existingId)) {
+            return false;
+        }
+        if (!StringUtils.hasText(requestedCounsellorId)) {
+            return true;
+        }
+        String owner = userLeadProfileRepository.findByUserIdAndInstituteId(existingId, instituteId)
+                .map(p -> p.getAssignedCounselorId())
+                .orElse(null);
+        return !StringUtils.hasText(owner) || owner.equals(requestedCounsellorId);
+    }
+
+    /**
+     * Repeat-lead SAME_AS_PREVIOUS: the repeat goes to the counsellor who owned the matched
+     * earlier lead.
+     * <ul>
+     *   <li>Same person record that already has an owner (repeat with the same email) —
+     *       left untouched, as before.</li>
+     *   <li>Otherwise (typically a phone match carrying a new email, which creates a new
+     *       user with an ownerless profile) — copy the owner of the most recent matched
+     *       lead, as long as they are still an active counsellor.</li>
+     *   <li>No usable previous owner — fall back to the list's pool, so a repeat lead never
+     *       arrives unowned.</li>
+     * </ul>
+     * Failures are swallowed like every other assignment step.
+     */
+    private void assignPreviousCounsellor(AudienceResponse savedResponse, String leadUserId,
+            String instituteId, String leadFullName, String campaignName) {
+        try {
+            boolean alreadyOwned = userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
+                    .map(p -> StringUtils.hasText(p.getAssignedCounselorId()))
+                    .orElse(false);
+            if (alreadyOwned) {
+                return;
+            }
+        } catch (Exception e) {
+            // Can't tell whether the lead is already owned, so don't risk replacing an owner.
+            logger.error("Repeat lead {}: profile lookup failed, leaving the counsellor untouched: {}",
+                    savedResponse.getId(), e.getMessage());
+            return;
+        }
+        String previousCounsellorId = null;
+        try {
+            previousCounsellorId = leadDeduplicationService.findPreviousCounsellorId(instituteId,
+                    savedResponse.getAudienceId(), savedResponse.getParentEmail(),
+                    savedResponse.getParentMobile(), savedResponse.getId()).orElse(null);
+            if (previousCounsellorId != null) {
+                // An owner whose counsellor role was removed would make the lead invisible to
+                // every counsellor. An empty roster means the lookup failed, so trust the owner.
+                List<String> activeCounsellors = counsellorScopeService.allCounsellorUserIds(instituteId);
+                if (!activeCounsellors.isEmpty() && !activeCounsellors.contains(previousCounsellorId)) {
+                    logger.info("Repeat lead {}: previous counsellor {} is no longer active, using the pool",
+                            savedResponse.getId(), previousCounsellorId);
+                    previousCounsellorId = null;
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Repeat lead {}: previous counsellor lookup failed: {}",
+                    savedResponse.getId(), e.getMessage());
+            previousCounsellorId = null;
+        }
+        autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, previousCounsellorId, null,
+                leadFullName, campaignName);
     }
 
     /**
@@ -1916,11 +2074,8 @@ public class AudienceService {
 
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
-                createdUser = authService.createUserFromAuthService(
-                        userDTO,
-                        audience.getInstituteId(),
-                        false // Don't send credentials email
-                );
+                createdUser = resolveLeadUser(userDTO, audience.getInstituteId(),
+                        requestDTO.getAudienceId(), repeatLeadSettings != null, requestDTO.getCounsellorId());
                 userId = createdUser.getId();
 
                 // Duplicate submission guard: same audience + same user
@@ -3559,6 +3714,13 @@ public class AudienceService {
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
                                 (a, b) -> a));
+        // id → status_key (leadStatusIdToKey above actually carries labels): decides whether a
+        // lead is closed (LOST / CONVERTED) and therefore off the SLA clock.
+        Map<String, String> leadStatusIdToStatusKey = fetchedStatuses.stream()
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
+                                (a, b) -> a));
 
         // Batch fetch all custom field values for these responses
         List<CustomFieldValues> allCfValues = customFieldValuesRepository
@@ -3664,6 +3826,14 @@ public class AudienceService {
             vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
                     .getUserId() != null ? userIdToProfile.get(response.getUserId()) : null;
             Timestamp firstResponseAt = firstActionByResponseId.get(response.getId());
+            // Same COALESCE as the status column: per-response status first, else the profile's.
+            // A Lost / Converted lead is off the SLA clock — no Pending / Overdue badge.
+            String effectiveStatusKey = response.getLeadStatusId() != null
+                    && leadStatusIdToStatusKey.containsKey(response.getLeadStatusId())
+                            ? leadStatusIdToStatusKey.get(response.getLeadStatusId())
+                            : (profile != null ? profile.getConversionStatus() : null);
+            boolean slaClosed = "LOST".equals(effectiveStatusKey) || "CONVERTED".equals(effectiveStatusKey);
+            String slaStage = slaClosed ? null : response.getTatReminderStage();
 
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
@@ -3731,12 +3901,13 @@ public class AudienceService {
                     .tatDueOverridden(response.getTatDueOverrideAt() != null)
                     .firstResponseAt(firstResponseAt)
                     .followUpDueAt(computedFollowUpDueAt)
-                    .tatReminderStage(response.getTatReminderStage())
-                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
+                    .tatReminderStage(slaStage)
+                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(slaStage))
                     .followUpOverdue(
-                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(response.getTatReminderStage()))
-                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(response.getTatReminderStage())
-                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(response.getTatReminderStage()))
+                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(slaStage))
+                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(slaStage)
+                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(slaStage))
+                    .slaClosed(slaClosed)
                     .build();
         });
     }
@@ -5258,7 +5429,7 @@ public class AudienceService {
                 .mobileNumber(processedData.getPhone())
                 .build();
 
-        UserDTO createdUser = authService.createUserFromAuthService(userDTO, instituteId, false);
+        UserDTO createdUser = resolveLeadUser(userDTO, instituteId, audienceId, repeatLeadSettings != null, null);
         String userId = createdUser.getId();
 
         // Ensure mobile number from form is preserved (auth service might return
@@ -5616,6 +5787,15 @@ public class AudienceService {
                 : leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
                         .collect(Collectors.toMap(LeadScore::getAudienceResponseId, ls -> ls, (a, b) -> a));
 
+        // Admin-set tier per (user, institute): wins over the score band, the same rule as the
+        // leads list and the side view, so a Hot / Warm / Cold pick shows here too.
+        Map<String, String> explicitTierByUserInstitute = userIds.isEmpty() ? Collections.emptyMap()
+                : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                        .filter(p -> StringUtils.hasText(p.getLeadTier()))
+                        .collect(Collectors.toMap(p -> p.getUserId() + "|" + p.getInstituteId(),
+                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getLeadTier,
+                                (a, b) -> a));
+
         // Batch fetch assigned counsellors from linked_users table
         Map<String, String> enquiryToCounsellorMap = enquiryIds.isEmpty() ? Collections.emptyMap()
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds)
@@ -5698,7 +5878,9 @@ public class AudienceService {
                             // Lead score
                             .leadScore(leadScore != null ? leadScore.getRawScore() : null)
                             .leadTier(leadScore != null
-                                    ? leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore())
+                                    ? explicitTierByUserInstitute.getOrDefault(
+                                            audienceResponse.getUserId() + "|" + leadScore.getInstituteId(),
+                                            leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore()))
                                     : null)
                             .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
                                     ? leadScore.getPercentileRank().doubleValue()

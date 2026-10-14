@@ -28,8 +28,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import type { CampaignItem } from '@/routes/audience-manager/list/-services/get-campaigns-list';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getPrimaryRole, getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { defaultModeSettings } from '../-utils/constants';
 import type {
@@ -94,8 +93,13 @@ const stripHtml = (html: string): string => {
 export function useAnnouncementDraft() {
     const { t } = useTranslation('announcementUseAnnouncementDraft');
     const instituteId = getInstituteId() || '';
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const primaryRole = useMemo(() => getUserRoles(accessToken)?.[0] ?? 'TEACHER', [accessToken]);
+    // The sender's role in THIS institute (ADMIN first, never STUDENT); 'UNKNOWN' means
+    // no staff role here, which keeps the old TEACHER default.
+    const primaryRole = useMemo(() => {
+        const role = getPrimaryRole(getRolesForCurrentInstitute());
+        return role === 'UNKNOWN' ? 'TEACHER' : role;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on institute switch
+    }, [instituteId]);
 
     // ---------------------------------------------------------------- content
     const [title, setTitle] = useState('');

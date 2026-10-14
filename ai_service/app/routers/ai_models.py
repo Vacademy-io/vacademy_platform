@@ -235,33 +235,6 @@ def create_model(
     return service.create_model(request)
 
 
-@router.patch(
-    "/{model_id:path}",
-    response_model=AIModelResponse,
-    summary="Update a model (ROOT_ADMIN only)",
-)
-def update_model(
-    model_id: str,
-    request: UpdateModelRequest,
-    service: AIModelsService = Depends(get_models_service),
-    current_user: Optional[dict] = Depends(get_current_user),
-):
-    """Update an existing model."""
-    if not check_root_admin(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only ROOT_ADMIN can update models",
-        )
-    
-    model = service.update_model(model_id, request)
-    if not model:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model '{model_id}' not found",
-        )
-    return model
-
-
 @router.put(
     "/free-tier",
     response_model=FreeModelsResponse,
@@ -304,5 +277,43 @@ def update_use_case_default(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only ROOT_ADMIN can update defaults",
         )
+
+    try:
+        updated = service.update_use_case_default(use_case, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Use case '{use_case}' has no defaults row",
+        )
+    return updated
+
+
+# Registered LAST: the catch-all path parameter would otherwise swallow
+# PATCH /defaults/{use_case} (model_id="defaults/agent" -> 404).
+@router.patch(
+    "/{model_id:path}",
+    response_model=AIModelResponse,
+    summary="Update a model (ROOT_ADMIN only)",
+)
+def update_model(
+    model_id: str,
+    request: UpdateModelRequest,
+    service: AIModelsService = Depends(get_models_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """Update an existing model."""
+    if not check_root_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only ROOT_ADMIN can update models",
+        )
     
-    return service.update_use_case_default(use_case, request)
+    model = service.update_model(model_id, request)
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model '{model_id}' not found",
+        )
+    return model

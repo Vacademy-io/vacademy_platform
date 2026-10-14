@@ -161,9 +161,11 @@ const CAPABILITIES = {
         'swipeable full-bleed row instead of a grid. Reach for photo+carousel whenever the reference ' +
         'shows a row of picture cards rather than an icon grid.',
     testimonialSection:
-        'layout: grid-scroll (default) | carousel (one quote at a time with prev/next arrows). ' +
-        'testimonials[]: {name, role, quote (or text/feedback), avatar (image URL), rating (1-5), highlight}. ' +
-        'Use carousel when the reference shows a single large quote with navigation.',
+        'layout: grid-scroll (default) | carousel (prev/next arrows + dots). ' +
+        'testimonials[]: {name, role, quote (or text/feedback), avatar (the student photo — an image URL), rating (1-5), highlight}. ' +
+        'Carousel only: cardsPerView 1-4 (cards in view on desktop; tablets show at most 2, phones 1; default 1 = one ' +
+        'large quote at a time), autoplay (advance one card on a timer, pauses on hover), autoplayIntervalMs (default 5000). ' +
+        'Use carousel + cardsPerView 3 for many short quotes in a row; carousel alone when the reference shows a single large quote.',
     stepsProcess:
         'variant: timeline-cards | alternating | cards (plain numbered steps look dated). nodeStyle: icon|dot. ' +
         'connectorStyle: line|dashed|dots|none. steps[]: {number, title, description, icon/iconName, chips[], meta, state}. ' +

@@ -19,6 +19,7 @@ import {
 import {
     AVATAR_TINTS,
     currencySymbolFor,
+    displayName,
     getInitials,
     itemSubject,
     itemTitle,
@@ -247,9 +248,9 @@ export const CartItemList = ({
                                             <p className="truncate text-sm font-semibold text-gray-900">
                                                 {label}
                                             </p>
-                                            {mapping.session_name && group.label && (
+                                            {displayName(mapping.session_name) && group.label && (
                                                 <p className="truncate text-caption text-gray-500">
-                                                    {mapping.session_name}
+                                                    {displayName(mapping.session_name)}
                                                 </p>
                                             )}
                                         </div>

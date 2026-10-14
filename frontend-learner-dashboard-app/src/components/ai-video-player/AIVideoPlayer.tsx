@@ -38,6 +38,7 @@ import {
 import { processHtmlContent, fixHtmlContent } from "./html-processor";
 import { useWebAudioMixer } from "./hooks/useWebAudioMixer";
 import { useSoundScheduler, collectCuesFromEntries } from "./hooks/useSoundScheduler";
+import { canvasBackground, entryBoxStyle, fillSceneGaps } from './entry-layout';
 
 // Re-export types for backward compatibility
 export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
@@ -241,7 +242,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           lastFrame: framesArray[framesArray.length - 1],
         });
 
-        setFrames(framesArray);
+        setFrames(
+          timelineMeta.navigation === 'user_driven' ? framesArray : fillSceneGaps(framesArray)
+        );
         setMeta(timelineMeta);
 
         // Use meta.total_duration if available, otherwise calculate from last frame
@@ -938,10 +941,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               }
 
               const frameStyle = {
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
+                ...entryBoxStyle(frame, width, height),
                 zIndex: frame.z || 0,
                 opacity: frameOpacity,
               };
@@ -956,7 +956,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   allow="autoplay"
                   title={t("frameLayerTitle", { id: frame.id })}
                   style={{
-                    backgroundColor: index === 0 ? "white" : "transparent",
+                    backgroundColor: index === 0 ? canvasBackground(meta.palette) : "transparent",
                     pointerEvents: frame.id?.startsWith('branding-watermark') ? 'none' : 'auto',
                     ...frameStyle
                   }}

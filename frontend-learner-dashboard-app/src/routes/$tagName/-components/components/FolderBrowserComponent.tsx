@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -297,9 +298,10 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
   const media = (n: PublicFolderNode, className?: string) => {
     if (view.imageShape === "none") return null;
     return (
-      <div className={cn("catalogue-img-zoom relative w-full bg-catalogue-bg-muted", ASPECT[view.imageShape], className)}>
+      // Not zoomed on hover: cover art with text at its edges would be cropped.
+      <div className={cn("relative w-full overflow-hidden bg-catalogue-bg-muted", ASPECT[view.imageShape], className)}>
         {n.image_url ? (
-          <img src={n.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+          <FitImage src={n.image_url} alt="" loading="lazy" className="absolute inset-0 size-full" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-catalogue-text-muted">
             {n.node_type === "FOLDER" ? (
@@ -350,7 +352,7 @@ export const FolderBrowserComponent: React.FC<FolderBrowserProps> = ({
           {view.imageShape !== "none" && (
             <div className="relative size-14 shrink-0 overflow-hidden rounded-catalogue-md bg-catalogue-bg-muted">
               {n.image_url ? (
-                <img src={n.image_url} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                <FitImage src={n.image_url} alt="" loading="lazy" className="absolute inset-0 size-full" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-catalogue-text-muted">
                   <Folder className="size-6 opacity-60" weight="duotone" aria-hidden="true" />

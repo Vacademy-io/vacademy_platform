@@ -262,9 +262,11 @@ export const buildFormAppearancePreview = (
     // <div role="heading"> (the editor's <p> cannot sit inside an <h1>). An
     // admin's Custom CSS aimed at `h1` must preview the way it will render.
     const headlineRich = richTextHtml(config.headline);
-    const headlineHtml = headlineRich
-        ? `<div class="h1" role="heading" aria-level="1">${headlineRich}</div>`
-        : `<h1>${escapeHtml(plainText(config.headline) || context.campaignName || 'Your campaign')}</h1>`;
+    const headlineHtml = !config.showHeadline
+        ? ''
+        : headlineRich
+          ? `<div class="h1" role="heading" aria-level="1">${headlineRich}</div>`
+          : `<h1>${escapeHtml(plainText(config.headline) || context.campaignName || 'Your campaign')}</h1>`;
     const subtitleRich = richTextHtml(config.formSubtitle);
     const subtitleHtml = subtitleRich
         ? `<div class="sub">${subtitleRich}</div>`
@@ -338,12 +340,24 @@ export const buildFormAppearancePreview = (
         )}</span></div>
     </div>`;
 
-    const bodyHtml =
-        config.layout === 'split'
-            ? `<div class="split"><div>${heroHtml}</div><div>${cardHtml}</div></div>`
-            : config.layout === 'classic'
-              ? `<div class="stack"><div class="vac-af-card hero-card">${heroHtml}</div>${cardHtml}</div>`
-              : `<div class="stack">${heroHtml}${cardHtml}</div>`;
+    // Same rule as the live page: an empty structured hero is dropped, not
+    // rendered as a blank card or column.
+    const heroIsEmpty =
+        !config.heroHtml.trim() &&
+        !config.coverImageUrl.trim() &&
+        !eyebrow &&
+        !headlineHtml &&
+        !intro &&
+        !objective &&
+        !highlightsHtml;
+
+    const bodyHtml = heroIsEmpty
+        ? `<div class="stack">${cardHtml}</div>`
+        : config.layout === 'split'
+          ? `<div class="split"><div>${heroHtml}</div><div>${cardHtml}</div></div>`
+          : config.layout === 'classic'
+            ? `<div class="stack"><div class="vac-af-card hero-card">${heroHtml}</div>${cardHtml}</div>`
+            : `<div class="stack">${heroHtml}${cardHtml}</div>`;
 
     const footerHtml = config.footerNote.trim()
         ? `<div class="vac-af-footer">${sanitizeHtml(config.footerNote)}</div>`
@@ -418,9 +432,13 @@ ${themeRoot()}
 ${sanitizeCss(config.customCss)}
 </style></head>
 <body><div class="vac-af-page">
-  <div class="vac-af-header"><div class="logo"></div><span class="brand">${escapeHtml(
-      context.instituteName
-  )}</span></div>
+  ${
+      config.showHeader
+          ? `<div class="vac-af-header"><div class="logo"></div><span class="brand">${escapeHtml(
+                context.instituteName
+            )}</span></div>`
+          : ''
+  }
   <main><div class="col">${bodyHtml}${footerHtml}</div></main>
 </div></body></html>`;
 };

@@ -109,6 +109,9 @@ export const throwWithServerMessage = (error: unknown, fallback: string): never 
     throw new Error(fallback);
 };
 
+/** A saved lead's response id (UUID) — the only success body of the admin submit. */
+const RESPONSE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Submit a lead the signed-in admin/counsellor is adding by hand.
  *
@@ -142,7 +145,13 @@ export const submitAudienceLeadAsAdmin = async (
 
     const body = response.data;
     if (!body) return { success: true };
-    if (typeof body === 'string') return { success: true, message: body };
+    // A saved lead answers with its response id. Any other text is the backend
+    // explaining why nothing was saved ("already submitted", a dedup rejection),
+    // which used to be shown as a success.
+    if (typeof body === 'string') {
+        if (!RESPONSE_ID_PATTERN.test(body.trim())) throw new Error(body);
+        return { success: true, response_id: body.trim() };
+    }
     return body as SubmitLeadResponse;
 };
 

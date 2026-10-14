@@ -41,6 +41,7 @@ from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.figma_links import FIGMA_LINK_GUIDANCE, find_figma_url, is_figma_url
 from ..services.llm_json import generate_json
+from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
 from ..services.page_audit import audit_component, audit_page, audit_reference_fidelity
 from ..utils.json_extract import extract_and_sanitize_json
@@ -49,8 +50,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/page-builder", tags=["page-builder"])
 
-# Page composition wants a strong instruction-following model; override via env.
-_DEFAULT_MODEL = os.getenv("PAGE_BUILDER_MODEL") or "anthropic/claude-sonnet-5"
+# The model comes from the 'page_builder' use case (ai_model_defaults, set in
+# the super-admin portal); a request's preferred_model still wins. This is only
+# the hard fallback for a missing row / unreachable DB — the platform default
+# (GLM), overridable via env for emergencies.
+_DEFAULT_MODEL = os.getenv("PAGE_BUILDER_MODEL") or GLM_DEFAULT
 _USAGE_MARKUP = Decimal("2")
 _TOOL_KEY = "page_generate"
 
@@ -763,6 +767,16 @@ async def _import_site(url: str) -> str:
         return ""
 
 
+def _vision_models(db) -> tuple[str, List[str]]:
+    """The page_builder chain for the two vision passes. They used to ride the
+    platform env default through ApiKeyResolver, so a super-admin change to the
+    page_builder use case never reached them. The use-case default is passed
+    as an explicit model (with its chain for failover); a request's
+    preferred_model is deliberately NOT applied here — a text model an admin
+    picked for composition may not read images."""
+    return resolve_models(db, "page_builder", hard_fallback=_DEFAULT_MODEL)
+
+
 async def _describe_attachments(
     image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]
 ) -> str:
@@ -791,6 +805,7 @@ async def _describe_attachments(
         attachments = [{"type": "image", "url": u} for u in urls]
 
     client = ChatLLMClient(ApiKeyResolver(db))
+    primary, fallbacks = _vision_models(db)
     messages = [{
         "role": "user",
         "content": (
@@ -821,7 +836,8 @@ async def _describe_attachments(
     }]
     try:
         resp = await client.chat_completion(
-            messages, temperature=0.2, max_tokens=2200, institute_id=institute_id, user_id=user_id
+            messages, temperature=0.2, max_tokens=2200, institute_id=institute_id, user_id=user_id,
+            model=primary, fallback_models=fallbacks,
         )
         return _clean_string((resp.get("content") or "").strip())
     except Exception as e:  # noqa: BLE001 — never block the edit on the vision pass
@@ -851,6 +867,7 @@ async def _analyze_inspiration(
     from ..services.api_key_resolver import ApiKeyResolver
 
     client = ChatLLMClient(ApiKeyResolver(db))
+    primary, fallbacks = _vision_models(db)
     urls = [u for u in image_urls if isinstance(u, str) and u][:_MAX_INSPIRATION_IMAGES]
     if not urls:
         return {}
@@ -929,7 +946,8 @@ async def _analyze_inspiration(
     resp = await client.chat_completion(
         # Room for a section blueprint across up to six screenshots; a truncated
         # reply loses the tail of `sections`, which is the part that matters.
-        messages, temperature=0.2, max_tokens=2600, institute_id=institute_id, user_id=user_id
+        messages, temperature=0.2, max_tokens=2600, institute_id=institute_id, user_id=user_id,
+        model=primary, fallback_models=fallbacks,
     )
     return _coerce_inspiration_spec(resp.get("content") or "")
 

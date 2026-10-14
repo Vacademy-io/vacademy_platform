@@ -20,6 +20,7 @@ public final class ApiKeySecrets {
 
     public static final String EVALUATION_KEY_PREFIX = "vak_eval_";
     public static final String LOGIN_LINKS_KEY_PREFIX = "vak_login_";
+    public static final String AI_CALLING_KEY_PREFIX = "vak_call_";
     static final int RANDOM_BYTES = 24;
     static final int DISPLAY_PREFIX_LENGTH = 16;
 
@@ -37,6 +38,11 @@ public final class ApiKeySecrets {
     /** A new login-links key ({@code vak_login_<48 hex>}) in plaintext. Show it once; never store it. */
     public static String newLoginLinksKey() {
         return newKey(LOGIN_LINKS_KEY_PREFIX);
+    }
+
+    /** A new AI calling (Telleo API) key ({@code vak_call_<48 hex>}) in plaintext. Show it once; never store it. */
+    public static String newAiCallingKey() {
+        return newKey(AI_CALLING_KEY_PREFIX);
     }
 
     private static String newKey(String prefix) {

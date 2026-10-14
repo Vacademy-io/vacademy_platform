@@ -49,6 +49,8 @@ export interface RecentLeadDetail {
     tat_overdue?: boolean | null;
     tat_due_soon?: boolean | null;
     follow_up_overdue?: boolean | null;
+    /** Lead is Lost / Converted: off the SLA clock, so no Pending / Overdue. */
+    sla_closed?: boolean | null;
     /** Custom pipeline status (enquiry_status), e.g. NEW / INTERESTED. */
     lead_status?: string | null;
     /** Interest level. The tier stored on the lead profile, falling back to the one

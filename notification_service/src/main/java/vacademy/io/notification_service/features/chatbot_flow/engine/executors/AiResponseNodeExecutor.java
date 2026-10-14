@@ -121,8 +121,12 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                     : new ArrayList<>();
 
             // Call admin-core-service AI endpoint
-            String modelId = (String) config.getOrDefault("modelId", "google/gemini-2.5-flash");
+            // No model on the node = platform default: admin-core resolves the 'chatbot_flow'
+            // row in ai_model_defaults (GLM by default). A model the author picked still wins.
+            String modelId = config.get("modelId") instanceof String m && !m.isBlank() ? m.trim() : null;
             String userSystemPrompt = (String) config.getOrDefault("systemPrompt", "You are a helpful assistant.");
+            // The visible-reply budget. admin-core adds reasoning headroom on top for models
+            // that think before answering (GLM), so 500 stays a WhatsApp-sized reply.
             int maxTokens = config.get("maxTokens") instanceof Number
                     ? ((Number) config.get("maxTokens")).intValue() : 500;
             double temperature = config.get("temperature") instanceof Number
@@ -175,7 +179,9 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
             Map<String, Object> aiRequest = new LinkedHashMap<>();
             aiRequest.put("instituteId", context.getInstituteId());
-            aiRequest.put("modelId", modelId);
+            if (modelId != null) {
+                aiRequest.put("modelId", modelId);
+            }
             aiRequest.put("systemPrompt", systemPrompt);
             aiRequest.put("conversationHistory", history);
             aiRequest.put("userMessage", userText);

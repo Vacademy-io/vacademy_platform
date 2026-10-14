@@ -810,6 +810,7 @@ export const SAVE_QUIZ_QUESTION_FEEDBACK = `${BASE_URL}/admin-core-service/learn
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const TRIGGER_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/trigger`;
 export const GET_ASSIGNMENT_AI_EVALUATION = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/latest`;
+export const ASSIGNMENT_AI_EVALUATION_BULK = `${BASE_URL}/admin-core-service/assignment-ai-evaluation/v1/bulk`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
 export const COPY_SLIDE = `${BASE_URL}/admin-core-service/slide/v1/copy`;
@@ -1641,10 +1642,13 @@ export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
 export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;
 
 // Admin-granted discounts (Percentage / Flat / Coupon picked by an admin at enroll,
-// bulk-assign or invoice time, plus pending per-learner grants). Institute ADMIN only;
-// every call takes ?instituteId=. The granting admin is taken from the JWT server-side.
+// bulk-assign or invoice time, plus pending per-learner grants). Gated per role by the
+// Display Settings "Apply discounts" flag; every call takes ?instituteId=. The granting
+// user is taken from the JWT server-side.
 export const ADMIN_DISCOUNT_BASE = `${BASE_URL}/admin-core-service/v1/admin-discounts`;
 export const ADMIN_DISCOUNT_PREVIEW = `${ADMIN_DISCOUNT_BASE}/preview`;
+// GET → { can_apply: boolean } — whether the caller's role may apply admin discounts.
+export const ADMIN_DISCOUNT_CAN_APPLY = `${ADMIN_DISCOUNT_BASE}/can-apply`;
 
 // =============================================================================
 // Organization teams (hybrid: flat teams + user-to-user reporting inside).
@@ -2037,3 +2041,11 @@ export const ERP_PNL_SNAPSHOT_DOWNLOAD = `${ERP_FINANCE_BASE}/pnl-snapshot/downl
 // ERP · My HR (self-service): the caller's own employee record. Every other HR
 // read is keyed on an employee id the employee cannot discover.
 export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employees/me`;
+
+// Institute capabilities (modules/features entitlement + display-settings version).
+// GET ?instituteId= → { mode, catalog_version, modules, features, display_settings_version }.
+// Phase 1 reads it only to bust the display-settings cache; see services/capabilities.ts.
+export const CAPABILITIES_ME = `${BASE_URL}/admin-core-service/capabilities/v1/me`;
+// GET → { catalog, nav }: the module/feature catalogue (§12.2). Fetched only for
+// MANAGED institutes; see services/capability-catalog.ts.
+export const CAPABILITIES_CATALOG = `${BASE_URL}/admin-core-service/capabilities/v1/catalog`;

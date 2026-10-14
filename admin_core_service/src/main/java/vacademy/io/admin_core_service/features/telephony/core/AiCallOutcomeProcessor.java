@@ -904,7 +904,7 @@ public class AiCallOutcomeProcessor {
      * Absent diagnostics (older bot builds, non-VACADEMY_AI providers) read as
      * trustworthy, preserving the prior behaviour exactly.
      */
-    private boolean isUntrustworthyCall(AiCallResult r) {
+    public static boolean isUntrustworthyCall(AiCallResult r) {
         if (r == null || !"RED".equalsIgnoreCase(r.getDiagHealth())) return false;
         String faults = r.getDiagFaults();
         if (faults == null || faults.isBlank()) return false;

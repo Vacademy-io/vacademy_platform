@@ -19,8 +19,7 @@ import {
     ReportDurationEnum,
     ReportTypeEnum,
 } from '../../reports/-types/types';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getInstituteId } from '@/constants/helper';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getBadgesEnabled } from '@/routes/settings/-services/badges-settings';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -156,9 +155,8 @@ export default function HeaderTabs() {
 
     useEffect(() => {
         if (settingDialogState) {
-            const accessToken = getTokenFromCookie(TokenKey.accessToken);
-            const tokenData = getTokenDecodedData(accessToken);
-            const INSTITUTE_ID = tokenData && Object.keys(tokenData.authorities)[0];
+            // Same institute the save writes to (current, not the token's first).
+            const INSTITUTE_ID = getInstituteId();
 
             settingsMutation.mutate(INSTITUTE_ID || '', {
                 onSuccess: (data) => {

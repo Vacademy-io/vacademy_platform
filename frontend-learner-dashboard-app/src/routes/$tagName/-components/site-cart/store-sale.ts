@@ -24,9 +24,17 @@ export interface StoreSale {
   sells: (packageSessionId: string | null | undefined) => boolean;
   /** Does the store list this version at all (one ACTIVE mapping or more)? Always false until ready. */
   lists: (packageSessionId: string | null | undefined) => boolean;
+  /** What the store charges for a version it sells as it is; null otherwise, and until ready. */
+  offer?: (packageSessionId: string | null | undefined) => StoreOffer | null;
+}
+
+export interface StoreOffer {
+  price: number | null;
+  currency: string | null;
 }
 
 const none = () => false;
+const noOffer = () => null;
 
 /** The store's state from its product-page query (data wins over a failed background refetch). */
 export const storeSaleFrom = (
@@ -36,16 +44,47 @@ export const storeSaleFrom = (
     isError: boolean;
   },
 ): StoreSale => {
-  if (!on) return { status: "off", sells: none, lists: none };
+  if (!on) return { status: "off", sells: none, lists: none, offer: noOffer };
   if (query.data) {
-    const counts = activeMappingCounts(query.data.mappings);
+    const mappings = query.data.mappings;
+    const counts = activeMappingCounts(mappings);
+    const sells = (id: string | null | undefined) => !!id && counts.get(id) === 1;
     return {
       status: "ready",
-      sells: (id) => !!id && counts.get(id) === 1,
+      sells,
       lists: (id) => !!id && counts.has(id),
+      offer: (id) => {
+        if (!sells(id)) return null;
+        const m = (mappings || []).find(
+          (x) => x.package_session_id === id && (x.status ?? "ACTIVE").toUpperCase() === "ACTIVE",
+        );
+        const price = m?.payment_plan?.actual_price;
+        return {
+          price: typeof price === "number" && Number.isFinite(price) ? price : null,
+          currency: m?.payment_plan?.currency ?? null,
+        };
+      },
     };
   }
-  return { status: query.isError ? "error" : "loading", sells: none, lists: none };
+  return { status: query.isError ? "error" : "loading", sells: none, lists: none, offer: noOffer };
+};
+
+/**
+ * Does the store charge what a product page shows for a version? A course
+ * page opened from a product page shows that page's price; the site cart
+ * checks out at the store's, so the cart is offered there only when they are
+ * the same (a promo page at its own price keeps its own checkout). An unknown
+ * price on either side is not the same.
+ */
+export const sameOffer = (
+  store: StoreOffer | null,
+  shown: { price?: number | null; currency?: string | null },
+): boolean => {
+  if (!store || typeof store.price !== "number" || typeof shown.price !== "number") return false;
+  if (Math.abs(store.price - shown.price) >= 0.01) return false;
+  const a = (store.currency || "").trim().toUpperCase();
+  const b = (shown.currency || "").trim().toUpperCase();
+  return !a || !b || a === b;
 };
 
 /**

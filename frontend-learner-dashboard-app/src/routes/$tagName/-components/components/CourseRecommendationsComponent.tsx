@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { FitImage } from "@/components/common/fit-image/FitImage";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -144,10 +145,10 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
               {/* Thumbnail */}
               {course.thumbnail && (
                 <div className="aspect-video">
-                  <img
+                  <FitImage
                     src={course.thumbnail}
                     alt={course.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}

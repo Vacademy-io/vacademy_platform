@@ -19,6 +19,8 @@ import java.time.Instant;
 @NoArgsConstructor
 public class AssignmentAiEvaluation {
 
+    /** Waiting for a free grading slot (bulk checks, or ai_service was busy). */
+    public static final String STATUS_QUEUED = "QUEUED";
     public static final String STATUS_PROCESSING = "PROCESSING";
     public static final String STATUS_COMPLETED = "COMPLETED";
     public static final String STATUS_FAILED = "FAILED";
@@ -28,6 +30,10 @@ public class AssignmentAiEvaluation {
 
     @Column(name = "tracked_id", nullable = false)
     private String trackedId;
+
+    /** Set for "Check all with AI" runs; the teacher is notified once per batch. */
+    @Column(name = "batch_id")
+    private String batchId;
 
     @Column(name = "slide_id", nullable = false)
     private String slideId;

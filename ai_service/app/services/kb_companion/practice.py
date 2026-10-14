@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ..ai_billing import charge_tool
-from . import llm
+from . import llm, model_choice
 from .lesson import GROUNDING_RULES, LANG_NAMES, MIN_MATERIAL_CHARS, _POD_LLM_SLOTS, citation_for, gather_material
 from .repository import CompanionRepository
 
@@ -99,6 +99,7 @@ async def _run(job: PracticeJob) -> None:
             material = gather_material(db, job.kb, job.node)
         if material.chars < MIN_MATERIAL_CHARS:
             raise RuntimeError("This topic has too little material to practise from.")
+        model_choice.refresh()  # the 'kb_companion' use case (env overrides still win)
         async with _POD_LLM_SLOTS:
             parsed, res = await llm.complete_json(
                 practice_messages(kb_name=job.kb.get("name") or "", node_title=job.node.get("title") or "",

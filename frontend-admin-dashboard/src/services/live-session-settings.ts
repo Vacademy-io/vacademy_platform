@@ -1,7 +1,6 @@
 import { GET_INSTITUTE_SETTING_DATA, SAVE_INSTITUTE_SETTING } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 
 export const SETTING_KEY_LIVE_SESSION = 'LIVE_SESSION_SETTING';
@@ -306,6 +305,28 @@ export interface LiveSessionSettings {
     defaultZoomAllowMultipleDevices: boolean;
     /** Default "add identity watermark". */
     defaultZoomWatermark: boolean;
+    /*
+     * Google Meet defaults, pre-filled in the Google Meet panel of a single class hosted on
+     * Meet with a connected account (keys read by GoogleMeetManager.buildSpaceConfig).
+     * Auto-record and join access are NOT here: they live on each connected Google account.
+     * Admins can still change them per class.
+     */
+    /** Default "auto-generate transcript". */
+    defaultGoogleMeetTranscription: boolean;
+    /** Default "Gemini notes (Take notes for me)". */
+    defaultGoogleMeetSmartNotes: boolean;
+    /** Default "Google attendance report". */
+    defaultGoogleMeetAttendanceReport: boolean;
+    /** Default "turn on host controls" — the four restrictions below apply only with it on. */
+    defaultGoogleMeetHostManagement: boolean;
+    /** Default "only hosts can chat". */
+    defaultGoogleMeetChatHostsOnly: boolean;
+    /** Default "only hosts can send reactions". */
+    defaultGoogleMeetReactionsHostsOnly: boolean;
+    /** Default "only hosts can share screen". */
+    defaultGoogleMeetPresentHostsOnly: boolean;
+    /** Default "learners join as viewers". */
+    defaultGoogleMeetJoinAsViewer: boolean;
     /**
      * Master switch for the disclaimer video. Off for every institute by default,
      * so nothing changes for anyone until an admin turns it on here.
@@ -405,6 +426,14 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultZoomFocusMode: false,
     defaultZoomAllowMultipleDevices: false,
     defaultZoomWatermark: false,
+    defaultGoogleMeetTranscription: false,
+    defaultGoogleMeetSmartNotes: false,
+    defaultGoogleMeetAttendanceReport: false,
+    defaultGoogleMeetHostManagement: false,
+    defaultGoogleMeetChatHostsOnly: false,
+    defaultGoogleMeetReactionsHostsOnly: false,
+    defaultGoogleMeetPresentHostsOnly: false,
+    defaultGoogleMeetJoinAsViewer: false,
     // Off by default: no institute gets a disclaimer in front of its learners,
     // and the per-class control stays hidden, until an admin turns this on.
     disclaimerVideoEnabled: false,
@@ -412,12 +441,14 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     attendanceOnlyMode: false,
 };
 
+// The institute being worked in (selected institute, falling back to the token's first only
+// when none is selected) — NOT always the token's first institute. A multi-institute user
+// otherwise read and saved this setting on the wrong institute, and the backend now rejects
+// a setting save whose clientId isn't the target instituteId.
 const getInstituteId = (): string => {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
-    const instituteIds = Object.keys(tokenData?.authorities || {});
-    if (instituteIds.length === 0) throw new Error('No institute ID found in token');
-    return instituteIds[0]!;
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) throw new Error('No institute ID found in token');
+    return instituteId;
 };
 
 export const getLiveSessionSettings = async (): Promise<LiveSessionSettings> => {

@@ -57,7 +57,19 @@ public class InstituteApiKeyService {
      */
     public static final String PRODUCT_LOGIN_LINKS = "login_links";
     public static final String SCOPE_LOGIN_LINKS_CREATE = "login_links:create";
-    public static final Set<String> PRODUCTS = Set.of(PRODUCT_EVALUATION, PRODUCT_LOGIN_LINKS);
+    /**
+     * Keys a client's server uses for the public AI calling API (Telleo API v1,
+     * {@code /admin-core-service/open/ai-calling/v1}). Self-serve like login links: an
+     * institute admin issues them in Settings, no institute_api_access row is needed, and
+     * the calls they place are billed to the institute's AI credits like any other call.
+     */
+    public static final String PRODUCT_AI_CALLING = "ai_calling";
+    public static final String SCOPE_CALLS_READ = "calls:read";
+    public static final String SCOPE_CALLS_WRITE = "calls:write";
+    public static final String SCOPE_WEBHOOKS_MANAGE = "webhooks:manage";
+    public static final List<String> AI_CALLING_SCOPES =
+            List.of(SCOPE_CALLS_READ, SCOPE_CALLS_WRITE, SCOPE_WEBHOOKS_MANAGE);
+    public static final Set<String> PRODUCTS = Set.of(PRODUCT_EVALUATION, PRODUCT_LOGIN_LINKS, PRODUCT_AI_CALLING);
     public static final int MAX_ACTIVE_KEYS_PER_INSTITUTE = 50;
     public static final int MAX_NAME_LENGTH = 120;
     static final long LAST_USED_WRITE_INTERVAL_MS = 60_000L;
@@ -100,16 +112,20 @@ public class InstituteApiKeyService {
         IssueApiKeyRequest body = request == null ? new IssueApiKeyRequest() : request;
         String product = normalizeProduct(body.getProduct());
         boolean loginLinks = PRODUCT_LOGIN_LINKS.equals(product);
+        boolean aiCalling = PRODUCT_AI_CALLING.equals(product);
+        boolean selfServe = loginLinks || aiCalling;
         String name = normalizeName(body.getName());
-        List<String> scopes = loginLinks ? List.of(SCOPE_LOGIN_LINKS_CREATE) : normalizeScopes(body.getScopes());
+        List<String> scopes = loginLinks ? List.of(SCOPE_LOGIN_LINKS_CREATE)
+                : aiCalling ? normalizeAiCallingScopes(body.getScopes())
+                : normalizeScopes(body.getScopes());
         Instant now = clock.instant();
         Instant expiresAt = parseExpiry(body.getExpiresAt(), now);
-        Integer dailyCopyCap = loginLinks ? null : body.getDailyCopyCap();
+        Integer dailyCopyCap = selfServe ? null : body.getDailyCopyCap();
         if (dailyCopyCap != null && dailyCopyCap < 1) {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "daily_copy_cap must be at least 1 (or omitted).");
         }
 
-        if (!loginLinks) {
+        if (!selfServe) {
             // Row lock on the access row: serialises concurrent issues for this institute
             // (so the cap below holds) and reads the current enabled flag.
             InstituteApiAccess access = accessRepository.findForUpdate(instituteId, PRODUCT_EVALUATION).orElse(null);
@@ -124,7 +140,9 @@ public class InstituteApiKeyService {
                             + "). Revoke some first.");
         }
 
-        String plaintext = loginLinks ? ApiKeySecrets.newLoginLinksKey() : ApiKeySecrets.newEvaluationKey();
+        String plaintext = loginLinks ? ApiKeySecrets.newLoginLinksKey()
+                : aiCalling ? ApiKeySecrets.newAiCallingKey()
+                : ApiKeySecrets.newEvaluationKey();
         InstituteApiKey key = InstituteApiKey.builder()
                 .id(UUID.randomUUID().toString())
                 .instituteId(instituteId)
@@ -247,7 +265,8 @@ public class InstituteApiKeyService {
         }
         InstituteApiKey key = found.get();
         stampLastUsed(key.getId(), now, clientIp);
-        if (asList(key.getProducts()).contains(PRODUCT_LOGIN_LINKS)) {
+        if (asList(key.getProducts()).contains(PRODUCT_LOGIN_LINKS)
+                || asList(key.getProducts()).contains(PRODUCT_AI_CALLING)) {
             // Self-serve product: no institute_api_access row; a usable key is all it takes.
             return Optional.of(toVerifyResponse(key, null, true));
         }
@@ -318,6 +337,23 @@ public class InstituteApiKeyService {
     }
 
     // ── Validation helpers ───────────────────────────────────────────────────
+
+    /** Blank = every AI calling scope. Anything outside {@link #AI_CALLING_SCOPES} is a 400. */
+    static List<String> normalizeAiCallingScopes(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return AI_CALLING_SCOPES;
+        }
+        List<String> out = new java.util.ArrayList<>();
+        for (String s : raw) {
+            String scope = s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
+            if (!AI_CALLING_SCOPES.contains(scope)) {
+                throw new VacademyException(HttpStatus.BAD_REQUEST,
+                        "Unknown scope: " + s + ". Allowed: " + AI_CALLING_SCOPES);
+            }
+            if (!out.contains(scope)) out.add(scope);
+        }
+        return out;
+    }
 
     static String normalizeName(String raw) {
         if (isBlank(raw)) {

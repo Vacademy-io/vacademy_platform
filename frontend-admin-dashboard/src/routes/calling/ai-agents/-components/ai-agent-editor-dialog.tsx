@@ -37,6 +37,7 @@ import {
     creditLine,
     resolveTtsModel,
     voicesForModel,
+    voiceLabel,
     patchForModelChange,
     fetchVoices,
     saveAgent,
@@ -260,8 +261,7 @@ export function AiAgentEditorDialog({
                             <SelectContent>
                                 {voices.map((v) => (
                                     <SelectItem key={v.id} value={v.id}>
-                                        {v.id.charAt(0).toUpperCase() + v.id.slice(1)} ·{' '}
-                                        {v.gender === 'male' ? 'Male' : 'Female'}
+                                        {voiceLabel(v)} · {v.gender === 'male' ? 'Male' : 'Female'}
                                     </SelectItem>
                                 ))}
                             </SelectContent>

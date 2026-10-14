@@ -27,7 +27,8 @@ from decimal import Decimal
 from typing import Optional
 
 import httpx
-from ..services.llm_router import post_chat
+from ..services.llm_router import ChainExhausted, chat_with_chain, post_chat
+from ..services.use_case_chat import models_for
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -42,9 +43,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/course/assist", tags=["course-assist"])
 
-# Copywriting wants a strong instruction-follower; images route the Google
-# image model through OpenRouter's billed account (free-tier direct quota is 0).
-_TEXT_MODEL = os.getenv("COURSE_ASSIST_TEXT_MODEL") or "anthropic/claude-sonnet-5"
+# Copywriting runs on the 'course_assist' use case (ai_model_defaults, set in
+# the super-admin portal; GLM by default) with its fallback chain;
+# COURSE_ASSIST_TEXT_MODEL, when set, is tried first (emergency override).
+# Images route the Google image model through OpenRouter's billed account
+# (free-tier direct quota is 0).
+_TEXT_USE_CASE = "course_assist"
+_TEXT_MODEL_ENV = "COURSE_ASSIST_TEXT_MODEL"
 _IMAGE_MODEL = os.getenv("COURSE_ASSIST_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -219,6 +224,23 @@ async def _openrouter_chat(payload: dict) -> httpx.Response:
         raise HTTPException(status_code=502, detail="Generation failed. Please try again.")
 
 
+async def _text_chat(payload: dict):
+    """One copywriting call through the model chain (GLM gets reasoning low and
+    max_tokens headroom on both gateway legs). Raises 503/502 HTTPExceptions."""
+    from ..config import get_settings
+    key = getattr(get_settings(), "openrouter_api_key", None)
+    if not key:
+        raise HTTPException(status_code=503, detail="AI provider is not configured.")
+    try:
+        return await chat_with_chain(
+            payload, _TEXT_USE_CASE, models=models_for(_TEXT_USE_CASE, env=_TEXT_MODEL_ENV),
+            api_key=key, timeout=90.0,
+        )
+    except ChainExhausted as e:
+        logger.error("[course-assist] text generation failed: %s", e)
+        raise HTTPException(status_code=502, detail="Text generation failed. Please try again.")
+
+
 @router.post("/v1/text", response_model=AssistTextResponse)
 async def generate_field_text(
     body: AssistTextRequest,
@@ -229,28 +251,20 @@ async def generate_field_text(
         raise HTTPException(status_code=400, detail="A prompt is required.")
     _require_balance(institute_id, _TEXT_COST, "generating this text")
 
-    resp = await _openrouter_chat({
-        "model": _TEXT_MODEL,
+    result = await _text_chat({
         "messages": [{"role": "user", "content": _build_text_prompt(body)}],
         "temperature": 0.7,
     })
-    if resp.status_code != 200:
-        logger.error("[course-assist] text %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="Text generation failed. Please try again.")
-    try:
-        content = resp.json()["choices"][0]["message"]["content"] or ""
-    except Exception:  # noqa: BLE001
-        content = ""
-    html = _sanitize_html(content)
+    html = _sanitize_html(result.content)
     if not html:
         raise HTTPException(status_code=502, detail="Text generation returned no content. Please try again.")
 
     run_id = uuid.uuid4().hex
     _charge(
-        institute_id, user_id, _TEXT_COST, RequestType.CONTENT, _TEXT_MODEL,
+        institute_id, user_id, _TEXT_COST, RequestType.CONTENT, result.model,
         f"Course field AI assist: {body.field or 'text'}", run_id,
     )
-    return AssistTextResponse(html=html, model=_TEXT_MODEL, credits_charged=float(_TEXT_COST))
+    return AssistTextResponse(html=html, model=result.model, credits_charged=float(_TEXT_COST))
 
 
 @router.post("/v1/image", response_model=AssistImageResponse)

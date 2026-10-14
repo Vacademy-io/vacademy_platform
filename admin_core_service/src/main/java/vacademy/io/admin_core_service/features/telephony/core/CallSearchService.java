@@ -273,10 +273,15 @@ public class CallSearchService {
                    tcl.from_number, tcl.to_number, tcl.caller_id,
                    CASE WHEN tcl.direction = 'OUTBOUND' THEN tcl.to_number ELSE tcl.from_number END AS lead_number,
                    tcl.start_time, tcl.answer_time, tcl.end_time, tcl.duration_seconds,
-                   tcl.recording_storage_key, tcl.counsellor_user_id, tcl.response_id, tcl.user_id,
+                   tcl.recording_storage_key, tcl.counsellor_user_id, tcl.response_id,
+                   -- An API call's user id is a pseudo id that exists nowhere: hide it so the
+                   -- row offers no "View lead" / assign actions that would open an empty lead.
+                   CASE WHEN tcl.subject_type = 'API_CONTACT' THEN NULL ELSE tcl.user_id END AS user_id,
                    tcl.disposition_key, tcl.disposition_notes, tcl.dispositioned_at, tcl.created_at,
                    tcl.ivr_selection,
-                   ar.parent_name AS lead_name,
+                   COALESCE(ar.parent_name, CASE WHEN tcl.subject_type = 'API_CONTACT'
+                       THEN (SELECT api.contact_name FROM ai_call_api_call api WHERE api.id = tcl.subject_id) END)
+                       AS lead_name,
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
                    acr.diag_faults AS diag_faults,
@@ -508,7 +513,8 @@ public class CallSearchService {
             params.addValue("toNumber", f.getToNumber().trim());
         }
         if (notBlank(f.getLeadName())) {
-            sb.append(" AND ar.parent_name ILIKE :leadName");
+            sb.append(" AND (ar.parent_name ILIKE :leadName OR (tcl.subject_type = 'API_CONTACT' AND EXISTS ("
+                    + "SELECT 1 FROM ai_call_api_call api WHERE api.id = tcl.subject_id AND api.contact_name ILIKE :leadName)))");
             params.addValue("leadName", "%" + f.getLeadName().trim() + "%");
         }
         if (f.getHasRecording() != null) {

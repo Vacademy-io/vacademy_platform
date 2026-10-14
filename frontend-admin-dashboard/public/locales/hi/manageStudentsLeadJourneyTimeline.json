@@ -19,7 +19,8 @@
         "followupScheduled": "फॉलो-अप शेड्यूल किया गया",
         "statusChange": "स्थिति बदली गई",
         "fallback": "इवेंट",
-        "reEnquiry": "फिर से संपर्क किया"
+        "reEnquiry": "फिर से संपर्क किया",
+        "reattempt": "दोबारा पूछताछ"
     },
     "statusChangeMeta": {
         "previous": "पिछला"

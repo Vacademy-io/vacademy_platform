@@ -533,10 +533,16 @@ const FollowUpsContent = () => {
     // Build VMs, filter to pending follow-ups, classify into buckets, sort by
     // soonest-due so the top of the list is always the most urgent task.
     // The server has already narrowed to the bucket, so there is nothing left to classify
-    // here — only the soonest-due ordering the page has always used.
+    // here — only the ordering: priority follow-ups (reattempts) first, as the server pages
+    // them, then soonest-due.
     const pendingVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
     const sortedVms = useMemo(
-        () => [...pendingVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
+        () =>
+            [...pendingVms].sort(
+                (a, b) =>
+                    Number(!!b.followUpPriority) - Number(!!a.followUpPriority) ||
+                    effectiveDueMs(a) - effectiveDueMs(b)
+            ),
         [pendingVms]
     );
 

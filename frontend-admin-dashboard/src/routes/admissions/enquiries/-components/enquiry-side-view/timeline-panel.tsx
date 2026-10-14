@@ -38,6 +38,7 @@ import {
     CalendarCheck,
     GitMerge,
     WhatsappLogo,
+    Repeat,
 } from '@phosphor-icons/react';
 
 // ─── Action Type Icons & Colors ──────────────────────────────────────────────
@@ -120,6 +121,12 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
         icon: <WhatsappLogo weight="fill" className="size-4" />,
         color: 'text-info-600',
         bgColor: 'bg-info-100',
+    },
+    // An existing lead enquired again through a form, ad or list (repeat-lead handling).
+    REATTEMPT: {
+        icon: <Repeat weight="fill" className="size-4" />,
+        color: 'text-warning-600',
+        bgColor: 'bg-warning-100',
     },
     DEFAULT: {
         icon: <PushPin weight="fill" className="size-4" />,

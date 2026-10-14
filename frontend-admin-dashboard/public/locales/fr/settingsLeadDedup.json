@@ -74,6 +74,39 @@
         "blockOwnedManualAdd": {
             "label": "Empêcher les conseillers d'ajouter le prospect d'un autre conseiller",
             "hint": "Quand un conseiller ajoute un prospect à la main et que le téléphone appartient déjà au prospect d'un autre conseiller, afficher le propriétaire et ne pas l'ajouter. Les administrateurs peuvent toujours l'ajouter."
+        },
+        "reattempt": {
+            "title": "Nouvelle tentative (un prospect existant se manifeste à nouveau)",
+            "hint": "Ce que laisse une demande répétée. Chaque option fonctionne seule.",
+            "markDuplicate": {
+                "label": "Marquer la répétition comme doublon",
+                "hint": "La nouvelle demande est marquée comme doublon du prospect qu'elle répète, pour la distinguer et la filtrer."
+            },
+            "duplicateOpenOnly": {
+                "label": "Seulement si le prospect précédent est ouvert",
+                "hint": "Une répétition n'est un doublon que si le prospect précédent n'est ni converti ni écarté. Celle d'un prospect converti ou écarté arrive comme un nouveau prospect."
+            },
+            "journeyEntry": {
+                "label": "Ajouter une entrée Nouvelle tentative au parcours",
+                "hint": "Le parcours du prospect d'origine indique quand et par quelle source la personne s'est à nouveau manifestée."
+            },
+            "notifyOwner": {
+                "label": "Avertir le conseiller du prospect",
+                "hint": "Le conseiller propriétaire reçoit une notification Nouvelle tentative (pas s'il l'a ajoutée lui-même)."
+            },
+            "followUp": {
+                "label": "Ouvrir un suivi prioritaire",
+                "hint": "Un suivi immédiat est ouvert pour le conseiller du prospect, qui apparaît en tête de la page Suivis jusqu'à sa clôture."
+            },
+            "showBadge": {
+                "label": "Afficher un badge Doublon dans les tableaux",
+                "hint": "Les demandes en double affichent un badge Doublon à côté du nom du prospect."
+            },
+            "tier": {
+                "label": "Passer {{tier}} à",
+                "hint": "Le {{tier}} du prospect prend cette valeur quand la personne se manifeste à nouveau.",
+                "keep": "Ne pas modifier"
+            }
         }
     },
     "counsellorPicker": {

@@ -19,7 +19,8 @@
         "followupScheduled": "تمت جدولة المتابعة",
         "statusChange": "تم تغيير الحالة",
         "fallback": "حدث",
-        "reEnquiry": "تواصل مجددًا"
+        "reEnquiry": "تواصل مجددًا",
+        "reattempt": "محاولة جديدة"
     },
     "statusChangeMeta": {
         "previous": "السابق"

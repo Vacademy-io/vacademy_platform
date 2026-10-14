@@ -79,6 +79,8 @@ export interface CampaignUserTable {
     // TAT / follow-up SLA deadlines + badge (visual only)
     _tat_due_at?: string | null;
     _tat_due_overridden?: boolean | null; // admin set the TAT deadline by hand
+    _is_duplicate?: boolean | null; // enquiry repeats an existing lead
+    _follow_up_priority?: boolean | null; // open priority follow-up (reattempt)
     _first_response_at?: string | null; // drives "Responded in N" in the Reach-out-by cell
     _follow_up_due_at?: string | null;
     _tat_overdue?: boolean | null;

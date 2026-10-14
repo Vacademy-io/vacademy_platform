@@ -41,6 +41,7 @@ import {
     ArrowsClockwise,
     WhatsappLogo,
     type Icon as PhosphorIcon,
+    Repeat,
 } from '@phosphor-icons/react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -165,6 +166,13 @@ function buildActionConfig(t: TFunction): Record<string, ActionConfig> {
             dotBg: 'bg-info-50 ring-info-200',
             iconColor: 'text-info-600',
             label: t('actionConfig.reEnquiry'),
+        },
+        // An existing lead enquired again through a form, ad or list (repeat-lead handling).
+        REATTEMPT: {
+            Icon: Repeat,
+            dotBg: 'bg-warning-50 ring-warning-200',
+            iconColor: 'text-warning-600',
+            label: t('actionConfig.reattempt'),
         },
         PAYMENT_RECEIVED: {
             Icon: CurrencyCircleDollar,

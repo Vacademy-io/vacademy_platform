@@ -92,6 +92,10 @@ export const RecentLeadsSearchSchema = z.object({
      *  what its label says. Absent = nothing pinned, i.e. the old behaviour. */
     /** When '1', the picked statuses mean "everything EXCEPT these". */
     statusExclude: looseString.optional(),
+    /** Route-owned duplicate filter: 'exclude' hides enquiries flagged as duplicates of a lead
+     *  they repeat (so a repeat does not add to the count), 'only' lists just them (a
+     *  Duplicate Leads tab). Absent = no filter. */
+    duplicates: looseString.optional(),
     lock: looseString.optional(),
     calledFrom: looseString.optional(),
     calledTo: looseString.optional(),

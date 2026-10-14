@@ -40,6 +40,11 @@ public class LeadFollowup {
     @Builder.Default
     private Boolean isClosed = false;
 
+    /** Opened for a repeat-lead reattempt; the Follow-ups page lists these leads first. */
+    @Column(name = "is_priority", nullable = false)
+    @Builder.Default
+    private Boolean isPriority = false;
+
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 

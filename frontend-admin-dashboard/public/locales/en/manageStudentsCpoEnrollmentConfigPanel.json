@@ -42,6 +42,7 @@
         "offlineLabelBold": "Record an offline payment.",
         "offlineLabelRest": "Applied across installments earliest first.",
         "amountLabel": "Amount (₹)",
+        "firstDue": "First installment: {{amount}}",
         "netDues": "Net dues: {{amount}}",
         "referenceLabel": "Reference (optional)",
         "referencePlaceholder": "e.g. cheque #1234"
@@ -61,6 +62,7 @@
             "months": "months"
         },
         "reset": "Reset to even split",
+        "rebalance": "Spread changes over the other installments",
         "monthsHint": "Same date each month; short months use their last day.",
         "afterDiscount": "After discount",
         "multiFeeHint": "This plan splits more than one fee, so only the dates can be changed here. Edit single installments from the student’s Fee Plan after enrolling.",

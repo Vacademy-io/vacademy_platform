@@ -39,6 +39,8 @@
         "addPaymentButton": "+ भुगतान जोड़ें",
         "heading": "भुगतान जोड़ें",
         "amountLabel": "राशि (₹)",
+        "nextDue": "अगली किस्त {{amount}}",
+        "allDues": "पूरा बकाया {{amount}}",
         "dateLabel": "तारीख",
         "referenceLabel": "संदर्भ",
         "referencePlaceholder": "चेक नंबर, UPI संदर्भ…",

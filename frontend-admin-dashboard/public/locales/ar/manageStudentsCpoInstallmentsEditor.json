@@ -39,6 +39,8 @@
         "addPaymentButton": "+ إضافة دفعة",
         "heading": "إضافة دفعة",
         "amountLabel": "المبلغ (₹)",
+        "nextDue": "القسط التالي {{amount}}",
+        "allDues": "كل المستحقات {{amount}}",
         "dateLabel": "التاريخ",
         "referenceLabel": "المرجع",
         "referencePlaceholder": "رقم الشيك، مرجع UPI…",

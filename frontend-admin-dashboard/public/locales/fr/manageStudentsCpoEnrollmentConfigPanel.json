@@ -42,6 +42,7 @@
         "offlineLabelBold": "Enregistrer un paiement hors ligne.",
         "offlineLabelRest": "Appliqué aux échéances les plus proches en premier.",
         "amountLabel": "Montant (₹)",
+        "firstDue": "Première échéance : {{amount}}",
         "netDues": "Solde net dû : {{amount}}",
         "referenceLabel": "Référence (facultatif)",
         "referencePlaceholder": "ex. chèque n°1234"
@@ -61,6 +62,7 @@
             "months": "mois"
         },
         "reset": "Revenir à une répartition égale",
+        "rebalance": "Répartir la différence sur les autres échéances",
         "monthsHint": "Même date chaque mois ; les mois plus courts prennent leur dernier jour.",
         "afterDiscount": "Après remise",
         "multiFeeHint": "Ce plan répartit plusieurs frais : seules les dates peuvent être modifiées ici. Modifiez une échéance précise depuis le plan de frais de l’élève après l’inscription.",

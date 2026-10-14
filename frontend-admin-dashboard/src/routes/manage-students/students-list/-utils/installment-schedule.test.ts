@@ -4,6 +4,7 @@ import {
     equalSplit,
     generateDueDates,
     partsFromFeeTypes,
+    rebalanceRows,
     rowsFromRule,
     validateSchedule,
     type SchedulePart,
@@ -142,5 +143,36 @@ describe('validateSchedule — review follow-ups', () => {
                 60
             )?.key
         ).toBe('schedule.errors.decimals');
+    });
+});
+
+describe('rebalanceRows', () => {
+    const rows = ['2026-10-14', '2026-11-14', '2026-12-14', '2027-01-14'].map((d) => ({
+        due_date: d,
+        amount: 5000,
+    }));
+
+    it('spreads the rest over the later installments when one is raised', () => {
+        expect(rebalanceRows(rows, 0, 10000, 20000).map((r) => r.amount)).toEqual([
+            10000, 3334, 3333, 3333,
+        ]);
+    });
+
+    it('keeps earlier installments and spreads over the later ones', () => {
+        expect(rebalanceRows(rows, 1, 2000, 20000).map((r) => r.amount)).toEqual([
+            5000, 2000, 6500, 6500,
+        ]);
+    });
+
+    it('spreads over the earlier installments when the last one is edited', () => {
+        expect(rebalanceRows(rows, 3, 8000, 20000).map((r) => r.amount)).toEqual([
+            4000, 4000, 4000, 8000,
+        ]);
+    });
+
+    it('changes only the edited row when it exceeds what is left', () => {
+        expect(rebalanceRows(rows, 0, 25000, 20000).map((r) => r.amount)).toEqual([
+            25000, 5000, 5000, 5000,
+        ]);
     });
 });

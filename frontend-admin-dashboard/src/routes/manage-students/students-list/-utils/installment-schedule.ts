@@ -193,3 +193,35 @@ export const validateSchedule = (
 
 export const formatInr = (n: number) =>
     Number.isFinite(n) ? `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—';
+
+/**
+ * After the admin sets installment `index` to `amount`, spread what is left of `total` evenly
+ * over the installments after it (or, when the last one was edited, over those before it), so
+ * the schedule keeps adding up to the fee. Whole units, remainder on the first spread row.
+ * When the edited amount leaves nothing (or less than nothing) to spread, only the edited row
+ * changes and validation explains the problem.
+ */
+export const rebalanceRows = (
+    rows: InstallmentScheduleRow[],
+    index: number,
+    amount: number,
+    total: number
+): InstallmentScheduleRow[] => {
+    const next = rows.map((r, k) => ({ ...r, amount: k === index ? amount : r.amount ?? 0 }));
+    const n = next.length;
+    if (n < 2) return next;
+    const targets =
+        index < n - 1
+            ? Array.from({ length: n - 1 - index }, (_, i) => index + 1 + i)
+            : Array.from({ length: n - 1 }, (_, i) => i);
+    const fixedPaise = next
+        .filter((_, k) => !targets.includes(k))
+        .reduce((s, r) => s + Math.round((r.amount ?? 0) * 100), 0);
+    const remaining = (Math.round(total * 100) - fixedPaise) / 100;
+    if (remaining < 0) return next;
+    const shares = equalSplit(remaining, targets.length);
+    targets.forEach((k, i) => {
+        next[k] = { ...next[k]!, amount: shares[i] ?? 0 };
+    });
+    return next;
+};

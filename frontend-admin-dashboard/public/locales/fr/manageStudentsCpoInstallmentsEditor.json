@@ -39,6 +39,8 @@
         "addPaymentButton": "+ Ajouter un paiement",
         "heading": "Ajouter un paiement",
         "amountLabel": "Montant (₹)",
+        "nextDue": "Prochaine échéance {{amount}}",
+        "allDues": "Tout le solde {{amount}}",
         "dateLabel": "Date",
         "referenceLabel": "Référence",
         "referencePlaceholder": "n° de chèque, réf. UPI…",

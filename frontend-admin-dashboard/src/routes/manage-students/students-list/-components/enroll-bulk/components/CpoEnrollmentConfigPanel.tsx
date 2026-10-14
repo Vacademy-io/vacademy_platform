@@ -11,6 +11,7 @@ import {
     MAX_INSTALLMENTS,
     initialSchedule,
     partsFromFeeTypes,
+    rowsFromRule,
     validateSchedule,
     type SchedulePart,
 } from '@/routes/manage-students/students-list/-utils/installment-schedule';
@@ -255,6 +256,44 @@ export const CpoEnrollmentConfigPanel = ({
         return { net, cpoDiscountAmt: off, netFactor: scheduleGross > 0 ? net / scheduleGross : 1 };
     }, [cfg.cpo_discount, scheduleGross]);
     const totals = isCustom ? scheduleTotals : breakdown;
+    /**
+     * What falls due first, after discount: the usual amount collected at enrollment, so it
+     * prefills the offline payment. Custom schedule: installment 1 plus the fees paid upfront
+     * on its date. Plan schedule: the rows with the earliest due date plus one-off fees.
+     */
+    const firstDueNet = useMemo(() => {
+        if (customSchedule) {
+            const splitParts = scheduleParts.filter((p) => p.split);
+            const first = (customSchedule.rows ?? rowsFromRule(customSchedule, splitParts))[0];
+            if (!first) return totals.net;
+            const gross =
+                (first.amount ?? rowsFromRule(customSchedule, splitParts)[0]?.amount ?? 0) +
+                scheduleParts.filter((p) => !p.split).reduce((s, p) => s + p.total, 0);
+            return Math.round(gross * scheduleTotals.netFactor * 100) / 100;
+        }
+        const dueOf = (r: InstallmentRow) =>
+            (overridesById.get(r.id)?.due_date ?? r.dueDate)?.slice(0, 10) ?? null;
+        const dated = installments.map(dueOf).filter((d): d is string => d != null);
+        const earliest = dated.length > 0 ? dated.reduce((a, b) => (b < a ? b : a)) : null;
+        const minNumber = installments.reduce((m, r) => Math.min(m, r.installmentNumber), Infinity);
+        const sum = installments
+            .filter((r) => {
+                const due = dueOf(r);
+                return earliest
+                    ? due == null || due === earliest
+                    : r.installmentNumber === minNumber;
+            })
+            .reduce((s, r) => s + (breakdown.effectiveByRow.get(r.id) ?? r.amount), 0);
+        return sum > 0 ? Math.round(sum * 100) / 100 : totals.net;
+    }, [
+        customSchedule,
+        scheduleParts,
+        scheduleTotals,
+        installments,
+        overridesById,
+        breakdown,
+        totals.net,
+    ]);
 
     // Helpers ----------------------------------------------------------------
 
@@ -294,6 +333,22 @@ export const CpoEnrollmentConfigPanel = ({
 
     const setPayment = (patch: Partial<CpoEnrollmentConfig>) =>
         onChange({ ...cfg, ...patch });
+
+    // While the amount is still the prefill, keep it in step with the schedule (e.g. the
+    // admin raises installment 1 after choosing "record a payment"). A typed amount stays.
+    const prefilledAmount = useRef<number | null>(null);
+    useEffect(() => {
+        if (cfg.payment_mode !== 'OFFLINE') return;
+        if (cfg.payment_amount === firstDueNet) {
+            prefilledAmount.current = firstDueNet;
+            return;
+        }
+        if (prefilledAmount.current != null && cfg.payment_amount === prefilledAmount.current) {
+            prefilledAmount.current = firstDueNet;
+            setPayment({ payment_amount: firstDueNet });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [firstDueNet, cfg.payment_mode, cfg.payment_amount]);
 
     // Local string state for amount input so blank entries stay blank
     const [paymentInput, setPaymentInput] = useState<string>(
@@ -626,7 +681,7 @@ export const CpoEnrollmentConfigPanel = ({
                                     payment_amount:
                                         cfg.payment_amount && cfg.payment_amount > 0
                                             ? cfg.payment_amount
-                                            : totals.net,
+                                            : firstDueNet,
                                 })
                             }
                             className="h-3.5 w-3.5"
@@ -658,6 +713,7 @@ export const CpoEnrollmentConfigPanel = ({
                                 className="w-full rounded border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-primary-300"
                             />
                             <p className="mt-1 text-2xs text-neutral-500">
+                                {t('payment.firstDue', { amount: fmt(firstDueNet) })} ·{' '}
                                 {t('payment.netDues', { amount: fmt(totals.net) })}
                             </p>
                         </div>

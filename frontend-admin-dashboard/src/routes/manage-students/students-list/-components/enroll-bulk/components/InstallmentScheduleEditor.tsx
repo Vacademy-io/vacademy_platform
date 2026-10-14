@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
     InstallmentIntervalUnit,
@@ -8,6 +8,7 @@ import type {
 import {
     MAX_INSTALLMENTS,
     formatInr,
+    rebalanceRows,
     rowsFromRule,
     type ScheduleError,
     type SchedulePart,
@@ -51,6 +52,9 @@ export const InstallmentScheduleEditor = ({
     const generated = useMemo(() => rowsFromRule(schedule, splitParts), [schedule, splitParts]);
     const rows: InstallmentScheduleRow[] = schedule.rows ?? generated;
     const edited = schedule.rows != null;
+    // On by default: changing one amount spreads the difference over the other installments
+    // so the schedule still adds up to the fee. Off: every row is edited on its own.
+    const [rebalance, setRebalance] = useState(true);
 
     // Changing the rule discards row edits: the rows are regenerated from it, and the
     // backend regenerates the same rows when none are sent.
@@ -65,6 +69,18 @@ export const InstallmentScheduleEditor = ({
         }));
         base[index] = { ...base[index]!, ...patch };
         onChange({ ...schedule, rows: base });
+    };
+
+    const updateAmount = (index: number, amount: number | null) => {
+        if (amount == null || !rebalance || !amountsEditable) {
+            updateRow(index, { amount });
+            return;
+        }
+        const base = rows.map((r, k) => ({
+            due_date: r.due_date,
+            amount: r.amount ?? generated[k]?.amount ?? 0,
+        }));
+        onChange({ ...schedule, rows: rebalanceRows(base, index, amount, splitParts[0]!.total) });
     };
 
     const unit: InstallmentIntervalUnit = schedule.interval?.unit ?? 'MONTHS';
@@ -181,12 +197,12 @@ export const InstallmentScheduleEditor = ({
                                                     min={0}
                                                     value={row.amount ?? ''}
                                                     onChange={(e) =>
-                                                        updateRow(k, {
-                                                            amount:
-                                                                e.target.value === ''
-                                                                    ? null
-                                                                    : Number(e.target.value),
-                                                        })
+                                                        updateAmount(
+                                                            k,
+                                                            e.target.value === ''
+                                                                ? null
+                                                                : Number(e.target.value)
+                                                        )
                                                     }
                                                     className={`${inputClass} w-24 text-end`}
                                                 />
@@ -207,6 +223,17 @@ export const InstallmentScheduleEditor = ({
                 </div>
             )}
 
+            {amountsEditable && rows.length > 1 && (
+                <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-2xs text-neutral-600">
+                    <input
+                        type="checkbox"
+                        checked={rebalance}
+                        onChange={(e) => setRebalance(e.target.checked)}
+                        className="size-3.5 accent-primary-500"
+                    />
+                    {t('schedule.rebalance')}
+                </label>
+            )}
             {!amountsEditable && splitParts.length > 1 && (
                 <p className="mt-1 text-2xs text-neutral-500">{t('schedule.multiFeeHint')}</p>
             )}

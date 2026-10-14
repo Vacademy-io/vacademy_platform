@@ -39,6 +39,8 @@
         "addPaymentButton": "+ Add Payment",
         "heading": "Add Payment",
         "amountLabel": "Amount (₹)",
+        "nextDue": "Next installment {{amount}}",
+        "allDues": "All dues {{amount}}",
         "dateLabel": "Date",
         "referenceLabel": "Reference",
         "referencePlaceholder": "cheque #, UPI ref…",

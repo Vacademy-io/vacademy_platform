@@ -476,10 +476,30 @@ interface OfflineProps {
     userPlanId: string;
     userId: string;
     outstanding: number;
+    /** Outstanding on the earliest-due unpaid installment(s): what the payment usually covers. */
+    nextDue: number;
     currency?: string | null;
 }
 
-const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: OfflineProps) => {
+/** Payments settle installments in due-date order, so the next one is the usual amount. */
+const nextDueOutstanding = (rows: CpoInstallmentRow[]): number => {
+    const open = rows.filter((r) => r.status !== 'WAIVED' && Number(r.outstanding) > 0);
+    if (open.length === 0) return 0;
+    const dueOf = (r: CpoInstallmentRow) => r.due_date?.slice(0, 10) ?? '';
+    const earliest = open.map(dueOf).reduce((a, b) => (b < a ? b : a));
+    const sum = open
+        .filter((r) => dueOf(r) === earliest)
+        .reduce((s, r) => s + Number(r.outstanding), 0);
+    return Math.round(sum * 100) / 100;
+};
+
+const OfflinePaymentForm = ({
+    userPlanId,
+    userId,
+    outstanding,
+    nextDue,
+    currency,
+}: OfflineProps) => {
     const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync, isPending } = useRecordOfflinePayment(userPlanId, userId);
     const [open, setOpen] = useState(false);
@@ -523,7 +543,8 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: Offli
             <button
                 type="button"
                 onClick={() => {
-                    setAmount(outstanding > 0 ? String(outstanding) : '');
+                    const prefill = nextDue > 0 ? nextDue : outstanding;
+                    setAmount(prefill > 0 ? String(prefill) : '');
                     setOpen(true);
                 }}
                 className="rounded border border-primary-300 bg-primary-50 px-3 py-1 text-2xs font-medium text-primary-700 hover:bg-primary-100"
@@ -554,6 +575,26 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: Offli
                         onFocus={(e) => e.currentTarget.select()}
                         className="w-32 rounded border border-neutral-200 px-2 py-1 text-2xs"
                     />
+                    {nextDue > 0 && outstanding > nextDue && (
+                        <div className="mt-1 flex gap-2 text-2xs">
+                            <button
+                                type="button"
+                                onClick={() => setAmount(String(nextDue))}
+                                className="font-medium text-primary-600 hover:underline"
+                            >
+                                {t('offlinePayment.nextDue', { amount: fmt(nextDue, currency) })}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAmount(String(outstanding))}
+                                className="font-medium text-primary-600 hover:underline"
+                            >
+                                {t('offlinePayment.allDues', {
+                                    amount: fmt(outstanding, currency),
+                                })}
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <div>
                     <label className="block text-2xs text-neutral-500">{t('offlinePayment.dateLabel')}</label>
@@ -703,6 +744,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                 userPlanId={data.user_plan_id}
                                 userId={userId}
                                 outstanding={data.outstanding_total}
+                                nextDue={nextDueOutstanding(data.installments)}
                                 currency={summary.currency}
                             />
                         </>

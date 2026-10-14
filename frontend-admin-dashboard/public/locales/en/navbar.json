@@ -48,7 +48,11 @@
         "username": "Username:",
         "contactInformation": "Contact Information",
         "email": "Email:",
-        "mobile": "Mobile:"
+        "mobile": "Mobile:",
+        "usernameLabel": "Username",
+        "emailLabel": "Email",
+        "mobileLabel": "Mobile",
+        "notProvided": "Not provided"
     },
     "institute": {
         "viewInstituteDetails": "View Institute Details",
@@ -63,7 +67,15 @@
         "cityVillage": "City/Village:",
         "state": "State:",
         "country": "Country:",
-        "pincode": "Pincode:"
+        "pincode": "Pincode:",
+        "emailLabel": "Email",
+        "mobileLabel": "Mobile",
+        "websiteLabel": "Website",
+        "addressLabel": "Address",
+        "cityLabel": "City/Village",
+        "stateLabel": "State",
+        "countryLabel": "Country",
+        "pincodeLabel": "Pincode"
     },
     "instituteSwitcher": {
         "currentInstitute": "Current institute",

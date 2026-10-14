@@ -33,7 +33,8 @@
         "contactInformation": "Contact Information"
     },
     "actions": {
-        "saveChanges": "Save Changes"
+        "saveChanges": "Save Changes",
+        "cancel": "Cancel"
     },
     "toast": {
         "updateSuccess": "Your details have been updated successfully!"

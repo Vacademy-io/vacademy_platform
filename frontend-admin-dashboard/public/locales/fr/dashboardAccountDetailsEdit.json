@@ -1,5 +1,6 @@
 {
     "dialogTitle": "Modifier les détails du compte",
+    "signOutNote": "Vous serez déconnecté après la mise à jour et devrez vous reconnecter avec vos nouveaux identifiants.",
     "username": {
         "sectionTitle": "Nom d'utilisateur",
         "label": "Nom d'utilisateur*",

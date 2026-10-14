@@ -453,6 +453,15 @@ class TranscriptCollector(FrameProcessor):
         # A call-screening prompt was heard: the opening went to a recorder,
         # and the human's first hello must get it again (consumed by the resay).
         self.screener_seen = False
+        # STICKY: the line was screened at some point. screener_seen is cleared
+        # by the first "human" turn, and the screen's own "Thanks." is one —
+        # call 68bdcbcf (2026-10-14): "Thanks." cleared it, the screen's "Please
+        # stay on the line." then started an ordinary hold, and the person who
+        # came back was told "do NOT introduce yourself" having heard nothing.
+        # _heard_since_screen: someone has demonstrably heard us since (the
+        # opening re-said to their pickup, or a real 3+ word answer).
+        self._screened = False
+        self._heard_since_screen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -685,6 +694,8 @@ class TranscriptCollector(FrameProcessor):
                 self._carrier_seen = True
                 if is_call_screener(text):
                     self.screener_seen = True
+                    self._screened = True
+                    self._heard_since_screen = False
                 if self._hold_since:
                     # "…has put your call on hold." is a carrier phrase too; it is
                     # still a piece of the hold recording for the scrap timing.
@@ -737,6 +748,7 @@ class TranscriptCollector(FrameProcessor):
                     self._last_text_t = now
                     self._outcome.transcript.append({"role": "user", "text": text})
                     self._human_turns += 1
+                    self._heard_since_screen = True
                     self._on_activity(user=True)
                     self._on_transcript(backchannel=True)
                     if self._duck is not None and self._duck.is_ducked():
@@ -755,6 +767,8 @@ class TranscriptCollector(FrameProcessor):
                     # whatever we said went to the recording, so this person has
                     # heard nothing — "do not introduce yourself" would be wrong.
                     cue = HOLD_FIRST_CUE if self._hold_unheard else HOLD_RESUME_CUE
+                    if self._hold_unheard:
+                        self._heard_since_screen = True     # the model introduces us now
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": cue}]),
                         FrameDirection.DOWNSTREAM)
@@ -839,16 +853,28 @@ class TranscriptCollector(FrameProcessor):
             if ((self._human_turns > 0 or self._bot_spoke_once()) and not back_from_hold
                     and (is_hold_announcement(text) or joined_hold)):
                 self._hold_since = now
-                # Nobody has heard us yet: the bot has not spoken, or the opening
-                # is still owed (it played into the IVR, cut before half of it).
-                self._hold_unheard = not self._bot_spoke_once() or self._opening_owed()
+                # Nobody has heard us yet: the bot has not spoken, the opening
+                # is still owed (it played into the IVR, cut before half of it),
+                # or it played in full to a call screener and nobody has heard
+                # us since (call 68bdcbcf, 2026-10-14: "Thanks." / "Please stay
+                # on the line." from the screen — the person's "Hello." then got
+                # "do NOT introduce yourself" and hung up without a name).
+                self._hold_unheard = (not self._bot_spoke_once() or self._opening_owed()
+                                      or (self._screened and not self._heard_since_screen))
                 if self._diag is not None:
                     self._diag.bump("holds")
                 logger.info("turn-gate: the call is on hold (%r) — quiet until the person "
-                            "is back", text[:40])
+                            "is back%s", text[:40],
+                            " (they have not heard us)" if self._hold_unheard else "")
                 if self._is_bot_speaking() or self._reply_in_flight():
                     # Nobody is listening to the rest of it.
                     await self.broadcast_interruption()
+                # A verbatim resume waiting out its settle would play into the
+                # hold; the words are un-recorded so the model may say them when
+                # the person is back. Runs (replies, cues, re-asks) are dropped
+                # at RunGuard's door while on hold (calls 22f80a85, d8146538,
+                # 68bdcbcf, 2026-10-14).
+                self._cancel_resume_check(stale=True)
                 await self._absorb_hold_line(frame, direction, text)
                 return
             ducked = self._duck is not None and self._duck.is_ducked()
@@ -931,6 +957,12 @@ class TranscriptCollector(FrameProcessor):
             # hello itself is the pickup the resay below is for — not this.
             if not (is_audio_check(text) or caller_checking_presence(text)):
                 self.screener_seen = False
+            # A real answer means a person is on the line hearing us. The
+            # screen's own relays are one or two words ("Available.", "Thanks.",
+            # calls d8146538 / 68bdcbcf) and must not count.
+            if (self._screened and len(text.split()) >= 3
+                    and not (is_call_screener(text) or is_screener_hold(text))):
+                self._heard_since_screen = True
             self._on_activity(user=True)
             # We said goodbye and they said "Thank you." / "Okay, bye." That is
             # their goodbye, not re-engagement. Call 82c1f95a (2026-09-15): it
@@ -958,6 +990,7 @@ class TranscriptCollector(FrameProcessor):
                     logger.info("turn-gate: person picked up mid-opening — cutting it to restart")
                     await self.broadcast_interruption()
                 if await self._resay_opening(text, force=True):
+                    self._heard_since_screen = True
                     self._on_transcript(backchannel=True)
                     if self._duck is not None and self._duck.is_ducked():
                         await self._on_absorb(None)
@@ -1571,7 +1604,7 @@ class TranscriptCollector(FrameProcessor):
         async def _later():
             try:
                 await asyncio.sleep(self._noise_reask_wait_secs)
-                if self._last_text_t > stop_t:
+                if self._last_text_t > stop_t or self._hold_line_t > stop_t:
                     return                      # it was words, and they were handled
                 if self._is_bot_speaking() or self._reply_pending():
                     return
@@ -1589,6 +1622,12 @@ class TranscriptCollector(FrameProcessor):
         """Their turn was answered by a generation that a noise cancelled before
         one word of it played. Ask for that answer again — not for them to
         repeat themselves, which is what the orphan re-ask used to do."""
+        if self._hold_since:
+            # Nobody is there to hear it. Call 22f80a85 (2026-10-14): the
+            # screen's "Please stay on the line." landed after the VAD stop, was
+            # absorbed as the hold, and 1 s later this re-asked into the hold —
+            # with the hold line itself as "their turn".
+            return False
         t = self._outcome.transcript
         if not t or t[-1].get("role") != "user":
             return False                       # the last thing heard was ours
@@ -1615,8 +1654,8 @@ class TranscriptCollector(FrameProcessor):
         round trip (1.7-5.9 s of silence, fifteen times) and the re-generated
         sentence lost its opening clause to the no-echo trimmer, so the parent
         heard "नाम क्या है…" and had to ask "किसका नाम?"."""
-        if self._resume_unplayed is None:
-            return False
+        if self._resume_unplayed is None or self._hold_since:
+            return False                       # on hold: nobody is there to hear it
         try:
             tail = self._resume_unplayed(self._resume_max_chars)
         except Exception:
@@ -1653,7 +1692,7 @@ class TranscriptCollector(FrameProcessor):
         model instead of leaving them marked as said."""
         try:
             await asyncio.sleep(self._resume_settle_secs)
-            if self._resume_stale:
+            if self._resume_stale or self._hold_since:
                 return
             logger.info("turn-gate: resume → pushing %d words", len(text.split()))
             await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
@@ -3401,8 +3440,12 @@ class RunGuard(FrameProcessor):
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
-                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None):
+                 supersede=None, reply_unheard=None, runs_noted=None, before_run=None,
+                 on_hold=None):
         super().__init__()
+        # The person has put us on hold (TranscriptCollector.on_hold_for): no run
+        # goes to the LLM, whoever started it — see _let_through.
+        self._on_hold = on_hold or (lambda: False)
         # A frame to push ahead of a run that goes through (the LLM switch back
         # to the primary after a failover) — None for nothing.
         self._before_run = before_run or (lambda: None)
@@ -3537,6 +3580,16 @@ class RunGuard(FrameProcessor):
             return (last, on_drop, for_reply)
         return None
 
+    def _cue_drop_reason(self, cue):
+        """Why the bot's own run must not go now (None = it may). On hold first,
+        at the door AND when a parked cue is released: call d8146538
+        (2026-10-14) parked a next-step cue 0.25 s before the hold began and
+        released it 1 s into it — 11.6 s of re-introduction to a call screener.
+        Dropped here, the cue is refunded (on_drop)."""
+        if self._on_hold():
+            return "the call is on hold"
+        return self._bot_run_drop_reason(cue[2])
+
     def _drop_cue(self, cue, why: str) -> None:
         """Take the cue out of the context (it never ran — the model must not
         see a stale instruction ahead of the caller's next words) and refund it."""
@@ -3599,7 +3652,7 @@ class RunGuard(FrameProcessor):
         self._held = None
         self._held_cue = None
         if cue is not None:
-            why = self._bot_run_drop_reason(cue[2])
+            why = self._cue_drop_reason(cue)
             if why:
                 self._drop_cue(cue, why + " (at release)")
                 return
@@ -3621,6 +3674,14 @@ class RunGuard(FrameProcessor):
         that newer run then reads "context unchanged" and is blocked, instead
         of being let through as a second run over the same context with
         nothing to supersede (review 2026-10-08, finding 5)."""
+        if self._on_hold():
+            # ONE door for the hold too: every run reaches the LLM through here,
+            # so nothing generated plays into a hold. Calls 2026-10-14: a caller
+            # turn still forming when the hold began ran on release and played
+            # 6 s into it (68bdcbcf); a parked next-step cue was released into
+            # it — 11.6 s of re-introduction to a call screener (d8146538).
+            self._drop_on_hold()
+            return
         self._pushed_t = time.time()
         msgs = None
         try:
@@ -3641,6 +3702,23 @@ class RunGuard(FrameProcessor):
         if pre is not None:
             await self.push_frame(pre, direction)
         await self.push_frame(frame, direction)
+
+    def _drop_on_hold(self) -> None:
+        """Drop a run while the call is on hold. The caller's words stay in the
+        context — the person's return line runs on top of them — but a steering
+        cue goes: the model must not read a stale instruction later."""
+        try:
+            last = self._last_user_text(self._context.get_messages())
+        except Exception:
+            last = ""
+        if self._diag is not None:
+            self._diag.bump("runs_dropped_on_hold")
+        if last.startswith("[") and last.endswith("]"):
+            on_drop = self._cues.get(last, (None, 0.0))[0]
+            self._drop_cue((last, on_drop), "the call is on hold")
+            return
+        logger.info("run-guard: the call is on hold — not answering %r now; it stays in "
+                    "the context for when the person is back", last[:32])
 
     async def _supersede_unheard(self, msgs=None) -> bool:
         """A newer caller run has arrived. If the run before it went to the LLM
@@ -3853,7 +3931,7 @@ class RunGuard(FrameProcessor):
                     # never over a caller whose turn is still forming (calls
                     # c05f6c83, 1d28af3a: a cue and the caller's turn each ran
                     # the model for the same moment).
-                    why = self._bot_run_drop_reason(cue[2])
+                    why = self._cue_drop_reason(cue)
                     if why:
                         self._drop_cue(cue, why)
                         return
@@ -6565,7 +6643,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          supersede=lambda: settings.run_supersede,
                          reply_unheard=_reply_unheard,
                          runs_noted=lambda: no_repeat.runs_noted(),
-                         before_run=lambda: _llm_return_frame())
+                         before_run=lambda: _llm_return_frame(),
+                         on_hold=lambda: transcript.on_hold_for() > 0)
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be

@@ -208,6 +208,9 @@ class CallDiagnostics:
     holds: int = 0
     hold_lines: int = 0
     hold_returns: int = 0
+    # Runs (replies, cues, re-asks) dropped at RunGuard's door while on hold —
+    # each one would have played into the hold (calls 68bdcbcf, d8146538).
+    runs_dropped_on_hold: int = 0
     # Sentences dropped because the bot had already said them this call.
     repeats_suppressed: int = 0
     # Replies that were ENTIRELY suppressed, so the caller got "Ji, boliye." —
@@ -1005,6 +1008,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "holds": d.holds,
                 "holdLines": d.hold_lines,
                 "holdReturns": d.hold_returns,
+                "runsDroppedOnHold": d.runs_dropped_on_hold,
                 "repeatsSuppressed": d.repeats_suppressed,
                 "echoesTrimmed": d.echoes_trimmed,
                 "handbacks": d.handbacks,

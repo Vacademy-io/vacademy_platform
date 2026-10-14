@@ -530,3 +530,286 @@ def test_run_bot_wires_the_hold_limit_into_the_watchdog():
     hold = hold[:hold.index("return")]
     assert "create_task" not in hold
     assert "_hold_recheck" not in src
+
+
+# ── the hold is a hard gate; a screener hand-off re-introduces ─────────────
+# Calls 22f80a85, d8146538, 68bdcbcf (2026-10-14): a phone call screener ("…record
+# your name and reason for calling…", then "Thanks." / "Please stay on the
+# line.") put the bot on hold, and something already queued or forming played
+# into the hold every time — a noise re-ask, a parked next-step cue, the run on
+# the screen's own "Thanks.". On 68bdcbcf the person then came back to "do NOT
+# introduce yourself" and never heard who was calling. Synthetic lines, the
+# calls' shapes and timings.
+
+SCREEN_PROMPT = "If you record your name and reason for calling I'll see if."
+
+
+def _screened_collector(rec, clock, resay):
+    tc = _collector(rec, bot_spoke_once=True, resay=resay)
+    machine = {"on": True}
+    tc._in_machine_window = lambda: machine["on"]
+    return tc, machine
+
+
+async def _screen_then_hold(tc, clock, machine):
+    """The screen's prompt, its relays and its hold line — the opening played
+    in full into its recorder (bot_spoke_once, not owed)."""
+    await _say(tc, clock, 3.9, SCREEN_PROMPT)
+    assert tc.screener_seen
+    await _say(tc, clock, 4.65, "Available.")     # d8146538: kept as a "human" turn
+    await _say(tc, clock, 16.7, "Thanks.")        # 68bdcbcf: the screen's courtesy word
+    assert not tc.screener_seen, "the precondition of the live failure"
+    await _say(tc, clock, 18.3, "Please stay on the line.")
+    assert tc._hold_since, "entered the hold"
+    machine["on"] = False
+
+
+@pytest.mark.asyncio
+async def test_a_screener_hold_resays_the_opening_to_the_person(clock):
+    """68bdcbcf: the person's "Hello." after the screen's hold gets the opening
+    from the top — never HOLD_RESUME_CUE ("do NOT introduce yourself")."""
+    rec = _Rec()
+    said = []
+
+    async def resay(text, force=False, cut_now=False):
+        said.append((text, force))
+        return True
+    tc, machine = _screened_collector(rec, clock, resay)
+    await _screen_then_hold(tc, clock, machine)
+    rec.clear()
+    await _say(tc, clock, 41.4, "Hello.")
+    assert tc.on_hold_for() == 0
+    assert said == [("Hello.", True)], said
+    assert b.HOLD_RESUME_CUE not in rec.cues()
+    assert rec.forwarded() == [], "the opening IS the reply to their hello"
+
+
+@pytest.mark.asyncio
+async def test_a_screener_hold_answered_with_a_question_gets_the_first_cue(clock):
+    """Their question takes over the opening: the model answers it and
+    introduces itself (HOLD_FIRST_CUE). Also the path when the re-say budget
+    is spent."""
+    rec = _Rec()
+    said = []
+
+    async def resay(text, force=False, cut_now=False):
+        said.append((text, force))
+        return False                               # budget spent / not scripted
+    tc, machine = _screened_collector(rec, clock, resay)
+    await _screen_then_hold(tc, clock, machine)
+    rec.clear()
+    await _say(tc, clock, 41.4, "Yes, who is calling?")
+    assert rec.cues()[0] == b.HOLD_FIRST_CUE, rec.cues()
+    assert b.HOLD_RESUME_CUE not in rec.cues()
+    assert rec.forwarded() == ["Yes, who is calling?"]
+
+
+@pytest.mark.asyncio
+async def test_a_hold_after_the_person_answered_past_a_screen_does_not_reintroduce(clock):
+    """The screen is history once the person has really answered us: a later
+    hold is an ordinary one, and their return gets HOLD_RESUME_CUE — the
+    opening replayed mid-call is what the 196838de fix exists to prevent."""
+    rec = _Rec()
+    said = []
+
+    async def resay(text, force=False, cut_now=False):
+        said.append((text, force))
+        return True
+    tc, machine = _screened_collector(rec, clock, resay)
+    await _say(tc, clock, 3.9, SCREEN_PROMPT)
+    machine["on"] = False
+    await _say(tc, clock, 30.0, "हाँ जी, मैं उसकी मम्मी बोल रही हूँ")
+    await _say(tc, clock, 45.0, "आप जिस व्यक्ति से बात कर रहे हैं।")
+    assert tc._hold_since
+    rec.clear()
+    await _say(tc, clock, 70.0, "Hello.")
+    assert said == []
+    assert rec.cues()[0] == b.HOLD_RESUME_CUE
+
+
+async def _vad(tc, clock, at, on):
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    clock.t = 10_000.0 + at
+    await tc.process_frame(VADUserStartedSpeakingFrame() if on else VADUserStoppedSpeakingFrame(),
+                           b.FrameDirection.UPSTREAM)
+
+
+def _runs(rec):
+    return [f for f in rec.frames if getattr(f, "run_llm", False)]
+
+
+@pytest.mark.asyncio
+async def test_no_noise_reask_into_a_hold_that_began_after_the_voice_stop(clock):
+    """22f80a85: "Please stay on the line." stopped the voice (cut reply → the
+    noise re-ask armed), its final arrived 50 ms later and started the hold,
+    and 1 s on the re-ask ran the model into the hold with the hold line as
+    "their turn"."""
+    import asyncio
+    rec = _Rec()
+    tc = _collector(rec)
+    tc._resume_on_stop_secs = 1.5
+    tc._noise_reask_wait_secs = 0.05
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी, धन्यवाद।"})
+    await _say(tc, clock, 21.3, "Thanks.")
+    rec.clear()
+    await _vad(tc, clock, 22.2, True)
+    await _vad(tc, clock, 23.2, False)
+    await _say(tc, clock, 23.25, "Please stay on the line.")
+    assert tc._hold_since
+    await asyncio.sleep(0.2)
+    assert _runs(rec) == [], rec.cues()
+    assert await tc._answer_never_arrived(b.FrameDirection.DOWNSTREAM, 0.96) is False
+
+
+@pytest.mark.asyncio
+async def test_a_pending_resume_never_plays_into_the_hold(clock):
+    """A verbatim resume waiting out its settle when the hold begins is
+    cancelled, and none starts while on hold."""
+    import asyncio
+    rec = _Rec()
+    tc = _collector(rec)
+    tc._resume_unplayed = lambda n=600: "फीस हर महीने की है।"
+    tc._resume_settle_secs = 0.05
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    await _say(tc, clock, 40.0, "आप जिस व्यक्ति से बात कर रहे हैं।")
+    assert tc._hold_since
+    await asyncio.sleep(0.2)
+    try:
+        assert not [f for f in rec.frames if isinstance(f, b.TTSSpeakFrame)], rec.frames
+        assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test") is False
+    finally:
+        tc._cancel_resume_check()
+
+
+# RunGuard: the one door every run goes through.
+
+class _Ctx:
+    def __init__(self, msgs):
+        self.messages = list(msgs)
+
+    def get_messages(self):
+        return self.messages
+
+    def set_messages(self, msgs):
+        self.messages = list(msgs)
+
+
+_CONVO = [{"role": "system", "content": "…"},
+          {"role": "user", "content": "[NOW deliver your opening…]"},
+          {"role": "assistant", "content": "नमस्ते जी, मैं श्रेया बोल रही हूँ।"}]
+
+
+@pytest.fixture
+def guard(monkeypatch):
+    import asyncio
+    import app.diagnostics as dg
+    monkeypatch.setattr(b.FrameProcessor, "process_frame", _noop_super)
+    state = {"hold": False}
+
+    def make(**kw):
+        d = dg.CallDiagnostics()
+        ctx = _Ctx(_CONVO)
+        passed = []
+        g = b.RunGuard(ctx, enabled=lambda: True, diag=d,
+                       on_hold=lambda: state["hold"], **kw)
+
+        async def _push(frame, direction=None):
+            passed.append(frame)
+        g.push_frame = _push
+        g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+        return g, ctx, passed, d
+    make.state = state
+    return make
+
+
+def _texts(ctx):
+    return [m.get("content") for m in ctx.messages]
+
+
+@pytest.mark.asyncio
+async def test_run_guard_drops_a_caller_run_on_hold_and_keeps_its_words(guard):
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, passed, d = guard()
+    D = b.FrameDirection.DOWNSTREAM
+    guard.state["hold"] = True
+    ctx.messages.append({"role": "user", "content": "Thanks."})
+    await g.process_frame(LLMRunFrame(), D)
+    assert passed == [], "a reply would play into the hold"
+    assert d.runs_dropped_on_hold == 1
+    assert "Thanks." in _texts(ctx), "the words must still be there when they are back"
+    # Back: the return line runs on top of them.
+    guard.state["hold"] = False
+    ctx.messages += [{"role": "user", "content": b.HOLD_RESUME_CUE},
+                     {"role": "user", "content": "हाँ जी बताइए"}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert len(passed) == 1
+    assert "Thanks." in _texts(ctx)
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_held_across_the_hold_entry_is_dropped(guard):
+    """68bdcbcf: the run on the screen's "Thanks." was held for its short-answer
+    grace, the hold began inside it, and the release played 6 s into the hold."""
+    import asyncio
+    from pipecat.frames.frames import LLMRunFrame
+    quiet = {"s": 0.0}
+    g, ctx, passed, d = guard(short_answer_grace_secs=0.3, short_answer_max_words=3,
+                              quiet_for=lambda: quiet["s"])
+    ctx.messages.append({"role": "user", "content": "Thanks."})
+    await g.process_frame(LLMRunFrame(), b.FrameDirection.DOWNSTREAM)
+    assert passed == [] and g.held()
+    guard.state["hold"] = True                     # "Please stay on the line."
+    quiet["s"] = 5.0
+    await asyncio.sleep(0.6)
+    assert not g.held()
+    assert passed == [], "released into the hold"
+    assert d.runs_dropped_on_hold == 1
+
+
+@pytest.mark.asyncio
+async def test_a_parked_cue_released_into_the_hold_is_dropped_and_refunded(guard):
+    """d8146538: a next-step cue parked behind the screen's voice 0.25 s before
+    the hold began was released 1 s into it — 11.6 s of re-introduction."""
+    import asyncio
+    from pipecat.frames.frames import LLMRunFrame
+    forming = {"on": True}
+    refunds = []
+    g, ctx, passed, d = guard(caller_forming=lambda: forming["on"])
+    cue, = (b.next_step_cue("", "continue")[1],)
+    g.register_cue(cue, on_drop=lambda: refunds.append(1))
+    ctx.messages += [{"role": "user", "content": "Thanks."},
+                     {"role": "user", "content": cue}]
+    await g.process_frame(LLMRunFrame(), b.FrameDirection.DOWNSTREAM)
+    assert passed == [] and g.held(), "parked behind the forming turn"
+    guard.state["hold"] = True
+    forming["on"] = False
+    await asyncio.sleep(0.8)
+    assert passed == [], "released into the hold"
+    assert refunds == [1], "a dropped cue is refunded"
+    assert cue not in _texts(ctx), "a stale instruction left for the model"
+    assert "Thanks." in _texts(ctx)
+
+
+@pytest.mark.asyncio
+async def test_a_cue_arriving_on_hold_is_dropped_at_the_door(guard):
+    from pipecat.frames.frames import LLMRunFrame
+    refunds = []
+    g, ctx, passed, d = guard()
+    cue = "[A noise on the line cut your reply off before they heard a single word of it.]"
+    g.register_cue(cue, on_drop=lambda: refunds.append(1))
+    ctx.messages += [{"role": "user", "content": "Please stay on the line."},
+                     {"role": "user", "content": cue}]
+    guard.state["hold"] = True
+    await g.process_frame(LLMRunFrame(), b.FrameDirection.DOWNSTREAM)
+    assert passed == [] and refunds == [1]
+    assert cue not in _texts(ctx)
+
+
+def test_run_bot_wires_the_hold_into_the_run_guard():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    rg = src[src.index("run_guard = RunGuard("):]
+    rg = rg[:rg.index("run_guard._one_door")]
+    assert "on_hold=lambda: transcript.on_hold_for() > 0" in rg

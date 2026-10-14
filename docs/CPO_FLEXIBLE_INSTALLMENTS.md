@@ -192,13 +192,19 @@ shows what the backend will actually write instead of the gross total only.
 
 ### 6.5 Learner self-enroll on a FLEXIBLE plan
 
-Learners cannot choose a count, but a flexible plan can still be attached to an invite link.
-`generateFeeBills` gains one branch: for a `FLEXIBLE` CPO it builds the schedule from
-`flexible_defaults` with `first_due_date` = today and delegates to `generateFromSchedule`.
-The first installment is due today, so `CpoDuesCalculator` charges it at checkout as it does
-now. This also covers admissions (`SchoolEnrollService`) and product pages, which call the
-same generator. Hidden one-time-course plans are never attached to invites, so learners never
-reach them.
+Until phase 4, learner self-enrollment (invite checkout, product pages) on a FLEXIBLE plan is
+**refused** with "Installments for this fee plan are set up by the institute when it enrolls
+you" (`ComplexPaymentOptionOperation`). The learner checkout previews a plan's template
+installments, which a flexible plan does not have, so the preview and the bills written would
+not match. Admin enrollment (the Enroll wizard) is unaffected.
+
+Admin paths that create a learner on a FLEXIBLE plan without sending a schedule (admissions,
+sub-org members) go through `generateFeeBills`, which then builds the schedule from
+`flexible_defaults` with `first_due_date` = today. Hidden one-time-course plans are never
+attached to invites, so learners never reach them.
+
+Phase 4 lifts the refusal: `cpo-schedule` returns the default schedule for a FLEXIBLE plan and
+the checkout shows it.
 
 ### 6.6 Reschedule after enrollment
 
@@ -291,7 +297,7 @@ What phase 5 must fix before it is safe to open to learners:
 | 1 ✅ | Migration V575; `InstallmentScheduleService`; `installment_schedule` on admin assign (CPO FIXED/FLEXIBLE + ONE_TIME provisioning via `OneTimeInstallmentPlanProvisioner`); FLEXIBLE default schedule in `generateFeeBills`; dry-run preview; listing hygiene; `installment_number` readers; `schedule_mode` + `flexible_defaults` on the fee-plan create/read/update API |
 | 2 | Admin UI: Enroll wizard panel, Step 4 preview, FLEXIBLE option in fee plan creation |
 | 3 | Side-view "Reschedule remaining" |
-| 4 | FLEXIBLE plans on learner invite checkout (default rule) |
+| 4 | FLEXIBLE plans on learner invite checkout (default rule); until then learner self-enrollment on them is refused (§6.5) |
 | 5 | Learner "Pay dues" page behind an institute setting (§8) |
 
 ## 10. Open points

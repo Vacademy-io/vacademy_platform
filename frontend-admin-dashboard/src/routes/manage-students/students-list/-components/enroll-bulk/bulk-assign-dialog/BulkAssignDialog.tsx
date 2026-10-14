@@ -220,7 +220,9 @@ export const BulkAssignDialog = ({
             new_users: newUsers.length > 0 ? newUsers : undefined,
             assignments: selectedPackageSessions.map((ps) => ({
                 package_session_id: ps.packageSessionId,
-                enroll_invite_id: ps.enrollInviteId ?? null,
+                // Auto mode sends the invite the row showed: left null, the backend only finds a
+                // DEFAULT invite and otherwise enrolls through a new free one.
+                enroll_invite_id: ps.enrollInviteId ?? ps.autoResolvedInviteId ?? null,
                 access_days: ps.accessDays ?? null,
                 cpo_config: ps.cpoConfig
                     ? {
@@ -596,7 +598,9 @@ export const BulkAssignDialog = ({
                         // don't add up) must be fixed before Preview.
                         !ps.cpoScheduleError &&
                         // Offline payment details the institute requires (mode, reference, proof).
-                        !(ps.cpoConfig?.payment_mode === 'OFFLINE' && ps.cpoPaymentError)
+                        !(ps.cpoConfig?.payment_mode === 'OFFLINE' && ps.cpoPaymentError) &&
+                        // Auto mode could not tell which invite is meant.
+                        !ps.inviteNeedsChoice
                 ) && !((options.paymentDate || options.transactionId) && options.paymentDetailsError)
             );
         // Every org-associated batch must name the organisation being enrolled into —

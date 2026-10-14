@@ -414,6 +414,13 @@ export interface SelectedPackageSession {
     cpoScheduleError?: string | null;
     /** Problem with the offline payment details in `cpoConfig`; blocks Preview while set. */
     cpoPaymentError?: string | null;
+    /**
+     * Auto mode: the invite the row resolved and shows (DEFAULT, or the only active one).
+     * Sent as enroll_invite_id so the enrollment uses exactly what the screen shows.
+     */
+    autoResolvedInviteId?: string | null;
+    /** Auto mode found several active invites and no DEFAULT one; blocks Preview. */
+    inviteNeedsChoice?: boolean;
 
     /**
      * Admin-granted discount for this course (Step 3). Applies to every learner in the

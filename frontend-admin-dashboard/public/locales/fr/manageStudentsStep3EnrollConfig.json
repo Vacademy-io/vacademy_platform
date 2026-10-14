@@ -9,7 +9,10 @@
         "payInInstallments": {
             "label": "Payer en plusieurs fois",
             "description": "Répartir ce prix en échéances pour ces apprenants. La remise du plan de frais remplace la remise ci-dessus."
-        }
+        },
+        "autoResolvedOnlyActive": "(le seul lien d’invitation actif du cours)",
+        "pickInvite": "Ce cours a {{count}} liens d’invitation actifs et aucun par défaut. Choisissez le lien d’invitation à utiliser.",
+        "noInvite": "Aucun lien d’invitation pour ce cours : les apprenants sont inscrits gratuitement."
     },
     "globalOptions": {
         "heading": "Options globales",

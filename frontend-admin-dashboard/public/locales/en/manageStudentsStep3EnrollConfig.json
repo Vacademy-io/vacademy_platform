@@ -9,7 +9,10 @@
         "payInInstallments": {
             "label": "Pay in installments",
             "description": "Split this price into installments for these learners. Uses the fee-plan discount instead of the discount above."
-        }
+        },
+        "autoResolvedOnlyActive": "(the course’s only active invite link)",
+        "pickInvite": "This course has {{count}} active invite links and no default one. Pick the invite link to enroll with.",
+        "noInvite": "No invite link for this course: learners are enrolled free."
     },
     "globalOptions": {
         "heading": "Global Options",

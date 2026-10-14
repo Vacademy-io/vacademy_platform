@@ -21,7 +21,7 @@ import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
@@ -87,6 +87,20 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
     const canPayInInstallments =
         resolved?.paymentOption?.type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0;
     const oneTimeInstallments = canPayInInstallments && ps.cpoConfig != null;
+
+    // In Auto mode, send the invite this row shows (the backend only finds DEFAULT invites by
+    // itself) and block Preview while there are several to choose from.
+    const autoInviteId =
+        !ps.enrollInviteId && (resolved?.resolution === 'DEFAULT' || resolved?.resolution === 'ONLY_ACTIVE')
+            ? (resolved.invite?.id ?? null)
+            : null;
+    const inviteNeedsChoice = !ps.enrollInviteId && resolved?.resolution === 'AMBIGUOUS';
+    useEffect(() => {
+        if ((ps.autoResolvedInviteId ?? null) !== autoInviteId || !!ps.inviteNeedsChoice !== inviteNeedsChoice) {
+            onUpdate({ autoResolvedInviteId: autoInviteId, inviteNeedsChoice });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoInviteId, inviteNeedsChoice]);
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -155,12 +169,28 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     >
                         {resolved.paymentOption.type}
                     </span>
-                    {resolved.resolvedFromDefault && (
+                    {resolved.resolution === 'DEFAULT' && (
                         <span className="text-caption text-neutral-400">
                             {t('courseInviteSection.autoResolvedFromDefault')}
                         </span>
                     )}
+                    {resolved.resolution === 'ONLY_ACTIVE' && (
+                        <span className="text-caption text-neutral-400">
+                            {t('courseInviteSection.autoResolvedOnlyActive')}
+                        </span>
+                    )}
                 </div>
+            )}
+
+            {/* Auto mode with no DEFAULT invite and several active ones: the backend would enroll
+                through a new free invite, so the admin has to say which one is meant. */}
+            {!ps.enrollInviteId && resolved?.resolution === 'AMBIGUOUS' && (
+                <p role="alert" className="mt-2 text-caption font-medium text-warning-700">
+                    {t('courseInviteSection.pickInvite', { count: resolved.activeInviteCount })}
+                </p>
+            )}
+            {!ps.enrollInviteId && resolved?.resolution === 'NONE' && (
+                <p className="mt-2 text-caption text-neutral-500">{t('courseInviteSection.noInvite')}</p>
             )}
 
             {canPayInInstallments && (

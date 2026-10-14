@@ -69,7 +69,15 @@
         "cityVillage": "Ville/Village :",
         "state": "État :",
         "country": "Pays :",
-        "pincode": "Code postal :"
+        "pincode": "Code postal :",
+        "emailLabel": "E-mail",
+        "mobileLabel": "Mobile",
+        "websiteLabel": "Site web",
+        "addressLabel": "Adresse",
+        "cityLabel": "Ville/Village",
+        "stateLabel": "État",
+        "countryLabel": "Pays",
+        "pincodeLabel": "Code postal"
     },
     "instituteSwitcher": {
         "currentInstitute": "Établissement actuel",

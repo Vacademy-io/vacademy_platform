@@ -18,7 +18,11 @@ import {
     Student,
     ArrowLeft,
     AddressBook,
+    Buildings,
     EnvelopeSimple,
+    Globe,
+    MapPin,
+    MapTrifold,
     IdentificationCard,
     PencilSimple,
     Phone,
@@ -1112,78 +1116,98 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         <SheetTitle className="text-primary-500">
                                             {t('institute.instituteDetails')}
                                         </SheetTitle>
-                                        <div className="flex flex-col gap-8">
-                                            <div className="flex flex-col items-center justify-center gap-4">
-                                                {instituteLogo !== '' && (
-                                                    <img
-                                                        src={instituteLogo}
-                                                        alt={t('profile.logo')}
-                                                        className="size-32 object-contain md:size-48"
-                                                    />
-                                                )}
-                                                <h1 className="text-center">
-                                                    {instituteDetails?.institute_name}
-                                                </h1>
-                                                <div className="flex items-center gap-2">
-                                                    <h1>{t('institute.instituteType')}</h1>
-                                                    <p className="rounded-lg border px-2 py-1 text-sm text-neutral-600">
-                                                        {instituteDetails?.type}
-                                                    </p>
+                                        <div className="mt-6 flex flex-col gap-4">
+                                            <div className="flex flex-col items-center gap-4 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+                                                <div className="flex size-28 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-white p-2 md:size-32">
+                                                    {instituteLogo !== '' ? (
+                                                        <img
+                                                            src={instituteLogo}
+                                                            alt={t('profile.logo')}
+                                                            className="size-full object-contain"
+                                                        />
+                                                    ) : (
+                                                        <Buildings className="size-12 text-neutral-300" />
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <h2 className="break-words text-h3 font-semibold text-neutral-700">
+                                                        {instituteDetails?.institute_name}
+                                                    </h2>
+                                                    {instituteDetails?.type ? (
+                                                        <span
+                                                            className="rounded-md border border-primary-200 bg-primary-50 px-2 py-0.5 text-caption font-semibold text-primary-500"
+                                                            title={t('institute.instituteType')}
+                                                        >
+                                                            {instituteDetails.type}
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                                 {canEditInstitute ? (
                                                     <EditDashboardProfileComponent isEdit={true} />
                                                 ) : null}
                                             </div>
-                                            <Separator />
-                                            <div className="flex flex-col gap-2">
-                                                <h1>{t('institute.contactInformation')}</h1>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>
-                                                        {t('institute.instituteEmail')}&nbsp;
-                                                    </span>
-                                                    <span className="break-all">
-                                                        {instituteDetails?.email}
-                                                    </span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>
-                                                        {t('institute.instituteMobile')}&nbsp;
-                                                    </span>
-                                                    <span>+{instituteDetails?.phone}</span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>
-                                                        {t('institute.instituteWebsite')}&nbsp;
-                                                    </span>
-                                                    <span className="break-all">
-                                                        {instituteDetails?.website_url}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                            <Separator />
-                                            <div className="flex flex-col gap-2">
-                                                <h1>{t('institute.locationDetails')}</h1>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('institute.address')}&nbsp;</span>
-                                                    <span>{instituteDetails?.address}</span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('institute.cityVillage')}&nbsp;</span>
-                                                    <span>{instituteDetails?.city}</span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('institute.state')}&nbsp;</span>
-                                                    <span>{instituteDetails?.state}</span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('institute.country')}&nbsp;</span>
-                                                    <span>{instituteDetails?.country}</span>
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    <span>{t('institute.pincode')}&nbsp;</span>
-                                                    <span>{instituteDetails?.pin_code}</span>
-                                                </p>
-                                            </div>
+                                            <section className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
+                                                <h3 className="flex items-center gap-2 text-subtitle font-semibold text-neutral-700">
+                                                    <AddressBook className="size-5 text-primary-500" />
+                                                    {t('institute.contactInformation')}
+                                                </h3>
+                                                <ProfileDetailRow
+                                                    icon={<EnvelopeSimple className="size-5" />}
+                                                    label={t('institute.emailLabel')}
+                                                    value={instituteDetails?.email}
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                                <ProfileDetailRow
+                                                    icon={<Phone className="size-5" />}
+                                                    label={t('institute.mobileLabel')}
+                                                    value={
+                                                        instituteDetails?.phone
+                                                            ? `+${instituteDetails.phone}`
+                                                            : ''
+                                                    }
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                                <ProfileDetailRow
+                                                    icon={<Globe className="size-5" />}
+                                                    label={t('institute.websiteLabel')}
+                                                    value={instituteDetails?.website_url}
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                            </section>
+                                            <section className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
+                                                <h3 className="flex items-center gap-2 text-subtitle font-semibold text-neutral-700">
+                                                    <MapPin className="size-5 text-primary-500" />
+                                                    {t('institute.locationDetails')}
+                                                </h3>
+                                                <ProfileDetailRow
+                                                    icon={<MapTrifold className="size-5" />}
+                                                    label={t('institute.addressLabel')}
+                                                    value={instituteDetails?.address}
+                                                    emptyText={t('profile.notProvided')}
+                                                />
+                                                <div className="grid grid-cols-2 gap-4 border-t border-neutral-100 pt-4">
+                                                    <InstituteDetailCell
+                                                        label={t('institute.cityLabel')}
+                                                        value={instituteDetails?.city}
+                                                        emptyText={t('profile.notProvided')}
+                                                    />
+                                                    <InstituteDetailCell
+                                                        label={t('institute.stateLabel')}
+                                                        value={instituteDetails?.state}
+                                                        emptyText={t('profile.notProvided')}
+                                                    />
+                                                    <InstituteDetailCell
+                                                        label={t('institute.countryLabel')}
+                                                        value={instituteDetails?.country}
+                                                        emptyText={t('profile.notProvided')}
+                                                    />
+                                                    <InstituteDetailCell
+                                                        label={t('institute.pincodeLabel')}
+                                                        value={instituteDetails?.pin_code}
+                                                        emptyText={t('profile.notProvided')}
+                                                    />
+                                                </div>
+                                            </section>
                                         </div>
                                     </SheetContent>
                                 </Sheet>
@@ -1254,6 +1278,29 @@ function ProfileDetailRow({
                     <span className="text-body italic text-neutral-400">{emptyText}</span>
                 )}
             </div>
+        </div>
+    );
+}
+
+function InstituteDetailCell({
+    label,
+    value,
+    emptyText,
+}: {
+    label: string;
+    value?: string | null;
+    emptyText: string;
+}) {
+    return (
+        <div className="flex min-w-0 flex-col">
+            <span className="text-caption text-neutral-500">{label}</span>
+            {value ? (
+                <span className="break-words text-body font-semibold text-neutral-700">
+                    {value}
+                </span>
+            ) : (
+                <span className="text-body italic text-neutral-400">{emptyText}</span>
+            )}
         </div>
     );
 }

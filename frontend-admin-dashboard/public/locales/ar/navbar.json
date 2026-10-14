@@ -75,7 +75,15 @@
         "cityVillage": "المدينة/القرية:",
         "state": "الولاية:",
         "country": "الدولة:",
-        "pincode": "الرمز البريدي:"
+        "pincode": "الرمز البريدي:",
+        "emailLabel": "البريد الإلكتروني",
+        "mobileLabel": "الجوال",
+        "websiteLabel": "الموقع الإلكتروني",
+        "addressLabel": "العنوان",
+        "cityLabel": "المدينة/القرية",
+        "stateLabel": "الولاية",
+        "countryLabel": "الدولة",
+        "pincodeLabel": "الرمز البريدي"
     },
     "instituteSwitcher": {
         "currentInstitute": "المؤسسة الحالية",

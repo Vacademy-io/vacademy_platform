@@ -55,6 +55,12 @@ import {
     type InviteSetupResult,
 } from './-services/course-invite-setup';
 import { selectTargetBatches, type CourseBatchDTO } from './-utils/course-invite-payload';
+import {
+    parseCoursePageJson,
+    readCoursePageJsonFromCourseInit,
+} from './-utils/course-page-content';
+import type { CoursePageStatus } from './add-course-steps/course-page-section';
+import { fetchCourseStudyLibraryDetails } from '@/routes/study-library/courses/-services/getStudyLibraryDetails';
 
 export interface Level {
     id: string;
@@ -77,6 +83,11 @@ export interface CourseFormData extends Step1Data, Step2Data {
     created_by_user_id?: string;
     original_course_id?: string | null;
     version_number?: number;
+    /**
+     * Edit only: true once the course's stored course_page_json was read from course-init.
+     * Until then the update omits the field so the backend keeps what is stored.
+     */
+    coursePageJsonLoaded?: boolean;
 }
 
 /**
@@ -225,6 +236,49 @@ export const AddCourseForm = ({
         oldFormData.current = transformed;
         setStep(1);
     }, [isEdit, initialCourseData]);
+
+    // The edit form may be filled from the institute-wide init list, which never carries
+    // course_page_json (always null). Read it from course-init before the course-page
+    // section can be edited, so a save can neither clear nor overwrite FAQs unseen.
+    const [coursePageLoadFailed, setCoursePageLoadFailed] = useState(false);
+    const editCourseId = isEdit ? formData.id : undefined;
+    const coursePageLoaded = !!formData.coursePageJsonLoaded;
+    useEffect(() => {
+        if (!isEdit || !isOpen || !editCourseId || coursePageLoaded) return undefined;
+        let cancelled = false;
+        setCoursePageLoadFailed(false);
+        fetchCourseStudyLibraryDetails(editCourseId)
+            .then((data: unknown) => {
+                if (cancelled) return;
+                const { loaded, raw } = readCoursePageJsonFromCourseInit(data, editCourseId);
+                if (!loaded) {
+                    setCoursePageLoadFailed(true);
+                    return;
+                }
+                const coursePage = parseCoursePageJson(raw);
+                setFormData((prev) =>
+                    prev.id === editCourseId
+                        ? { ...prev, coursePage, coursePageJsonLoaded: true }
+                        : prev
+                );
+                oldFormData.current = {
+                    ...oldFormData.current,
+                    coursePage,
+                    coursePageJsonLoaded: true,
+                };
+            })
+            .catch((error: unknown) => {
+                if (cancelled) return;
+                console.warn('[edit-course] could not load course page content', error);
+                setCoursePageLoadFailed(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isEdit, isOpen, editCourseId, coursePageLoaded]);
+
+    const coursePageStatus: CoursePageStatus =
+        !isEdit || coursePageLoaded ? 'ready' : coursePageLoadFailed ? 'unavailable' : 'loading';
 
     const handleStep1Submit = (data: Step1Data) => {
         setFormData((prev) => ({ ...prev, ...data }));
@@ -717,6 +771,7 @@ export const AddCourseForm = ({
                 initialData={formData as Step1Data}
                 courseSettings={courseSettings}
                 settingsLoading={settingsLoading}
+                coursePageStatus={coursePageStatus}
             />
         );
     };
@@ -770,7 +825,9 @@ export const AddCourseForm = ({
                     Edit {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
             </DialogTrigger>
-            <DialogContent className="z-[10000] flex !h-[97%] !max-h-[97%] w-[97%] flex-col overflow-hidden p-0">
+            <DialogContent
+                className="z-[10000] flex !h-[97%] !max-h-[97%] w-[97%] flex-col overflow-hidden p-0" /* design-lint-ignore: full-viewport course editor above the app overlays (pre-existing) */
+            >
                 <div className="flex h-full flex-col">
                     {renderHeader()}
                     {renderStep()}

@@ -16,7 +16,7 @@ import {
 import { MyInput } from '@/components/design-system/input';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { PencilSimpleLine, UploadSimple } from '@phosphor-icons/react';
+import { PencilSimpleLine, UploadSimple, X } from '@phosphor-icons/react';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { MyButton } from '@/components/design-system/button';
 import { Label } from '@/components/ui/label';
@@ -28,7 +28,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageCropperDialog from '@/components/design-system/image-cropper-dialog';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -40,6 +39,13 @@ import {
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CourseSettingsData } from '@/types/course-settings';
 import { AiAssistButton } from './ai-assist-button';
+import { CoursePageSection, type CoursePageStatus } from './course-page-section';
+import {
+    COURSE_PAGE_MODES,
+    emptyCoursePageContent,
+    isBlankHtml,
+    isEmptyFaq,
+} from '../-utils/course-page-content';
 
 // Step 1 Schema
 export const step1Schema = z.object({
@@ -64,6 +70,33 @@ export const step1Schema = z.object({
     courseBannerBlob: z.string().optional(),
     courseMediaBlob: z.string().optional(),
     tags: z.array(z.string()).default([]),
+    /** Optional public course-page extras; serialised to `course_page_json` on save. */
+    coursePage: z
+        .object({
+            mode: z.enum(COURSE_PAGE_MODES).nullable(),
+            faqs: z.array(z.object({ q: z.string(), a: z.string() })),
+        })
+        .superRefine((value, ctx) => {
+            // Untouched rows are dropped on save; a half-filled one is a mistake to flag.
+            value.faqs.forEach((faq, index) => {
+                if (isEmptyFaq(faq)) return;
+                if (!faq.q.trim()) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ['faqs', index, 'q'],
+                        message: 'Add the question, or remove this FAQ',
+                    });
+                }
+                if (isBlankHtml(faq.a)) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ['faqs', index, 'a'],
+                        message: 'Add an answer, or remove this FAQ',
+                    });
+                }
+            });
+        })
+        .optional(),
 });
 export type Step1Data = z.infer<typeof step1Schema>;
 
@@ -79,11 +112,14 @@ export const AddCourseStep1 = ({
     initialData,
     courseSettings,
     settingsLoading,
+    coursePageStatus = 'ready',
 }: {
     onNext: (data: Step1Data) => void;
     initialData?: Step1Data;
     courseSettings?: CourseSettingsData;
     settingsLoading?: boolean;
+    /** Edit: 'loading' until the stored course-page content is read from course-init. */
+    coursePageStatus?: CoursePageStatus;
 }) => {
     const { instituteDetails } = useInstituteDetailsStore();
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -156,7 +192,29 @@ export const AddCourseStep1 = ({
             courseBannerBlob: '',
             courseMediaBlob: '',
             tags: initialData?.tags,
+            coursePage: initialData?.coursePage ?? emptyCoursePageContent(),
         },
+    });
+
+    // Collapsed by default. While open, step 1 never auto-advances (see below), so an
+    // admin who has filled every other field can still add FAQs.
+    const [coursePageOpen, setCoursePageOpen] = useState(false);
+    // Edit: the stored content arrives after mount. The section is read-only until then,
+    // so taking the loaded value cannot overwrite anything the admin typed.
+    const previousCoursePageStatus = useRef(coursePageStatus);
+    useEffect(() => {
+        if (previousCoursePageStatus.current !== 'ready' && coursePageStatus === 'ready') {
+            const loaded = initialData?.coursePage ?? emptyCoursePageContent();
+            // Set the array by its own name so useFieldArray re-reads its rows.
+            form.setValue('coursePage.mode', loaded.mode);
+            form.setValue('coursePage.faqs', loaded.faqs);
+        }
+        previousCoursePageStatus.current = coursePageStatus;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [coursePageStatus]);
+    // A half-filled FAQ blocks Next; open the section so its message is visible.
+    const submitStep = form.handleSubmit(onNext, (errors) => {
+        if (errors.coursePage) setCoursePageOpen(true);
     });
 
     // Watch all form field values
@@ -511,12 +569,16 @@ export const AddCourseStep1 = ({
         if (Object.keys(initialData || {}).length > 0) {
             return undefined;
         }
+        // Nor while the admin is working in the optional course-page section.
+        if (coursePageOpen) {
+            return undefined;
+        }
 
         // Check if ALL visible fields are filled
         if (areAllVisibleFieldsFilled()) {
             // Add a small delay to ensure smooth UX and avoid jarring immediate transition
             const timer = setTimeout(() => {
-                form.handleSubmit(onNext)();
+                submitStep();
             }, 300);
 
             return () => {
@@ -540,12 +602,13 @@ export const AddCourseStep1 = ({
         courseSettings,
         settingsLoading,
         initialData,
+        coursePageOpen,
     ]);
 
     // Show loading state if settings are still loading
     if (settingsLoading) {
         return (
-            <div className="flex h-[calc(100%-56px)] items-center justify-center">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
                 <div className="text-center">
                     <div className="mb-4 inline-block size-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
                     <p>Loading {courseTerm.toLocaleLowerCase()} settings...</p>
@@ -556,10 +619,7 @@ export const AddCourseStep1 = ({
 
     return (
         <Form {...form}>
-            <form
-                onSubmit={form.handleSubmit(onNext)}
-                className="flex h-[calc(100%-56px)] flex-col"
-            >
+            <form onSubmit={submitStep} className="flex min-h-0 flex-1 flex-col">
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-y-auto">
                     <div className="p-8">
@@ -616,6 +676,10 @@ export const AddCourseStep1 = ({
                                                         onGenerated={(html) => field.onChange(html)}
                                                     />
                                                 </div>
+                                                <p className="text-sm text-neutral-500">
+                                                    Shown under the title on the{' '}
+                                                    {courseTerm.toLocaleLowerCase()} page.
+                                                </p>
                                                 <FormControl>
                                                     <RichTextEditor
                                                         onChange={field.onChange}
@@ -816,6 +880,11 @@ export const AddCourseStep1 = ({
                                                             }
                                                         />
                                                     </div>
+                                                    <p className="text-sm text-neutral-500">
+                                                        Shown as &lsquo;Who should do this{' '}
+                                                        {courseTerm.toLocaleLowerCase()}&rsquo; on
+                                                        the {courseTerm.toLocaleLowerCase()} page.
+                                                    </p>
                                                     <FormControl>
                                                         <RichTextEditor
                                                             onChange={field.onChange}
@@ -868,7 +937,7 @@ export const AddCourseStep1 = ({
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.coursePreview ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
+                                                <div className="flex h-52 items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('coursePreview') ? (
@@ -884,7 +953,7 @@ export const AddCourseStep1 = ({
                                                             coursePreviewRef.current?.click();
                                                         }
                                                     }}
-                                                    className="group relative h-[200px] w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
+                                                    className="group relative h-52 w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
                                                 >
                                                     <img
                                                         src={form.watch('coursePreviewBlob')}
@@ -911,7 +980,7 @@ export const AddCourseStep1 = ({
                                                             coursePreviewRef.current?.click();
                                                         }
                                                     }}
-                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                    className="flex h-52 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
                                                     <UploadSimple
                                                         size={40}
@@ -986,7 +1055,7 @@ export const AddCourseStep1 = ({
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.courseBanner ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
+                                                <div className="flex h-52 items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseBanner') ? (
@@ -1000,7 +1069,7 @@ export const AddCourseStep1 = ({
                                                             courseBannerRef.current?.click();
                                                         }
                                                     }}
-                                                    className="group relative h-[200px] w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
+                                                    className="group relative h-52 w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
                                                 >
                                                     <img
                                                         src={form.watch('courseBannerBlob')}
@@ -1025,7 +1094,7 @@ export const AddCourseStep1 = ({
                                                             courseBannerRef.current?.click();
                                                         }
                                                     }}
-                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                    className="flex h-52 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
                                                     <UploadSimple
                                                         size={40}
@@ -1099,7 +1168,7 @@ export const AddCourseStep1 = ({
                                         <div className="relative flex flex-col gap-2">
                                             {/* Preview logic remains unchanged */}
                                             {uploadingStates.courseMedia ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
+                                                <div className="flex h-52 items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseMedia')?.id &&
@@ -1108,7 +1177,7 @@ export const AddCourseStep1 = ({
                                                   form.watch('courseMedia')?.id || ''
                                               ) ? (
                                                 form.watch('courseMedia')?.type === 'video' ? (
-                                                    <div className="h-[200px] w-full rounded-lg bg-neutral-100">
+                                                    <div className="h-52 w-full rounded-lg bg-neutral-100">
                                                         <video
                                                             src={form.watch('courseMediaBlob')}
                                                             controls
@@ -1122,7 +1191,7 @@ export const AddCourseStep1 = ({
                                                         </video>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
+                                                    <div className="flex h-52 items-center justify-center rounded-lg bg-neutral-100">
                                                         <img
                                                             src={form.watch('courseMediaBlob')}
                                                             alt={`${courseTerm} Banner`}
@@ -1135,7 +1204,7 @@ export const AddCourseStep1 = ({
                                                   extractYouTubeVideoId(
                                                       form.watch('courseMedia')?.id || ''
                                                   )) ? (
-                                                <div className="mt-2 flex h-[200px] w-full items-center justify-center rounded-lg bg-neutral-100">
+                                                <div className="mt-2 flex h-52 w-full items-center justify-center rounded-lg bg-neutral-100">
                                                     <iframe
                                                         width="100%"
                                                         height="100%"
@@ -1162,7 +1231,7 @@ export const AddCourseStep1 = ({
                                                             courseMediaRef.current?.click();
                                                         }
                                                     }}
-                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                    className="flex h-52 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
                                                     <UploadSimple
                                                         size={40}
@@ -1218,7 +1287,9 @@ export const AddCourseStep1 = ({
                                                                 const existing =
                                                                     cm?.id &&
                                                                     (cm?.type === 'youtube' ||
-                                                                        extractYouTubeVideoId(cm.id))
+                                                                        extractYouTubeVideoId(
+                                                                            cm.id
+                                                                        ))
                                                                         ? cm.id
                                                                         : '';
                                                                 setYoutubeUrl(existing);
@@ -1326,11 +1397,21 @@ export const AddCourseStep1 = ({
                                 )}
                             </div>
                         </div>
+
+                        <div className="mt-8">
+                            <CoursePageSection
+                                form={form}
+                                courseTerm={courseTerm}
+                                status={coursePageStatus}
+                                open={coursePageOpen}
+                                onOpenChange={setCoursePageOpen}
+                            />
+                        </div>
                     </div>
                 </div>
 
                 {/* Fixed Footer */}
-                <div className="sticky bottom-0 mt-auto border-t bg-white px-8 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+                <div className="sticky bottom-0 mt-auto border-t bg-white px-8 py-4 shadow-sm">
                     <div className="flex justify-end">
                         <MyButton
                             type="submit"

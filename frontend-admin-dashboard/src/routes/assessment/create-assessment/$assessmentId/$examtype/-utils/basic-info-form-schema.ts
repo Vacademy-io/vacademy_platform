@@ -13,9 +13,16 @@ export const BasicInfoFormSchema = z.object({
                 endDate: z.string().optional(),
             })
             .refine(
-                (data) =>
-                    (!data.startDate && !data.endDate) || // Allow empty
-                    new Date(data.endDate!) > new Date(data.startDate!), // Date comparison
+                (data) => {
+                    // Ordering only. Whether the dates are required is decided by
+                    // isBasicInfoStepComplete (a survey's are optional). With one side
+                    // blank `new Date('')` is NaN, every comparison is false, and the
+                    // End field showed this error while it still had a valid value.
+                    const start = new Date(data.startDate ?? '').getTime();
+                    const end = new Date(data.endDate ?? '').getTime();
+                    if (Number.isNaN(start) || Number.isNaN(end)) return true;
+                    return end > start;
+                },
                 {
                     message: 'End date must be greater than start date',
                     path: ['endDate'],

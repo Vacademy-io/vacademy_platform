@@ -23,14 +23,14 @@ import {
     SidebarItemsType,
     type SidebarCategory,
 } from '@/types/layout-container/layout-container-types';
-import { Link, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import type { CategoryId } from './category-rail';
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CaretDown, LockKey } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
-import { parseSidebarLink } from './helper';
+import { isSidebarLinkActive, parseSidebarLink, pickActiveSidebarLink } from './helper';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 
 interface CollapsedCategoryFlyoutProps {
@@ -86,9 +86,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
     children,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const router = useRouter();
     const navigate = useNavigate();
-    const currentRoute = router.state.location.pathname;
     const colors = getCategoryColors(category);
     const { t } = useTranslation('collapsedCategoryFlyout');
 
@@ -123,7 +121,6 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
                             key={item.id}
                             item={item}
                             category={category}
-                            currentRoute={currentRoute}
                             onClose={() => setIsOpen(false)}
                             showDividerAfter={
                                 idx < items.length - 1 && shouldShowDivider(items, idx)
@@ -141,7 +138,6 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
 interface FlyoutMenuItemProps {
     item: SidebarItemsType;
     category: SidebarCategory;
-    currentRoute: string;
     onClose: () => void;
     showDividerAfter?: boolean;
 }
@@ -149,7 +145,6 @@ interface FlyoutMenuItemProps {
 const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
     item,
     category,
-    currentRoute,
     onClose,
     showDividerAfter,
 }) => {
@@ -157,9 +152,18 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
     const colors = getCategoryColors(category);
     const navigate = useNavigate();
 
+    // Same matching as the expanded panel: links carry a query (?bucket=…,
+    // ?status=…&lock=status) that a plain pathname check never sees.
+    const { pathname, search } = useLocation();
+    const currentSearch = search as Record<string, unknown>;
+    const activeSubLink = pickActiveSidebarLink(
+        item.subItems?.map((s) => s.subItemLink) ?? [],
+        pathname,
+        currentSearch
+    );
     const isActive = item.to
-        ? currentRoute.includes(item.to)
-        : item.subItems?.some((s) => s.subItemLink && currentRoute.includes(s.subItemLink));
+        ? isSidebarLinkActive(item.to, pathname, currentSearch)
+        : !!activeSubLink;
 
     if (item.locked) {
         return (
@@ -255,7 +259,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                     <div className="ml-4 flex flex-col gap-0.5 border-l border-primary-100 py-0.5 pl-3">
                         {item.subItems.map((sub, idx) => {
                             const isSubActive =
-                                sub.subItemLink && currentRoute.includes(sub.subItemLink);
+                                !!sub.subItemLink && sub.subItemLink === activeSubLink;
                             // A query in the link ("/settings?selectedTab=…") has to
                             // travel in `search` — the router won't parse it out of `to`.
                             const { to: subTo, search: subSearch } = parseSidebarLink(

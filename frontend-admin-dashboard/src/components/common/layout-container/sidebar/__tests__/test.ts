@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     filterSidebarByRole,
     isSidebarLinkActive,
+    pickActiveSidebarLink,
     sidebarLinkSpecificity,
 } from '@/components/common/layout-container/sidebar/helper';
 import type { SidebarItemsType } from '@/types/layout-container/layout-container-types';
@@ -71,6 +72,116 @@ describe('sidebarLinkSpecificity', () => {
         expect(sidebarLinkSpecificity('/erp/people/org')).toBeGreaterThan(
             sidebarLinkSpecificity('/erp/people')
         );
+    });
+});
+
+// I2CAN's Enquiry sub-tabs, as saved in prod: one page, told apart by pinned filters,
+// every one opening on range=ALL.
+const LEADS = '/audience-manager/recent-leads';
+const UNTOUCHED = `${LEADS}?range=ALL&status=LEAD&lock=status`;
+const PROCESSED = `${LEADS}?range=ALL&status=LEAD,LOST&statusExclude=1&lock=status,statusExclude`;
+const ALL_LEADS = `${LEADS}?range=ALL&status=__ACTIVE__,LOST&statusExclude=1&lock=status,statusExclude`;
+const SHORTLISTED = `${LEADS}?range=ALL&tier=HOT,VERY_HOT,SUPER_HOT&status=__ACTIVE__,LOST&statusExclude=1&lock=tier,status,statusExclude`;
+const DISCARDED = `${LEADS}?range=ALL&status=LOST&lock=status`;
+const ENQUIRY = [UNTOUCHED, PROCESSED, ALL_LEADS, SHORTLISTED, DISCARDED];
+
+/** The search object the page writes back for a sub-tab once the user filters. */
+const allLeadsFiltered = {
+    lock: 'status,statusExclude',
+    status: '__ACTIVE__,LOST',
+    statusExclude: '1',
+    range: 'CUSTOM',
+    from: '2026-10-13',
+    to: '2026-10-13',
+};
+
+describe('pickActiveSidebarLink', () => {
+    it('keeps All Leads highlighted after the user picks a date', () => {
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, allLeadsFiltered)).toBe(ALL_LEADS);
+    });
+
+    it('keeps each pinned sub-tab after its opening range is changed', () => {
+        expect(
+            pickActiveSidebarLink(ENQUIRY, LEADS, { lock: 'status', status: 'LEAD', range: '7' })
+        ).toBe(UNTOUCHED);
+        expect(
+            pickActiveSidebarLink(ENQUIRY, LEADS, {
+                lock: 'status,statusExclude',
+                status: 'LEAD,LOST',
+                statusExclude: '1',
+                counsellor: 'u1',
+            })
+        ).toBe(PROCESSED);
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, { lock: 'status', status: 'LOST' })).toBe(
+            DISCARDED
+        );
+    });
+
+    it('tells Shortlisted apart from All Leads, which pins the same statuses', () => {
+        const shortlisted = {
+            lock: 'tier,status,statusExclude',
+            tier: 'HOT,VERY_HOT,SUPER_HOT',
+            status: '__ACTIVE__,LOST',
+            statusExclude: '1',
+            sla: 'TAT_OVERDUE',
+        };
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, shortlisted)).toBe(SHORTLISTED);
+        expect(isSidebarLinkActive(ALL_LEADS, LEADS, shortlisted)).toBe(false);
+    });
+
+    it('still matches on a fresh click (range=ALL untouched)', () => {
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, { ...allLeadsFiltered, range: 'ALL' })).toBe(
+            ALL_LEADS
+        );
+    });
+
+    it('reads a pinned list in any order', () => {
+        expect(
+            pickActiveSidebarLink(ENQUIRY, LEADS, {
+                ...allLeadsFiltered,
+                status: 'LOST,__ACTIVE__',
+            })
+        ).toBe(ALL_LEADS);
+    });
+
+    it('matches nothing when the URL is outside every sub-tab', () => {
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, { status: 'CONVERTED' })).toBeNull();
+    });
+
+    it('a pinned follow-up bucket survives a status filter change', () => {
+        const fu = '/audience-manager/follow-ups';
+        const today = `${fu}?bucket=today&lock=bucket&status=LOST&statusExclude=1`;
+        const overdue = `${fu}?bucket=overdue&lock=bucket&status=LOST&statusExclude=1`;
+        expect(
+            pickActiveSidebarLink([today, overdue], fu, {
+                bucket: 'overdue',
+                lock: 'bucket',
+                status: 'NEW',
+            })
+        ).toBe(overdue);
+    });
+
+    it('between links pinning the same filters, prefers the one whose opening values still hold', () => {
+        const a = `${LEADS}?range=7&status=LEAD&lock=status`;
+        const b = `${LEADS}?range=30&status=LEAD&lock=status`;
+        const url = { lock: 'status', status: 'LEAD' };
+        expect(pickActiveSidebarLink([a, b], LEADS, { ...url, range: '30' })).toBe(b);
+        // Neither holds: the earlier link wins, as the panel always picked on a tie.
+        expect(pickActiveSidebarLink([a, b], LEADS, { ...url, range: 'CUSTOM' })).toBe(a);
+    });
+
+    it('leaves unpinned links on exact matching, as before', () => {
+        const overdue = `${LEADS}?sla=ANY_OVERDUE`;
+        expect(pickActiveSidebarLink([overdue], LEADS, { sla: 'ANY_OVERDUE', range: '7' })).toBe(
+            overdue
+        );
+        expect(pickActiveSidebarLink([overdue], LEADS, { sla: 'TAT_OVERDUE' })).toBeNull();
+        // A bare-path sibling still catches the page, exactly as it did.
+        expect(pickActiveSidebarLink([LEADS, overdue], LEADS, { sla: 'TAT_OVERDUE' })).toBe(LEADS);
+    });
+
+    it('a dashboard drill-through without the pins lights no pinned tab', () => {
+        expect(pickActiveSidebarLink(ENQUIRY, LEADS, { status: 'LEAD', range: '30' })).toBeNull();
     });
 });
 

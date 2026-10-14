@@ -47,7 +47,7 @@ class _Ctx:
         self.messages = list(messages)
 
 
-def _guard(ctx, pending, coming, intro_cue=None, forming=None):
+def _guard(ctx, pending, coming, intro_cue=None, forming=None, voice=None, **kw):
     from pipecat.frames.frames import LLMContextFrame  # noqa: F401  (pipecat import side effects)
     d = dg.CallDiagnostics()
     seen = []
@@ -58,7 +58,8 @@ def _guard(ctx, pending, coming, intro_cue=None, forming=None):
                    opening_pending=lambda: pending["v"],
                    opening_coming=lambda: coming["v"],
                    intro_cue=intro_cue,
-                   caller_forming=(lambda: forming["v"]) if forming else None)
+                   caller_forming=(lambda: forming["v"]) if forming else None,
+                   voice_live=(lambda: voice["v"]) if voice else None, **kw)
     g.push_frame = _push
     g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
     b.FrameProcessor.process_frame = _noop_super
@@ -327,3 +328,140 @@ async def test_scraps_before_we_spoke_are_still_dropped_otherwise():
     tc2, d2 = _pre_speech(rec2, greet_skipped=True)
     await _feed(tc2, "Your call.")                   # not a line-check: still a scrap
     assert d2.carrier_announcements == 1
+
+
+# ── review 2026-10-14: the pieces together ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_turn_let_go_after_the_opening_waits_for_the_callers_voice():
+    """The opening stopped unheard because the caller is talking, and their
+    words are not in the aggregator yet (the STT final lags the voice). A run
+    sent then is cut by their own final: 3-4 runs for one moment and "जी सर।"
+    cut twice in the twice-over-the-opening probe. Wait for the voice."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("जी।")
+    pending, coming, voice = {"v": True}, {"v": True}, {"v": False}
+    g, seen, d = _guard(ctx, pending, coming, voice=voice)
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.15)
+    voice["v"] = True                                # they talk over it…
+    coming["v"] = False                              # …and that cut it
+    await asyncio.sleep(1.8)
+    assert seen == [], "ran while the caller was still talking"
+    voice["v"] = False
+    await asyncio.sleep(1.3)
+    assert seen == ["LLMContextFrame"], "the turn was lost once they stopped"
+
+
+@pytest.mark.asyncio
+async def test_a_newer_turn_over_the_re_said_opening_cancels_the_run_let_go_before_it():
+    """Probe of the opening fix (review 2026-10-14): T1 was let go when the
+    opening stopped unheard and waited for the caller's voice; the opening was
+    then re-said and the caller's next turn arrived over it. T1 must not run
+    the model over the re-said opening, and T2 must be the one waiting on it."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("जी।")
+    pending, coming, voice = {"v": True}, {"v": True}, {"v": False}
+    g, seen, d = _guard(ctx, pending, coming, voice=voice)
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.15)
+    voice["v"], coming["v"] = True, False            # cut by their voice
+    await asyncio.sleep(0.6)                         # T1 let go, waiting on the voice
+    coming["v"] = True                               # the opening is re-said
+    ctx.messages.append({"role": "user", "content": "हाँ जी।"})
+    await g.process_frame(LLMContextFrame(ctx), D)   # T2 over the re-said opening
+    voice["v"] = False
+    await asyncio.sleep(1.5)
+    assert seen == [], "a run went to the model over the re-said opening"
+    pending["v"] = False                             # the opening played
+    await asyncio.sleep(0.3)
+    assert seen == [] and d.turns_swallowed_for_opening == 1
+
+
+@pytest.mark.asyncio
+async def test_a_turn_let_go_returns_to_waiting_when_the_opening_is_re_said():
+    """Same moment without a newer turn: the re-say lands while T1 waits for
+    the caller's voice. At release the opening is on its way again — it is
+    the reply, not a model run over it."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("जी।")
+    pending, coming, voice = {"v": True}, {"v": True}, {"v": False}
+    g, seen, d = _guard(ctx, pending, coming, voice=voice)
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.15)
+    voice["v"], coming["v"] = True, False
+    await asyncio.sleep(0.6)
+    coming["v"] = True                               # re-said while it waited
+    voice["v"] = False
+    await asyncio.sleep(1.5)
+    assert seen == [], "ran the model over the re-said opening"
+    pending["v"] = False
+    await asyncio.sleep(0.3)
+    assert d.turns_swallowed_for_opening == 1
+
+
+@pytest.mark.asyncio
+async def test_a_turn_left_to_an_opening_that_never_played_is_caller_ignored():
+    """CALLER_IGNORED is fed by what PLAYED: a turn left to the opening with no
+    bot audio after it is the caller talking into silence (the 2026-10-14
+    lock that scored GREEN). The fault's counter is swallowed_turns."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("Hello.")
+    pending, coming = {"v": True}, {"v": True}
+    g, seen, d = _guard(ctx, pending, coming, audible_since=lambda t: False)
+    g._SWALLOW_AUDIT_SECS = 0.6
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.25)
+    pending["v"] = False
+    await asyncio.sleep(1.0)
+    assert d.turns_swallowed_for_opening == 1
+    assert d.swallowed_turns == 1
+    assert dg.verdict(d)["faults"].get(dg.CALLER_IGNORED) == dg.AMBER
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_opening_played_over_is_not_caller_ignored():
+    """Control: the ordinary pickup "Hello." the opening answers never counts."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("Hello.")
+    pending, coming = {"v": True}, {"v": True}
+    g, seen, d = _guard(ctx, pending, coming, audible_since=lambda t: True)
+    g._SWALLOW_AUDIT_SECS = 0.6
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.25)
+    pending["v"] = False
+    await asyncio.sleep(1.0)
+    assert d.turns_swallowed_for_opening == 1 and d.swallowed_turns == 0
+
+
+def test_run_bot_wires_played_audio_and_the_early_skip_into_the_intro_note():
+    """run_bot gives RunGuard the played-audio check, and _intro_cue covers a
+    callee who spoke first before the greet's 0.1 s poll saw it (review
+    2026-10-14: that first run went out with no introduction)."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    rg = src[src.index("run_guard = RunGuard("):]
+    rg = rg[:rg.index("run_guard._one_door")]
+    assert "audible_since=" in rg
+    cue = src[src.index("def _intro_cue()"):src.index("async def _resay_opening(")]
+    assert '_greet_connect_t' in cue and 'flags["substantive_t"] > _greet_connect_t + 0.05' in cue
+
+
+@pytest.mark.asyncio
+async def test_a_turn_let_go_never_answers_a_voicemail_recording():
+    """36ac8abe replayed (review 2026-10-14): a recording piece ("Available.")
+    cut the opening, its run was let go and waited for the "caller's" voice —
+    the recorder's — and by then the call was known to be a voicemail. The
+    16 s reply went into the recorder. No run once the line is a voicemail."""
+    from pipecat.frames.frames import LLMContextFrame
+    ctx = _opening_ctx("Available.")
+    pending, coming, voice, vm = {"v": True}, {"v": True}, {"v": False}, {"v": False}
+    g, seen, d = _guard(ctx, pending, coming, voice=voice, is_voicemail=lambda: vm["v"])
+    await g.process_frame(LLMContextFrame(ctx), D)
+    await asyncio.sleep(0.15)
+    voice["v"], coming["v"] = True, False            # the recording talks on
+    await asyncio.sleep(0.6)
+    vm["v"] = True                                   # "…record your message."
+    voice["v"] = False
+    await asyncio.sleep(1.3)
+    assert seen == [], "answered the voicemail recording"

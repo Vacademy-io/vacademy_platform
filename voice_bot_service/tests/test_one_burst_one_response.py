@@ -292,3 +292,47 @@ async def test_a_resume_cut_before_it_was_heard_is_not_already_said():
     await nr.reply(QUESTION)
     assert nr.text == [QUESTION], nr.text
     assert nr.next_steps == [], nr.next_steps
+
+
+@pytest.mark.asyncio
+async def test_a_second_burst_while_the_models_turn_is_on_its_way_resumes_nothing():
+    """afa21bf4 replayed (review 2026-10-14): the barge-in's final went to the
+    model; while its reply was still held / composing, a second short burst
+    (a breath, an "umm") stopped and resumed the cut words verbatim — the
+    model's reply was then dropped as "being resumed". One moment, one
+    producer: the reply already on its way."""
+    state = _line()
+    tail = {"t": QUESTION + " " + REASON}
+    pending = {"v": False}
+    tc, frames, cuts = _gate(state, resume_unplayed=lambda n=600: tail.pop("t", ""),
+                             resume_on_stop_secs=1.0, resume_settle_secs=0.01,
+                             reply_pending=lambda: pending["v"])
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.16)
+    await _final(tc, "Wait.")                      # a real barge-in: the model's turn
+    pending["v"] = True                            # …held for its grace / composing
+    await asyncio.sleep(0.095)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.6)
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.3)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    assert _spoken(frames) == [], f"resumed on top of the model's turn: {_spoken(frames)}"
+    assert "t" in tail, "the cut words were taken although nothing said them"
+
+
+@pytest.mark.asyncio
+async def test_a_short_burst_with_nothing_on_its_way_still_resumes():
+    """Control: no reply pending — a noise burst over the reply still gets the
+    cut words back verbatim."""
+    state = _line()
+    tail = {"t": QUESTION + " " + REASON}
+    tc, frames, cuts = _gate(state, resume_unplayed=lambda n=600: tail.pop("t", ""),
+                             resume_on_stop_secs=1.0, resume_settle_secs=0.01,
+                             reply_pending=lambda: False)
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.4)                       # the voice-cut timer stops the reply
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    assert _spoken(frames) == [QUESTION + " " + REASON]

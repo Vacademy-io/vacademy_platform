@@ -284,6 +284,78 @@ def test_a_nudge_from_an_earlier_silence_does_not_excuse_a_later_one():
     assert diag.dead_air == [8]
 
 
+def test_the_hold_itself_is_not_dead_air():
+    """68bdcbcf replayed with the hold gate (2026-10-14): nothing leaked into
+    the 23 s hold any more, and the quiet read "dead air 22.8s —
+    after_caller_turn", RED. Only what followed the person's return is ours."""
+    flags = CallState(bot_stopped_t=100, user_stopped_t=101)
+    diag = dg.CallDiagnostics(user_turns=3, bot_turns=3, tts_chars=100)
+    cb = _speech_callbacks(flags, diag, 124.9)
+    cb["transcript"] = SimpleNamespace(hold_ended_t=124.0)     # back at 124.0
+    cb["set_bot_speaking"](True)
+    assert [round(x, 1) for x in diag.dead_air] == [0.9], diag.dead_air
+    assert dg.DEAD_AIR not in dg.verdict(diag)["faults"]
+    # Control: the same gap with no hold in it is still ours.
+    flags = CallState(bot_stopped_t=100, user_stopped_t=101)
+    diag = dg.CallDiagnostics(user_turns=3, bot_turns=3, tts_chars=100)
+    cb = _speech_callbacks(flags, diag, 124.9)
+    cb["transcript"] = SimpleNamespace(hold_ended_t=0.0)
+    cb["set_bot_speaking"](True)
+    assert [round(x, 1) for x in diag.dead_air] == [23.9]
+
+
+def test_the_person_back_from_a_hold_does_not_end_dead_air():
+    """68bdcbcf replayed: the person's "Hello." after the 23 s hold started at
+    an onset that measured back to the screen's last line — "dead air 22.8s —
+    after_caller_turn", RED."""
+    flags = CallState(bot_stopped_t=100, user_stopped_t=102)
+    diag = dg.CallDiagnostics(user_turns=3, bot_turns=3, tts_chars=100)
+    cb = _speech_callbacks(flags, diag, 125)
+    cb["transcript"] = SimpleNamespace(on_hold=lambda: True, hold_ended_t=0.0)
+    cb["set_user_speaking"](True)
+    assert diag.dead_air == [], diag.dead_air
+    assert diag.silences == [{"secs": 23.0, "cause": "on_hold"}], diag.silences
+    # …and when their final already ended the hold before the (late) onset.
+    flags = CallState(bot_stopped_t=100, user_stopped_t=102)
+    diag = dg.CallDiagnostics(user_turns=3, bot_turns=3, tts_chars=100)
+    cb = _speech_callbacks(flags, diag, 125)
+    cb["transcript"] = SimpleNamespace(on_hold=lambda: False, hold_ended_t=124.7)
+    cb["set_user_speaking"](True)
+    assert diag.dead_air == [], diag.dead_air
+    # Control: not on hold, the same span is still counted.
+    flags = CallState(bot_stopped_t=100, user_stopped_t=102)
+    diag = dg.CallDiagnostics(user_turns=3, bot_turns=3, tts_chars=100)
+    cb = _speech_callbacks(flags, diag, 125)
+    cb["transcript"] = SimpleNamespace(on_hold=lambda: False, hold_ended_t=0.0)
+    cb["set_user_speaking"](True)
+    assert [round(x, 1) for x in diag.dead_air] == [23.0]
+
+
+def test_a_deliberate_re_say_of_the_opening_is_not_a_replay():
+    """The opening cut at pickup and re-said on purpose (opening_resaid), with
+    no acknowledgement splitting the re-delivery in the played transcript:
+    662d1c80 / aa5e2e5f replayed RED "said its opening again mid-call" on
+    the same audio that was GREEN before 2026-10-14. A model re-introducing
+    itself later is still a replay."""
+    import app.report as rp
+    op = ("नमस्ते जी, मैं Asha बोल रही हूँ Test Academy से। आपने inquiry की थी, "
+          "उसी के बारे में बात करनी थी।")
+    o = b.CallOutcome(corr="resay-t", context={})
+    o.transcript = [{"role": "assistant", "text": "नमस्ते जी, मैं Asha बोल"},
+                    {"role": "user", "text": "बोलिए।"},
+                    {"role": "assistant", "text": op}]
+    o.diagnostics = dg.CallDiagnostics(user_turns=1, bot_turns=2, tts_chars=100,
+                                       opening_resaid=1)
+    blob = rp._diagnostics_blob(o)
+    assert dg.OPENING_REPLAYED not in (blob.get("faultLevels") or {}), blob.get("faultLevels")
+    o.transcript += [{"role": "user", "text": "कौन बोल रहा है?"},
+                     {"role": "assistant", "text": op}]     # the model said it again
+    o.diagnostics = dg.CallDiagnostics(user_turns=2, bot_turns=3, tts_chars=100,
+                                       opening_resaid=1)
+    blob = rp._diagnostics_blob(o)
+    assert (blob.get("faultLevels") or {}).get(dg.OPENING_REPLAYED) == dg.RED
+
+
 def test_the_idle_handler_marks_only_the_callers_silence():
     """The stamp sits on the plain nudge and on the farewell after a question —
     never on the owed-line path, where the silence is the bot's."""
@@ -423,12 +495,32 @@ async def test_the_carrier_adjacent_guard_measures_from_the_previous_final(clock
 def test_the_unpaid_number_message_is_the_operator():
     """e208c6e8: two pieces of it matched nothing and each cut the opening."""
     for line in ("The number you are trying to call",
-                 "is not able to receive call right now",
+                 "is unable to take calls due to pending recharge",
                  "due to pending recharge.",
                  "डायल किए जा रहे नंबर पर अभी",
                  "कॉल प्राप्त करने में असमर्थ",
                  "recharge बाकी होने के कारण"):
         assert is_carrier_announcement(line), line
     for person in ("हाँ जी बोलिए", "recharge करवाना है क्या?", "The number is correct.",
-                   "मैं अभी call receive नहीं कर पाऊँगा"):
+                   "मैं अभी call receive नहीं कर पाऊँगा",
+                   # Everyday Indian English — a carrier match drops it from the
+                   # model's context (review 2026-10-14).
+                   "Sorry, I am not able to receive call right now, I am driving.",
+                   "I was unable to receive call yesterday.",
+                   "I could not receive call due to meeting"):
         assert not is_carrier_announcement(person), person
+
+
+@pytest.mark.asyncio
+async def test_a_short_reply_between_generic_operator_lines_is_a_person(clock):
+    """Pieces count as the recording only on a call whose recorder played its
+    own prompt (voicemail / record your message / the tone). Between two
+    generic lines a person's "हाँ।" is a person: hanging up on them in
+    silence at the first idle tick is the wrong trade."""
+    rec = _Rec()
+    tc = _collector(rec, machine=True)
+    for at, line in ((2.0, "The person you are trying to reach is not available."),
+                     (3.0, "हाँ।"),
+                     (4.0, "कृपया बाद में प्रयास करें।")):
+        await _say(tc, clock, at, line)
+    assert not tc.looks_like_voicemail()

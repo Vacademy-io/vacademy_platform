@@ -100,7 +100,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
-                       is_echo_of_answer, is_call_screener, is_call_connect, caller_asks_who,
+                       is_echo_of_answer, is_call_screener, is_call_connect, is_voicemail_prompt,
+                       caller_asks_who,
                        caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
                        is_hold_announcement, hold_absorbs, caller_is_busy,
@@ -462,6 +463,9 @@ class TranscriptCollector(FrameProcessor):
         # and the carrier-adjacent guard read it; everything else keeps counting
         # _human_turns as before.
         self._recording_turns = 0
+        # The recorder's own prompt played ("…forwarded to voicemail.", "Please
+        # record your message.") — see turntake.is_voicemail_prompt.
+        self._voicemail_seen = False
         self._turns_after_carrier = []  # times of short turns since the last carrier line
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
@@ -469,6 +473,9 @@ class TranscriptCollector(FrameProcessor):
         # process_frame and turntake.is_hold_announcement.
         self._hold_since = 0.0
         self._hold_line_t = 0.0
+        # When the person last came back from a hold (0 = never): the silence
+        # before it was the hold's, not dead air (run_bot.set_bot_speaking).
+        self.hold_ended_t = 0.0
         self._hold_unheard = False     # the hold began before anyone heard the bot
         # Transcript entries that are the hold recording, absorbed on purpose: on
         # the record, never meant for the model, so not a "deleted answer" either
@@ -731,9 +738,14 @@ class TranscriptCollector(FrameProcessor):
                 # whoever speaks after the recording's last line is a person.
                 # Not a screener or a call-connect bridge: those play while a
                 # person may be picking up, and their "Hello." is the person.
+                # (looks_like_voicemail only counts these pieces once the
+                # recorder's own prompt has played — _voicemail_seen.)
                 _pieces = ([] if is_call_screener(text) or is_call_connect(text) else
                            [t for t in self._turns_after_carrier
                             if now - t <= RECORDING_PIECE_SECS])
+                if is_voicemail_prompt(text) or (
+                        joined_carrier and is_voicemail_prompt(prev_final + " " + text)):
+                    self._voicemail_seen = True
                 if _pieces:
                     self._recording_turns += len(_pieces)
                     logger.info("turn-gate: %d short turn(s) just before this carrier line "
@@ -777,6 +789,7 @@ class TranscriptCollector(FrameProcessor):
                     return
                 held = now - self._hold_since
                 self._hold_since = 0.0
+                self.hold_ended_t = now
                 back_from_hold = True
                 logger.info("turn-gate: back from hold after %.0fs — %r", held, text[:30])
                 if self._diag is not None:
@@ -1475,6 +1488,11 @@ class TranscriptCollector(FrameProcessor):
         """Seconds the person has had us on hold (0 when not on hold)."""
         return time.time() - self._hold_since if self._hold_since else 0.0
 
+    def on_hold(self) -> bool:
+        """The person has us on hold right now. Not on_hold_for() > 0: on a
+        coarse clock a run checked in the same tick as the hold began read 0."""
+        return self._hold_since > 0
+
     async def _absorb_hold_line(self, frame, direction, text: str) -> None:
         """A piece of the hold recording: on the record, out of the model's context,
         and not a barge-in. Stamped as heard, so the silence around it is not taken
@@ -1541,6 +1559,11 @@ class TranscriptCollector(FrameProcessor):
         1c138e52, 36ac8abe, 2ba1ff7a, 5a180c97 and 960251f2 (2026-10-14) each had
         one or two and ran 42-57 s. Anything said after the recording's last
         line still does, so a person who says "Hello" then is never hung up on."""
+        if not self._voicemail_seen:
+            # Only a recorder's own prompt makes the pieces the recording: a
+            # person's "हाँ" between two generic lines ("not available", "कृपया
+            # बाद में") must not be hung up on in silence (review 2026-10-14).
+            return self._carrier_seen and self._human_turns == 0
         return self._carrier_seen and self._human_turns <= self._recording_turns
 
     def _last_reply_had_question(self) -> bool:
@@ -1762,6 +1785,14 @@ class TranscriptCollector(FrameProcessor):
         heard "नाम क्या है…" and had to ask "किसका नाम?"."""
         if self._resume_unplayed is None or self._hold_since:
             return False                       # on hold: nobody is there to hear it
+        if self._reply_pending():
+            # The model is already answering this moment (a real barge-in's
+            # turn, held or composing): the cut words are its to say or drop.
+            # A second short burst while it composed resumed them on top of it
+            # — two voices for one moment (afa21bf4 replayed, review
+            # 2026-10-14). The caller's reply is on its way; nothing to add.
+            logger.info("turn-gate: %s — a reply is already on its way, not resuming", why)
+            return False
         try:
             tail = self._resume_unplayed(self._resume_max_chars)
         except Exception:
@@ -3555,7 +3586,8 @@ class RunGuard(FrameProcessor):
                  noise_cap_secs: float = 3.0, caller_forming=None,
                  forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
                  supersede=None, reply_unheard=None, runs_noted=None, before_run=None,
-                 on_hold=None, opening_coming=None, intro_cue=None):
+                 on_hold=None, opening_coming=None, intro_cue=None, audible_since=None,
+                 is_voicemail=None):
         super().__init__()
         # The person has put us on hold (TranscriptCollector.on_hold_for): no run
         # goes to the LLM, whoever started it — see _let_through.
@@ -3607,6 +3639,14 @@ class RunGuard(FrameProcessor):
         # 5e979e3e's re-say was killed 22 ms in — 14.6 s, no run at all.
         self._opening_coming = opening_coming or (lambda: True)
         self._opening_wait: Optional[asyncio.Task] = None
+        # Has bot audio played at any moment since t (playing now, or started /
+        # stopped after t)? How a turn left to the opening is checked against
+        # what the caller actually HEARD (CALLER_IGNORED, _check_swallowed).
+        self._audible_since = audible_since or (lambda t: True)
+        # The only thing that has spoken is the voicemail recorder
+        # (TranscriptCollector.looks_like_voicemail): its "turns" were pieces
+        # of the recording, and the idle tick hangs up.
+        self._is_voicemail = is_voicemail or (lambda: False)
         # The note a run carries while the person has not HEARD who is calling
         # ("" = none) — added at the one exit every run takes (_let_through).
         self._intro_cue = intro_cue or (lambda: "")
@@ -3759,6 +3799,37 @@ class RunGuard(FrameProcessor):
             logger.info("run-guard: run waiting on the opening superseded — %s", why)
         self._opening_wait = None
 
+    # How long after a turn left to the opening the caller must hear SOMETHING
+    # of ours for "the opening was the reply" to be true.
+    _SWALLOW_AUDIT_SECS = 5.0
+
+    def _check_swallowed(self, turn_t: float, last: str) -> None:
+        """A caller turn was left to the opening. Check it against what PLAYED:
+        no bot audio from the turn until _SWALLOW_AUDIT_SECS later (and not on
+        hold) means the caller talked into silence — CALLER_IGNORED
+        (swallowed_turns). Before 2026-10-14 every such swallow scored GREEN:
+        5e979e3e, 662d1c80, 4cb132a2, a11e6709 (3.5-18 s of silence)."""
+        async def _audit():
+            try:
+                while time.time() - turn_t < self._SWALLOW_AUDIT_SECS:
+                    if self._audible_since(turn_t) or self._on_hold():
+                        return
+                    await asyncio.sleep(0.25)
+                if self._audible_since(turn_t) or self._on_hold():
+                    return
+                if self._diag is not None:
+                    self._diag.bump("swallowed_turns")
+                logger.warning("run-guard: %r was left to the opening and nothing has "
+                               "played since — the caller was ignored", last[:32])
+            except asyncio.CancelledError:
+                pass
+        if self._audible_since(turn_t):
+            return
+        try:
+            self.create_task(_audit())
+        except Exception:
+            logger.debug("run-guard: no task manager for the swallow audit")
+
     async def _await_opening(self, frame: Frame, direction: FrameDirection, last: str):
         """A caller run that arrived while the opening was on its way. Not
         held() on purpose: a held turn is "a reply on its way" to the turn-gate
@@ -3781,6 +3852,7 @@ class RunGuard(FrameProcessor):
                 self._diag.bump("turns_swallowed_for_opening")
             logger.info("run-guard: the opening played over %r (%.1fs) — it was the reply",
                         last[:32], time.time() - t0)
+            self._check_swallowed(t0, last)
             return
         try:
             msgs = self._context.get_messages()
@@ -3796,7 +3868,12 @@ class RunGuard(FrameProcessor):
             # What stopped it is usually the caller talking: their turn's own
             # run takes these words too (replay of 662d1c80: released into the
             # caller's next piece, two runs, the second dropped as a repeat).
-            self._held = self.create_task(self._release_when_formed(frame, direction))
+            # Wait for their VOICE as well, not only for words in the
+            # aggregator: the STT final lags the voice, and a run sent while
+            # they still talk is cut by their own final (review 2026-10-14:
+            # 3-4 runs where one would do, "जी सर।" cut twice).
+            self._held = self.create_task(self._release_when_formed(
+                frame, direction, wait_voice=True, after_opening=last))
             return
         await self._let_through(frame, direction)
 
@@ -3822,13 +3899,16 @@ class RunGuard(FrameProcessor):
     def _one_door(self) -> bool:
         return True
 
-    async def _release_when_formed(self, frame: Frame, direction: FrameDirection, cue=None):
+    async def _release_when_formed(self, frame: Frame, direction: FrameDirection, cue=None,
+                                   wait_voice: bool = False, after_opening: Optional[str] = None):
         """Held because the caller's turn was forming. Normally their turn's own
         run supersedes this (process_frame → _drop_held). If it never comes — the
         words were taken some other way — run once nothing is forming and the
-        context has been still for 0.3 s; never later than the cap."""
+        context has been still for 0.3 s; never later than the cap.
+        `after_opening`: the run was let go by _await_opening because the
+        opening stopped unheard (the caller's words, for the log)."""
         t0 = time.time()
-        while ((self._caller_forming() or (cue is not None and self._voice_live()))
+        while ((self._caller_forming() or ((cue is not None or wait_voice) and self._voice_live()))
                and time.time() - t0 < self._forming_cap):
             await asyncio.sleep(0.1)
         capped = self._caller_forming()
@@ -3849,6 +3929,17 @@ class RunGuard(FrameProcessor):
                 self._drop_cue(cue, why + " (at release)")
                 return
             self._cues.pop(cue[0], None)
+        if (after_opening is not None and self._opening_pending()
+                and self._opening_coming()):
+            # The opening was re-said while this waited (the cut that stopped
+            # it queues the re-say a moment later): it is the reply again, so
+            # wait on it as process_frame would, instead of running the model
+            # over it (review 2026-10-14).
+            logger.info("run-guard: the opening is on its way again — %r waits for it",
+                        after_opening[:32])
+            self._opening_wait = self.create_task(
+                self._await_opening(frame, direction, after_opening))
+            return
         if capped and self._diag is not None:
             self._diag.bump("forming_hold_cap_releases")
         logger.info("run-guard: run held for a forming turn released after %.2fs%s",
@@ -3873,6 +3964,14 @@ class RunGuard(FrameProcessor):
             # 6 s into it (68bdcbcf); a parked next-step cue was released into
             # it — 11.6 s of re-introduction to a call screener (d8146538).
             self._drop_on_hold()
+            return
+        if self._is_voicemail():
+            # A run let go while the recording was still playing (it waited
+            # for the "caller's" voice — the recorder's) would answer pieces
+            # of a voicemail into the recorder. 36ac8abe replayed (2026-10-14):
+            # 16 s of reply after "When you have finished recording…".
+            self._last_allowed_fp = None
+            logger.info("run-guard: the line is a voicemail recording — no reply to it")
             return
         # Before the fingerprint, so a stale retrigger of this same context
         # still reads "unchanged" and is blocked.
@@ -3910,6 +4009,9 @@ class RunGuard(FrameProcessor):
             last = ""
         if self._diag is not None:
             self._diag.bump("runs_dropped_on_hold")
+        # process_frame marked this context "allowed" before the run reached the
+        # door; it never ran, so the same context must be able to run later.
+        self._last_allowed_fp = None
         if last.startswith("[") and last.endswith("]"):
             on_drop = self._cues.get(last, (None, 0.0))[0]
             self._drop_cue((last, on_drop), "the call is on hold")
@@ -4105,7 +4207,11 @@ class RunGuard(FrameProcessor):
                                 self._diag.bump("runs_held_for_opening")
                             logger.info("run-guard: the opening has not played yet and %r does "
                                         "not take over — the opening is the reply", last[:32])
-                            self._drop_opening_wait("a newer turn arrived")
+                            # Every earlier run of this moment too — one let go
+                            # by _await_opening and waiting for the caller's
+                            # voice included: else it ran the model over the
+                            # re-said opening (review 2026-10-14).
+                            self._drop_held("a newer turn arrived")
                             self._opening_wait = self.create_task(
                                 self._await_opening(frame, direction, last))
                             return
@@ -6133,6 +6239,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            try:
+                # Quiet on hold is the point of the hold, not dead air: only
+                # what followed the person's return is ours (call 68bdcbcf,
+                # 2026-10-14; set_user_speaking skips the hold the same way).
+                _last = max(_last, transcript.hold_ended_t)
+            except NameError:
+                pass
             if _last and not flags["user_speaking"]:
                 _gap = max(0.0, time.time() - _last)
                 _why = _silence_cause(_gap)
@@ -6205,7 +6318,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # them, which IS ours. That path is deliberately untouched.
                 if _why == "both_quiet":
                     _why = "caller_thinking"
-                if _why != "caller_thinking":
+                try:
+                    # The person coming back from a hold ("Hello.") ends a
+                    # silence that was the hold's: the point of it, not ours
+                    # (68bdcbcf replayed, 2026-10-14: "dead air 22.8s —
+                    # after_caller_turn" once nothing leaked into the hold).
+                    # Their onset can reach here after their final has
+                    # already ended the hold (the aggregator's late start).
+                    if _why and (transcript.on_hold() or transcript.hold_ended_t >= _last):
+                        _why = "on_hold"
+                except NameError:
+                    pass
+                if _why not in ("caller_thinking", "on_hold"):
                     diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
@@ -6556,6 +6680,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _opening_resays = 0        # at most two: a noisy pickup can cut it twice
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
     _greet_skipped = False     # the callee spoke first: no scripted opening will play
+    _greet_connect_t = 0.0     # when _greet_when_ready began watching for the callee
     # Who is calling, as the opening says it, and how much of it must PLAY for
     # the person to have heard that (opening_intro_secs; 0 = it does not say).
     _intro_names = [str(agent.get("name") or "").strip(),
@@ -6619,7 +6744,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         the replay of c3818b83 the noted reply never played, a resumed
         fragment did, and the next reply went out with no note."""
         nonlocal _intro_cue_chars
-        if not _intro_secs or not (_greet_skipped or diag.greet_path == "scripted"):
+        # The callee spoke first and the greet has not polled yet (it does
+        # every 0.1 s): its own skip test already holds, so it WILL skip — a
+        # run closing in that gap went out with no note (review 2026-10-14).
+        _skipping = (_greet_connect_t and not _greet_queued_t
+                     and flags["substantive_t"] > _greet_connect_t + 0.05)
+        if not _intro_secs or not (_greet_skipped or _skipping
+                                   or diag.greet_path == "scripted"):
             return ""
         if _intro_heard() or _opening_coming():
             return ""
@@ -6951,9 +7082,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          reply_unheard=_reply_unheard,
                          runs_noted=lambda: no_repeat.runs_noted(),
                          before_run=lambda: _llm_return_frame(),
-                         on_hold=lambda: transcript.on_hold_for() > 0,
+                         on_hold=lambda: transcript.on_hold(),
                          opening_coming=_opening_coming,
-                         intro_cue=_intro_cue)
+                         intro_cue=_intro_cue,
+                         audible_since=lambda t: (flags["bot_speaking"]
+                                                  or flags["bot_started_t"] > t
+                                                  or flags["bot_stopped_t"] > t),
+                         is_voicemail=lambda: transcript.looks_like_voicemail())
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -7207,10 +7342,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         the callee already said something substantive (their turn then drives the
         LLM). Scripted openings are spoken directly — NO manual context append on
         1.4, the assistant aggregator captures spoken text itself."""
-        nonlocal _greet_skipped
+        nonlocal _greet_skipped, _greet_connect_t
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context, full_name=True))
         connect_t = time.time()
+        _greet_connect_t = connect_t
         # SUBSTANTIVE speech only. This used to test transcript_t, i.e. ANY
         # transcript, so one stray word decided whether we opened at all — and
         # on a voicemail the stray words are the operator's own recording

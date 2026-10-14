@@ -52,8 +52,11 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # separate messages (4a594125); HANDBACK_LOOP counts only handback lines the
 # caller heard, not internal next-step requests (4a594125); DEAD_AIR no longer
 # charges the bot for the idle wait on a caller who did not answer its question
-# (afa21bf4, d8146538: "dead air 8.0s" at every nudge). New fault CALLER_IGNORED.
-# Compare all four across the v6/v7 boundary with care.
+# (afa21bf4, d8146538: "dead air 8.0s" at every nudge) nor for the quiet of a
+# hold (68bdcbcf); OPENING_REPLAYED no longer counts the bot's own deliberate
+# re-says (opening_resaid: cut at pickup, or re-said to the person a screener
+# handed over). New fault CALLER_IGNORED. Compare all five across the v6/v7
+# boundary with care.
 RULES_VERSION = 7
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
@@ -287,8 +290,10 @@ class CallDiagnostics:
     opening_unsaid_runs: int = 0
     # Runs that carried "the person has not heard who you are" to the model.
     intro_cues: int = 0
-    # Caller turns swallowed for an opening that was then never said (the
-    # opening-pending mute; bumped by RunGuard). Drives CALLER_IGNORED.
+    # Caller turns left to the opening (turns_swallowed_for_opening) after which
+    # NOTHING of ours played for 5 s — the caller talked into silence. Checked
+    # against played audio by RunGuard._check_swallowed, so the ordinary
+    # pickup "हाँ जी" the opening answers never counts. Drives CALLER_IGNORED.
     swallowed_turns: int = 0
     # Short-answer holds released because the line never went quiet (noise).
     short_answer_noise_releases: int = 0
@@ -925,9 +930,10 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     elif d.handbacks >= 2:
         fire(HANDBACK_LOOP, AMBER)
 
-    # A swallowed turn is a person talking into silence; one is already a fault
-    # the caller felt, two is the 14-18 s lock of 2026-10-14 (a11e6709: four
-    # hellos, two swallowed runs, then a reply with no introduction).
+    # A swallowed turn is a person talking into silence (audio-checked, see
+    # swallowed_turns); one is already a fault the caller felt, two is the
+    # 14-18 s lock of 2026-10-14 (a11e6709: four hellos, two swallowed runs,
+    # then a reply with no introduction).
     if d.swallowed_turns >= 2:
         fire(CALLER_IGNORED, RED)
     elif d.swallowed_turns >= 1:

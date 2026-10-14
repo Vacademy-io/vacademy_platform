@@ -215,8 +215,11 @@ _CARRIER_PHRASES = (
     # call due to pending recharge." and the Hindi "आपके द्वारा डायल किए जा रहे
     # नंबर पर कॉल प्राप्त करने में असमर्थ है।" / "क्योंकि recharge बाकी है।". Two
     # of its pieces matched nothing, each cut the opening as a "real barge-in".
+    # Operator-only wording: "not able to receive call" is what a person says
+    # too ("Sorry, I am not able to receive call right now") and would drop
+    # their words from the model's context (review 2026-10-14). The operator's
+    # sentence still matches on "pending recharge", whole or as its last piece.
     "the number you are trying", "number you are trying to", "pending recharge",
-    "not able to receive call", "unable to receive call", "receive call due to",
     # Hindi
     "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
     "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",
@@ -231,6 +234,19 @@ _CARRIER_PHRASES = (
 _CONNECT_PHRASES = ("getting connected", "being connected", "connected by", "connecting you",
                     "connecting your call", "call is being connected", "just dial",
                     "justdial")
+
+
+# The voicemail recorder's OWN prompts: it is taking a message, so nobody is on
+# the line while it plays. Short "turns" between carrier lines count as pieces
+# of the recording only on a call that played one of these
+# (bot.TranscriptCollector.looks_like_voicemail). The generic lines ("not
+# available", "please try again", the Hindi busy / call-later ones) also play
+# when a person may be on the line, and a person's own words can match them —
+# hanging up on those in silence is not a price worth a few billed seconds
+# (review 2026-10-14). All six voicemails of 2026-10-14 played one.
+_VOICEMAIL_PHRASES = ("voicemail", "voice mail", "the tone", "the beep", "record your message",
+                      "leave a message", "leave your message", "finished recording",
+                      "you may hang up")
 
 
 _SCREENER_PHRASES = ("record your name", "name and reason", "see if this person",
@@ -431,6 +447,13 @@ def is_call_connect(text: str) -> bool:
     network talking to someone who may be picking up right now."""
     t = (text or "").casefold()
     return any(p in t for p in _CONNECT_PHRASES)
+
+
+def is_voicemail_prompt(text: str) -> bool:
+    """The voicemail recorder's own prompt ("…forwarded to voicemail.", "Please
+    record your message.", "…at the tone."), not merely a carrier line."""
+    t = (text or "").casefold()
+    return any(p in t for p in _VOICEMAIL_PHRASES)
 
 
 def is_carrier_announcement(text: str) -> bool:

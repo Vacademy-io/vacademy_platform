@@ -638,6 +638,8 @@ public class AiAgentAssistService {
         FAULT_MEANING.put("DEAD_AIR", "long silence from the agent (platform/audio — not a prompt issue)");
         FAULT_MEANING.put("ANSWER_DELETED", "a caller answer was lost in speech recognition (platform)");
         FAULT_MEANING.put("STT_DEAF", "speech recognition heard nothing (platform)");
+        FAULT_MEANING.put("CALLER_IGNORED", "the caller spoke and the agent stayed silent while its "
+                + "opening was owed (platform — not a prompt issue)");
         FAULT_MEANING.put("LIKELY_MACHINE", "voicemail or IVR answered (ignore)");
     }
 

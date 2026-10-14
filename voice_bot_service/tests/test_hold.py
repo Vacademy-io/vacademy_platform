@@ -749,6 +749,23 @@ async def test_run_guard_drops_a_caller_run_on_hold_and_keeps_its_words(guard):
 
 
 @pytest.mark.asyncio
+async def test_a_run_dropped_on_hold_can_run_once_the_person_is_back(guard):
+    """The context a hold drop left unanswered is not "already run": process_frame
+    marked it allowed before the door dropped it, and the same context sent
+    again after the hold read "context unchanged" and was blocked."""
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, passed, d = guard()
+    D = b.FrameDirection.DOWNSTREAM
+    guard.state["hold"] = True
+    ctx.messages.append({"role": "user", "content": "Okay."})
+    await g.process_frame(LLMRunFrame(), D)
+    assert passed == [] and d.runs_dropped_on_hold == 1
+    guard.state["hold"] = False
+    await g.process_frame(LLMRunFrame(), D)
+    assert len(passed) == 1, "the words left from the hold were never answered"
+
+
+@pytest.mark.asyncio
 async def test_a_short_answer_held_across_the_hold_entry_is_dropped(guard):
     """68bdcbcf: the run on the screen's "Thanks." was held for its short-answer
     grace, the hold began inside it, and the release played 6 s into the hold."""
@@ -812,4 +829,16 @@ def test_run_bot_wires_the_hold_into_the_run_guard():
     src = inspect.getsource(b.run_bot)
     rg = src[src.index("run_guard = RunGuard("):]
     rg = rg[:rg.index("run_guard._one_door")]
-    assert "on_hold=lambda: transcript.on_hold_for() > 0" in rg
+    assert "on_hold=lambda: transcript.on_hold()" in rg
+
+
+def test_on_hold_is_true_in_the_same_tick_the_hold_began(monkeypatch):
+    """on_hold_for() > 0 read False when a run was checked in the same clock
+    tick as the hold line (a coarse clock): the run went into the hold."""
+    tc = b.TranscriptCollector(_Outcome(), lambda user=True: None,
+                               is_bot_speaking=lambda: False)
+    monkeypatch.setattr(b.time, "time", lambda: 5000.0)
+    tc._hold_since = 5000.0
+    assert tc.on_hold()
+    tc._hold_since = 0.0
+    assert not tc.on_hold()

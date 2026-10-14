@@ -6245,9 +6245,13 @@ async def test_no_re_send_while_the_model_is_already_writing():
                            resume_unplayed=lambda n=600: "x y z", resume_settle_secs=0.01,
                            forget_resume=lambda: forgotten.__setitem__("n", 1) or True)
     tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
-    tc._reply_in_flight = lambda: True
+    # The model starts writing once the resume is under way (a resume never
+    # STARTS over a reply already on its way — _resume_cut_words).
+    writing = {"v": False}
+    tc._reply_in_flight = lambda: writing["v"]
     b.FrameProcessor.process_frame = _noop_super
     assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    writing["v"] = True
     await asyncio.wait_for(tc._resume_check, timeout=6)
     # sent once, never repeated over the model, and handed back so the model
     # is free to say them itself

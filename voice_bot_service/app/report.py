@@ -624,6 +624,15 @@ def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
         d.machine_markers = _machine_markers(outcome)
         d.person_turns = _person_turns(outcome)
         d.opening_replays, d.repeated_lines, d.repeated_line_samples = _played_invariants(outcome)
+        # The bot's own deliberate re-says are not a replay: the opening cut
+        # before half of it played, or re-said to the person a call screener
+        # handed over (opening_resaid, bumped by run_bot._resay_opening). The
+        # transcript test above only caught them by accident of how a
+        # re-delivery was split into entries; once an acknowledgement over the
+        # re-said opening stopped splitting it (2026-10-14), calls 662d1c80 and
+        # aa5e2e5f replayed RED "said its opening again mid-call" on the same
+        # audio that had been GREEN.
+        d.opening_replays = max(0, d.opening_replays - (d.opening_resaid or 0))
         payload = diagnostics.to_payload(d)
         _alert(outcome, payload)
         return payload

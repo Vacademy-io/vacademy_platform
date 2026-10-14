@@ -94,6 +94,11 @@ public class LeadFilterDTO {
 
     // ── Dedup Filter ──
     private Boolean excludeDuplicates;      // True = hide duplicates (default behavior)
+    /**
+     * EXCLUDE = hide enquiries flagged as duplicates of a lead they repeat, ONLY = just those
+     * (a Duplicate Leads tab). Null = no filter. Driven by the sidebar route, per tab.
+     */
+    private String duplicateFilter;
 
     // ── Search ──
     private String searchQuery;             // Searches parent name, email, mobile

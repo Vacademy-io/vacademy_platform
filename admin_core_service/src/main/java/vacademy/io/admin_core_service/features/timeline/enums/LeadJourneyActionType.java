@@ -22,6 +22,12 @@ public enum LeadJourneyActionType {
      * created; this records the repeat contact (metadata: channel, flow_id, flow_name, message).
      */
     RE_ENQUIRY,
+    /**
+     * An existing lead enquired again through a lead form, an ad or a list, and the institute's
+     * repeat-lead handling let it through (metadata: duplicate_response_id, source_type,
+     * campaign_name). Logged on the lead the enquiry repeats.
+     */
+    REATTEMPT,
 
     // ── Curation ─────────────────────────────────────────────────────────────
     /** An admin soft-deleted this lead (metadata: scope, campaign_name, deleted_by). */

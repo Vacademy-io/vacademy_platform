@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.audience.dto.LeadLookupResultDto;
 import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadDedupSettingService;
 import vacademy.io.admin_core_service.features.audience.service.LeadLookupService;
 import vacademy.io.admin_core_service.features.audience.service.LeadLookupSettingService;
 import vacademy.io.admin_core_service.features.audience.service.LeadLookupSettingService.Fields;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,12 +65,14 @@ class LeadLookupServiceTest {
         LeadLookupSettingService settings = mock(LeadLookupSettingService.class);
         when(settings.get(INSTITUTE)).thenReturn(
                 new LookupSettings(true, SHARED, "field-course", "field-branch", false));
-        service = new LeadLookupService(responses, settings, scope, followUps, authService);
+        LeadDedupSettingService dedupSettings = mock(LeadDedupSettingService.class);
+        when(dedupSettings.get(anyString())).thenReturn(LeadDedupSettingService.DEFAULTS);
+        service = new LeadLookupService(responses, settings, scope, followUps, authService, dedupSettings);
 
         caller = mock(CustomUserDetails.class);
         when(caller.getUserId()).thenReturn(CALLER);
         when(scope.scopedCounsellorUserIds(INSTITUTE, CALLER)).thenReturn(List.of(CALLER));
-        when(responses.lookupMatchingResponseIds(anyString(), anyString(), any(), any()))
+        when(responses.lookupMatchingResponseIds(anyString(), anyString(), any(), any(), eq(false)))
                 .thenReturn(List.of("resp-1"));
         when(followUps.findByAudienceResponseIdInOrderByScheduleTimeDesc(anyList()))
                 .thenReturn(List.of(followUp()));

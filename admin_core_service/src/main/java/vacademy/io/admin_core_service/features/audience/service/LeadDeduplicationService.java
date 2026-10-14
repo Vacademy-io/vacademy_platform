@@ -253,6 +253,63 @@ public class LeadDeduplicationService {
         return owners.isEmpty() ? Optional.empty() : Optional.ofNullable(owners.get(0));
     }
 
+    /**
+     * The lead a repeat enquiry repeats, under the same field (email / phone) and scope the
+     * dedup check used: the active, non-duplicate other lead, an owned one first, then the
+     * newest. Empty when the setting is off, the identifier is blank, or nothing matches.
+     */
+    public Optional<AudienceResponseRepository.PrimaryLeadRow> findPrimaryLead(String instituteId,
+            String audienceId, String email, String phone, String excludeResponseId) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        if (!settings.enabled() || excludeResponseId == null) return Optional.empty();
+
+        String audienceIdsCsv = scopeAudienceIdsCsv(settings, audienceId);
+
+        List<AudienceResponseRepository.PrimaryLeadRow> rows;
+        if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
+            String last10 = lastNDigits(phone, 10);
+            if (last10 == null) return Optional.empty();
+            rows = audienceResponseRepository.findPrimaryLeadByPhoneLast10(
+                    instituteId, audienceIdsCsv, last10, excludeResponseId);
+        } else {
+            if (email == null || email.isBlank()) return Optional.empty();
+            rows = audienceResponseRepository.findPrimaryLeadByEmail(
+                    instituteId, audienceIdsCsv, email, excludeResponseId);
+        }
+        return rows.isEmpty() ? Optional.empty() : Optional.ofNullable(rows.get(0));
+    }
+
+    /**
+     * A "Reattempt" entry in the journey of the lead a repeat enquiry repeats, naming where
+     * the enquiry came from and the list it landed in.
+     */
+    public void logReattempt(AudienceResponseRepository.PrimaryLeadRow primary, AudienceResponse repeat,
+            String sourceLabel, String campaignName) {
+        StringBuilder description = new StringBuilder("Enquired again");
+        if (sourceLabel != null && !sourceLabel.isBlank()) {
+            description.append(" via ").append(sourceLabel);
+        }
+        if (campaignName != null && !campaignName.isBlank()) {
+            description.append(" · ").append(campaignName);
+        }
+        timelineEventService.logJourneyEvent(
+                "AUDIENCE_RESPONSE",
+                primary.getResponseId(),
+                LeadJourneyActionType.REATTEMPT,
+                "SYSTEM",
+                null,
+                "System",
+                "Reattempt",
+                description.toString(),
+                Map.of(
+                        "duplicate_response_id", repeat.getId() != null ? repeat.getId() : "",
+                        "source_type", repeat.getSourceType() != null ? repeat.getSourceType() : "UNKNOWN",
+                        "campaign_name", campaignName != null ? campaignName : ""
+                ),
+                primary.getUserId()
+        );
+    }
+
     /** The dedup settings when they are PHONE + ALLOW_REASSIGN and enabled, else null. */
     private LeadDedupSettingService.DedupSettings phoneReassignSettings(String instituteId) {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);

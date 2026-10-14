@@ -70,6 +70,7 @@ import {
     CalendarDot,
     CaretDown,
     WhatsappLogo,
+    Repeat,
 } from '@phosphor-icons/react';
 import {
     DropdownMenu,
@@ -614,6 +615,12 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
         icon: <WhatsappLogo weight="fill" className="size-4" />,
         color: 'text-info-600',
         bgColor: 'bg-info-100',
+    },
+    // An existing lead enquired again through a form, ad or list (repeat-lead handling).
+    REATTEMPT: {
+        icon: <Repeat weight="fill" className="size-4" />,
+        color: 'text-warning-600',
+        bgColor: 'bg-warning-100',
     },
     FOLLOW_UP_SCHEDULED: {
         icon: <CalendarDot weight="fill" className="size-4" />,

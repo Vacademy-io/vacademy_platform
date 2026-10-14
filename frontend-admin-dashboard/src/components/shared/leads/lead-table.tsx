@@ -13,6 +13,7 @@ import {
     CaretUp,
     CaretDown,
     CaretUpDown,
+    Repeat,
 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,6 +24,8 @@ import type { LatestNoteEvent } from '@/hooks/use-latest-notes-batch';
 import { LeadStatusSelect } from '@/components/shared/lead-status-select';
 import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
+import { DuplicateBadge } from '@/components/shared/duplicate-badge';
+import { useLeadDedupSettings } from '@/hooks/use-lead-dedup-settings';
 import type { LeadStatus as LeadStatusCatalogItem } from '@/hooks/use-lead-statuses';
 import type { LeadCardVM } from './lead-view-model';
 import { truncateName } from './lead-view-model';
@@ -283,6 +286,8 @@ export function LeadTable({
     const tierCatalog = useLeadTiers();
     const tierOptions = useLeadTierOptions();
     const terminology = useLeadTerminology();
+    // Lead Settings → Deduplication → repeat lead → "Duplicate badge" switch.
+    const showDuplicateBadge = useLeadDedupSettings().settings.repeatLead.reattempt.showBadge;
 
     // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
     // AND a response id (that's the selection key, and what delete targets). response_id is the
@@ -319,17 +324,22 @@ export function LeadTable({
                 <div className="flex items-center gap-2.5">
                     <LeadAvatar name={vm.name} size="md" />
                     <div className="flex min-w-0 flex-col gap-0.5">
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                actions.onOpenDetails(vm);
-                            }}
-                            className="truncate text-left text-sm font-semibold text-neutral-900 hover:text-primary-600"
-                            title={vm.name}
-                        >
-                            {truncateName(vm.name)}
-                        </button>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    actions.onOpenDetails(vm);
+                                }}
+                                className="min-w-0 truncate text-left text-sm font-semibold text-neutral-900 hover:text-primary-600"
+                                title={vm.name}
+                            >
+                                {truncateName(vm.name)}
+                            </button>
+                            {showDuplicateBadge && (
+                                <DuplicateBadge isDuplicate={vm.isDuplicate} className="shrink-0" />
+                            )}
+                        </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                             {vm.submittedIso && (
                                 <span className="flex items-center gap-1 text-xs text-neutral-400">
@@ -343,6 +353,12 @@ export function LeadTable({
                                 tatDueSoon={vm.tatDueSoon}
                                 followUpOverdue={vm.followUpOverdue}
                             />
+                            {vm.followUpPriority && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
+                                    <Repeat className="size-3" />
+                                    Reattempt
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>

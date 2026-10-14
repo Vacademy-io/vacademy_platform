@@ -747,6 +747,9 @@ public class AudienceService {
         applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 null, null, createdUser != null ? createdUser.getFullName() : null,
                 audience.getCampaignName());
+        recordReattempt(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
+                dto.getEmail(), dto.getMobileNumber(),
+                createdUser != null ? createdUser.getFullName() : null, audience.getCampaignName());
         applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
 
         return savedResponse.getId();
@@ -954,6 +957,9 @@ public class AudienceService {
         applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 null, null, createdUser != null ? createdUser.getFullName() : null,
                 audience.getCampaignName());
+        recordReattempt(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
+                email, mobileNumber,
+                createdUser != null ? createdUser.getFullName() : null, audience.getCampaignName());
         applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
 
         return savedResponse.getId();
@@ -1492,6 +1498,9 @@ public class AudienceService {
                 applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                         requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
                         userForNotification.getFullName(), audience.getCampaignName());
+                recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
+                        userDTO.getEmail(), userDTO.getMobileNumber(),
+                        userForNotification.getFullName(), audience.getCampaignName());
                 applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
                 // 4. Build custom field map for email
@@ -1754,6 +1763,13 @@ public class AudienceService {
      */
     private void assignManualCounsellor(String leadUserId, String instituteId,
             String counsellorId, String counsellorName, String leadName, String campaignName) {
+        assignManualCounsellor(leadUserId, instituteId, counsellorId, counsellorName, leadName, campaignName, true);
+    }
+
+    /** As above; {@code notify} false skips the new-lead bell. */
+    private void assignManualCounsellor(String leadUserId, String instituteId,
+            String counsellorId, String counsellorName, String leadName, String campaignName,
+            boolean notify) {
         if (!StringUtils.hasText(leadUserId) || !StringUtils.hasText(counsellorId)) {
             return;
         }
@@ -1774,7 +1790,9 @@ public class AudienceService {
         // Bell notification to the new owner — mirrors the pool auto-assign
         // alert so a bulk-imported lead owner hears about their lead too.
         // Best-effort inside the notifier; never fails the import row.
-        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName, leadUserId);
+        if (notify) {
+            leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName, leadUserId);
+        }
     }
 
     /**
@@ -1869,7 +1887,7 @@ public class AudienceService {
                 }
             }
             case SAME_AS_PREVIOUS -> assignPreviousCounsellor(savedResponse, leadUserId, instituteId,
-                    leadFullName, campaignName);
+                    leadFullName, campaignName, !repeatLeadSettings.reattempt().notifyOwner());
             case SPECIFIC -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId,
                     repeatLeadSettings.specificCounsellorId(), repeatLeadSettings.specificCounsellorName(),
                     leadFullName, campaignName);
@@ -1956,7 +1974,7 @@ public class AudienceService {
      * Failures are swallowed like every other assignment step.
      */
     private void assignPreviousCounsellor(AudienceResponse savedResponse, String leadUserId,
-            String instituteId, String leadFullName, String campaignName) {
+            String instituteId, String leadFullName, String campaignName, boolean notifyNewLead) {
         try {
             boolean alreadyOwned = userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
                     .map(p -> StringUtils.hasText(p.getAssignedCounselorId()))
@@ -1990,6 +2008,18 @@ public class AudienceService {
                     savedResponse.getId(), e.getMessage());
             previousCounsellorId = null;
         }
+        if (previousCounsellorId != null && !notifyNewLead) {
+            // The owner hears about this lead from the reattempt bell (recordReattempt), so no
+            // "new lead" bell for a lead that is not new to them.
+            try {
+                assignManualCounsellor(leadUserId, instituteId, previousCounsellorId, null,
+                        leadFullName, campaignName, false);
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: failed to assign previous counsellor {}: {}",
+                        savedResponse.getId(), previousCounsellorId, e.getMessage());
+            }
+            return;
+        }
         autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, previousCounsellorId, null,
                 leadFullName, campaignName);
     }
@@ -2012,6 +2042,184 @@ public class AudienceService {
         } catch (Exception e) {
             logger.error("Failed to reset repeat-lead status for user {}: {}", leadUserId, e.getMessage());
         }
+    }
+
+    /**
+     * What a repeat enquiry leaves behind (LEAD_SETTING.data.dedup.repeatLead.reattempt),
+     * each part behind its own switch: flag this enquiry as a duplicate of the lead it
+     * repeats, a "Reattempt" entry in that lead's journey, a bell to the counsellor who owns
+     * it (not when that counsellor added the enquiry themselves), the lead's tier set to the
+     * configured one (e.g. Very Hot), and a priority follow-up for the counsellor that the
+     * Follow-ups page lists first. Does nothing for a first-time lead, with every switch off,
+     * or when no active lead is found to repeat. Callers run it before the repeat-lead status
+     * reset, so "is the earlier lead still open" reads its status from before this enquiry.
+     * Best-effort like the other intake steps: a failure is logged and never fails intake.
+     *
+     * @param email the submission's email, as passed to the dedup check
+     * @param phone the submission's phone, as passed to the dedup check
+     */
+    private void recordReattempt(LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings,
+            AudienceResponse savedResponse, String leadUserId, String instituteId, String email,
+            String phone, String leadName, String campaignName) {
+        if (repeatLeadSettings == null || savedResponse == null || savedResponse.getId() == null) {
+            return;
+        }
+        LeadDedupSettingService.ReattemptSettings reattempt = repeatLeadSettings.reattempt();
+        if (!reattempt.anyIntakeAction()) {
+            return;
+        }
+        AudienceResponseRepository.PrimaryLeadRow primary;
+        try {
+            primary = leadDeduplicationService.findPrimaryLead(instituteId, savedResponse.getAudienceId(),
+                    email, phone, savedResponse.getId()).orElse(null);
+        } catch (Exception e) {
+            logger.error("Repeat lead {}: lookup of the lead it repeats failed: {}",
+                    savedResponse.getId(), e.getMessage());
+            return;
+        }
+        if (primary == null || !StringUtils.hasText(primary.getResponseId())) {
+            return;
+        }
+        String sourceLabel = reattemptSourceLabel(savedResponse.getSourceType());
+
+        if (reattempt.markDuplicate() && (!reattempt.duplicateOpenOnly() || isOpenLeadStatus(primary.getStatusKey()))) {
+            try {
+                audienceResponseRepository.markDuplicateOf(savedResponse.getId(), primary.getResponseId());
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: failed to flag as duplicate of {}: {}",
+                        savedResponse.getId(), primary.getResponseId(), e.getMessage());
+            }
+        }
+        if (reattempt.journeyEntry()) {
+            try {
+                leadDeduplicationService.logReattempt(primary, savedResponse, sourceLabel, campaignName);
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: failed to log the reattempt on {}: {}",
+                        savedResponse.getId(), primary.getResponseId(), e.getMessage());
+            }
+        }
+        if (reattempt.tier() != null) {
+            applyReattemptTier(reattempt.tier(), savedResponse.getId(), instituteId, primary.getUserId(), leadUserId);
+        }
+
+        // The counsellor who owns the repeat after assignment (the previous owner under
+        // SAME_AS_PREVIOUS); the lead it repeats' owner when that lookup has nothing.
+        String ownerId = null;
+        if (reattempt.notifyOwner() || reattempt.followUp()) {
+            try {
+                if (StringUtils.hasText(leadUserId)) {
+                    ownerId = userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
+                            .map(p -> p.getAssignedCounselorId())
+                            .filter(StringUtils::hasText)
+                            .orElse(null);
+                }
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: owner lookup failed: {}", savedResponse.getId(), e.getMessage());
+            }
+            if (ownerId == null && StringUtils.hasText(primary.getCounsellorId())) {
+                ownerId = primary.getCounsellorId();
+            }
+        }
+
+        if (reattempt.followUp()) {
+            openReattemptFollowUp(primary.getResponseId(), instituteId, ownerId, sourceLabel, campaignName,
+                    savedResponse.getId());
+        }
+
+        if (reattempt.notifyOwner() && ownerId != null && !ownerId.equals(savedResponse.getCreatedByUserId())) {
+            try {
+                leadAssignmentNotifier.notifyReattempt(instituteId, ownerId, leadName, sourceLabel,
+                        campaignName, leadUserId);
+            } catch (Exception e) {
+                logger.error("Repeat lead {}: failed to notify the owner: {}",
+                        savedResponse.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /** A lead still being worked: not converted and not LOST (Discarded). */
+    static boolean isOpenLeadStatus(String statusKey) {
+        if (!StringUtils.hasText(statusKey)) return true;
+        String key = statusKey.trim().toUpperCase();
+        return !"CONVERTED".equals(key) && !"LOST".equals(key);
+    }
+
+    /**
+     * Sets the reattempt tier (Interest Level) on the person behind the lead it repeats and,
+     * when the repeat came in as a different person, on that one too. An unknown or deleted
+     * tier key is skipped up front: updateLeadTier would throw inside the intake transaction.
+     */
+    private void applyReattemptTier(String tier, String repeatResponseId, String instituteId,
+            String primaryUserId, String leadUserId) {
+        try {
+            if (!leadTierService.isKnownTier(instituteId, tier)) {
+                logger.warn("Repeat lead {}: reattempt tier {} is not a tier of institute {}, skipped",
+                        repeatResponseId, tier, instituteId);
+                return;
+            }
+            Set<String> userIds = new LinkedHashSet<>();
+            if (StringUtils.hasText(primaryUserId)) userIds.add(primaryUserId);
+            if (StringUtils.hasText(leadUserId)) userIds.add(leadUserId);
+            for (String userId : userIds) {
+                userLeadProfileService.updateLeadTier(userId, instituteId, tier);
+            }
+        } catch (Exception e) {
+            logger.error("Repeat lead {}: failed to set tier {}: {}", repeatResponseId, tier, e.getMessage());
+        }
+    }
+
+    /**
+     * A follow-up due now on the lead a repeat enquiry repeats, for its counsellor, flagged
+     * priority so the Follow-ups page lists the lead first. One open priority follow-up per
+     * lead: a second reattempt before it is closed adds nothing.
+     */
+    private void openReattemptFollowUp(String primaryResponseId, String instituteId, String ownerId,
+            String sourceLabel, String campaignName, String repeatResponseId) {
+        try {
+            if (leadFollowupRepository.existsByAudienceResponseIdAndIsClosedFalseAndIsPriorityTrue(primaryResponseId)) {
+                return;
+            }
+            StringBuilder content = new StringBuilder("Reattempt: enquired again");
+            if (StringUtils.hasText(sourceLabel)) content.append(" via ").append(sourceLabel);
+            if (StringUtils.hasText(campaignName)) content.append(" · ").append(campaignName);
+            leadFollowupRepository.save(LeadFollowup.builder()
+                    .audienceResponseId(primaryResponseId)
+                    .instituteId(instituteId)
+                    .createdBy(ownerId)
+                    .scheduleTime(new Timestamp(System.currentTimeMillis()))
+                    .content(content.toString())
+                    .isPriority(true)
+                    .build());
+        } catch (Exception e) {
+            logger.error("Repeat lead {}: failed to open the priority follow-up on {}: {}",
+                    repeatResponseId, primaryResponseId, e.getMessage());
+        }
+    }
+
+    /**
+     * Lead-list duplicate filter from the sidebar route: EXCLUDE hides enquiries flagged as
+     * duplicates (so a repeat does not add to All Leads), ONLY lists just them (a Duplicate
+     * Leads tab). Anything else is no filter.
+     */
+    static String normalizeDuplicateFilter(String duplicateFilter) {
+        if (!StringUtils.hasText(duplicateFilter)) return null;
+        String value = duplicateFilter.trim().toUpperCase();
+        return "EXCLUDE".equals(value) || "ONLY".equals(value) ? value : null;
+    }
+
+    /** Readable channel name for a lead's source_type, for reattempt journey and bell text. */
+    static String reattemptSourceLabel(String sourceType) {
+        if (!StringUtils.hasText(sourceType)) return null;
+        return switch (sourceType.trim().toUpperCase()) {
+            case "META_LEAD_ADS", "FACEBOOK", "FACEBOOK_LEAD_ADS" -> "Meta Lead Ads";
+            case "GOOGLE_LEAD_ADS", "GOOGLE_ADS" -> "Google Ads";
+            case "AUDIENCE_CAMPAIGN", "WEBSITE" -> "website form";
+            case "WALK_IN" -> "manual entry";
+            default -> {
+                String words = sourceType.trim().replace('_', ' ').toLowerCase();
+                yield Character.toUpperCase(words.charAt(0)) + words.substring(1);
+            }
+        };
     }
 
     /**
@@ -2132,6 +2340,9 @@ public class AudienceService {
                 // repeat-lead policy. Same centralised path as v1 submitLead.
                 applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                         requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                        createdUser.getFullName(), audience.getCampaignName());
+                recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
+                        userDTO.getEmail(), userDTO.getMobileNumber(),
                         createdUser.getFullName(), audience.getCampaignName());
                 applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
@@ -3425,6 +3636,7 @@ public class AudienceService {
                     filterDTO.getFollowUpPending(),
                     filterDTO.getFollowUpFrom(),
                     filterDTO.getFollowUpTo(),
+                    normalizeDuplicateFilter(filterDTO.getDuplicateFilter()),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -3463,6 +3675,7 @@ public class AudienceService {
                 filterDTO.getFollowUpPending(),
                 filterDTO.getFollowUpFrom(),
                 filterDTO.getFollowUpTo(),
+                normalizeDuplicateFilter(filterDTO.getDuplicateFilter()),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
@@ -3652,13 +3865,20 @@ public class AudienceService {
         // (content / student response / mode / next action) ride along on the DTO so a
         // CSV export of a follow-up queue can carry what the counsellor wrote without a
         // second request per lead. Same row either way, so this costs nothing extra.
-        final Map<String, LeadFollowup> scheduledFollowupByResponseId = !responseIds.isEmpty()
-                ? leadFollowupRepository.findOpenByAudienceResponseIds(responseIds).stream()
-                        .collect(Collectors.toMap(
-                                LeadFollowup::getAudienceResponseId,
-                                f -> f,
-                                (a, b) -> a.getScheduleTime().before(b.getScheduleTime()) ? a : b))
-                : Collections.emptyMap();
+        final List<LeadFollowup> openFollowups = !responseIds.isEmpty()
+                ? leadFollowupRepository.findOpenByAudienceResponseIds(responseIds)
+                : Collections.emptyList();
+        final Map<String, LeadFollowup> scheduledFollowupByResponseId = openFollowups.stream()
+                .collect(Collectors.toMap(
+                        LeadFollowup::getAudienceResponseId,
+                        f -> f,
+                        (a, b) -> a.getScheduleTime().before(b.getScheduleTime()) ? a : b));
+        // Leads with an open priority follow-up (repeat-lead reattempt) — the Follow-ups page
+        // lists them first.
+        final Set<String> priorityFollowupResponseIds = openFollowups.stream()
+                .filter(f -> Boolean.TRUE.equals(f.getIsPriority()))
+                .map(LeadFollowup::getAudienceResponseId)
+                .collect(Collectors.toSet());
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
@@ -3856,6 +4076,7 @@ public class AudienceService {
                     .customFieldMetadata(customFieldMetadata)
                     .isDuplicate(response.getIsDuplicate())
                     .primaryResponseId(response.getPrimaryResponseId())
+                    .followUpPriority(priorityFollowupResponseIds.contains(response.getId()))
                     .overallStatus(response.getOverallStatus())
                     .conversionStatus(response.getConversionStatus())
                     .enquiryId(response.getEnquiryId())
@@ -5506,6 +5727,9 @@ public class AudienceService {
         // downstream workflow nodes see an owned lead.
         applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                 null, null, createdUser.getFullName(), audience.getCampaignName());
+        recordReattempt(repeatLeadSettings, savedResponse, userId, instituteId,
+                processedData.getEmail(), processedData.getPhone(),
+                createdUser.getFullName(), audience.getCampaignName());
         applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
         // 4. Build custom field map for workflow

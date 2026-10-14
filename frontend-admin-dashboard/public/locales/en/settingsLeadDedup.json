@@ -74,6 +74,39 @@
         "blockOwnedManualAdd": {
             "label": "Stop counsellors adding another counsellor's lead",
             "hint": "When a counsellor adds a lead by hand and the phone already belongs to another counsellor's lead, show who owns it and don't add it. Admins can still add."
+        },
+        "reattempt": {
+            "title": "Reattempt (an existing lead enquires again)",
+            "hint": "What a repeat enquiry leaves behind. Each switch works on its own.",
+            "markDuplicate": {
+                "label": "Mark the repeat as Duplicate",
+                "hint": "The new enquiry is flagged as a duplicate of the lead it repeats, so it can be told apart and filtered."
+            },
+            "duplicateOpenOnly": {
+                "label": "Only while the earlier lead is open",
+                "hint": "A repeat is a duplicate only when the earlier lead is neither converted nor discarded. A repeat of a converted or discarded lead comes in as a new lead."
+            },
+            "journeyEntry": {
+                "label": "Add a Reattempt entry to the lead journey",
+                "hint": "The original lead's journey shows when and through which source the person enquired again."
+            },
+            "notifyOwner": {
+                "label": "Notify the lead's counsellor",
+                "hint": "The counsellor who owns the lead gets a Reattempt bell notification (not when they added it themselves)."
+            },
+            "followUp": {
+                "label": "Open a priority follow-up",
+                "hint": "A follow-up due now is opened for the lead's counsellor, and the lead is listed first on the Follow-ups page until it is closed."
+            },
+            "showBadge": {
+                "label": "Show a Duplicate badge in lead tables",
+                "hint": "Duplicate enquiries show a Duplicate badge next to the lead name."
+            },
+            "tier": {
+                "label": "Set {{tier}} to",
+                "hint": "The lead's {{tier}} changes to this when the person enquires again.",
+                "keep": "Don't change"
+            }
         }
     },
     "counsellorPicker": {

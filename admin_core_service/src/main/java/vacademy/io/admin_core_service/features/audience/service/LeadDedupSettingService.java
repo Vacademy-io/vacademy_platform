@@ -32,8 +32,18 @@ import java.util.List;
  *     "statusMode": "KEEP_EXISTING" | "RESET_TO_NEW",
  *     "samePersonByPhone": false,     // field = PHONE: a repeat with a new email joins the
  *                                     // person who already holds the phone
- *     "blockOwnedManualAdd": false    // field = PHONE: a counsellor cannot add by hand a
+ *     "blockOwnedManualAdd": false,   // field = PHONE: a counsellor cannot add by hand a
  *                                     // phone whose lead another counsellor owns
+ *     "reattempt": {                  // what a repeat enquiry leaves behind; all off by default
+ *       "markDuplicate": false,       // flag the new enquiry as a duplicate of the lead it repeats
+ *       "duplicateOpenOnly": true,    // ...only while that lead is open (not converted / LOST);
+ *                                     // a repeat of a closed lead comes in as a new lead
+ *       "journeyEntry": false,        // write a "Reattempt" entry in that lead's journey
+ *       "notifyOwner": false,         // bell to the lead's counsellor
+ *       "showBadge": false,           // "Duplicate" badge next to the name in lead tables (FE only)
+ *       "followUp": false,            // open a priority follow-up for the counsellor, listed first
+ *       "tier": null                  // lead_tier key to set on the lead, e.g. "VERY_HOT"; null = keep
+ *     }
  *   }
  * }
  * </pre>
@@ -73,14 +83,60 @@ public class LeadDedupSettingService {
     public enum StatusMode { KEEP_EXISTING, RESET_TO_NEW }
 
     /**
+     * What a repeat enquiry leaves behind, each switch on its own (all off by default):
+     * {@code markDuplicate} flags the new enquiry as a duplicate of the lead it repeats,
+     * {@code journeyEntry} writes a "Reattempt" entry in that lead's journey,
+     * {@code notifyOwner} rings the bell of the lead's counsellor, {@code followUp} opens a
+     * priority follow-up for that counsellor (listed first on the Follow-ups page), and
+     * {@code tier} sets the lead's tier (Interest Level) to that institute tier key. {@code
+     * showBadge} is read by the admin UI only, to badge duplicate enquiries in the lead tables.
+     * {@code duplicateOpenOnly} (default on) limits {@code markDuplicate} to repeats of a lead
+     * that is still open — not converted and not LOST — so a closed lead's repeat counts as a
+     * new lead.
+     */
+    public record ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
+            boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly) {
+
+        public static final ReattemptSettings OFF =
+                new ReattemptSettings(false, false, false, false, false, null, true);
+
+        /** {@code duplicateOpenOnly} on, its default. */
+        public ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
+                boolean showBadge, boolean followUp, String tier) {
+            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, true);
+        }
+
+        public ReattemptSettings {
+            tier = (tier == null || tier.isBlank()) ? null : tier.trim().toUpperCase();
+        }
+
+        /** True when any switch that acts at intake is on. */
+        public boolean anyIntakeAction() {
+            return markDuplicate || journeyEntry || notifyOwner || followUp || tier != null;
+        }
+    }
+
+    /**
      * {@code samePersonByPhone} and {@code blockOwnedManualAdd} only act when the dedup field
      * is PHONE; both default to off, which keeps the behaviour from before they existed.
      */
     public record RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
             String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
-            boolean blockOwnedManualAdd) {
+            boolean blockOwnedManualAdd, ReattemptSettings reattempt) {
 
-        /** Both phone switches off. */
+        public RepeatLeadSettings {
+            if (reattempt == null) reattempt = ReattemptSettings.OFF;
+        }
+
+        /** Reattempt switches off. */
+        public RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
+                String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
+                boolean blockOwnedManualAdd) {
+            this(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode, samePersonByPhone,
+                    blockOwnedManualAdd, ReattemptSettings.OFF);
+        }
+
+        /** Both phone switches and the reattempt switches off. */
         public RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
                 String specificCounsellorName, StatusMode statusMode) {
             this(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode, false, false);
@@ -220,6 +276,19 @@ public class LeadDedupSettingService {
 
         return new RepeatLeadSettings(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode,
                 node.path("samePersonByPhone").asBoolean(false),
-                node.path("blockOwnedManualAdd").asBoolean(false));
+                node.path("blockOwnedManualAdd").asBoolean(false),
+                parseReattempt(node.path("reattempt")));
+    }
+
+    private ReattemptSettings parseReattempt(JsonNode node) {
+        if (!node.isObject()) return ReattemptSettings.OFF;
+        return new ReattemptSettings(
+                node.path("markDuplicate").asBoolean(false),
+                node.path("journeyEntry").asBoolean(false),
+                node.path("notifyOwner").asBoolean(false),
+                node.path("showBadge").asBoolean(false),
+                node.path("followUp").asBoolean(false),
+                node.path("tier").isTextual() ? node.path("tier").asText() : null,
+                node.path("duplicateOpenOnly").asBoolean(true));
     }
 }

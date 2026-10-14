@@ -185,6 +185,14 @@ const buildSlaOptions = (t: TFunction): { value: string; label: string; helper?:
     { value: 'FOLLOW_UP_DUE', label: t('slaOptions.followUpComingUp') },
     { value: 'FOLLOW_UP_OVERDUE', label: t('slaOptions.followUpMissed') },
 ];
+/** `duplicates` URL value → the API's duplicate_filter; anything else = no filter. */
+const toDuplicateFilter = (value: string | undefined): 'EXCLUDE' | 'ONLY' | undefined => {
+    const v = value?.trim().toLowerCase();
+    if (v === 'exclude') return 'EXCLUDE';
+    if (v === 'only') return 'ONLY';
+    return undefined;
+};
+
 const SEARCH_DEBOUNCE_MS = 500;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -339,6 +347,10 @@ const RecentLeadsContent = ({
     // that was clicked. That is why a sub-tab took two or three clicks to stick.
     const lockRef = useRef(urlSearch.lock);
     const lockedParams = useMemo(() => parseLockedParams(lockRef.current), []);
+    // Route-owned like `lock`: a sidebar sub-tab says whether duplicate enquiries count
+    // (`duplicates=exclude` on All Leads) or are the whole list (`duplicates=only`).
+    const duplicatesRef = useRef(urlSearch.duplicates);
+    const duplicateFilter = toDuplicateFilter(duplicatesRef.current);
     // Captured once: the component remounts on an external navigation, so the search at
     // mount IS the tab's intent even after the user has since narrowed things down.
     const pinnedEntryRef = useRef<Record<string, string | undefined>>({
@@ -556,6 +568,7 @@ const RecentLeadsContent = ({
         const nextSearch = {
             // Carried through untouched: the route owns it, not the user.
             lock: lockRef.current || undefined,
+            duplicates: duplicatesRef.current || undefined,
             status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
             statusExclude: statusExclude ? '1' : undefined,
             tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
@@ -815,6 +828,7 @@ const RecentLeadsContent = ({
         queryKey: [
             'recent-leads',
             instituteId,
+            duplicateFilter,
             appliedRange.from,
             appliedRange.to,
             (resolvedAudienceIds ?? []).join(','),
@@ -859,6 +873,7 @@ const RecentLeadsContent = ({
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 lead_status_exclude_id: leadStatusExcludeId,
+                duplicate_filter: duplicateFilter,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -1047,6 +1062,7 @@ const RecentLeadsContent = ({
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 lead_status_exclude_id: leadStatusExcludeId,
+                duplicate_filter: duplicateFilter,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -1431,6 +1447,7 @@ const RecentLeadsContent = ({
                     lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                     lead_status_id: leadStatusId,
                     lead_status_exclude_id: leadStatusExcludeId,
+                    duplicate_filter: duplicateFilter,
                     conversion_status_filter: conversionFilter,
                     audience_status_filter: audienceStatusFilter,
                     sla_filter:

@@ -20,6 +20,8 @@ what it promises. The client-facing guide lives at https://docs.telleo.ai (Mintl
 | POST | `/batches` | calls:write | Up to 1000 calls in one request; each row is accepted or rejected on its own |
 | GET | `/batches/{id}` | calls:read | Batch progress: counts per status |
 | GET | `/agents` | calls:read | Agents the key can name, plus the `{{variables}}` each one's script uses |
+| GET | `/credits` | calls:read | Credit balance, can_place_calls, calls_waiting |
+| GET | `/usage` | calls:read | Calls, connected, talk seconds, credits per day |
 | GET / PUT / DELETE | `/webhook` | webhooks:manage | The one webhook endpoint per account |
 | POST | `/webhook/rotate-secret` | webhooks:manage | New signing secret, shown once |
 | POST | `/webhook/test` | webhooks:manage | Send a `webhook.test` event now and report the answer |
@@ -224,3 +226,71 @@ The old `POST /admin-core-service/open/ai-calling/v1` (`numbers[]`, `mode: CLICK
 - had no results or webhooks.
 
 Only one `vak_live_` key was ever issued (an internal test). Such keys keep working on the v1 routes.
+
+## 9. v1.1 (2026-10-14): review fixes, credits and usage
+
+A 7-dimension review with independent verification (63 confirmed findings) led to:
+
+- **Row writes are targeted.** After the insert nothing saves a whole `ai_call_api_call` row
+  (repository `setQueueItemId`, `setCallLogIdIfNull`, `setTerminalSeenAtIfNull`,
+  `markChecked`, `finalizeIfOpen`, `recordDelivery`). A finaliser snapshot taken before
+  `queue_item_id` was written used to overwrite it and mark a live call failed. A row with
+  neither a queue item nor a call log is "being created" (not final) for 5 minutes.
+- **Finality.** The outcome wait counts from `terminal_seen_at` (V573), not from
+  `telephony_call_log.updated_at`, which is never bumped. A connected call is final when the
+  outcome is PROCESSED and the recording is saved (test calls: outcome only). It is also
+  final 3 min after the outcome without a recording, or 10 min after the end regardless. A
+  call log or dispatched queue item with no end after 2 h is final `failed` ("No result was
+  received for this call.").
+- **Fairness.**
+  - `findOpen` orders by `checked_at` (V573), so the finaliser round-robins.
+  - `findWebhooksDue` takes at most 10 rows per institute.
+  - `deliverPass` runs institutes in parallel (8 threads, 4-min pass deadline) and stops an
+    institute at its first failure in the pass.
+  - Deliveries read only the status line (`ofInputStream` + close), so the total time is
+    bounded.
+- **Webhook guard.**
+  - Only ports 443 and 8443 are allowed.
+  - `telephony.ai.api.webhook.denied-addresses` (CSV of IPs) blocks our own ingress and nodes.
+  - Errors use coarse words: timeout, connection failed, TLS handshake failed, HTTP n.
+  - Test events are limited to 5 per minute per institute.
+- **Calls.**
+  - Batch rows honour their own `agent_id`.
+  - Batches accept `Idempotency-Key`, stored per row as `key#index`.
+  - Replays compare the whole normalised request, `test` included.
+  - Keys expire after 24 h (cleared by the finaliser pass).
+  - Test calls are limited to 500 per 24 h (`429 test_limit_reached`) and skip the 30 s duplicate window.
+  - A create that fails after enqueue cancels the queue item it made (`abandon`).
+  - Over-long contact fields are rejected.
+  - The clock placeholders and `name` / `lead_name` are reserved.
+  - `institute_name`, `lead_source` and `booked_slot` are client variables (mirrored to the
+    bot's "institute name" / "booked slot" lead-field names).
+- **Dispatch.**
+  - The drain job cancels an API item whose agent is off or deleted ("The agent was turned
+    off or deleted.").
+  - The inline dial path reserves interactive slots for non-manual triggers.
+  - Capacity counts DISPATCHING items, so parallel inline dials cannot oversubscribe.
+  - Items queued outside calling hours get a status reason.
+- **Voice bot context.**
+  - API calls get no send rules (`sendArtefacts*`, `sendOffers`, `sendConditions`).
+  - Mid-call `/action` is a no-op for API calls.
+- **Outcome.** `call_quality` is `failed` when `AiCallOutcomeProcessor.isUntrustworthyCall`
+  (RED + silence/loop fault); then the disposition is `Incomplete` and `lead_rating` is null.
+- **Credits and usage** (`AiCallingUsageService`, scope `calls:read`):
+  - `GET /v1/credits` reads `institute_credits` directly. The ai_service balance route
+    auto-grants 100 credits to unknown institutes, so it is not used.
+  - `GET /v1/usage?from&to&timezone&source=api|all` joins call logs to `credit_transactions`
+    through the billing `external_reference_id` keys.
+  - `cost {credits, billed}` on every call object.
+- **Errors.** A `/**` fallback returns 404 `not_found` / 405 `method_not_allowed` in the
+  envelope. Spring's `/error` dispatch used to answer 403.
+- **Dashboard.**
+  - Call Log rows for `API_CONTACT` show `contact_name`, hide the pseudo `user_id` (no
+    "View lead" or assign), and are searchable by name.
+  - The Call Queue shows `customer_name` and the source label "API (your systems)".
+  - The card asks before rotating the secret and keeps the new-key dialog open until the key
+    is copied.
+
+Not changed (noted): legacy `vak_live_` keys still authenticate; DNS-rebinding between
+validation and send is not pinned; the bot still describes API variables as "from the form
+they filled" (voice-bot change, separate deploy).

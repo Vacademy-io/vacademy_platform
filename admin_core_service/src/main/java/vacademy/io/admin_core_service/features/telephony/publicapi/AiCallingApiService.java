@@ -58,10 +58,25 @@ public class AiCallingApiService {
     static final Pattern VARIABLE_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9_ ]{0,39}$");
     static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_ ]+?)\\s*\\}\\}");
-    /** Placeholders the platform fills itself (bot.py _fill_placeholders): not client variables. */
-    static final Set<String> BUILT_IN_PLACEHOLDERS = Set.of(
-            "name", "lead_name", "institute_name", "lead_source", "lead_source_line", "booked_slot",
+    /**
+     * Placeholders the platform fills itself (bot.py _fill_placeholders), so they are not
+     * listed as client variables: the contact's name, and the clock. institute_name,
+     * lead_source and booked_slot ARE client variables for an API call.
+     */
+    static final Set<String> CLOCK_PLACEHOLDERS = Set.of(
             "day", "today", "date", "time", "datetime", "now", "tomorrow", "year", "month");
+    static final Set<String> BUILT_IN_PLACEHOLDERS;
+    static {
+        Set<String> b = new HashSet<>(CLOCK_PLACEHOLDERS);
+        b.addAll(List.of("name", "lead_name", "lead_source_line"));
+        BUILT_IN_PLACEHOLDERS = Set.copyOf(b);
+    }
+    static final int MAX_NAME = 120;
+    static final int MAX_EMAIL = 254;
+    static final int MAX_EXTERNAL_ID = 255;
+    /** Test calls per institute per 24 hours (each one writes rows and can post a webhook). */
+    static final int MAX_TEST_CALLS_PER_DAY = 500;
+    static final java.time.Duration IDEMPOTENCY_TTL = java.time.Duration.ofHours(24);
     static final String SOURCE = "API";
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -89,12 +104,21 @@ public class AiCallingApiService {
         String idem = normaliseIdempotencyKey(idempotencyKey);
         if (idem != null) {
             Optional<AiCallApiCall> prior = callRepository.findByInstituteIdAndIdempotencyKey(p.instituteId(), idem);
-            if (prior.isPresent()) return replay(prior.get(), in);
+            if (prior.isPresent()) {
+                if (prior.get().getCreatedAt() != null
+                        && prior.get().getCreatedAt().plus(IDEMPOTENCY_TTL).isBefore(Instant.now())) {
+                    // Keys are honoured for 24 hours; this one is older, so it may be reused.
+                    callRepository.clearIdempotencyKeysBefore(Instant.now().minus(IDEMPOTENCY_TTL));
+                } else {
+                    return replay(prior.get(), in, test);
+                }
+            }
         }
         Validated v = validate(p.instituteId(), in, null);
         if (!v.errors().isEmpty()) {
             throw AiCallingApiException.invalid(v.errors().get(0).get("message"), Map.of("errors", v.errors()));
         }
+        if (test) requireTestAllowance(p.instituteId(), 1);
         if (!test && !aiCallService.canAffordCall(p.instituteId())) {
             throw new AiCallingApiException(HttpStatus.PAYMENT_REQUIRED, "insufficient_credits",
                     OUT_OF_CREDITS);
@@ -106,7 +130,7 @@ public class AiCallingApiService {
             // A concurrent request with the same Idempotency-Key won the insert.
             if (idem != null) {
                 return callRepository.findByInstituteIdAndIdempotencyKey(p.instituteId(), idem)
-                        .map(prior -> replay(prior, in)).orElseThrow(() -> race);
+                        .map(prior -> replay(prior, in, test)).orElseThrow(() -> race);
             }
             throw race;
         }
@@ -124,8 +148,9 @@ public class AiCallingApiService {
             try {
                 q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
                         CallTrigger.API, SOURCE, null, null, true);
+                if (q.isQueued()) callRepository.setQueueItemId(call.getId(), q.getQueueItemId());
             } catch (RuntimeException e) {
-                callRepository.delete(call);
+                abandon(call);
                 throw e;
             }
             if (!q.isQueued()) {
@@ -133,7 +158,6 @@ public class AiCallingApiService {
                 throw alreadyQueued(p.instituteId(), q.getQueueItemId(), v.phone());
             }
             call.setQueueItemId(q.getQueueItemId());
-            call = callRepository.save(call);
             tryDialNow(call);
         }
         return views.call(callRepository.findById(call.getId()).orElse(call), false);
@@ -141,12 +165,30 @@ public class AiCallingApiService {
 
     public Map<String, Object> createBatch(AiCallingApiAuth.Principal p, String agentId,
                                            List<CallInput> rows, boolean test) {
+        return createBatch(p, agentId, rows, test, null);
+    }
+
+    /**
+     * Up to {@link #MAX_BATCH} calls; each row is accepted or rejected on its own. A row may
+     * name its own agent_id; otherwise the batch's agent calls it. With an Idempotency-Key,
+     * each accepted row is stored under "key#index", and a retry of the same request
+     * returns the batch it created instead of queueing the calls again.
+     */
+    public Map<String, Object> createBatch(AiCallingApiAuth.Principal p, String agentId,
+                                           List<CallInput> rows, boolean test, String idempotencyKey) {
+        String idem = normaliseIdempotencyKey(idempotencyKey);
+        if (idem != null) {
+            List<AiCallApiCall> prior = callRepository
+                    .findByInstituteIdAndIdempotencyKeyStartingWithOrderByCreatedAtAsc(p.instituteId(), idem + "#");
+            if (!prior.isEmpty()) return batchReplay(prior);
+        }
         if (rows == null || rows.isEmpty()) throw AiCallingApiException.invalid("calls must contain at least one call.");
         if (rows.size() > MAX_BATCH) {
             throw AiCallingApiException.invalid("A batch holds at most " + MAX_BATCH + " calls; split it.",
                     Map.of("max_calls", MAX_BATCH, "received", rows.size()));
         }
         AiAgent agent = requireAgent(p.instituteId(), agentId);
+        if (test) requireTestAllowance(p.instituteId(), rows.size());
         if (!test && !aiCallService.canAffordCall(p.instituteId())) {
             throw new AiCallingApiException(HttpStatus.PAYMENT_REQUIRED, "insufficient_credits",
                     OUT_OF_CREDITS);
@@ -155,13 +197,26 @@ public class AiCallingApiService {
         List<Map<String, Object>> accepted = new ArrayList<>();
         List<Map<String, Object>> rejected = new ArrayList<>();
         Set<String> seenPhones = new HashSet<>();
+        Map<String, AiAgent> rowAgents = new HashMap<>();
+        rowAgents.put(agent.getId(), agent);
         for (int i = 0; i < rows.size(); i++) {
             CallInput row = rows.get(i);
-            CallInput withAgent = new CallInput(agent.getId(), row == null ? null : row.phoneNumber(),
+            AiAgent rowAgent = agent;
+            String rowAgentId = row == null || row.agentId() == null || row.agentId().isBlank() ? null : row.agentId().trim();
+            if (rowAgentId != null && !rowAgents.containsKey(rowAgentId)) {
+                try {
+                    rowAgents.put(rowAgentId, requireAgent(p.instituteId(), rowAgentId));
+                } catch (AiCallingApiException e) {
+                    rejected.add(rejection(i, row.phoneNumber(), e.getCode(), e.getMessage()));
+                    continue;
+                }
+            }
+            if (rowAgentId != null) rowAgent = rowAgents.get(rowAgentId);
+            CallInput withAgent = new CallInput(rowAgent.getId(), row == null ? null : row.phoneNumber(),
                     row == null ? null : row.contactName(), row == null ? null : row.contactEmail(),
                     row == null ? null : row.externalId(), row == null ? null : row.variables(),
                     row == null ? null : row.metadata());
-            Validated v = validate(p.instituteId(), withAgent, agent);
+            Validated v = validate(p.instituteId(), withAgent, rowAgent);
             if (!v.errors().isEmpty()) {
                 rejected.add(rejection(i, withAgent.phoneNumber(), "invalid_request", v.errors().get(0).get("message")));
                 continue;
@@ -170,7 +225,7 @@ public class AiCallingApiService {
                 rejected.add(rejection(i, v.phone(), "duplicate_in_batch", "This number appears earlier in the batch."));
                 continue;
             }
-            AiCallApiCall call = callRepository.save(newCall(p, v, batchId, test, null));
+            AiCallApiCall call = callRepository.save(newCall(p, v, batchId, test, idem == null ? null : idem + "#" + i));
             if (test) {
                 try {
                     placeTestCall(call, v);
@@ -185,8 +240,9 @@ public class AiCallingApiService {
                 try {
                     q = queueService.enqueue(toRequest(call, v, ProviderType.VACADEMY_AI),
                             CallTrigger.API, SOURCE, batchId, null, false);
+                    if (q.isQueued()) callRepository.setQueueItemId(call.getId(), q.getQueueItemId());
                 } catch (RuntimeException e) {
-                    callRepository.delete(call);
+                    abandon(call);
                     log.warn("ai-calling-api: row {} of batch {} not queued: {}", i, batchId, e.getMessage());
                     rejected.add(rejection(i, v.phone(), "call_failed", "This call could not be queued; retry it."));
                     continue;
@@ -201,13 +257,13 @@ public class AiCallingApiService {
                     continue;
                 }
                 call.setQueueItemId(q.getQueueItemId());
-                callRepository.save(call);
             }
             Map<String, Object> a = new LinkedHashMap<>();
             a.put("index", i);
             a.put("id", call.getId());
             a.put("phone_number", v.phone());
             if (call.getExternalId() != null) a.put("external_id", call.getExternalId());
+            if (!rowAgent.getId().equals(agent.getId())) a.put("agent_id", rowAgent.getId());
             accepted.add(a);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -335,10 +391,18 @@ public class AiCallingApiService {
         if (phone == null) {
             errors.add(err("phone_number", "phone_number must be in E.164 format, e.g. +919876543210."));
         }
-        String name = trimTo(in == null ? null : in.contactName(), 120);
-        String email = trimTo(in == null ? null : in.contactEmail(), 254);
-        if (email != null && !EMAIL.matcher(email).matches()) errors.add(err("contact.email", "contact.email is not a valid email address."));
-        String externalId = trimTo(in == null ? null : in.externalId(), 255);
+        String name = blankToNull(in == null ? null : in.contactName());
+        if (name != null && name.length() > MAX_NAME) {
+            errors.add(err("contact.name", "contact.name is at most " + MAX_NAME + " characters."));
+        }
+        String email = blankToNull(in == null ? null : in.contactEmail());
+        if (email != null && (email.length() > MAX_EMAIL || !EMAIL.matcher(email).matches())) {
+            errors.add(err("contact.email", "contact.email is not a valid email address."));
+        }
+        String externalId = blankToNull(in == null ? null : in.externalId());
+        if (externalId != null && externalId.length() > MAX_EXTERNAL_ID) {
+            errors.add(err("contact.external_id", "contact.external_id is at most " + MAX_EXTERNAL_ID + " characters."));
+        }
         Map<String, String> vars = new LinkedHashMap<>();
         if (in != null && in.variables() != null) {
             if (in.variables().size() > MAX_VARIABLES) {
@@ -348,6 +412,13 @@ public class AiCallingApiService {
                     String k = e.getKey() == null ? "" : e.getKey().trim();
                     if (!VARIABLE_KEY.matcher(k).matches()) {
                         errors.add(err("variables." + k, "Variable names start with a letter and use letters, digits, spaces or underscores (max 40)."));
+                        continue;
+                    }
+                    String lower = k.toLowerCase(Locale.ROOT);
+                    if (CLOCK_PLACEHOLDERS.contains(lower) || "name".equals(lower) || "lead_name".equals(lower)) {
+                        errors.add(err("variables." + k, "\"" + k + "\" is filled automatically"
+                                + ("name".equals(lower) || "lead_name".equals(lower) ? " from contact.name" : " with the current date and time")
+                                + "; use another variable name."));
                         continue;
                     }
                     Object val = e.getValue();
@@ -446,7 +517,7 @@ public class AiCallingApiService {
         AiCallResponseDTO r = aiCallService.placeCall(toRequest(call, v, ProviderType.MOCK), null, CallTrigger.API);
         if (r != null && r.getCallLogId() != null) {
             call.setCallLogId(r.getCallLogId());
-            callRepository.save(call);
+            callRepository.setCallLogIdIfNull(call.getId(), r.getCallLogId());
         }
     }
 
@@ -455,7 +526,7 @@ public class AiCallingApiService {
             drainJob.dispatchNowIfLineFree(call.getQueueItemId()).ifPresent(resp -> {
                 if (resp.getCallLogId() != null) {
                     call.setCallLogId(resp.getCallLogId());
-                    callRepository.save(call);
+                    callRepository.setCallLogIdIfNull(call.getId(), resp.getCallLogId());
                 }
             });
         } catch (ConflictException e) {
@@ -467,10 +538,61 @@ public class AiCallingApiService {
         }
     }
 
-    private Map<String, Object> replay(AiCallApiCall prior, CallInput in) {
-        String phone = normalisePhone(in == null ? null : in.phoneNumber());
-        boolean same = in != null && Objects.equals(prior.getPhoneNumber(), phone)
-                && (in.agentId() == null || Objects.equals(prior.getAgentId(), in.agentId().trim()));
+    /**
+     * Undo a create that failed after the insert: cancel the queue item if one was made
+     * (enqueue may have committed it before failing), then drop the row, so nothing dials
+     * a call the client was told failed.
+     */
+    private void abandon(AiCallApiCall call) {
+        try {
+            queueRepository.findFirstByInstituteIdAndSubjectIdOrderByCreatedAtDesc(call.getInstituteId(), call.getId())
+                    .ifPresent(item -> queueRepository.cancelIfQueued(item.getId(), "The API request that created it failed."));
+        } catch (RuntimeException e) {
+            log.warn("ai-calling-api: could not cancel the queue item of {}: {}", call.getId(), e.getMessage());
+        }
+        callRepository.delete(call);
+    }
+
+    private void requireTestAllowance(String instituteId, int wanted) {
+        long used = callRepository.countTestCallsSince(instituteId, Instant.now().minus(java.time.Duration.ofHours(24)));
+        if (used + wanted > MAX_TEST_CALLS_PER_DAY) {
+            throw new AiCallingApiException(HttpStatus.TOO_MANY_REQUESTS, "test_limit_reached",
+                    "At most " + MAX_TEST_CALLS_PER_DAY + " test calls per 24 hours; " + used + " used.",
+                    Map.of("limit", MAX_TEST_CALLS_PER_DAY, "used", used), 3600);
+        }
+    }
+
+    private Map<String, Object> batchReplay(List<AiCallApiCall> rows) {
+        List<Map<String, Object>> accepted = new ArrayList<>();
+        for (AiCallApiCall c : rows) {
+            Map<String, Object> a = new LinkedHashMap<>();
+            String key = c.getIdempotencyKey();
+            int hash = key == null ? -1 : key.lastIndexOf('#');
+            a.put("index", hash < 0 ? null : Integer.valueOf(key.substring(hash + 1)));
+            a.put("id", c.getId());
+            a.put("phone_number", c.getPhoneNumber());
+            if (c.getExternalId() != null) a.put("external_id", c.getExternalId());
+            accepted.add(a);
+        }
+        AiCallApiCall first = rows.get(0);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", first.getBatchId());
+        out.put("object", "batch");
+        out.put("agent_id", first.getAgentId());
+        out.put("test", first.isTestMode());
+        out.put("accepted_count", accepted.size());
+        out.put("calls", accepted);
+        out.put("idempotent_replay", true);
+        return out;
+    }
+
+    /**
+     * Same Idempotency-Key: the same request gets the first call back; a different one
+     * (any field, including test) is refused. Compared after normalising, so "+91 98765
+     * 43210" and "+919876543210" are the same request.
+     */
+    private Map<String, Object> replay(AiCallApiCall prior, CallInput in, boolean test) {
+        boolean same = in != null && prior.isTestMode() == test && sameRequest(prior, in);
         if (!same) {
             throw new AiCallingApiException(HttpStatus.CONFLICT, "idempotency_key_reused",
                     "This Idempotency-Key was already used for a different call.",
@@ -479,6 +601,32 @@ public class AiCallingApiService {
         Map<String, Object> view = views.call(prior, false);
         view.put("idempotent_replay", true);
         return view;
+    }
+
+    private boolean sameRequest(AiCallApiCall prior, CallInput in) {
+        if (!Objects.equals(prior.getPhoneNumber(), normalisePhone(in.phoneNumber()))) return false;
+        if (in.agentId() != null && !Objects.equals(prior.getAgentId(), in.agentId().trim())) return false;
+        if (!Objects.equals(prior.getContactName(), blankToNull(in.contactName()))) return false;
+        if (!Objects.equals(prior.getContactEmail(), blankToNull(in.contactEmail()))) return false;
+        if (!Objects.equals(prior.getExternalId(), blankToNull(in.externalId()))) return false;
+        Map<String, String> vars = new LinkedHashMap<>();
+        if (in.variables() != null) {
+            in.variables().forEach((k, val) -> vars.put(k == null ? "" : k.trim(), val == null ? "" : String.valueOf(val).trim()));
+        }
+        Map<String, String> priorVars = prior.getVariables() == null ? Map.of() : prior.getVariables();
+        if (!priorVars.equals(vars)) return false;
+        Map<String, Object> md = in.metadata() == null || in.metadata().isEmpty() ? null : in.metadata();
+        return Objects.equals(json(prior.getMetadata()), json(md));
+    }
+
+    private String json(Object o) {
+        if (o == null) return null;
+        try {
+            return objectMapper.copy().configure(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                    .writeValueAsString(o);
+        } catch (Exception e) {
+            return String.valueOf(o);
+        }
     }
 
     private AiCallingApiException alreadyQueued(String instituteId, String queueItemId, String phone) {
@@ -543,12 +691,6 @@ public class AiCallingApiService {
         m.put("code", code);
         m.put("message", message);
         return m;
-    }
-
-    private static String trimTo(String s, int max) {
-        if (s == null || s.isBlank()) return null;
-        String t = s.trim();
-        return t.length() > max ? t.substring(0, max) : t;
     }
 
     private static String blankToNull(String s) {

@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProcessor;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
@@ -26,9 +27,13 @@ import java.util.*;
  * webhook says exactly what GET /v1/calls/{id} says.
  *
  * <p>Public statuses: queued, dialing, in_progress, completed, no_answer, busy, failed,
- * canceled, expired. "completed" means the call connected; it is final once the AI
- * result is processed (the outcome is attached), or {@link #OUTCOME_WAIT} after the call
- * ended if the result never arrives.
+ * canceled, expired. "completed" means the call connected; it becomes final once the AI
+ * outcome and the recording are attached, or {@link #OUTCOME_WAIT} after the call ended
+ * if they never arrive. A call that never reports an end is failed after
+ * {@link #STUCK_AFTER}, so every call gets exactly one webhook.
+ *
+ * <p>The only writes here are targeted, idempotent column fills (call_log_id,
+ * terminal_seen_at); nothing saves the whole row.
  */
 @Slf4j
 @Component
@@ -37,18 +42,27 @@ public class AiCallingApiViews {
 
     public static final Set<String> FINAL_STATUSES =
             Set.of("completed", "no_answer", "busy", "failed", "canceled", "expired");
-    /** How long a connected call waits for its AI result before it is finalised without one. */
+    /** How long a connected call waits for its outcome (and recording) after it ended. */
     static final Duration OUTCOME_WAIT = Duration.ofMinutes(10);
+    /** Once the outcome is in, how long to wait for the recording copy before sending anyway. */
+    static final Duration RECORDING_WAIT = Duration.ofMinutes(3);
+    /** A call that has not reported an end this long after it was dialled is treated as lost. */
+    static final Duration STUCK_AFTER = Duration.ofHours(2);
+    /** Between the insert and the queue link, a row has neither; it is still being created. */
+    static final Duration CREATING_GRACE = Duration.ofMinutes(5);
     /** Pre-signed recording links live this long (MediaService presigns for one day). */
     static final Duration RECORDING_LINK_TTL = Duration.ofHours(24);
+    static final String NO_RESULT = "No result was received for this call.";
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Set<String> CALL_LOG_TERMINAL = Set.of("COMPLETED", "NO_ANSWER", "BUSY", "FAILED", "CANCELLED");
 
     private final AiCallApiCallRepository callRepository;
     private final AiCallQueueItemRepository queueRepository;
     private final TelephonyCallLogRepository callLogRepository;
     private final AiCallResultRepository resultRepository;
     private final MediaService mediaService;
+    private final AiCallingUsageService usageService;
 
     /** A computed state: the public status, whether it is final, and the records behind it. */
     public record State(String status, boolean isFinal, String reason, Instant scheduledFor,
@@ -56,29 +70,45 @@ public class AiCallingApiViews {
     }
 
     public State state(AiCallApiCall c) {
+        Instant now = Instant.now();
         AiCallQueueItem q = c.getQueueItemId() == null ? null
                 : queueRepository.findById(c.getQueueItemId()).orElse(null);
         if (c.getCallLogId() == null && q != null && q.getCallLogId() != null) {
             c.setCallLogId(q.getCallLogId());
             try {
-                callRepository.save(c);
+                callRepository.setCallLogIdIfNull(c.getId(), q.getCallLogId());
             } catch (RuntimeException e) {
                 log.debug("ai-calling-api: could not record call log id for {}: {}", c.getId(), e.getMessage());
             }
         }
         TelephonyCallLog l = c.getCallLogId() == null ? null : callLogRepository.findById(c.getCallLogId()).orElse(null);
         AiCallResult r = l == null ? null : newestResult(l.getId());
-        Instant now = Instant.now();
 
         if (l == null) {
             if (q == null) {
+                // Still being created (the queue link or, for a test call, the call log is
+                // written a moment after the insert): not final yet.
+                boolean creating = c.getCreatedAt() == null || c.getCreatedAt().plus(CREATING_GRACE).isAfter(now);
+                if (creating) return new State(c.isTestMode() ? "dialing" : "queued", false, null, null, null, null, null);
                 return new State("failed", true, "The call could not be placed.", null, null, null, null);
             }
             String qs = q.getStatus() == null ? "" : q.getStatus();
             return switch (qs) {
-                case "QUEUED" -> new State("queued", false, q.getStatusReason(),
-                        q.getNotBefore() != null && q.getNotBefore().isAfter(now) ? q.getNotBefore() : null, q, null, null);
-                case "DISPATCHING", "DIALED" -> new State("dialing", false, null, null, q, null, null);
+                case "QUEUED" -> {
+                    Instant scheduled = q.getNotBefore() != null && q.getNotBefore().isAfter(now) ? q.getNotBefore() : null;
+                    String reason = q.getStatusReason();
+                    if ((reason == null || reason.isBlank()) && scheduled != null) {
+                        reason = "Waiting for the next calling window.";
+                    }
+                    yield new State("queued", false, reason, scheduled, q, null, null);
+                }
+                case "DISPATCHING", "DIALED" -> {
+                    Instant since = q.getDispatchedAt() != null ? q.getDispatchedAt() : q.getUpdatedAt();
+                    if (since != null && since.plus(STUCK_AFTER).isBefore(now)) {
+                        yield new State("failed", true, NO_RESULT, null, q, null, null);
+                    }
+                    yield new State("dialing", false, null, null, q, null, null);
+                }
                 case "CANCELLED" -> new State("canceled", true, q.getStatusReason(), null, q, null, null);
                 case "EXPIRED" -> new State("expired", true,
                         q.getStatusReason() == null ? "No line became free before the call expired." : q.getStatusReason(),
@@ -89,24 +119,42 @@ public class AiCallingApiViews {
         }
 
         String ls = l.getStatus() == null ? "" : l.getStatus();
+        if (CALL_LOG_TERMINAL.contains(ls) && c.getTerminalSeenAt() == null) {
+            c.setTerminalSeenAt(now);
+            try {
+                callRepository.setTerminalSeenAtIfNull(c.getId(), now);
+            } catch (RuntimeException e) {
+                log.debug("ai-calling-api: could not record end for {}: {}", c.getId(), e.getMessage());
+            }
+        }
         String reason = l.getTerminationReason();
         return switch (ls) {
             case "COMPLETED" -> {
                 boolean processed = r != null && "PROCESSED".equalsIgnoreCase(r.getProcessingStatus());
-                boolean waitedOut = l.getUpdatedAt() != null
-                        && l.getUpdatedAt().toInstant().plus(OUTCOME_WAIT).isBefore(now);
-                yield new State("completed", processed || waitedOut, null, null, q, l, r);
+                Instant ended = c.getTerminalSeenAt() == null ? now : c.getTerminalSeenAt();
+                // A test call never has a recording; a real one gets it copied shortly after
+                // the outcome. Send once both are in, or give up waiting for either.
+                boolean recordingSettled = c.isTestMode() || l.getRecordingStorageKey() != null
+                        || ended.plus(RECORDING_WAIT).isBefore(now);
+                boolean waitedOut = ended.plus(OUTCOME_WAIT).isBefore(now);
+                yield new State("completed", (processed && recordingSettled) || waitedOut, null, null, q, l, r);
             }
             case "NO_ANSWER" -> new State("no_answer", true, reason, null, q, l, r);
             case "BUSY" -> new State("busy", true, reason, null, q, l, r);
             case "FAILED" -> new State("failed", true, reason, null, q, l, r);
             case "CANCELLED" -> new State("canceled", true, reason, null, q, l, r);
-            case "IN_PROGRESS", "COUNSELLOR_ANSWERED" -> new State("in_progress", false, null, null, q, l, r);
-            default -> new State("dialing", false, null, null, q, l, r);
+            default -> {
+                Instant dialed = l.getCreatedAt() == null ? null : l.getCreatedAt().toInstant();
+                if (dialed != null && dialed.plus(STUCK_AFTER).isBefore(now)) {
+                    yield new State("failed", true, NO_RESULT, null, q, l, r);
+                }
+                boolean talking = "IN_PROGRESS".equals(ls) || "COUNSELLOR_ANSWERED".equals(ls);
+                yield new State(talking ? "in_progress" : "dialing", false, null, null, q, l, r);
+            }
         };
     }
 
-    /** The public call object. {@code brief} skips the outcome and recording (counts, lists). */
+    /** The public call object. {@code brief} skips the outcome, recording and cost (counts only). */
     public Map<String, Object> call(AiCallApiCall c, boolean brief) {
         return call(c, state(c), brief);
     }
@@ -141,26 +189,38 @@ public class AiCallingApiViews {
                 ? s.queueItem().getDispatchedAt()
                 : l != null && l.getCreatedAt() != null ? l.getCreatedAt().toInstant() : null;
         m.put("dialed_at", dialedAt == null ? null : dialedAt.toString());
-        Instant endedAt = !FINAL_STATUSES.contains(s.status()) ? null
-                : c.getFinalizedAt() != null ? c.getFinalizedAt()
-                : l != null && l.getUpdatedAt() != null ? l.getUpdatedAt().toInstant() : null;
+        Instant endedAt = s.isFinal() ? endedAt(c, l, r, dialedAt, duration) : null;
         m.put("ended_at", endedAt == null ? null : endedAt.toString());
 
         String recordingUrl = recordingUrl(l);
         m.put("recording_url", recordingUrl);
         m.put("recording_expires_at", recordingUrl == null ? null
                 : Instant.now().plus(RECORDING_LINK_TTL).toString());
+        m.put("cost", usageService.costOfCall(c, l, r));
         m.put("outcome", outcome(r));
         return m;
     }
 
+    /** When the call ended: the carrier's end time, else start + duration, else when we saw it end. */
+    static Instant endedAt(AiCallApiCall c, TelephonyCallLog l, AiCallResult r, Instant dialedAt, Integer duration) {
+        if (l != null && l.getEndTime() != null) return l.getEndTime().toInstant();
+        Instant start = r != null && r.getCallStart() != null ? r.getCallStart() : dialedAt;
+        if (start != null && duration != null && l != null) return start.plusSeconds(duration);
+        if (c.getTerminalSeenAt() != null) return c.getTerminalSeenAt();
+        return c.getFinalizedAt();
+    }
+
     private Map<String, Object> outcome(AiCallResult r) {
         if (r == null || !"PROCESSED".equalsIgnoreCase(r.getProcessingStatus())) return null;
+        // A call our own bot broke (health RED with a silence/loop fault) is not the
+        // contact's verdict: never hand the client a "Not interested" from it.
+        boolean broken = AiCallOutcomeProcessor.isUntrustworthyCall(r);
         Map<String, Object> o = new LinkedHashMap<>();
-        o.put("disposition", r.getDisposition());
+        o.put("call_quality", broken ? "failed" : "ok");
+        o.put("disposition", broken ? "Incomplete" : r.getDisposition());
         o.put("summary", r.getAiSummary());
         o.put("answers", r.getExtractedQa() == null ? Map.of() : r.getExtractedQa());
-        o.put("lead_rating", r.getLeadRating());
+        o.put("lead_rating", broken ? null : r.getLeadRating());
         o.put("callback_requested", Boolean.TRUE.equals(r.getCallback()));
         o.put("callback_time_text", r.getCallbackTimeText());
         o.put("follow_up", r.getFollowUp());

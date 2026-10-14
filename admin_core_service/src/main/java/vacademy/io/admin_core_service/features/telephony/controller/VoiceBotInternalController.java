@@ -76,6 +76,22 @@ public class VoiceBotInternalController {
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** The public-API call behind this call-log row, or null for every other call. */
+    /**
+     * An API call's variables as the bot's lead fields. The bot fills {{institute_name}} from
+     * a field named "institute name" and {{booked_slot}} from "booked slot", so the client's
+     * snake_case names are mirrored under those spellings too.
+     */
+    static Map<String, String> apiVariablesForBot(Map<String, String> variables) {
+        if (variables == null || variables.isEmpty()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>(variables);
+        for (Map.Entry<String, String> e : variables.entrySet()) {
+            String k = e.getKey() == null ? "" : e.getKey().trim().toLowerCase(java.util.Locale.ROOT);
+            if ("institute_name".equals(k)) out.putIfAbsent("institute name", e.getValue());
+            if ("booked_slot".equals(k)) out.putIfAbsent("booked slot", e.getValue());
+        }
+        return out;
+    }
+
     private AiCallApiCall apiCallFor(TelephonyCallLog row) {
         if (row == null || !vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType
                 .API_CONTACT.name().equals(row.getSubjectType()) || row.getSubjectId() == null) {
@@ -128,6 +144,11 @@ public class VoiceBotInternalController {
         Map<String, Object> agent = registryAgent
                 .map(a -> registryAgentMap(a, instituteName, settings))
                 .orElseGet(() -> defaultAgent(agentId, instituteName, settings));
+        if (apiCall != null) {
+            // The contact belongs to the client's CRM, not ours: there is no lead to send a
+            // WhatsApp/email to or to book against, so the agent must not offer either.
+            agent.keySet().removeAll(List.of("sendArtefacts", "sendArtefactsMidCall", "sendOffers", "sendConditions"));
+        }
 
         // Handoff targets: per-agent numbers win; else the institute's voicemail/
         // fallback number (already a "reach a human" concept on the telephony config).
@@ -160,7 +181,7 @@ public class VoiceBotInternalController {
         // For an API call, the client's variables play this part: they fill the agent's
         // {{placeholders}} and are listed to the model as what it already knows.
         Map<String, String> leadFields = apiCall != null
-                ? (apiCall.getVariables() == null ? Map.of() : apiCall.getVariables())
+                ? apiVariablesForBot(apiCall.getVariables())
                 : row.getResponseId() == null
                 ? Map.of() : audienceService.getLeadCustomFields(row.getResponseId());
         if (leadFields != null && !leadFields.isEmpty()) out.put("leadFields", leadFields);
@@ -261,11 +282,14 @@ public class VoiceBotInternalController {
         }
 
         AiCallApiCall apiCall = apiCallFor(row);
-        String leadName = apiCall != null ? apiCall.getContactName()
-                : (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+        if (apiCall != null) {
+            // No sends on API calls (see callContext): a marker the model emits anyway is ignored.
+            log.info("vacademy-ai: mid-call action {} for API call {} ignored", artefact, apiCall.getId());
+            return ResponseEntity.ok(Map.of("ok", true, "created", 0));
+        }
+        String leadName = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
-        String leadPhone = apiCall != null ? apiCall.getPhoneNumber()
-                : (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+        String leadPhone = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findMobile(row.getUserId()).orElse(null);
         int created = aiCallActionService.applyMidCall(agent, row.getInstituteId(), row.getId(),
                 row.getUserId(), row.getResponseId(), artefact, leadName, leadPhone, null);

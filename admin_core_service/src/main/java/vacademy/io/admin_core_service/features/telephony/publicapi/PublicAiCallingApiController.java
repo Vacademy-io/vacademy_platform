@@ -30,6 +30,12 @@ public class PublicAiCallingApiController {
     private final AiCallingApiAuth auth;
     private final AiCallingApiService service;
     private final AiCallingWebhookService webhooks;
+    private final AiCallingUsageService usage;
+
+    /** Every route of this API, for telling a wrong method (405) from an unknown path (404). */
+    private static final java.util.regex.Pattern KNOWN_PATHS = java.util.regex.Pattern.compile(
+            "^/(calls(/[^/]+(/cancel)?)?|batches(/[^/]+)?|agents|webhook(/(rotate-secret|test))?|credits|usage)/?$");
+    private static final String PREFIX = "/admin-core-service/open/ai-calling/v1";
 
     // ── Calls ────────────────────────────────────────────────────────────────────
 
@@ -79,12 +85,15 @@ public class PublicAiCallingApiController {
 
     @PostMapping("/batches")
     public ResponseEntity<Map<String, Object>> createBatch(HttpServletRequest http,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody(required = false) BatchBody body) {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_WRITE);
         if (body == null) throw AiCallingApiException.invalid("Send a JSON body with agent_id and calls.");
         List<AiCallingApiService.CallInput> rows = new ArrayList<>();
         if (body.calls != null) for (CallBody c : body.calls) rows.add(c == null ? null : c.toInput(body.agentId));
-        return ok(http, HttpStatus.CREATED, service.createBatch(p, body.agentId, rows, body.test));
+        Map<String, Object> out = service.createBatch(p, body.agentId, rows, body.test, idempotencyKey);
+        boolean replay = Boolean.TRUE.equals(out.get("idempotent_replay"));
+        return ok(http, replay ? HttpStatus.OK : HttpStatus.CREATED, out);
     }
 
     @GetMapping("/batches/{id}")
@@ -99,6 +108,24 @@ public class PublicAiCallingApiController {
     public ResponseEntity<Map<String, Object>> agents(HttpServletRequest http) {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
         return ok(http, HttpStatus.OK, service.listAgents(p));
+    }
+
+    // ── Credits and usage ────────────────────────────────────────────────────────
+
+    @GetMapping("/credits")
+    public ResponseEntity<Map<String, Object>> credits(HttpServletRequest http) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        return ok(http, HttpStatus.OK, usage.credits(p.instituteId()));
+    }
+
+    @GetMapping("/usage")
+    public ResponseEntity<Map<String, Object>> usage(HttpServletRequest http,
+            @RequestParam(value = "from", required = false) String from,
+            @RequestParam(value = "to", required = false) String to,
+            @RequestParam(value = "timezone", required = false) String timezone,
+            @RequestParam(value = "source", required = false) String source) {
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        return ok(http, HttpStatus.OK, usage.usage(p.instituteId(), from, to, timezone, source));
     }
 
     // ── Webhook ──────────────────────────────────────────────────────────────────
@@ -133,6 +160,23 @@ public class PublicAiCallingApiController {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_WEBHOOKS_MANAGE);
         webhooks.delete(p.instituteId());
         return ok(http, HttpStatus.OK, Map.of("object", "webhook", "deleted", true));
+    }
+
+    /**
+     * Anything no route above matched: an unknown path is 404 and a known path with the
+     * wrong method is 405, both in the API's error shape (without this, Spring's own
+     * /error dispatch answers with a bare 403 because /error is not a public route).
+     */
+    @RequestMapping("/**")
+    public ResponseEntity<Map<String, Object>> fallback(HttpServletRequest http) {
+        String uri = http.getRequestURI();
+        String path = uri.startsWith(PREFIX) ? uri.substring(PREFIX.length()) : uri;
+        if (KNOWN_PATHS.matcher(path).matches()) {
+            throw new AiCallingApiException(HttpStatus.METHOD_NOT_ALLOWED, "method_not_allowed",
+                    http.getMethod() + " is not supported on /v1" + path + ".");
+        }
+        throw new AiCallingApiException(HttpStatus.NOT_FOUND, "not_found",
+                "No such endpoint: " + http.getMethod() + " /v1" + path + ". See https://docs.telleo.ai.");
     }
 
     private static ResponseEntity<Map<String, Object>> ok(HttpServletRequest http, HttpStatus status,

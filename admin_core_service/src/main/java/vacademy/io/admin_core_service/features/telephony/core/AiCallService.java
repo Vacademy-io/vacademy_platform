@@ -140,6 +140,11 @@ public class AiCallService {
         return !creditGateEnabled || hasAffordableCredits(instituteId);
     }
 
+    /** Whether placing an AI call requires a positive balance (the kill switch is off). */
+    public boolean isCreditGateEnabled() {
+        return creditGateEnabled;
+    }
+
     private boolean hasAffordableCredits(String instituteId) {
         try {
             return creditClient.hasActiveCredits(instituteId);
@@ -378,7 +383,9 @@ public class AiCallService {
             // ACCIDENTAL double dispatch, and a person clicking twice is asking for a
             // second call, not repeating themselves by mistake. Bulk keeps it — a
             // campaign overlapping a workflow node is precisely the accident it catches.
-            if (trigger.enforcesDuplicateWindow()
+            // MOCK (the public API's test mode) never dials, so there is no double dial to
+            // collapse: a developer repeating a test to the same number must get a call.
+            if (!mock && trigger.enforcesDuplicateWindow()
                     && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);

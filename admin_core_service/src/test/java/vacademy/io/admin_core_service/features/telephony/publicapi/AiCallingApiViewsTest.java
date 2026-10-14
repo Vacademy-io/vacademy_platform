@@ -35,7 +35,8 @@ class AiCallingApiViewsTest {
         queue = mock(AiCallQueueItemRepository.class);
         logs = mock(TelephonyCallLogRepository.class);
         results = mock(AiCallResultRepository.class);
-        views = new AiCallingApiViews(mock(AiCallApiCallRepository.class), queue, logs, results, mock(MediaService.class));
+        views = new AiCallingApiViews(mock(AiCallApiCallRepository.class), queue, logs, results, mock(MediaService.class),
+                mock(AiCallingUsageService.class));
         when(results.findByCallLogIdIn(any())).thenReturn(List.of());
     }
 
@@ -50,10 +51,21 @@ class AiCallingApiViewsTest {
         when(queue.findById("q1")).thenReturn(Optional.of(q));
     }
 
-    private void callLog(String status, Instant updated) {
+    private void callLog(String status, Instant created) {
+        callLog(status, created, null);
+    }
+
+    private void callLog(String status, Instant created, String recordingKey) {
         TelephonyCallLog l = TelephonyCallLog.builder().id("l1").status(status)
-                .updatedAt(Timestamp.from(updated)).build();
+                .createdAt(Timestamp.from(created)).updatedAt(Timestamp.from(created))
+                .recordingStorageKey(recordingKey).build();
         when(logs.findById("l1")).thenReturn(Optional.of(l));
+    }
+
+    private static AiCallApiCall endedAgo(Duration ago) {
+        AiCallApiCall c = call(null, "l1");
+        c.setTerminalSeenAt(Instant.now().minus(ago));
+        return c;
     }
 
     @Test
@@ -92,7 +104,7 @@ class AiCallingApiViewsTest {
     }
 
     @Test
-    void aConnectedCallWaitsForItsOutcome() {
+    void aConnectedCallWaitsForItsOutcomeAndRecording() {
         callLog("COMPLETED", Instant.now());
         AiCallingApiViews.State waiting = views.state(call(null, "l1"));
         assertEquals("completed", waiting.status());
@@ -101,20 +113,87 @@ class AiCallingApiViewsTest {
         AiCallResult r = AiCallResult.builder().id("r1").callLogId("l1").processingStatus("PROCESSED")
                 .disposition("Interested").transcript("assistant: Hello\nuser: Hi").build();
         when(results.findByCallLogIdIn(any())).thenReturn(List.of(r));
+        // Outcome in, recording not yet copied: still waiting (the webhook would carry no link).
+        assertFalse(views.state(call(null, "l1")).isFinal());
+
+        callLog("COMPLETED", Instant.now(), "media-1");
         AiCallingApiViews.State done = views.state(call(null, "l1"));
         assertTrue(done.isFinal());
         Map<String, Object> view = views.call(call(null, "l1"), done, false);
         @SuppressWarnings("unchecked")
         Map<String, Object> outcome = (Map<String, Object>) view.get("outcome");
         assertEquals("Interested", outcome.get("disposition"));
+        assertEquals("ok", outcome.get("call_quality"));
     }
 
     @Test
-    void aConnectedCallWithoutAnOutcomeIsFinalisedAfterTheWait() {
-        callLog("COMPLETED", Instant.now().minus(Duration.ofMinutes(11)));
-        AiCallingApiViews.State s = views.state(call(null, "l1"));
+    void theOutcomeWaitCountsFromTheEndNotTheDial() {
+        // Dialled 30 minutes ago (a long call), only just ended: not final yet.
+        callLog("COMPLETED", Instant.now().minus(Duration.ofMinutes(30)));
+        assertFalse(views.state(endedAgo(Duration.ofSeconds(5))).isFinal());
+        // Ended 11 minutes ago with no outcome: finalised without one.
+        AiCallingApiViews.State s = views.state(endedAgo(Duration.ofMinutes(11)));
         assertTrue(s.isFinal());
-        assertNull(views.call(call(null, "l1"), s, false).get("outcome"));
+        assertNull(views.call(endedAgo(Duration.ofMinutes(11)), s, false).get("outcome"));
+    }
+
+    @Test
+    void aTestCallIsFinalOnceItsOutcomeIsIn() {
+        callLog("COMPLETED", Instant.now());
+        when(results.findByCallLogIdIn(any())).thenReturn(List.of(AiCallResult.builder().id("r1").callLogId("l1")
+                .processingStatus("PROCESSED").disposition("Completed").build()));
+        AiCallApiCall c = call(null, "l1");
+        c.setTestMode(true);
+        assertTrue(views.state(c).isFinal());
+    }
+
+    @Test
+    void aCallOurBotBrokeIsNotReportedAsTheContactsVerdict() {
+        callLog("COMPLETED", Instant.now(), "media-1");
+        when(results.findByCallLogIdIn(any())).thenReturn(List.of(AiCallResult.builder().id("r1").callLogId("l1")
+                .processingStatus("PROCESSED").disposition("Not_Interested").leadRating(2)
+                .diagHealth("RED").diagFaults("BOT_SILENT").build()));
+        AiCallApiCall c = call(null, "l1");
+        Map<String, Object> view = views.call(c, false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> outcome = (Map<String, Object>) view.get("outcome");
+        assertEquals("failed", outcome.get("call_quality"));
+        assertEquals("Incomplete", outcome.get("disposition"));
+        assertNull(outcome.get("lead_rating"));
+    }
+
+    @Test
+    void aRowStillBeingCreatedIsNotFinalButAnOldOrphanFails() {
+        AiCallingApiViews.State fresh = views.state(call(null, null));
+        assertEquals("queued", fresh.status());
+        assertFalse(fresh.isFinal());
+        AiCallApiCall old = call(null, null);
+        old.setCreatedAt(Instant.now().minus(Duration.ofMinutes(10)));
+        AiCallingApiViews.State s = views.state(old);
+        assertEquals("failed", s.status());
+        assertTrue(s.isFinal());
+    }
+
+    @Test
+    void aCallThatNeverReportsAnEndFailsAfterTheBound() {
+        callLog("IN_PROGRESS", Instant.now().minus(Duration.ofMinutes(5)));
+        AiCallingApiViews.State live = views.state(call(null, "l1"));
+        assertEquals("in_progress", live.status());
+        assertFalse(live.isFinal());
+        callLog("IN_PROGRESS", Instant.now().minus(Duration.ofHours(3)));
+        AiCallingApiViews.State lost = views.state(call(null, "l1"));
+        assertEquals("failed", lost.status());
+        assertTrue(lost.isFinal());
+    }
+
+    @Test
+    void endedAtPrefersTheCarriersEndTime() {
+        Instant end = Instant.parse("2026-10-14T05:00:00Z");
+        TelephonyCallLog l = TelephonyCallLog.builder().id("l1").endTime(Timestamp.from(end)).build();
+        assertEquals(end, AiCallingApiViews.endedAt(call(null, "l1"), l, null, null, 90));
+        TelephonyCallLog noEnd = TelephonyCallLog.builder().id("l1").build();
+        Instant dialed = Instant.parse("2026-10-14T04:58:00Z");
+        assertEquals(dialed.plusSeconds(90), AiCallingApiViews.endedAt(call(null, "l1"), noEnd, null, dialed, 90));
     }
 
     @Test

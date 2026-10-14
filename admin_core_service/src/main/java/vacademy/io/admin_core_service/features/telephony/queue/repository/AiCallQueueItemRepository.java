@@ -81,6 +81,22 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             """, nativeQuery = true)
     int cancelIfQueued(@Param("id") String id, @Param("reason") String reason);
 
+    /** The queue item a public API call created (subject_id = the call id). */
+    java.util.Optional<AiCallQueueItem> findFirstByInstituteIdAndSubjectIdOrderByCreatedAtDesc(
+            String instituteId, String subjectId);
+
+    /**
+     * Items claimed for a dial whose call log may not exist yet, per (institute, provider).
+     * The capacity snapshot counts in-flight calls from call logs, so without these a burst
+     * of inline dials would all see the same free slot.
+     */
+    @Query(value = """
+            SELECT institute_id, provider, COUNT(*) FROM ai_call_queue
+             WHERE status = 'DISPATCHING' AND updated_at >= :since
+             GROUP BY institute_id, provider
+            """, nativeQuery = true)
+    List<Object[]> countDispatchingByLane(@Param("since") java.time.Instant since);
+
     /**
      * TTL sweep. A call queued yesterday for a lead who has since been worked by a
      * human is not a call anyone wants placed; expiring it is visible (status +

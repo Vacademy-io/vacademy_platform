@@ -106,6 +106,14 @@ public class AiCallApiCall {
     @Column(name = "webhook_delivered_at")
     private Instant webhookDeliveredAt;
 
+    /** When the finaliser last checked this call while it was not final (scan fairness). */
+    @Column(name = "checked_at")
+    private Instant checkedAt;
+
+    /** When the call was first seen ended; the outcome wait counts from here. */
+    @Column(name = "terminal_seen_at")
+    private Instant terminalSeenAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

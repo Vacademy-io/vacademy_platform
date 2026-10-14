@@ -172,7 +172,8 @@
                 "expiryInvalid": "Choisissez une date valide.",
                 "expiryInPast": "Choisissez une date postérieure à aujourd'hui.",
                 "generic": "Vérifiez le formulaire et réessayez."
-            }
+            },
+            "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée."
         },
         "agents": {
             "title": "Identifiants d'agent",
@@ -205,7 +206,9 @@
             "removeDescription": "Les résultats des appels ne sont plus envoyés à votre point de terminaison. Votre serveur peut toujours les obtenir avec GET /v1/calls/{id}.",
             "secretHeading": "Copiez votre secret de webhook",
             "secretWarning": "Le secret n'est affiché qu'une seule fois. Votre serveur l'utilise pour vérifier l'en-tête Telleo-Signature de chaque livraison.",
-            "secretLabel": "Secret de webhook"
+            "secretLabel": "Secret de webhook",
+            "rotateTitle": "Créer un nouveau secret de signature ?",
+            "rotateDescription": "Toutes les livraisons seront désormais signées avec le nouveau secret. Tant que votre serveur ne l'utilise pas, ses vérifications de signature échoueront et les événements seront retentés. Mettez votre serveur à jour juste après avoir copié le nouveau secret."
         }
     }
 }

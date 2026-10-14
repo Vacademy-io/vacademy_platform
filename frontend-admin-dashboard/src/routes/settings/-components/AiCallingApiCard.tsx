@@ -135,6 +135,9 @@ export function AiCallingApiCard() {
     const [shownSecret, setShownSecret] = useState<string | null>(null);
     const [secretCopied, setSecretCopied] = useState(false);
     const [confirmRemove, setConfirmRemove] = useState(false);
+    const [confirmRotate, setConfirmRotate] = useState(false);
+    const [keyCopied, setKeyCopied] = useState(false);
+    const [keyCloseAttempted, setKeyCloseAttempted] = useState(false);
 
     const keysQuery = useQuery({
         queryKey: [AI_CALLING_KEYS_QUERY_KEY, instituteId],
@@ -148,7 +151,9 @@ export function AiCallingApiCard() {
         queryKey: [AI_CALLING_AGENTS_QUERY_KEY, instituteId],
         queryFn: () => fetchAgentsForApi(instituteId),
         enabled: Boolean(instituteId),
-        staleTime: 60_000,
+        // Agents are created and turned off on the card above; always show the current list.
+        staleTime: 0,
+        refetchOnWindowFocus: true,
         retry: false,
     });
 
@@ -191,6 +196,9 @@ export function AiCallingApiCard() {
         queryClient.setQueryData([AI_CALLING_WEBHOOK_QUERY_KEY, instituteId], {
             ...hook,
             secret: null,
+            secretHint: hook.secret
+                ? `${hook.secret.slice(0, 6)}…${hook.secret.slice(-4)}`
+                : hook.secretHint,
         });
         if (hook.secret) {
             setSecretCopied(false);
@@ -568,7 +576,7 @@ export function AiCallingApiCard() {
                                             buttonType="secondary"
                                             scale="small"
                                             disable={webhookBusy}
-                                            onClick={() => rotateMutation.mutate()}
+                                            onClick={() => setConfirmRotate(true)}
                                         >
                                             {t('apiCard.webhook.rotate')}
                                         </MyButton>
@@ -657,9 +665,15 @@ export function AiCallingApiCard() {
                 heading={t('apiCard.keys.issuedHeading')}
                 open={Boolean(issuedKey)}
                 onOpenChange={(open) => {
-                    if (!open) {
+                    if (open) return;
+                    // The key is shown once: a stray Escape or outside click must not lose it.
+                    if (keyCopied || keyCloseAttempted) {
                         setIssuedKey(null);
+                        setKeyCopied(false);
+                        setKeyCloseAttempted(false);
                         issueMutation.reset();
+                    } else {
+                        setKeyCloseAttempted(true);
                     }
                 }}
                 dialogWidth="max-w-lg"
@@ -671,6 +685,8 @@ export function AiCallingApiCard() {
                             scale="medium"
                             onClick={() => {
                                 setIssuedKey(null);
+                                setKeyCopied(false);
+                                setKeyCloseAttempted(false);
                                 issueMutation.reset();
                             }}
                         >
@@ -688,8 +704,13 @@ export function AiCallingApiCard() {
                         <ShownOnce
                             value={issuedKey.key}
                             label={issuedKey.name}
-                            onCopied={() => undefined}
+                            onCopied={() => setKeyCopied(true)}
                         />
+                        {keyCloseAttempted && !keyCopied && (
+                            <p role="alert" className="text-sm font-medium text-danger-600">
+                                {t('apiCard.keys.notCopiedWarning')}
+                            </p>
+                        )}
                         <div>
                             <p className="mb-1 text-caption text-neutral-500">
                                 {t('apiCard.keys.issuedUsage')}
@@ -770,6 +791,42 @@ export function AiCallingApiCard() {
                                 <CircleNotch className="me-2 size-4 animate-spin" />
                             )}
                             {t('apiCard.keys.revoke')}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* ── Rotate secret ── */}
+            <AlertDialog
+                open={confirmRotate}
+                onOpenChange={(open) => {
+                    if (!open && !rotateMutation.isPending) setConfirmRotate(false);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t('apiCard.webhook.rotateTitle')}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {t('apiCard.webhook.rotateDescription')}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={rotateMutation.isPending}>
+                            {t('apiCard.cancel')}
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            disabled={rotateMutation.isPending}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                rotateMutation.mutate(undefined, {
+                                    onSettled: () => setConfirmRotate(false),
+                                });
+                            }}
+                        >
+                            {rotateMutation.isPending && (
+                                <CircleNotch className="me-2 size-4 animate-spin" />
+                            )}
+                            {t('apiCard.webhook.rotate')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

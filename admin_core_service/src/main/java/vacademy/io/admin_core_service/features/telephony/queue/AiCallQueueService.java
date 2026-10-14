@@ -217,6 +217,7 @@ public class AiCallQueueService {
                                       String provider, CallTrigger trigger, String source,
                                       String sourceRef, String actorUserId, String dedupeKey) {
         Instant now = Instant.now();
+        Instant notBefore = initialNotBefore(settings, trigger, now);
         return AiCallQueueItem.builder()
                 .instituteId(req.getInstituteId())
                 .provider(provider)
@@ -239,7 +240,9 @@ public class AiCallQueueService {
                 .dedupeKey(dedupeKey)
                 .status(AiCallQueueStatus.QUEUED.name())
                 .attempts(0)
-                .notBefore(initialNotBefore(settings, trigger, now))
+                .notBefore(notBefore)
+                // Same words the drainer uses when it defers an item to the next window.
+                .statusReason(notBefore != null ? "Outside this institute's calling hours." : null)
                 .expiresAt(now.plus(Duration.ofHours(capacityService.queueTtlHours())))
                 .createdAt(now)
                 .build();
@@ -536,7 +539,8 @@ public class AiCallQueueService {
                 .statusReason(item.getStatusReason())
                 .responseId(item.getResponseId())
                 .userId(item.getUserId())
-                .leadName(names.leadName(item.getResponseId()))
+                // A public API call has no lead row; the name the client sent is on the item.
+                .leadName(item.getResponseId() == null ? item.getCustomerName() : names.leadName(item.getResponseId()))
                 // A queued row often has no phone of its own — the number is resolved
                 // downstream at dial time — so fall back to what was actually dialled,
                 // then to the number on the lead's CRM record, rather than leaving the

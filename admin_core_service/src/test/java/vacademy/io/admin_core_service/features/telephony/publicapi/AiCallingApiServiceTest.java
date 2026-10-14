@@ -129,4 +129,40 @@ class AiCallingApiServiceTest {
         // Without the delete, a retry with Idempotency-Key k-1 would replay a call that never happened.
         verify(calls).delete(any(AiCallApiCall.class));
     }
+
+    @Test
+    void overLongContactFieldsAndReservedVariableNamesAreRejected() {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("date", "tomorrow");
+        vars.put("institute_name", "Shiksha Academy");
+        AiCallingApiService.Validated v = service.validate("inst-1", new AiCallingApiService.CallInput(
+                "agent-1", "+919876543210", "x".repeat(121), null, "e".repeat(256), vars, null), agent());
+        List<String> fields = v.errors().stream().map(e -> e.get("field")).toList();
+        assertTrue(fields.contains("contact.name"), fields.toString());
+        assertTrue(fields.contains("contact.external_id"), fields.toString());
+        assertTrue(fields.contains("variables.date"), fields.toString());
+        assertFalse(fields.contains("variables.institute_name"), "institute_name is a client variable");
+    }
+
+    @Test
+    void anIdempotencyKeyReusedWithADifferentBodyIsRefused() {
+        AiAgentRepository agents = mock(AiAgentRepository.class);
+        AiCallApiCallRepository calls = mock(AiCallApiCallRepository.class);
+        AiCallApiCall prior = AiCallApiCall.builder().id("call_1").instituteId("inst-1").agentId("agent-1")
+                .phoneNumber("+919876543210").contactName("Asha").testMode(true)
+                .createdAt(java.time.Instant.now()).build();
+        when(calls.findByInstituteIdAndIdempotencyKey("inst-1", "k-1")).thenReturn(Optional.of(prior));
+        AiCallingApiService svc = new AiCallingApiService(agents, calls, null, null, null, null, null);
+        AiCallingApiAuth.Principal p = new AiCallingApiAuth.Principal("inst-1", "key-1", List.of("calls:write"));
+        // Same contact, but live instead of test: a different request.
+        AiCallingApiException e = assertThrows(AiCallingApiException.class, () -> svc.createCall(p,
+                new AiCallingApiService.CallInput("agent-1", "+91 98765 43210", "Asha", null, null, null, null),
+                false, "k-1"));
+        assertEquals("idempotency_key_reused", e.getCode());
+        // A different name is a different request too.
+        e = assertThrows(AiCallingApiException.class, () -> svc.createCall(p,
+                new AiCallingApiService.CallInput("agent-1", "+919876543210", "Ravi", null, null, null, null),
+                true, "k-1"));
+        assertEquals("idempotency_key_reused", e.getCode());
+    }
 }

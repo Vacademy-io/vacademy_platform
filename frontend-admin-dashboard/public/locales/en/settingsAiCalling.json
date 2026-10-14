@@ -174,7 +174,8 @@
                 "expiryInvalid": "Pick a valid date.",
                 "expiryInPast": "Pick a date after today.",
                 "generic": "Check the form and try again."
-            }
+            },
+            "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again."
         },
         "agents": {
             "title": "Agent ids",
@@ -207,7 +208,9 @@
             "removeDescription": "Call results are no longer sent to your endpoint. Your server can still fetch them with GET /v1/calls/{id}.",
             "secretHeading": "Copy your webhook secret",
             "secretWarning": "This is the only time the secret is shown. Your server uses it to check the Telleo-Signature header on every delivery.",
-            "secretLabel": "Webhook secret"
+            "secretLabel": "Webhook secret",
+            "rotateTitle": "Create a new signing secret?",
+            "rotateDescription": "Every delivery from now on is signed with the new secret. Until your server uses it, its signature checks will fail and events will be retried. Update your server right after copying the new secret."
         }
     }
 }

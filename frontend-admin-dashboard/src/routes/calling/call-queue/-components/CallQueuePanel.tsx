@@ -487,6 +487,8 @@ function sourceLabel(item: QueueItem): string {
             return item.sourceName ? `Campaign · ${item.sourceName}` : 'Bulk campaign';
         case 'WORKFLOW':
             return 'Automation';
+        case 'API':
+            return 'API (your systems)';
         default:
             return item.source || '—';
     }

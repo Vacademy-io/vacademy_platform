@@ -37,7 +37,8 @@
             "label": "ID de transaction (facultatif)",
             "placeholder": "Saisir l'ID de transaction",
             "description": "Référence de transaction de paiement externe"
-        }
+        },
+        "paymentDetailsInCourse": "Le mode de paiement est repris de la section frais de chaque cours ci-dessus."
     },
     "workflows": {
         "heading": "Workflows qui se déclencheront lors de l'inscription",

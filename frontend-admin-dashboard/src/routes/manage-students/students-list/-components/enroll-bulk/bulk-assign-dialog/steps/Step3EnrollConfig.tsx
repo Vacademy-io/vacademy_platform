@@ -87,6 +87,12 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
     const canPayInInstallments =
         resolved?.paymentOption?.type === 'ONE_TIME' && (resolvedPlan?.actual_price ?? 0) > 0;
     const oneTimeInstallments = canPayInInstallments && ps.cpoConfig != null;
+    // Unknown until the invite resolves; the shared payment fields stay shown meanwhile.
+    const ownsPayment = resolved ? isCpo || oneTimeInstallments : undefined;
+    useEffect(() => {
+        if (ps.ownsPayment !== ownsPayment) onUpdate({ ownsPayment });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ownsPayment]);
 
     // In Auto mode, send the invite this row shows (the backend only finds DEFAULT invites by
     // itself) and block Preview while there are several to choose from.
@@ -479,8 +485,18 @@ export const Step3EnrollConfig = ({
                     </div>
 
                     {/* How it was paid (mode, option, proof), recorded with the payment date /
-                        transaction id above; the transaction id is the reference. */}
-                    {(options.paymentDate || options.transactionId) && (
+                        transaction id above; the transaction id is the reference. Only for
+                        courses without their own fee panel: a fee-plan course takes these from
+                        its panel above (the backend ignores the shared ones for it), so asking
+                        again would only duplicate them. */}
+                    {(options.paymentDate || options.transactionId) &&
+                        !selectedPackageSessions.some((ps) => !ps.ownsPayment) && (
+                            <p className="text-xs text-neutral-500">
+                                {t('globalOptions.paymentDetailsInCourse')}
+                            </p>
+                        )}
+                    {(options.paymentDate || options.transactionId) &&
+                        selectedPackageSessions.some((ps) => !ps.ownsPayment) && (
                         <OfflinePaymentFields
                             showReference={false}
                             externalReference={options.transactionId}

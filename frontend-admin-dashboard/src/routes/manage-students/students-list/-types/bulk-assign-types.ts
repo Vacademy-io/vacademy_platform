@@ -429,6 +429,12 @@ export interface SelectedPackageSession {
     /** Problem with the offline payment details in `cpoConfig`; blocks Preview while set. */
     cpoPaymentError?: string | null;
     /**
+     * This course records its payment in its own fee panel (a fee plan, or a one-time price
+     * paid in installments), so the shared "how was it paid" fields do not apply to it.
+     * Wizard-only; never sent.
+     */
+    ownsPayment?: boolean;
+    /**
      * Auto mode: the invite the row resolved and shows (DEFAULT, or the only active one).
      * Sent as enroll_invite_id so the enrollment uses exactly what the screen shows.
      */

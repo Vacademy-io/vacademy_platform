@@ -105,7 +105,23 @@
         "createWithQuestions_one": "Create test with {{count}} question",
         "createWithQuestions_other": "Create test with {{count}} questions",
         "creating": "Creating…",
-        "noAnswer": "No answer found - add one in the question bank"
+        "noAnswer": "No answer found - add one in the question bank",
+        "allQuestionsAddUp": "(all questions add up to {{total}})",
+        "choice": {
+            "title": "Internal choice on this paper",
+            "hint": "Students answer only some questions of these sections. Every answer is checked; only the counted ones make the total.",
+            "answerAny": "Answer any",
+            "ofCount": "of {{count}}",
+            "counting": "Count",
+            "policy": {
+                "best": "Best marks",
+                "first": "First answered"
+            },
+            "makeCompulsory": "Make all compulsory",
+            "allCompulsory": "all questions compulsory",
+            "invalid": "Must be at least 1 and less than {{count}} — otherwise every question counts.",
+            "chip": "any {{attempt}} of {{count}}"
+        }
     },
     "retrofit": {
         "title": "AI checking is off for this test",

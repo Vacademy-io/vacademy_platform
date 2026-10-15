@@ -24,7 +24,11 @@ import {
     type PaperDigitiseEstimate,
 } from '@/services/paper-digitise';
 import { usePaperDigitise } from '../-hooks/use-paper-digitise';
-import { PaperDigitiseReviewDialog, type ReviewedQuestion } from './paper-digitise-review-dialog';
+import {
+    PaperDigitiseReviewDialog,
+    type ReviewedChoice,
+    type ReviewedQuestion,
+} from './paper-digitise-review-dialog';
 
 type Step =
     | { kind: 'closed' }
@@ -171,7 +175,11 @@ export const EnableAiChecking = ({
         if (started) setProgressOpen(true);
     };
 
-    const adopt = async (paper: DigitisedPaper, accepted: ReviewedQuestion[]) => {
+    const adopt = async (
+        paper: DigitisedPaper,
+        accepted: ReviewedQuestion[],
+        choices?: ReviewedChoice[]
+    ) => {
         setStep({ kind: 'adopting' });
         try {
             const questions = accepted.map(({ index, marks }) => {
@@ -214,13 +222,24 @@ export const EnableAiChecking = ({
                 savedRef.current = { key: cacheKey, ids };
             }
 
+            // "Answer any FOUR of these five", by the ids the questions were saved under.
+            const idOf = new Map(accepted.map(({ index }, i) => [index, ids[i]!]));
+            const choiceGroups = (choices ?? []).map((c) => ({
+                label: c.label,
+                question_ids: c.indexes
+                    .map((index) => idOf.get(index))
+                    .filter((id): id is string => !!id),
+                attempt: c.attempt,
+                policy: c.policy,
+            }));
             const result = await adoptDigitisedQuestions(
                 assessmentId,
                 questions.map((q, i) => ({
                     question_id: ids[i]!,
                     question_type: String(q.dto.question_type || 'LONG_ANSWER'),
                     marks: q.marks,
-                }))
+                })),
+                choiceGroups
             );
             abandon();
             queryClient.invalidateQueries({ queryKey: ['AI_GRADABILITY', assessmentId] });
@@ -470,8 +489,8 @@ export const EnableAiChecking = ({
                 paper={state.phase === 'review' ? state.paper : null}
                 expectedTotal={totalMarks}
                 busy={step.kind === 'adopting'}
-                onConfirm={(accepted) => {
-                    if (state.phase === 'review') void adopt(state.paper, accepted);
+                onConfirm={(accepted, choices) => {
+                    if (state.phase === 'review') void adopt(state.paper, accepted, choices);
                 }}
                 onCreateWithoutAi={() => {
                     abandon();

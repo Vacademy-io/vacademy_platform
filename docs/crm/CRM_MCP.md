@@ -5,7 +5,7 @@ from Claude, ChatGPT, Cursor or Claude Code: find and work leads, log calls and 
 human and AI calls, book meetings, send an approved WhatsApp template, and read the CRM reports.
 
 * Server plumbing, gates, OAuth: `ai_service/MCP_SERVER_GUIDE.md` (§1a covers the CRM tools).
-* Public docs: `mcp-docs/` (Mintlify). Tool pages are generated: `cd ai_service && python scripts/gen_mcp_docs.py`.
+* Public docs: `vacademy-docs/mcp/` (the "MCP server" product of the Vacademy docs site, published from Vacademy-io/docs). Tool pages are generated: `cd ai_service && python scripts/gen_mcp_docs.py`.
 * Code: `ai_service/app/services/crm_data.py` (shared foundation) and `assistant_tools_crm_*.py`.
 
 ## 1. Tools

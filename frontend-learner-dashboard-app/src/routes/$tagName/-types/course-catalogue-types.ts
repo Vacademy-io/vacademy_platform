@@ -437,6 +437,10 @@ export interface CourseCatalogProps {
    *  Unset or unrecognised falls back to DEFAULT_COURSE_CATALOG_SORT; either
    *  way the learner can still change the sort from the dropdown. */
   defaultSort?: CourseCatalogSortOption;
+  /** Option order inside the Level / Popular Tags filter groups, by name.
+   *  Listed names come first in this order; the rest follow naturally. */
+  levelOrder?: string[];
+  tagOrder?: string[];
   filtersConfig?: Array<{
     id: string;
     /** Built-in filters use Naming Settings for their label. */

@@ -29,6 +29,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import ImageCropperDialog from '@/components/design-system/image-cropper-dialog';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
@@ -158,6 +159,8 @@ export const AddCourseStep1 = ({
         'coursePreview'
     );
     const cropOutputType = useRef<'image/jpeg' | 'image/png' | 'image/webp'>('image/jpeg');
+    // Which image box a file is being dragged over (drop opens the cropper).
+    const [dragOverField, setDragOverField] = useState<string | null>(null);
 
     // Hide YouTube input when clicking outside
     useEffect(() => {
@@ -441,6 +444,29 @@ export const AddCourseStep1 = ({
         setCropperSrc(dataUrl);
         setIsCropperOpen(true);
     };
+
+    /** Drag-and-drop onto an image box: same path as picking a file. */
+    const imageDropProps = (
+        field: 'coursePreview' | 'courseBanner' | 'courseMedia',
+        accepted: string[]
+    ) => ({
+        onDragOver: (e: React.DragEvent) => {
+            e.preventDefault();
+            if (dragOverField !== field) setDragOverField(field);
+        },
+        onDragLeave: () => setDragOverField(null),
+        onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            setDragOverField(null);
+            const file = e.dataTransfer.files?.[0];
+            if (!file) return;
+            if (!accepted.includes(file.type)) {
+                toast.error('Please drop a JPEG, PNG or SVG image');
+                return;
+            }
+            void handleFileSelectedWithCrop(file, field);
+        },
+    });
 
     const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const input = e.target.value;
@@ -933,7 +959,8 @@ export const AddCourseStep1 = ({
                                         <p className="text-sm text-neutral-500">
                                             This is the thumbnail that appears on the{' '}
                                             {courseTerm.toLocaleLowerCase()} card. Recommended size:
-                                            2:1 ratio
+                                            2:1 ratio. Drag an image here or click to upload, then
+                                            move and resize the crop.
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.coursePreview ? (
@@ -953,7 +980,16 @@ export const AddCourseStep1 = ({
                                                             coursePreviewRef.current?.click();
                                                         }
                                                     }}
-                                                    className="group relative h-52 w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
+                                                    {...imageDropProps('coursePreview', [
+                                                        'image/jpeg',
+                                                        'image/png',
+                                                        'image/svg+xml',
+                                                    ])}
+                                                    className={cn(
+                                                        'group relative h-52 w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100',
+                                                        dragOverField === 'coursePreview' &&
+                                                            'ring-2 ring-primary-400'
+                                                    )}
                                                 >
                                                     <img
                                                         src={form.watch('coursePreviewBlob')}
@@ -980,14 +1016,23 @@ export const AddCourseStep1 = ({
                                                             coursePreviewRef.current?.click();
                                                         }
                                                     }}
-                                                    className="flex h-52 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                    {...imageDropProps('coursePreview', [
+                                                        'image/jpeg',
+                                                        'image/png',
+                                                        'image/svg+xml',
+                                                    ])}
+                                                    className={cn(
+                                                        'flex h-52 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50',
+                                                        dragOverField === 'coursePreview' &&
+                                                            'border-primary-400 bg-primary-50'
+                                                    )}
                                                 >
                                                     <UploadSimple
                                                         size={40}
                                                         className="text-neutral-400"
                                                     />
                                                     <p className="text-sm font-medium text-neutral-600">
-                                                        Click to upload image
+                                                        Drag an image here or click to upload
                                                     </p>
                                                     <p className="text-xs text-neutral-400">
                                                         JPEG, PNG, SVG — 2:1 ratio recommended

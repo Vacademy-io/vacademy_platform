@@ -261,6 +261,13 @@
             <version>20231013</version>
         </dependency>
 
+        <!-- HTML sanitising for the public Catalogue API's rich-text fields -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
         <!-- Apache POI for Excel export (HR Payroll bank files) -->
         <dependency>
             <groupId>org.apache.poi</groupId>

@@ -83,9 +83,28 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:779885739059:android:70ccd66e78b70bcfec3746",
+        "mobilesdk_app_id": "1:779885739059:android:6567331985d79d44ec3746",
         "android_client_info": {
           "package_name": "com.smartaiacademy.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpxngpK_0waQLPKq7ypuMrPW_S3QeaPTM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:779885739059:android:95fc013cfc6d2fb5ec3746",
+        "android_client_info": {
+          "package_name": "com.sreedhar.app"
         }
       },
       "oauth_client": [],

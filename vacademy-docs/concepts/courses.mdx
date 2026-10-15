@@ -1,0 +1,114 @@
+---
+title: "Courses"
+description: "Course ids, versions, languages, formats, prices and availability."
+---
+
+The API lists what the institute has **published to its catalogue**, exactly as the hosted catalogue site lists it. A course that is not published is absent: `GET /courses/{id}` returns `404 not_found`.
+
+## A course and its versions
+
+One course can be sold in several **versions**: levels or batches (`Beginner`, `2026 batch`) and, on sites with course languages on, language editions (an English and a Hindi eBook). The API returns **one entry per course**; its versions are in `variants`:
+
+```json
+{
+  "id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+  "title": "Vedic Parenting - eBook",
+  "languages": [{ "code": "en", "label": "English" }, { "code": "hi", "label": "Hindi" }],
+  "variants": [
+    {
+      "package_session_id": "92e89046-5865-4cf7-bea6-ac1e8b7bd328",
+      "enroll_invite_id": "5a975e3c-429f-4bfe-9143-43ffcf807748",
+      "level": null,
+      "language": { "code": "en", "label": "English" },
+      "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+      "availability": "available",
+      "price": { "amount": 251.0, "compare_at_amount": null, "currency": "INR", "is_free": false }
+    },
+    {
+      "package_session_id": "5c4fcbf5-851c-455c-90b4-f74217ded156",
+      "enroll_invite_id": "f2496594-7a63-47eb-8b22-a0af43e75fb6",
+      "level": null,
+      "language": { "code": "hi", "label": "Hindi" },
+      "url": "https://learning.brahmvarchas.org/store/c150dfcf-96e0-4712-b709-b0528e1f4a09?enrollInviteId=f2496594-7a63-47eb-8b22-a0af43e75fb6&packageSessionId=5c4fcbf5-851c-455c-90b4-f74217ded156&level=default",
+      "availability": "available",
+      "price": { "amount": 251.0, "compare_at_amount": null, "currency": "INR", "is_free": false }
+    }
+  ]
+}
+```
+
+- **`id`** is the course id. It stays the same whichever version is shown. Use it in your routes and in `GET /courses/{id}`.
+- A language edition may be a separate course on the platform with its own id (here the Hindi eBook is `c150dfcf-…`). `GET /courses/{id}` accepts that id too and shows that edition, but the response `id` is still the course id. The hosted page of an edition is in its variant's `url`.
+- The top-level fields (`title`, `subtitle`, `image_url`, `url`, `level`, `price`, `availability`) describe the version **shown**: the first in catalogue order, or the one in `language` when you pass it.
+- `level` is `null` for a course without named levels.
+
+## Languages
+
+`GET /site` lists the site's course languages; the list is empty when the institute has course languages off. Then `languages` is `[]` on every course and `language` parameters are ignored.
+
+With languages on:
+
+- `GET /courses?language=hi` keeps the courses available in Hindi and shows their Hindi version. An unknown code matches nothing.
+- `GET /courses/{id}?language=hi` shows the Hindi version (title, url, price, `seo`) when there is one, else the default version.
+- A version's language comes from its level name (`Hindi`, `Beginner (English)`) or a course tag that is exactly a language name or code. A course whose language cannot be detected has `languages: []`.
+
+## Formats
+
+Formats ("E-books", "Live sessions") are defined per site. `GET /site` lists them in display order; each course lists its own in `formats`. Filter with `GET /courses?format=ebook`. A site without formats returns `[]` everywhere.
+
+## Tags
+
+`tags` are the course's tags as authored, from all its versions. Some carry meaning on the hosted site (`format-ebook`, stream tags); show the ones that make sense to your visitors. Filter with `GET /courses?tag=for-parents` (any of several: `tag=a,b`; case-insensitive, whole tag).
+
+## Price and availability
+
+`availability` says whether the version shown can be bought now:
+
+| `availability` | Meaning | `price` |
+|---|---|---|
+| `available` | On sale or open for enrolment. | Set, or `null` when prices are hidden |
+| `coming_soon` | Announced, not on sale yet. | `null` |
+| `not_started` | Enrolment opens later. | `null` |
+| `closed` | Enrolment ended or the invite is inactive. | `null` |
+
+`price`:
+
+| Field | |
+|---|---|
+| `amount` | Major units (rupees for INR), e.g. `251.0`. `0` when free. |
+| `compare_at_amount` | A higher list price to show struck through, or `null`. |
+| `currency` | ISO 4217, e.g. `INR`. |
+| `is_free` | `true` when `amount` is `0`. |
+| `varies` | `true` when the versions on sale have different prices. Show "From" the lowest `variants[].price.amount` among `available` versions. |
+
+**Hidden prices.** An institute can hide prices on its catalogue (`GET /site` returns `price_visible: false`). Paid courses then have `price: null` and `price_visible: false`: show "See price" and link to `url`. Free courses still show `price` with `is_free: true`.
+
+The [quickstart's `priceLabel`](/quickstart#2-the-fetch-helper) implements these rules.
+
+## Listing, filtering and sorting
+
+`GET /courses` combines filters with AND: `q`, `stream`, `category`, `format`, `language`, `tag`, `availability`.
+
+- `q` is a case-insensitive substring of any version's title or any tag.
+- An unknown `stream` or `category` slug returns an empty page, not an error.
+- `availability` filters on the version shown.
+- `sort`: `newest` (default; by `created_at`, the newest version's creation time), `title`, `price_asc`, `price_desc` (by the lowest price on sale now). Ties keep the catalogue's order.
+- `page` starts at 1; `page_size` is 1 to 100 (default 24). `total` and `has_more` tell you whether to show a next page.
+
+## Detail fields
+
+`GET /courses/{id}` adds what a course page needs:
+
+| Field | |
+|---|---|
+| `description_html` / `description_text` | The course description. |
+| `about_html` / `about_text` | "About this course". |
+| `why_learn_html`, `who_should_learn_html` | Optional sections; `null` when empty. |
+| `mode` | `self_paced`, `live` or `null`. |
+| `faqs` | `[{question, answer_html}]`. |
+| `preview_video` | `{kind: "youtube" \| "vimeo", id, embed_url}`, `{kind: "url", url, embed_url: null}`, or `null`. |
+| `authors` | `[{name, subtitle, bio_html, image_url}]`. Never an email. |
+| `series` | The learning path this course is a step of: `{name, steps: [{course_id, title, url, current}]}`, or `null`. |
+| `seo`, `structured_data` | See [Course pages and SEO](/concepts/course-pages-and-seo). |
+
+Every `*_html` field is sanitised (jsoup relaxed safelist; images only from `http(s)` URLs) and `null` when it has no visible content. `GET /courses/{id}/outline` returns subject, module and chapter titles per version.

@@ -1,0 +1,2954 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Vacademy Catalogue API",
+    "version": "1.0.0",
+    "description": "Read an institute's published courses, streams and learning paths for its own website, and send enquiries into its CRM."
+  },
+  "servers": [
+    {
+      "url": "https://api.vacademy.io/catalog/v1"
+    }
+  ],
+  "security": [
+    {
+      "ApiKey": []
+    },
+    {
+      "Bearer": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Site"
+    },
+    {
+      "name": "Courses"
+    },
+    {
+      "name": "Streams"
+    },
+    {
+      "name": "Learning paths"
+    },
+    {
+      "name": "Enquiries"
+    }
+  ],
+  "paths": {
+    "/site": {
+      "get": {
+        "operationId": "getSite",
+        "tags": [
+          "Site"
+        ],
+        "summary": "Get site settings",
+        "description": "The institute, where its course pages live, and the languages, formats, currency and price visibility of its catalogue. Use it to build filters.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "responses": {
+          "200": {
+            "description": "The site.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Site"
+                },
+                "example": {
+                  "institute": {
+                    "id": "2719d8d1-43fd-4f9f-97af-a5b067d770a6",
+                    "name": "Brahm Varchas Shiksha",
+                    "logo_url": "https://cdn.example.com/logo.png"
+                  },
+                  "course_base_url": "https://learning.brahmvarchas.org/store",
+                  "languages": [
+                    {
+                      "code": "en",
+                      "label": "English"
+                    },
+                    {
+                      "code": "hi",
+                      "label": "Hindi"
+                    }
+                  ],
+                  "formats": [
+                    {
+                      "key": "elearning",
+                      "label": "Interactive, self-paced E-learning"
+                    },
+                    {
+                      "key": "ebook",
+                      "label": "E-books"
+                    },
+                    {
+                      "key": "live",
+                      "label": "Live sessions"
+                    },
+                    {
+                      "key": "video",
+                      "label": "Video"
+                    },
+                    {
+                      "key": "animation",
+                      "label": "Short film / Animation"
+                    },
+                    {
+                      "key": "article",
+                      "label": "Articles-essays"
+                    },
+                    {
+                      "key": "merch",
+                      "label": "Merchandise (in collaboration)"
+                    },
+                    {
+                      "key": "audiobook",
+                      "label": "Audio Book"
+                    }
+                  ],
+                  "currency": "INR",
+                  "price_visible": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/courses": {
+      "get": {
+        "operationId": "listCourses",
+        "tags": [
+          "Courses"
+        ],
+        "summary": "List courses",
+        "description": "The institute's published courses, one entry per course (language versions and levels are `variants`). Filters combine with AND. An unknown `stream` or `category` slug returns an empty page, not an error.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring of any version's title or any tag.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "parenting"
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "description": "Stream slug from `GET /streams`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "dharma"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "Category slug from `GET /streams` (searched in `stream` when given, else in every stream).",
+            "schema": {
+              "type": "string"
+            },
+            "example": "vedic-parenting"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Format key from `GET /site`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "ebook"
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "description": "A code from `GET /site` `languages`: keeps courses available in that language and shows that version. An unknown code matches nothing. Ignored when the site has course languages off.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "hi"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "description": "One or more tags, comma-separated; a course matches if it has any of them (case-insensitive, whole tag).",
+            "schema": {
+              "type": "string"
+            },
+            "example": "for-parents"
+          },
+          {
+            "name": "availability",
+            "in": "query",
+            "required": false,
+            "description": "Availability of the version shown.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "available",
+                "coming_soon",
+                "not_started",
+                "closed"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "1-based page number.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Courses per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 24
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "`newest` (by `created_at`, default), `title`, `price_asc`, `price_desc` (by the lowest price on sale now). Ties keep catalogue order.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "title",
+                "price_asc",
+                "price_desc"
+              ],
+              "default": "newest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of courses.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseList"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                      "title": "Vedic Parenting - eBook",
+                      "subtitle": "The forgotten mystery of the real meaning of parents!",
+                      "image_url": "https://cdn.example.com/32aa2224-c7b1-46cf-b7ae-ebf1a37c5e34.png",
+                      "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                      "formats": [
+                        {
+                          "key": "ebook",
+                          "label": "E-books"
+                        }
+                      ],
+                      "stream": {
+                        "slug": "dharma",
+                        "label": "Virtue | Civilisation"
+                      },
+                      "category": {
+                        "slug": "vedic-parenting",
+                        "label": "Holistic Parenting"
+                      },
+                      "languages": [
+                        {
+                          "code": "en",
+                          "label": "English"
+                        },
+                        {
+                          "code": "hi",
+                          "label": "Hindi"
+                        }
+                      ],
+                      "tags": [
+                        "english",
+                        "dharma",
+                        "vedic-parenting",
+                        "format-ebook",
+                        "for-parents",
+                        "hindi"
+                      ],
+                      "level": null,
+                      "availability": "available",
+                      "price_visible": true,
+                      "price": {
+                        "amount": 251.0,
+                        "compare_at_amount": null,
+                        "currency": "INR",
+                        "is_free": false,
+                        "varies": false
+                      },
+                      "instructors": [
+                        {
+                          "name": "Abhishek",
+                          "image_url": null
+                        }
+                      ],
+                      "rating": null,
+                      "created_at": "2026-09-22T09:05:02.499Z",
+                      "variants": [
+                        {
+                          "package_session_id": "92e89046-5865-4cf7-bea6-ac1e8b7bd328",
+                          "enroll_invite_id": "5a975e3c-429f-4bfe-9143-43ffcf807748",
+                          "level": null,
+                          "language": {
+                            "code": "en",
+                            "label": "English"
+                          },
+                          "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                          "availability": "available",
+                          "price": {
+                            "amount": 251.0,
+                            "compare_at_amount": null,
+                            "currency": "INR",
+                            "is_free": false
+                          }
+                        },
+                        {
+                          "package_session_id": "5c4fcbf5-851c-455c-90b4-f74217ded156",
+                          "enroll_invite_id": "f2496594-7a63-47eb-8b22-a0af43e75fb6",
+                          "level": null,
+                          "language": {
+                            "code": "hi",
+                            "label": "Hindi"
+                          },
+                          "url": "https://learning.brahmvarchas.org/store/c150dfcf-96e0-4712-b709-b0528e1f4a09?enrollInviteId=f2496594-7a63-47eb-8b22-a0af43e75fb6&packageSessionId=5c4fcbf5-851c-455c-90b4-f74217ded156&level=default",
+                          "availability": "available",
+                          "price": {
+                            "amount": 251.0,
+                            "compare_at_amount": null,
+                            "currency": "INR",
+                            "is_free": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "c59a3aaf-f108-4567-a1a1-ff9231e83265",
+                      "title": "Principles of Wellness for Maintaining Health",
+                      "subtitle": "Ayurveda’s gift to Humankind",
+                      "image_url": "https://cdn.example.com/62e9a4ef-c987-4435-afdb-69f9d02da31a.png",
+                      "url": "https://learning.brahmvarchas.org/store/c59a3aaf-f108-4567-a1a1-ff9231e83265?enrollInviteId=d97c5422-dc40-4cf9-997a-8c82d6526681&packageSessionId=4a62ca67-11e2-46c3-bb64-608311b0a6ea&level=Swasthavritta",
+                      "formats": [],
+                      "stream": null,
+                      "category": null,
+                      "languages": [],
+                      "tags": [
+                        "ebook"
+                      ],
+                      "level": "Swasthavritta",
+                      "availability": "available",
+                      "price_visible": true,
+                      "price": {
+                        "amount": 251.0,
+                        "compare_at_amount": null,
+                        "currency": "INR",
+                        "is_free": false,
+                        "varies": false
+                      },
+                      "instructors": [
+                        {
+                          "name": "Neha Biyani",
+                          "image_url": null
+                        }
+                      ],
+                      "rating": null,
+                      "created_at": "2026-10-14T20:47:05.450Z",
+                      "variants": [
+                        {
+                          "package_session_id": "4a62ca67-11e2-46c3-bb64-608311b0a6ea",
+                          "enroll_invite_id": "d97c5422-dc40-4cf9-997a-8c82d6526681",
+                          "level": "Swasthavritta",
+                          "language": null,
+                          "url": "https://learning.brahmvarchas.org/store/c59a3aaf-f108-4567-a1a1-ff9231e83265?enrollInviteId=d97c5422-dc40-4cf9-997a-8c82d6526681&packageSessionId=4a62ca67-11e2-46c3-bb64-608311b0a6ea&level=Swasthavritta",
+                          "availability": "available",
+                          "price": {
+                            "amount": 251.0,
+                            "compare_at_amount": null,
+                            "currency": "INR",
+                            "is_free": false
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "page": 1,
+                  "page_size": 2,
+                  "total": 34,
+                  "has_more": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/courses/{id}": {
+      "get": {
+        "operationId": "getCourse",
+        "tags": [
+          "Courses"
+        ],
+        "summary": "Get a course",
+        "description": "Everything a course page needs: the summary fields plus descriptions, FAQs, preview video, authors, learning-path series, `seo` and schema.org `structured_data`. `id` may be the course id or the id of any of its language versions; the response `id` is always the course id.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "7c12a9ec-22c3-4c55-ada1-2a93e107816f"
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "description": "A code from `GET /site` `languages`. Shows that language's version of the course (title, url, price). Ignored when the site has course languages off.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "hi"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The course.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseDetail"
+                },
+                "example": {
+                  "id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                  "title": "Vedic Parenting - eBook",
+                  "subtitle": "The forgotten mystery of the real meaning of parents!",
+                  "image_url": "https://cdn.example.com/32aa2224-c7b1-46cf-b7ae-ebf1a37c5e34.png",
+                  "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                  "formats": [
+                    {
+                      "key": "ebook",
+                      "label": "E-books"
+                    }
+                  ],
+                  "stream": {
+                    "slug": "dharma",
+                    "label": "Virtue | Civilisation"
+                  },
+                  "category": {
+                    "slug": "vedic-parenting",
+                    "label": "Holistic Parenting"
+                  },
+                  "languages": [
+                    {
+                      "code": "en",
+                      "label": "English"
+                    },
+                    {
+                      "code": "hi",
+                      "label": "Hindi"
+                    }
+                  ],
+                  "tags": [
+                    "english",
+                    "dharma",
+                    "vedic-parenting",
+                    "format-ebook",
+                    "for-parents",
+                    "hindi"
+                  ],
+                  "level": null,
+                  "availability": "available",
+                  "price_visible": true,
+                  "price": {
+                    "amount": 251.0,
+                    "compare_at_amount": null,
+                    "currency": "INR",
+                    "is_free": false,
+                    "varies": false
+                  },
+                  "instructors": [
+                    {
+                      "name": "Abhishek",
+                      "image_url": null
+                    }
+                  ],
+                  "rating": null,
+                  "created_at": "2026-09-22T09:05:02.499Z",
+                  "variants": [
+                    {
+                      "package_session_id": "92e89046-5865-4cf7-bea6-ac1e8b7bd328",
+                      "enroll_invite_id": "5a975e3c-429f-4bfe-9143-43ffcf807748",
+                      "level": null,
+                      "language": {
+                        "code": "en",
+                        "label": "English"
+                      },
+                      "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                      "availability": "available",
+                      "price": {
+                        "amount": 251.0,
+                        "compare_at_amount": null,
+                        "currency": "INR",
+                        "is_free": false
+                      }
+                    },
+                    {
+                      "package_session_id": "5c4fcbf5-851c-455c-90b4-f74217ded156",
+                      "enroll_invite_id": "f2496594-7a63-47eb-8b22-a0af43e75fb6",
+                      "level": null,
+                      "language": {
+                        "code": "hi",
+                        "label": "Hindi"
+                      },
+                      "url": "https://learning.brahmvarchas.org/store/c150dfcf-96e0-4712-b709-b0528e1f4a09?enrollInviteId=f2496594-7a63-47eb-8b22-a0af43e75fb6&packageSessionId=5c4fcbf5-851c-455c-90b4-f74217ded156&level=default",
+                      "availability": "available",
+                      "price": {
+                        "amount": 251.0,
+                        "compare_at_amount": null,
+                        "currency": "INR",
+                        "is_free": false
+                      }
+                    }
+                  ],
+                  "description_html": "<p><span>The forgotten mystery of the real meaning of parents!</span></p>",
+                  "description_text": "The forgotten mystery of the real meaning of parents!",
+                  "about_html": "<p><strong>Vedic Parenting is a comprehensive science based on the development of the Panchakosha system,&nbsp;which has been used in India as a major science for thousands of years.</strong></p><p>It is a blend of principles derived from texts like the Vedas, Upanishads, Shastras, Ramayana, Mahabharata, and modern psychology, providing parents w</p>",
+                  "about_text": "Vedic Parenting is a comprehensive science based on the development of the Panchakosha system, which has been used in India as a major science for thousands of years. It is a blend of principles derived from texts like the Vedas, Upanishads, Shastras, Ramayana, Mahabharata, and modern psychology, providing parents w",
+                  "why_learn_html": null,
+                  "who_should_learn_html": null,
+                  "mode": "self_paced",
+                  "faqs": [
+                    {
+                      "question": "Who is this eBook for?",
+                      "answer_html": "<p>Parents and parents-to-be.</p>"
+                    }
+                  ],
+                  "preview_video": null,
+                  "authors": [
+                    {
+                      "name": "Jigyasa Acharya",
+                      "subtitle": "Founder",
+                      "bio_html": "<p>Guru Maa</p>",
+                      "image_url": "https://cdn.example.com/pic-1.png"
+                    }
+                  ],
+                  "series": {
+                    "name": "A woman's life stages",
+                    "steps": [
+                      {
+                        "course_id": "8610911c-382c-41a9-9e33-2e4e0882282f",
+                        "title": "Rajaswala Paricharya",
+                        "url": "https://learning.brahmvarchas.org/store/8610911c-382c-41a9-9e33-2e4e0882282f?enrollInviteId=b6d3bd0d-db65-43fe-9cdb-07e67e8aed01&packageSessionId=18bba28f-5b33-4acc-927d-f1b28d9722d5&level=default",
+                        "current": false
+                      },
+                      {
+                        "course_id": "f7c3b58e-b3bc-4d04-b897-e250ecf60b3a",
+                        "title": "Vedic Garbha Vigyan (Encyclopedia)",
+                        "url": "https://learning.brahmvarchas.org/store/f7c3b58e-b3bc-4d04-b897-e250ecf60b3a?enrollInviteId=0381174f-f48f-4dc1-94b9-a4f146ab8797&packageSessionId=2db531bc-c100-410f-9447-e444db03fe0c&level=default",
+                        "current": false
+                      },
+                      {
+                        "course_id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                        "title": "Vedic Parenting - eBook",
+                        "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                        "current": true
+                      }
+                    ]
+                  },
+                  "seo": {
+                    "title": "Vedic Parenting - eBook",
+                    "description": "The forgotten mystery of the real meaning of parents!",
+                    "image_url": "https://cdn.example.com/32aa2224-c7b1-46cf-b7ae-ebf1a37c5e34.png",
+                    "canonical_url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f"
+                  },
+                  "structured_data": {
+                    "@context": "https://schema.org",
+                    "@type": "Course",
+                    "name": "Vedic Parenting - eBook",
+                    "description": "The forgotten mystery of the real meaning of parents!",
+                    "image": "https://cdn.example.com/32aa2224-c7b1-46cf-b7ae-ebf1a37c5e34.png",
+                    "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                    "inLanguage": "en",
+                    "provider": {
+                      "@type": "Organization",
+                      "name": "Brahm Varchas Shiksha",
+                      "sameAs": "https://learning.brahmvarchas.org/"
+                    },
+                    "offers": [
+                      {
+                        "@type": "Offer",
+                        "price": 251.0,
+                        "priceCurrency": "INR",
+                        "category": "Paid",
+                        "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                        "availability": "https://schema.org/InStock"
+                      }
+                    ],
+                    "hasCourseInstance": [
+                      {
+                        "@type": "CourseInstance",
+                        "courseMode": "online"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/courses/{id}/outline": {
+      "get": {
+        "operationId": "getCourseOutline",
+        "tags": [
+          "Courses"
+        ],
+        "summary": "Get a course outline",
+        "description": "Subject, module and chapter titles of each version (no content). Cached for 5 minutes. With `language`, only that language's versions (all versions if it has none).\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "7c12a9ec-22c3-4c55-ada1-2a93e107816f"
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "description": "A code from `GET /site` `languages`. Shows that language's version of the course (title, url, price). Ignored when the site has course languages off.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "hi"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The outline.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outline"
+                },
+                "example": {
+                  "levels": [
+                    {
+                      "package_session_id": "92e89046-5865-4cf7-bea6-ac1e8b7bd328",
+                      "level": null,
+                      "subjects": [
+                        {
+                          "id": "b1f6a0c2-3d4e-4f50-8a1b-2c3d4e5f6a7b",
+                          "name": "Vedic Parenting",
+                          "modules": [
+                            {
+                              "id": "c2a7b1d3-4e5f-4061-9b2c-3d4e5f6a7b8c",
+                              "name": "The Panchakosha system",
+                              "chapters": [
+                                {
+                                  "id": "d3b8c2e4-5f60-4172-ac3d-4e5f6a7b8c9d",
+                                  "name": "Why parenting is a science"
+                                },
+                                {
+                                  "id": "e4c9d3f5-6071-4283-bd4e-5f6a7b8c9d0e",
+                                  "name": "The five sheaths"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/streams": {
+      "get": {
+        "operationId": "listStreams",
+        "tags": [
+          "Streams"
+        ],
+        "summary": "List streams",
+        "description": "The streams (top-level subject areas) and their categories, as the hosted catalogue shows them, with course counts. Empty when the site has streams off.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "responses": {
+          "200": {
+            "description": "The streams.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamList"
+                },
+                "example": {
+                  "source": "folder_library",
+                  "streams": [
+                    {
+                      "slug": "swasthya",
+                      "label": "स्वास्थ्य व आयुर्वेद",
+                      "subtitle": "Health | Ayurveda",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/003be8ff-7e9f-4e76-beb6-13af3bd4003e-bv-stream-swasthya.png",
+                      "accent_color": "#6f7a4d",
+                      "coming_soon": false,
+                      "course_count": 0,
+                      "categories": [
+                        {
+                          "slug": "swasthavritta",
+                          "label": "स्वस्थ वृत्त",
+                          "subtitle": "SwasthaVritta",
+                          "image_url": null,
+                          "coming_soon": false,
+                          "course_count": 0
+                        },
+                        {
+                          "slug": "garbha-vigyan",
+                          "label": "गर्भ विज्ञान",
+                          "subtitle": "Garbha Vigyan",
+                          "image_url": null,
+                          "coming_soon": false,
+                          "course_count": 0
+                        },
+                        {
+                          "slug": "rajaswala",
+                          "label": "रजस्वला परिचर्या",
+                          "subtitle": "Rajaswala Paricharya",
+                          "image_url": null,
+                          "coming_soon": false,
+                          "course_count": 0
+                        }
+                      ]
+                    },
+                    {
+                      "slug": "dharma",
+                      "label": "धर्म | संस्कृति",
+                      "subtitle": "Virtue | Civilisation",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/e6004c6c-11b6-440a-a05f-546d2a94f193-bv-stream-dharma.png",
+                      "accent_color": "#82b74b",
+                      "coming_soon": false,
+                      "course_count": 1,
+                      "categories": [
+                        {
+                          "slug": "vedic-parenting",
+                          "label": "वैदिक पेरेंटिंग",
+                          "subtitle": "Holistic Parenting",
+                          "image_url": null,
+                          "coming_soon": false,
+                          "course_count": 1
+                        }
+                      ]
+                    },
+                    {
+                      "slug": "kala",
+                      "label": "कला | शिल्प",
+                      "subtitle": "Skills | Craft",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/bd372d36-21ff-43c7-935d-b42b0de4c3bd-bv-stream-kala.png",
+                      "accent_color": "#cc7722",
+                      "coming_soon": false,
+                      "course_count": 1,
+                      "categories": [
+                        {
+                          "slug": "lekhan-kala",
+                          "label": "लेखन कला",
+                          "subtitle": "Writing arts",
+                          "image_url": null,
+                          "coming_soon": false,
+                          "course_count": 1
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/learning-paths": {
+      "get": {
+        "operationId": "listLearningPaths",
+        "tags": [
+          "Learning paths"
+        ],
+        "summary": "List learning paths",
+        "description": "Ordered sequences of courses from the site's Learning Paths section. Empty when the site has none.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "description": "Only paths under this folder slug. An unknown or coming-soon folder returns an empty list.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "swasthya"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The learning paths.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPathList"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "code": "u5rgwb",
+                      "name": "First steps in Scriptures | Texts",
+                      "stream_slug": "shastra",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/1b00172e-9cd1-4deb-9f4f-775e3822d571-bv-path_scriptures.jpg",
+                      "step_count": 0
+                    },
+                    {
+                      "code": "92ogt2",
+                      "name": "मंदिरों का भारत · India of temples",
+                      "stream_slug": "bharat",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/e4925140-d763-4ec5-bf06-fcfc02ae3ed8-bv-path_temples.jpg",
+                      "step_count": 0
+                    },
+                    {
+                      "code": "ks61g1",
+                      "name": "Gurukul Education / Indian Education",
+                      "stream_slug": "shiksha",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/d2b35cb8-ee34-4c2d-aa88-68f06cffaad9-bv-path_gurukul.jpg",
+                      "step_count": 0
+                    },
+                    {
+                      "code": "forbvy",
+                      "name": "A woman's life stages",
+                      "stream_slug": "swasthya",
+                      "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/1f650fd3-1e6d-4cb3-960d-745af4daa207-bv-path_woman.jpg",
+                      "step_count": 3
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/learning-paths/{code}": {
+      "get": {
+        "operationId": "getLearningPath",
+        "tags": [
+          "Learning paths"
+        ],
+        "summary": "Get a learning path",
+        "description": "The path and its steps, each a course summary. A step whose course is not published to the catalogue is still listed (from the path's own data: no subtitle, instructors or `created_at`).\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "forbvy"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The learning path.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPath"
+                },
+                "example": {
+                  "code": "forbvy",
+                  "name": "A woman's life stages",
+                  "description_html": "Care for your body and your child through each stage: menstruation, pregnancy and early motherhood.",
+                  "steps": [
+                    {
+                      "position": 1,
+                      "course": {
+                        "id": "8610911c-382c-41a9-9e33-2e4e0882282f",
+                        "title": "Rajaswala Paricharya",
+                        "subtitle": null,
+                        "image_url": "https://cdn.example.com/e25d1a13-00a1-4fe1-8b22-ca29b9b4de1b.png",
+                        "url": "https://learning.brahmvarchas.org/store/8610911c-382c-41a9-9e33-2e4e0882282f?enrollInviteId=b6d3bd0d-db65-43fe-9cdb-07e67e8aed01&packageSessionId=18bba28f-5b33-4acc-927d-f1b28d9722d5&level=default",
+                        "formats": [
+                          {
+                            "key": "elearning",
+                            "label": "Interactive, self-paced E-learning"
+                          },
+                          {
+                            "key": "live",
+                            "label": "Live sessions"
+                          }
+                        ],
+                        "stream": {
+                          "slug": "swasthya",
+                          "label": "Health | Ayurveda"
+                        },
+                        "category": {
+                          "slug": "rajaswala",
+                          "label": "Rajaswala Paricharya"
+                        },
+                        "languages": [],
+                        "tags": [
+                          "time-tested menstrual practices for long-term health & harmony!",
+                          "ayurveda",
+                          "iks",
+                          "vediceducation",
+                          "menstruation",
+                          "learnwithbrahmvarchas",
+                          "english",
+                          "swasthya",
+                          "rajaswala",
+                          "format-elearning",
+                          "format-live",
+                          "for-womens-health"
+                        ],
+                        "level": null,
+                        "availability": "available",
+                        "price_visible": true,
+                        "price": {
+                          "amount": 1001.0,
+                          "compare_at_amount": null,
+                          "currency": "INR",
+                          "is_free": false,
+                          "varies": false
+                        },
+                        "instructors": [],
+                        "rating": null,
+                        "created_at": null,
+                        "variants": [
+                          {
+                            "package_session_id": "18bba28f-5b33-4acc-927d-f1b28d9722d5",
+                            "enroll_invite_id": "b6d3bd0d-db65-43fe-9cdb-07e67e8aed01",
+                            "level": null,
+                            "language": {
+                              "code": "en",
+                              "label": "English"
+                            },
+                            "url": "https://learning.brahmvarchas.org/store/8610911c-382c-41a9-9e33-2e4e0882282f?enrollInviteId=b6d3bd0d-db65-43fe-9cdb-07e67e8aed01&packageSessionId=18bba28f-5b33-4acc-927d-f1b28d9722d5&level=default",
+                            "availability": "available",
+                            "price": {
+                              "amount": 1001.0,
+                              "compare_at_amount": null,
+                              "currency": "INR",
+                              "is_free": false
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "position": 2,
+                      "course": {
+                        "id": "f7c3b58e-b3bc-4d04-b897-e250ecf60b3a",
+                        "title": "Vedic Garbha Vigyan (Encyclopedia)",
+                        "subtitle": null,
+                        "image_url": "https://cdn.example.com/8bf9a559-de1c-44d0-b89c-c8f3d7fe0fc2.png",
+                        "url": "https://learning.brahmvarchas.org/store/f7c3b58e-b3bc-4d04-b897-e250ecf60b3a?enrollInviteId=0381174f-f48f-4dc1-94b9-a4f146ab8797&packageSessionId=2db531bc-c100-410f-9447-e444db03fe0c&level=default",
+                        "formats": [
+                          {
+                            "key": "ebook",
+                            "label": "E-books"
+                          }
+                        ],
+                        "stream": {
+                          "slug": "swasthya",
+                          "label": "Health | Ayurveda"
+                        },
+                        "category": {
+                          "slug": "garbha-vigyan",
+                          "label": "Garbha Vigyan"
+                        },
+                        "languages": [],
+                        "tags": [
+                          "english",
+                          "swasthya",
+                          "garbha-vigyan",
+                          "format-ebook",
+                          "for-parents",
+                          "for-womens-health"
+                        ],
+                        "level": null,
+                        "availability": "available",
+                        "price_visible": true,
+                        "price": {
+                          "amount": 251.0,
+                          "compare_at_amount": null,
+                          "currency": "INR",
+                          "is_free": false,
+                          "varies": false
+                        },
+                        "instructors": [],
+                        "rating": null,
+                        "created_at": null,
+                        "variants": [
+                          {
+                            "package_session_id": "2db531bc-c100-410f-9447-e444db03fe0c",
+                            "enroll_invite_id": "0381174f-f48f-4dc1-94b9-a4f146ab8797",
+                            "level": null,
+                            "language": {
+                              "code": "en",
+                              "label": "English"
+                            },
+                            "url": "https://learning.brahmvarchas.org/store/f7c3b58e-b3bc-4d04-b897-e250ecf60b3a?enrollInviteId=0381174f-f48f-4dc1-94b9-a4f146ab8797&packageSessionId=2db531bc-c100-410f-9447-e444db03fe0c&level=default",
+                            "availability": "available",
+                            "price": {
+                              "amount": 251.0,
+                              "compare_at_amount": null,
+                              "currency": "INR",
+                              "is_free": false
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "position": 3,
+                      "course": {
+                        "id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                        "title": "Vedic Parenting - eBook",
+                        "subtitle": "The forgotten mystery of the real meaning of parents!",
+                        "image_url": "https://cdn.example.com/32aa2224-c7b1-46cf-b7ae-ebf1a37c5e34.png",
+                        "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                        "formats": [
+                          {
+                            "key": "ebook",
+                            "label": "E-books"
+                          }
+                        ],
+                        "stream": {
+                          "slug": "dharma",
+                          "label": "Virtue | Civilisation"
+                        },
+                        "category": {
+                          "slug": "vedic-parenting",
+                          "label": "Holistic Parenting"
+                        },
+                        "languages": [
+                          {
+                            "code": "en",
+                            "label": "English"
+                          },
+                          {
+                            "code": "hi",
+                            "label": "Hindi"
+                          }
+                        ],
+                        "tags": [
+                          "english",
+                          "dharma",
+                          "vedic-parenting",
+                          "format-ebook",
+                          "for-parents",
+                          "hindi"
+                        ],
+                        "level": null,
+                        "availability": "available",
+                        "price_visible": true,
+                        "price": {
+                          "amount": 251.0,
+                          "compare_at_amount": null,
+                          "currency": "INR",
+                          "is_free": false,
+                          "varies": false
+                        },
+                        "instructors": [
+                          {
+                            "name": "Abhishek",
+                            "image_url": null
+                          }
+                        ],
+                        "rating": null,
+                        "created_at": "2026-09-22T09:05:02.499Z",
+                        "variants": [
+                          {
+                            "package_session_id": "92e89046-5865-4cf7-bea6-ac1e8b7bd328",
+                            "enroll_invite_id": "5a975e3c-429f-4bfe-9143-43ffcf807748",
+                            "level": null,
+                            "language": {
+                              "code": "en",
+                              "label": "English"
+                            },
+                            "url": "https://learning.brahmvarchas.org/store/7c12a9ec-22c3-4c55-ada1-2a93e107816f?enrollInviteId=5a975e3c-429f-4bfe-9143-43ffcf807748&packageSessionId=92e89046-5865-4cf7-bea6-ac1e8b7bd328&level=default",
+                            "availability": "available",
+                            "price": {
+                              "amount": 251.0,
+                              "compare_at_amount": null,
+                              "currency": "INR",
+                              "is_free": false
+                            }
+                          },
+                          {
+                            "package_session_id": "5c4fcbf5-851c-455c-90b4-f74217ded156",
+                            "enroll_invite_id": "f2496594-7a63-47eb-8b22-a0af43e75fb6",
+                            "level": null,
+                            "language": {
+                              "code": "hi",
+                              "label": "Hindi"
+                            },
+                            "url": "https://learning.brahmvarchas.org/store/c150dfcf-96e0-4712-b709-b0528e1f4a09?enrollInviteId=f2496594-7a63-47eb-8b22-a0af43e75fb6&packageSessionId=5c4fcbf5-851c-455c-90b4-f74217ded156&level=default",
+                            "availability": "available",
+                            "price": {
+                              "amount": 251.0,
+                              "compare_at_amount": null,
+                              "currency": "INR",
+                              "is_free": false
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/sitemap": {
+      "get": {
+        "operationId": "getSitemap",
+        "tags": [
+          "Site"
+        ],
+        "summary": "List course pages for a sitemap",
+        "description": "Every published course with its hosted page and a `lastmod`. Courses without a page address are left out.\n\nScope: `catalog:read`. Cacheable for 60 s.",
+        "responses": {
+          "200": {
+            "description": "Every course page.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sitemap"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "url": "https://learning.brahmvarchas.org/store/1750f895-5219-4b51-903e-93d271694653",
+                      "type": "course",
+                      "id": "1750f895-5219-4b51-903e-93d271694653",
+                      "lastmod": "2026-10-14T20:40:51.277Z"
+                    },
+                    {
+                      "url": "https://learning.brahmvarchas.org/store/1817b0b2-5096-4f05-a3f8-04b8a0abe2d0",
+                      "type": "course",
+                      "id": "1817b0b2-5096-4f05-a3f8-04b8a0abe2d0",
+                      "lastmod": "2026-10-14T15:18:05.001Z"
+                    },
+                    {
+                      "url": "https://learning.brahmvarchas.org/store/1e00c806-2eee-42bc-b8be-4070cb133c60",
+                      "type": "course",
+                      "id": "1e00c806-2eee-42bc-b8be-4070cb133c60",
+                      "lastmod": "2026-10-14T10:43:00.738Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/leads": {
+      "post": {
+        "operationId": "createLead",
+        "tags": [
+          "Enquiries"
+        ],
+        "summary": "Send an enquiry",
+        "description": "Saves an enquiry into the institute's CRM, exactly like the hosted catalogue's enquiry form. Call it from your server and pass the visitor's IP in `X-Client-IP`.\n\nScope: `leads:write`. Limits: 30 per minute per key, and 5 per minute per visitor IP. Never cached.",
+        "parameters": [
+          {
+            "name": "X-Client-IP",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The visitor's IP, for the per-visitor limit. Server-side calls only; ignored on browser calls (the network address is used).",
+            "example": "203.0.113.24"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeadRequest"
+              },
+              "example": {
+                "full_name": "Asha Rao",
+                "email": "asha@example.com",
+                "phone": "+91 98765 43210",
+                "message": "Is the Hindi edition available as a printed book?",
+                "course_id": "7c12a9ec-22c3-4c55-ada1-2a93e107816f",
+                "source": "course-page",
+                "custom_fields": {
+                  "city": "Pune"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A new enquiry was saved.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadResponse"
+                },
+                "example": {
+                  "status": "received"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Duplicate: already in this campaign. Nothing new was saved.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadResponse"
+                },
+                "example": {
+                  "status": "duplicate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid. `details.param` names the field.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "email is not a valid email address.",
+                        "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                        "details": {
+                          "param": "email"
+                        }
+                      }
+                    }
+                  },
+                  "unknown_course": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "course_id is not a published course of this institute.",
+                        "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                        "details": {
+                          "param": "course_id"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Your publishable Catalogue API key (`vak_pub_…`)."
+      },
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The same key as `Authorization: Bearer vak_pub_…`."
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Unique id of this request. Quote it to support."
+      },
+      "CacheControl": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "`public, max-age=60` on reads; `no-store` on errors and `POST /leads`."
+      },
+      "RetryAfter": {
+        "schema": {
+          "type": "integer"
+        },
+        "description": "Seconds to wait before retrying."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "A query parameter or the body is not valid.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "invalid_request": {
+                "value": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "page_size must be between 1 and 100.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                    "details": {
+                      "param": "page_size"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No key, or the key is not valid.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "missing_api_key": {
+                "value": {
+                  "error": {
+                    "code": "missing_api_key",
+                    "message": "Send your publishable key in the X-API-Key header (or Authorization: Bearer).",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978"
+                  }
+                }
+              },
+              "invalid_api_key": {
+                "value": {
+                  "error": {
+                    "code": "invalid_api_key",
+                    "message": "This API key is invalid, revoked or expired.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The key may not make this request, or the browser origin is not one of the institute's verified websites.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "origin_not_allowed": {
+                "value": {
+                  "error": {
+                    "code": "origin_not_allowed",
+                    "message": "Add and verify preview-abc.vercel.app in Settings → Integrations → Catalogue API & websites to call this API from it.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                    "details": {
+                      "origin": "preview-abc.vercel.app"
+                    }
+                  }
+                }
+              },
+              "insufficient_scope": {
+                "value": {
+                  "error": {
+                    "code": "insufficient_scope",
+                    "message": "This API key does not have the leads:write scope.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                    "details": {
+                      "required_scope": "leads:write"
+                    }
+                  }
+                }
+              },
+              "product_not_enabled": {
+                "value": {
+                  "error": {
+                    "code": "product_not_enabled",
+                    "message": "This API key is not a Catalogue API key.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such course or learning path for this institute.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "not_found": {
+                "value": {
+                  "error": {
+                    "code": "not_found",
+                    "message": "Course not found.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Too many requests for this key (or, on `POST /leads`, this visitor).",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "rate_limited": {
+                "value": {
+                  "error": {
+                    "code": "rate_limited",
+                    "message": "Too many requests for this API key (limit 1200 per minute).",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978",
+                    "details": {
+                      "limit_per_minute": 1200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "AuthUnavailable": {
+        "description": "Keys could not be checked for a moment. Retry after `Retry-After` seconds.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "auth_unavailable": {
+                "value": {
+                  "error": {
+                    "code": "auth_unavailable",
+                    "message": "Could not verify the API key right now. Retry shortly.",
+                    "request_id": "req_3f2a9c1d7e5b4a608f1e2d3c4b5a6978"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "not_found",
+                "enum": [
+                  "missing_api_key",
+                  "invalid_api_key",
+                  "product_not_enabled",
+                  "insufficient_scope",
+                  "origin_not_allowed",
+                  "rate_limited",
+                  "not_found",
+                  "method_not_allowed",
+                  "invalid_request",
+                  "auth_unavailable",
+                  "internal_error"
+                ],
+                "description": "Stable machine-readable code. Branch on this, never on `message`."
+              },
+              "message": {
+                "type": "string",
+                "description": "A sentence for logs. Wording may change."
+              },
+              "request_id": {
+                "type": "string",
+                "description": "Also in the `X-Request-Id` header. Quote it to support."
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Present only when there is more to say: `param` (invalid_request), `required_scope` (insufficient_scope), `origin` (origin_not_allowed), `limit_per_minute` (rate_limited)."
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Language": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Lower-case language code from the site's settings, e.g. `en`, `hi`."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name, e.g. `Hindi`."
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ]
+      },
+      "Format": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Lower-case format key, e.g. `ebook`. Use it in `GET /courses?format=`."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name, e.g. `E-books`."
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ]
+      },
+      "Place": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Use it in `GET /courses?stream=` / `?category=`."
+          },
+          "label": {
+            "type": "string",
+            "description": "The name the hosted catalogue shows on course cards (the site's label mode: title or subtitle)."
+          }
+        },
+        "required": [
+          "slug",
+          "label"
+        ],
+        "description": "A stream or category a course belongs to."
+      },
+      "VariantPrice": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Price in major units (rupees for INR), e.g. `251.0`. `0` when free."
+          },
+          "compare_at_amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The higher list price to show struck through, or null."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code, e.g. `INR`."
+          },
+          "is_free": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "amount",
+          "compare_at_amount",
+          "currency",
+          "is_free"
+        ],
+        "description": "Price of one version."
+      },
+      "Price": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Price in major units (rupees for INR), e.g. `251.0`. `0` when free."
+          },
+          "compare_at_amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The higher list price to show struck through, or null."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code, e.g. `INR`."
+          },
+          "is_free": {
+            "type": "boolean"
+          },
+          "varies": {
+            "type": "boolean",
+            "description": "True when the versions on sale now have different prices (show \"from\"; read `variants[].price`)."
+          }
+        },
+        "required": [
+          "amount",
+          "compare_at_amount",
+          "currency",
+          "is_free",
+          "varies"
+        ],
+        "description": "Price of the version the course is shown as."
+      },
+      "Variant": {
+        "type": "object",
+        "properties": {
+          "package_session_id": {
+            "type": "string",
+            "description": "Id of this version (one level / batch of the course)."
+          },
+          "enroll_invite_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Enrolment invite the hosted page uses for this version."
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level name, or null for a course without named levels."
+          },
+          "language": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Language"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This version's language, or null (languages off, or none detected)."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "This version's page on the hosted catalogue site. Null when the course page address is not configured."
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "coming_soon",
+              "not_started",
+              "closed"
+            ],
+            "description": "`available`: can be bought or enrolled now. `coming_soon`: announced, not on sale. `not_started`: enrolment opens later. `closed`: enrolment ended or inactive."
+          },
+          "price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VariantPrice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null unless the version is free, or priced and prices are shown."
+          }
+        },
+        "required": [
+          "package_session_id",
+          "enroll_invite_id",
+          "level",
+          "language",
+          "url",
+          "availability",
+          "price"
+        ],
+        "description": "One version of a course: a level, batch or language edition."
+      },
+      "Instructor": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "image_url"
+        ]
+      },
+      "CourseSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The course id. Stable across language versions. Use it in `GET /courses/{id}`."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the version shown (see `language`)."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain text, at most 300 characters: the card text."
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Card image (absolute URL)."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The course's page on the hosted catalogue site, where enrolment, cart and checkout happen. Includes the version's query string. Null when the course page address is not configured."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Format"
+            }
+          },
+          "stream": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Language"
+            },
+            "description": "Languages the course is available in. Empty when the site has course languages off."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Course tags as authored (original case)."
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level of the version shown; null for a course without named levels."
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "coming_soon",
+              "not_started",
+              "closed"
+            ],
+            "description": "`available`: can be bought or enrolled now. `coming_soon`: announced, not on sale. `not_started`: enrolment opens later. `closed`: enrolment ended or inactive."
+          },
+          "price_visible": {
+            "type": "boolean",
+            "description": "False when the institute hides prices and this course is paid. Show \"see price\" and link to `url`."
+          },
+          "price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the course is not on sale now (see `availability`) or its price is hidden."
+          },
+          "instructors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Instructor"
+            }
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average rating, or null when there is none."
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO-8601 UTC. The newest version's creation time; `sort=newest` uses it."
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Variant"
+            },
+            "description": "Every version, in catalogue order."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "subtitle",
+          "image_url",
+          "url",
+          "formats",
+          "stream",
+          "category",
+          "languages",
+          "tags",
+          "level",
+          "availability",
+          "price_visible",
+          "price",
+          "instructors",
+          "rating",
+          "created_at",
+          "variants"
+        ]
+      },
+      "Faq": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "answer_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitised HTML."
+          }
+        },
+        "required": [
+          "question",
+          "answer_html"
+        ]
+      },
+      "PreviewVideo": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "youtube",
+              "vimeo",
+              "url"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "YouTube or Vimeo video id (kind youtube / vimeo only)."
+          },
+          "url": {
+            "type": "string",
+            "description": "Direct video file URL (kind url only)."
+          },
+          "embed_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "iframe-ready player URL for youtube / vimeo; null for url."
+          }
+        },
+        "required": [
+          "kind",
+          "embed_url"
+        ]
+      },
+      "Author": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitised HTML."
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "subtitle",
+          "bio_html",
+          "image_url"
+        ]
+      },
+      "SeriesStep": {
+        "type": "object",
+        "properties": {
+          "course_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hosted course page."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for this course."
+          }
+        },
+        "required": [
+          "course_id",
+          "title",
+          "url",
+          "current"
+        ]
+      },
+      "Series": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The learning path's name."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeriesStep"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ],
+        "description": "The learning path this course is a step of."
+      },
+      "Seo": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain text, at most 160 characters."
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canonical_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hosted course page without its query string."
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "image_url",
+          "canonical_url"
+        ]
+      },
+      "CourseDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CourseSummary"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "description_html": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Sanitised HTML (jsoup relaxed safelist; images http(s) only)."
+              },
+              "description_text": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Plain-text version."
+              },
+              "about_html": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "about_text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "why_learn_html": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "who_should_learn_html": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "self_paced",
+                  "live",
+                  null
+                ],
+                "description": "How the course is taught."
+              },
+              "faqs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Faq"
+                }
+              },
+              "preview_video": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PreviewVideo"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "authors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Author"
+                }
+              },
+              "series": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Series"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Null unless a learning path of 2+ steps lists this course."
+              },
+              "seo": {
+                "$ref": "#/components/schemas/Seo"
+              },
+              "structured_data": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "A schema.org `Course` (JSON-LD) object, ready for `<script type=\"application/ld+json\">`."
+              }
+            },
+            "required": [
+              "description_html",
+              "description_text",
+              "about_html",
+              "about_text",
+              "why_learn_html",
+              "who_should_learn_html",
+              "mode",
+              "faqs",
+              "preview_video",
+              "authors",
+              "series",
+              "seo",
+              "structured_data"
+            ]
+          }
+        ]
+      },
+      "CourseList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CourseSummary"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Courses matching the filters."
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data",
+          "page",
+          "page_size",
+          "total",
+          "has_more"
+        ]
+      },
+      "Site": {
+        "type": "object",
+        "properties": {
+          "institute": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "logo_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "logo_url"
+            ]
+          },
+          "course_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where course pages live on the hosted site, e.g. `https://learning.brahmvarchas.org/store`."
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Language"
+            },
+            "description": "Course languages; empty when the site has them off."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Format"
+            },
+            "description": "Every format the site defines, in display order."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The most common currency across courses."
+          },
+          "price_visible": {
+            "type": "boolean",
+            "description": "False when the institute hides prices on its catalogue."
+          }
+        },
+        "required": [
+          "institute",
+          "course_base_url",
+          "languages",
+          "formats",
+          "currency",
+          "price_visible"
+        ]
+      },
+      "Outline": {
+        "type": "object",
+        "properties": {
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "package_session_id": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subjects": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "modules": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "chapters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "chapters"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "modules"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "package_session_id",
+                "level",
+                "subjects"
+              ]
+            },
+            "description": "One entry per version (all versions, or those in `language`)."
+          }
+        },
+        "required": [
+          "levels"
+        ]
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "The category's title."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "coming_soon": {
+            "type": "boolean"
+          },
+          "course_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "label",
+          "subtitle",
+          "image_url",
+          "coming_soon",
+          "course_count"
+        ]
+      },
+      "Stream": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "The stream's title."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accent_color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`#rgb`, `#rrggbb` or `#rrggbbaa`."
+          },
+          "coming_soon": {
+            "type": "boolean"
+          },
+          "course_count": {
+            "type": "integer",
+            "description": "Courses tagged into this stream or any of its categories."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          }
+        },
+        "required": [
+          "slug",
+          "label",
+          "subtitle",
+          "image_url",
+          "accent_color",
+          "coming_soon",
+          "course_count",
+          "categories"
+        ]
+      },
+      "StreamList": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "folder_library",
+              "tags",
+              null
+            ],
+            "description": "Where the site's streams come from; null when streams are off."
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Stream"
+            }
+          }
+        },
+        "required": [
+          "source",
+          "streams"
+        ]
+      },
+      "LearningPathSummary": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Use it in `GET /learning-paths/{code}`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "stream_slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The top-level folder (stream) the path sits in."
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "stream_slug",
+          "image_url",
+          "step_count"
+        ]
+      },
+      "LearningPathList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningPathSummary"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "LearningPathStep": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "integer",
+            "description": "1-based."
+          },
+          "course": {
+            "$ref": "#/components/schemas/CourseSummary"
+          }
+        },
+        "required": [
+          "position",
+          "course"
+        ]
+      },
+      "LearningPath": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitised HTML."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningPathStep"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "description_html",
+          "steps"
+        ]
+      },
+      "SitemapEntry": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Hosted course page (with the version query string)."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "course"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Course id."
+          },
+          "lastmod": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO-8601 UTC; the newest version's creation time."
+          }
+        },
+        "required": [
+          "url",
+          "type",
+          "id",
+          "lastmod"
+        ]
+      },
+      "Sitemap": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SitemapEntry"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "LeadRequest": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "1-200 characters."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "description": "A valid email address, at most 254 characters."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Digits with optional `+`, spaces, `()`, `-`, `.`; 6-24 characters, at least 6 digits. E.g. `+91 98765 43210`."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "At most 2,000 characters."
+          },
+          "course_id": {
+            "type": "string",
+            "description": "A course id from this API. Must be a published course of the institute."
+          },
+          "campaign_id": {
+            "type": "string",
+            "description": "CRM campaign to file the enquiry under. An unknown or inactive id silently falls back to the default \"Course Catalogue Leads\" list."
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Where on your site the form is, e.g. `homepage-hero`. At most 100 characters."
+          },
+          "custom_fields": {
+            "type": "object",
+            "maxProperties": 30,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            "description": "Up to 30 extra fields. Keys: 1-64 letters, digits, spaces, `_`, `-`, `.`. Values: text, number or boolean, at most 1,000 characters. Reserved keys (any case, 400 if used): `full_name`, `fullname`, `name`, `email`, `phone`, `mobile`, `mobile_number`, `message`, `source`, `course_id`."
+          }
+        },
+        "required": [
+          "full_name",
+          "email"
+        ]
+      },
+      "LeadResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "received",
+              "duplicate"
+            ],
+            "description": "`received`: a new enquiry was saved (HTTP 201). `duplicate`: this person already enquired in this campaign, or the institute's duplicate rules matched (HTTP 200). Treat both as success."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      }
+    }
+  }
+}

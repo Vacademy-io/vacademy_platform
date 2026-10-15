@@ -1,0 +1,140 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Vacademy Catalogue API",
+  "description": "Show an institute's courses, streams and learning paths on its own website, link to the hosted course pages, and send enquiries into its CRM.",
+  "colors": {
+    "primary": "#ED7424",
+    "light": "#F4A06A",
+    "dark": "#C95A12"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://vacademy.io"
+  },
+  "favicon": "/favicon.svg",
+  "fonts": {
+    "family": "Plus Jakarta Sans"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "vacademy.io",
+        "href": "https://vacademy.io"
+      },
+      {
+        "label": "Support",
+        "href": "mailto:support@vacademy.io"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://dash.vacademy.io"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "keys-and-websites"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/courses",
+              "concepts/streams-and-learning-paths",
+              "concepts/course-pages-and-seo"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/enquiries",
+              "guides/going-live"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "platform/errors",
+              "platform/rate-limits-and-caching",
+              "platform/versioning",
+              "platform/changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "icon": "square-terminal",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/introduction"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "openapi": "api-reference/openapi.json"
+          }
+        ]
+      }
+    ]
+  },
+  "redirects": [
+    {
+      "source": "/catalog",
+      "destination": "/introduction"
+    }
+  ],
+  "api": {
+    "playground": {
+      "display": "simple"
+    },
+    "examples": {
+      "languages": [
+        "curl",
+        "javascript",
+        "python"
+      ],
+      "defaults": "required"
+    },
+    "mdx": {
+      "server": "https://api.vacademy.io/catalog/v1",
+      "auth": {
+        "method": "key",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "website": "https://vacademy.io"
+    }
+  },
+  "seo": {
+    "indexing": "navigable"
+  }
+}

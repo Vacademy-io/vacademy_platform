@@ -81,6 +81,19 @@ public class PaymentOption {
     private String regionalPricingCurrencies;
 
     /**
+     * The column is NOT NULL (default FALSE). Any code path that builds an option without
+     * setting the switch (all-args constructor, a JSON copy, an explicit null) is written as
+     * off rather than failing the insert or update.
+     */
+    @PrePersist
+    @PreUpdate
+    void defaultRegionalPricingSwitch() {
+        if (regionalPricingEnabled == null) {
+            regionalPricingEnabled = false;
+        }
+    }
+
+    /**
      * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
      * relation — two Hibernate mappings on the same column cause the scalar to come back
      * null on some read paths (notably the enroll-invite payload). All callers use

@@ -133,6 +133,17 @@ public class RegionalPriceResolver {
      * the same currency, so a mixed invite never advertises one currency for another's price.
      */
     public void localize(EnrollInviteDTO invite) {
+        try {
+            localizeInvite(invite);
+        } catch (Exception e) {
+            // Never break a public page over regional pricing. Every database read happens
+            // before any DTO is changed, so on failure the payload is the untouched base one.
+            log.warn("Regional pricing skipped for invite {}: {}", invite != null ? invite.getId() : null,
+                    e.getMessage());
+        }
+    }
+
+    private void localizeInvite(EnrollInviteDTO invite) {
         if (invite == null || invite.getPackageSessionToPaymentOptions() == null) {
             return;
         }
@@ -144,7 +155,7 @@ public class RegionalPriceResolver {
                 .filter(m -> m != null && m.getPaymentOption() != null)
                 .toList();
         Set<String> enabled = enabledOptionIds(mappings.stream()
-                .map(m -> m.getPaymentOption().getId()).collect(Collectors.toSet()));
+                .map(m -> m.getPaymentOption().getId()).filter(Objects::nonNull).collect(Collectors.toSet()));
         if (enabled.isEmpty()) {
             return;
         }
@@ -175,6 +186,16 @@ public class RegionalPriceResolver {
      * page using them stays on base pricing end to end (display and checkout alike).
      */
     public void localize(ProductPageResponse page) {
+        try {
+            localizeProductPage(page);
+        } catch (Exception e) {
+            // Same guarantee as for invites: on any failure the page goes out on base prices.
+            log.warn("Regional pricing skipped for product page {}: {}", page != null ? page.getCode() : null,
+                    e.getMessage());
+        }
+    }
+
+    private void localizeProductPage(ProductPageResponse page) {
         if (page == null || page.getMappings() == null || hasCurrencyBoundSettings(page.getSettingsJson())) {
             return;
         }

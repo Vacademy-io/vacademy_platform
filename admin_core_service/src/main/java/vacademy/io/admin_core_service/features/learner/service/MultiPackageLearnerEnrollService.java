@@ -328,6 +328,19 @@ public class MultiPackageLearnerEnrollService {
      */
     private Double resolveRegionalTotal(List<LearnerPackageSessionEnrollmentItemDTO> items,
                                         PaymentInitiationRequestDTO paymentInit) {
+        try {
+            return resolveRegionalTotalOrThrow(items, paymentInit);
+        } catch (Exception e) {
+            // Never fail a checkout over regional pricing: the whole order (every item
+            // enrolment included) falls back to base prices, the pre-regional flow.
+            log.warn("Regional pricing skipped for multi-package order: {}", e.getMessage());
+            regionalPriceResolver.suppressForCurrentRequest();
+            return null;
+        }
+    }
+
+    private Double resolveRegionalTotalOrThrow(List<LearnerPackageSessionEnrollmentItemDTO> items,
+                                               PaymentInitiationRequestDTO paymentInit) {
         String currency = null;
         double total = 0.0;
         boolean anyRegional = false;

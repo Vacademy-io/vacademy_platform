@@ -337,6 +337,10 @@ public class CpoSideViewService {
         // Validate how it was paid before anything is written.
         OfflinePaymentDetailsService.Resolved paymentDetails =
                 offlinePaymentDetailsService.resolve(instituteId, req.getPaymentDetails(), req.getReference());
+        // First payment of this enrolment: pin the numbering-series field (e.g. branch) picked
+        // in the dialog, so this and every later receipt of the course use its series.
+        offlinePaymentDetailsService.pinNumberingValue(instituteId, userPlanId, plan.getUserId(),
+                req.getPaymentDetails());
 
         String currency = req.getCurrency() != null
                 ? req.getCurrency()

@@ -15,6 +15,7 @@ import {
     type OfflineExtraField,
     type OfflinePaymentDetails,
 } from '@/services/offline-payment-modes';
+import { useNumberingField, type NumberingTarget } from '@/services/numbering-field';
 
 interface Props {
     value: OfflinePaymentDetails;
@@ -32,6 +33,12 @@ interface Props {
     /** Smaller text for dense panels (the Enroll wizard's fee panel). */
     compact?: boolean;
     instituteId?: string;
+    /**
+     * The enrolment / learner this payment is for. When given and the institute numbers
+     * receipts by a field (e.g. branch), that field is asked on the enrolment's first payment
+     * only; once pinned it is never asked again.
+     */
+    numbering?: NumberingTarget | null;
 }
 
 /**
@@ -58,27 +65,46 @@ export function OfflinePaymentFields({
     showNotes = false,
     compact = false,
     instituteId,
+    numbering,
 }: Props) {
     const { t } = useTranslation('commonOfflinePaymentFields');
     const { data: modes, isLoading } = useOfflinePaymentModes(instituteId);
+    const { data: numberingInfo } = useNumberingField(numbering, instituteId);
+    const askNumbering = !!numberingInfo?.ask;
     const [uploading, setUploading] = useState(false);
     const [proofName, setProofName] = useState<string | null>(null);
 
-    // Preselect the institute's default mode whenever nothing has been chosen yet (undefined) —
-    // also after a parent resets the value on reopen. Clearing a choice sets null, so this
-    // never fights the admin.
+    // Preselect what nothing has been chosen for yet (undefined) — also after a parent resets
+    // the value on reopen: the institute's default mode, and the learner's own value of the
+    // numbering field (profile or lead). Clearing a choice sets null, so this never fights the
+    // admin. One effect, one onChange: two would each spread the same stale value and the
+    // second would undo the first.
     useEffect(() => {
+        const patch: Partial<OfflinePaymentDetails> = {};
         if (modes && value.mode === undefined) {
-            onChange({ ...value, mode: findActiveMode(modes, modes.default_mode)?.code ?? null });
+            patch.mode = findActiveMode(modes, modes.default_mode)?.code ?? null;
         }
+        if (askNumbering && value.numbering_value === undefined) {
+            const suggested = numberingInfo?.suggested;
+            const match = numberingInfo?.options.find(
+                (o) => !!suggested && o.toLowerCase() === suggested.trim().toLowerCase()
+            );
+            patch.numbering_value = match ?? (numberingInfo?.options.length ? null : (suggested ?? null));
+        }
+        if (Object.keys(patch).length) onChange({ ...value, ...patch });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [modes, value.mode]);
+    }, [modes, value.mode, askNumbering, numberingInfo, value.numbering_value]);
 
+    const numberingMissing = askNumbering && !!numberingInfo?.required && !value.numbering_value?.trim();
     const errorKey = offlinePaymentDetailsError(
         showReference ? value : { ...value, reference: externalReference ?? null },
         modes
     );
-    const errorText = errorKey ? t(errorKey) : null;
+    const errorText = numberingMissing
+        ? t('errors.numberingRequired', { label: numberingInfo?.label || t('numberingLabel') })
+        : errorKey
+          ? t(errorKey)
+          : null;
     // Report on mount and on every change, and clear on unmount: a parent that hides these
     // fields must not keep blocking on an error nobody can see any more.
     const reported = useRef<string | null | undefined>(undefined);
@@ -123,6 +149,44 @@ export function OfflinePaymentFields({
 
     return (
         <div className="flex flex-col gap-2">
+            {askNumbering && (
+                <div>
+                    <Label className={labelClass}>
+                        {numberingInfo?.label || t('numberingLabel')}
+                        {numberingInfo?.required && star}
+                    </Label>
+                    {numberingInfo && numberingInfo.options.length > 0 ? (
+                        <Select
+                            value={value.numbering_value || (numberingInfo.required ? '' : NONE)}
+                            onValueChange={(v) => v && set({ numbering_value: v === NONE ? null : v })}
+                        >
+                            <SelectTrigger
+                                aria-label={numberingInfo.label || t('numberingLabel')}
+                                className={cn(triggerClass, 'max-w-sm')}
+                            >
+                                <SelectValue placeholder={t('selectPlaceholder')} />
+                            </SelectTrigger>
+                            <SelectContent className="z-popover-above-modal">
+                                {!numberingInfo.required && <SelectItem value={NONE}>{t('notSpecified')}</SelectItem>}
+                                {numberingInfo.options.map((o) => (
+                                    <SelectItem key={o} value={o}>
+                                        {o}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <Input
+                            value={value.numbering_value ?? ''}
+                            onChange={(e) => set({ numbering_value: e.target.value })}
+                            className={cn('max-w-sm', text)}
+                        />
+                    )}
+                    <p className={cn('mt-1 text-neutral-500', compact ? 'text-2xs' : 'text-xs')}>
+                        {t('numberingHint')}
+                    </p>
+                </div>
+            )}
             <div className="flex flex-wrap items-start gap-3">
                 <div className="min-w-48 flex-1">
                     <Label className={labelClass}>

@@ -293,6 +293,10 @@ export function PaymentDetailsStep({
                         onChange={setDetails}
                         onErrorChange={setDetailsError}
                         showDate
+                        numbering={{
+                            userPlanId: selectedDues[0]?.user_plan_id ?? null,
+                            userId: student.student_id,
+                        }}
                     />
 
                     {/* Amount */}

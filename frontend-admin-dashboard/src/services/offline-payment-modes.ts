@@ -71,6 +71,8 @@ export interface OfflinePaymentDetails {
     extra?: Partial<Record<OfflineExtraField, string>>;
     /** Custom field values by field key. */
     custom?: Record<string, string>;
+    /** The numbering-series field (e.g. branch) picked on an enrolment's first payment. */
+    numbering_value?: string | null;
 }
 
 export const fetchOfflinePaymentModes = async (instituteId: string): Promise<OfflinePaymentModes> => {
@@ -164,9 +166,17 @@ export const toOfflinePaymentDetailsPayload = (
         proof_file_id: value.proof_file_id || null,
         extra: Object.keys(extra).length ? extra : undefined,
         custom: value.mode && Object.keys(custom).length ? custom : undefined,
+        numbering_value: value.numbering_value?.trim() || undefined,
     };
     const empty =
-        !out.mode && !out.reference && !out.payment_date && !out.notes && !out.proof_file_id && !out.extra && !out.custom;
+        !out.mode &&
+        !out.reference &&
+        !out.payment_date &&
+        !out.notes &&
+        !out.proof_file_id &&
+        !out.extra &&
+        !out.custom &&
+        !out.numbering_value;
     return empty ? null : out;
 };
 

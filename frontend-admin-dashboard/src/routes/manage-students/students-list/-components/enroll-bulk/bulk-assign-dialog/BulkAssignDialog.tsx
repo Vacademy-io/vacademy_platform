@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
@@ -621,6 +621,14 @@ export const BulkAssignDialog = ({
         return false;
     };
 
+    // One existing learner: their own value of the numbering-series field (e.g. branch) is
+    // preselected in the payment fields. Several learners share whatever is picked.
+    const numberingUserId = useMemo(() => {
+        const targets = selectedLearners.filter((l) => l.parentLink?.mode !== 'is_guardian');
+        const only = targets.length === 1 ? targets[0] : undefined;
+        return only?.type === 'existing' ? only.userId : null;
+    }, [selectedLearners]);
+
     const handleNext = async () => {
         if (currentStep === 'learners') {
             setIsResolvingGuardianLinks(true);
@@ -726,6 +734,7 @@ export const BulkAssignDialog = ({
                             onSelectedPackageSessionsChange={setSelectedPackageSessions}
                             options={options}
                             onOptionsChange={setOptions}
+                            numberingUserId={numberingUserId}
                         />
                     )}
                     {currentStep === 'suborg' && (

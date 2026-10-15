@@ -341,6 +341,42 @@ V432:
 
 > **Indian GST note:** CGST Rule 46 caps an invoice serial number at **16 characters**, unique per financial year. The validator only enforces the platform's 100-character limit. Institutes that need GST compliance must pick a format that fits in 16, such as `AC/26-27/0042` (13 chars).
 
+### 3.10 Series by a learner field (e.g. one per branch)
+
+Off for every institute until it is set up in **Settings → Invoice → Receipt series by field**.
+
+```json
+"numberingSeries": [
+  { "key": "B", "format": "RCPT-B-{{seq}}", "startFrom": 2318,
+    "learnerFieldId": "<custom field id>", "values": ["Branch B", "Branch B East"] }
+],
+"numberingSeriesPolicy": { "askOnFirstPayment": true, "required": true, "fieldId": "<custom field id>" }
+```
+
+Both keys are top-level in `INVOICE_SETTING`, not inside `numbering`. The settings screen rebuilds `numbering` from a fixed key list on load, so an unknown key inside it would be lost on the next save.
+
+**Which series.** The first series whose `values` contain the learner's field value numbers the document. Each series counts in its own scope key, `SERIES_<key>:<scope>`, so it never moves the main counter. `key` is at most 16 characters because `seq_scope_key` is VARCHAR(32).
+
+No match, no value or a failed lookup all fall back to the main `numbering` series. A receipt is never blocked by this lookup.
+
+**Where the value comes from**, first match wins:
+
+1. The value pinned on the **enrolment**: a custom field value on the user plan's student-session mappings.
+2. The learner's **profile**.
+3. The learner's **latest lead**.
+
+**Pinning.** When the policy asks, the record-payment dialogs show the field on the first payment of an enrolment only, preselecting the profile or lead value. The paths are:
+
+- the student side-view record payment
+- Pay Installments
+- the enroll wizard (fee panel and shared payment fields)
+
+The picked value travels as `payment_details.numbering_value`. `NumberingFieldService.pin` validates it against the field's options and writes it on the enrolment, and on the profile when that is empty, before the payment is written. An enrolment that already has a value is never asked again and is never overwritten. Every later installment of that course, whoever records it, and online payments, numbers from the same series.
+
+`GET /admin-core-service/v1/invoice/numbering-field?instituteId=&userPlanId=&userId=` tells a dialog whether to ask. Any institute staff member can read it.
+
+`required` is enforced by the dialogs. The server validates a value it is given but never blocks a payment for a missing one. Flows that cannot ask (sub-org billing, API callers) keep working and fall back to the profile or lead value, else the main series.
+
 ---
 
 ## 4. Proforma invoices

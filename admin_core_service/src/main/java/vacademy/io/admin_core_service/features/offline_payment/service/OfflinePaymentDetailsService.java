@@ -42,6 +42,28 @@ public class OfflinePaymentDetailsService {
     private final OfflinePaymentModeService modeService;
     private final PaymentLogRepository paymentLogRepository;
 
+    /** Field-injected so the constructor (and its tests) stay as they are; null in unit tests. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private vacademy.io.admin_core_service.features.invoice.service.NumberingFieldService numberingFieldService;
+
+    /** Validates the numbering-series value of a payment (throws when it is not a choice). */
+    public void validateNumberingValue(String instituteId, OfflinePaymentDetailsDTO details) {
+        if (numberingFieldService != null && details != null) {
+            numberingFieldService.validate(instituteId, details.getNumberingValue());
+        }
+    }
+
+    /**
+     * Pins the numbering-series value picked with a payment on its enrolment (first payment
+     * only; an enrolment that already has one keeps it). Call before writing the payment.
+     */
+    public void pinNumberingValue(String instituteId, String userPlanId, String userId,
+                                  OfflinePaymentDetailsDTO details) {
+        if (numberingFieldService != null && details != null) {
+            numberingFieldService.pin(instituteId, userPlanId, userId, details.getNumberingValue());
+        }
+    }
+
     /** Validated details with the labels in force when the payment was recorded. */
     public record Resolved(String mode, String modeLabel, String subMode, String subModeLabel,
                            String reference, LocalDate paymentDate, String notes, String proofFileId,

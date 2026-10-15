@@ -38,4 +38,9 @@ public class OfflinePaymentDetailsDTO {
     private Map<String, String> extra;
     /** Values of the mode's custom fields, by field key. */
     private Map<String, String> custom;
+    /**
+     * The institute's numbering-series field (e.g. branch) picked on the first payment of an
+     * enrolment; pinned on the enrolment, so later payments never ask again.
+     */
+    private String numberingValue;
 }

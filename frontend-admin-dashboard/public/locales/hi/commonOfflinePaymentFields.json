@@ -23,10 +23,13 @@
         "referenceRequired": "इस भुगतान तरीके के लिए संदर्भ दर्ज करें।",
         "proofRequired": "इस तरीके के लिए भुगतान का प्रमाण जोड़ें।",
         "subModeRequired": "इस भुगतान तरीके के लिए एक विकल्प चुनें।",
-        "fieldRequired": "* वाले सभी फ़ील्ड भरें।"
+        "fieldRequired": "* वाले सभी फ़ील्ड भरें।",
+        "numberingRequired": "{{label}} चुनें।"
     },
     "modePlaceholder": "भुगतान का तरीका चुनें",
     "subModePlaceholder": "चुनें",
     "selectPlaceholder": "चुनें",
-    "notSpecified": "निर्दिष्ट नहीं"
+    "notSpecified": "निर्दिष्ट नहीं",
+    "numberingLabel": "रसीद सीरीज़",
+    "numberingHint": "रसीद नंबर की सीरीज़ तय करता है। हर कोर्स में एक बार पूछा जाता है; आगे की किस्तें उसी में रहेंगी।"
 }

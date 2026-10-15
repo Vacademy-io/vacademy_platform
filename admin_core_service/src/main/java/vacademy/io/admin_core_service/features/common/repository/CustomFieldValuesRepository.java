@@ -31,6 +31,25 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
                                          @Param("userSourceType") String userSourceType,
                                          @Param("leadSourceType") String leadSourceType);
 
+    /**
+     * Latest non-empty value of one custom field on an enrolment: the rows on the
+     * student-session mappings of a user plan. Used to pin an invoice numbering series.
+     */
+    @Query(value = "SELECT v.value FROM custom_field_values v "
+            + "JOIN student_session_institute_group_mapping m ON m.id = v.source_id "
+            + "WHERE v.custom_field_id = :fieldId AND v.source_type = :sourceType "
+            + "AND m.user_plan_id = :userPlanId AND v.value <> '' "
+            + "ORDER BY COALESCE(v.updated_at, v.created_at) DESC LIMIT 1", nativeQuery = true)
+    List<String> findLatestValuesForUserPlan(@Param("fieldId") String fieldId,
+                                             @Param("userPlanId") String userPlanId,
+                                             @Param("sourceType") String sourceType);
+
+    /** {@link #findLatestValuesForUserPlan} for enrolment rows; null when there is none. */
+    default String findLatestValueForEnrollment(String fieldId, String userPlanId) {
+        List<String> values = findLatestValuesForUserPlan(fieldId, userPlanId, "STUDENT_SESSION_INSTITUTE_GROUP_MAPPING");
+        return values == null || values.isEmpty() ? null : values.get(0);
+    }
+
     /** {@link #findLatestValuesForUser} for the profile and lead sources; null when there is none. */
     default String findLatestValueForUser(String fieldId, String userId) {
         List<String> values = findLatestValuesForUser(fieldId, userId, "USER", "AUDIENCE_RESPONSE");

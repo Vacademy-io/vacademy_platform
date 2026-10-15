@@ -865,6 +865,8 @@ public class BulkAssignmentService {
                 OfflinePaymentDetailsService.Resolved paidVia = offlinePaymentDetailsService.resolve(
                         instituteId, offlineDetails, transactionId,
                         globalPaymentDate != null || StringUtils.hasText(transactionId));
+                offlinePaymentDetailsService.pinNumberingValue(instituteId,
+                        userPlan != null ? userPlan.getId() : null, userId, offlineDetails);
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
                         : globalPaymentDate != null ? globalPaymentDate
                         : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
@@ -1928,11 +1930,13 @@ public class BulkAssignmentService {
                     ? assignment.getCpoConfig().getPaymentReference()
                     : options != null ? options.getTransactionId() : null;
             offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetailsFor(assignment, options), reference);
+            offlinePaymentDetailsService.validateNumberingValue(instituteId, offlinePaymentDetailsFor(assignment, options));
             return;
         }
         if (options != null && (options.getPaymentDate() != null || StringUtils.hasText(options.getTransactionId())
                 || (options.getPaymentDetails() != null && StringUtils.hasText(options.getPaymentDetails().getReference())))) {
             offlinePaymentDetailsService.resolve(instituteId, options.getPaymentDetails(), options.getTransactionId());
+            offlinePaymentDetailsService.validateNumberingValue(instituteId, options.getPaymentDetails());
         }
     }
 
@@ -2161,6 +2165,8 @@ public class BulkAssignmentService {
                     ? cpoConfig.getPaymentReference() : transactionId;
             OfflinePaymentDetailsService.Resolved paidVia =
                     offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetails, reference);
+            offlinePaymentDetailsService.pinNumberingValue(instituteId,
+                    userPlan != null ? userPlan.getId() : null, userId, offlinePaymentDetails);
             Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
                     : globalPaymentDate != null ? globalPaymentDate
                     : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())

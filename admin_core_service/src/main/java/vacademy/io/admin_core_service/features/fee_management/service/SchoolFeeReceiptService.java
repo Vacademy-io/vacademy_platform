@@ -202,7 +202,7 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId, firstUserPlanId(feePayments));
             String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
@@ -315,7 +315,7 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId, firstUserPlanId(feePayments));
             String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
@@ -406,7 +406,7 @@ public class SchoolFeeReceiptService {
         }
         BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
-        InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
+        InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId, firstUserPlanId(feePayments));
         String receiptNumber = receiptAllocation.number();
         String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
@@ -459,7 +459,13 @@ public class SchoolFeeReceiptService {
      * silently restarted from 1 whenever the prefix changed — and would have restarted on
      * every format change once numbering became configurable.
      */
-    private InvoiceNumberAllocation generateReceiptNumber(String instituteId, String userId) {
+    /** The user plan the paid installments belong to (they come from one plan). */
+    private static String firstUserPlanId(List<StudentFeePayment> feePayments) {
+        return feePayments == null ? null : feePayments.stream()
+                .map(StudentFeePayment::getUserPlanId).filter(StringUtils::hasText).findFirst().orElse(null);
+    }
+
+    private InvoiceNumberAllocation generateReceiptNumber(String instituteId, String userId, String userPlanId) {
         Institute institute = instituteRepository.findById(instituteId).orElse(null);
         InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
                 institute != null ? getInvoiceSettings(institute) : null);
@@ -478,8 +484,15 @@ public class SchoolFeeReceiptService {
         }
 
         InvoiceNumberContext context = InvoiceNumberContext.builder()
+                // The value pinned on the enrolment first, so every installment of a course
+                // stays in one series; then the learner's profile or latest lead.
                 .learnerFieldLookup(perLearnerSeries
-                        ? fieldId -> customFieldValuesRepository.findLatestValueForUser(fieldId, userId)
+                        ? fieldId -> {
+                            String pinned = StringUtils.hasText(userPlanId)
+                                    ? customFieldValuesRepository.findLatestValueForEnrollment(fieldId, userPlanId)
+                                    : null;
+                            return pinned != null ? pinned : customFieldValuesRepository.findLatestValueForUser(fieldId, userId);
+                        }
                         : null)
                 .instituteId(instituteId)
                 .instituteName(institute != null ? institute.getInstituteName() : null)

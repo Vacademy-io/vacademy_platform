@@ -2273,10 +2273,26 @@ public class InvoiceService {
                 .docType(StringUtils.hasText(docType) ? docType : DOC_TYPE_ENROLLMENT)
                 .enrollmentNumberSupplier(() -> lookupEnrollmentNumber(userPlan))
                 .packageContextSupplier(() -> lookupPackageContext(userPlan))
-                .learnerFieldLookup(user != null && StringUtils.hasText(user.getId())
-                        ? fieldId -> customFieldValuesRepository.findLatestValueForUser(fieldId, user.getId())
-                        : null)
+                .learnerFieldLookup(learnerFieldLookup(userPlan != null ? userPlan.getId() : null,
+                        user != null ? user.getId() : null))
                 .build();
+    }
+
+    /**
+     * A learner's value of a custom field for picking a numbering series: the value pinned on
+     * the enrolment first (so every installment of a course stays in one series), then the
+     * profile, then the latest lead. Null when there is neither a plan nor a learner.
+     */
+    java.util.function.Function<String, String> learnerFieldLookup(String userPlanId, String userId) {
+        if (!StringUtils.hasText(userPlanId) && !StringUtils.hasText(userId)) {
+            return null;
+        }
+        return fieldId -> {
+            String pinned = StringUtils.hasText(userPlanId)
+                    ? customFieldValuesRepository.findLatestValueForEnrollment(fieldId, userPlanId) : null;
+            return pinned != null || !StringUtils.hasText(userId)
+                    ? pinned : customFieldValuesRepository.findLatestValueForUser(fieldId, userId);
+        };
     }
 
     /**

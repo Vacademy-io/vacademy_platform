@@ -23,10 +23,13 @@
         "referenceRequired": "Saisissez la référence pour ce mode de paiement.",
         "proofRequired": "Joignez un justificatif pour ce mode.",
         "subModeRequired": "Choisissez une option pour ce mode de paiement.",
-        "fieldRequired": "Remplissez tous les champs marqués *."
+        "fieldRequired": "Remplissez tous les champs marqués *.",
+        "numberingRequired": "Choisissez {{label}}."
     },
     "modePlaceholder": "Choisir le mode de paiement",
     "subModePlaceholder": "Choisir",
     "selectPlaceholder": "Choisir",
-    "notSpecified": "Non précisé"
+    "notSpecified": "Non précisé",
+    "numberingLabel": "Série de reçus",
+    "numberingHint": "Choisit la série de numéros de reçu. Demandé une fois par cours ; les échéances suivantes gardent la même."
 }

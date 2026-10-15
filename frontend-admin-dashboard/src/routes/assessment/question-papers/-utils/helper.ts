@@ -1,6 +1,7 @@
 import { FilterOption } from '@/types/assessments/question-paper-filter';
 import { Level, QuestionResponse, Subject } from '@/types/assessments/question-paper-template';
 import {
+    MyMultipleChoiceOption,
     MyQuestion,
     MyQuestionPaperFormEditInterface,
     MyQuestionPaperFormInterface,
@@ -443,66 +444,75 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
     };
 }
 
+/**
+ * The answer choices a question type carries, or [] for types with none
+ * (NUMERIC, ONE_WORD, LONG_ANSWER, CODING). Every row keeps all five option
+ * arrays, so reading the wrong one sends four blank options to the backend.
+ */
+function getChoiceOptions(question: MyQuestion): MyMultipleChoiceOption[] {
+    switch (question.questionType) {
+        case 'MCQS':
+            return question.singleChoiceOptions ?? [];
+        case 'MCQM':
+            return question.multipleChoiceOptions ?? [];
+        case 'CMCQS':
+            return question.csingleChoiceOptions ?? [];
+        case 'CMCQM':
+            return question.cmultipleChoiceOptions ?? [];
+        case 'TRUE_FALSE':
+            return question.trueFalseOptions ?? [];
+        default:
+            return [];
+    }
+}
+
 export function convertQuestionsDataToResponse(questions: MyQuestion[], key: string) {
     const convertedQuestions = questions?.map((question) => {
-        const options =
-            question.questionType === 'MCQS'
-                ? question.singleChoiceOptions.map((opt, idx) => ({
-                      id: key === 'added' ? null : opt.id, // Set to null if it's a new question
-                      preview_id: key === 'added' ? idx : opt.id, // Always use index as preview_id
-                      question_id: question.questionId,
-                      text: {
-                          id: null, // Assuming no mapping for text ID
-                          type: 'HTML',
-                          content: opt?.name,
-                      },
-                      media_id: null,
-                      option_order: null,
-                      created_on: null,
-                      updated_on: null,
-                      explanation_text: {
-                          id: null,
-                          type: 'HTML',
-                          content: question.explanation,
-                      },
-                  }))
-                : question.multipleChoiceOptions.map((opt, idx) => ({
-                      id: key === 'added' ? null : opt.id, // Set to null if it's a new question
-                      preview_id: key === 'added' ? idx : opt.id, // Always use index as preview_id
-                      question_id: question.questionId,
-                      text: {
-                          id: null,
-                          type: 'HTML',
-                          content: opt?.name,
-                      },
-                      media_id: null,
-                      option_order: null,
-                      created_on: null,
-                      updated_on: null,
-                      explanation_text: {
-                          id: null,
-                          type: 'HTML',
-                          content: question.explanation,
-                      },
-                  }));
+        const isNew = key === 'added';
+        const choiceOptions = getChoiceOptions(question);
+        const options = choiceOptions.map((opt, idx) => ({
+            id: isNew ? null : opt.id, // Set to null if it's a new question
+            preview_id: isNew ? idx : opt.id,
+            question_id: question.questionId,
+            text: {
+                id: null, // Assuming no mapping for text ID
+                type: 'HTML',
+                content: opt?.name,
+            },
+            media_id: null,
+            option_order: null,
+            created_on: null,
+            updated_on: null,
+            explanation_text: {
+                id: null,
+                type: 'HTML',
+                content: question.explanation,
+            },
+        }));
 
-        const correctOptionIds = (
-            question.questionType === 'MCQS'
-                ? question.singleChoiceOptions
-                : question.multipleChoiceOptions
-        )
+        const correctOptionIds = choiceOptions
             .map((opt, idx) => (opt.isSelected ? (opt.id ? opt.id : idx.toString()) : null))
             .filter((idx) => idx !== null);
 
-        const auto_evaluation_json = JSON.stringify({
-            type: question.questionType === 'MCQS' ? 'MCQS' : 'MCQM',
-            data: {
-                correctOptionIds,
-            },
-        });
+        // Same answer-key builder as a new paper's save. This used to be MCQ-only,
+        // so an edited NUMERIC question was sent {"type":"MCQM","data":{correctOptionIds:[]}},
+        // the backend found no validAnswers, and the answer reloaded as 0.
+        const auto_evaluation_json = getEvaluationJSON(
+            question,
+            correctOptionIds,
+            question.validAnswers,
+            question.subjectiveAnswerText
+        );
+        const parent_rich_text = question.parentRichTextContent
+            ? {
+                  id: null,
+                  type: 'HTML',
+                  content: question.parentRichTextContent,
+              }
+            : null;
 
         return {
-            id: key === 'added' ? null : question.questionId, // Set to null if it's a new question
+            id: isNew ? null : question.questionId, // Set to null if it's a new question
             preview_id: question.questionId, // Keep preview_id as the questionId
             text: {
                 id: null,
@@ -513,7 +523,8 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             created_at: null,
             updated_at: null,
             question_response_type: null,
-            question_type: question.questionType,
+            // CMCQS/CMCQM/CNUMERIC are form-only types; the backend rejects them.
+            question_type: getQuestionType(question.questionType),
             access_level: null,
             auto_evaluation_json,
             evaluation_type: null,
@@ -524,6 +535,8 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             },
             default_question_time_mins: null,
             options,
+            parent_rich_text,
+            options_json: getOptionsJson(question),
             subject_tags: question.tags ?? [], // Preserve/update subject tags on edit
             errors: [],
             warnings: [],
@@ -621,8 +634,10 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         let numericType;
         let subjectiveAnswerText;
         if (item.options_json) {
-            decimals = JSON.parse(item.options_json)?.decimals || 0;
-            numericType = JSON.parse(item.options_json)?.numeric_type || '';
+            const optionsJson = JSON.parse(item.options_json);
+            decimals = optionsJson?.decimals || 0;
+            // Saved as numericType; numeric_type kept for any older rows.
+            numericType = optionsJson?.numericType || optionsJson?.numeric_type || '';
         }
         if (item.auto_evaluation_json) {
             if (item.question_type === 'ONE_WORD') {
@@ -745,8 +760,10 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     let numericType;
     let subjectiveAnswerText;
     if (item.options_json) {
-        decimals = JSON.parse(item.options_json)?.decimals || 0;
-        numericType = JSON.parse(item.options_json)?.numeric_type || '';
+        const optionsJson = JSON.parse(item.options_json);
+        decimals = optionsJson?.decimals || 0;
+        // Saved as numericType; numeric_type kept for any older rows.
+        numericType = optionsJson?.numericType || optionsJson?.numeric_type || '';
     }
     if (item.auto_evaluation_json) {
         if (item.question_type === 'ONE_WORD') {
@@ -1008,6 +1025,7 @@ export function getOptionsJson(question: MyQuestion): string | null {
         case 'MCQM':
             return null;
         case 'NUMERIC':
+        case 'CNUMERIC':
             return JSON.stringify({
                 decimals: question.decimals,
                 numericType: question.numericType,

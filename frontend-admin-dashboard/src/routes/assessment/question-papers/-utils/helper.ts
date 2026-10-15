@@ -443,63 +443,62 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
     };
 }
 
+// The options list a question is edited in, by type. Non-option types have none.
+function getEditableOptions(question: MyQuestion) {
+    switch (question.questionType) {
+        case QuestionType.MCQS:
+            return question.singleChoiceOptions;
+        case QuestionType.MCQM:
+            return question.multipleChoiceOptions;
+        case QuestionType.CMCQS:
+            return question.csingleChoiceOptions;
+        case QuestionType.CMCQM:
+            return question.cmultipleChoiceOptions;
+        case QuestionType.TRUE_FALSE:
+            return question.trueFalseOptions;
+        default:
+            return [];
+    }
+}
+
 export function convertQuestionsDataToResponse(questions: MyQuestion[], key: string) {
     const convertedQuestions = questions?.map((question) => {
-        const options =
-            question.questionType === 'MCQS'
-                ? question.singleChoiceOptions.map((opt, idx) => ({
-                      id: key === 'added' ? null : opt.id, // Set to null if it's a new question
-                      preview_id: key === 'added' ? idx : opt.id, // Always use index as preview_id
-                      question_id: question.questionId,
-                      text: {
-                          id: null, // Assuming no mapping for text ID
-                          type: 'HTML',
-                          content: opt?.name,
-                      },
-                      media_id: null,
-                      option_order: null,
-                      created_on: null,
-                      updated_on: null,
-                      explanation_text: {
-                          id: null,
-                          type: 'HTML',
-                          content: question.explanation,
-                      },
-                  }))
-                : question.multipleChoiceOptions.map((opt, idx) => ({
-                      id: key === 'added' ? null : opt.id, // Set to null if it's a new question
-                      preview_id: key === 'added' ? idx : opt.id, // Always use index as preview_id
-                      question_id: question.questionId,
-                      text: {
-                          id: null,
-                          type: 'HTML',
-                          content: opt?.name,
-                      },
-                      media_id: null,
-                      option_order: null,
-                      created_on: null,
-                      updated_on: null,
-                      explanation_text: {
-                          id: null,
-                          type: 'HTML',
-                          content: question.explanation,
-                      },
-                  }));
+        const editableOptions = getEditableOptions(question) ?? [];
+        // An option without an id (new, or added to an existing question) is matched
+        // by its index, the same marker the answer key below uses for it.
+        const options = editableOptions.map((opt, idx) => ({
+            id: key === 'added' ? null : opt.id || null,
+            preview_id: key === 'added' || !opt.id ? idx : opt.id,
+            question_id: question.questionId,
+            text: {
+                id: null, // Assuming no mapping for text ID
+                type: 'HTML',
+                content: opt?.name,
+            },
+            media_id: null,
+            option_order: null,
+            created_on: null,
+            updated_on: null,
+            explanation_text: {
+                id: null,
+                type: 'HTML',
+                content: question.explanation,
+            },
+        }));
 
-        const correctOptionIds = (
-            question.questionType === 'MCQS'
-                ? question.singleChoiceOptions
-                : question.multipleChoiceOptions
-        )
+        const correctOptionIds = editableOptions
             .map((opt, idx) => (opt.isSelected ? (opt.id ? opt.id : idx.toString()) : null))
             .filter((idx) => idx !== null);
 
-        const auto_evaluation_json = JSON.stringify({
-            type: question.questionType === 'MCQS' ? 'MCQS' : 'MCQM',
-            data: {
-                correctOptionIds,
-            },
-        });
+        // Per-type answer key, exactly as on create. This used to be hardcoded to an
+        // MCQ answer key, so saving an edited paper wiped the answer of every
+        // NUMERIC / ONE_WORD / LONG_ANSWER / CODING question it touched.
+        const auto_evaluation_json = getEvaluationJSON(
+            question,
+            correctOptionIds,
+            question.validAnswers,
+            question.subjectiveAnswerText
+        );
 
         return {
             id: key === 'added' ? null : question.questionId, // Set to null if it's a new question
@@ -513,7 +512,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             created_at: null,
             updated_at: null,
             question_response_type: null,
-            question_type: question.questionType,
+            question_type: getQuestionType(question.questionType),
             access_level: null,
             auto_evaluation_json,
             evaluation_type: null,
@@ -524,6 +523,14 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             },
             default_question_time_mins: null,
             options,
+            options_json: getOptionsJson(question),
+            parent_rich_text: question.parentRichTextContent
+                ? {
+                      id: null,
+                      type: 'HTML',
+                      content: question.parentRichTextContent,
+                  }
+                : null,
             subject_tags: question.tags ?? [], // Preserve/update subject tags on edit
             errors: [],
             warnings: [],
@@ -609,6 +616,12 @@ export const getIdBySubjectName = (
     return subject?.id || 'N/A';
 };
 
+// Older saves wrote the numeric type as numericType instead of numeric_type.
+const readNumericType = (optionsJson: string): string => {
+    const parsed = JSON.parse(optionsJson);
+    return parsed?.numeric_type || parsed?.numericType || '';
+};
+
 export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[]) => {
     return data?.map((item) => {
         const correctOptionIds = item.auto_evaluation_json
@@ -622,7 +635,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         let subjectiveAnswerText;
         if (item.options_json) {
             decimals = JSON.parse(item.options_json)?.decimals || 0;
-            numericType = JSON.parse(item.options_json)?.numeric_type || '';
+            numericType = readNumericType(item.options_json);
         }
         if (item.auto_evaluation_json) {
             if (item.question_type === 'ONE_WORD') {
@@ -746,7 +759,7 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     let subjectiveAnswerText;
     if (item.options_json) {
         decimals = JSON.parse(item.options_json)?.decimals || 0;
-        numericType = JSON.parse(item.options_json)?.numeric_type || '';
+        numericType = readNumericType(item.options_json);
     }
     if (item.auto_evaluation_json) {
         if (item.question_type === 'ONE_WORD') {
@@ -1008,8 +1021,11 @@ export function getOptionsJson(question: MyQuestion): string | null {
         case 'MCQM':
             return null;
         case 'NUMERIC':
+            // numeric_type is the key every reader uses (this editor, learner slides);
+            // numericType is what older saves wrote, kept so both stay readable.
             return JSON.stringify({
                 decimals: question.decimals,
+                numeric_type: question.numericType,
                 numericType: question.numericType,
             });
         default:

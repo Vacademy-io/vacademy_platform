@@ -56,6 +56,7 @@ import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
 import { RevokedDeviceDialog } from "@/components/common/offline/revoked-device-dialog";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { resolveUiSkin } from "@/utils/institute-theme-roles";
+import { matchesCataloguePost } from "@/lib/catalogue-post-route";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -823,6 +824,7 @@ const RootComponent = () => {
   }, []);
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onCataloguePost = useRouterState({ select: (s) => matchesCataloguePost(s.matches) });
 
   // A live assessment attempt owns the viewport. The chatbot is suppressed for
   // the whole attempt on every device — it is an AI assistant sitting on top of
@@ -854,7 +856,7 @@ const RootComponent = () => {
       {!suppressAppChrome && <GetAppBanner />}
       <Outlet />
       {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}
-      {!isPublicRoute(pathname) && !suppressAppChrome && <AppOverlayHost />}
+      {!isPublicRoute(pathname) && !onCataloguePost && !suppressAppChrome && <AppOverlayHost />}
       {!hideChatbot && <ChatbotPanel />}
       {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}
       <RevokedDeviceDialog />
@@ -865,9 +867,10 @@ const RootComponent = () => {
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
 }>()({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async ({ location, matches }) => {
+    const isPublic = isPublicRoute(location.pathname) || matchesCataloguePost(matches);
     console.log("[__root] Checking route:", location.pathname);
-    console.log("[__root] Is public route:", isPublicRoute(location.pathname));
+    console.log("[__root] Is public route:", isPublic);
 
     // Global Auto-Login Support via URL Tokens (?sso=true&accessToken=...&refreshToken=...&redirect=/dashboard)
     // Read from both window and router location so params are found on first load
@@ -1044,7 +1047,7 @@ export const Route = createRootRouteWithContext<{
       location.pathname.startsWith("/study-library/courses/course-details/tutor") &&
       (demoFlagIsSet(rawDemoParam) || demoFlagIsSet(parsedDemoParam));
     // Skip all logic for public routes - they should work without any redirects
-    if (isPublicRoute(location.pathname) || isGuestTutor) {
+    if (isPublic || isGuestTutor) {
       console.log("[__root] Route is public, skipping authentication check");
       return;
     }

@@ -37,7 +37,8 @@
             "label": "Transaction ID (Optional)",
             "placeholder": "Enter transaction ID",
             "description": "External payment transaction reference"
-        }
+        },
+        "paymentDetailsInCourse": "How it was paid is taken from each course's fee section above."
     },
     "workflows": {
         "heading": "Workflows that will fire on enrollment",

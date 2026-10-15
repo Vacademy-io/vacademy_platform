@@ -13,7 +13,10 @@
     "header": {
         "breadcrumbFallback": "Équipe de conseil",
         "titleFallback": "Conseillers",
-        "subtitle": "Cliquez sur une carte pour voir les demandes et l'activité récente de cette personne."
+        "subtitle": "Cliquez sur une personne pour voir ses demandes, appels, relances et objectifs.",
+        "teamSize_one": "{{count}} conseiller · {{active}} actif",
+        "teamSize_other": "{{count}} conseillers · {{active}} actifs",
+        "periodLabel": "Chiffres pour"
     },
     "stats": {
         "counsellors": "Conseillers",
@@ -57,7 +60,12 @@
         "reassignLeads": "Réassigner les demandes",
         "markInactive": "Marquer comme inactif",
         "markActive": "Marquer comme actif",
-        "confirmMarkActive": "Marquer {{name}} comme actif à nouveau ?"
+        "confirmMarkActive": "Marquer {{name}} comme actif à nouveau ?",
+        "teamLine": "Équipe : {{team}}",
+        "overdueFollowUps": "Relances en retard",
+        "dueToday": "Aujourd'hui",
+        "converted": "Converties",
+        "convertedOf": "{{converted}} sur {{total}}"
     },
     "table": {
         "colCounsellor": "Conseiller",
@@ -66,7 +74,14 @@
         "colAssignedLeads": "Demandes assignées",
         "colTargets": "Objectifs",
         "colStatus": "Statut",
-        "colActions": "Actions"
+        "colActions": "Actions",
+        "colFollowUps": "Relances",
+        "colConverted": "Converties",
+        "overdueValue_one": "{{count}} en retard",
+        "overdueValue_other": "{{count}} en retard",
+        "dueTodayValue_one": "{{count}} aujourd'hui",
+        "dueTodayValue_other": "{{count}} aujourd'hui",
+        "convertedSub": "{{rate}} de {{total}} nouvelles"
     },
     "drawer": {
         "tabLeads": "Demandes ({{count}})",
@@ -75,5 +90,59 @@
         "tabCoaching": "Coaching",
         "tabPerformance": "Performance",
         "tabTargets": "Objectifs"
+    },
+    "period": {
+        "week": "cette semaine",
+        "month": "ce mois-ci",
+        "custom": "les dates choisies",
+        "range": "{{from}} – {{to}}"
+    },
+    "kpi": {
+        "periodCaption": "Nouvelles demandes, conversions et premier contact : {{period}}. Demandes assignées et relances : à l'instant.",
+        "assignedLeads": "Demandes assignées",
+        "assignedLeadsDetail": "Détenues par l'équipe en ce moment",
+        "newLeads": "Nouvelles demandes",
+        "contacted_one": "{{count}} contactée",
+        "contacted_other": "{{count}} contactées",
+        "notContacted_one": "{{count}} pas encore contactée",
+        "notContacted_other": "{{count}} pas encore contactées",
+        "noData": "Non disponible",
+        "converted": "Converties",
+        "convertedDetail": "{{rate}} des nouvelles demandes",
+        "overdue": "Relances en retard",
+        "dueToday_one": "{{count}} de plus aujourd'hui",
+        "dueToday_other": "{{count}} de plus aujourd'hui",
+        "openFollowUps": "Ouvrir les relances",
+        "firstResponse": "Premier contact",
+        "firstResponseDetail": "Délai moyen avant le premier contact",
+        "pickDates": "Choisissez les deux dates pour voir ce chiffre"
+    },
+    "attention": {
+        "title": "À traiter",
+        "count_one": "{{count}} élément",
+        "count_other": "{{count}} éléments",
+        "allClear": "Tout est en ordre : aucune relance en retard et aucune demande bloquée chez un conseiller inactif.",
+        "overdue_one": "{{name}} a {{count}} relance en retard",
+        "overdue_other": "{{name}} a {{count}} relances en retard",
+        "overdueOldest_one": "La plus ancienne a {{count}} jour de retard",
+        "overdueOldest_other": "La plus ancienne a {{count}} jours de retard",
+        "overdueHint": "Échéance dépassée",
+        "viewFollowUps": "Voir les relances",
+        "inactive_one": "{{name}} est inactif mais détient encore {{count}} demande",
+        "inactive_other": "{{name}} est inactif mais détient encore {{count}} demandes",
+        "inactiveHint": "Personne ne traite ces demandes tant que vous ne les confiez pas à un conseiller actif",
+        "reassign": "Réassigner"
+    },
+    "summary": {
+        "assignedLeads": "Demandes assignées",
+        "overdue": "En retard",
+        "oldest_one": "la plus ancienne : {{count}} jour",
+        "oldest_other": "la plus ancienne : {{count}} jours",
+        "dueToday": "Aujourd'hui",
+        "newLeads": "Nouvelles demandes",
+        "converted": "Converties",
+        "firstResponse": "Premier contact",
+        "firstResponseSub": "moyenne",
+        "followUps": "relances"
     }
 }

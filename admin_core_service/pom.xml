@@ -275,6 +275,14 @@
             <version>5.2.5</version>
         </dependency>
 
+        <!-- Regional pricing: reads the free DB-IP country database (MaxMind DB format) to
+             find a visitor's country from their IP. Low-level reader, no Jackson dependency. -->
+        <dependency>
+            <groupId>com.maxmind.db</groupId>
+            <artifactId>maxmind-db</artifactId>
+            <version>3.1.1</version>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>

@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +63,17 @@ public class RegionalPriceResolver {
 
     /** Regional price for the current request's viewer, if one applies. */
     public Optional<RegionalQuote> quote(PaymentPlan plan, String vendor) {
+        // Switch first: the viewer's country (an IP lookup) is only worked out for an option
+        // that actually has regional pricing on.
+        if (!regionalPricingOn(plan)) {
+            return Optional.empty();
+        }
         return quote(plan, viewerCountry().orElse(null), vendor);
+    }
+
+    private static boolean regionalPricingOn(PaymentPlan plan) {
+        return plan != null && plan.getPaymentOption() != null
+                && Boolean.TRUE.equals(plan.getPaymentOption().getRegionalPricingEnabled());
     }
 
     /**
@@ -147,16 +158,19 @@ public class RegionalPriceResolver {
         if (invite == null || invite.getPackageSessionToPaymentOptions() == null) {
             return;
         }
-        Optional<String> country = viewerCountry();
-        if (country.isEmpty()) {
-            return;
-        }
         List<PackageSessionToPaymentOptionDTO> mappings = invite.getPackageSessionToPaymentOptions().stream()
                 .filter(m -> m != null && m.getPaymentOption() != null)
                 .toList();
-        Set<String> enabled = enabledOptionIds(mappings.stream()
-                .map(m -> m.getPaymentOption().getId()).filter(Objects::nonNull).collect(Collectors.toSet()));
+        // Switch first, from the payload itself when it carries it: an invite whose options are
+        // all off returns here with no query and no country lookup.
+        Map<String, Boolean> flags = new HashMap<>();
+        mappings.forEach(m -> flags.put(m.getPaymentOption().getId(), m.getPaymentOption().getRegionalPricingEnabled()));
+        Set<String> enabled = enabledOptions(flags);
         if (enabled.isEmpty()) {
+            return;
+        }
+        Optional<String> country = viewerCountry();
+        if (country.isEmpty()) {
             return;
         }
         List<PaymentPlanDTO> candidates = new ArrayList<>();
@@ -199,14 +213,15 @@ public class RegionalPriceResolver {
         if (page == null || page.getMappings() == null || hasCurrencyBoundSettings(page.getSettingsJson())) {
             return;
         }
-        Optional<String> country = viewerCountry();
-        if (country.isEmpty()) {
+        Map<String, Boolean> flags = new HashMap<>();
+        page.getMappings().stream().filter(m -> m.getPaymentOptionId() != null)
+                .forEach(m -> flags.put(m.getPaymentOptionId(), m.getRegionalPricingEnabled()));
+        Set<String> enabled = enabledOptions(flags);
+        if (enabled.isEmpty()) {
             return;
         }
-        Set<String> enabled = enabledOptionIds(page.getMappings().stream()
-                .map(ProductPageInviteMappingResponse::getPaymentOptionId)
-                .filter(Objects::nonNull).collect(Collectors.toSet()));
-        if (enabled.isEmpty()) {
+        Optional<String> country = viewerCountry();
+        if (country.isEmpty()) {
             return;
         }
         List<PaymentPlanDTO> candidates = page.getMappings().stream()
@@ -270,6 +285,29 @@ public class RegionalPriceResolver {
         // A base-currency strike-through next to a regional price would be meaningless.
         dto.setElevatedPrice(q.elevatedPrice() != null ? q.elevatedPrice().doubleValue() : 0d);
         dto.setCurrency(q.currency());
+    }
+
+    /**
+     * Option ids with regional pricing on. Uses the switch carried on the payload when every
+     * option has it; only an option whose payload lacks it is read from the database.
+     */
+    private Set<String> enabledOptions(Map<String, Boolean> flagsByOptionId) {
+        Set<String> enabled = new HashSet<>();
+        Set<String> unknown = new HashSet<>();
+        flagsByOptionId.forEach((id, flag) -> {
+            if (id == null) {
+                return;
+            }
+            if (flag == null) {
+                unknown.add(id);
+            } else if (flag) {
+                enabled.add(id);
+            }
+        });
+        if (!unknown.isEmpty()) {
+            enabled.addAll(enabledOptionIds(unknown));
+        }
+        return enabled;
     }
 
     private Set<String> enabledOptionIds(Collection<String> optionIds) {

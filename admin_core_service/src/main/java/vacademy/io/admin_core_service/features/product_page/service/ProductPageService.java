@@ -711,6 +711,8 @@ public class ProductPageService {
 
         if (m.getPsInvitePaymentOption().getPaymentOption() != null) {
             r.setPaymentOptionType(m.getPsInvitePaymentOption().getPaymentOption().getType());
+            r.setRegionalPricingEnabled(Boolean.TRUE.equals(
+                    m.getPsInvitePaymentOption().getPaymentOption().getRegionalPricingEnabled()));
         }
 
         vacademy.io.common.institute.entity.session.PackageSession ps = m.getPsInvitePaymentOption()

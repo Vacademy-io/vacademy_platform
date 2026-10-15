@@ -402,6 +402,9 @@ public class InvoiceService {
         PLACEHOLDER_META.put("next_installment_date",
                 new PlaceholderMeta("Next Installment Due On", "RECEIPT", false, "date"));
         PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", false, "text"));
+        // Only the mode ("Cash", "Cheque"): {{payment_method}} also names the account the money
+        // went into, which an institute may not want printed on a learner's receipt.
+        PLACEHOLDER_META.put("payment_mode", new PlaceholderMeta("Payment Mode", "RECEIPT", false, "text"));
     }
 
     /**
@@ -2628,6 +2631,8 @@ public class InvoiceService {
         // Payment info
         filled = filled.replace("{{payment_method}}",
                 invoiceData.getPaymentMethod() != null ? invoiceData.getPaymentMethod() : "");
+        filled = filled.replace("{{payment_mode}}",
+                nz(invoicePaymentMode(invoiceData.getPaymentLog(), invoiceData.getPaymentMethod())));
         filled = filled.replace("{{transaction_id}}",
                 invoiceData.getTransactionId() != null ? invoiceData.getTransactionId() : "");
         filled = filled.replace("{{payment_date}}",
@@ -6451,6 +6456,7 @@ public class InvoiceService {
         d.put("next_installment_date", rfd.nextInstallmentDate != null
                 ? rfd.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : "");
         d.put("amount_in_words", amountInWords(invoiceData.getTotalAmount()));
+        d.put("payment_mode", nz(invoicePaymentMode(invoiceData.getPaymentLog(), invoiceData.getPaymentMethod())));
 
         // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
         // matches what replaceTemplatePlaceholders renders and what create will persist.
@@ -7004,6 +7010,7 @@ public class InvoiceService {
                         paymentLogId, e);
             }
         }
+        rf.totalFees = billedTotal(rf.totalFees, expected);
         rf.totalPaid = totalCollected(paid, thisPayment, alreadyAllocated);
         rf.previousPaid = paidBefore(rf.totalPaid, thisPayment);
         BigDecimal courseTotal = rf.totalFees != null ? rf.totalFees : expected;
@@ -7026,6 +7033,15 @@ public class InvoiceService {
         return rf;
     }
 
+
+    /**
+     * What the learner is actually billed for the course. The schedule carries the amounts after
+     * any discount or concession; the plan only knows the list price, which is {{course_fees}}.
+     * Falls back to the plan price when the schedule has nothing.
+     */
+    static BigDecimal billedTotal(BigDecimal planPrice, BigDecimal scheduleExpected) {
+        return scheduleExpected != null && scheduleExpected.signum() > 0 ? scheduleExpected : planPrice;
+    }
 
     /**
      * A DATE column arrives as {@link java.sql.Date}, whose {@code toInstant()} throws, so the
@@ -7148,6 +7164,34 @@ public class InvoiceService {
             return StringUtils.hasText(sub) ? mode + " · " + sub : mode;
         }
         return paymentLog.getVendor();
+    }
+
+    /**
+     * Just how the payment was made ("Cash", "Google Pay"), without the account that
+     * {@link #invoicePaymentMethod} adds. Uses the payment log when the invoice has one, else
+     * the mode part of the stored payment method; the gateway name for an online payment.
+     */
+    static String invoicePaymentMode(PaymentLog paymentLog, String paymentMethod) {
+        if (paymentLog != null) {
+            if (StringUtils.hasText(paymentLog.getPaymentMode())) {
+                String mode = paymentLog.getPaymentMode();
+                if (StringUtils.hasText(paymentLog.getPaymentDetailsJson())) {
+                    try {
+                        mode = new ObjectMapper().readTree(paymentLog.getPaymentDetailsJson())
+                                .path("mode_label").asText(mode);
+                    } catch (Exception ignored) {
+                        // Fall back to the code.
+                    }
+                }
+                return mode;
+            }
+            if (StringUtils.hasText(paymentLog.getVendor())) {
+                return paymentLog.getVendor();
+            }
+        }
+        if (!StringUtils.hasText(paymentMethod)) return null;
+        int sep = paymentMethod.indexOf(" · ");
+        return sep > 0 ? paymentMethod.substring(0, sep) : paymentMethod;
     }
 
     /** The admin's reference for an offline payment; the gateway's id otherwise. */

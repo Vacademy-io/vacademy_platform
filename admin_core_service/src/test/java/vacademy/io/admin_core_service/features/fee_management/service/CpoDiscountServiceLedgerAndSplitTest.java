@@ -58,11 +58,13 @@ class CpoDiscountServiceLedgerAndSplitTest {
     private final List<Row> ledger = new ArrayList<>();
     private UserPlan plan;
     private CpoDiscountService service;
+    private StudentFeePaymentRepository sfpRepo;
 
     @BeforeEach
     void setUp() {
         UserPlanRepository userPlanRepository = mock(UserPlanRepository.class);
         StudentFeePaymentRepository sfpRepository = mock(StudentFeePaymentRepository.class);
+        sfpRepo = sfpRepository;
         UserAccountLedgerService ledgerService = mock(UserAccountLedgerService.class);
         UserAccountLedgerRepository ledgerRepository = mock(UserAccountLedgerRepository.class);
 
@@ -517,5 +519,45 @@ class CpoDiscountServiceLedgerAndSplitTest {
         assertMoney("2940.00", sfps.get("q3").getAmountExpected());
         assertEquals(500.0, PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount().getValue());
         assertBooksAgree();
+    }
+
+    @Test
+    @DisplayName("enrollment: per-installment discounts from the schedule bill exactly what the screen showed")
+    void scheduleRowDiscountsAtEnrollment() {
+        // ₹4,000 in three, ₹1,000 off; the admin wants ₹2,000 now: 2,334 − 334 / 833 − 333 / 833 − 333.
+        installment("s1", "2334.00", "0", LocalDate.of(2026, 10, 15)).setInstallmentNumber(1);
+        installment("s2", "833.00", "0", LocalDate.of(2026, 11, 15)).setInstallmentNumber(2);
+        installment("s3", "833.00", "0", LocalDate.of(2026, 12, 15)).setInstallmentNumber(3);
+        snapshot(UserPlanDiscountJson.builder().build());
+        vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO schedule =
+                vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.builder()
+                        .rows(List.of(
+                                scheduleRow("2026-10-15", "2334", "334"),
+                                scheduleRow("2026-11-15", "833", "333"),
+                                scheduleRow("2026-12-15", "833", "333")))
+                        .build();
+        vacademy.io.admin_core_service.features.learner_management.dto.CpoEnrollmentConfigDTO config =
+                vacademy.io.admin_core_service.features.learner_management.dto.CpoEnrollmentConfigDTO.builder()
+                        .installmentSchedule(schedule)
+                        .cpoDiscount(vacademy.io.admin_core_service.features.fee_management.dto.DiscountSpecDTO.builder()
+                                .type("PERCENTAGE").value(25.0).reason("Sibling").build())
+                        .build();
+
+        new CpoEnrollmentConfigApplier(sfpRepo, service).apply(PLAN, config, "admin");
+
+        assertMoney("2000.00", sfps.get("s1").getAmountExpected());
+        assertMoney("500.00", sfps.get("s2").getAmountExpected());
+        assertMoney("500.00", sfps.get("s3").getAmountExpected());
+        UserPlanDiscountJson.DiscountEntry e = PaymentOptionJsonDiscountAccessor.read(plan.getPaymentOptionJson()).getCpoDiscount();
+        assertEquals("CUSTOM", e.getAllocation());
+        assertEquals(1000.0, e.getValue());
+        assertEquals("Sibling", e.getReason());
+        assertBooksAgree();
+    }
+
+    private static vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.RowDTO scheduleRow(
+            String date, String amount, String discount) {
+        return vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO.RowDTO.builder()
+                .dueDate(LocalDate.parse(date)).amount(new BigDecimal(amount)).discount(new BigDecimal(discount)).build();
     }
 }

@@ -476,8 +476,13 @@ export const AddCourseStep2 = ({
         }
     }, [allowAdvancedSettings]);
 
+    const addedSessionLevelKeys = new Set(
+        sessions.flatMap((s) => s.levels.map((l) => `${s.id}-${l.id}`))
+    );
+    const seenSessionLevelKeys = new Set<string>();
+
     // Filter available existing batches based on hasSessions and hasLevels values
-    const availableExistingBatches = existingBatches.filter((batch: ExistingBatch) => {
+    const eligibleExistingBatches = existingBatches.filter((batch: ExistingBatch) => {
         // Always exclude used batches
         if (usedExistingBatchIds.has(batch.id)) {
             return false;
@@ -503,6 +508,16 @@ export const AddCourseStep2 = ({
 
         // Case 4: hasSessions = 'no' and hasLevels = 'no'
         // Don't filter anything, return true for all batches
+        return true;
+    });
+    const availableExistingBatches = eligibleExistingBatches.filter((batch: ExistingBatch) => {
+        // Every course has its own batch for a shared session+level, so list each pair once,
+        // and hide pairs this course already has (adding them again is a no-op)
+        const key = `${batch.session.id}-${batch.level.id}`;
+        if (addedSessionLevelKeys.has(key) || seenSessionLevelKeys.has(key)) {
+            return false;
+        }
+        seenSessionLevelKeys.add(key);
         return true;
     });
 

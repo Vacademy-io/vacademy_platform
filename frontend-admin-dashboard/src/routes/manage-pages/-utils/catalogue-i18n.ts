@@ -80,6 +80,8 @@ const NON_TEXT_KEYS = new Set(
         // (spotlight titleNative), the sidebar's group order (legacy ids such
         // as 'priceRange') and a CTA rule's course-format keys.
         'titlenative', 'order', 'formats',
+        // Course level / tag names the courses filter is ordered by: matched raw.
+        'levelorder', 'tagorder',
     ].map((k) => k.toLowerCase())
 );
 

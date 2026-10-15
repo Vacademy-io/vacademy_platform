@@ -49,6 +49,9 @@ public class CatalogueBlogService {
     private static final Set<String> STATUSES = Set.of(
             BlogPostStatus.DRAFT.name(), BlogPostStatus.PUBLISHED.name(), BlogPostStatus.ARCHIVED.name());
     private static final Set<String> SOURCES = Set.of("EDITOR", "MCP", "AI");
+    private static final String DEFAULT_TEMPLATE = "CLASSIC";
+    private static final Set<String> TEMPLATES = Set.of(DEFAULT_TEMPLATE, "SIDEBAR_TOC", "MAGAZINE", "FOCUS");
+    private static final int MAX_RECOMMENDED_COURSES = 6;
 
     @Autowired
     private CatalogueBlogPostRepository repository;
@@ -110,6 +113,8 @@ public class CatalogueBlogService {
                 .seoDescription(trimOrNull(req.getSeoDescription()))
                 .source(source)
                 .readingMinutes(readingMinutes(req.getContentHtml()))
+                .template(normaliseTemplate(req.getTemplate()))
+                .recommendedCourseIds(writeCourseIds(req.getRecommendedCourseIds()))
                 .createdBy(user.getUserId())
                 .updatedBy(user.getUserId())
                 .build();
@@ -141,6 +146,10 @@ public class CatalogueBlogService {
         if (req.getTags() != null) post.setTags(writeTags(req.getTags()));
         if (req.getSeoTitle() != null) post.setSeoTitle(trimOrNull(req.getSeoTitle()));
         if (req.getSeoDescription() != null) post.setSeoDescription(trimOrNull(req.getSeoDescription()));
+        if (req.getTemplate() != null) post.setTemplate(normaliseTemplate(req.getTemplate()));
+        if (req.getRecommendedCourseIds() != null) {
+            post.setRecommendedCourseIds(writeCourseIds(req.getRecommendedCourseIds()));
+        }
         if (req.getStatus() != null && !blank(req.getStatus())) {
             String status = req.getStatus().toUpperCase(Locale.ROOT);
             if (!STATUSES.contains(status)) throw new VacademyException("Unknown status: " + req.getStatus());
@@ -269,6 +278,29 @@ public class CatalogueBlogService {
         }
     }
 
+    /** An unknown or missing layout falls back to CLASSIC rather than failing the save. */
+    static String normaliseTemplate(String raw) {
+        if (blank(raw)) return DEFAULT_TEMPLATE;
+        String t = raw.trim().toUpperCase(Locale.ROOT);
+        return TEMPLATES.contains(t) ? t : DEFAULT_TEMPLATE;
+    }
+
+    private String writeCourseIds(List<String> ids) {
+        if (ids == null) return null;
+        Set<String> clean = new LinkedHashSet<>();
+        for (String id : ids) {
+            if (!blank(id)) clean.add(id.trim());
+        }
+        if (clean.size() > MAX_RECOMMENDED_COURSES) {
+            throw new VacademyException("At most " + MAX_RECOMMENDED_COURSES + " recommended courses per post");
+        }
+        try {
+            return mapper.writeValueAsString(new ArrayList<>(clean));
+        } catch (Exception e) {
+            throw new VacademyException("Could not store recommended courses");
+        }
+    }
+
     private List<String> readTags(String json) {
         if (blank(json)) return List.of();
         try {
@@ -322,6 +354,8 @@ public class CatalogueBlogService {
                 .seoDescription(p.getSeoDescription())
                 .source(p.getSource())
                 .readingMinutes(p.getReadingMinutes())
+                .template(blank(p.getTemplate()) ? DEFAULT_TEMPLATE : p.getTemplate())
+                .recommendedCourseIds(readTags(p.getRecommendedCourseIds()))
                 .createdBy(p.getCreatedBy())
                 .updatedBy(p.getUpdatedBy())
                 .createdAt(iso(p.getCreatedAt()))

@@ -415,6 +415,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             instituteId={instituteId}
             tagName={tagName}
+            // Recommended-course cards under an article use the site's card settings.
+            globalSettings={globalSettings}
             pageRoute={page.route || ""}
             isPreviewMode={isPreviewMode}
           />

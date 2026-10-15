@@ -471,7 +471,14 @@
         "copyLink": "Copier le lien",
         "linkCopied": "Lien copié",
         "gateTitle": "Débloquer cet article",
-        "gateSubtitle": "Partagez vos coordonnées une seule fois pour lire cet article et toutes les ressources gratuites du site."
+        "gateSubtitle": "Partagez vos coordonnées une seule fois pour lire cet article et toutes les ressources gratuites du site.",
+        "contents": "Sur cette page",
+        "readingProgress": "Progression de lecture",
+        "percentRead": "{{percent}} % lu",
+        "recommendedCourses": "{{courses}} recommandés",
+        "relatedPosts": "À lire aussi",
+        "share": "Partager",
+        "shareOn": "Partager sur {{network}}"
     },
     "comingSoon": {
         "ribbon": "Bientôt disponible",

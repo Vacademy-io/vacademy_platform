@@ -5,7 +5,7 @@ import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback 
 import { Capacitor } from "@capacitor/core";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { useBlocker, useNavigate } from "@tanstack/react-router";
+import { useBlocker, useLocation, useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
@@ -43,6 +43,7 @@ import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogu
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 import { headerOffsetClass } from "./header/header-chrome";
 import { PreviewPathProvider } from "../-utils/preview-path";
+import { blogPostSlugFor } from "../-utils/blog-route";
 import { ImageFitProvider, siteImageFit } from "@/components/common/fit-image/FitImage";
 import {
   isEditorMessage,
@@ -76,6 +77,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
+  const location = useLocation();
   // Authored routes (the mobile bar) — see useSiteNavigate.
   const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
@@ -741,6 +743,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   /** An imported HTML page normally pastes in its own nav and footer, so the
    *  site's chrome would render a second set. Opt-out lives on the page. */
   const activePage = catalogueData.pages.find(matchesActivePage);
+  /** While a blog article is open (/<page>/<slug> or ?post=), the page shows
+   *  only its blog section: on a page with other sections (Free Resources:
+   *  hero, resource cards, blog cards) the article would otherwise open as one
+   *  band in the middle of them. Header and footer stay. */
+  const withArticleOnly = (page: CourseCatalogueData["pages"][number]) => {
+    const blog = (page.components || []).find(
+      (c: { type?: string; enabled?: boolean }) => c?.type === "blog" && c.enabled !== false
+    );
+    if (!blog) return page;
+    const slug = blogPostSlugFor(location.pathname, location.searchStr, tagName, page.route || "");
+    return slug ? { ...page, components: [blog] } : page;
+  };
   const hidesSiteChrome = !!(activePage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 
   return (
@@ -842,7 +856,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             .map((page) => (
               <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : headerOffsetClass((catalogueData.globalSettings as any).layout?.header?.props)} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
-                  page={page}
+                  page={withArticleOnly(page)}
                   globalSettings={catalogueData.globalSettings}
                   instituteId={instituteId}
                   tagName={tagName}

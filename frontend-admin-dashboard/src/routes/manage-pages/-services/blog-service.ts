@@ -15,6 +15,12 @@ import {
 
 export type BlogPostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
+/** How the learner site lays out the article. Absent = CLASSIC. */
+export type BlogPostTemplate = 'CLASSIC' | 'SIDEBAR_TOC' | 'MAGAZINE' | 'FOCUS';
+
+/** Most courses a post can recommend under the article. */
+export const BLOG_MAX_RECOMMENDED_COURSES = 6;
+
 export interface BlogPost {
     id: string;
     institute_id: string;
@@ -33,6 +39,9 @@ export interface BlogPost {
     seo_title?: string | null;
     seo_description?: string | null;
     source: 'EDITOR' | 'MCP' | 'AI';
+    template?: BlogPostTemplate | null;
+    /** Course (package) ids shown as cards after the article, in order. */
+    recommended_course_ids?: string[] | null;
     reading_minutes?: number | null;
     created_at?: string | null;
     updated_at?: string | null;
@@ -61,6 +70,9 @@ export interface BlogPostInput {
     published_at?: string | null;
     seo_title?: string;
     seo_description?: string;
+    template?: BlogPostTemplate;
+    /** In display order, at most 6; an empty array clears. */
+    recommended_course_ids?: string[];
 }
 
 export const listBlogPosts = async (

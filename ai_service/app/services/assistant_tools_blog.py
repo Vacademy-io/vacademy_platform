@@ -111,7 +111,7 @@ BLOG_EDIT_SCHEMA: Dict[str, Any] = {
             "Write blog posts as DRAFTS. Nothing goes live from here: the admin reviews and publishes in "
             "Manage Pages → Blog (every result carries an editor_url). Pick an `action`:\n"
             "- create (title, content_html, excerpt?, category?, tags?, cover_image_url?, author_name?, "
-            "seo_title?, seo_description?, slug?): saves a new DRAFT post. content_html is the article body "
+            "seo_title?, seo_description?, slug?, template?): saves a new DRAFT post. content_html is the article body "
             "as HTML (headings h2/h3, paragraphs, lists, blockquotes, tables, images from the institute's own "
             "media URLs, YouTube/Vimeo embed iframes). Write a real excerpt (1–2 sentences) and a meta "
             "description; both show on cards and in search results.\n"
@@ -138,6 +138,15 @@ BLOG_EDIT_SCHEMA: Dict[str, Any] = {
                 "seo_title": {"type": "string"},
                 "seo_description": {"type": "string", "description": "≤ 160 characters."},
                 "slug": {"type": "string", "description": "URL segment; made from the title when omitted."},
+                "template": {
+                    "type": "string",
+                    "enum": ["CLASSIC", "SIDEBAR_TOC", "MAGAZINE", "FOCUS"],
+                    "description": (
+                        "Article layout. CLASSIC (default) one column; SIDEBAR_TOC a sticky contents list built "
+                        "from the h2/h3 headings (pick it for long guides with 3+ sections); MAGAZINE cover "
+                        "image as a full-width hero (needs cover_image_url); FOCUS a narrow reading column."
+                    ),
+                },
             },
             "required": ["action"],
         },
@@ -266,7 +275,7 @@ def _post_urls(post: Dict[str, Any], placements: List[Dict[str, Any]]) -> List[s
 
 def _summary(post: Dict[str, Any]) -> Dict[str, Any]:
     keys = ("id", "slug", "title", "excerpt", "category", "tags", "status", "author_name",
-            "published_at", "updated_at", "source", "reading_minutes", "cover_image_url")
+            "published_at", "updated_at", "source", "reading_minutes", "cover_image_url", "template")
     return {k: post.get(k) for k in keys if post.get(k) not in (None, "", [])}
 
 
@@ -368,7 +377,8 @@ async def execute_blog(args: Dict[str, Any], ctx: ToolContext) -> str:
 
 
 # ── blog_edit (WRITE, draft-only) ────────────────────────────────────────
-_WRITABLE = ("title", "excerpt", "category", "cover_image_url", "author_name", "seo_title", "seo_description", "slug")
+_WRITABLE = ("title", "excerpt", "category", "cover_image_url", "author_name", "seo_title", "seo_description", "slug",
+             "template")
 
 
 def _payload(args: Dict[str, Any], warnings: List[str], ctx: ToolContext, creating: bool) -> Dict[str, Any]:

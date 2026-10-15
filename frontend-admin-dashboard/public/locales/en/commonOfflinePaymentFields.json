@@ -21,6 +21,12 @@
     "errors": {
         "modeRequired": "Choose how the payment was made.",
         "referenceRequired": "Enter the reference for this payment mode.",
-        "proofRequired": "Attach proof of payment for this mode."
-    }
+        "proofRequired": "Attach proof of payment for this mode.",
+        "subModeRequired": "Choose an option for this payment mode.",
+        "fieldRequired": "Fill in all the fields marked *."
+    },
+    "modePlaceholder": "Select payment mode",
+    "subModePlaceholder": "Select",
+    "selectPlaceholder": "Select",
+    "notSpecified": "Not specified"
 }

@@ -288,7 +288,12 @@ export function PaymentDetailsStep({
                     </h3>
 
                     {/* How it was paid: mode, option (e.g. PhonePe), reference, proof. */}
-                    <OfflinePaymentFields value={details} onChange={setDetails} onErrorChange={setDetailsError} />
+                    <OfflinePaymentFields
+                        value={details}
+                        onChange={setDetails}
+                        onErrorChange={setDetailsError}
+                        showDate
+                    />
 
                     {/* Amount */}
                     <div className="space-y-2">

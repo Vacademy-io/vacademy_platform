@@ -495,6 +495,7 @@ export default defineConfig(({ mode }) => {
                 'src/components/common/layout-container/sidebar/**/*.test.{ts,tsx}',
                 'src/components/shared/whatsapp/**/*.test.{ts,tsx}',
                 'src/components/common/study-library/add-course/**/*.test.{ts,tsx}',
+                'src/components/common/payments/**/*.test.{ts,tsx}',
             ],
         },
         server: {

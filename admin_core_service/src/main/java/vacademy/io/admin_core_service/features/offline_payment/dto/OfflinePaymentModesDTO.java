@@ -53,8 +53,40 @@ public class OfflinePaymentModesDTO {
         /** Extra inputs for this mode: cheque_date, bank_name, payer_name. */
         @Builder.Default
         private List<String> extraFields = new ArrayList<>();
+        /** Built-in extras that must be filled; a subset of {@link #extraFields}. */
+        @Builder.Default
+        private List<String> requiredExtraFields = new ArrayList<>();
+        /** The institute's own inputs for this mode (cheque status, branch, transaction date ...). */
+        @Builder.Default
+        private List<CustomField> customFields = new ArrayList<>();
+        /** What the options are called in the dialogs, e.g. "Account", "App"; null = a generic label. */
+        private String subModeLabel;
+        /** Whether one of the mode's active options must be picked. */
+        private boolean subModeRequired;
         @Builder.Default
         private List<SubMode> subModes = new ArrayList<>();
+    }
+
+    /** An input the institute adds to a mode. Switched off rather than deleted, like modes. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CustomField {
+        /** Stable id within the mode (a–z, 0–9, _); past payments refer to it. */
+        private String key;
+        private String label;
+        /** TEXT, DATE, NUMBER or SELECT. */
+        @Builder.Default
+        private String type = "TEXT";
+        private boolean required;
+        @Builder.Default
+        private boolean active = true;
+        /** The choices of a SELECT field. */
+        @Builder.Default
+        private List<String> options = new ArrayList<>();
     }
 
     @Data

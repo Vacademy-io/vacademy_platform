@@ -21,6 +21,12 @@
     "errors": {
         "modeRequired": "اختر طريقة الدفع.",
         "referenceRequired": "أدخل المرجع لطريقة الدفع هذه.",
-        "proofRequired": "أرفق إثبات الدفع لهذه الطريقة."
-    }
+        "proofRequired": "أرفق إثبات الدفع لهذه الطريقة.",
+        "subModeRequired": "اختر خيارًا لطريقة الدفع هذه.",
+        "fieldRequired": "املأ جميع الحقول المميزة بـ *."
+    },
+    "modePlaceholder": "اختر طريقة الدفع",
+    "subModePlaceholder": "اختر",
+    "selectPlaceholder": "اختر",
+    "notSpecified": "غير محدد"
 }

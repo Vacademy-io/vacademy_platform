@@ -257,6 +257,11 @@ export function PaymentDetailSheet({
                         {recorded?.extra.cheque_date && <Row label="Cheque date">{recorded.extra.cheque_date}</Row>}
                         {recorded?.extra.bank_name && <Row label="Bank">{recorded.extra.bank_name}</Row>}
                         {recorded?.extra.payer_name && <Row label="Paid by">{recorded.extra.payer_name}</Row>}
+                        {recorded?.custom.map((c) => (
+                            <Row key={c.key} label={c.label}>
+                                {c.value}
+                            </Row>
+                        ))}
                         {recorded?.notes && <Row label="Notes">{recorded.notes}</Row>}
                         {recorded?.proofFileId && (
                             <Row label="Proof">

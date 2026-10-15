@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
+    activeCustomFields,
     findActiveMode,
     offlinePaymentDetailsError,
     useOfflinePaymentModes,
@@ -33,10 +35,18 @@ interface Props {
 }
 
 /**
- * "How was it paid?" for every admin record-payment dialog: mode chips from the institute's
- * offline payment modes (Settings → Payment Settings), then the mode's options (e.g. PhonePe
- * under UPI), a reference labelled for the mode, the mode's extra fields (cheque date, bank,
- * payer) and an optional proof upload. Optional unless the institute requires a mode.
+ * Radix Select items cannot have an empty value, so an optional dropdown offers this as
+ * "Not specified"; a required one is left at '' so its placeholder shows. Every
+ * onValueChange ignores '' (Radix can emit it from its hidden native select inside a form).
+ */
+const NONE = '__none__';
+
+/**
+ * "How was it paid?" for every admin record-payment dialog: a mode dropdown from the
+ * institute's offline payment modes (Settings → Payment Settings), then the mode's options
+ * dropdown (the account the money went into, or the app), a reference labelled for the mode,
+ * the mode's extra and custom fields (cheque date, bank, branch, cheque status ...) and an
+ * optional proof upload. Optional unless the institute requires a mode.
  */
 export function OfflinePaymentFields({
     value,
@@ -94,15 +104,13 @@ export function OfflinePaymentFields({
     const text = compact ? 'text-2xs' : 'text-xs';
     const set = (patch: Partial<OfflinePaymentDetails>) => onChange({ ...value, ...patch });
     const setExtra = (key: OfflineExtraField, v: string) => set({ extra: { ...(value.extra ?? {}), [key]: v } });
-
-    const chip = (selected: boolean) =>
-        cn(
-            'rounded-full border px-2.5 py-0.5 font-medium transition',
-            text,
-            selected
-                ? 'border-primary-400 bg-primary-50 text-primary-700'
-                : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-        );
+    const setCustom = (key: string, v: string) => set({ custom: { ...(value.custom ?? {}), [key]: v } });
+    const customFields = activeCustomFields(mode);
+    const requiredExtras = mode?.required_extra_fields ?? [];
+    const today = new Date().toLocaleDateString('en-CA');
+    const labelClass = cn('mb-1 block font-medium text-neutral-500', text);
+    const triggerClass = cn('bg-white', compact ? 'h-8' : 'h-9', text);
+    const star = <span className="text-danger-600"> *</span>;
 
     const uploadProof = async (file: File) => {
         const id = getCurrentInstituteId() ?? '';
@@ -115,59 +123,68 @@ export function OfflinePaymentFields({
 
     return (
         <div className="flex flex-col gap-2">
-            <div>
-                <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>
-                    {t('modeLabel')}
-                    {modes.require_mode && <span className="text-danger-600"> *</span>}
-                </Label>
-                <div role="radiogroup" aria-label={t('modeLabel')} className="flex flex-wrap gap-1.5">
-                    {activeModes.map((m) => (
-                        <button
-                            key={m.code ?? m.label}
-                            type="button"
-                            role="radio"
-                            aria-checked={value.mode === m.code}
-                            onClick={() =>
-                                set({
-                                    mode: value.mode === m.code && !modes.require_mode ? null : (m.code ?? null),
-                                    sub_mode: null,
-                                    extra: {},
-                                })
-                            }
-                            className={chip(value.mode === m.code)}
-                        >
-                            {m.label}
-                        </button>
-                    ))}
+            <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-48 flex-1">
+                    <Label className={labelClass}>
+                        {t('modeLabel')}
+                        {modes.require_mode && star}
+                    </Label>
+                    <Select
+                        value={value.mode ?? (modes.require_mode ? '' : NONE)}
+                        onValueChange={(v) =>
+                            v && set({ mode: v === NONE ? null : v, sub_mode: null, extra: {}, custom: {} })
+                        }
+                    >
+                        <SelectTrigger aria-label={t('modeLabel')} className={triggerClass}>
+                            <SelectValue placeholder={t('modePlaceholder')} />
+                        </SelectTrigger>
+                        <SelectContent className="z-popover-above-modal">
+                            {!modes.require_mode && <SelectItem value={NONE}>{t('notSpecified')}</SelectItem>}
+                            {activeModes
+                                .filter((m) => m.code)
+                                .map((m) => (
+                                    <SelectItem key={m.code!} value={m.code!}>
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                        </SelectContent>
+                    </Select>
                 </div>
-            </div>
 
-            {mode && activeSubs.length > 0 && (
-                <div>
-                    <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>{t('subModeLabel')}</Label>
-                    <div role="radiogroup" aria-label={t('subModeLabel')} className="flex flex-wrap gap-1.5">
-                        {activeSubs.map((s) => (
-                            <button
-                                key={s.code ?? s.label}
-                                type="button"
-                                role="radio"
-                                aria-checked={value.sub_mode === s.code}
-                                onClick={() => set({ sub_mode: value.sub_mode === s.code ? null : (s.code ?? null) })}
-                                className={chip(value.sub_mode === s.code)}
-                            >
-                                {s.label}
-                            </button>
-                        ))}
+                {mode && activeSubs.length > 0 && (
+                    <div className="min-w-48 flex-1">
+                        <Label className={labelClass}>
+                            {mode.sub_mode_label || t('subModeLabel')}
+                            {mode.sub_mode_required && star}
+                        </Label>
+                        <Select
+                            value={value.sub_mode ?? (mode.sub_mode_required ? '' : NONE)}
+                            onValueChange={(v) => v && set({ sub_mode: v === NONE ? null : v })}
+                        >
+                            <SelectTrigger aria-label={mode.sub_mode_label || t('subModeLabel')} className={triggerClass}>
+                                <SelectValue placeholder={t('subModePlaceholder')} />
+                            </SelectTrigger>
+                            <SelectContent className="z-popover-above-modal">
+                                {!mode.sub_mode_required && <SelectItem value={NONE}>{t('notSpecified')}</SelectItem>}
+                                {activeSubs
+                                    .filter((sub) => sub.code)
+                                    .map((sub) => (
+                                        <SelectItem key={sub.code!} value={sub.code!}>
+                                            {sub.label}
+                                        </SelectItem>
+                                    ))}
+                            </SelectContent>
+                        </Select>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             <div className="flex flex-wrap items-start gap-3">
                 {showReference && (
                     <div className="min-w-40 flex-1">
-                        <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>
+                        <Label className={labelClass}>
                             {mode?.reference_label || t('referenceLabel')}
-                            {mode?.reference_required && <span className="text-danger-600"> *</span>}
+                            {mode?.reference_required && star}
                         </Label>
                         <Input
                             value={value.reference ?? ''}
@@ -179,9 +196,10 @@ export function OfflinePaymentFields({
                 )}
                 {showDate && (
                     <div>
-                        <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>{t('dateLabel')}</Label>
+                        <Label className={labelClass}>{t('dateLabel')}</Label>
                         <Input
                             type="date"
+                            max={today}
                             value={value.payment_date ?? ''}
                             onChange={(e) => set({ payment_date: e.target.value || null })}
                             className={cn('w-40', text)}
@@ -190,8 +208,9 @@ export function OfflinePaymentFields({
                 )}
                 {(mode?.extra_fields ?? []).map((f) => (
                     <div key={f} className={f === 'cheque_date' ? '' : 'min-w-40 flex-1'}>
-                        <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>
+                        <Label className={labelClass}>
                             {t(`extra.${f}`)}
+                            {requiredExtras.includes(f) && star}
                         </Label>
                         <Input
                             type={f === 'cheque_date' ? 'date' : 'text'}
@@ -201,11 +220,49 @@ export function OfflinePaymentFields({
                         />
                     </div>
                 ))}
+                {customFields.map((f) => (
+                    <div key={f.key!} className={f.type === 'DATE' ? '' : 'min-w-40 flex-1'}>
+                        <Label className={labelClass}>
+                            {f.label}
+                            {f.required && star}
+                        </Label>
+                        {f.type === 'SELECT' ? (
+                            <Select
+                                value={value.custom?.[f.key!] || (f.required ? '' : NONE)}
+                                onValueChange={(v) => v && setCustom(f.key!, v === NONE ? '' : v)}
+                            >
+                                <SelectTrigger aria-label={f.label} className={triggerClass}>
+                                    <SelectValue placeholder={t('selectPlaceholder')} />
+                                </SelectTrigger>
+                                <SelectContent className="z-popover-above-modal">
+                                    {!f.required && <SelectItem value={NONE}>{t('notSpecified')}</SelectItem>}
+                                    {(f.options ?? []).map((o) => (
+                                        <SelectItem key={o} value={o}>
+                                            {o}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <Input
+                                type={f.type === 'DATE' ? 'date' : 'text'}
+                                inputMode={f.type === 'NUMBER' ? 'decimal' : undefined}
+                                value={value.custom?.[f.key!] ?? ''}
+                                onChange={(e) =>
+                                    f.type === 'NUMBER' && !/^-?\d*\.?\d*$/.test(e.target.value)
+                                        ? undefined
+                                        : setCustom(f.key!, e.target.value)
+                                }
+                                className={cn(f.type === 'DATE' ? 'w-40' : '', text)}
+                            />
+                        )}
+                    </div>
+                ))}
             </div>
 
             {showNotes && (
                 <div>
-                    <Label className={cn('mb-1 block font-medium text-neutral-500', text)}>{t('notesLabel')}</Label>
+                    <Label className={labelClass}>{t('notesLabel')}</Label>
                     <Input value={value.notes ?? ''} onChange={(e) => set({ notes: e.target.value })} className={text} />
                 </div>
             )}
@@ -214,7 +271,7 @@ export function OfflinePaymentFields({
                 <div className={cn('flex flex-wrap items-center gap-2 text-neutral-600', text)}>
                     <label className="cursor-pointer font-medium text-primary-600 hover:underline">
                         {value.proof_file_id ? t('proof.replace') : t('proof.attach')}
-                        {mode.proof_required && <span className="text-danger-600"> *</span>}
+                        {mode.proof_required && star}
                         <input
                             type="file"
                             accept="image/*,application/pdf"

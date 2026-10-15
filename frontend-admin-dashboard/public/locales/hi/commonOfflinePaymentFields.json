@@ -21,6 +21,12 @@
     "errors": {
         "modeRequired": "चुनें कि भुगतान कैसे हुआ।",
         "referenceRequired": "इस भुगतान तरीके के लिए संदर्भ दर्ज करें।",
-        "proofRequired": "इस तरीके के लिए भुगतान का प्रमाण जोड़ें।"
-    }
+        "proofRequired": "इस तरीके के लिए भुगतान का प्रमाण जोड़ें।",
+        "subModeRequired": "इस भुगतान तरीके के लिए एक विकल्प चुनें।",
+        "fieldRequired": "* वाले सभी फ़ील्ड भरें।"
+    },
+    "modePlaceholder": "भुगतान का तरीका चुनें",
+    "subModePlaceholder": "चुनें",
+    "selectPlaceholder": "चुनें",
+    "notSpecified": "निर्दिष्ट नहीं"
 }

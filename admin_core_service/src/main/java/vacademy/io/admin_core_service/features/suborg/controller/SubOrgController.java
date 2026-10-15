@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
+import vacademy.io.admin_core_service.features.live_session.client.InstituteRoleUserClient;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -55,7 +55,7 @@ public class SubOrgController {
     private final SubOrgFinanceService subOrgFinanceService;
     private final EnrollInviteRepository enrollInviteRepository;
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
-    private final UserRoleRepository userRoleRepository;
+    private final InstituteRoleUserClient instituteRoleUserClient;
     private final InstituteRepository instituteRepository;
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     private final SubOrgAccessScopeService subOrgAccessScopeService;
@@ -155,8 +155,10 @@ public class SubOrgController {
         if (user.isRootUser()) {
             return;
         }
-        if (userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(
-                user.getUserId(), instituteId, ROLE_NAME_ADMIN)) {
+        // Roles live in auth_service's DB (admin_core has no user_role table); a failed
+        // lookup falls through to the staff-membership check below.
+        if (instituteRoleUserClient.findRolesOfUser(instituteId, user.getUserId())
+                .map(roles -> roles.contains(ROLE_NAME_ADMIN)).orElse(false)) {
             return;
         }
         boolean isStaff = instituteRepository.findInstitutesByUserId(user.getUserId())

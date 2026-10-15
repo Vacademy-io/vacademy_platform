@@ -172,6 +172,10 @@ public class AudienceService {
     @Autowired
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgLeadScopeService subOrgLeadScopeService;
 
+    /** Caller lead visibility for getLeads — shared with the lead-scope endpoint. */
+    @Autowired
+    private LeadVisibilityResolver leadVisibilityResolver;
+
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
@@ -3443,125 +3447,33 @@ public class AudienceService {
                     .ifPresent(filterDTO::setInstituteId);
         }
 
-        // Caller-level access scoping driven by the institute's
-        // AUDIENCE_ROLE_ACCESS setting. Admin / root resolve to DEFAULT;
-        // pure counselors are auto-scoped; AUDIENCE_LIST roles are restricted
-        // to their granted audience ids.
-        EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
-                user, filterDTO.getInstituteId());
-
-        // RBAC narrowing for the CRM Leads tab. When the caller holds the
-        // COUNSELLOR role and NOT the ADMIN role, we restrict the visible
-        // leads to their hierarchy scope: themselves + every counsellor-role
-        // user reporting up to them through parent_user_id chains in any org
-        // team they belong to. A team head sees their whole downstream; a
-        // mid-level manager sees their reports; a leaf member sees only their
-        // own leads. ADMIN outranks COUNSELLOR — a dual-role caller stays
-        // institute-wide (isScopedCaller(instituteId, user) below resolves
-        // this via the caller's authenticated authorities, not a raw JWT
-        // decode, so it can't miss ADMIN for a dual-role account). Computed
-        // as a CSV that the native query plugs into a
-        // `STRING_TO_ARRAY(...) = ANY` predicate alongside the single-id
-        // filter — so a manager can still drill into a specific report by
-        // sending assignedCounselorId.
-        String assignedCounselorIdsCsv = null;
-        boolean rbacApplied = false;
-
-        // Sub-org admin scoping (highest precedence). A sub-org admin is ALSO
-        // granted the parent institute's ADMIN role, so without this they'd
-        // resolve to DEFAULT above and see the entire parent lead pool. Detection
-        // is by ACTIVE SUB_ORG FSPSSM linkage (SubOrgLeadScopeService) — the only
-        // reliable fingerprint, since by role they're indistinguishable from a
-        // true institute admin. We hard-scope their visible leads to the members
-        // of the sub-org(s) they administer, reusing the same assignedCounselorIdsCsv
-        // filter the counsellor-hierarchy RBAC below uses. The member set always
-        // includes the admin themselves, so a non-empty result also means "is a
-        // sub-org admin"; an empty result means a normal admin/user and this
-        // branch is a no-op that preserves the pre-existing behaviour exactly.
-        boolean subOrgScopeApplied = false;
-        if (user != null && user.getUserId() != null
-                && filterDTO.getInstituteId() != null
-                && !filterDTO.getInstituteId().isBlank()) {
-            List<String> subOrgScope = subOrgLeadScopeService
-                    .subOrgScopedCounsellorUserIds(user.getUserId());
-            if (!subOrgScope.isEmpty()) {
-                assignedCounselorIdsCsv = String.join(",", subOrgScope);
-                rbacApplied = true;
-                subOrgScopeApplied = true;
-            }
-        }
-
-        if (!subOrgScopeApplied && user != null && user.getUserId() != null
-                && filterDTO.getInstituteId() != null
-                && !filterDTO.getInstituteId().isBlank()) {
-            String instituteId = filterDTO.getInstituteId();
-            if (counsellorScopeService.isScopedCaller(instituteId, user)) {
-                List<String> scope = counsellorScopeService
-                        .scopedCounsellorUserIds(instituteId, user.getUserId());
-                if (!scope.isEmpty()) {
-                    assignedCounselorIdsCsv = String.join(",", scope);
-                    rbacApplied = true;
-                }
-            }
-        }
-
-        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null
-                && !rbacApplied) {
-            // Force-scope: ignore whatever assignedCounselorId the request
-            // body sent — counselors with no leads-team mapping only see
-            // leads they're directly linked to.
-            //
-            // When RBAC applied above, we let the broader subtree filter
-            // win (a manager in the leads team should see their reports'
-            // leads, not just their own).
-            filterDTO.setAssignedCounselorId(user.getUserId());
-        }
-
-        // AUDIENCE_LIST + "only my assigned leads": the granted lists still bound
-        // WHICH campaigns are readable (allowedAudienceIdsCsv below); this narrows
-        // the rows inside them to the leads the caller owns. access.isAssignedOnly()
-        // is already pool-gated by AudienceRoleAccessService — it can only be true
-        // when the institute has no counsellor pool.
+        // Caller-level lead visibility — sub-org admin scope, counsellor-hierarchy
+        // RBAC and the institute's AUDIENCE_ROLE_ACCESS modes — resolved by
+        // LeadVisibilityResolver (shared with GET /v1/audience/lead-scope, so the
+        // scope reported there is exactly the one applied here).
         //
-        // Two halves, because the counsellor-hierarchy RBAC above has usually
-        // already done half the work: any COUNSELLOR-role non-admin is a scoped
-        // caller, and a leaf counsellor's scope is exactly [themselves]. So the
-        // force-scope below is only needed for callers RBAC didn't touch — a role
-        // that isn't on the counsellor roster at all (a custom role granted
-        // AUDIENCE_LIST, say), which would otherwise still see every lead in the
-        // granted lists. What RBAC never does is drop the shared unassigned pool;
-        // that half applies to every assigned-only caller (see includeUnassigned).
-        //
-        // A leads-team manager keeps their subtree, exactly as in COUNSELOR mode —
-        // "assigned to the role" means the caller's scope, not a hard self-only
-        // filter that would blind a manager to their own reports' leads.
-        boolean assignedOnlyApplied = access.getMode() == Mode.AUDIENCE_LIST
-                && access.isAssignedOnly()
-                && user != null && user.getUserId() != null;
-        if (assignedOnlyApplied && !rbacApplied) {
-            filterDTO.setAssignedCounselorId(user.getUserId());
+        // The owner scope (sub-org members / counsellor subtree) is a CSV the
+        // native query plugs into a `STRING_TO_ARRAY(...) = ANY` predicate
+        // alongside the single-id filter — so a manager can still drill into a
+        // specific report by sending assignedCounselorId.
+        LeadVisibility visibility = leadVisibilityResolver.resolve(user, filterDTO.getInstituteId());
+        String assignedCounselorIdsCsv = visibility.scopeOwnerIdsCsv();
+
+        // COUNSELOR mode / AUDIENCE_LIST "only my assigned leads" with no
+        // hierarchy scope: ignore whatever assignedCounselorId the request body
+        // sent — the caller only sees leads they're directly linked to.
+        if (visibility.forcedOwnerId() != null) {
+            filterDTO.setAssignedCounselorId(visibility.forcedOwnerId());
         }
 
-        // "Only leads assigned to COUNSELLOR" display setting enforcement. The
-        // leads themselves stay RBAC-scoped (subtree visibility is preserved);
-        // this setting governs ONLY the shared unassigned pool. In COUNSELOR mode
-        // we drop unassigned leads (no counsellor on either linked_users or
-        // user_lead_profile) from the result; any other mode keeps them visible
-        // to anyone in scope, as before.
-        // A sub-org admin sees ONLY leads assigned to their sub-org's members;
-        // the shared unassigned pool belongs to the parent institute, so it is
-        // excluded from their view alongside the COUNSELOR-mode exclusion.
-        // assignedOnlyApplied excludes the shared pool for the same reason COUNSELOR
-        // mode does: an unassigned lead is by definition not "assigned to me". This
-        // is the half that applies even to RBAC-scoped callers — without it a leaf
-        // counsellor would still see the whole unclaimed pool of their granted lists.
-        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR && !subOrgScopeApplied
-                && !assignedOnlyApplied;
+        // Whether the shared unassigned pool (no counsellor on either
+        // linked_users or user_lead_profile) stays visible inside the owner scope.
+        boolean includeUnassigned = visibility.includeUnassigned();
 
         String allowedAudienceIdsCsv = null;
-        if (access.getMode() == Mode.AUDIENCE_LIST) {
-            List<String> allowed = access.getAllowedAudienceIds();
-            if (allowed == null || allowed.isEmpty()) {
+        List<String> allowed = visibility.allowedAudienceIds();
+        if (allowed != null) {
+            if (allowed.isEmpty()) {
                 // Admin granted no lists → user sees nothing (intentional lock-out).
                 return Page.empty(pageable);
             }

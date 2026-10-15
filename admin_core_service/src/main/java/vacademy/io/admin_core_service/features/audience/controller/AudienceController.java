@@ -4,12 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
+import vacademy.io.admin_core_service.features.audience.service.LeadVisibilityResolver;
 import vacademy.io.admin_core_service.features.audience.service.ManualLeadOwnerGuard;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
@@ -51,6 +53,12 @@ public class AudienceController {
     @Autowired
     private AudienceRoleAccessService audienceRoleAccessService;
 
+    @Autowired
+    private LeadVisibilityResolver leadVisibilityResolver;
+
+    @Autowired
+    private InstituteAccessValidator instituteAccessValidator;
+
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
      * to: COUNSELLOR-role users only. A hierarchy-scoped caller (holds the
@@ -85,6 +93,26 @@ public class AudienceController {
             @RequestParam(value = "assignable", defaultValue = "false") boolean assignable,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user, assignable));
+    }
+
+    /**
+     * The caller's lead visibility in the institute — exactly the scope the CRM
+     * Leads list (POST /leads) applies, resolved by the same
+     * {@link LeadVisibilityResolver}. Lets other clients (the MCP CRM tools)
+     * read leads with the dashboard's scope instead of re-deriving it.
+     *
+     * <p>Snake_case: {@code {mode, owner_ids, include_unassigned,
+     * allowed_audience_ids, sub_org_ids, is_admin}}; a null {@code owner_ids} /
+     * {@code allowed_audience_ids} means no restriction. The caller must be staff
+     * of {@code instituteId}.
+     */
+    @GetMapping("/lead-scope")
+    public ResponseEntity<LeadScopeDTO> leadScope(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
+        return ResponseEntity.ok(LeadScopeDTO.from(
+                leadVisibilityResolver.resolveWithSubOrgIds(user, instituteId)));
     }
 
     @PostMapping("/campaign")

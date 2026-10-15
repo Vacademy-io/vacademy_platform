@@ -35,6 +35,19 @@ settings tab has one toggle per feature to manage per role:
 | `course_drip_edit` | WRITE (non-live courses only) | `course_drip_edits` | `set_rules`, `schedule`, `remove_rules` |
 | `course_invites_edit` | WRITE (additive only) | `course_invite_edits` | `create_invite`, `create_payment_plan`, `make_default` |
 | `learner_report` | READ (no model, no credits) | `learner_reports` (own area "Progress reports", off until enabled) | `guide` (field meanings, the dashboard report's status / grade rules, how to write a grounded report), `data` (`learner_id`, window ≤ 366 days, optional `batch_id` / `modules` / `detail` / `attempt_limit`: `report` = admin-core `/internal/student-analysis/student-360` (Layer-1 facts, no narrative) and `detail` = `/internal/student-analysis/raw-detail` (per-class attendance, per-module progress vs the batch, slide-by-slide study, assignment submissions, doubt text + replies, per-attempt `processed_json`; `attempt_details` = raw_json, opt-in); both refuse a learner or batch outside the institute), `saved_reports` / `saved_report` (`student_analysis_process`, COMPLETED, institute-scoped SQL) |
+| `crm_leads` | READ | `crm_leads` (area "CRM: Leads") | `find`, `list`, `get`, `timeline`, `my_day`, `check_exists`, `catalog`, `automations`, `export` (link-only CSV) |
+| `crm_lead_activity` | WRITE (live additive, **opt-in**) | `crm_lead_activity` | `log_interaction` (note + follow-up + answers + call outcome in one call; the status part waits for a confirm when an automation listens), `add_note`, `schedule_followup`, `reschedule_followup`, `complete_followup` (two-step) |
+| `crm_lead_edit` | WRITE (live, **opt-in**, two-step) | `crm_lead_edits` | `set_status` (≤500, ids or filter), `set_tier`, `update_details`, `tag`, `untag` |
+| `crm_team_edit` | WRITE (live, **opt-in**, two-step; admin / manager of the target) | `crm_team_edits` | `assign_leads` (≤500), `reassign_from_counsellor`, `pause_routing`, `resume_routing` |
+| `crm_lead_intake` | WRITE (live, **opt-in**, two-step, single-use) | `crm_lead_intake` | `add_lead` (walk-ins via source WALK_IN), `import_leads` (≤100) |
+| `crm_calls` | READ | `crm_calls` (area "CRM: Calls") | `list`, `get`, `transcript`, `callbacks_due`, `missed_inbound`, `ai_agents`, `ai_queue`, `ai_runs`, `ai_status` |
+| `crm_dial` | WRITE (outbound, **opt-in**, single-use, hourly caps) | `crm_calling_outbound` | `call` (click-to-call: the caller's phone rings first), `ai_call`, `cancel_queued`, `quota` |
+| `crm_ai_campaign` | WRITE (outbound, **opt-in**, single-use, ADMIN only) | `crm_ai_campaigns` | `start` (≤500 leads across lists, explicit ids always), `cancel_run`, `pause_queue`, `resume_queue` |
+| `crm_meetings` | READ | `crm_meetings` (area "CRM: Meetings") | `my_meetings`, `team_meetings`, `for_lead`, `free_slots`, `booking_pages` |
+| `crm_meetings_edit` | WRITE (outbound, **opt-in**) | `crm_meeting_edits` | `book` (two-step, single-use; invite + calendar to the lead), `log_outcome` |
+| `crm_messages` | READ | `crm_messages` (area "CRM: Messages") | `history`, `inbox`, `templates`, `can_message`, `escalations` |
+| `crm_send` | WRITE (outbound, **opt-in**, single-use, 20/h/user) | `crm_messaging_outbound` | `send` (an APPROVED WhatsApp template to ONE lead), `quota` |
+| `crm_reports` | READ | `crm_reports` (area "CRM: Reports") | `overview`, `sources`, `campaigns`, `funnel`, `status_changes`, `counsellors`, `workload`, `targets`, `calling`, `ai_calling`, `followup_aging`, `sla_breaches`, `stalled`, `unassigned`, `meetings`, `activity`, `revenue` (admin), `utm` (admin); `compare_to: previous_period` on every action |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
@@ -153,6 +166,42 @@ names each allowed write tool with the property that makes it safe, and
 `tests/test_mcp_adapter.py` refuses any other write tool. Write groups are off for every role until an admin
 enables them.
 
+## 1a. CRM tools
+
+The 13 `crm_*` tools (`app/services/assistant_tools_crm_*.py`) share one
+foundation, `app/services/crm_data.py`; the design is
+`docs/crm/CRM_MCP.md`. All are `mcp_only` (never offered to the in-product
+assistant) and need module `crm` (`ToolSpec.module_feature`, checked in
+`execute_tool` against `institute_module_entitlement` / `institute_module_policy`
+via `app/services/entitlements.py`; LEGACY institutes have everything on).
+
+* **Scope = the dashboard's.** `crm_data.scope` reads admin-core
+  `GET /admin-core-service/v1/audience/lead-scope?instituteId=` — the same
+  `LeadVisibilityResolver` the Recent Leads / Lead Board query uses (sub-org
+  admin, counsellor hierarchy, AUDIENCE_LIST / COUNSELOR modes, unassigned
+  pool). SQL reads apply it with `crm_data.scope_sql`. Against an admin-core
+  without the endpoint, only a whole-institute ADMIN keeps SQL reads; everyone
+  else gets `scope_unavailable`.
+* **Every id is verified** against the pinned institute and the caller's scope
+  before any admin-core call (`resolve_lead(s)`, `verify_ids`), and reads are
+  anchored to the institute (timeline, messages, revenue).
+* **Writes are two-step.** Called without `confirm_token` an action returns a
+  preview (before → after, automations that will fire via
+  `crm_data.automations_for`, who is notified, credits) and a token; the same
+  call with the token applies it. Edits use a stateless HMAC token over the
+  resolved targets + their current state; outbound and bulk actions use
+  single-use rows in `mcp_crm_confirm` (Flyway V583), spent atomically, with
+  per-user hourly caps (`crm_data.CAPS`) counted from spent rows. Tokens are
+  bound to the MCP client (`ToolContext.client_id`).
+* **PII.** Lists mask phone / email; `get` on one lead in scope returns full
+  contact; bulk contact only through `export` (a `file_exports` link). Text
+  written by leads or staff comes back inside `lead_content`. The audit log
+  keeps only action, ids, enums, numbers and dates for `crm_*` calls
+  (`repository._audit_args_json(args, tool_name)`).
+* **Deploy order.** admin-core first (V583 + the lead-scope endpoint), then
+  ai_service. Until V583 is applied, confirm-token actions answer
+  `confirm_unavailable`.
+
 ## 2. Who can reach it
 
 Three gates, all deny-by-default, all re-evaluated on **every** request:
@@ -163,6 +212,9 @@ Three gates, all deny-by-default, all re-evaluated on **every** request:
    and allow-listed the user's role. Learner roles (`STUDENT`, `LEARNER`,
    `PARENT`) are refused unconditionally and are stripped from the allow-list
    server-side, so they cannot be granted even by editing the setting directly.
+   Membership is the roles the JWT carries for this institute: `is_root_user`
+   is set for ordinary users and grants nothing here (a principal with no role
+   in the institute is refused, root or not).
 3. **Per-tool** — the institute enabled that specific tool, institute-wide or for
    the caller's role.
 

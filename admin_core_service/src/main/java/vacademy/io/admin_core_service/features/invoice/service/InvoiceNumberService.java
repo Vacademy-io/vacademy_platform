@@ -64,7 +64,7 @@ public class InvoiceNumberService {
      * invoice.
      */
     public InvoiceNumberAllocation generate(InvoiceNumberConfig config, InvoiceNumberContext context) {
-        InvoiceNumberConfig effective = resolveUsableConfig(config);
+        InvoiceNumberConfig effective = resolveUsableConfig(selectSeries(config, context));
         String scopeKey = scopeKeyFor(effective, context);
         InvoiceNumberAllocation reused = reuseReleased(effective, context, scopeKey);
         if (reused != null) {
@@ -130,7 +130,7 @@ public class InvoiceNumberService {
     public InvoiceNumberAllocation nextAfterCollision(InvoiceNumberConfig config,
                                                       InvoiceNumberContext context,
                                                       int attempt) {
-        InvoiceNumberConfig effective = resolveUsableConfig(config);
+        InvoiceNumberConfig effective = resolveUsableConfig(selectSeries(config, context));
         String scopeKey = scopeKeyFor(effective, context);
         long start = nextSeq(effective, context.getInstituteId(), scopeKey);
         return renderFrom(effective, context, scopeKey, start + attempt, attempt);
@@ -189,7 +189,7 @@ public class InvoiceNumberService {
      * keystroke, and the settings screen previews continuously.
      */
     public String preview(InvoiceNumberConfig config, InvoiceNumberContext context) {
-        InvoiceNumberConfig effective = resolveUsableConfig(config);
+        InvoiceNumberConfig effective = resolveUsableConfig(selectSeries(config, context));
         String scopeKey = scopeKeyFor(effective, context);
         // Same rule as generate(), so the number the create-invoice screen shows is the one issued.
         InvoiceNumberAllocation reused = reuseReleased(effective, context, scopeKey);
@@ -277,6 +277,41 @@ public class InvoiceNumberService {
         String namespace = context.getSeqNamespace();
         return StringUtils.hasText(namespace) ? namespace + ":" + scopeKey : scopeKey;
     }
+
+    /**
+     * The series this document numbers from. When a configured series matches the learner,
+     * returns its config and points the context at that series' own counter
+     * ({@code SERIES_<key>} namespace, so it never touches the main counter); otherwise the
+     * config unchanged. A context that already has a namespace (proformas) is left alone.
+     * Never throws: a failed lookup keeps the main series rather than blocking the invoice.
+     */
+    static InvoiceNumberConfig selectSeries(InvoiceNumberConfig config, InvoiceNumberContext context) {
+        if (config == null || context == null || config.getSeries() == null || config.getSeries().isEmpty()
+                || StringUtils.hasText(context.getSeqNamespace()) || context.getLearnerFieldLookup() == null) {
+            return config;
+        }
+        java.util.Map<String, String> valueByField = new java.util.HashMap<>();
+        for (InvoiceNumberConfig.Series s : config.getSeries()) {
+            String value;
+            try {
+                value = valueByField.computeIfAbsent(s.getLearnerFieldId(),
+                        id -> java.util.Objects.toString(context.getLearnerFieldLookup().apply(id), ""));
+            } catch (Exception e) {
+                log.error("Could not read learner field {} for invoice series {} (institute {}); "
+                                + "using the main series.", s.getLearnerFieldId(), s.getKey(),
+                        context.getInstituteId(), e);
+                return config;
+            }
+            if (s.matches(value)) {
+                context.setSeqNamespace(SERIES_NAMESPACE_PREFIX + s.getKey());
+                return config.forSeries(s);
+            }
+        }
+        return config;
+    }
+
+    /** Counter namespace of a numbering series; distinct from the proforma one. */
+    static final String SERIES_NAMESPACE_PREFIX = "SERIES_";
 
     /**
      * Guard against a stored format that no longer validates. The settings endpoint rejects

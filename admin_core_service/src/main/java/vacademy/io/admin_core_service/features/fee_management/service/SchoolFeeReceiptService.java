@@ -136,6 +136,9 @@ public class SchoolFeeReceiptService {
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
+
     /**
      * Generate a school fee receipt PDF and send it via email.
      * This is the only public method — called from SchoolEnrollService after FIFO
@@ -199,7 +202,7 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
             String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
@@ -312,7 +315,7 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
             String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
@@ -403,7 +406,7 @@ public class SchoolFeeReceiptService {
         }
         BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
-        InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+        InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId, userId);
         String receiptNumber = receiptAllocation.number();
         String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
@@ -456,7 +459,7 @@ public class SchoolFeeReceiptService {
      * silently restarted from 1 whenever the prefix changed — and would have restarted on
      * every format change once numbering became configurable.
      */
-    private InvoiceNumberAllocation generateReceiptNumber(String instituteId) {
+    private InvoiceNumberAllocation generateReceiptNumber(String instituteId, String userId) {
         Institute institute = instituteRepository.findById(instituteId).orElse(null);
         InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
                 institute != null ? getInvoiceSettings(institute) : null);
@@ -466,11 +469,18 @@ public class SchoolFeeReceiptService {
         // without this fallback every receipt would silently be numbered "INV-…" the moment
         // this feature shipped. Falling back to the legacy RCT- shape keeps today's numbers
         // exactly and lets admins opt in by adding {{doc_type}} to their format.
-        if (!config.usesDocType()) {
+        // An institute that numbers per learner (numberingSeries, e.g. one series per branch)
+        // wants these receipts in the same series as its invoices, so its own format is kept
+        // and the learner picks the series. Everyone else gets the RCT- shape exactly as before.
+        boolean perLearnerSeries = !config.getSeries().isEmpty() && StringUtils.hasText(userId);
+        if (!config.usesDocType() && !perLearnerSeries) {
             config = config.withFormat(RECEIPT_PREFIX + "-{{YYYYMMDD}}-{{seq}}");
         }
 
         InvoiceNumberContext context = InvoiceNumberContext.builder()
+                .learnerFieldLookup(perLearnerSeries
+                        ? fieldId -> customFieldValuesRepository.findLatestValueForUser(fieldId, userId)
+                        : null)
                 .instituteId(instituteId)
                 .instituteName(institute != null ? institute.getInstituteName() : null)
                 .instituteCode(config.getInstituteCode())

@@ -89,6 +89,15 @@ public class CatalogueBlogPost {
     @Column(name = "reading_minutes")
     private Integer readingMinutes;
 
+    /** CLASSIC | SIDEBAR_TOC | MAGAZINE | FOCUS — the article layout on the learner site. */
+    @Column(name = "template", nullable = false, length = 32)
+    @Builder.Default
+    private String template = "CLASSIC";
+
+    /** JSON array of course (package) ids shown as cards under the article, in order. */
+    @Column(name = "recommended_course_ids", columnDefinition = "TEXT")
+    private String recommendedCourseIds;
+
     @Column(name = "created_by", length = 36)
     private String createdBy;
 

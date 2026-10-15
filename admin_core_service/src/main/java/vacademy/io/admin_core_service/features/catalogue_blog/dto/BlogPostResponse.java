@@ -36,6 +36,8 @@ public class BlogPostResponse {
     private String seoDescription;
     private String source;
     private Integer readingMinutes;
+    private String template;
+    private List<String> recommendedCourseIds;
     private String createdBy;
     private String updatedBy;
     private String createdAt;

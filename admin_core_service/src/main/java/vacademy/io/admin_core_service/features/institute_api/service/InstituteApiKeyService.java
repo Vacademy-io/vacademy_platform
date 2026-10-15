@@ -69,7 +69,18 @@ public class InstituteApiKeyService {
     public static final String SCOPE_WEBHOOKS_MANAGE = "webhooks:manage";
     public static final List<String> AI_CALLING_SCOPES =
             List.of(SCOPE_CALLS_READ, SCOPE_CALLS_WRITE, SCOPE_WEBHOOKS_MANAGE);
-    public static final Set<String> PRODUCTS = Set.of(PRODUCT_EVALUATION, PRODUCT_LOGIN_LINKS, PRODUCT_AI_CALLING);
+    /**
+     * Publishable keys ({@code vak_pub_…}) for the public Catalogue API
+     * ({@code /admin-core-service/open/catalog/v1}): safe in browser code, so they only read the
+     * institute's published catalogue and submit enquiries. Self-serve like ai_calling. Browser
+     * calls are further locked to the institute's verified websites (CatalogApiAuth).
+     */
+    public static final String PRODUCT_CATALOG = "catalog";
+    public static final String SCOPE_CATALOG_READ = "catalog:read";
+    public static final String SCOPE_LEADS_WRITE = "leads:write";
+    public static final List<String> CATALOG_SCOPES = List.of(SCOPE_CATALOG_READ, SCOPE_LEADS_WRITE);
+    public static final Set<String> PRODUCTS =
+            Set.of(PRODUCT_EVALUATION, PRODUCT_LOGIN_LINKS, PRODUCT_AI_CALLING, PRODUCT_CATALOG);
     public static final int MAX_ACTIVE_KEYS_PER_INSTITUTE = 50;
     public static final int MAX_NAME_LENGTH = 120;
     static final long LAST_USED_WRITE_INTERVAL_MS = 60_000L;
@@ -113,10 +124,12 @@ public class InstituteApiKeyService {
         String product = normalizeProduct(body.getProduct());
         boolean loginLinks = PRODUCT_LOGIN_LINKS.equals(product);
         boolean aiCalling = PRODUCT_AI_CALLING.equals(product);
-        boolean selfServe = loginLinks || aiCalling;
+        boolean catalog = PRODUCT_CATALOG.equals(product);
+        boolean selfServe = loginLinks || aiCalling || catalog;
         String name = normalizeName(body.getName());
         List<String> scopes = loginLinks ? List.of(SCOPE_LOGIN_LINKS_CREATE)
                 : aiCalling ? normalizeAiCallingScopes(body.getScopes())
+                : catalog ? normalizeProductScopes(body.getScopes(), CATALOG_SCOPES)
                 : normalizeScopes(body.getScopes());
         Instant now = clock.instant();
         Instant expiresAt = parseExpiry(body.getExpiresAt(), now);
@@ -142,6 +155,7 @@ public class InstituteApiKeyService {
 
         String plaintext = loginLinks ? ApiKeySecrets.newLoginLinksKey()
                 : aiCalling ? ApiKeySecrets.newAiCallingKey()
+                : catalog ? ApiKeySecrets.newCatalogKey()
                 : ApiKeySecrets.newEvaluationKey();
         InstituteApiKey key = InstituteApiKey.builder()
                 .id(UUID.randomUUID().toString())
@@ -266,7 +280,8 @@ public class InstituteApiKeyService {
         InstituteApiKey key = found.get();
         stampLastUsed(key.getId(), now, clientIp);
         if (asList(key.getProducts()).contains(PRODUCT_LOGIN_LINKS)
-                || asList(key.getProducts()).contains(PRODUCT_AI_CALLING)) {
+                || asList(key.getProducts()).contains(PRODUCT_AI_CALLING)
+                || asList(key.getProducts()).contains(PRODUCT_CATALOG)) {
             // Self-serve product: no institute_api_access row; a usable key is all it takes.
             return Optional.of(toVerifyResponse(key, null, true));
         }
@@ -340,15 +355,20 @@ public class InstituteApiKeyService {
 
     /** Blank = every AI calling scope. Anything outside {@link #AI_CALLING_SCOPES} is a 400. */
     static List<String> normalizeAiCallingScopes(List<String> raw) {
+        return normalizeProductScopes(raw, AI_CALLING_SCOPES);
+    }
+
+    /** Blank = every scope of the product. Anything outside {@code allowed} is a 400. */
+    static List<String> normalizeProductScopes(List<String> raw, List<String> allowed) {
         if (raw == null || raw.isEmpty()) {
-            return AI_CALLING_SCOPES;
+            return allowed;
         }
         List<String> out = new java.util.ArrayList<>();
         for (String s : raw) {
             String scope = s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
-            if (!AI_CALLING_SCOPES.contains(scope)) {
+            if (!allowed.contains(scope)) {
                 throw new VacademyException(HttpStatus.BAD_REQUEST,
-                        "Unknown scope: " + s + ". Allowed: " + AI_CALLING_SCOPES);
+                        "Unknown scope: " + s + ". Allowed: " + allowed);
             }
             if (!out.contains(scope)) out.add(scope);
         }

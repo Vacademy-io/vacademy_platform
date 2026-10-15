@@ -547,13 +547,34 @@ def preflight_tool_credits(
     tool_key: str,
     tool_params: dict,
     institute_id: Optional[str],
+    metering: Any = None,
+    use_case: Optional[str] = None,
+    enforce_limits: bool = True,
 ) -> dict:
     """Estimate the parametric cost + check affordability for a 402 pre-flight.
 
     Returns the estimate dict (with current_balance/balance_after/sufficient).
     `sufficient` is None when balance is unknown (no institute) — callers should
     treat None as "allow" so a missing balance never hard-blocks.
+
+    Usage limits (contract N4): when the institute has a limits policy and the
+    balance check did not fail, the limits engine is asked too; an ENFORCE
+    block raises LimitExceeded (HTTP 429 AI_USAGE_LIMIT). `metering` (a
+    MeteringContext or fields dict) names the actor; default = the HTTP request
+    in scope. `enforce_limits=False` skips the limits engine (display-only
+    estimates shown after work was already done; callers that run their own
+    limit check). No policy -> exactly today's result, no extra call.
     """
     from .tool_cost_estimator import ToolCostEstimator
 
-    return ToolCostEstimator(db).estimate_with_balance(tool_key, tool_params, institute_id)
+    result = ToolCostEstimator(db).estimate_with_balance(tool_key, tool_params, institute_id)
+    if enforce_limits and institute_id and result.get("sufficient") is not False:
+        try:
+            from .metering import limit_gate
+        except Exception:  # noqa: BLE001
+            return result
+        if limit_gate.policy_active(institute_id):
+            limit_gate.authorize(db, institute_id=institute_id, use_case=use_case, tool_key=tool_key,
+                                 ctx=metering, estimate_credits=result.get("estimated_credits"),
+                                 reserve=False)
+    return result

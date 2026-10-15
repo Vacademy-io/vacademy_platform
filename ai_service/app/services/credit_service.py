@@ -62,6 +62,37 @@ def _metering(hook: str, *args, **kwargs):
         logger.debug("metering hook %s skipped: %s", hook, exc)
         return None
 
+
+def _limits_authorize(db, institute_id, **kwargs):
+    """Usage-limit gate (metering/limit_gate.py, contract N4) for a credit check
+    that already PASSED. An institute without a limits policy (every institute
+    until one is configured) costs one in-memory set lookup and nothing else.
+    Raises LimitExceeded (HTTP 429 via the app handler) only for an ENFORCE
+    block; any limits failure is allowed (fail open)."""
+    try:
+        from .metering import limit_gate
+    except Exception:  # noqa: BLE001
+        return None
+    if not limit_gate.policy_active(institute_id):
+        return None
+    return limit_gate.authorize(db, institute_id=institute_id, **kwargs)
+
+
+def _check_request_ctx(request) -> Optional[dict]:
+    """Actor fields a CreditCheckRequest carries (None when it names no actor:
+    the gate then reads the HTTP request in scope)."""
+    try:
+        fields = {k: getattr(request, k, None) for k in (
+            "actor_kind", "actor_user_id", "actor_role_class", "actor_roles_raw", "role_source",
+            "actor_display_name", "subject_user_id", "subject_display_name", "surface", "source_service")}
+        if not fields.get("actor_user_id") and getattr(request, "user_id", None):
+            fields["actor_user_id"] = request.user_id
+            fields["actor_kind"] = fields.get("actor_kind") or "USER"
+        fields = {k: v for k, v in fields.items() if v is not None}
+        return fields or None
+    except Exception:  # noqa: BLE001
+        return None
+
 # ============================================================================
 # Constants
 # ============================================================================
@@ -701,6 +732,8 @@ class CreditService:
         ai_video_enabled: bool = False,
         partial_run_factor: float = 1.0,
         estimate_params: Optional[Dict[str, Any]] = None,
+        use_case: Optional[str] = None,
+        metering: Any = None,
     ) -> CreditCheckResponse:
         """Pre-flight credit check for the video pipeline.
 
@@ -728,6 +761,9 @@ class CreditService:
         - `partial_run_factor`: 1.0 for fresh generation; 0.5 for resume/retry
           where most shots are already cached. Lets the same gate apply at
           all three router entry points without over-rejecting partial runs.
+        - `use_case` / `metering`: optional usage-limit attribution (default:
+          the 'video' request type -> lesson_video, actor from the HTTP
+          request in scope). Only read when the institute has a limits policy.
         """
         balance = self.get_balance(institute_id)
         if not balance:
@@ -804,16 +840,29 @@ class CreditService:
                 f"the real cost is charged stage by stage as the video is made."
             )
 
-        return CreditCheckResponse(
+        response = CreditCheckResponse(
             has_sufficient_credits=has_sufficient,
             current_balance=current,
             estimated_cost=estimated_cost,
             balance_after=balance_after,
             message=message,
         )
+        if has_sufficient:
+            # Usage limits after today's check, estimate-only (no reservation:
+            # the run is charged stage by stage and the counters follow those
+            # charges). No policy -> nothing happens here.
+            _limits_authorize(self.db, institute_id, use_case=use_case, request_type="video",
+                              ctx=metering, estimate_credits=estimated_cost, reserve=False)
+        return response
 
-    def check_credits(self, request: CreditCheckRequest) -> CreditCheckResponse:
-        """Check if institute has sufficient credits for an operation."""
+    def check_credits(self, request: CreditCheckRequest, *, trust_actor_fields: bool = True) -> CreditCheckResponse:
+        """Check if institute has sufficient credits for an operation.
+
+        `trust_actor_fields=False` (a JWT caller of POST /credits/v1/check): the
+        actor fields in the body are ignored by the usage-limit gate, which then
+        reads the verified user and roles of the HTTP request instead. Only a
+        caller holding the internal service token may name another actor.
+        Today's credit answer is the same either way."""
         # Get current balance
         balance = self.get_balance(request.institute_id)
         
@@ -838,13 +887,21 @@ class CreditService:
         else:
             message = f"Insufficient credits. Need {estimated_cost}, have {balance.current_balance}"
         
-        return CreditCheckResponse(
+        response = CreditCheckResponse(
             has_sufficient_credits=has_sufficient,
             current_balance=balance.current_balance,
             estimated_cost=estimated_cost,
             balance_after=balance_after,
             message=message,
         )
+        if has_sufficient:
+            # Usage limits after today's check (an insufficient balance stays
+            # today's 402). No policy -> nothing happens here.
+            _limits_authorize(self.db, request.institute_id, use_case=getattr(request, "use_case", None),
+                              tool_key=getattr(request, "tool_key", None), request_type=request.request_type,
+                              ctx=_check_request_ctx(request) if trust_actor_fields else None,
+                              estimate_credits=estimated_cost)
+        return response
 
     # ========================================================================
     # Credit Deduction

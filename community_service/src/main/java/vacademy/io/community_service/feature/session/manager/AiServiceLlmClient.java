@@ -34,7 +34,11 @@ import java.util.Map;
  *
  * <p>{@link UnavailableException} means no model ran (token unset, endpoint not deployed
  * yet, token refused, connection failed); {@link CompletionException} means ai_service
- * answered with a failure.
+ * answered with a failure; {@link PolicyRefusalException} means ai_service refused the work
+ * on purpose (429 {@code AI_USAGE_LIMIT}, or 402 {@code PLAN_MODEL_NOT_INCLUDED}). No model
+ * ran, and the caller must NOT re-run the work on its direct OpenRouter fallback: that would
+ * do refused work unbilled. It is neither of the other two types, so a catch for them never
+ * swallows it.
  */
 @Service
 public class AiServiceLlmClient {
@@ -91,6 +95,42 @@ public class AiServiceLlmClient {
             super(message, cause);
         }
     }
+
+    /**
+     * ai_service refused the work by policy (usage limit or plan). Terminal: never fall back
+     * to another provider and never retry. {@link #getMessage()} is the user-facing sentence.
+     */
+    public static class PolicyRefusalException extends RuntimeException {
+        private final int httpStatus;
+        private final String code;
+        private final Map<String, Object> body;
+
+        public PolicyRefusalException(int httpStatus, String code, String message, Map<String, Object> body) {
+            super(message);
+            this.httpStatus = httpStatus;
+            this.code = code;
+            this.body = body == null ? Map.of() : body;
+        }
+
+        public int getHttpStatus() {
+            return httpStatus;
+        }
+
+        /** AI_USAGE_LIMIT or PLAN_MODEL_NOT_INCLUDED. */
+        public String getCode() {
+            return code;
+        }
+
+        /** The refusal body as ai_service sent it (use_case, scope, period, limit, used, resets_at ...). */
+        public Map<String, Object> getBody() {
+            return body;
+        }
+    }
+
+    public static final String CODE_AI_USAGE_LIMIT = "AI_USAGE_LIMIT";
+    public static final String CODE_PLAN_MODEL_NOT_INCLUDED = "PLAN_MODEL_NOT_INCLUDED";
+    static final String DEFAULT_REFUSAL_MESSAGE =
+            "You've reached the AI usage limit set for this feature. Please try again later.";
 
     public boolean isConfigured() {
         return internalToken != null && !internalToken.isBlank();
@@ -159,6 +199,12 @@ public class AiServiceLlmClient {
     private RuntimeException classify(String useCase, RestClientResponseException e) {
         HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
         String body = e.getResponseBodyAsString();
+        PolicyRefusalException refusal = policyRefusal(e.getStatusCode().value(), body, objectMapper);
+        if (refusal != null) {
+            log.info("[ai-llm] ai_service refused {} by policy ({} {}): {}", useCase,
+                    refusal.getHttpStatus(), refusal.getCode(), refusal.getMessage());
+            return refusal;
+        }
         if (status == HttpStatus.NOT_FOUND || status == HttpStatus.METHOD_NOT_ALLOWED) {
             log.warn("[ai-llm] {} not available on ai_service ({}); using the legacy path", PATH, status);
             return new UnavailableException("ai_service has no " + PATH + " (" + status.value() + ")");
@@ -176,5 +222,38 @@ public class AiServiceLlmClient {
         String shortBody = body == null ? "" : (body.length() <= 300 ? body : body.substring(0, 300) + "…");
         return new CompletionException("ai_service " + useCase + " completion failed: HTTP "
                 + e.getStatusCode().value() + " " + shortBody, e);
+    }
+
+    /**
+     * The policy refusal in an error response, or null. Only 429 + {@code AI_USAGE_LIMIT} and
+     * 402 + {@code PLAN_MODEL_NOT_INCLUDED} count; the code is read from the top-level
+     * {@code error} or from FastAPI's {@code detail} wrapper. Package-private for tests.
+     */
+    @SuppressWarnings("unchecked")
+    static PolicyRefusalException policyRefusal(int status, String errorBody, ObjectMapper mapper) {
+        if ((status != 429 && status != 402) || errorBody == null || errorBody.isBlank()) {
+            return null;
+        }
+        Map<String, Object> root;
+        try {
+            Object parsed = mapper.readValue(errorBody, Object.class);
+            if (!(parsed instanceof Map<?, ?> m)) return null;
+            root = (Map<String, Object>) m;
+        } catch (Exception ex) {
+            return null;
+        }
+        Map<String, Object> refusal = root;
+        if (!(root.get("error") instanceof String) && root.get("detail") instanceof Map<?, ?> d) {
+            refusal = (Map<String, Object>) d;
+        }
+        Object code = refusal.get("error");
+        boolean limit = status == 429 && CODE_AI_USAGE_LIMIT.equals(code);
+        boolean plan = status == 402 && CODE_PLAN_MODEL_NOT_INCLUDED.equals(code);
+        if (!limit && !plan) {
+            return null;
+        }
+        Object m = refusal.get("message");
+        String message = m instanceof String s && !s.isBlank() ? s.trim() : DEFAULT_REFUSAL_MESSAGE;
+        return new PolicyRefusalException(status, (String) code, message, refusal);
     }
 }

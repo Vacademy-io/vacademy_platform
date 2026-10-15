@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AI_SERVICE_URL } from '@/constants/urls';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { parseAiUsageLimitBody, type AiUsageLimitBody } from '@/lib/ai-usage-limit';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -19,6 +20,8 @@ interface VoiceWebSocketCallbacks {
   onAudioEnd?: (reason: string, detail?: string) => void;
   onSummary?: (data: unknown) => void;
   onError?: (message: string) => void;
+  /** An AI usage limit stopped the call (`{type:'usage_limit', …}` — the HTTP 429 body). */
+  onUsageLimit?: (body: AiUsageLimitBody) => void;
   onReady?: () => void;
 }
 
@@ -147,6 +150,12 @@ export function useVoiceWebSocket(
         case 'error':
           cb.onError?.(data.message ?? data.error ?? 'Unknown error');
           break;
+        case 'usage_limit': {
+          const body = parseAiUsageLimitBody(data) ?? { ...data, error: 'AI_USAGE_LIMIT' as const };
+          if (cb.onUsageLimit) cb.onUsageLimit(body as AiUsageLimitBody);
+          else cb.onError?.(body.message ?? 'AI usage limit reached');
+          break;
+        }
         case 'ready':
           // Flush any messages that were queued before the connection was ready
           pendingMessagesRef.current.forEach(msg => {

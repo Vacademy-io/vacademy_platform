@@ -27,6 +27,7 @@ import {
     Student,
     Books,
     Article,
+    Gauge,
 } from '@phosphor-icons/react';
 import {
     SettingsPageShell,
@@ -34,6 +35,8 @@ import {
     type SettingsSectionGroup,
 } from '@/components/settings/shell';
 import { AiUsageSection } from './ai-usage/AiUsageSection';
+import { AiLimitsSection } from './ai-limits/AiLimitsSection';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     AI_SERVICE_BASE_URL,
@@ -125,7 +128,21 @@ import { StudentAiSettingsSection } from './StudentAiSettingsSection';
 import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 import { noAutofillProps } from '@/lib/no-autofill';
 
-const getAiSettingsSections = (t: (key: string) => string): SettingsSectionGroup[] => [
+const LIMITS_SECTION_ID = 'grp-limits';
+
+/** `?aiSection=grp-limits` deep-links a tab (the usage-limit modal links here). */
+const readAiSectionParam = (): string | undefined => {
+    try {
+        return new URLSearchParams(window.location.search).get('aiSection') ?? undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+const getAiSettingsSections = (
+    t: (key: string) => string,
+    showLimits: boolean
+): SettingsSectionGroup[] => [
     {
         sections: [
             { id: 'grp-providers', label: t('sections.providers'), icon: Sparkle },
@@ -136,13 +153,20 @@ const getAiSettingsSections = (t: (key: string) => string): SettingsSectionGroup
             { id: 'grp-prompt', label: t('sections.coursePrompt'), icon: Article },
             { id: 'grp-video', label: t('sections.video'), icon: FilmStrip },
             { id: 'grp-usage', label: t('sections.usage'), icon: ChartLineUp },
+            // Usage limits are admin-only (the API re-checks the role).
+            ...(showLimits
+                ? [{ id: LIMITS_SECTION_ID, label: t('sections.limits'), icon: Gauge }]
+                : []),
         ],
     },
 ];
 
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const { t } = useTranslation(['settingsAi', 'videoApiStudioVideoStyleBranding']);
-    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t);
+    const instituteIdForLimits = getInstituteId();
+    const showLimits = isAdminForInstitute(instituteIdForLimits);
+    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t, showLimits);
+    const [initialSection] = useState(readAiSectionParam);
     const watermarkPositions = buildWatermarkPositions(t);
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
@@ -592,7 +616,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             description={t('page.description')}
             maxWidth="max-w-7xl"
         >
-            <SettingsSectionsLayout groups={AI_SETTINGS_SECTIONS}>
+            <SettingsSectionsLayout groups={AI_SETTINGS_SECTIONS} defaultActiveId={initialSection}>
                 <section id="grp-providers" className="space-y-6">
                     {/* AI Configuration Card */}
                     <Card className="border-indigo-100 shadow-sm">
@@ -2021,6 +2045,12 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 <section id="grp-usage" className="space-y-6">
                     <AiUsageSection />
                 </section>
+
+                {showLimits && (
+                    <section id={LIMITS_SECTION_ID} className="space-y-6">
+                        <AiLimitsSection />
+                    </section>
+                )}
             </SettingsSectionsLayout>
 
             {/* API Keys Info Dialog */}

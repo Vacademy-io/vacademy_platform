@@ -88,6 +88,19 @@ def _msg_event(msg) -> dict:
     }
 
 
+def _usage_limit_body(exc: BaseException) -> Optional[dict]:
+    """The N3 body when `exc` is an AI usage-limit block, else None."""
+    try:
+        from .metering.limit_gate import is_limit_exceeded
+
+        if is_limit_exceeded(exc):
+            body = getattr(exc, "body", None)
+            return body if isinstance(body, dict) else {}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _error_event(code: int, message: str) -> dict:
     return {"event": "error", "data": {"type": "ERROR", "code": code, "message": message}}
 
@@ -393,6 +406,11 @@ class AssistantAgentService:
                 )
                 has_credits = check.has_sufficient_credits
             except Exception as e:
+                usage_limit = _usage_limit_body(e)
+                if usage_limit is not None:
+                    # An AI usage limit (contract N3), not a broken gate.
+                    yield _error_event(429, str(usage_limit.get("message") or "AI usage limit reached."))
+                    return
                 # Fail-open on a check error (the per-turn deduction still runs),
                 # but log loudly — a broken gate must be visible.
                 logger.warning("Assistant pre-flight credit check failed (allowing turn): %s", e)

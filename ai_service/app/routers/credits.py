@@ -277,7 +277,11 @@ def check_credits(
     _require_user_or_internal(
         current_user, x_internal_service_token, request.institute_id, authorization
     )
-    return service.check_credits(request)
+    # Usage limits: only our own services (internal token) may name the actor
+    # in the body; a signed-in caller is limited as themselves (JWT), so a
+    # member cannot read another user's limit verdict / usage or pose as SYSTEM.
+    return service.check_credits(
+        request, trust_actor_fields=_internal_token_matches(x_internal_service_token))
 
 
 @router.post(

@@ -169,6 +169,52 @@ def _record_usage(db: Session, body: InternalCompletionRequest, result,
         logger.warning("internal llm: usage record failed for %s: %s", body.use_case, exc)
 
 
+def _limit_ctx(body: InternalCompletionRequest) -> Dict[str, Any]:
+    """Actor fields of an internal call for the usage-limits check: the named
+    user when the caller sent one, else a SYSTEM actor (d_credits §4.2 rule 6)."""
+    ctx: Dict[str, Any] = {
+        "actor_kind": body.actor_kind or ("USER" if body.user_id else "SYSTEM"),
+        "actor_user_id": body.user_id,
+        "actor_role_class": body.actor_role_class or (None if body.user_id else "SYSTEM"),
+        "actor_roles_raw": body.actor_roles_raw,
+        "role_source": "CALLER",
+        "subject_user_id": body.subject_user_id,
+        "surface": body.surface or "INTERNAL",
+        "source_service": body.source_service,
+    }
+    return {k: v for k, v in ctx.items() if v is not None}
+
+
+def _limits_apply(institute_id: Optional[str]) -> bool:
+    """In-memory only: does the institute have a limits policy?"""
+    try:
+        from ..services.metering import limit_gate
+
+        return limit_gate.policy_active(institute_id)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _authorize_complete(db: Session, body: InternalCompletionRequest) -> None:
+    """Usage limits for an internal completion (contract N4): only when the
+    caller named the institute and that institute has a limits policy (an
+    in-memory lookup; otherwise nothing at all happens). An ENFORCE block
+    raises LimitExceeded -> HTTP 429 {"error": "AI_USAGE_LIMIT", ...}, which
+    the Java clients treat as terminal (no direct-OpenRouter fallback)."""
+    if not body.institute_id:
+        return
+    try:
+        from ..services.metering import limit_gate
+    except Exception:  # noqa: BLE001
+        return
+    if not limit_gate.policy_active(body.institute_id):
+        return
+    use_case = _CATALOG_USE_CASE.get(body.use_case, body.use_case) or None
+    rt = _REQUEST_TYPES.get(body.use_case, RequestType.CONVERSATION)
+    limit_gate.authorize(db, institute_id=body.institute_id, use_case=use_case,
+                         request_type=getattr(rt, "value", str(rt)), ctx=_limit_ctx(body))
+
+
 @router.post("/complete", response_model=InternalCompletionResponse,
              summary="Chat completion for a use case (service-to-service; no credit charge)")
 async def internal_complete(
@@ -180,6 +226,11 @@ async def internal_complete(
         raise HTTPException(status_code=422, detail=f"Unknown chat use case '{body.use_case}'")
 
     from ..services.llm_router import ChainExhausted, chat_with_chain
+
+    if body.institute_id and _limits_apply(body.institute_id):
+        import asyncio
+
+        await asyncio.to_thread(_authorize_complete, db, body)
 
     payload: Dict[str, Any] = {"messages": [m.model_dump() for m in body.messages]}
     if body.max_tokens is not None:
@@ -211,6 +262,52 @@ _BRIDGE_DROPPED_KEYS = ("stream", "stream_options")
 _BRIDGE_TIMEOUT_SECONDS = 600.0
 
 
+def _bridge_limits_apply(meta: Dict[str, Any]) -> bool:
+    """In-memory only: does this bridge call name an institute with a limits policy?"""
+    if not meta.get("institute_id") or not meta.get("use_case"):
+        return False
+    try:
+        from ..services.metering import limit_gate
+
+        return limit_gate.policy_active(str(meta["institute_id"]))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _observe_bridge_limits(meta: Dict[str, Any]) -> None:
+    """Usage limits on the raw bridge: OBSERVE ONLY (warning header, a
+    would-block log line), never a refusal. admin_core's LlmGatewayRouter
+    treats a 4xx/429 from this bridge as a gateway failure: it cools the
+    Anthropic gateway down for every institute (120 s) and re-runs the call on
+    OpenRouter or the next model, so a refusal here would cost more and stop
+    nothing. admin_core enforces limits itself before the call (its
+    CreditClient.authorize, contract N6). No institute / use case / policy ->
+    nothing at all happens."""
+    institute_id, use_case = meta.get("institute_id"), meta.get("use_case")
+    if not institute_id or not use_case:
+        return
+    try:
+        from ..services.metering import limit_gate
+
+        if not limit_gate.policy_active(str(institute_id)):
+            return
+        from ..db import db_session
+
+        ctx = {"actor_kind": "USER" if meta.get("user_id") else "SYSTEM",
+               "actor_user_id": str(meta["user_id"]) if meta.get("user_id") else None,
+               "actor_role_class": None if meta.get("user_id") else "SYSTEM",
+               "role_source": "CALLER", "surface": "INTERNAL", "source_service": "admin_core"}
+        with db_session() as db:
+            decision = limit_gate.authorize(db, institute_id=str(institute_id), use_case=str(use_case),
+                                            ctx={k: v for k, v in ctx.items() if v is not None},
+                                            enforce=False)
+        if decision and decision.get("decision") in ("BLOCK", "WOULD_BLOCK"):
+            logger.info("internal llm bridge: %s for %s / %s (observe only; the caller enforces)",
+                        decision.get("decision"), institute_id, use_case)
+    except Exception as exc:  # noqa: BLE001 - limits never fail a bridge call
+        logger.debug("internal llm bridge: limits observe skipped: %s", exc)
+
+
 def _bridge_error(status: int, message: str, err_type: str = "bridge_error") -> JSONResponse:
     return JSONResponse(status_code=status,
                         content={"error": {"message": message, "type": err_type, "code": status}})
@@ -234,6 +331,10 @@ async def bridge_chat_completions(body: Dict[str, Any] = Body(...)):
     payload = {k: v for k, v in body.items()
                if k not in _BRIDGE_METADATA_KEYS and k not in _BRIDGE_DROPPED_KEYS}
     payload["model"] = model.strip()
+    if _bridge_limits_apply(meta):
+        import asyncio
+
+        await asyncio.to_thread(_observe_bridge_limits, meta)
 
     try:
         async with httpx.AsyncClient(timeout=_BRIDGE_TIMEOUT_SECONDS) as client:

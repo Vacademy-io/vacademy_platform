@@ -294,6 +294,9 @@ async def build_or_refine_blueprint(
         db, tool_key="kb_paper_questions",
         tool_params={"num_questions": blueprint.total_questions},
         institute_id=resolved,
+        # Display only, after the blueprint was made and billed: a usage limit
+        # must not throw that work away (generate checks the limit itself).
+        enforce_limits=False,
     )
     return {"blueprint": blueprint.to_dict(), "generation_estimate": estimate}
 

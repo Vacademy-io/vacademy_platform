@@ -33,6 +33,9 @@ from .routers.internal_llm import router as internal_llm_router
 from .routers.llm_keys_admin import router as llm_keys_admin_router
 from .routers.credits_v2 import router as credits_v2_router
 from .routers.metering_admin import router as metering_admin_router
+from .routers.credits_limits import router as credits_limits_router
+from .routers.metering_limits_admin import router as metering_limits_admin_router
+from .routers.metering_internal import router as metering_internal_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
@@ -277,6 +280,17 @@ def create_app() -> FastAPI:
         expose_headers=["Server-Timing", "Mcp-Session-Id", "Mcp-Protocol-Version"],
     )
 
+    # AI usage limits (services/metering/limit_gate.py): LimitExceeded -> HTTP 429
+    # {"error": "AI_USAGE_LIMIT", ...} + Retry-After, and the soft-limit header
+    # X-AI-Usage-Warning. The middleware sits OUTSIDE CORS so it can expose its
+    # headers; it passes every response through untouched unless a limits gate
+    # of that request produced a warning or a 429 (only institutes with a limits
+    # policy ever do), and installs nothing at all while no institute has one.
+    from .services.metering import limit_gate as _limit_gate
+    for _exc_type in _limit_gate.limit_exceeded_types():
+        app.add_exception_handler(_exc_type, _limit_gate.limit_exceeded_handler)
+    app.add_middleware(_limit_gate.LimitHeadersMiddleware)
+
     # Outermost middleware: stamps how long we took, so the browser can subtract it
     # and attribute the rest of the round trip to the network.
     app.add_middleware(ServerTimingMiddleware)
@@ -315,6 +329,11 @@ def create_app() -> FastAPI:
     # AI usage metering: tenant History/Analytics v2 reads + super-admin catalog/role map/parity
     app.include_router(credits_v2_router, prefix=settings.api_base_path)
     app.include_router(metering_admin_router, prefix=settings.api_base_path)
+    # AI usage limits: tenant admin (/credits/v2/institutes/{id}/limits) + super admin (/super-admin/v1/metering/limits)
+    app.include_router(credits_limits_router, prefix=settings.api_base_path)
+    app.include_router(metering_limits_admin_router, prefix=settings.api_base_path)
+    # AI usage limits, service-to-service: /internal/metering/v1/authorize + counters/rebuild
+    app.include_router(metering_internal_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

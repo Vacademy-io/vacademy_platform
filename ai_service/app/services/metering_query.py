@@ -861,3 +861,441 @@ def iter_export_csv(
         after = (last.get("occurred_at"), str(last.get("id")))
         if len(rows) < want:
             break
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Usage limits (V587: institute_ai_limits_policy, ai_usage_limit,
+# ai_usage_counter) — SQL behind /credits/v2/institutes/{id}/limits/** and
+# /super-admin/v1/metering/limits/**. Same rules as above: parameterised SQL,
+# the institute always in the WHERE, interpolated fragments from fixed
+# whitelists only. Evaluation (effective limits, preview, authorize) lives in
+# services/metering/limits.py; this is only storage + labels.
+# ════════════════════════════════════════════════════════════════════════════
+
+POLICY_TABLE_NAME = "institute_ai_limits_policy"
+LIMIT_TABLE_NAME = "ai_usage_limit"
+COUNTER_TABLE_NAME = "ai_usage_counter"
+
+LIMIT_MODES = ("OFF", "SHADOW", "ENFORCE")
+LIMIT_SUBJECT_KINDS = ("INSTITUTE", "ROLE_CLASS", "ROLE", "USER")
+LIMIT_SCOPE_KINDS = ("ALL", "GROUP", "USE_CASE")
+LIMIT_PERIODS = ("DAY", "WEEK", "MONTH")          # PLAN_PERIOD is reserved until AI plans ship
+LIMIT_METRICS = ("CREDITS", "COUNT", "COST_USD")
+LIMIT_ORIGINS = ("TENANT", "PLATFORM")
+DEFAULT_LIMITS_TZ = "Asia/Kolkata"
+#: NUMERIC(14,4): the largest storable limit.
+LIMIT_MAX_VALUE = 9_999_999_999.0
+#: Role classes a limit may name besides the ones the role map produces
+#: (SYSTEM: scheduled jobs / learner analytics, d_credits §4.2 rule 6).
+EXTRA_LIMIT_ROLE_CLASSES = ("SYSTEM",)
+
+_LIMIT_COLUMNS = (
+    "id, institute_id, subject_kind, subject_value, per_member, scope_kind, scope_value, period, "
+    "metric, soft_limit, hard_limit, origin, locked, effective_from, effective_to, is_active, reason, "
+    "created_by, created_at, updated_by, updated_at"
+)
+_POLICY_COLUMNS = (
+    "institute_id, mode, tenant_may_enforce, timezone, notify_admins_on_soft, "
+    "show_numbers_to_learners, updated_by, updated_at, reason"
+)
+
+_limits_tables_cache: Dict[str, Any] = {"at": None, "ready": False}
+
+
+def default_policy(institute_id: Optional[str] = None) -> Dict[str, Any]:
+    """What an institute without a policy row has: limits OFF (today)."""
+    return {"institute_id": institute_id, "mode": "OFF", "tenant_may_enforce": False,
+            "timezone": DEFAULT_LIMITS_TZ, "notify_admins_on_soft": True,
+            "show_numbers_to_learners": False, "updated_by": None, "updated_at": None,
+            "reason": None, "exists": False}
+
+
+def policy_item(row: Optional[Dict[str, Any]], institute_id: Optional[str] = None) -> Dict[str, Any]:
+    if not row:
+        return default_policy(institute_id)
+    out = _jsonable(dict(row))
+    out["mode"] = str(out.get("mode") or "OFF").upper()
+    out["timezone"] = out.get("timezone") or DEFAULT_LIMITS_TZ
+    for k, d in (("tenant_may_enforce", False), ("notify_admins_on_soft", True),
+                 ("show_numbers_to_learners", False)):
+        out[k] = bool(out[k]) if out.get(k) is not None else d
+    out["exists"] = True
+    return out
+
+
+def role_label(role_name: Optional[str]) -> str:
+    """'CONTENT_CREATOR' -> 'Content creator'."""
+    s = str(role_name or "").strip().replace("_", " ").strip()
+    return s[:1].upper() + s[1:].lower() if s else "Unknown role"
+
+
+def limit_subject_label(row: Dict[str, Any], names: Optional[Dict[str, str]] = None) -> str:
+    kind = str(row.get("subject_kind") or "").upper()
+    value = row.get("subject_value")
+    pooled = row.get("per_member") is False
+    if kind == "INSTITUTE":
+        return "Whole institute"
+    if kind == "ROLE_CLASS":
+        base = ROLE_CLASS_LABELS.get(str(value or "").upper(), role_label(value))
+        return f"All {base.lower()}s together" if pooled else f"Each {base.lower()}"
+    if kind == "ROLE":
+        base = role_label(value)
+        return f"{base} role, together" if pooled else f"Each {base.lower()}"
+    if kind == "USER":
+        return (names or {}).get(str(value)) or str(value or "Unknown user")
+    return str(value or kind or "")
+
+
+def limit_scope_label(row: Dict[str, Any], catalog: Optional[Dict[str, dict]] = None) -> str:
+    kind = str(row.get("scope_kind") or "").upper()
+    value = row.get("scope_value")
+    if kind == "ALL":
+        return "All AI features"
+    if kind == "GROUP":
+        return FEATURE_GROUP_LABELS.get(str(value or ""), role_label(value))
+    if kind == "USE_CASE":
+        c = (catalog or {}).get(str(value or ""))
+        return (c or {}).get("label") or str(value or "")
+    return str(value or kind or "")
+
+
+def limit_row_item(row: Dict[str, Any], catalog: Optional[Dict[str, dict]] = None,
+                   names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """The Row shape of the limits API (contract N5)."""
+    r = _jsonable(dict(row))
+    return {
+        "id": str(r.get("id")) if r.get("id") is not None else None,
+        "subject_kind": r.get("subject_kind"),
+        "subject_value": r.get("subject_value"),
+        "subject_label": limit_subject_label(row, names),
+        "per_member": bool(r.get("per_member")) if r.get("per_member") is not None else True,
+        "scope_kind": r.get("scope_kind"),
+        "scope_value": r.get("scope_value"),
+        "scope_label": limit_scope_label(row, catalog),
+        "period": r.get("period"),
+        "metric": r.get("metric"),
+        "soft_limit": r.get("soft_limit"),
+        "hard_limit": r.get("hard_limit"),
+        "origin": r.get("origin"),
+        "locked": bool(r.get("locked")),
+        "is_active": bool(r.get("is_active")) and r.get("effective_to") is None,
+        "reason": r.get("reason"),
+        "created_by": r.get("created_by"),
+        "created_at": r.get("created_at"),
+        "updated_at": r.get("updated_at"),
+    }
+
+
+def limits_window_bounds(period: str, tz_name: Optional[str],
+                         now: Optional[datetime] = None) -> Tuple[datetime, datetime]:
+    """(start, end) as UTC instants of the current DAY / WEEK (ISO, Monday) /
+    MONTH window, boundaries at local midnight in the policy timezone. The
+    limits engine's own window_bounds when it is there, so the read API and
+    the counters can never disagree."""
+    at = now or datetime.now(timezone.utc)
+    try:
+        from .metering import limits as engine  # type: ignore
+        return engine.window_bounds(period, at, tz_name)
+    except Exception:  # noqa: BLE001 - engine missing: same rule computed here
+        pass
+    from zoneinfo import ZoneInfo
+    try:
+        tz = ZoneInfo(tz_name or DEFAULT_LIMITS_TZ)
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo(DEFAULT_LIMITS_TZ)
+    day = at.astimezone(tz).date()
+    if period == "WEEK":
+        day = day - timedelta(days=day.weekday())
+        end = day + timedelta(days=7)
+    elif period == "MONTH":
+        day = day.replace(day=1)
+        end = date(day.year + (day.month == 12), 1 if day.month == 12 else day.month + 1, 1)
+    else:
+        end = day + timedelta(days=1)
+    return (datetime.combine(day, dtime.min, tzinfo=tz).astimezone(timezone.utc),
+            datetime.combine(end, dtime.min, tzinfo=tz).astimezone(timezone.utc))
+
+
+def limits_window_start(period: str, tz_name: Optional[str], now: Optional[datetime] = None) -> datetime:
+    return limits_window_bounds(period, tz_name, now)[0]
+
+
+def local_iso(at_utc: datetime, tz_name: Optional[str]) -> str:
+    """ISO with the policy timezone's offset (e.g. +05:30), like the 429 body."""
+    from zoneinfo import ZoneInfo
+    try:
+        tz = ZoneInfo(tz_name or DEFAULT_LIMITS_TZ)
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo(DEFAULT_LIMITS_TZ)
+    return at_utc.astimezone(tz).isoformat()
+
+
+def parse_counter_key(key: str) -> Dict[str, Optional[str]]:
+    """'U:<uid>|UC:tutor_chat' -> subject / scope parts (the d_credits §4.1
+    key format: subject 'I' | 'RC:<class>' | 'R:<role>' | 'U:<uid>', then
+    scope 'ALL' | 'G:<group>' | 'UC:<use_case>'). Unknown shapes come back
+    with kind None and the raw text as the value."""
+    subject, _, scope = str(key or "").partition("|")
+    out: Dict[str, Optional[str]] = {"subject_kind": None, "subject_value": subject or None,
+                                     "scope_kind": None, "scope_value": scope or None}
+    if subject == "I":
+        out.update(subject_kind="INSTITUTE", subject_value=None)
+    else:
+        head, sep, rest = subject.partition(":")
+        kind = {"RC": "ROLE_CLASS", "R": "ROLE", "U": "USER"}.get(head) if sep else None
+        if kind:
+            out.update(subject_kind=kind, subject_value=rest)
+    if scope == "ALL":
+        out.update(scope_kind="ALL", scope_value=None)
+    else:
+        head, sep, rest = scope.partition(":")
+        kind = {"G": "GROUP", "UC": "USE_CASE"}.get(head) if sep else None
+        if kind:
+            out.update(scope_kind=kind, scope_value=rest)
+    return out
+
+
+def counter_label(key: str, catalog: Optional[Dict[str, dict]] = None,
+                  names: Optional[Dict[str, str]] = None) -> str:
+    p = parse_counter_key(key)
+    if p["subject_kind"] is None or p["scope_kind"] is None:
+        return str(key)
+    subj = dict(p, per_member=False)
+    who = limit_subject_label(subj, names)
+    if p["subject_kind"] == "USER":
+        who = (names or {}).get(str(p["subject_value"])) or str(p["subject_value"])
+    elif p["subject_kind"] in ("ROLE_CLASS", "ROLE"):
+        who = (ROLE_CLASS_LABELS.get(str(p["subject_value"]).upper()) if p["subject_kind"] == "ROLE_CLASS"
+               else role_label(p["subject_value"]))
+    return f"{who} · {limit_scope_label(p, catalog)}"
+
+
+class LimitsQuery:
+    """Storage for the limits API. One per request (holds the session). The
+    caller commits."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    # -- readiness --
+
+    def tables_ready(self) -> bool:
+        now = time.monotonic()
+        at = _limits_tables_cache["at"]
+        if at is not None and now - at < _TABLES_TTL:
+            return bool(_limits_tables_cache["ready"])
+        try:
+            ready = bool(self.db.execute(text(
+                "SELECT to_regclass(:p) IS NOT NULL AND to_regclass(:l) IS NOT NULL "
+                "AND to_regclass(:c) IS NOT NULL"
+            ), {"p": POLICY_TABLE_NAME, "l": LIMIT_TABLE_NAME, "c": COUNTER_TABLE_NAME}).scalar())
+        except Exception:  # noqa: BLE001
+            logger.warning("could not check for %s", LIMIT_TABLE_NAME, exc_info=True)
+            try:
+                self.db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            ready = False
+        _limits_tables_cache.update(at=now, ready=ready)
+        return ready
+
+    # -- policy --
+
+    def policy_row(self, institute_id: str, *, for_update: bool = False) -> Optional[Dict[str, Any]]:
+        sql = f"SELECT {_POLICY_COLUMNS} FROM {POLICY_TABLE_NAME} WHERE institute_id = :i"
+        if for_update:
+            sql += " FOR UPDATE"
+        row = self.db.execute(text(sql), {"i": institute_id}).fetchone()
+        return _row_dict(row) if row else None
+
+    def save_policy(self, institute_id: str, values: Dict[str, Any], actor: Optional[str],
+                    reason: str) -> Dict[str, Any]:
+        """Insert or replace the institute's policy row with `values` (every
+        column; the caller merged them over the old row / the defaults)."""
+        row = self.db.execute(text(
+            f"INSERT INTO {POLICY_TABLE_NAME} (institute_id, mode, tenant_may_enforce, timezone, "
+            "notify_admins_on_soft, show_numbers_to_learners, updated_by, updated_at, reason) "
+            "VALUES (:i, :mode, :tme, :tz, :notify, :show, :actor, now(), :reason) "
+            "ON CONFLICT (institute_id) DO UPDATE SET mode = EXCLUDED.mode, "
+            "tenant_may_enforce = EXCLUDED.tenant_may_enforce, timezone = EXCLUDED.timezone, "
+            "notify_admins_on_soft = EXCLUDED.notify_admins_on_soft, "
+            "show_numbers_to_learners = EXCLUDED.show_numbers_to_learners, "
+            "updated_by = EXCLUDED.updated_by, updated_at = now(), reason = EXCLUDED.reason "
+            f"RETURNING {_POLICY_COLUMNS}"
+        ), {"i": institute_id, "mode": values["mode"], "tme": bool(values["tenant_may_enforce"]),
+            "tz": values["timezone"], "notify": bool(values["notify_admins_on_soft"]),
+            "show": bool(values["show_numbers_to_learners"]), "actor": actor, "reason": reason}).fetchone()
+        return _row_dict(row)
+
+    # -- rows --
+
+    def list_rows(self, institute_id: str, *, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        where = "institute_id = :i"
+        if not include_inactive:
+            where += " AND is_active AND effective_to IS NULL"
+        rows = self.db.execute(text(
+            f"SELECT {_LIMIT_COLUMNS} FROM {LIMIT_TABLE_NAME} WHERE {where} "
+            "ORDER BY origin DESC, subject_kind, subject_value NULLS FIRST, scope_kind, "
+            "scope_value NULLS FIRST, period, metric, created_at"
+        ), {"i": institute_id}).fetchall()
+        return [_row_dict(r) for r in rows]
+
+    def get_row(self, institute_id: str, row_id: str, *, for_update: bool = False) -> Optional[Dict[str, Any]]:
+        sql = (f"SELECT {_LIMIT_COLUMNS} FROM {LIMIT_TABLE_NAME} "
+               "WHERE institute_id = :i AND id = CAST(:id AS uuid)")
+        if for_update:
+            sql += " FOR UPDATE"
+        row = self.db.execute(text(sql), {"i": institute_id, "id": row_id}).fetchone()
+        return _row_dict(row) if row else None
+
+    def insert_row(self, institute_id: str, f: Dict[str, Any], actor: str) -> Optional[Dict[str, Any]]:
+        """The new row, or None when an open row with the same subject /
+        scope / period / metric / origin already exists (unique index)."""
+        row = self.db.execute(text(
+            f"INSERT INTO {LIMIT_TABLE_NAME} (id, institute_id, subject_kind, subject_value, per_member, "
+            "scope_kind, scope_value, period, metric, soft_limit, hard_limit, origin, locked, "
+            "effective_from, is_active, reason, created_by, created_at, updated_by, updated_at) "
+            "VALUES (gen_random_uuid(), :i, :sk, :sv, :pm, :ck, :cv, :period, :metric, :soft, :hard, "
+            ":origin, :locked, now(), TRUE, :reason, :actor, now(), :actor, now()) "
+            f"ON CONFLICT DO NOTHING RETURNING {_LIMIT_COLUMNS}"
+        ), {"i": institute_id, "sk": f["subject_kind"], "sv": f.get("subject_value"),
+            "pm": bool(f.get("per_member", True)), "ck": f["scope_kind"], "cv": f.get("scope_value"),
+            "period": f["period"], "metric": f["metric"], "soft": f.get("soft_limit"),
+            "hard": f.get("hard_limit"), "origin": f["origin"], "locked": bool(f.get("locked", False)),
+            "reason": f.get("reason"), "actor": actor}).fetchone()
+        return _row_dict(row) if row else None
+
+    def update_row(self, institute_id: str, row_id: str, fields: Dict[str, Any], actor: Optional[str],
+                   reason: str) -> Optional[Dict[str, Any]]:
+        allowed = ("soft_limit", "hard_limit", "locked")
+        sets = ["reason = :reason", "updated_by = :actor", "updated_at = now()"]
+        params: Dict[str, Any] = {"i": institute_id, "id": row_id, "reason": reason, "actor": actor}
+        for name in allowed:
+            if name in fields:
+                sets.append(f"{name} = :{name}")
+                params[name] = fields[name]
+        row = self.db.execute(text(
+            f"UPDATE {LIMIT_TABLE_NAME} SET {', '.join(sets)} "
+            "WHERE institute_id = :i AND id = CAST(:id AS uuid) AND is_active AND effective_to IS NULL "
+            f"RETURNING {_LIMIT_COLUMNS}"
+        ), params).fetchone()
+        return _row_dict(row) if row else None
+
+    def deactivate_row(self, institute_id: str, row_id: str, actor: Optional[str],
+                       reason: str) -> Optional[Dict[str, Any]]:
+        row = self.db.execute(text(
+            f"UPDATE {LIMIT_TABLE_NAME} SET is_active = FALSE, effective_to = now(), reason = :reason, "
+            "updated_by = :actor, updated_at = now() "
+            "WHERE institute_id = :i AND id = CAST(:id AS uuid) AND is_active AND effective_to IS NULL "
+            f"RETURNING {_LIMIT_COLUMNS}"
+        ), {"i": institute_id, "id": row_id, "reason": reason, "actor": actor}).fetchone()
+        return _row_dict(row) if row else None
+
+    # -- reference data for validation and labels --
+
+    def use_case_row(self, use_case: str) -> Optional[Dict[str, Any]]:
+        row = self.db.execute(text(
+            f"SELECT use_case, feature_group, label, count_unit_label, limit_eligible, is_active "
+            f"FROM {CATALOG_TABLE} WHERE use_case = :uc"
+        ), {"uc": use_case}).fetchone()
+        return _row_dict(row) if row else None
+
+    def feature_groups(self) -> List[str]:
+        rows = self.db.execute(text(
+            f"SELECT DISTINCT feature_group FROM {CATALOG_TABLE} WHERE is_active"
+        )).fetchall()
+        return sorted(str(_row_dict(r)["feature_group"]) for r in rows if _row_dict(r).get("feature_group"))
+
+    def role_known(self, institute_id: str, role_name: str, days: int = 30) -> bool:
+        """In the role map, or seen on this institute's usage events lately
+        (a custom role nobody has mapped yet)."""
+        if self.db.execute(text(f"SELECT 1 FROM {ROLE_MAP_TABLE} WHERE role_name = :r"),
+                           {"r": role_name}).fetchone():
+            return True
+        return bool(self.db.execute(text(
+            f"SELECT 1 FROM {EVENT_TABLE} e CROSS JOIN LATERAL unnest(e.actor_roles_raw) AS r(role) "
+            "WHERE e.institute_id = :i AND e.occurred_at >= :since AND e.actor_roles_raw IS NOT NULL "
+            "AND UPPER(REPLACE(REPLACE(TRIM(r.role), '-', '_'), ' ', '_')) = :r LIMIT 1"
+        ), {"i": institute_id, "r": role_name,
+            "since": datetime.now(timezone.utc) - timedelta(days=days)}).fetchone())
+
+    def user_names(self, institute_id: str, user_ids: List[str]) -> Dict[str, str]:
+        """Latest display name per user seen on this institute's events."""
+        ids = sorted({str(u) for u in user_ids if u})
+        if not ids:
+            return {}
+        rows = self.db.execute(text(
+            f"SELECT DISTINCT ON (actor_user_id) actor_user_id, actor_display_name FROM {EVENT_TABLE} "
+            "WHERE institute_id = :i AND actor_user_id = ANY(:ids) AND actor_display_name IS NOT NULL "
+            "ORDER BY actor_user_id, occurred_at DESC"
+        ), {"i": institute_id, "ids": ids}).fetchall()
+        return {str(_row_dict(r)["actor_user_id"]): str(_row_dict(r)["actor_display_name"]) for r in rows}
+
+    def user_roles(self, institute_id: str, user_id: str) -> Tuple[Optional[str], List[str]]:
+        """(role class, raw roles) on the user's latest event here."""
+        got = self.users_roles(institute_id, [user_id]).get(str(user_id))
+        return (got["role_class"], got["raw_roles"]) if got else (None, [])
+
+    def users_roles(self, institute_id: str, user_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """{user id: {role_class, raw_roles}} from each user's latest event here."""
+        ids = sorted({str(u) for u in user_ids if u})
+        if not ids:
+            return {}
+        rows = self.db.execute(text(
+            f"SELECT DISTINCT ON (actor_user_id) actor_user_id, actor_role_class, actor_roles_raw "
+            f"FROM {EVENT_TABLE} WHERE institute_id = :i AND actor_user_id = ANY(:ids) "
+            "ORDER BY actor_user_id, occurred_at DESC"
+        ), {"i": institute_id, "ids": ids}).fetchall()
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            d = _row_dict(r)
+            raw = d.get("actor_roles_raw") or []
+            if isinstance(raw, str):
+                raw = [x.strip().strip('"') for x in raw.strip("{}").split(",") if x.strip()]
+            out[str(d["actor_user_id"])] = {"role_class": d.get("actor_role_class"),
+                                            "raw_roles": [str(x) for x in raw if x]}
+        return out
+
+    # -- usage --
+
+    def counters(self, institute_id: str, period: str, window_start_utc: datetime) -> List[Dict[str, Any]]:
+        rows = self.db.execute(text(
+            f"SELECT counter_key, period, window_start, credits_used, count_used, cost_usd, updated_at "
+            f"FROM {COUNTER_TABLE_NAME} WHERE institute_id = :i AND period = :p AND window_start = :ws "
+            "ORDER BY credits_used DESC, counter_key LIMIT 2000"
+        ), {"i": institute_id, "p": period, "ws": window_start_utc}).fetchall()
+        return [_row_dict(r) for r in rows]
+
+    # -- super-admin overview --
+
+    def overview(self, since: datetime) -> List[Dict[str, Any]]:
+        rows = self.db.execute(text(
+            f"SELECT p.institute_id, i.name AS institute_name, p.mode, p.tenant_may_enforce, p.timezone, "
+            "p.updated_at, "
+            "(SELECT COUNT(*) FROM ai_usage_limit l WHERE l.institute_id = p.institute_id AND l.is_active "
+            " AND l.effective_to IS NULL AND l.origin = 'TENANT') AS rows, "
+            "(SELECT COUNT(*) FROM ai_usage_limit l WHERE l.institute_id = p.institute_id AND l.is_active "
+            " AND l.effective_to IS NULL AND l.origin = 'PLATFORM') AS platform_rows "
+            f"FROM {POLICY_TABLE_NAME} p LEFT JOIN institutes i ON i.id = p.institute_id "
+            "ORDER BY i.name NULLS LAST, p.institute_id LIMIT 2000"
+        )).fetchall()
+        out = [_row_dict(r) for r in rows]
+        ids = [r["institute_id"] for r in out]
+        decisions: Dict[str, Dict[str, int]] = {}
+        if ids:
+            for r in self.db.execute(text(
+                f"SELECT institute_id, limit_decision, COUNT(*) AS n FROM {EVENT_TABLE} "
+                "WHERE institute_id = ANY(:ids) AND occurred_at >= :since "
+                "AND limit_decision IN ('WOULD_BLOCK', 'BLOCKED_SKIPPED', 'OVERRUN') "
+                "GROUP BY institute_id, limit_decision"
+            ), {"ids": ids, "since": since}).fetchall():
+                d = _row_dict(r)
+                decisions.setdefault(str(d["institute_id"]), {})[str(d["limit_decision"])] = _int(d["n"])
+        for r in out:
+            d = decisions.get(str(r["institute_id"]), {})
+            r["would_block_7d"] = d.get("WOULD_BLOCK", 0)
+            r["blocked_7d"] = d.get("BLOCKED_SKIPPED", 0)
+            r["overrun_7d"] = d.get("OVERRUN", 0)
+            r["rows"] = _int(r.get("rows"))
+            r["platform_rows"] = _int(r.get("platform_rows"))
+        return out

@@ -31,6 +31,7 @@ import { submitTutorQuizActivity } from "@/services/tutor-api";
 import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { aiUsageLimitMessage, claimAiUsageLimit } from "@/lib/ai-usage-limit-notify";
 
 interface TutorSearch {
   courseId: string;
@@ -67,7 +68,11 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
   }),
 });
 
-type Disconnect = { reason: "lost" | "idle" | "limit" | "credits" | "ended" };
+type Disconnect = {
+  reason: "lost" | "idle" | "limit" | "credits" | "usage" | "ended";
+  /** `usage`: the localized AI-usage-limit sentence (replaces the generic text). */
+  message?: string;
+};
 
 // The teacher "writes" a concept's elements one at a time while speaking,
 // instead of dropping the whole board at once.
@@ -81,6 +86,7 @@ const DISCONNECT_TEXT: Record<Disconnect["reason"], string> = {
   idle: "The lesson paused because nothing happened for a while.",
   limit: "This lesson reached its time limit.",
   credits: "Your institute's lesson credits have run out for now.",
+  usage: "You've reached your AI usage limit for now.",
   ended: "The lesson ended.",
 };
 
@@ -604,8 +610,21 @@ function TutorPage() {
     },
     onEnded: (reason) => {
       stopAudio();
-      setDisconnected({ reason: reason === "idle" || reason === "limit" || reason === "credits" ? reason : "ended" });
+      const next: Disconnect = { reason: reason === "idle" || reason === "limit" || reason === "credits" ? reason : "ended" };
+      // A usage-limit frame already said why; a trailing `ended` must not overwrite it.
+      setDisconnected((d) => (d?.reason === "usage" ? d : next));
       setPhase("idle");
+    },
+    onUsageLimit: (body) => {
+      stopAudio();
+      setDisconnected({ reason: "usage", message: aiUsageLimitMessage(body) });
+      setPhase("idle");
+      // The server closes right after this frame; if it has not within a
+      // moment, close our side so nothing keeps running (no reconnect offered).
+      const seq = bootSeq.current;
+      window.setTimeout(() => {
+        if (bootSeq.current === seq) socket.disconnect();
+      }, 1500);
     },
     onError: (m, isFatal) => {
       if (isFatal) setFatal(m);
@@ -833,6 +852,11 @@ function TutorPage() {
       }
     } catch (e: unknown) {
       if (seq !== bootSeq.current) return;
+      const usageLimit = claimAiUsageLimit(e);
+      if (usageLimit) {
+        setFatal(aiUsageLimitMessage(usageLimit));
+        return;
+      }
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setFatal(msg || (e instanceof Error ? e.message : "Could not start the tutor"));
     }
@@ -1056,8 +1080,8 @@ function TutorPage() {
           )}
           {disconnected && !isDemo && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
-              <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
-              {disconnected.reason !== "credits" && (
+              <span>{disconnected.message || DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
+              {disconnected.reason !== "credits" && disconnected.reason !== "usage" && (
                 <button type="button" onClick={reconnect} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
                   {disconnected.reason === "lost" ? "Reconnect" : "Continue the lesson"}
                 </button>

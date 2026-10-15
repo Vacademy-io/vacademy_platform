@@ -100,6 +100,11 @@ public class AiCriteriaGenerationService {
 
                         return templateRequest;
 
+                } catch (AiServiceLlmClient.PolicyRefusalException e) {
+                        // Refused by policy (AI usage limit / plan): no model ran and the legacy
+                        // direct chain is not tried. Surface the limit's own message.
+                        log.info("[AI-Criteria-Gen] refused by policy ({}): {}", e.getCode(), e.getMessage());
+                        throw new VacademyException(e.getMessage());
                 } catch (Exception e) {
                         log.error("Failed to generate criteria with AI", e);
                         throw new VacademyException("Failed to generate criteria with AI: " + e.getMessage());
@@ -120,7 +125,8 @@ public class AiCriteriaGenerationService {
                                 .flatMap(completion -> parseResponse(aiServiceLlmClient.toChatCompletionBody(completion),
                                                 completion.model() != null ? completion.model() : USE_CASE))
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
-                                                .filter(error -> !(error instanceof AiServiceLlmClient.UnavailableException))
+                                                .filter(error -> !(error instanceof AiServiceLlmClient.UnavailableException)
+                                                                && !AiServiceLlmClient.isPolicyRefusal(error))
                                                 .doBeforeRetry(signal -> log.warn(
                                                                 "[AI-Criteria-Gen] Retry {}/{} via ai_service use case {}: {}",
                                                                 signal.totalRetries() + 1, MAX_RETRIES_PER_MODEL, USE_CASE,

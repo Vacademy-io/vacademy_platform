@@ -74,6 +74,7 @@ _stats_lock = threading.Lock()
 _stats: Dict[str, int] = {
     "written": 0, "linked_existing": 0, "failed": 0, "skipped_disabled": 0, "skipped_absent": 0,
     "queued": 0, "dropped_backlog": 0, "refund_marked": 0, "unknown_use_case": 0, "skipped_busy": 0,
+    "limits_applied": 0, "limits_overrun": 0, "limits_failed": 0, "limits_refund_decrements": 0,
 }
 _last_log: Dict[str, float] = {}
 
@@ -687,6 +688,7 @@ def record_event(
     idempotency_key: Optional[str] = None,
     link_usage_only_if_unlinked: bool = False,
     lookup_existing: bool = True,
+    _out: Optional[Dict[str, Any]] = None,
     **fields: Any,
 ) -> Optional[str]:
     """Write one usage event on `db` inside a SAVEPOINT. Never raises; returns
@@ -694,7 +696,10 @@ def record_event(
 
     With `ledger_tx_id`, an earlier event for the same operation (caller-given
     usage_event_id, or the event already linked to `usage_log_id`) is upgraded
-    in place instead of inserting a second one, and the ledger row is linked."""
+    in place instead of inserting a second one, and the ledger row is linked.
+    `_out` (internal): receives {"previous": <row before the upgrade>} when the
+    institute has a usage-limits policy, so the counter hook can replace the
+    earlier event's contribution instead of counting the operation twice."""
     try:
         if inp is None:
             inp = input_from(None, **fields)
@@ -721,14 +726,21 @@ def record_event(
             if ledger_tx_id and lookup_existing:
                 supplied = _uuid_or_none(inp.usage_event_id)
                 found = None
+                snap_prev = _out is not None and _limits_on(inp.institute_id)
                 if supplied:
+                    if snap_prev:
+                        _out["previous"] = _event_row(db, supplied)
                     found = _upgrade(db, T.c.id == supplied, row)
                 if found is None and usage_log_id:
                     # An event an earlier record_usage wrote for this usage row.
                     existing = db.execute(text("SELECT usage_event_id FROM ai_token_usage WHERE id = :ul"),
                                           {"ul": usage_log_id}).scalar()
                     if existing:
+                        if snap_prev:
+                            _out["previous"] = _event_row(db, str(existing))
                         found = _upgrade(db, T.c.id == str(existing), row)
+                if found is None and _out is not None:
+                    _out.pop("previous", None)
                 if found is not None:
                     event_id, use_case = found["id"], found["use_case"] or use_case
                     _count("linked_existing")
@@ -753,7 +765,7 @@ def record_event(
 # ----------------------------------------------------------------------------
 
 def record_charged_event(db, request: Any, *, transaction_id: str, credits: Any,
-                         now: Optional[datetime] = None) -> Optional[str]:
+                         now: Optional[datetime] = None, _out: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """deduct_credits, after the USAGE_DEDUCTION INSERT, before its commit.
     list_credits = the amount today's code computed; credits_charged = -ledger.amount."""
     try:
@@ -777,6 +789,7 @@ def record_charged_event(db, request: Any, *, transaction_id: str, credits: Any,
         ledger_tx_id=transaction_id, usage_log_id=usage_log_id,
         occurred_at=now, idempotency_key=inp.idempotency_key,
         lookup_existing=bool(_uuid_or_none(inp.usage_event_id)) or (bool(usage_log_id) and not fresh_usage),
+        _out=_out,
     )
 
 
@@ -824,12 +837,147 @@ def record_charged_event_after_commit(db, request: Any, *, transaction_id: str, 
                      "metering: DB pool exhausted; usage event skipped (charge unaffected)")
         return None
     try:
-        event_id = record_charged_event(db, request, transaction_id=transaction_id, credits=credits, now=now)
+        out: Dict[str, Any] = {}
+        event_id = record_charged_event(db, request, transaction_id=transaction_id, credits=credits, now=now,
+                                        _out=out)
+        # Usage-limit counters (contract N4), same short post-commit
+        # transaction, own SAVEPOINT; an institute without a limits policy
+        # costs one in-memory lookup here.
+        institute_id = getattr(request, "institute_id", None)
+        if event_id and _limits_on(institute_id):
+            apply_limits_for_event(db, event_id, institute_id, noted=_noted_decision(institute_id),
+                                   previous=out.get("previous"))
     except Exception as exc:  # noqa: BLE001
         _note_failure("charged", exc)
     finally:
         _end_transaction(db, "charged-commit")
     return event_id
+
+
+# --- usage-limit counters (contract N4) ---------------------------------------
+#
+# Only for institutes with a limits policy (limit_gate.policy_active: an
+# in-memory set lookup, no I/O). Every write runs in its own SAVEPOINT on the
+# session that just wrote the event, after the charge committed; a failure
+# rolls back that savepoint only (the charge and the event are kept), is
+# counted and logged at most once a minute. Counters are a cache of the events
+# (the nightly rebuild repairs any drift).
+
+def _limit_gate() -> Any:
+    try:
+        from . import limit_gate
+
+        return limit_gate
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _limits_on(institute_id: Optional[str]) -> bool:
+    if not institute_id:
+        return False
+    gate = _limit_gate()
+    return bool(gate is not None and gate.policy_active(institute_id))
+
+
+def _noted_decision(institute_id: Optional[str]) -> Optional[str]:
+    gate = _limit_gate()
+    try:
+        return gate.noted_decision(institute_id) if gate is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _event_row(db, event_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The ai_usage_event row as a dict (None when absent)."""
+    if not event_id:
+        return None
+    from sqlalchemy import select
+
+    from .models import EVENT_TABLE as T
+
+    got = db.execute(select(T).where(T.c.id == str(event_id))).mappings().first()
+    return dict(got) if got is not None else None
+
+
+def _counted(row: Optional[Dict[str, Any]]) -> bool:
+    """Did the counter hook already count this event? (it stamps a
+    limit_decision other than NONE whenever it touched the counters)."""
+    return bool(row) and str(row.get("limit_decision") or "NONE").upper() != "NONE"
+
+
+def apply_limits_for_event(db, event_id: str, institute_id: Optional[str], *, noted: Optional[str] = None,
+                           previous: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Add one just-written event to the institute's usage counters and stamp
+    its limit_decision (OK / WARN / WOULD_BLOCK / OVERRUN). `previous` is the
+    same event before an upgrade: when that version was already counted, its
+    credits are taken back first and the request is not counted twice.
+    BUNDLED events are part of another charge and are not counted. Never
+    raises; returns the stored decision or None."""
+    if not event_id or not _limits_on(institute_id):
+        return None
+    gate = _limit_gate()
+    mod = gate._limits() if gate is not None else None  # noqa: SLF001
+    if mod is None:
+        return None
+    try:
+        from sqlalchemy import update
+
+        from .models import EVENT_TABLE as T
+
+        with db.begin_nested():
+            row = _event_row(db, event_id)
+            if row is None or str(row.get("free_reason") or "").upper() == "BUNDLED":
+                return None
+            if _counted(previous):
+                # The same operation was counted before (as a record-only
+                # event): take ALL of that contribution back (its credits, its
+                # count even when it carried 0 credits, its cost) under its OLD
+                # use case / actor; the upgraded event is counted once below.
+                mod.remove_event_contribution(db, previous)
+            apply_row = dict(row)
+            ctx = row.get("context") if isinstance(row.get("context"), dict) else {}
+            reservation_id = _uuid_or_none(ctx.get("reservation_id")) if ctx else None
+            if reservation_id:
+                # A caller that reserved through /internal/metering/v1/authorize
+                # passes the id in usage_context; the engine settles it.
+                apply_row["reservation_id"] = reservation_id
+            result = mod.apply_event_to_counters(db, apply_row)
+            final = gate.combine_event_decision(result, noted)
+            if final == "NONE" and _counted(previous):
+                final = str(previous.get("limit_decision"))
+            if final != str(row.get("limit_decision") or "NONE"):
+                db.execute(update(T).where(T.c.id == row["id"]).values(limit_decision=final))
+        _count("limits_applied")
+        if final == "OVERRUN":
+            _count("limits_overrun")
+        return final
+    except Exception as exc:  # noqa: BLE001
+        _count("limits_failed")
+        _log_limited("limits:apply", logging.WARNING,
+                     "metering: usage-limit counters not updated (charge and event kept; nightly rebuild "
+                     "repairs): %s", str(exc).splitlines()[0][:300] if str(exc) else type(exc).__name__)
+        return None
+
+
+def _decrement_for_refund(db, event_id: str, refunded: Decimal, already: Any = 0) -> None:
+    """Take `refunded` MORE credits back out of the counters of a counted event
+    (`already` = what had been refunded before; own SAVEPOINT)."""
+    gate = _limit_gate()
+    mod = gate._limits() if gate is not None else None  # noqa: SLF001
+    if mod is None:
+        return
+    try:
+        with db.begin_nested():
+            row = _event_row(db, event_id)
+            if not _counted(row):
+                return
+            mod.decrement_for_refund(db, {**row, "refunded_credits": already or 0}, refunded)
+        _count("limits_refund_decrements")
+    except Exception as exc:  # noqa: BLE001
+        _count("limits_failed")
+        _log_limited("limits:refund", logging.WARNING,
+                     "metering: usage-limit refund decrement failed (refund kept): %s",
+                     str(exc).splitlines()[0][:300] if str(exc) else type(exc).__name__)
 
 
 # --- background writer --------------------------------------------------------
@@ -928,14 +1076,17 @@ def queue_dropped_event(db, request: Any, *, credits: Any, now: Optional[datetim
         engine = _engine_of(db)
         idem = f"dropped:{inp.idempotency_key}" if inp.idempotency_key else None
         when = now or datetime.utcnow()
+        noted = _noted_decision(inp.institute_id) if _limits_on(inp.institute_id) else None
     except Exception as exc:  # noqa: BLE001
         _note_failure("dropped-input", exc)
         return False
 
     def _work(session) -> None:
-        record_event(session, inp, billing_mode="CHARGED", charge_status="DROPPED_INSUFFICIENT",
-                     list_credits=credits, credits_charged=0, occurred_at=when, idempotency_key=idem,
-                     lookup_existing=False)
+        event_id = record_event(session, inp, billing_mode="CHARGED", charge_status="DROPPED_INSUFFICIENT",
+                                list_credits=credits, credits_charged=0, occurred_at=when, idempotency_key=idem,
+                                lookup_existing=False)
+        if event_id and _limits_on(inp.institute_id):
+            apply_limits_for_event(session, event_id, inp.institute_id, noted=noted)
 
     return _submit(_with_session, engine, _work)
 
@@ -981,7 +1132,7 @@ def _list_credits_for(db, inp: EventInput) -> Decimal:
 
 def write_free_event(db, inp: EventInput, *, usage_log_id: Optional[str] = None,
                      free_reason: Optional[str] = None, default_reason: str = "UNBILLED_GAP",
-                     occurred_at: Optional[datetime] = None) -> Optional[str]:
+                     occurred_at: Optional[datetime] = None, limit_noted: Optional[str] = None) -> Optional[str]:
     """A record-only (FREE) event on `db`, synchronously. When `usage_log_id`
     is given the ai_token_usage row is claimed first (usage_event_id IS NULL):
     if a deduction already linked its own event, nothing is written."""
@@ -1012,9 +1163,13 @@ def write_free_event(db, inp: EventInput, *, usage_log_id: Optional[str] = None,
         # counted twice. Estimates are kept for UNBILLED_GAP / POLICY_FREE only.
         list_credits = Decimal("0") if (by_caller or reason == "BUNDLED") else _list_credits_for(db, inp)
         inp.usage_event_id = event_id
-        return record_event(db, inp, billing_mode="FREE", charge_status=status, list_credits=list_credits,
-                            credits_charged=0, free_reason=reason, occurred_at=occurred_at,
-                            idempotency_key=None, lookup_existing=False)
+        written = record_event(db, inp, billing_mode="FREE", charge_status=status, list_credits=list_credits,
+                               credits_charged=0, free_reason=reason, occurred_at=occurred_at,
+                               idempotency_key=None, lookup_existing=False)
+        if written and _limits_on(inp.institute_id):
+            apply_limits_for_event(db, written, inp.institute_id,
+                                   noted=limit_noted if limit_noted is not None else _noted_decision(inp.institute_id))
+        return written
     except Exception as exc:  # noqa: BLE001
         _note_failure("free", exc)
         return None
@@ -1034,13 +1189,16 @@ def queue_free_event(db, inp: EventInput, *, usage_log_id: Optional[str] = None,
             return False
         engine = _engine_of(db)
         when = datetime.now(timezone.utc)
+        # The worker thread has no request context: the gate's decision is
+        # captured here (None, with no work, without a limits policy).
+        noted = (_noted_decision(inp.institute_id) or "NONE") if _limits_on(inp.institute_id) else None
     except Exception as exc:  # noqa: BLE001
         _note_failure("free-input", exc)
         return False
 
     def _work(session) -> None:
         write_free_event(session, inp, usage_log_id=usage_log_id, free_reason=free_reason,
-                         default_reason=default_reason, occurred_at=when)
+                         default_reason=default_reason, occurred_at=when, limit_noted=noted)
 
     return _submit(_with_session, engine, _work)
 
@@ -1161,6 +1319,9 @@ def mark_batch_refunds(db, institute_id: Optional[str], batch_id: Optional[str])
                 db.execute(update(T).where(T.c.id == ev_id).values(refunded_credits=share,
                                                                     charge_status=new_status))
                 changed += 1
+                newly_refunded = share - Decimal(str(already or 0))
+                if newly_refunded > 0 and _limits_on(institute_id):
+                    _decrement_for_refund(db, str(ev_id), newly_refunded, already)
     except Exception as exc:  # noqa: BLE001
         _note_failure("refund", exc)
         changed = 0
@@ -1194,5 +1355,5 @@ __all__ = [
     "EventInput", "input_from", "build_row", "resolve_use_case", "resolve_actor", "resolve_model",
     "record_event", "record_charged_event", "record_charged_event_after_commit", "queue_dropped_event",
     "queue_free_event", "write_free_event", "mark_batch_refunds", "queue_batch_refunds", "allocate_refunds",
-    "strip_cost_keys", "stats", "wait_for_background",
+    "strip_cost_keys", "stats", "wait_for_background", "apply_limits_for_event",
 ]

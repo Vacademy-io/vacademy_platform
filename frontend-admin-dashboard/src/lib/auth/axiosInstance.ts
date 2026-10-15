@@ -8,6 +8,7 @@ import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 // import cycle: formatters → language store → i18n/locales, none touch axios.
 import { getActiveLocale } from '@/lib/formatters';
 import { recordApiSample } from '@/lib/perf/network-health';
+import { handleAiUsageLimitError, handleAiUsageWarningResponse } from '@/lib/ai-usage-limit';
 import {
     getTokenFromCookie,
     isTokenExpired,
@@ -190,6 +191,9 @@ authenticatedAxiosInstance.interceptors.request.use(
 authenticatedAxiosInstance.interceptors.response.use(
     (response) => {
         recordPerfSample(response.config as TimedRequestConfig, response.status, response.headers);
+        // Soft AI usage-limit warning (X-AI-Usage-Warning) -> one toast per use case
+        // per session. Read-only on the response; never throws.
+        handleAiUsageWarningResponse(response.headers);
         return response;
     },
     async (error) => {
@@ -212,6 +216,14 @@ authenticatedAxiosInstance.interceptors.response.use(
                 statusText: response?.statusText,
                 data: response?.data,
             });
+        }
+
+        // An AI call refused by an institute/platform usage limit (429 with
+        // error AI_USAGE_LIMIT): open the "limit reached" modal, then reject the
+        // original error as before. Any other 429 is untouched.
+        if (response?.status === 429) {
+            await handleAiUsageLimitError(error);
+            return Promise.reject(error);
         }
 
         // Handle 511 Network Authentication Required

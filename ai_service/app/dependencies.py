@@ -321,6 +321,24 @@ def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingServ
     return EmbeddingService(api_key_resolver)
 
 
+def _limit_actor_fields(request: Request, institute_id: Optional[str]) -> dict:
+    """Usage-limit attribution for require_credits' check (the X-Institute-Key
+    caller is a PARTNER_API / API_KEY actor). Empty — so the check request is
+    exactly today's — unless the institute has a limits policy (an in-memory
+    lookup; no I/O). Never raises."""
+    try:
+        from .services.metering import limit_gate
+
+        if not limit_gate.policy_active(institute_id):
+            return {}
+        from .services.metering.context import MeteringContext
+
+        ctx = MeteringContext.from_request(request, institute_id, auth_mode="INSTITUTE")
+        return {k: v for k, v in ctx.as_fields().items() if k != "subject_user_id"}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def require_credits(request_type: str, estimated_tokens: int = 1000):
     """
     Factory that returns a FastAPI dependency to check if institute has
@@ -328,6 +346,7 @@ def require_credits(request_type: str, estimated_tokens: int = 1000):
     Raises HTTP 402 if balance is insufficient.
     """
     async def _check(
+        request: Request,
         institute_id: str = Depends(get_institute_from_api_key),
         db: Session = Depends(db_dependency),
     ):
@@ -339,6 +358,7 @@ def require_credits(request_type: str, estimated_tokens: int = 1000):
             institute_id=institute_id,
             request_type=request_type,
             estimated_tokens=estimated_tokens,
+            **_limit_actor_fields(request, institute_id),
         ))
         if not result.has_sufficient_credits:
             raise HTTPException(

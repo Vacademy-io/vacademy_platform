@@ -8,6 +8,7 @@ import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useVoiceWebSocket } from "@/hooks/useVoiceWebSocket";
+import { aiUsageLimitMessage, type AiUsageLimitBody } from "@/lib/ai-usage-limit-notify";
 import { SessionScorecard } from "./SessionScorecard";
 
 interface VoiceModePanelProps {
@@ -293,6 +294,10 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   // (avoids circular dependency between ws and onReady)
   const wsRef = useRef<ReturnType<typeof useVoiceWebSocket> | null>(null);
 
+  const onUsageLimit = useCallback((body: AiUsageLimitBody) => {
+    setNotice(aiUsageLimitMessage(body));
+  }, []);
+
   const onReady = useCallback(() => {
     // The config also tells the server to open the call, so this is the whole
     // handshake the student has to do: nothing.
@@ -308,6 +313,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
     onAudioEnd,
     onSummary,
     onError,
+    onUsageLimit,
     onReady,
   });
   wsRef.current = ws;

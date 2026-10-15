@@ -32,5 +32,20 @@
     },
     "common": {
         "loading": "Chargement..."
+    },
+    "aiUsageLimit": {
+        "title": "Limite d'utilisation de l'IA atteinte",
+        "featureFallback": "IA",
+        "reachedDay": "Vous avez utilisé votre quota du jour pour {{feature}}.",
+        "reachedWeek": "Vous avez utilisé votre quota de la semaine pour {{feature}}.",
+        "reachedMonth": "Vous avez utilisé votre quota du mois pour {{feature}}.",
+        "reachedPlanPeriod": "Vous avez utilisé votre quota pour {{feature}} sur cette période d'abonnement.",
+        "reached": "Vous avez atteint la limite d'utilisation pour {{feature}}.",
+        "numbersCredits": "{{used}} crédits utilisés sur {{limit}}.",
+        "numbersRequests": "{{used}} requêtes utilisées sur {{limit}}.",
+        "numbersUsd": "{{used}} utilisés sur {{limit}}.",
+        "resetsAt": "Vous pourrez l'utiliser à nouveau après {{when}}, ou demandez à votre enseignant.",
+        "tryLater": "Réessayez plus tard, ou demandez à votre enseignant.",
+        "warning": "Vous approchez de votre quota d'utilisation de l'IA."
     }
 }

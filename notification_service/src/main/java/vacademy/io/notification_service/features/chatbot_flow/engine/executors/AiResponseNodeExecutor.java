@@ -216,11 +216,18 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                 // retrying every turn would only re-pay the balance check and keep the
                 // learner talking to a bot that cannot reply.
                 if (Boolean.TRUE.equals(responseBody.get("insufficientCredits"))) {
-                    log.warn("Chatbot AI paused for institute {} — no AI credits", context.getInstituteId());
+                    // admin_core sets usageLimited when the pause is an AI usage limit (a cap
+                    // the institute set), not an empty wallet: same pause, but the Inbox note
+                    // must not tell admins to top up. Absent (older admin_core) = credits.
+                    boolean usageLimited = Boolean.TRUE.equals(responseBody.get("usageLimited"));
+                    String note = usageLimited ? usageLimitNote(responseBody.get("usageLimitMessage"))
+                            : "Institute has no AI credits";
+                    log.warn("Chatbot AI paused for institute {} — {}", context.getInstituteId(),
+                            usageLimited ? "AI usage limit reached" : "no AI credits");
                     String outOfCreditsMessage = resolveEscalationMessage(config);
                     sendTextToUser(context, outOfCreditsMessage);
                     raiseEscalation(node, session, context, config, EscalationReason.NO_CREDITS,
-                            userText, outOfCreditsMessage, "Institute has no AI credits");
+                            userText, outOfCreditsMessage, note);
                     return NodeExecutionResult.builder()
                             .success(true)
                             .waitForInput(false)
@@ -321,6 +328,13 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
      * configured admin addresses. Never throws — a hand-over that fails to record must not also
      * break the reply the learner already received.
      */
+    /** Inbox note for a usage-limit pause (the limit's own sentence when admin_core sent one). */
+    static String usageLimitNote(Object limitMessage) {
+        String m = limitMessage == null ? "" : limitMessage.toString().trim();
+        return m.isEmpty() ? "AI usage limit reached (not a credits problem; it resets on its own)"
+                : "AI usage limit reached: " + m;
+    }
+
     private void raiseEscalation(ChatbotFlowNode node, ChatbotFlowSession session,
                                  FlowExecutionContext context, Map<String, Object> config,
                                  EscalationReason reason, String userText, String botReply,

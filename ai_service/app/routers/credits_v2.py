@@ -248,6 +248,25 @@ def usage_events_export(
     return StreamingResponse(body, media_type="text/csv; charset=utf-8", headers=headers)
 
 
+def get_limits_db(db: Session = Depends(db_dependency)) -> Optional[Session]:
+    """The session the caller's limits are read on (overridable in tests)."""
+    return db
+
+
+def caller_limits(db: Optional[Session], institute_id: str, viewer: Viewer,
+                  authorization: Optional[str]) -> Optional[list]:
+    """The caller's usage limits (routers/credits_limits.my_limits). None, with
+    no query at all, for an institute without a limits policy; never raises."""
+    try:
+        from .credits_limits import my_limits
+        roles = jwt_institute_roles(authorization, institute_id) or set()
+        return my_limits(db, institute_id, user_id=None if viewer.user_id == _NO_USER else viewer.user_id,
+                         is_admin=viewer.is_admin, is_staff=viewer.is_staff, raw_roles=sorted(roles))
+    except Exception:  # noqa: BLE001 - display only
+        logger.debug("me/usage limits unavailable", exc_info=True)
+        return None
+
+
 @router.get("/me/usage", summary="The caller's own AI usage in one institute, grouped by use case")
 def my_usage(
     institute_id: str = Query(..., min_length=1, max_length=64),
@@ -255,10 +274,18 @@ def my_usage(
     current_user=Depends(get_current_user),
     authorization: Optional[str] = Header(None),
     query: mq.MeteringQuery = Depends(get_metering_query),
+    limits_db: Optional[Session] = Depends(get_limits_db),
 ):
     viewer = resolve_viewer(institute_id, current_user, authorization)
     days = _days(days)
     scope = scope_for(viewer, institute_id, own_only=True)
     if not query.tables_ready():
-        return mq.empty_summary("use_case", days, "charged")
-    return query.summary(scope, days, "use_case", "charged")
+        out = mq.empty_summary("use_case", days, "charged")
+    else:
+        out = query.summary(scope, days, "use_case", "charged")
+    # Additive: the caller's limits, only for an institute with a limits policy
+    # (every other institute gets exactly today's response).
+    limits = caller_limits(limits_db, institute_id, viewer, authorization)
+    if limits is not None:
+        out["limits"] = limits
+    return out

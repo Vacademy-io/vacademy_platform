@@ -29,6 +29,8 @@ import {
   getChatbotSettings,
 } from "@/services/chatbot-settings";
 import { isChatbotVisibleOnRoute, setChatbotPages } from "@/config/chatbot-routes";
+import { parseAiUsageLimitBody, type AiUsageLimitBody } from "@/lib/ai-usage-limit";
+import { aiUsageLimitMessage, claimAiUsageLimit } from "@/lib/ai-usage-limit-notify";
 
 export const useChatbot = () => {
   const { t } = useTranslation("chatFeatureB");
@@ -56,6 +58,10 @@ export const useChatbot = () => {
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isCreditsExhausted, setIsCreditsExhausted] = useState(false);
+  // Session init was refused by an AI usage limit (429 AI_USAGE_LIMIT): the
+  // reason is an assistant bubble, not the generic error card, and the
+  // open-effect must not retry init until "New chat".
+  const [isUsageLimited, setIsUsageLimited] = useState(false);
   const [isSessionClosed, setIsSessionClosed] = useState(false);
   const [activeToolCall, setActiveToolCall] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>("");
@@ -425,6 +431,19 @@ export const useChatbot = () => {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachStreamRef = useRef<(sid: string) => void>(() => {});
 
+  /** Show an AI usage limit inline (one bubble; a repeat of the same text is not re-added). */
+  const showUsageLimit = useCallback((body: AiUsageLimitBody) => {
+    setIsWaitingForResponse(false);
+    setIsLoading(false);
+    setAiStatus("idle");
+    const content = aiUsageLimitMessage(body);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.content === content) return prev;
+      return [...prev, { id: Date.now(), role: "assistant", content, timestamp: Date.now() }];
+    });
+  }, []);
+
   const closeStream = useCallback(() => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
@@ -470,6 +489,12 @@ export const useChatbot = () => {
     eventSource.addEventListener("message", (event) => {
       try {
         const messageData: MessageEvent = JSON.parse(event.data);
+
+        const usageLimit = parseAiUsageLimitBody(messageData);
+        if (usageLimit) {
+          showUsageLimit(usageLimit);
+          return;
+        }
 
         // Check for credits exhausted error in message data
         if (
@@ -571,6 +596,11 @@ export const useChatbot = () => {
         const errorEvent = event as MessageEvent;
         if (errorEvent.data) {
           const errorData = JSON.parse(errorEvent.data);
+          const usageLimit = parseAiUsageLimitBody(errorData);
+          if (usageLimit) {
+            showUsageLimit(usageLimit);
+            return;
+          }
           if (errorData.type === "ERROR" && errorData.code === 402) {
             console.error("Credits exhausted (402):", errorData.message);
             setIsCreditsExhausted(true);
@@ -629,7 +659,7 @@ export const useChatbot = () => {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, scheduleStreamReconnect],
+    [t, scheduleStreamReconnect, showUsageLimit],
   );
   attachStreamRef.current = attachStream;
 
@@ -694,6 +724,15 @@ export const useChatbot = () => {
 
     } catch (error) {
       console.error("Failed to initialize session:", error);
+      const initUsageLimit = claimAiUsageLimit(error);
+      if (initUsageLimit) {
+        // No session yet: stop the open-effect from re-initialising in a loop
+        // (the role hasError plays for other failures) until "New chat".
+        setIsUsageLimited(true);
+        setMessages([]);
+        showUsageLimit(initUsageLimit);
+        return;
+      }
       setHasError(true);
 
       const assistantName = chatbotSettings.assistant_name;
@@ -738,6 +777,7 @@ export const useChatbot = () => {
     buildContextMeta,
     t,
     attachStream,
+    showUsageLimit,
   ]);
 
 
@@ -773,10 +813,10 @@ export const useChatbot = () => {
 
   // Initialize session when chatbot opens
   useEffect(() => {
-    if (isOpen && !sessionId && !isInitializing && !hasError) {
+    if (isOpen && !sessionId && !isInitializing && !hasError && !isUsageLimited) {
       initializeSession();
     }
-  }, [isOpen, sessionId, isInitializing, hasError, initializeSession]);
+  }, [isOpen, sessionId, isInitializing, hasError, isUsageLimited, initializeSession]);
 
   // Update context when page/route changes or active slide changes
   useEffect(() => {
@@ -868,8 +908,11 @@ export const useChatbot = () => {
     } catch (error) {
       console.error("Failed to send message:", error);
 
+      const sendUsageLimit = claimAiUsageLimit(error);
       // Check for 402 credits exhausted
-      if (axios.isAxiosError(error) && error.response?.status === 402) {
+      if (sendUsageLimit) {
+        showUsageLimit(sendUsageLimit);
+      } else if (axios.isAxiosError(error) && error.response?.status === 402) {
         setIsCreditsExhausted(true);
         const creditsMsg: ChatMessage = {
           id: Date.now(),
@@ -911,6 +954,11 @@ export const useChatbot = () => {
       // Response will come through SSE as quiz_feedback
     } catch (error) {
       console.error("Failed to submit quiz:", error);
+      const quizUsageLimit = claimAiUsageLimit(error);
+      if (quizUsageLimit) {
+        showUsageLimit(quizUsageLimit);
+        return;
+      }
       setHasError(true);
       const errorMessage: ChatMessage = {
         id: Date.now(),
@@ -948,6 +996,7 @@ export const useChatbot = () => {
     setIsWaitingForResponse(false);
     setHasError(false);
     setIsCreditsExhausted(false);
+    setIsUsageLimited(false);
     setIsSessionClosed(false);
     setActiveToolCall(null);
     setStreamingContent("");
@@ -1111,6 +1160,7 @@ export const useChatbot = () => {
     isWaitingForResponse,
     hasError,
     isCreditsExhausted,
+    isUsageLimited,
     isSessionClosed,
     isInitializing,
     activeToolCall,

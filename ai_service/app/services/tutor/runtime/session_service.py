@@ -251,23 +251,113 @@ def session_max_seconds(db: Optional[Session] = None) -> int:
     return max(10, min(240, minutes)) * 60
 
 
-def preflight_live_session(db: Session, institute_id: str) -> Optional[str]:
+def preflight_live_session(db: Session, institute_id: str, user_id: Optional[str] = None,
+                           roles_raw: Optional[List[str]] = None) -> Optional[str]:
     """Voice lessons cost credits per minute: refuse to start one the
     institute cannot afford for a few minutes (super-admin setting). Returns
     the 402 detail, or None when the session may start (unknown balance
-    never blocks)."""
+    never blocks).
+
+    Usage limits (contract N4), only for an institute with a limits policy:
+    after the credit check passed, the next minute is checked against the
+    learner's / institute's limits; an ENFORCE block raises LimitExceeded
+    (HTTP 429 AI_USAGE_LIMIT through the app handler)."""
+    limits_on = _limits_on(institute_id)
     minutes = preflight_minutes(db)
     if minutes <= 0:
+        if limits_on:
+            _live_limit_authorize(db, institute_id, user_id=user_id, roles_raw=roles_raw, estimate=None)
         return None
     try:
+        # (with a policy, the limits are checked below for ONE minute, not here for N)
         est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL,
-                                     tool_params={"audio_minutes": minutes}, institute_id=institute_id)
+                                     tool_params={"audio_minutes": minutes}, institute_id=institute_id,
+                                     **({"enforce_limits": False} if limits_on else {}))
     except Exception:  # noqa: BLE001
-        return None
-    if est.get("sufficient") is False:
+        est = None
+    if est is not None and est.get("sufficient") is False:
         return (f"Not enough credits for a voice lesson: {minutes} minutes need ≈"
                 f"{est.get('estimated_credits')} credits, balance is {est.get('current_balance')}.")
+    if limits_on:
+        per_minute = None
+        try:
+            per_minute = float(est.get("estimated_credits")) / minutes if est is not None else None
+        except Exception:  # noqa: BLE001
+            per_minute = None
+        _live_limit_authorize(db, institute_id, user_id=user_id, roles_raw=roles_raw, estimate=per_minute)
     return None
+
+
+# ── usage limits for live minutes (only for institutes with a limits policy) ──
+
+#: tutor_session_id -> the N3 429 body of the limit that stopped the lesson
+#: (read once by the socket for its `usage_limit` control frame).
+_LIMIT_BLOCKS: Dict[str, Dict[str, Any]] = {}
+_LIMIT_BLOCKS_MAX = 2000
+
+
+def _limits_on(institute_id: Optional[str]) -> bool:
+    """In-memory lookup (no I/O): does this institute have a limits policy?"""
+    try:
+        from ...metering import limit_gate
+
+        return limit_gate.policy_active(institute_id)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _live_limit_authorize(db: Session, institute_id: str, *, user_id: Optional[str],
+                          roles_raw: Optional[List[str]], estimate: Any) -> Any:
+    """The limits decision for one more live minute; raises LimitExceeded on
+    an ENFORCE block. Actor: the HTTP request in scope, else the learner."""
+    from ...metering import limit_gate
+
+    ctx = limit_gate.context_from_current_request(institute_id)
+    if ctx is None:
+        ctx = metering_user(user_id, surface="LEARNER_APP", roles_raw=roles_raw)
+    return limit_gate.authorize(db, institute_id=institute_id, use_case=UC.TUTOR_LIVE, tool_key=LIVE_MINUTE_TOOL,
+                                ctx=ctx, estimate_credits=estimate)
+
+
+def limit_roles_for(token: Optional[str], institute_id: Optional[str]) -> Optional[List[str]]:
+    """The learner's institute roles from the socket's auth token, for the
+    minute gate's limits check. None (no work at all) without a limits policy."""
+    if not token or not _limits_on(institute_id):
+        return None
+    try:
+        from ....core.security import jwt_institute_roles
+
+        roles = jwt_institute_roles(f"Bearer {token}", str(institute_id))
+        return sorted(roles) if roles else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def pop_usage_limit_block(tutor_session_id: str) -> Optional[Dict[str, Any]]:
+    """The limit body that made bill_live_minute return False, once."""
+    return _LIMIT_BLOCKS.pop(tutor_session_id, None)
+
+
+#: WebSocket close code after a usage-limit stop (4402 stays "out of credits").
+USAGE_LIMIT_CLOSE_CODE = 4429
+
+
+def usage_limit_frames(tutor_session_id: str) -> Optional[List[Dict[str, Any]]]:
+    """The socket frames for a lesson a usage limit stopped (None when the
+    stop was not a usage limit): the control frame {"type": "usage_limit",
+    ...the N3 429 body...} and then {"type": "ended", "reason": "usage_limit"}."""
+    body = pop_usage_limit_block(tutor_session_id)
+    if body is None:
+        return None
+    frame = {k: v for k, v in body.items() if k != "type"}
+    frame.setdefault("error", "AI_USAGE_LIMIT")
+    return [{"type": "usage_limit", **frame}, {"type": "ended", "reason": "usage_limit"}]
+
+
+def _remember_block(tutor_session_id: str, body: Any) -> None:
+    if len(_LIMIT_BLOCKS) >= _LIMIT_BLOCKS_MAX:
+        _LIMIT_BLOCKS.clear()
+    _LIMIT_BLOCKS[tutor_session_id] = dict(body) if isinstance(body, dict) else {"error": "AI_USAGE_LIMIT"}
 
 
 AVATAR_MINUTE_TOOL = "tutor_avatar_minute"
@@ -288,22 +378,55 @@ def bill_avatar_minute(*, tutor_session_id: str, institute_id: str, user_id: str
     bump_telemetry(tutor_session_id, avatar_minutes=1)
 
 
-def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> bool:
+def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int,
+                     roles_raw: Optional[List[str]] = None) -> bool:
     """Charge minute `minute_no` (1-based; idempotent per session+minute) and
-    report whether the institute can still afford the next one."""
+    report whether the institute can still afford the next one.
+
+    With a limits policy, False also when a usage limit blocks the next
+    minute; pop_usage_limit_block(tutor_session_id) then returns its body."""
     record_tool_billing(
         tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1}, request_type=RequestType.CONVERSATION,
         model="tutor-live", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
         request_id=tutor_session_id, idempotency_key=f"tutor_live:{tutor_session_id}:{minute_no}",
-        use_case=UC.TUTOR_LIVE, metering=metering_user(user_id, surface="LEARNER_APP"),
+        use_case=UC.TUTOR_LIVE,
+        # roles_raw is None (identical attribution) unless the institute has a
+        # limits policy: then the event carries the roles the limits check used.
+        metering=metering_user(user_id, surface="LEARNER_APP", roles_raw=roles_raw),
         usage_context={"tutor_session_id": tutor_session_id, "minute_no": minute_no, "feature": "live_minute"},
     )
     bump_telemetry(tutor_session_id, minutes_charged=1)
+    if _limits_on(institute_id):
+        return _affordable_within_limits(tutor_session_id=tutor_session_id, institute_id=institute_id,
+                                         user_id=user_id, roles_raw=roles_raw)
     try:
         with db_session() as db:
             est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1},
                                          institute_id=institute_id)
         return est.get("sufficient") is not False
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _affordable_within_limits(*, tutor_session_id: str, institute_id: str, user_id: str,
+                              roles_raw: Optional[List[str]]) -> bool:
+    """bill_live_minute's next-minute check for an institute with a limits
+    policy: today's balance check, then the limits. A limits failure allows."""
+    from ...metering import limit_gate
+
+    try:
+        with db_session() as db:
+            est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1},
+                                         institute_id=institute_id, enforce_limits=False)
+            if est.get("sufficient") is False:
+                return False
+            try:
+                _live_limit_authorize(db, institute_id, user_id=user_id, roles_raw=roles_raw,
+                                      estimate=est.get("estimated_credits"))
+            except limit_gate.limit_exceeded_types() as exc:
+                _remember_block(tutor_session_id, getattr(exc, "body", None))
+                return False
+        return True
     except Exception:  # noqa: BLE001
         return True
 

@@ -483,6 +483,37 @@ if "metering.role_backfill.enabled" not in SETTING_SPECS:
         default=lambda: True,
     )
 
+# Usage limits (services/metering/limits.py): the global kill switch for blocking.
+if "metering.limits.enforce" not in SETTING_SPECS:
+    SETTING_SPECS["metering.limits.enforce"] = SettingSpec(
+        key="metering.limits.enforce",
+        group="rollout",
+        label="AI usage limits: allow blocking",
+        description=(
+            "On (default) = institutes whose limits policy is set to Enforce get HTTP 429 when a hard "
+            "limit is reached. Off = every Enforce policy behaves like Preview (Shadow): limits are "
+            "still counted and would-block decisions are recorded, but no AI request is refused. "
+            "Institutes without a limits policy are never affected either way. Takes up to 30 s to apply."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
+# Read by admin_core's nightly AiUsageCounterRebuildJob directly from ai_platform_settings.
+if "metering.limits.rebuild.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["metering.limits.rebuild.enabled"] = SettingSpec(
+        key="metering.limits.rebuild.enabled",
+        group="rollout",
+        label="AI usage limits: rebuild counters nightly",
+        description=(
+            "On (default) = a nightly admin_core job recomputes the current usage-limit counters from "
+            "the usage events and repairs any drift. It does nothing while no institute has a limits "
+            "policy. Off = the job does nothing (counters are still kept live by every charge)."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",

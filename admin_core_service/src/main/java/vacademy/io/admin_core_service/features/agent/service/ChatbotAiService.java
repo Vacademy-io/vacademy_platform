@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiRequest;
 import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiResponse;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.credits.client.AuthorizeResult;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
@@ -70,6 +71,20 @@ public class ChatbotAiService {
             log.warn("Chatbot AI turn refused — institute {} has no AI credits", request.getInstituteId());
             return ChatbotAiResponse.builder()
                     .insufficientCredits(true)
+                    .exitIntent(false)
+                    .build();
+        }
+
+        // 1b. AI usage limits (institute policy in ENFORCE). A refusal takes the same pause
+        // path as an empty wallet: the flow hands the learner to a human. No limits on for
+        // the institute = no call at all; any gate failure = allowed.
+        AuthorizeResult limit = usageLimitDecision(request);
+        if (AuthorizeResult.blocks(limit)) {
+            log.warn("Chatbot AI turn refused — institute {} reached an AI usage limit", request.getInstituteId());
+            return ChatbotAiResponse.builder()
+                    .insufficientCredits(true)
+                    .usageLimited(true)
+                    .usageLimitMessage(limit.message())
                     .exitIntent(false)
                     .build();
         }
@@ -162,6 +177,16 @@ public class ChatbotAiService {
             log.warn("Credit check failed for institute {} — pausing chatbot AI: {}",
                     instituteId, e.getMessage());
             return false;
+        }
+    }
+
+    /** Limit gate. Never throws; an error here is "allowed" (limits fail open). */
+    private AuthorizeResult usageLimitDecision(ChatbotAiRequest request) {
+        try {
+            return creditClient.authorize(request.getInstituteId(), USE_CASE,
+                    RequestType.CHATBOT.getValue(), chargeMetering(request), request.getUserId());
+        } catch (Exception e) {
+            return AuthorizeResult.ALLOW_NONE;
         }
     }
 

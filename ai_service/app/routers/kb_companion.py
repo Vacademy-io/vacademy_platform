@@ -82,9 +82,20 @@ def _estimate(tool_key: str, institute_id: str) -> Dict[str, Any]:
     try:
         with db_session() as pdb:
             return preflight_tool_credits(pdb, tool_key=tool_key, tool_params={}, institute_id=institute_id)
-    except Exception:  # noqa: BLE001 — a pricing lookup failure must not block learning
+    except Exception as exc:  # noqa: BLE001 — a pricing lookup failure must not block learning
+        if _is_usage_limit(exc):
+            raise  # an AI usage limit (HTTP 429), not a pricing failure
         logger.warning("kbc preflight failed for %s", tool_key, exc_info=True)
         return {}
+
+
+def _is_usage_limit(exc: BaseException) -> bool:
+    try:
+        from ..services.metering.limit_gate import is_limit_exceeded
+
+        return is_limit_exceeded(exc)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _credits_or_402(db, tool_key: str, institute_id: str) -> None:

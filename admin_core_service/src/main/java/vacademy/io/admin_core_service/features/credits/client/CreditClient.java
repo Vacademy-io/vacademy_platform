@@ -1,14 +1,17 @@
 package vacademy.io.admin_core_service.features.credits.client;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -17,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Client for communicating with the AI Service's credit management endpoints.
@@ -39,13 +43,57 @@ public class CreditClient {
      */
     private final String internalServiceToken;
 
+    /**
+     * Usage-limit gate calls only: connect 500 ms + read 1000 ms, so a slow or hung ai_service
+     * costs a caller at most ~1.5 s before the gate gives up and lets the work run. The shared
+     * RestTemplate has no timeouts at all, which is fine for charges but not for a pre-check.
+     */
+    private final RestTemplate limitsRestTemplate;
+    /** The nightly counter rebuild scans weeks of events; it gets minutes, not seconds. */
+    private final RestTemplate rebuildRestTemplate;
+
+    /** Which institutes have limits on; null (plain unit tests) = always ask ai_service. */
+    private volatile AiLimitsPolicyIndex limitsPolicyIndex;
+
+    /** Last time an authorize failure was logged (the gate logs at most once a minute). */
+    private final AtomicLong lastAuthorizeFailureLog = new AtomicLong(0L);
+
+    static final String AUTHORIZE_PATH = "/ai-service/internal/metering/v1/authorize";
+    static final String REBUILD_PATH = "/ai-service/internal/metering/v1/counters/rebuild";
+    static final int LIMITS_CONNECT_TIMEOUT_MS = 500;
+    static final int LIMITS_READ_TIMEOUT_MS = 1000;
+    static final long AUTHORIZE_FAILURE_LOG_INTERVAL_MS = 60_000L;
+
+    @Autowired
     public CreditClient(
             RestTemplate restTemplate,
             @Value("${ai.service.url:http://localhost:8077}") String aiServiceUrl,
             @Value("${ai.service.internal-token:}") String internalServiceToken) {
+        this(restTemplate, aiServiceUrl, internalServiceToken,
+                timeoutRestTemplate(LIMITS_CONNECT_TIMEOUT_MS, LIMITS_READ_TIMEOUT_MS),
+                timeoutRestTemplate(5_000, 300_000));
+    }
+
+    /** Tests: explicit templates for the limit gate and the counter rebuild. */
+    CreditClient(RestTemplate restTemplate, String aiServiceUrl, String internalServiceToken,
+            RestTemplate limitsRestTemplate, RestTemplate rebuildRestTemplate) {
         this.restTemplate = restTemplate;
         this.aiServiceUrl = aiServiceUrl;
         this.internalServiceToken = internalServiceToken;
+        this.limitsRestTemplate = limitsRestTemplate;
+        this.rebuildRestTemplate = rebuildRestTemplate;
+    }
+
+    @Autowired(required = false)
+    public void setLimitsPolicyIndex(AiLimitsPolicyIndex limitsPolicyIndex) {
+        this.limitsPolicyIndex = limitsPolicyIndex;
+    }
+
+    private static RestTemplate timeoutRestTemplate(int connectMs, int readMs) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectMs);
+        factory.setReadTimeout(readMs);
+        return new RestTemplate(factory);
     }
 
     /**
@@ -141,11 +189,29 @@ public class CreditClient {
             log.warn("Credit check failed for institute {}, allowing request", instituteId);
             return true;
 
+        } catch (HttpClientErrorException e) {
+            if (isUsageLimitRefusal(e)) {
+                // An AI usage limit (HTTP 429 AI_USAGE_LIMIT) is an intended refusal, not a
+                // failure: the caller's own authorize() gate makes the decision, as before.
+                log.debug("Credit check for institute {} answered by a usage limit (429)", instituteId);
+                return true;
+            }
+            log.error("Error checking credits for institute {}: {}", instituteId, e.getMessage());
+            return true;
         } catch (Exception e) {
             log.error("Error checking credits for institute {}: {}", instituteId, e.getMessage());
             // Fail open - allow the request if we can't check
             return true;
         }
+    }
+
+    /** HTTP 429 whose JSON body says {@code "error": "AI_USAGE_LIMIT"}. */
+    static boolean isUsageLimitRefusal(HttpClientErrorException e) {
+        if (e == null || e.getStatusCode().value() != 429) {
+            return false;
+        }
+        String body = e.getResponseBodyAsString();
+        return body != null && body.replace(" ", "").contains("\"error\":\"AI_USAGE_LIMIT\"");
     }
 
     /**
@@ -800,6 +866,133 @@ public class CreditClient {
             log.error("refundFromPayment failed for institute {} refund_id {}: {}",
                     instituteId, razorpayRefundId, e.getMessage());
             return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    // ========================================================================
+    // AI usage limits (ai_service internal/metering/v1). Fail OPEN everywhere: any error,
+    // timeout or odd answer = allow, exactly today's behaviour.
+    // ========================================================================
+
+    /** {@link #authorize(String, String, String, MeteringFields, String, BigDecimal, boolean)} with no estimate. */
+    public AuthorizeResult authorize(String instituteId, String useCase, String requestType,
+            MeteringFields metering, String actorUserId) {
+        return authorize(instituteId, useCase, requestType, metering, actorUserId, null, false);
+    }
+
+    /**
+     * Ask ai_service whether a usage limit allows this AI operation. Never throws.
+     *
+     * <p>For an institute without limits switched on (see {@link AiLimitsPolicyIndex}) this
+     * returns {@link AuthorizeResult#ALLOW_NONE} at once, with no HTTP call. Otherwise one
+     * POST with a ~1.5 s budget; a failure, timeout, non-2xx or unreadable answer also
+     * returns ALLOW_NONE (logged at most once a minute).
+     *
+     * @param useCase         the ai_use_case_catalog key (e.g. learner_analytics)
+     * @param requestType     the legacy request_type, may be null
+     * @param metering        actor / subject / surface fields, same snake_case names as on
+     *                        /deduct; may be null
+     * @param actorUserId     the user the work is for, when there is one (USER-scoped limits)
+     * @param estimateCredits optional estimate; null lets ai_service use the catalog's
+     * @param reserve         hold the estimate against the limit until the charge lands
+     */
+    public AuthorizeResult authorize(String instituteId, String useCase, String requestType,
+            MeteringFields metering, String actorUserId, BigDecimal estimateCredits, boolean reserve) {
+        try {
+            if (instituteId == null || instituteId.isBlank() || useCase == null || useCase.isBlank()) {
+                return AuthorizeResult.ALLOW_NONE;
+            }
+            AiLimitsPolicyIndex index = limitsPolicyIndex;
+            if (index != null && !index.mayHaveLimits(instituteId)) {
+                return AuthorizeResult.ALLOW_NONE;
+            }
+            Map<String, Object> body = authorizeBody(instituteId, useCase, requestType, metering, actorUserId,
+                    estimateCredits, reserve);
+
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = limitsRestTemplate.exchange(
+                    aiServiceUrl + AUTHORIZE_PATH,
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, buildInternalHeaders()),
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                logAuthorizeFailure(instituteId, useCase, "HTTP " + response.getStatusCode().value());
+                return AuthorizeResult.ALLOW_NONE;
+            }
+            return parseAuthorize(response.getBody());
+        } catch (Exception e) {
+            logAuthorizeFailure(instituteId, useCase, e.getClass().getSimpleName() + ": " + e.getMessage());
+            return AuthorizeResult.ALLOW_NONE;
+        }
+    }
+
+    /** The authorize request body; package-private for tests. */
+    static Map<String, Object> authorizeBody(String instituteId, String useCase, String requestType,
+            MeteringFields metering, String actorUserId, BigDecimal estimateCredits, boolean reserve) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("institute_id", instituteId);
+        body.put("use_case", useCase);
+        if (requestType != null && !requestType.isBlank()) body.put("request_type", requestType);
+        if (actorUserId != null && !actorUserId.isBlank()) body.put("actor_user_id", actorUserId);
+        // Unlike /deduct, the subject is not a ledger column here, so it goes top-level too
+        // (ai_service may check a learner's caps for on-behalf work).
+        if (metering != null && metering.subjectUserId() != null && !metering.subjectUserId().isBlank()) {
+            body.put("subject_user_id", metering.subjectUserId());
+        }
+        if (estimateCredits != null) body.put("estimate_credits", estimateCredits);
+        body.put("reserve", reserve);
+        MeteringFields.applyTo(metering, body);
+        return body;
+    }
+
+    /**
+     * Only an explicit {@code allow: false} refuses. A missing or non-boolean allow is
+     * read as allowed (fail open).
+     */
+    @SuppressWarnings("unchecked")
+    static AuthorizeResult parseAuthorize(Map<String, Object> resp) {
+        boolean allow = !Boolean.FALSE.equals(resp.get("allow"));
+        Object d = resp.get("decision");
+        String decision = d == null || d.toString().isBlank() ? AuthorizeResult.NONE : d.toString().trim();
+        Object b = resp.get("block");
+        Map<String, Object> block = b instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
+        if (allow) {
+            return new AuthorizeResult(true, decision, null);
+        }
+        return new AuthorizeResult(false, decision, block != null ? block : Map.of());
+    }
+
+    private void logAuthorizeFailure(String instituteId, String useCase, String why) {
+        long now = System.currentTimeMillis();
+        long last = lastAuthorizeFailureLog.get();
+        if (now - last >= AUTHORIZE_FAILURE_LOG_INTERVAL_MS && lastAuthorizeFailureLog.compareAndSet(last, now)) {
+            log.warn("[ai-limits] authorize failed for institute {} use case {} ({}); allowing (fail open). "
+                    + "Further failures are logged at most once a minute.", instituteId, useCase, why);
+        }
+    }
+
+    /**
+     * Ask ai_service to recompute the current limit-counter windows from ai_usage_event and
+     * fix any drift ({@code POST /internal/metering/v1/counters/rebuild?days=}). Returns the
+     * report, or null on any failure (logged). Never throws.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> rebuildUsageCounters(int days) {
+        try {
+            ResponseEntity<Map<String, Object>> response = rebuildRestTemplate.exchange(
+                    aiServiceUrl + REBUILD_PATH + "?days=" + days,
+                    HttpMethod.POST,
+                    new HttpEntity<>("{}", buildInternalHeaders()),
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                return response.getBody() != null ? response.getBody() : Map.of();
+            }
+            log.warn("[ai-limits] counter rebuild returned HTTP {}", response.getStatusCode().value());
+            return null;
+        } catch (Exception e) {
+            log.warn("[ai-limits] counter rebuild failed: {}", e.getMessage());
+            return null;
         }
     }
 

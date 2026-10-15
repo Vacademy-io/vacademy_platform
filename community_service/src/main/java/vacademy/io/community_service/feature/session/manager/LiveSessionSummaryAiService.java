@@ -16,7 +16,8 @@ import java.util.Map;
  * {@code ai_model_defaults}, GLM by default). The old direct OpenRouter call stays as
  * the fallback so a deploy before the INTERNAL_SERVICE_TOKEN secret exists, or before
  * ai_service has the endpoint, still produces summaries. Summaries are not billed, so
- * any ai_service failure may fall back too.
+ * any ai_service failure may fall back too, except a policy refusal
+ * ({@link AiServiceLlmClient.PolicyRefusalException}), which is rethrown as is.
  */
 @Service
 public class LiveSessionSummaryAiService {
@@ -50,6 +51,12 @@ public class LiveSessionSummaryAiService {
                         List.of(Map.of("role", "user", "content", prompt)), true, MAX_TOKENS, "low", null);
                 log.info("[live-session-summary] ai_service answered with model {}", completion.model());
                 return completion.content();
+            } catch (AiServiceLlmClient.PolicyRefusalException e) {
+                // Refused on purpose (usage limit / plan): no model ran, and the direct call
+                // must not run it unbilled behind the policy's back. Terminal.
+                log.warn("[live-session-summary] ai_service refused the summary by policy ({}): {}",
+                        e.getCode(), e.getMessage());
+                throw e;
             } catch (AiServiceLlmClient.UnavailableException e) {
                 log.warn("[live-session-summary] ai_service model registry unavailable ({}); using {} directly",
                         e.getMessage(), legacyModel);

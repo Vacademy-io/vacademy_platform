@@ -8,7 +8,7 @@ description: "Post a visitor's enquiry into the institute's CRM from a Next.js s
 ## The request
 
 ```bash
-curl https://api.vacademy.io/catalog/v1/leads \
+curl https://api.vacademy.ai/catalog/v1/leads \
   -H "X-API-Key: $VACADEMY_CATALOG_KEY" \
   -H "Content-Type: application/json" \
   -H "X-Client-IP: 203.0.113.24" \
@@ -79,7 +79,7 @@ export async function sendEnquiry(_prev: EnquiryState, form: FormData): Promise<
     return typeof v === 'string' && v.trim() ? v.trim() : undefined;
   };
 
-  const res = await fetch('https://api.vacademy.io/catalog/v1/leads', {
+  const res = await fetch('https://api.vacademy.ai/catalog/v1/leads', {
     method: 'POST',
     headers: {
       'X-API-Key': process.env.VACADEMY_CATALOG_KEY!,

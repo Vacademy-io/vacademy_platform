@@ -114,7 +114,7 @@
       "defaults": "required"
     },
     "mdx": {
-      "server": "https://api.vacademy.io/catalog/v1",
+      "server": "https://api.vacademy.ai/catalog/v1",
       "auth": {
         "method": "key",
         "name": "X-API-Key"

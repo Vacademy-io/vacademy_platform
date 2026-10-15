@@ -24,7 +24,7 @@ VACADEMY_CATALOG_KEY=vak_pub_…
 Check it:
 
 ```bash
-curl https://api.vacademy.io/catalog/v1/site -H "X-API-Key: $VACADEMY_CATALOG_KEY"
+curl https://api.vacademy.ai/catalog/v1/site -H "X-API-Key: $VACADEMY_CATALOG_KEY"
 ```
 
 <Note>
@@ -34,7 +34,7 @@ Server-side requests (no `Origin` header) work without verifying a website. You 
 ## 2. The fetch helper
 
 ```ts lib/vacademy.ts
-const BASE = 'https://api.vacademy.io/catalog/v1';
+const BASE = 'https://api.vacademy.ai/catalog/v1';
 
 export type Language = { code: string; label: string };
 export type Format = { key: string; label: string };

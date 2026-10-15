@@ -19,7 +19,7 @@ Enrolment, cart and checkout stay on the institute's **hosted catalogue site** (
 sequenceDiagram
     participant V as Visitor
     participant S as Your site (Next.js server)
-    participant API as api.vacademy.io/catalog/v1
+    participant API as api.vacademy.ai/catalog/v1
     participant H as Hosted catalogue site
     V->>S: GET /courses
     S->>API: GET /courses (X-API-Key, cached 60 s)
@@ -37,7 +37,7 @@ The API reads the same data, with the same rules, as the hosted catalogue site, 
 ## Base URL
 
 ```
-https://api.vacademy.io/catalog/v1
+https://api.vacademy.ai/catalog/v1
 ```
 
 Every request carries the institute's publishable key in `X-API-Key` (or `Authorization: Bearer`). Keys start with `vak_pub_`. See [Keys and websites](/keys-and-websites).

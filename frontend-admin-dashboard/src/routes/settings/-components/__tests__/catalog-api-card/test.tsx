@@ -122,7 +122,7 @@ describe('CatalogApiCard', () => {
         expect(await screen.findByText(/No keys yet/)).toBeInTheDocument();
         expect(screen.getByRole('link', { name: /Read the API docs/ })).toHaveAttribute(
             'href',
-            'https://docs.vacademy.io/catalog'
+            'https://vacademy-platform.mintlify.site/catalog'
         );
         expect(
             await screen.findByText('https://learning.brahmvarchas.org/store')

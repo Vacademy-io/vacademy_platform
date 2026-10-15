@@ -36,7 +36,7 @@ export const CATALOG_WEBSITES_QUERY_KEY = 'CATALOG_API_WEBSITES';
 export const CATALOG_SETTINGS_QUERY_KEY = 'CATALOG_API_SETTINGS';
 
 /** Public docs for the Catalogue API. The one place this address is written. */
-export const CATALOG_API_DOCS_URL = 'https://docs.vacademy.io/catalog';
+export const CATALOG_API_DOCS_URL = 'https://vacademy-platform.mintlify.site/catalog';
 
 export const CATALOG_WEBSITES_URL = `${BASE_URL}/admin-core-service/v1/websites`;
 export const CATALOG_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/catalog-api/settings`;

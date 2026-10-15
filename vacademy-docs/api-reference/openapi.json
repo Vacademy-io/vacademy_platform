@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://api.vacademy.io/catalog/v1"
+      "url": "https://api.vacademy.ai/catalog/v1"
     }
   ],
   "security": [

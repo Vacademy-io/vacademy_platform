@@ -1,10 +1,10 @@
 """
-Generate the tool reference of the MCP docs (vacademy-docs/mcp/) from the code.
+Generate the tool reference of the MCP docs (vacademy-docs/mcp-server/) from the code.
 
 The MCP server is the "MCP server" product of the Vacademy docs site
 (vacademy-docs/, published from the Vacademy-io/docs repo). One page per
-settings area (mcp/tools/<area>.mdx), that product's Tools tab in docs.json and
-the reference list at the end of mcp/tools/catalogue.mdx all come
+settings area (mcp-server/tools/<area>.mdx), that product's Tools tab in docs.json and
+the reference list at the end of mcp-server/tools/catalogue.mdx all come
 from the same catalogue the settings page renders (adapter.tool_catalog), the
 tools' own schemas, MCP_ALLOWED_WRITE_TOOLS and, where a tool module has one,
 its ACTION_SPEC. Nothing here is hand-written per tool, so the docs cannot
@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "vacademy-docs"
 #: Where the MCP pages live inside the site, and the product they sit under.
-PREFIX = "mcp/"
+PREFIX = "mcp-server/"
 PRODUCT = "MCP server"
 sys.path.insert(0, str(ROOT / "ai_service"))
 

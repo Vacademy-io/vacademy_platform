@@ -1,5 +1,5 @@
 """
-The MCP docs' tool reference (vacademy-docs/mcp/) is generated from the tool
+The MCP docs' tool reference (vacademy-docs/mcp-server/) is generated from the tool
 registry by scripts/gen_mcp_docs.py. When a tool, an action or a settings
 label changes, regenerate: ``cd ai_service && python scripts/gen_mcp_docs.py``.
 """
@@ -19,7 +19,7 @@ def _generator():
     return module
 
 
-@pytest.mark.skipif(not (ROOT / "vacademy-docs" / "mcp" / "tools" / "catalogue.mdx").exists(), reason="docs site not in this checkout")
+@pytest.mark.skipif(not (ROOT / "vacademy-docs" / "mcp-server" / "tools" / "catalogue.mdx").exists(), reason="docs site not in this checkout")
 def test_tool_reference_matches_the_registry():
     gen = _generator()
     stale = [p for p, text in gen.build().items()

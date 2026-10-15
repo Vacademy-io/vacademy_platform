@@ -22,5 +22,9 @@
     "reportBranding": {
         "title": "Image de marque des rapports d'évaluation",
         "description": "Personnalisez l'apparence des rapports PDF générés pour les élèves. Ces paramètres s'appliquent à tous les rapports d'évaluation de votre établissement."
+    },
+    "aiCopyCheck": {
+        "title": "Modèle de correction IA des copies",
+        "description": "Comment les remarques de l'enseignant apparaissent sur les copies corrigées par l'IA. Présélectionné à l'envoi des copies, modifiable pour chaque lot."
     }
 }

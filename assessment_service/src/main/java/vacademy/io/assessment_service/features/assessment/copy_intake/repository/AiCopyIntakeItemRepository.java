@@ -12,6 +12,30 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AiCopyIntakeItemRepository extends JpaRepository<AiCopyIntakeItem, String> {
+
+    /** A checked copy of one item in a batch, for the bulk download. */
+    interface CheckedCopyRow {
+        String getItemId();
+
+        String getFileName();
+
+        String getStudentName();
+
+        String getRoll();
+
+        String getEvaluatedFileId();
+    }
+
+    /**
+     * Every copy in the batch whose AI check finished with a checked copy, in upload
+     * order. Reads only these columns: an attempt row also carries the full answer JSON.
+     */
+    @Query("SELECT i.id AS itemId, i.fileName AS fileName, i.matchedName AS studentName,"
+            + " i.extractedRoll AS roll, a.evaluatedFileId AS evaluatedFileId"
+            + " FROM AiCopyIntakeItem i, StudentAttempt a WHERE i.batchId = :batchId AND i.status = :status"
+            + " AND a.id = i.attemptId AND a.evaluatedFileId IS NOT NULL ORDER BY i.createdAt")
+    List<CheckedCopyRow> findCheckedCopies(@Param("batchId") String batchId, @Param("status") String status);
+
     List<AiCopyIntakeItem> findByBatchIdOrderByCreatedAt(String batchId);
 
     Optional<AiCopyIntakeItem> findFirstByProcessId(String processId);

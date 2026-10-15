@@ -420,3 +420,25 @@ def test_skip_answer_location_grades_against_the_whole_copy(env):
     _run(_payload(skip_answer_location=True))
     assert env.get("locate_calls") is None
     assert env["graded"] == ["q1", "q2", "q3"]
+
+
+def test_outside_template_reaches_the_annotator_with_printed_labels(env, monkeypatch):
+    seen = {}
+
+    async def render_upload(pdf_url, layout_map, verdicts, attempt_id, **kwargs):
+        seen.update(kwargs)
+        return "checked-copy-panel"
+
+    monkeypatch.setattr(orchestrator, "annotator", SimpleNamespace(render_and_upload=render_upload))
+    _run(_payload(comment_placement="OUTSIDE"))
+    assert seen == {"comment_placement": "OUTSIDE", "question_labels": {"q1": "1", "q2": "2", "q3": "3"}}
+    assert _posts(env, "complete")[0]["evaluated_file_id"] == "checked-copy-panel"
+
+
+def test_any_other_template_value_renders_the_usual_copy(env):
+    # The fixture's render_and_upload takes no template arguments: the usual
+    # copy must be asked for exactly as before, whatever arrives.
+    for value in (None, "INSIDE", "inside", "garbage"):
+        env["posts"].clear()
+        _run(_payload(comment_placement=value))
+        assert _posts(env, "complete")[0]["evaluated_file_id"] == "checked-copy-1"

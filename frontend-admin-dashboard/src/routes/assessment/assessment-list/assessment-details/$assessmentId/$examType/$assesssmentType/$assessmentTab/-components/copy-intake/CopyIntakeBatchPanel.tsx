@@ -7,6 +7,7 @@ import {
     ArrowsClockwise,
     CheckCircle,
     CircleNotch,
+    DownloadSimple,
     MagnifyingGlass,
     UserCircle,
     WarningCircle,
@@ -21,6 +22,7 @@ import { cn } from '@/lib/utils';
 import {
     getCopyIntakeBatch,
     isCopyIntakeSettled,
+    listCheckedCopies,
     listCopyIntakeBatches,
     resolveCopyIntakeItem,
     retryCopyIntakeItem,
@@ -34,6 +36,7 @@ import {
     fetchBatchLearners,
     fetchIndividualParticipants,
 } from '@/routes/assessment/assessment-list/offline-entry/$assessmentId/-services/offline-entry-services';
+import { downloadCheckedCopies } from './download-checked-copies';
 
 const ITEM_TONE: Record<CopyIntakeItemStatus, StatusType> = {
     PENDING: 'INFO',
@@ -200,7 +203,7 @@ export const CopyIntakeBatchPanel = ({
                 <p className="text-sm text-neutral-500">{t('panel.empty')}</p>
             ) : (
                 <>
-                    <BatchSummary batch={batch} />
+                    <BatchSummary batch={batch} instituteId={instituteId} />
 
                     {waiting.length > 0 && (
                         <div className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
@@ -259,7 +262,7 @@ export const CopyIntakeBatchPanel = ({
     );
 };
 
-const BatchSummary = ({ batch }: { batch: CopyIntakeBatch }) => {
+const BatchSummary = ({ batch, instituteId }: { batch: CopyIntakeBatch; instituteId: string }) => {
     const { t } = useTranslation('assessmentCopyIntake');
     // Settled one way or another; skipped copies are done too, not "in progress".
     const done = batch.evaluated + batch.failed + batch.skipped;
@@ -305,6 +308,7 @@ const BatchSummary = ({ batch }: { batch: CopyIntakeBatch }) => {
                 {batch.email_status === 'FAILED' && (
                     <span className="text-caption text-danger-600">{t('panel.emailFailed')}</span>
                 )}
+                <DownloadCheckedCopiesButton batch={batch} instituteId={instituteId} />
             </div>
             {batch.error_message && (
                 <p className="text-caption text-warning-700">{batch.error_message}</p>
@@ -327,6 +331,62 @@ const BatchSummary = ({ batch }: { batch: CopyIntakeBatch }) => {
                 <Stat label={t('stats.failed')} value={batch.failed} tone="text-danger-600" />
             </div>
         </div>
+    );
+};
+
+/**
+ * Every checked copy of the batch in one zip, built in the browser from the
+ * copies already in storage. Shown once at least one copy has been checked;
+ * the rest of the batch (matching, review) is untouched by it.
+ */
+const DownloadCheckedCopiesButton = ({
+    batch,
+    instituteId,
+}: {
+    batch: CopyIntakeBatch;
+    instituteId: string;
+}) => {
+    const { t } = useTranslation('assessmentCopyIntake');
+    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+    const download = useMutation({
+        mutationFn: async () => {
+            const copies = await listCheckedCopies(batch.id, instituteId);
+            if (copies.length === 0) throw new Error(t('download.none'));
+            setProgress({ done: 0, total: copies.length });
+            const day = new Date(batch.created_at).toISOString().slice(0, 10);
+            return downloadCheckedCopies(copies, `checked-copies-${day}.zip`, (done, total) =>
+                setProgress({ done, total })
+            );
+        },
+        onSuccess: ({ added, failed }) => {
+            if (added === 0) toast.error(t('download.failed'));
+            else if (failed > 0) toast.warning(t('download.partial', { count: added, failed }));
+            else toast.success(t('download.done', { count: added }));
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : t('download.failed')),
+        onSettled: () => setProgress(null),
+    });
+    if (batch.evaluated <= 0) return null;
+    return (
+        <MyButton
+            type="button"
+            buttonType="secondary"
+            scale="small"
+            className="ml-auto"
+            disabled={download.isPending}
+            onClick={() => download.mutate()}
+        >
+            {download.isPending ? (
+                <CircleNotch size={14} className="animate-spin" />
+            ) : (
+                <DownloadSimple size={14} />
+            )}
+            {download.isPending
+                ? progress
+                    ? t('download.progress', { done: progress.done, total: progress.total })
+                    : t('download.preparing')
+                : t('download.button', { count: batch.evaluated })}
+        </MyButton>
     );
 };
 

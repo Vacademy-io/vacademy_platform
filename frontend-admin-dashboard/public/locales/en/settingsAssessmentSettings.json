@@ -22,5 +22,9 @@
     "reportBranding": {
         "title": "Assessment Report Branding",
         "description": "Customize the look and feel of PDF reports generated for students. These settings apply to all assessment reports across your institute."
+    },
+    "aiCopyCheck": {
+        "title": "AI copy checking template",
+        "description": "How teacher remarks appear on copies checked by AI. This is preselected when copies are sent for checking and can be changed for each batch."
     }
 }

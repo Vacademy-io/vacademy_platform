@@ -17,6 +17,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import ReportBrandingSettingsSection from './ReportBrandingSettings';
 import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard';
 import ExamExperienceSettingsCard from './ExamExperienceSettingsCard';
+import { CommentPlacementPicker } from '@/components/common/ai-copy-check/CommentPlacementPicker';
 
 const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
 <div style="text-align:center; font-size:11px; color:rgb(102,102,102);">Student Performance Analysis</div>`;
@@ -159,6 +160,23 @@ const AssessmentSettings = () => {
                     setHasChanges(true);
                 }}
             />
+
+            {/* AI copy checking template (preselected in the bulk / submitted check dialogs) */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">{t('aiCopyCheck.title')}</CardTitle>
+                    <CardDescription>{t('aiCopyCheck.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <CommentPlacementPicker
+                        value={settings.aiCopyCheck?.commentPlacement ?? 'INSIDE'}
+                        onChange={(commentPlacement) => {
+                            setSettings((prev) => ({ ...prev, aiCopyCheck: { commentPlacement } }));
+                            setHasChanges(true);
+                        }}
+                    />
+                </CardContent>
+            </Card>
 
             {/* Result Notification Recipients (role-wise) */}
             <ResultNotificationRecipientsCard

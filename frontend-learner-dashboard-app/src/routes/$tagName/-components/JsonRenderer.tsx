@@ -671,7 +671,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
     // Plain rendering — still add anchor ID if present
     if (component.anchorId) {
-      return <div key={component.id} id={component.anchorId}>{rendered}</div>;
+      return <div key={component.id} id={component.anchorId} className="catalogue-block-anchor">{rendered}</div>;
     }
     return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
   };
@@ -2528,7 +2528,7 @@ const ComponentStyleWrapper: React.FC<{
         ref={ref}
         id={component.anchorId || undefined}
         data-cid={component.id}
-        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
         style={{ ...canvasStyle, ...animationStyle, ...decorClip, ...authoredPaddingVars(component.style) }}
       >
         {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
@@ -2557,7 +2557,7 @@ const ComponentStyleWrapper: React.FC<{
       ref={ref}
       id={component.anchorId || undefined}
       data-cid={component.id}
-      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
       style={{
         ...componentStyle,
         ...animationStyle,

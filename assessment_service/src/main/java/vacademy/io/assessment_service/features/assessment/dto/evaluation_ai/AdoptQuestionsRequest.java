@@ -26,6 +26,26 @@ public class AdoptQuestionsRequest {
 
         private List<AdoptedQuestion> questions;
 
+        /**
+         * Internal choice read off the paper ("Answer any FOUR of these five"), by
+         * question id. Optional: without it every question counts, as before.
+         */
+        private List<ChoiceGroup> choiceGroups;
+
+        @Data
+        @Builder
+        @NoArgsConstructor
+        @AllArgsConstructor
+        @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public static class ChoiceGroup {
+                private String label;
+                private List<String> questionIds;
+                private Integer attempt;
+                /** "best" (default) or "first". */
+                private String policy;
+        }
+
         @Data
         @Builder
         @NoArgsConstructor

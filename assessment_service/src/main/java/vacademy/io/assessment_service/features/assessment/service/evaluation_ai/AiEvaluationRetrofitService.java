@@ -65,6 +65,10 @@ public class AiEvaluationRetrofitService {
         private final EvaluationAccessValidator accessValidator;
         private final ObjectMapper objectMapper;
 
+        /** Internal choice ("any 4 of 5"); absent in unit tests that do not need it. */
+        @org.springframework.beans.factory.annotation.Autowired(required = false)
+        private DashboardChoiceGroups choiceGroups;
+
         /** Institute-scoped read of the placeholder state, for the UI. */
         public boolean isPlaceholderOnly(String instituteId, String assessmentId) {
                 return assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
@@ -135,6 +139,19 @@ public class AiEvaluationRetrofitService {
                         total += q.getMarks();
                 }
                 mappingService.addMultipleMappings(mappings);
+                // "Answer any FOUR of these five": the paper is out of its maximum under the
+                // choice, not every question added up. Without groups, as before.
+                List<AdoptQuestionsRequest.ChoiceGroup> groups = request.getChoiceGroups();
+                if (groups != null && !groups.isEmpty() && choiceGroups != null) {
+                        Map<String, Double> marksById = new java.util.LinkedHashMap<>();
+                        for (AdoptQuestionsRequest.AdoptedQuestion q : incoming) {
+                                marksById.put(q.getQuestionId(), q.getMarks());
+                        }
+                        total = choiceGroups.replace(assessmentId, groups.stream()
+                                        .map(g -> new DashboardChoiceGroups.GroupInput(g.getLabel(), g.getQuestionIds(),
+                                                        g.getAttempt(), g.getPolicy()))
+                                        .toList(), marksById);
+                }
                 section.setTotalMarks(total);
                 sectionRepository.save(section);
 

@@ -50,15 +50,46 @@ export interface DigitisedRawQuestion {
     marking_points?: string[];
 }
 
+export type ChoicePolicy = 'best' | 'first';
+
+export interface PaperChoiceGroup {
+    label: string;
+    question_indexes: number[];
+    question_numbers?: string[];
+    attempt: number;
+    policy: ChoicePolicy;
+}
+
+/** A choice as sent with the adopted questions, by question id. */
+export interface AdoptedChoiceGroup {
+    label: string;
+    question_ids: string[];
+    attempt: number;
+    policy: ChoicePolicy;
+}
+
 export interface DigitisedPaper {
     title: string;
     total_marks: number | null;
     duration_minutes: number | null;
-    sections: Array<{ name: string; instruction: string; marks_each: number | null }>;
+    sections: Array<{
+        name: string;
+        instruction: string;
+        marks_each: number | null;
+        /** "Answer any FOUR" → 4; null when every question of the section is answered. */
+        attempt?: number | null;
+    }>;
     /** Assessment-builder DTOs, paired by index with `raw_questions`. */
     questions: PaperQuestion[];
     raw_questions: DigitisedRawQuestion[];
     warnings: string[];
+    /**
+     * Internal choice read off the paper ("Answer any FOUR of these five"): positions
+     * in `questions`. Absent on reads made before this existed.
+     */
+    choice_groups?: PaperChoiceGroup[];
+    /** What the paper is out of under its choices (= every question added up without any). */
+    paper_total?: number;
     pages: number;
     file_name: string;
     estimate: CreditEstimate;
@@ -288,11 +319,15 @@ export interface AdoptQuestionsResult {
  */
 export const adoptDigitisedQuestions = async (
     assessmentId: string,
-    questions: AdoptedQuestion[]
+    questions: AdoptedQuestion[],
+    choiceGroups?: AdoptedChoiceGroup[]
 ): Promise<AdoptQuestionsResult> => {
     const { data } = await authenticatedAxiosInstance.post<AdoptQuestionsResult>(
         `${EVALUATION_AI}/adopt-questions`,
-        { questions },
+        // Sent only when the paper has an internal choice: the request is otherwise as before.
+        choiceGroups && choiceGroups.length > 0
+            ? { questions, choice_groups: choiceGroups }
+            : { questions },
         { params: { assessmentId } }
     );
     return data;

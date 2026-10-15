@@ -14,6 +14,8 @@ import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationRetrofitService;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationReviewService;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationService;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AssessmentChoiceService;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.DashboardChoiceGroups;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.EvaluationAccessValidator;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -29,6 +31,7 @@ public class AiEvaluationController {
         private final AiEvaluationReviewService reviewService;
         private final AiEvaluationRetrofitService retrofitService;
         private final EvaluationAccessValidator accessValidator;
+        private final AssessmentChoiceService choiceService;
 
         /**
          * Is this test AI-checkable, or does it only hold the manual-upload
@@ -61,6 +64,39 @@ public class AiEvaluationController {
                         @RequestBody AdoptQuestionsRequest request) {
                 accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(retrofitService.adoptQuestions(user, instituteId, assessmentId, request));
+        }
+
+        /** Internal choice of a dashboard test: its groups and what the paper is out of. */
+        @GetMapping("/choice-groups")
+        public ResponseEntity<java.util.Map<String, Object>> getChoiceGroups(
+                        @RequestAttribute("user") CustomUserDetails user,
+                        @RequestHeader(value = "clientId", required = false) String instituteId,
+                        @RequestParam String assessmentId) {
+                accessValidator.requireStaffRole(user);
+                accessValidator.requireInstituteMembership(user, instituteId);
+                return ResponseEntity.ok(choiceService.view(instituteId, assessmentId));
+        }
+
+        /**
+         * Set (or clear, with an empty list) a dashboard test's internal choice - "Answer
+         * any FOUR of these five". Updates what the paper is out of and every unreleased
+         * result; released results are left as they are and counted in the reply.
+         */
+        @PutMapping("/choice-groups")
+        public ResponseEntity<java.util.Map<String, Object>> replaceChoiceGroups(
+                        @RequestAttribute("user") CustomUserDetails user,
+                        @RequestHeader(value = "clientId", required = false) String instituteId,
+                        @RequestParam String assessmentId,
+                        @RequestBody AdoptQuestionsRequest request) {
+                accessValidator.requireStaffRole(user);
+                accessValidator.requireInstituteMembership(user, instituteId);
+                List<DashboardChoiceGroups.GroupInput> groups = request == null || request.getChoiceGroups() == null
+                                ? List.of()
+                                : request.getChoiceGroups().stream()
+                                                .map(g -> new DashboardChoiceGroups.GroupInput(g.getLabel(), g.getQuestionIds(),
+                                                                g.getAttempt(), g.getPolicy()))
+                                                .toList();
+                return ResponseEntity.ok(choiceService.replace(instituteId, assessmentId, groups));
         }
 
         @PostMapping("/trigger-evaluation")

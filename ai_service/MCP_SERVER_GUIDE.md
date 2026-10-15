@@ -47,7 +47,7 @@ settings tab has one toggle per feature to manage per role:
 | `crm_meetings_edit` | WRITE (outbound, **opt-in**) | `crm_meeting_edits` | `book` (two-step, single-use; invite + calendar to the lead), `log_outcome` |
 | `crm_messages` | READ | `crm_messages` (area "CRM: Messages") | `history`, `inbox`, `templates`, `can_message`, `escalations` |
 | `crm_send` | WRITE (outbound, **opt-in**, single-use, 20/h/user) | `crm_messaging_outbound` | `send` (an APPROVED WhatsApp template to ONE lead), `quota` |
-| `crm_reports` | READ | `crm_reports` (area "CRM: Reports") | `overview`, `sources`, `campaigns`, `funnel`, `status_changes`, `counsellors`, `workload`, `targets`, `calling`, `ai_calling`, `followup_aging`, `sla_breaches`, `stalled`, `unassigned`, `meetings`, `activity`, `revenue` (admin), `utm` (admin); `compare_to: previous_period` on every action |
+| `crm_reports` | READ | `crm_reports` (area "CRM: Reports") | `overview`, `sources`, `campaigns`, `funnel`, `status_changes`, `counsellors`, `workload`, `targets`, `calling`, `ai_calling`, `followup_aging`, `sla_breaches`, `stalled`, `unassigned`, `meetings`, `activity`, `revenue` (admin), `utm` (admin), `custom_options`, `custom` (1-2 dimensions incl. lead-form fields × chosen lead / activity metrics, scoped SQL in `crm_custom_reports.py`); `compare_to: previous_period` on every windowed action |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so

@@ -487,6 +487,10 @@ public class BulkAssignmentService {
                 .username(resolvedUsername)
                 .password(newUser.getPassword())
                 .gender(newUser.getGender())
+                // A username the admin typed wins over the institute's username strategy;
+                // the custom field values let that strategy use e.g. the roll number.
+                .usernameExplicit(StringUtils.hasText(newUser.getUsername()) ? Boolean.TRUE : null)
+                .usernameFieldValues(CustomFieldValueDTO.toValueMap(newUser.getCustomFieldValues()))
                 .roles(CollectionUtils.isEmpty(newUser.getRoles())
                         ? List.of("STUDENT")
                         : newUser.getRoles());

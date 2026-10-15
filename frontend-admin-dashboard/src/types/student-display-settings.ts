@@ -120,7 +120,10 @@ export interface StudentDashboardWidgetConfig {
 // Signup/Login configuration
 export type StudentSignupProvider = 'google' | 'github' | 'usernamePassword' | 'emailOtp';
 export type StudentDefaultProvider = StudentSignupProvider;
-export type UsernameStrategy = 'email' | 'random' | 'manual';
+// email/random/manual: learner signup only, as before. phone/customField: also learner
+// signup. usernameApplyToAll extends the chosen strategy to every new learner (admin
+// add, CSV, invite links, payments, forms); an admin-typed username always wins.
+export type UsernameStrategy = 'email' | 'random' | 'manual' | 'phone' | 'customField';
 export type PasswordStrategy = 'manual' | 'autoRandom';
 export type PasswordDelivery = 'showOnScreen' | 'sendEmail' | 'none';
 // Controls how catalogue-header login/signup buttons surface auth.
@@ -140,6 +143,9 @@ export interface StudentSignupSettings {
         defaultProvider: StudentDefaultProvider;
     };
     usernameStrategy: UsernameStrategy;
+    usernameCustomFieldId?: string; // for 'customField'
+    usernamePrefix?: string; // put in front of phone / custom field values
+    usernameApplyToAll?: boolean; // default off
     passwordStrategy: PasswordStrategy;
     passwordDelivery: PasswordDelivery;
     presentation?: StudentAuthPresentation;

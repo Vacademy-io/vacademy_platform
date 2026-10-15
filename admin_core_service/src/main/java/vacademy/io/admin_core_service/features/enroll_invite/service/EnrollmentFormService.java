@@ -19,6 +19,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.common.dto.CustomFieldValueDTO;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -75,7 +76,12 @@ public class EnrollmentFormService {
         // Step 1: Validate EnrollInvite
         EnrollInvite enrollInvite = validateEnrollInvite(request.getEnrollInviteId(), request.getInstituteId());
 
-        // Step 2: Create or update user
+        // Step 2: Create or update user. The form's custom field values ride along so the
+        // institute's username strategy can use one of them (e.g. roll number).
+        if (request.getUserDetails() != null) {
+            request.getUserDetails().setUsernameFieldValues(
+                    CustomFieldValueDTO.toValueMap(request.getCustomFieldValues()));
+        }
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(
                 request.getUserDetails(), 
                 request.getInstituteId(), 

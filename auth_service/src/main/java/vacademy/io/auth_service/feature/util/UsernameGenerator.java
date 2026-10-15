@@ -58,6 +58,13 @@ public class UsernameGenerator {
     }
 
     /**
+     * Lowercase random suffix used to make a taken username unique.
+     */
+    public static String randomSuffix(int count) {
+        return getRandomAlphaNumeric(count).toLowerCase();
+    }
+
+    /**
      * Generates a random alphanumeric string of the specified count.
      */
     private static String getRandomAlphaNumeric(int count) {

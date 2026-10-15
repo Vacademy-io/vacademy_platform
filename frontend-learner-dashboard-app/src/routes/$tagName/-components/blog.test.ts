@@ -18,7 +18,8 @@ vi.mock("../-services/blog-service", () => ({
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { JsonRenderer } from "./JsonRenderer";
-import { blogPlainText, sanitizeBlogHtml } from "../-utils/blog-html";
+import { blogPlainText, sanitizeBlogArticle, sanitizeBlogHtml } from "../-utils/blog-html";
+import { blogPostSlugFor } from "../-utils/blog-route";
 
 /**
  * The `blog` section reads posts live and renders either the list or one
@@ -115,5 +116,34 @@ describe("sanitizeBlogHtml", () => {
   it("makes a plain-text teaser", () => {
     expect(blogPlainText("<p>Hello&nbsp;<b>world</b> &amp; friends</p>", 50)).toBe("Hello world & friends");
     expect(blogPlainText("<p>" + "word ".repeat(100) + "</p>", 20).endsWith("…")).toBe(true);
+  });
+});
+
+describe("sanitizeBlogArticle (table of contents)", () => {
+  it("gives every H2/H3 a unique id and returns the outline in order", () => {
+    const { html, headings } = sanitizeBlogArticle(
+      "<h2>Why NEET?</h2><p>a</p><h3>Syllabus</h3><h2>Why NEET?</h2><h4>skip</h4><h2>  </h2>"
+    );
+    expect(headings).toEqual([
+      { id: "toc-why-neet", text: "Why NEET?", level: 2 },
+      { id: "toc-syllabus", text: "Syllabus", level: 3 },
+      { id: "toc-why-neet-2", text: "Why NEET?", level: 2 },
+    ]);
+    expect(html).toContain('id="toc-why-neet-2"');
+  });
+
+  it("keeps an authored heading id and Hindi text", () => {
+    const { headings } = sanitizeBlogArticle('<h2 id="intro">Start</h2><h2>पढ़ाई कैसे करें</h2>');
+    expect(headings[0].id).toBe("intro");
+    expect(headings[1].id).toBe("toc-पढ़ाई-कैसे-करें");
+  });
+});
+
+describe("blogPostSlugFor", () => {
+  it("reads the slug after the blog page, or ?post= on the home page", () => {
+    expect(blogPostSlugFor("/school/free-resources/my-post", "", "school", "free-resources")).toBe("my-post");
+    expect(blogPostSlugFor("/school/free-resources", "", "school", "free-resources")).toBeNull();
+    expect(blogPostSlugFor("/school/other/my-post", "", "school", "free-resources")).toBeNull();
+    expect(blogPostSlugFor("/school", "?post=hi", "school", "homepage")).toBe("hi");
   });
 });

@@ -18,7 +18,7 @@ import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
-import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -132,9 +132,14 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(amount);
                 }
             } else {
-                log.info("Setting subscription payment amount to {} from plan {}", paymentPlan.getActualPrice(),
-                        paymentPlan.getId());
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+                // Regional lock (if any) wins over the plan's base price — see RegionalPriceLock.
+                double listPrice = RegionalPriceLock.listPrice(userPlan);
+                log.info("Setting subscription payment amount to {} from plan {}", listPrice, paymentPlan.getId());
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(listPrice);
+            }
+            if (RegionalPriceLock.isLocked(userPlan)) {
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest()
+                        .setCurrency(userPlan.getRegionalCurrency());
             }
 
             // Apply the validated coupon discount to the first-payment amount.
@@ -143,8 +148,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             // charges are full-price by design — see CouponValidationService
             // (the coupon scoping covers first-payment only).
             Double currentAmount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
-            double discountedAmount = CouponDiscountUtil.applyDiscount(
-                    currentAmount, userPlan.getAppliedCouponDiscount());
+            double discountedAmount = RegionalPriceLock.applyDiscount(
+                    userPlan, currentAmount, userPlan.getAppliedCouponDiscount());
             if (currentAmount != null && Double.compare(currentAmount, discountedAmount) != 0) {
                 log.info("Coupon {} reduced subscription first-payment amount {} -> {} on plan {}",
                         userPlan.getAppliedCouponDiscount() != null
@@ -247,7 +252,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     log.info("Trial enrollment: taking {} mandate authorization for user {} plan {} (first real charge at trial end)",
                             authAmount, user.getId(), userPlan.getId());
                 }
-                applyMandateMaxAmount(mandateRequest, enrollInvite, paymentPlan);
+                applyMandateMaxAmount(mandateRequest, enrollInvite, userPlan);
                 paymentResponseDTO = paymentService.handleMandatePayment(
                         user,
                         instituteId,
@@ -375,8 +380,10 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
      * picks it on the enrol form and it arrives already on the request.
      */
     private void applyMandateMaxAmount(PaymentInitiationRequestDTO request,
-                                       EnrollInvite enrollInvite, PaymentPlan paymentPlan) {
-        mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite, paymentPlan);
+                                       EnrollInvite enrollInvite, UserPlan userPlan) {
+        // Locked regional price when there is one, so the cap matches what renewals will debit.
+        mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite,
+                RegionalPriceLock.listPrice(userPlan));
     }
 
 }

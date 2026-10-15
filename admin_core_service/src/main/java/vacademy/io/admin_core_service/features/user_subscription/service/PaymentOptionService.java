@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
 import vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionFilterDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -66,6 +67,9 @@ public class PaymentOptionService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private RegionalPriceService regionalPriceService;
+
     /**
      * Creates a payment option, or — when the DTO carries the id of an existing row —
      * edits it in place (the Settings page edits through this same POST). Returns the
@@ -104,6 +108,7 @@ public class PaymentOptionService {
         }
 
         PaymentOption saved = paymentOptionRepository.save(paymentOption);
+        syncRegionalPrices(saved);
         return saved.mapToPaymentOptionDTO();
     }
 
@@ -318,10 +323,33 @@ public class PaymentOptionService {
         if (paymentOptionDTO.getPlanChangeAllowed() != null) {
             paymentOption.setPlanChangeAllowed(paymentOptionDTO.getPlanChangeAllowed());
         }
+        // Same null-guard: editors that predate regional pricing must not switch it off.
+        if (paymentOptionDTO.getRegionalPricingEnabled() != null) {
+            paymentOption.setRegionalPricingEnabled(paymentOptionDTO.getRegionalPricingEnabled());
+        }
+        if (paymentOptionDTO.getRegionalPricingCurrencies() != null) {
+            paymentOption.setRegionalPricingCurrencies(
+                    PaymentOption.joinCurrencies(paymentOptionDTO.getRegionalPricingCurrencies()));
+        }
         List<PaymentPlan> paymentPlans = paymentPlanService.editPaymentPlans(paymentOption.getPaymentPlans(), paymentOptionDTO.getPaymentPlans(), paymentOption, fullPayload);
         paymentOption.setPaymentPlans(paymentPlans);
         paymentOptionRepository.save(paymentOption);
+        syncRegionalPrices(paymentOption);
         return paymentOption.mapToPaymentOptionDTO();
+    }
+
+    /**
+     * Keeps regional prices in step with a just-saved option: AUTO rows follow a base-price
+     * edit, MANUAL rows are flagged for review, new plans and currencies get AUTO rows. Never
+     * fails the save it follows — a missing exchange rate only leaves those rows unpriced
+     * until the daily job or the panel's "Refresh rates" fills them in.
+     */
+    private void syncRegionalPrices(PaymentOption option) {
+        try {
+            regionalPriceService.sync(option, false);
+        } catch (Exception e) {
+            log.warn("Regional price sync failed for payment option {}: {}", option.getId(), e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------

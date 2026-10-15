@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -119,6 +120,8 @@ class ProductPageEnrollmentCurrencyTest {
     @Mock private WorkflowEngineService workflowEngineService;
     @Mock private InstituteRepository instituteRepository;
     @Mock private UtmAttributionService utmAttributionService;
+    // Unstubbed: quote() is empty, so every cart stays on base prices.
+    @Mock private RegionalPriceResolver regionalPriceResolver;
 
     @InjectMocks private ProductPageEnrollmentService service;
 

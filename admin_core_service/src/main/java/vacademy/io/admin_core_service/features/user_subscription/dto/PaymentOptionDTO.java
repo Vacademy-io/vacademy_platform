@@ -27,6 +27,10 @@ public class PaymentOptionDTO {
      * leaves the stored value alone instead of silently turning the feature off.
      */
     private Boolean planChangeAllowed;
+    /** Regional (country-based) pricing master switch. Boxed: null on edit = leave as is. */
+    private Boolean regionalPricingEnabled;
+    /** Currencies the system auto-prices every plan in, e.g. ["USD","GBP"]. Null on edit = leave as is. */
+    private List<String> regionalPricingCurrencies;
     /** Set when type='CPO'. Points at the underlying ComplexPaymentOption row. */
     private String complexPaymentOptionId;
     private List<PaymentPlanDTO> paymentPlans;

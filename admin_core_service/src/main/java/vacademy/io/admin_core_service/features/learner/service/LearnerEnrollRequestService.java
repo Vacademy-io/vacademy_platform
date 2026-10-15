@@ -30,6 +30,9 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.regional_pricing.dto.RegionalQuote;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
 import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
@@ -85,6 +88,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private EnrollInviteService enrollInviteService;
+
+    @Autowired
+    private RegionalPriceResolver regionalPriceResolver;
 
 
     @Autowired
@@ -1103,6 +1109,9 @@ public class LearnerEnrollRequestService {
         AppliedCouponDiscount appliedCouponDiscount = resolveAppliedCoupon(
                 enrollDTO, instituteId, userEmail, paymentPlan);
 
+        RegionalQuote regionalQuote = resolveRegionalQuote(
+                enrollDTO, enrollInvite, paymentOption, paymentPlan, source, appliedCouponDiscount);
+
         return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
@@ -1113,7 +1122,39 @@ public class LearnerEnrollRequestService {
                 userPlanStatus,
                 source,
                 subOrgId,
-                enrollDTO.getStartDate());
+                enrollDTO.getStartDate(),
+                regionalQuote);
+    }
+
+    /**
+     * Regional price for this checkout, resolved server-side from the viewer's country —
+     * never from what the client sends. Only a learner's own paid ONE_TIME / SUBSCRIPTION
+     * purchase is regionally priced; sub-org seats and CPO fee structures stay on base price.
+     * When a price applies, the payment request is rewritten to it (currency + net amount)
+     * so the ledger accrual and the gateway order agree with what the learner was shown.
+     */
+    private RegionalQuote resolveRegionalQuote(LearnerPackageSessionsEnrollDTO enrollDTO, EnrollInvite enrollInvite,
+                                               PaymentOption paymentOption, PaymentPlan paymentPlan, String source,
+                                               AppliedCouponDiscount appliedCouponDiscount) {
+        String type = paymentOption.getType();
+        boolean regionalEligible = (source == null || UserPlanSourceEnum.USER.name().equals(source))
+                && (PaymentOptionType.ONE_TIME.name().equals(type) || PaymentOptionType.SUBSCRIPTION.name().equals(type));
+        if (!regionalEligible) {
+            return null;
+        }
+        RegionalQuote quote = regionalPriceResolver
+                .quote(paymentPlan, enrollInvite != null ? enrollInvite.getVendor() : null)
+                .orElse(null);
+        PaymentInitiationRequestDTO payReq = enrollDTO.getPaymentInitiationRequest();
+        if (quote != null && payReq != null) {
+            payReq.setCurrency(quote.currency());
+            payReq.setAmount(RegionalPriceLock.applyDiscount(quote.actualPrice().doubleValue(),
+                    RegionalPriceLock.scale(quote, paymentPlan), appliedCouponDiscount));
+            log.info("Regional price {} {} ({}) applied to plan {} for viewer in {}",
+                    quote.currency(), quote.actualPrice(), quote.priceSource(), paymentPlan.getId(),
+                    quote.countryCode());
+        }
+        return quote;
     }
 
     /**

@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceResolver;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -70,6 +71,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -116,6 +118,8 @@ class ProductPageEnrollmentPlanCheckTest {
     @Mock private WorkflowEngineService workflowEngineService;
     @Mock private InstituteRepository instituteRepository;
     @Mock private UtmAttributionService utmAttributionService;
+    // Unstubbed: quote() is empty, so every cart stays on base prices.
+    @Mock private RegionalPriceResolver regionalPriceResolver;
 
     @InjectMocks private ProductPageEnrollmentService service;
 
@@ -297,7 +301,8 @@ class ProductPageEnrollmentPlanCheckTest {
         assertEquals(List.of("ps-psli-a"), res.getEnrolledPackageSessionIds());
         verify(userPlanService).createUserPlan(eq("user-1"), same(locked), any(),
                 same(m.getPsInvitePaymentOption().getEnrollInvite()),
-                same(m.getPsInvitePaymentOption().getPaymentOption()), any(), eq("INVITED"));
+                same(m.getPsInvitePaymentOption().getPaymentOption()), any(), eq("INVITED"),
+                isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -310,7 +315,7 @@ class ProductPageEnrollmentPlanCheckTest {
 
         assertEquals("PAID", res.getStatus());
         verify(userPlanService).createUserPlan(eq("user-1"), same(locked), any(), any(), any(), any(),
-                eq("INVITED"));
+                eq("INVITED"), isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -435,6 +440,8 @@ class ProductPageEnrollmentPlanCheckTest {
         verify(paymentLogService, never()).createPaymentLog(any(), anyDouble(), any(), any(), any(), any(), any());
         verify(paymentLogService, never()).updatePaymentLog(any(), any(), any(), any());
         verify(userPlanService, never()).createUserPlan(any(), any(), any(), any(), any(), any(), any());
+        verify(userPlanService, never()).createUserPlan(any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any());
     }
 
     @Test

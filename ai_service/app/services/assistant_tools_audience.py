@@ -183,9 +183,10 @@ async def _action_leads(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any
         return _err("fetch_failed", message="Could not load leads right now.")
 
     # Contact details reach the model only for callers who could see them in
-    # Audience Manager anyway (admins / root); other roles get names and timing.
+    # Audience Manager anyway (admins); other roles get names and timing. Not
+    # is_root_user: it is set for ordinary users and says nothing about this institute.
     roles = {str(r).upper() for r in (ctx.principal.roles or [])}
-    show_contact = ctx.principal.is_root_user or "ADMIN" in roles
+    show_contact = "ADMIN" in roles
     leads: List[Dict[str, Any]] = []
     for row in data.get("content") or []:
         if not isinstance(row, dict):

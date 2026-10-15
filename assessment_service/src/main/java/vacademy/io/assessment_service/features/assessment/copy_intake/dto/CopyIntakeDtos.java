@@ -50,6 +50,20 @@ public final class CopyIntakeDtos {
         private String commentPlacement;
     }
 
+    /** One checked copy of a batch, for "Download checked copies". */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CheckedCopyDto {
+        private String itemId;
+        private String fileName;
+        private String studentName;
+        private String roll;
+        private String evaluatedFileId;
+    }
+
     /** What a submitted-copies check would do, before any credit is spent. */
     @Data
     @Builder

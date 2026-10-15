@@ -848,6 +848,18 @@ public class CopyIntakeService {
                 .updatedAt(i.getUpdatedAt()).build();
     }
 
+    /** The batch's checked copies (AI check finished, checked copy rendered), in upload order. */
+    public List<CopyIntakeDtos.CheckedCopyDto> checkedCopies(String batchId) {
+        List<CopyIntakeDtos.CheckedCopyDto> out = new ArrayList<>();
+        for (AiCopyIntakeItemRepository.CheckedCopyRow r
+                : itemRepository.findCheckedCopies(batchId, AiCopyIntakeItem.COMPLETED)) {
+            out.add(CopyIntakeDtos.CheckedCopyDto.builder()
+                    .itemId(r.getItemId()).fileName(r.getFileName()).studentName(r.getStudentName())
+                    .roll(r.getRoll()).evaluatedFileId(r.getEvaluatedFileId()).build());
+        }
+        return out;
+    }
+
     public Optional<String> getBatchIdForProcess(String processId) {
         if (processId == null) return Optional.empty();
         return itemRepository.findFirstByProcessId(processId).map(AiCopyIntakeItem::getBatchId);

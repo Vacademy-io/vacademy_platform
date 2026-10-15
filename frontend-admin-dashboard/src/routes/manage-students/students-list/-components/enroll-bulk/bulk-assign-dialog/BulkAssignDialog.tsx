@@ -227,6 +227,10 @@ export const BulkAssignDialog = ({
                 cpo_config: ps.cpoConfig
                     ? {
                           ...ps.cpoConfig,
+                          // discount_split is the wizard's own; the rows already carry the result.
+                          installment_schedule: ps.cpoConfig.installment_schedule
+                              ? { ...ps.cpoConfig.installment_schedule, discount_split: undefined }
+                              : ps.cpoConfig.installment_schedule,
                           payment_details:
                               ps.cpoConfig.payment_mode === 'OFFLINE'
                                   ? toOfflinePaymentDetailsPayload(ps.cpoConfig.payment_details)

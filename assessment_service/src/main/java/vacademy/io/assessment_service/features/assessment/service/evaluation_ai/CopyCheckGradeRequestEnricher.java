@@ -28,6 +28,10 @@ public class CopyCheckGradeRequestEnricher {
         private final ObjectProvider<CopyCheckGradeContextProvider> contextProviders;
         private final AiEvaluationCreditGate creditGate;
 
+        /** Internal choice on dashboard assessments; null in unit tests that do not need it. */
+        @org.springframework.beans.factory.annotation.Autowired(required = false)
+        private DashboardChoiceGroups choiceGroups;
+
         public CopyCheckGradeRequestEnricher(AssessmentInstituteMappingRepository instituteMappingRepository,
                         ObjectProvider<CopyCheckGradeContextProvider> contextProviders,
                         AiEvaluationCreditGate creditGate) {
@@ -103,6 +107,16 @@ public class CopyCheckGradeRequestEnricher {
                                 provider.contribute(process, request);
                         } catch (Exception e) {
                                 log.warn("[copy-check] grade context provider failed for process {}: {}", process.getId(),
+                                                e.getMessage());
+                        }
+                }
+                // A dashboard paper's internal choice ("any 4 of 5"), when the provider set none.
+                // Nothing is added for an assessment without groups.
+                if (choiceGroups != null && process.getAssessment() != null) {
+                        try {
+                                choiceGroups.contribute(process.getAssessment().getId(), request);
+                        } catch (Exception e) {
+                                log.warn("[copy-check] choice groups not added for process {}: {}", process.getId(),
                                                 e.getMessage());
                         }
                 }

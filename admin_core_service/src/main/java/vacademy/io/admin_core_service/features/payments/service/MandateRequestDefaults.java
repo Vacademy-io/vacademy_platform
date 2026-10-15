@@ -66,6 +66,16 @@ public class MandateRequestDefaults {
      */
     public void applyMaxAmountAndFrequency(PaymentInitiationRequestDTO request,
                                            EnrollInvite enrollInvite, PaymentPlan paymentPlan) {
+        applyMaxAmountAndFrequency(request, enrollInvite,
+                paymentPlan != null ? Double.valueOf(paymentPlan.getActualPrice()) : null);
+    }
+
+    /**
+     * As above with the per-cycle price given directly — a regionally priced UserPlan
+     * renews at its locked price, not the plan's base price.
+     */
+    public void applyMaxAmountAndFrequency(PaymentInitiationRequestDTO request,
+                                           EnrollInvite enrollInvite, Double planPrice) {
         if (request == null || request.getRazorpayRequest() == null) {
             return;
         }
@@ -82,8 +92,8 @@ public class MandateRequestDefaults {
             log.warn("Could not read AUTOPAY_SETTING.MAX_AMOUNT for invite {}: {}",
                     enrollInvite != null ? enrollInvite.getId() : null, e.getMessage());
         }
-        if (maxAmount == null && paymentPlan != null) {
-            maxAmount = paymentPlan.getActualPrice();
+        if (maxAmount == null) {
+            maxAmount = planPrice;
         }
         request.getRazorpayRequest().setMandateMaxAmount(maxAmount);
         request.getRazorpayRequest().setMandateFrequency(MANDATE_FREQUENCY);

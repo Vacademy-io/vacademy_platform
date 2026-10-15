@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.TemplateService;
@@ -948,8 +949,8 @@ public class InvoiceService {
             // Get payment log line items (discounts, coupons, etc.)
             List<PaymentLogLineItem> paymentLogLineItems = paymentLogLineItemRepository.findByPaymentLog(paymentLog);
 
-            // Calculate plan price first
-            BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
+            // Calculate plan price first (the locked regional price when the plan has one)
+            BigDecimal planPrice = BigDecimal.valueOf(RegionalPriceLock.listPrice(userPlan));
 
             // For multi-package invoices, use the plan's actual_price (per-book price)
             // instead of paymentLog.getPaymentAmount() (which may contain the total gateway charge)
@@ -1021,7 +1022,7 @@ public class InvoiceService {
 
             // Build line items for this payment log - use payment amount
             List<InvoiceLineItemData> lineItems = buildLineItemsForPlan(
-                    paymentPlan, paymentLogLineItems, paymentLog.getId(), paymentAmount);
+                    paymentPlan, paymentLogLineItems, paymentLog.getId(), paymentAmount, planPrice);
             allLineItems.addAll(lineItems);
         }
 
@@ -1184,10 +1185,12 @@ public class InvoiceService {
      * For multi-package enrollments, creates descriptive line items for each
      * package session
      */
+    /** @param grossPlanPrice the UserPlan's list price — base, or its locked regional price */
     private List<InvoiceLineItemData> buildLineItemsForPlan(PaymentPlan paymentPlan,
             List<PaymentLogLineItem> paymentLogLineItems,
             String paymentLogId,
-            BigDecimal paymentAmount) {
+            BigDecimal paymentAmount,
+            BigDecimal grossPlanPrice) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // CPO / fee-installment payments are allocated across specific StudentFeePayment
@@ -1216,7 +1219,7 @@ public class InvoiceService {
             // actually charged. Falls back to paymentAmount when paymentPlan is
             // unavailable so we don't blank the line.
             BigDecimal grossUnitPrice = paymentPlan != null
-                    ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                    ? grossPlanPrice
                     : paymentAmount;
             InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                     .itemType("PLAN")
@@ -1590,8 +1593,8 @@ public class InvoiceService {
                 .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
-        // Use payment amount from payment log
-        BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
+        // Use payment amount from payment log (plan price = locked regional price when set)
+        BigDecimal planPrice = BigDecimal.valueOf(RegionalPriceLock.listPrice(userPlan));
         BigDecimal paymentAmount;
 
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
@@ -1625,7 +1628,7 @@ public class InvoiceService {
 
         // Build line items - use package session description instead of plan name
         List<InvoiceLineItemData> lineItems = buildLineItems(paymentPlan, paymentLogLineItems,
-                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId());
+                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId(), planPrice);
 
         // Build invoice data
         InvoiceData invoiceData = InvoiceData.builder()
@@ -1744,7 +1747,8 @@ public class InvoiceService {
             BigDecimal subtotal,
             BigDecimal taxAmount,
             BigDecimal totalAmount,
-            String paymentLogId) {
+            String paymentLogId,
+            BigDecimal grossPlanPrice) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // Get package session description (package name) instead of plan name
@@ -1762,7 +1766,7 @@ public class InvoiceService {
         // course line would double-count the discount on the rendered
         // invoice. Falls back to totalAmount when paymentPlan is unavailable.
         BigDecimal grossUnitPrice = paymentPlan != null
-                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                ? grossPlanPrice
                 : totalAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")

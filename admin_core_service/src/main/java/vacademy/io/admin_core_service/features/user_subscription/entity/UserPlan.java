@@ -150,4 +150,19 @@ private String id;
 
     @Column(name = "last_renewal_attempt_at")
     private Date lastRenewalAttemptAt;
+
+    /**
+     * Regional price lock (V585). Set when the learner checked out under regional pricing:
+     * the list price and currency they bought at, and the country it was resolved for.
+     * Renewals, invoices and the ledger read these instead of the plan's base price so a
+     * USD buyer keeps paying USD. Null = base price, as before.
+     */
+    @Column(name = "regional_price")
+    private java.math.BigDecimal regionalPrice;
+
+    @Column(name = "regional_currency", length = 3)
+    private String regionalCurrency;
+
+    @Column(name = "regional_country", length = 2)
+    private String regionalCountry;
 }

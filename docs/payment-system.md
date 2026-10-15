@@ -56,6 +56,7 @@ This document covers every payment-related entity in `admin_core_service`, how t
    - [How to Apply a Special Discount to a User](#flow-6-how-to-apply-a-special-discount-to-a-user)
    - [How a Paid Live Session Gets Charged](#flow-7-how-a-paid-live-session-gets-charged-v401)
    - [How a Gateway Payment Is Confirmed (webhooks)](#flow-8-how-a-gateway-payment-is-confirmed-webhooks)
+   - [Regional (Country-Based) Pricing](#flow-9-regional-country-based-pricing-v585)
 9. [API Reference](#api-reference)
 10. [Statuses & Enums](#statuses--enums)
 11. [Scheduled Jobs](#scheduled-jobs)
@@ -1049,6 +1050,49 @@ APPLICATION_FEE, AI_CREDIT_PACK, PLAN_CHANGE).
 
 **SCHOOL path** (Razorpay only, `RazorpayWebHookService.handleSchoolPayment`): claim, mark
 PAID, allocate to fee bills by due date, ledger credit, UserPlan ACTIVE, school receipt, invoice.
+
+---
+
+### Flow 9: Regional (Country-Based) Pricing (V585)
+
+A `PaymentOption` can price its plans by the viewer's country. Code: `features/regional_pricing/`.
+
+**Tables:** `payment_option.regional_pricing_enabled` + `regional_pricing_currencies` (switch and
+auto-priced currency list), `payment_plan_regional_price` (one row per plan × currency × optional
+country, `price_source` AUTO | MANUAL), `fx_rate` (daily USD-based rates), and
+`user_plan.regional_price / regional_currency / regional_country` (the price lock).
+
+**Admin setup** (`/v1/regional-pricing`):
+1. `PUT /payment-option/{id}/settings` `{enabled: true, currencies: ["USD","GBP","AED"]}` creates an
+   AUTO row per paid plan per currency: base price × exchange rate, rounded up to a clean price
+   (11.87 → 11.99, 437 → 439, 4,321 → 4,399).
+2. `PUT /price` sets a MANUAL price (per currency, or for one country, e.g. NP → NPR 1,200), or adds a
+   country as AUTO with `auto: true`. `POST /price/{id}/reset-to-auto` hands it back to the system.
+3. Editing a plan's base price recomputes its AUTO rows immediately and flags MANUAL rows
+   `needs_review` (`POST /price/{id}/mark-reviewed` to keep them). MANUAL rows are never overwritten.
+4. `FxRateRefreshJob` (01:15 daily, ShedLock) fetches rates and moves an AUTO price only when it has
+   drifted more than `regional.pricing.auto-drift-threshold` (5%). `POST /payment-option/{id}/refresh`
+   forces it.
+
+**Learner flow:**
+```
+1. Country = Cloudflare CF-IPCountry header (CloudFront-Viewer-Country also read). No geo-IP lookup.
+2. Public reads (open enroll-invite GET, open product-page by-code) swap each plan's
+   actual/elevated price + currency for the regional one and keep the base in
+   base_actual_price / base_currency / pricing_country.
+   Lookup: exact-country row → currency-wide row for the country's currency → base price.
+   Rows in a currency the invite's gateway cannot charge (PhonePe/Cashfree = INR, eWay = AUD/NZD) are skipped.
+3. Checkout re-resolves the price server-side (never trusts the client), locks it on the UserPlan,
+   and charges that amount in that currency. Coupon amounts (base currency) are scaled by
+   regional ÷ base price.
+4. Renewals (auto + manual), invoices, ledger accrual, mandate max amount and discount line items
+   all read the lock (RegionalPriceLock), so a USD buyer keeps paying USD.
+```
+
+**Out of scope / rules:** CPO fees, sub-org seats, live sessions and admin-side enrolments stay on base
+price. Product pages with basket pricing or offers stay on base price. Multi-course carts (product page
+and v2 multi-package) are all-or-nothing: if any item would not price in the same regional currency,
+the whole order uses base prices. Plan change is not offered on a regionally priced membership.
 
 ---
 

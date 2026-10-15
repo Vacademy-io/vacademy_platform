@@ -33,4 +33,14 @@ public class PaymentPlanDTO {
     private Boolean planChangeAllowed;
     private ReferralOptionDTO referralOption;
     private String referralOptionSMappingStatus;
+
+    // ── Regional pricing (learner-facing reads only) ──────────────────────
+    // Set when RegionalPriceResolver replaced actual/elevated price and currency with
+    // the viewer's regional price; they then hold the plan's own (base) price. Null on
+    // every other response, and ignored on write.
+    private Double baseActualPrice;
+    private Double baseElevatedPrice;
+    private String baseCurrency;
+    /** ISO-3166 country the regional price was resolved for. */
+    private String pricingCountry;
 }

@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.regional_pricing.dto.RegionalQuote;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
@@ -327,11 +329,33 @@ public class UserPlanService {
             String source,
             String subOrgId,
             Date startDate) {
+        return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite, paymentOption,
+                paymentInitiationRequestDTO, status, source, subOrgId, startDate, null);
+    }
+
+    /**
+     * @param regionalQuote the viewer's regional price, resolved by a learner checkout
+     *                      (RegionalPriceResolver). When present it is locked onto the UserPlan
+     *                      so this and every later charge use it. Admin-side callers pass null.
+     */
+    @Transactional
+    public UserPlan createUserPlan(String userId,
+            PaymentPlan paymentPlan,
+            AppliedCouponDiscount appliedCouponDiscount,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            String status,
+            String source,
+            String subOrgId,
+            Date startDate,
+            RegionalQuote regionalQuote) {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
 
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
+        RegionalPriceLock.apply(userPlan, regionalQuote);
 
         // ALWAYS set userId - this is preserved for both USER and SUB_ORG sources
         // For SUB_ORG: userId represents the individual learner in the sub-organization
@@ -475,7 +499,8 @@ public class UserPlanService {
                 && UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
                 && paymentPlan != null && paymentPlan.getActualPrice() > 0
                 && enrollInvite != null && enrollInvite.getInstituteId() != null) {
-            double accrualAmount = paymentPlan.getActualPrice();
+            // Regional lock: accrue in the currency and list price the learner was quoted.
+            double accrualAmount = RegionalPriceLock.listPrice(saved);
             if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getAmount() != null
                     && paymentInitiationRequestDTO.getAmount() >= 0) {
                 accrualAmount = paymentInitiationRequestDTO.getAmount();
@@ -485,7 +510,7 @@ public class UserPlanService {
                 // (gross list price + discount, amount = net) so the side-view
                 // Transaction History can render "gross struck through → net", and name
                 // the coupon in the remark.
-                double listPrice = paymentPlan.getActualPrice();
+                double listPrice = RegionalPriceLock.listPrice(saved);
                 String accrualRemark = "Plan enrollment payment required";
                 java.math.BigDecimal grossAmount = null;
                 java.math.BigDecimal discountAmount = null;
@@ -502,7 +527,8 @@ public class UserPlanService {
                 userAccountLedgerService.recordDebitAccrual(
                         userId, enrollInvite.getInstituteId(),
                         java.math.BigDecimal.valueOf(accrualAmount),
-                        paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR",
+                        RegionalPriceLock.currency(saved,
+                                paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR"),
                         null,
                         "USER_PLAN", saved.getId(),
                         null, accrualRemark,

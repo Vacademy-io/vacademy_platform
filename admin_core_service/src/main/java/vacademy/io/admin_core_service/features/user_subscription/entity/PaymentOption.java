@@ -69,6 +69,18 @@ public class PaymentOption {
     private Boolean planChangeAllowed = false;
 
     /**
+     * Regional pricing master switch (V585). When on, learner checkouts are priced from
+     * payment_plan_regional_price by the viewer's country instead of the plan's own price.
+     * Boxed for the same reason as planChangeAllowed: a partial edit must not switch it off.
+     */
+    @Column(name = "regional_pricing_enabled")
+    private Boolean regionalPricingEnabled = false;
+
+    /** Comma-separated ISO-4217 codes the system keeps an AUTO price for on every plan. */
+    @Column(name = "regional_pricing_currencies")
+    private String regionalPricingCurrencies;
+
+    /**
      * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
      * relation — two Hibernate mappings on the same column cause the scalar to come back
      * null on some read paths (notably the enroll-invite payload). All callers use
@@ -122,6 +134,8 @@ public class PaymentOption {
         this.requireApproval = paymentOptionDTO.isRequireApproval();
         this.unit = paymentOptionDTO.getUnit();
         this.planChangeAllowed = Boolean.TRUE.equals(paymentOptionDTO.getPlanChangeAllowed());
+        this.regionalPricingEnabled = Boolean.TRUE.equals(paymentOptionDTO.getRegionalPricingEnabled());
+        this.regionalPricingCurrencies = joinCurrencies(paymentOptionDTO.getRegionalPricingCurrencies());
         this.complexPaymentOptionId = paymentOptionDTO.getComplexPaymentOptionId();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
@@ -146,6 +160,8 @@ public class PaymentOption {
                 .requireApproval(this.requireApproval)
                 .unit(this.unit)
                 .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
+                .regionalPricingEnabled(Boolean.TRUE.equals(this.regionalPricingEnabled))
+                .regionalPricingCurrencies(splitCurrencies(this.regionalPricingCurrencies))
                 .complexPaymentOptionId(this.complexPaymentOptionId)
                 .createdByUserId(this.createdByUserId)
                 .createdAt(this.createdAt)
@@ -171,6 +187,8 @@ public class PaymentOption {
             .requireApproval(this.requireApproval)
             .unit(this.unit)
             .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
+            .regionalPricingEnabled(Boolean.TRUE.equals(this.regionalPricingEnabled))
+            .regionalPricingCurrencies(splitCurrencies(this.regionalPricingCurrencies))
             .complexPaymentOptionId(this.complexPaymentOptionId)
             .createdByUserId(this.createdByUserId)
             .createdAt(this.createdAt)
@@ -178,4 +196,27 @@ public class PaymentOption {
             .build();
     }
 
+    /** Normalises an admin-entered currency list to "USD,GBP" (upper-case, de-duplicated). */
+    public static String joinCurrencies(List<String> currencies) {
+        if (currencies == null) {
+            return null;
+        }
+        String joined = currencies.stream()
+                .filter(Objects::nonNull)
+                .map(c -> c.trim().toUpperCase())
+                .filter(c -> c.length() == 3)
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(","));
+        return joined.isEmpty() ? null : joined;
+    }
+
+    public static List<String> splitCurrencies(String currencies) {
+        if (currencies == null || currencies.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(currencies.split(","))
+                .map(String::trim)
+                .filter(c -> !c.isEmpty())
+                .toList();
+    }
 }

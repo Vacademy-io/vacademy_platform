@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -496,7 +497,7 @@ public class RenewalPaymentService {
             ctx.put("enrollInviteId", userPlan.getEnrollInviteId());
             ctx.put("vendor", userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().getVendor() : null);
             if (userPlan.getPaymentPlan() != null) {
-                ctx.put("amount", userPlan.getPaymentPlan().getActualPrice());
+                ctx.put("amount", RegionalPriceLock.listPrice(userPlan));
             }
             // On final-failure the mappings were just flipped INACTIVE before this event,
             // so fall back to INACTIVE rows rather than emitting an empty batch list.

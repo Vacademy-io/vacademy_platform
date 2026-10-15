@@ -9,6 +9,15 @@ export interface PaymentPlan {
     description: string;
     tag: string;
     feature_json?: string;
+    /**
+     * Set when the server priced this plan for the viewer's country (regional pricing):
+     * actual_price / currency above are then the regional ones, and these hold the plan's
+     * own price. Absent otherwise.
+     */
+    base_actual_price?: number | null;
+    base_elevated_price?: number | null;
+    base_currency?: string | null;
+    pricing_country?: string | null;
 }
 
 export interface ProductPageMappingResponse {

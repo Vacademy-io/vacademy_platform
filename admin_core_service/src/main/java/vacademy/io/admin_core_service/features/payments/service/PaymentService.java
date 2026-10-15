@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
@@ -92,7 +93,7 @@ public class PaymentService {
         private void recordCouponLineItemIfApplicable(String paymentLogId, UserPlan userPlan) {
                 PaymentPlan plan = userPlan != null ? userPlan.getPaymentPlan() : null;
                 recordFirstPaymentDiscountLineItem(paymentLogId, userPlan,
-                                plan != null ? plan.getActualPrice() : null);
+                                plan != null ? RegionalPriceLock.listPrice(userPlan) : null);
         }
 
         /**
@@ -119,7 +120,7 @@ public class PaymentService {
                 }
                 // Cycles only matter for admin discounts (renewals never apply coupons), so a
                 // coupon enrollment is left exactly as it was — no extra counter write.
-                if (saveDiscountLineItem(paymentLogId, discount, grossAmount)
+                if (saveDiscountLineItem(paymentLogId, discount, grossAmount, RegionalPriceLock.scale(userPlan))
                                 && AdminDiscountService.SOURCE_ADMIN.equals(discount.getDiscountSource())) {
                         markDiscountedCycle(userPlan);
                 }
@@ -131,14 +132,14 @@ public class PaymentService {
          * RenewalPaymentService.
          */
         public void recordRenewalDiscountLineItem(String paymentLogId, AppliedCouponDiscount discount,
-                        double grossAmount) {
+                        double grossAmount, UserPlan userPlan) {
                 if (paymentLogId == null || discount == null) {
                         return;
                 }
                 if (paymentLogLineItemRepository.existsByPaymentLogIdAndSourceId(paymentLogId, discount.getId())) {
                         return;
                 }
-                saveDiscountLineItem(paymentLogId, discount, grossAmount);
+                saveDiscountLineItem(paymentLogId, discount, grossAmount, RegionalPriceLock.scale(userPlan));
         }
 
         /** One more charge reduced by the plan's discount; persisted with the plan's next save. */
@@ -148,9 +149,14 @@ public class PaymentService {
                 userPlanService.save(userPlan);
         }
 
-        private boolean saveDiscountLineItem(String paymentLogId, AppliedCouponDiscount discount, double grossAmount) {
+        /**
+         * @param scale regional ÷ base price of the UserPlan (1 when not regionally priced):
+         *              discount amounts are written in the base currency, the gross is not.
+         */
+        private boolean saveDiscountLineItem(String paymentLogId, AppliedCouponDiscount discount, double grossAmount,
+                        double scale) {
                 boolean admin = AdminDiscountService.SOURCE_ADMIN.equals(discount.getDiscountSource());
-                double computed = CouponDiscountUtil.computeDiscount(discount, grossAmount);
+                double computed = CouponDiscountUtil.computeDiscount(discount, grossAmount / scale) * scale;
                 // Coupons: same figure as before. Admin discounts: never more than the price.
                 double amount = admin ? Math.min(computed, grossAmount) : computed;
                 if (amount <= 0.0) {

@@ -17,7 +17,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedC
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
-import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
+import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceLock;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
@@ -306,9 +306,11 @@ public class RenewalChargeService {
         // No discount: charge exactly what was charged before (no rounding introduced).
         double amount = renewalDiscount == null
                 ? grossAmount
-                : CouponDiscountUtil.applyDiscount(grossAmount, renewalDiscount);
-        String currency = StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency()
-                : (mandate.getCurrency() != null ? mandate.getCurrency() : "INR");
+                : RegionalPriceLock.applyDiscount(plan, grossAmount, renewalDiscount);
+        // A regionally priced membership renews in the currency it was bought in.
+        String currency = RegionalPriceLock.currency(plan,
+                StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency()
+                        : (mandate.getCurrency() != null ? mandate.getCurrency() : "INR"));
 
         UserDTO user = getUser(plan.getUserId());
         if (user == null) {
@@ -355,7 +357,7 @@ public class RenewalChargeService {
             // zero-amount charges), so settle it as PAID directly and extend the plan.
             String zeroLogId = paymentLogService.createPaymentLog(plan.getUserId(), 0.0, vendor,
                     invite.getVendorId(), currency, plan);
-            paymentService.recordRenewalDiscountLineItem(zeroLogId, renewalDiscount, grossAmount);
+            paymentService.recordRenewalDiscountLineItem(zeroLogId, renewalDiscount, grossAmount, plan);
             renewalPaymentService.handleRenewalPaymentConfirmation(
                     zeroLogId, instituteId, PaymentStatusEnum.PAID, null);
             log.info("[RenewalCharge] Plan {} renewed without a charge — discount covers the full {}",
@@ -372,7 +374,7 @@ public class RenewalChargeService {
             if (renewalDiscount != null) {
                 try {
                     paymentService.recordRenewalDiscountLineItem(response.getOrderId(), renewalDiscount,
-                            grossAmount);
+                            grossAmount, plan);
                 } catch (Exception lineItemError) {
                     log.error("[RenewalCharge] Plan {} charged but discount line not recorded: {}",
                             plan.getId(), lineItemError.getMessage());
@@ -495,8 +497,8 @@ public class RenewalChargeService {
                     plan.getId(), pending.getId(), pending.getActualPrice());
             return pending.getActualPrice();
         }
-        PaymentPlan pp = plan.getPaymentPlan();
-        return pp != null ? pp.getActualPrice() : 0.0;
+        // Locked regional price when the member bought under regional pricing, else the plan's.
+        return RegionalPriceLock.listPrice(plan);
     }
 
     private int resolveMaxAttempts(UserPlan plan) {

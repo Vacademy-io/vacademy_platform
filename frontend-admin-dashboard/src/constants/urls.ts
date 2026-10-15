@@ -1128,6 +1128,18 @@ export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-op
 export const MAKE_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-option/make-default-payment-option`;
 export const DELETE_PAYMENT_OPTION_URL = SAVE_PAYMENT_OPTION;
 
+// Regional (country-based) pricing on a payment option
+export const REGIONAL_PRICING_BASE = `${BASE_URL}/admin-core-service/v1/regional-pricing`;
+export const REGIONAL_PRICING_CONFIG = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}`;
+export const REGIONAL_PRICING_SETTINGS = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}/settings`;
+export const REGIONAL_PRICING_REFRESH = (paymentOptionId: string) =>
+    `${REGIONAL_PRICING_BASE}/payment-option/${paymentOptionId}/refresh`;
+export const REGIONAL_PRICE_UPSERT = `${REGIONAL_PRICING_BASE}/price`;
+export const REGIONAL_PRICE_ITEM = (regionalPriceId: string) =>
+    `${REGIONAL_PRICING_BASE}/price/${regionalPriceId}`;
+
 // Payment plan markdown (Offer Price)
 export const APPLY_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/apply`;
 export const RESET_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/reset`;

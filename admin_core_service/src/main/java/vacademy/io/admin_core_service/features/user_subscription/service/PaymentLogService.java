@@ -2206,7 +2206,7 @@ public class PaymentLogService {
                 String invitedPackageSessionId = mapping.getPackageSession().getId();
 
                 // Mark ABANDONED_CART entries as DELETED
-                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                learnerEnrollmentEntryService.deletePreviousThrowawayEntries(
                         userId,
                         invitedPackageSessionId,
                         actualPackageSessionId,
@@ -2296,7 +2296,7 @@ public class PaymentLogService {
                 String invitedPackageSessionId = mapping.getPackageSession().getId();
 
                 // Mark ABANDONED_CART and PAYMENT_FAILED entries as DELETED
-                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                learnerEnrollmentEntryService.deletePreviousThrowawayEntries(
                         userId,
                         invitedPackageSessionId,
                         actualPackageSessionId,

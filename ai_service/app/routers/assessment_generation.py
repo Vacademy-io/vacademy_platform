@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,7 @@ from ..db import db_dependency
 from ..dependencies import get_institute_id_or_internal
 from ..models.ai_token_usage import RequestType
 from ..repositories.ai_api_keys_repository import AiApiKeysRepository  # noqa: F401  (kept for parity)
-from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.ai_billing import metering_from_request, preflight_tool_credits, record_tool_billing
 from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
 from ..services.api_key_resolver import ApiKeyResolver
@@ -121,6 +121,7 @@ async def generate_from_transcript(
     request: GenerateAssessmentRequest,
     auth: tuple = Depends(get_institute_id_or_internal),
     db: Session = Depends(db_dependency),
+    http_request: Request = None,
 ):
     """Generate a title + MCQ questions from a lecture transcript.
 
@@ -220,6 +221,11 @@ async def generate_from_transcript(
         user_id=request.user_id,
         user_role="ADMIN" if request.user_id else None,
         idempotency_key=request.idempotency_key,
+        # Usage-event attribution only (the ledger role above is unchanged).
+        use_case="assessment_generation",
+        metering=metering_from_request(http_request, institute_id,
+                                       user={"user_id": request.user_id} if request.user_id else None,
+                                       auth_mode=auth_mode),
     )
 
     logger.info(

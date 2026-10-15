@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
 import java.time.Duration;
 import java.util.List;
@@ -208,6 +209,9 @@ public class StudentAnalyticsLLMService {
          * trip runs on the Reactor event loop, and both swallow their own failures -
          * billing must never break analytics processing.
          */
+        /** ai_usage_event use case for these charges (ai_use_case_catalog key). */
+        static final String USE_CASE_LEARNER_ANALYTICS = "learner_analytics";
+
         private void logTokenUsage(String responseBody, String model, String instituteId, String userId) {
                 try {
                         JsonNode root = objectMapper.readTree(responseBody);
@@ -232,13 +236,18 @@ public class StudentAnalyticsLLMService {
                                         // usage_log_id is intentionally null: the ai_token_usage row above is
                                         // written asynchronously, so its id is not available here, and
                                         // ai_service would otherwise try to link a row it cannot yet see.
+                                        // Metering only: the learner rides in usage_context, so the
+                                        // ledger row stays exactly as before (no user, no subject).
                                         creditClient.deductCreditsAsync(
                                                         instituteId,
                                                         RequestType.ANALYTICS.getValue(),
                                                         model,
                                                         promptTokens,
                                                         completionTokens,
-                                                        null);
+                                                        null,
+                                                        MeteringFields.system(USE_CASE_LEARNER_ANALYTICS)
+                                                                        .subjectUserId(userId)
+                                                                        .build());
                                 } else {
                                         log.warn("[LLM-Analytics] No institute resolved for model={} - "
                                                         + "{} tokens recorded unattributed and NOT charged",

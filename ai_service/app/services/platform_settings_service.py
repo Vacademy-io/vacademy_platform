@@ -425,6 +425,64 @@ SETTING_SPECS["billing.record_unbilled_usage"] = SettingSpec(
     default=lambda: False,
 )
 
+# Usage metering (services/metering): write-only ai_usage_event rows.
+SETTING_SPECS["metering.events.enabled"] = SettingSpec(
+    key="metering.events.enabled",
+    group="rollout",
+    label="Record AI usage events (who used which AI feature)",
+    description=(
+        "On (default) = every AI charge, and every recorded-but-free AI call, also writes one "
+        "ai_usage_event row (feature, user, role, surface, model, credits). Charges, balances and "
+        "the credit ledger are exactly the same either way. Off = no usage events are written "
+        "(the kill switch; the new usage history then stops growing). Takes up to 30 s to apply."
+    ),
+    type="bool",
+    default=lambda: True,
+)
+
+SETTING_SPECS["metering.admin_hosts"] = SettingSpec(
+    key="metering.admin_hosts",
+    group="rollout",
+    label="Usage events: admin dashboard hosts (JSON)",
+    description=(
+        'JSON array of browser hosts that count as the admin dashboard when a usage event records '
+        'where a request came from (its Origin/Referer), e.g. ["dash.vacademy.io"]. Labels only; '
+        "nothing is charged or blocked differently."
+    ),
+    type="string",
+    default=lambda: '["dash.vacademy.io"]',
+    max_length=2000,
+)
+
+SETTING_SPECS["metering.history_v2_institutes"] = SettingSpec(
+    key="metering.history_v2_institutes",
+    group="rollout",
+    label="New AI usage history: institutes (JSON)",
+    description=(
+        'JSON array of institute ids that see the new AI credits History/Analytics (per user, per '
+        'feature), or ["*"] for every institute. Empty (default) = everyone keeps the current view. '
+        "Only the screen changes; the data is recorded for every institute either way."
+    ),
+    type="string",
+    default=lambda: "[]",
+    max_length=6000,
+)
+
+# Read by admin_core's nightly AiUsageRoleBackfillJob directly from ai_platform_settings.
+if "metering.role_backfill.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["metering.role_backfill.enabled"] = SettingSpec(
+        key="metering.role_backfill.enabled",
+        group="rollout",
+        label="Usage events: fill in roles and names nightly",
+        description=(
+            "On (default) = a nightly admin_core job looks up the role and name of the users on the "
+            "last 7 days of usage events whose role was not known when they were written. It only "
+            "updates the usage-event table. Off = the job does nothing."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",

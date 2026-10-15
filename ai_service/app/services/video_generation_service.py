@@ -299,8 +299,13 @@ def _bill_video_stage_usage(
     tts_provider: Optional[str],
     tts_provider_resolved: Optional[str],
     language: Optional[str],
+    meter: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Record usage and deduct credits for one pipeline stage's output.
+
+    ``meter``: optional usage-event attribution fields (ai_billing.
+    metering_kwargs); passed only where the token service accepts them and
+    never changes an amount or a ledger row.
 
     ``usd_to_credits(usd) -> Decimal`` and ``image_unit_usd(model) -> float``
     are CreditService.usd_to_credits and provider_rates.image_cost_usd bound to
@@ -312,6 +317,11 @@ def _bill_video_stage_usage(
     log = _logging.getLogger(__name__)
     summary: Dict[str, Any] = {"llm_rows": 0, "image_rows": 0, "image_shortfall": 0,
                                "stock_items": 0, "tts_model": None}
+    from .ai_billing import supported_kwargs as _supported
+    _meter_deduct = _supported(getattr(token_service, "record_usage_and_deduct_credits", None), meter or {})
+    # Record-only rows (free stock media, free TTS) are bundled into the video.
+    _meter_record = _supported(getattr(token_service, "record_usage", None),
+                               {**meter, "free_reason": "BUNDLED"} if meter else {})
     usage = usage or {}
     _u_pt = int(usage.get("prompt_tokens", 0) or 0)
     _u_ct = int(usage.get("completion_tokens", 0) or 0)
@@ -372,6 +382,7 @@ def _bill_video_stage_usage(
                 },
                 batch_id=video_id,
                 allow_negative=True,
+                **_meter_deduct,
             )
             summary["llm_rows"] += 1
         log.info(
@@ -426,6 +437,7 @@ def _bill_video_stage_usage(
             batch_id=video_id,
             precomputed_credits=usd_to_credits(_usd),
             allow_negative=True,
+            **_meter_deduct,
         )
     summary["image_rows"] = len(_image_rows)
     summary["image_shortfall"] = _shortfall
@@ -446,6 +458,7 @@ def _bill_video_stage_usage(
             model="pexels-stock-api",
             metadata={"video_id": video_id, "stage": stage, "stock_count": _stock_count, "billed": False},
             total_price=0.0,
+            **_meter_record,
         )
         summary["stock_items"] = _stock_count
 
@@ -471,6 +484,7 @@ def _bill_video_stage_usage(
                 total_price=0.0,
                 tts_provider=_vendor,
                 character_count=_tts_chars,
+                **_meter_record,
             )
         else:
             from .provider_rates import tts_cost_usd
@@ -493,6 +507,7 @@ def _bill_video_stage_usage(
                 # None (unknown vendor rate) → calculate_credits('tts_premium').
                 precomputed_credits=_tts_credits if _tts_credits and _tts_credits > _Dec("0") else None,
                 allow_negative=True,
+                **_meter_deduct,
             )
             log.info(f"[VideoGenService] Deducted premium TTS credits ({_vendor}) for {_tts_chars} chars in stage {stage}")
     return summary
@@ -631,6 +646,31 @@ def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -
     return f"{key}:refund{int(n)}" if int(n) > 0 else key
 
 
+def _supported_meter(fn: Any, meter: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    from .ai_billing import supported_kwargs
+    return supported_kwargs(fn, meter or {})
+
+
+def video_meter(*, use_case: str, video_id: str, user_id: Optional[str], prompt: Optional[str] = None,
+                content_type: Optional[str] = None, quality_tier: Optional[str] = None,
+                stage: Optional[str] = None) -> Dict[str, Any]:
+    """Usage-event attribution for a video's charges (ai_billing.metering_kwargs):
+    the video id (also the ledger batch_id) and a short title from the prompt.
+    Never raises; {} on any problem."""
+    try:
+        from .ai_billing import metering_kwargs, metering_user
+        first_line = (prompt or "").strip().splitlines()[0] if (prompt or "").strip() else ""
+        return metering_kwargs(use_case, metering_user(user_id), {
+            "video_id": video_id,
+            "video_title": first_line[:80] or None,
+            "content_type": content_type,
+            "quality_tier": quality_tier,
+            "stage": stage,
+        })
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _charge_lesson_teacher(
     db: Any,
     *,
@@ -643,6 +683,7 @@ def _charge_lesson_teacher(
     video_id: str,
     token_usage_service: Any = None,
     credit_service: Any = None,
+    meter: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Record the teacher's usage and deduct its credits; returns the credits
     ACTUALLY deducted (Decimal, 0 on an idempotent no-op or a failure).
@@ -681,11 +722,13 @@ def _charge_lesson_teacher(
             "price_source": price_source,
         },
         total_price=float(vendor_usd) if vendor_usd is not None else teacher_usd,
+        **_supported_meter(token_usage_service.record_usage, meter),
     )
     try:
-        from ..schemas.credits import CreditDeductRequest
+        from .ai_billing import build_deduct_request
 
-        result = credit_service.deduct_credits(CreditDeductRequest(
+        result = credit_service.deduct_credits(build_deduct_request(
+            meter,
             institute_id=institute_id,
             request_type=RequestType.AVATAR_VIDEO.value,
             model=_LESSON_TEACHER_MODEL_ID,
@@ -3726,6 +3769,11 @@ class VideoGenerationService:
                                 tts_provider=tts_provider,
                                 tts_provider_resolved=getattr(pipeline, "_tts_provider_resolved", None),
                                 language=language,
+                                meter=video_meter(
+                                    use_case="lesson_video", video_id=video_id, user_id=user_id,
+                                    prompt=prompt, content_type=content_type, quality_tier=quality_tier,
+                                    stage=stage_pipeline_name,
+                                ),
                             )
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
@@ -3914,6 +3962,15 @@ class VideoGenerationService:
                                                 seconds=_undeducted_seconds,
                                                 batch_id=video_id,
                                                 allow_negative=True,
+                                                **_supported_meter(
+                                                    _ts.record_usage_and_deduct_credits,
+                                                    video_meter(
+                                                        use_case="avatar_video", video_id=video_id,
+                                                        user_id=user_id, prompt=prompt,
+                                                        content_type=content_type,
+                                                        quality_tier=quality_tier, stage="html",
+                                                    ),
+                                                ),
                                             )
 
                                         # Persist deducted_at stamps back into extra_metadata.
@@ -3977,6 +4034,11 @@ class VideoGenerationService:
                                         user_id=user_id,
                                         video_id=video_id,
                                         credit_service=_cs_lo,
+                                        meter=video_meter(
+                                            use_case="avatar_video", video_id=video_id, user_id=user_id,
+                                            prompt=prompt, content_type=content_type,
+                                            quality_tier=quality_tier, stage="html",
+                                        ),
                                     )
                                     if _credits > 0 else 0
                                 )

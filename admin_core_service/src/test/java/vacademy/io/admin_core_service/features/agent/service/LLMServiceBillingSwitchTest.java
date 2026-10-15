@@ -73,7 +73,7 @@ class LLMServiceBillingSwitchTest {
 
         verify(usage).recordUsageAsync(ApiProvider.OPENAI, RequestType.AGENT, SONNET, 20, 5,
                 UUID.fromString(INSTITUTE), UUID.fromString(USER));
-        verify(billing, never()).recordAndChargeAsync(any(), any(), anyInt(), anyInt(), any(), any());
+        verify(billing, never()).recordAndChargeAsync(any(), any(), anyInt(), anyInt(), any(), any(), any());
     }
 
     @Test
@@ -83,8 +83,22 @@ class LLMServiceBillingSwitchTest {
         service.generateChatCompletion(session());
 
         verify(billing).recordAndChargeAsync(RequestType.AGENT, SONNET, 20, 5,
-                UUID.fromString(INSTITUTE), UUID.fromString(USER));
+                UUID.fromString(INSTITUTE), UUID.fromString(USER), "admin_agent");
         verify(usage, never()).recordUsageAsync(any(), any(), any(), anyInt(), anyInt(), any(), any());
+    }
+
+    @Test
+    void theSessionUseCaseIsReportedToMetering() {
+        when(billing.isEnabled()).thenReturn(true);
+        when(resolver.resolve("workflow_draft"))
+                .thenReturn(new AiModelDefaultsResolver.ModelChain("workflow_draft", List.of(SONNET), true));
+        ConversationSession s = session();
+        s.getContext().put(LLMService.CTX_USE_CASE, "workflow_draft");
+
+        service.generateChatCompletion(s);
+
+        verify(billing).recordAndChargeAsync(RequestType.AGENT, SONNET, 20, 5,
+                UUID.fromString(INSTITUTE), UUID.fromString(USER), "workflow_draft");
     }
 
     @Test
@@ -97,7 +111,7 @@ class LLMServiceBillingSwitchTest {
 
         verify(usage).recordUsageAsync(eq(ApiProvider.OPENAI), eq(RequestType.AGENT), eq(SONNET), eq(20), eq(5),
                 any(), any());
-        verify(billing, never()).recordAndChargeAsync(any(), any(), anyInt(), anyInt(), any(), any());
+        verify(billing, never()).recordAndChargeAsync(any(), any(), anyInt(), anyInt(), any(), any(), any());
     }
 
     @Test

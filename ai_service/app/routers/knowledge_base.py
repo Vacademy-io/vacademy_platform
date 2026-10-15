@@ -50,10 +50,13 @@ VALID_SOURCE_KINDS = ("PDF", "URL", "YOUTUBE", "TEXT")
 class Caller:
     """The verified identity behind a request: institute + (optional) user."""
 
-    def __init__(self, institute_id: Optional[str], mode: str, user_id: Optional[str] = None):
+    def __init__(self, institute_id: Optional[str], mode: str, user_id: Optional[str] = None,
+                 metering: Any = None):
         self.institute_id = institute_id
         self.mode = mode
         self.user_id = user_id
+        # Usage-event attribution for this caller's charges (never changes one).
+        self.metering = metering
 
     def require_institute(self, body_institute_id: Optional[str] = None) -> str:
         """The institute to act for.
@@ -90,12 +93,15 @@ async def get_caller(
     get_current_user trusts the clientId header verbatim, which would let a member
     of institute A pass clientId=B and spend B's credits on B's corpus.
     """
+    from ..services.ai_billing import metering_from_request
+
     if x_institute_key or x_internal_service_token:
         institute_id, mode = get_institute_id_or_internal(x_institute_key, x_internal_service_token)
-        return Caller(institute_id, mode)
+        return Caller(institute_id, mode, metering=metering_from_request(request, institute_id, auth_mode=mode))
     if authorization:
         principal = await get_pinned_principal(request, authorization, settings)
-        return Caller(principal.institute_id, "INSTITUTE", principal.user_id)
+        return Caller(principal.institute_id, "INSTITUTE", principal.user_id,
+                      metering=metering_from_request(request, principal.institute_id, user=principal))
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=(
@@ -239,8 +245,15 @@ def _preflight_or_402(
     return estimate
 
 
+def _ingest_meter(caller: Any) -> dict:
+    """{"metering": ...} for _start_ingest_task when it takes it (shim-safe)."""
+    from ..services.ai_billing import supported_kwargs
+    return supported_kwargs(_start_ingest_task, {"metering": getattr(caller, "metering", None)})
+
+
 def _start_ingest_task(
-    db: Session, *, source_id: str, institute_id: str, user_id: Optional[str], source_kind: str
+    db: Session, *, source_id: str, institute_id: str, user_id: Optional[str], source_kind: str,
+    metering: Any = None,
 ) -> str:
     """Create the durable ai_task row and fire the background job."""
     task = AiTaskService(AiTaskRepository(db)).create(
@@ -254,8 +267,10 @@ def _start_ingest_task(
     KbRepository(db).update_source_progress(source_id, ai_task_id=str(task.id))
 
     async def work() -> str:
+        from ..services.ai_billing import supported_kwargs
         return await kb_ingest.ingest_source(
-            source_id=source_id, institute_id=institute_id, user_id=user_id
+            source_id=source_id, institute_id=institute_id, user_id=user_id,
+            **supported_kwargs(kb_ingest.ingest_source, {"metering": metering}),
         )
 
     ai_task_service.schedule(str(task.id), work)
@@ -613,6 +628,7 @@ async def add_source(
     task_id = _start_ingest_task(
         db, source_id=source_id, institute_id=resolved,
         user_id=caller.user_id, source_kind=kind,
+        **_ingest_meter(caller),
     )
     return {
         "source": repo.get_source(source_id, resolved),
@@ -668,6 +684,7 @@ async def update_source(
             _start_ingest_task(
                 db, source_id=source_id, institute_id=resolved,
                 user_id=caller.user_id, source_kind=source["source_kind"],
+                **_ingest_meter(caller),
             )
     if body.title or body.meta:
         repo.update_source_fields(
@@ -702,6 +719,7 @@ async def reindex_source(
     task_id = _start_ingest_task(
         db, source_id=source_id, institute_id=resolved,
         user_id=caller.user_id, source_kind=source["source_kind"],
+        **_ingest_meter(caller),
     )
     return {"source": repo.get_source(source_id, resolved), "task_id": task_id}
 
@@ -781,7 +799,7 @@ async def ask_base(
     # made no LLM call and must not cost the institute a credit.
     if result.get("grounded"):
         from ..models.ai_token_usage import RequestType
-        from ..services.ai_billing import record_tool_billing
+        from ..services.ai_billing import UC, record_tool_billing
 
         usage = result.get("usage") or {}
         record_tool_billing(
@@ -791,6 +809,8 @@ async def ask_base(
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             institute_id=resolved, user_id=caller.user_id, user_role="ADMIN",
+            use_case=UC.KNOWLEDGE_BASE, metering=getattr(caller, "metering", None),
+            usage_context={"kb_id": kb_id, "feature": "kb_ask"},
         )
     result.pop("usage", None)
     return result
@@ -913,6 +933,7 @@ async def legacy_create_item(
     _start_ingest_task(
         db, source_id=source_id, institute_id=resolved,
         user_id=caller.user_id, source_kind="TEXT",
+        **_ingest_meter(caller),
     )
     return _legacy_shape(repo.get_source(source_id, resolved))
 
@@ -953,6 +974,7 @@ async def legacy_update_item(
         _start_ingest_task(
             db, source_id=item_id, institute_id=resolved,
             user_id=caller.user_id, source_kind="TEXT",
+            **_ingest_meter(caller),
         )
     return _legacy_shape(repo.get_source(item_id, resolved))
 

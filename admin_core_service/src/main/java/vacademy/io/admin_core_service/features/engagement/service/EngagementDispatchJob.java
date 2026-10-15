@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementAction;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementEngine;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementMember;
@@ -190,7 +191,7 @@ public class EngagementDispatchJob {
             boolean ok = creditClient.deductPrecomputed(
                     instituteId, CREDIT_REQUEST_TYPE,
                     "Engagement Engine autonomous " + action.getChannel() + " send",
-                    perMessageCredits, action.getId());
+                    perMessageCredits, action.getId(), sendMetering(action));
             if (ok) {
                 actionRepository.markBilled(action.getId(), now);
             } else {
@@ -211,7 +212,7 @@ public class EngagementDispatchJob {
             try {
                 if (creditClient.deductPrecomputed(a.getInstituteId(), CREDIT_REQUEST_TYPE,
                         "Engagement Engine autonomous " + a.getChannel() + " send (reconciled)",
-                        perMessageCredits, a.getId())) {
+                        perMessageCredits, a.getId(), sendMetering(a))) {
                     actionRepository.markBilled(a.getId(), now);
                     fixed++;
                 }
@@ -220,6 +221,16 @@ public class EngagementDispatchJob {
             }
         }
         return fixed;
+    }
+
+    /** Usage-metering fields for one autonomous send: a system job, with the action in the context. */
+    static MeteringFields sendMetering(EngagementAction action) {
+        java.util.Map<String, Object> context = new java.util.HashMap<>();
+        if (action.getId() != null) context.put("action_id", action.getId());
+        if (action.getEngineId() != null) context.put("engine_id", action.getEngineId());
+        if (action.getMemberId() != null) context.put("member_id", action.getMemberId());
+        if (action.getChannel() != null) context.put("channel", action.getChannel());
+        return MeteringFields.system("engagement_message").usageContext(context).build();
     }
 
     private boolean channelAutoEnabled(EngagementEngine engine, String channel) {

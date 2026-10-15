@@ -572,8 +572,17 @@ class AssistantAgentService:
 
             if total_tokens > 0:
                 api_provider = ApiProvider.GEMINI if provider == "gemini" else ApiProvider.OPENAI
+                from .ai_billing import UC, metering_kwargs, metering_user, supported_kwargs
+
+                # Usage-event attribution only: the pinned principal's roles are
+                # read from the verified JWT for this institute (role_source JWT).
+                meter = metering_kwargs(UC.VACADEMY_ASSISTANT, metering_user(
+                    principal.user_id, surface="ADMIN_APP", display_name=principal.full_name,
+                    roles_raw=list(principal.roles or []),
+                ))
                 with self._get_db() as db:
-                    TokenUsageService(db).record_usage_and_deduct_credits(
+                    tus = TokenUsageService(db)
+                    tus.record_usage_and_deduct_credits(
                         api_provider=api_provider,
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
@@ -582,6 +591,7 @@ class AssistantAgentService:
                         institute_id=principal.institute_id,
                         user_id=principal.user_id,
                         model=model,
+                        **supported_kwargs(tus.record_usage_and_deduct_credits, meter),
                     )
         except Exception as e:
             logger.warning("Failed to record Assistant token usage: %s", e)

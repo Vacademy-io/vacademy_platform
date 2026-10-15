@@ -49,6 +49,19 @@ from ..schemas.credits import (
 
 logger = logging.getLogger(__name__)
 
+
+def _metering(hook: str, *args, **kwargs):
+    """Call a usage-metering hook (services/metering/service.py). Metering is
+    write-only: whatever happens in there (package missing, tables absent, a
+    failed insert) is swallowed here and never reaches the charge."""
+    try:
+        from .metering import service as _metering_service
+
+        return getattr(_metering_service, hook)(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("metering hook %s skipped: %s", hook, exc)
+        return None
+
 # ============================================================================
 # Constants
 # ============================================================================
@@ -913,6 +926,9 @@ class CreditService:
                 f"{request.institute_id}, tried to deduct {credits_to_deduct} "
                 f"({request.request_type}). Work may have been delivered unbilled."
             )
+            # Usage event (DROPPED_INSUFFICIENT) on a background session: this
+            # branch commits nothing, so the caller's transaction is untouched.
+            _metering("queue_dropped_event", self.db, request, credits=credits_to_deduct, now=now)
             return CreditDeductResponse(
                 success=False,
                 credits_deducted=Decimal("0"),
@@ -993,6 +1009,13 @@ class CreditService:
         self._check_and_create_alerts(request.institute_id, new_balance, threshold)
         
         self.db.commit()
+
+        # Usage event for this charge, AFTER the charge committed (so it never
+        # lengthens the institute balance row lock): its own short transaction
+        # on this session, SAVEPOINT inside, always ended before returning. A
+        # failure loses only the event (parity / backfill cover it).
+        _metering("record_charged_event_after_commit", self.db, request,
+                  transaction_id=transaction_id, credits=credits_to_deduct, now=now)
         
         logger.info(f"Deducted {credits_to_deduct} credits from institute {request.institute_id}")
         
@@ -1068,6 +1091,12 @@ class CreditService:
 
         self.db.commit()
         logger.info(f"Refunded {amount} credits to institute {institute_id}: {description}")
+
+        # Usage events of this batch: refunded_credits / charge_status. After
+        # the refund committed, on a background session of its own: this
+        # session (often a long-lived pipeline session) is never touched again.
+        if batch_id:
+            _metering("queue_batch_refunds", self.db, institute_id, batch_id)
 
         return CreditDeductResponse(
             success=True,

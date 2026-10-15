@@ -102,6 +102,15 @@ public class CreditClient {
      * @return true if sufficient credits, false otherwise
      */
     public boolean checkCredits(String instituteId, String requestType, String model, int estimatedTokens) {
+        return checkCredits(instituteId, requestType, model, estimatedTokens, null);
+    }
+
+    /**
+     * {@link #checkCredits(String, String, String, int)} carrying optional usage-metering
+     * fields ({@link MeteringFields}). A null {@code metering} sends exactly the body above.
+     */
+    public boolean checkCredits(String instituteId, String requestType, String model, int estimatedTokens,
+            MeteringFields metering) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/check";
 
@@ -112,6 +121,7 @@ public class CreditClient {
                     "request_type", requestType,
                     "model", model != null ? model : "",
                     "estimated_tokens", estimatedTokens);
+            body = withMetering(body, metering);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -156,9 +166,22 @@ public class CreditClient {
             int promptTokens,
             int completionTokens,
             String usageLogId) {
+        return deductCreditsAsync(instituteId, requestType, model, promptTokens, completionTokens, usageLogId, null);
+    }
+
+    /** {@link #deductCreditsAsync} carrying optional usage-metering fields (null = the body above). */
+    @Async
+    public CompletableFuture<Void> deductCreditsAsync(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            MeteringFields metering) {
         return CompletableFuture.runAsync(() -> {
             try {
-                deductCredits(instituteId, requestType, model, promptTokens, completionTokens, usageLogId);
+                deductCredits(instituteId, requestType, model, promptTokens, completionTokens, usageLogId, metering);
             } catch (Exception e) {
                 log.error("Failed to deduct credits for institute {}: {}", instituteId, e.getMessage());
             }
@@ -175,6 +198,18 @@ public class CreditClient {
             int promptTokens,
             int completionTokens,
             String usageLogId) {
+        deductCredits(instituteId, requestType, model, promptTokens, completionTokens, usageLogId, null);
+    }
+
+    /** {@link #deductCredits} carrying optional usage-metering fields (null = the body above). */
+    public void deductCredits(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            MeteringFields metering) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
@@ -188,6 +223,7 @@ public class CreditClient {
                     "prompt_tokens", promptTokens,
                     "completion_tokens", completionTokens,
                     "usage_log_id", usageLogId != null ? usageLogId : "");
+            body = withMetering(body, metering);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -283,6 +319,31 @@ public class CreditClient {
             String batchId,
             String idempotencyKey,
             boolean allowNegative) {
+        return deductAttributedTokenUsage(instituteId, requestType, model, promptTokens, completionTokens,
+                usageLogId, userId, userRole, subjectUserId, description, batchId, idempotencyKey, allowNegative,
+                null);
+    }
+
+    /**
+     * {@link #deductAttributedTokenUsage} carrying optional usage-metering fields
+     * ({@link MeteringFields}). A null {@code metering} sends exactly the body above; the
+     * metering fields never replace user_id / user_role / subject_user_id / batch_id.
+     */
+    public boolean deductAttributedTokenUsage(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId,
+            String idempotencyKey,
+            boolean allowNegative,
+            MeteringFields metering) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
@@ -304,6 +365,7 @@ public class CreditClient {
             if (description != null && !description.isBlank()) body.put("description", clampDescription(description));
             if (batchId != null && !batchId.isBlank()) body.put("batch_id", batchId);
             if (idempotencyKey != null && !idempotencyKey.isBlank()) body.put("idempotency_key", idempotencyKey);
+            MeteringFields.applyTo(metering, body);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -351,6 +413,29 @@ public class CreditClient {
                 usageLogId, userId, userRole, subjectUserId, description, batchId));
     }
 
+    /**
+     * Fire-and-forget {@link #deductAttributedTokenUsage} with usage-metering fields
+     * (same allow_negative=true and no idempotency key as the variant above).
+     */
+    @Async
+    public CompletableFuture<Void> deductAttributedTokenUsageAsync(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId,
+            MeteringFields metering) {
+        return CompletableFuture.runAsync(() -> deductAttributedTokenUsage(
+                instituteId, requestType, model, promptTokens, completionTokens,
+                usageLogId, userId, userRole, subjectUserId, description, batchId, null, true, metering));
+    }
+
     /** ai_service validates description at 500 chars; an over-long one fails the whole charge. */
     private static String clampDescription(String description) {
         return description.length() <= 500 ? description : description.substring(0, 499) + "…";
@@ -373,6 +458,20 @@ public class CreditClient {
             String description,
             java.math.BigDecimal credits,
             String idempotencyKey) {
+        return deductPrecomputed(instituteId, requestType, description, credits, idempotencyKey, null);
+    }
+
+    /**
+     * {@link #deductPrecomputed} carrying optional usage-metering fields ({@link MeteringFields}).
+     * A null {@code metering} sends exactly the body above (user_role stays SYSTEM).
+     */
+    public boolean deductPrecomputed(
+            String instituteId,
+            String requestType,
+            String description,
+            java.math.BigDecimal credits,
+            String idempotencyKey,
+            MeteringFields metering) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
@@ -389,6 +488,7 @@ public class CreditClient {
             body.put("idempotency_key", idempotencyKey);
             body.put("allow_negative", true);
             body.put("user_role", "SYSTEM");
+            MeteringFields.applyTo(metering, body);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -701,6 +801,19 @@ public class CreditClient {
                     instituteId, razorpayRefundId, e.getMessage());
             return Map.of("success", false, "message", e.getMessage());
         }
+    }
+
+    /**
+     * The base body unchanged when there are no metering fields (same immutable map, same
+     * failure modes as before); otherwise a mutable copy with the metering fields added.
+     */
+    static Map<String, Object> withMetering(Map<String, Object> base, MeteringFields metering) {
+        if (metering == null) {
+            return base;
+        }
+        Map<String, Object> body = new HashMap<>(base);
+        MeteringFields.applyTo(metering, body);
+        return body;
     }
 
     private HttpHeaders buildInternalHeaders() {

@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiResponse;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
 import java.time.Duration;
 import java.util.Map;
@@ -189,11 +190,34 @@ public class ChatbotAiService {
                     // ever becomes the bot rather than the learner.
                     request.getUserId(),
                     describe(request),
-                    request.getFlowId());
+                    request.getFlowId(),
+                    chargeMetering(request));
         } catch (Exception e) {
             log.error("Chatbot credit charge failed for institute {} (flow {}): {}",
                     request.getInstituteId(), request.getFlowId(), e.getMessage());
         }
+    }
+
+    /**
+     * Usage-metering fields for one chatbot turn: the person chatting (a LEARNER, as on the
+     * ledger row) or a public visitor, on WhatsApp, with the flow in the context.
+     */
+    static MeteringFields chargeMetering(ChatbotAiRequest request) {
+        Map<String, Object> context = new java.util.HashMap<>();
+        if (request.getFlowId() != null) context.put("flow_id", request.getFlowId());
+        if (request.getFlowName() != null) context.put("flow_name", request.getFlowName());
+        if (request.getSessionId() != null) context.put("session_id", request.getSessionId());
+        MeteringFields.MeteringFieldsBuilder b = MeteringFields.builder()
+                .useCase(USE_CASE)
+                .surface(MeteringFields.SURFACE_WHATSAPP)
+                .sourceService(MeteringFields.SOURCE_ADMIN_CORE)
+                .usageContext(context);
+        if (request.getUserId() != null) {
+            b.actorKind(MeteringFields.ACTOR_USER).actorRoleClass(CREDIT_USER_ROLE);
+        } else {
+            b.actorKind("PUBLIC").actorRoleClass("PUBLIC");
+        }
+        return b.build();
     }
 
     private static String describe(ChatbotAiRequest request) {

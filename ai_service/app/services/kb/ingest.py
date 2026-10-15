@@ -30,7 +30,7 @@ import httpx
 
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
-from ..ai_billing import record_tool_billing
+from ..ai_billing import UC, metering_user, record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..embedding_service import EmbeddingService
 from . import parsing
@@ -182,6 +182,7 @@ async def ingest_source(
     institute_id: str,
     user_id: Optional[str] = None,
     build_index: bool = True,
+    metering: Any = None,
 ) -> str:
     """Ingest one source end to end. Returns a JSON summary for ai_task.result_json.
 
@@ -426,6 +427,9 @@ async def ingest_source(
                 user_id=user_id,
                 user_role="ADMIN",
                 request_id=source_id,
+                use_case=UC.KNOWLEDGE_BASE,
+                metering=metering if metering is not None else metering_user(user_id, surface="ADMIN_APP"),
+                usage_context={"kb_id": kb_id, "source_id": source_id, "source_kind": kind},
                 # Keyed on the source, so re-indexing or a webhook-style retry of
                 # the same source can never charge twice.
                 idempotency_key=f"kb_ingest:{source_id}",

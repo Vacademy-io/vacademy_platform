@@ -163,13 +163,18 @@ def voice_blocked(db: Session, *, institute_id: str, provider: str, voice_id: st
 def charge_one_time(db: Session, *, asset: Dict[str, Any], tool_key: str, model: str,
                     user_id: Optional[str]) -> Decimal:
     """Charge the owning institute once for this asset (idempotent per asset)."""
-    from ...services.ai_billing import charge_tool
+    from ...services.ai_billing import UC, charge_tool, metering_user
     if not asset.get("institute_id") or float(asset.get("credits_charged") or 0) > 0:
         return Decimal("0")
     rt = RequestType.TTS_PREMIUM if asset["kind"] == "voice" else RequestType.CONVERSATION
+    actor = user_id or asset.get("requested_by")
     charged = charge_tool(db, tool_key=tool_key, tool_params={}, request_type=rt, model=model,
-                          institute_id=asset["institute_id"], user_id=user_id or asset.get("requested_by"),
-                          user_role="ADMIN", request_id=asset["id"], idempotency_key=f"tutor_asset:{asset['id']}")
+                          institute_id=asset["institute_id"], user_id=actor,
+                          user_role="ADMIN", request_id=asset["id"], idempotency_key=f"tutor_asset:{asset['id']}",
+                          use_case=UC.TUTOR_SETUP,
+                          metering=metering_user(actor, surface="ADMIN_APP"),
+                          usage_context={"asset_id": asset["id"], "asset_kind": asset["kind"],
+                                         "feature": "tutor_asset"})
     db.execute(text("UPDATE tutor_asset_registry SET credits_charged = :c, updated_at = now() WHERE id = :i"),
                {"c": charged, "i": asset["id"]})
     db.commit()

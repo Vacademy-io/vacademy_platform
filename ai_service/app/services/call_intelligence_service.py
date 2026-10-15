@@ -184,6 +184,14 @@ def _deduct_and_write(row_id: str, call_log_id: str, institute_id: str,
         credits_charged = Decimal("0")
         common = dict(request_type=RequestType.CALL_INTELLIGENCE, institute_id=institute_id,
                       user_id=counsellor_user_id, request_id=call_log_id)
+        # Usage-event attribution only (a background job; the counsellor stays
+        # the ledger user as before).
+        from .ai_billing import UC, metering_kwargs, metering_system, supported_kwargs
+        meter = metering_kwargs(UC.CALL_INTELLIGENCE, metering_system(surface="INTERNAL"),
+                                {"call_log_id": call_log_id, "counsellor_user_id": counsellor_user_id})
+        # Record-only legs: the STT leg's cost rides the LLM charge; a zero-cost
+        # run is free by policy (AI calls).
+        meter_free = {**meter, "free_reason": "BUNDLED"}
         if stt_usage.get("model"):
             try:
                 tus.record_usage(
@@ -191,7 +199,8 @@ def _deduct_and_write(row_id: str, call_log_id: str, institute_id: str,
                     total_tokens=0, model=stt_usage["model"],
                     total_price=stt_usage.get("cost_usd"),
                     metadata={"leg": "stt", "call_log_id": call_log_id,
-                              "seconds": stt_usage.get("seconds")}, **common)
+                              "seconds": stt_usage.get("seconds")}, **common,
+                    **supported_kwargs(tus.record_usage, meter_free))
             except Exception:
                 logger.warning("call-intel: could not record STT usage for %s", call_log_id, exc_info=True)
         llm_kwargs = dict(
@@ -209,10 +218,11 @@ def _deduct_and_write(row_id: str, call_log_id: str, institute_id: str,
                     idempotency_key=f"{REQUEST_TYPE}:{call_log_id}",
                     user_role="SYSTEM",
                     allow_negative=True,  # work already delivered; pre-flight gated affordability
-                    **llm_kwargs)
+                    **llm_kwargs, **supported_kwargs(tus.record_usage_and_deduct_credits, meter))
                 credits_charged = cost
             else:
-                rec = tus.record_usage(**llm_kwargs)
+                rec = tus.record_usage(**llm_kwargs, **supported_kwargs(
+                    tus.record_usage, {**meter, "free_reason": "POLICY_FREE"}))
             usage_log_id = str(rec.id) if rec is not None and getattr(rec, "id", None) else None
         except Exception:
             logger.warning("call-intel: could not record LLM usage for %s", call_log_id, exc_info=True)

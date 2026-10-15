@@ -26,19 +26,20 @@ import os
 import re
 import uuid
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from ..services.llm_router import ChainExhausted, chat_with_chain, post_chat
 from ..services.use_case_chat import models_for
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..core.security import get_current_user
 from ..db import db_session
 from ..models.ai_token_usage import RequestType
-from ..schemas.credits import CreditDeductRequest
+from ..schemas.credits import CreditDeductRequest  # noqa: F401
+from ..services.ai_billing import UC
 from ..services.credit_service import CreditService
 from ..services.image_model_resolver import (
     COURSE_ASSIST_IMAGE, PRICING_ON, PRICING_SHADOW, image_model_for, plan_image_charge,
@@ -164,6 +165,12 @@ def _principal(current_user) -> tuple[str, Optional[str]]:
     return institute_id, getattr(current_user, "user_id", None)
 
 
+def _metering(request: Optional[Request], institute_id: str, current_user: Any, user_id: Optional[str]) -> Any:
+    """Usage-event attribution (never changes a charge)."""
+    from ..services.ai_billing import metering_from_request, metering_user
+    return metering_from_request(request, institute_id, user=current_user) or metering_user(user_id, surface="ADMIN_APP")
+
+
 def _require_balance(institute_id: str, cost: Decimal, label: str) -> None:
     """Pre-flight affordability gate on a short-lived session, so no
     transaction stays open across the (up to 90s) provider call."""
@@ -188,13 +195,22 @@ def _charge(
     model: str,
     description: str,
     run_id: str,
+    *,
+    use_case: Optional[str] = None,
+    metering: Any = None,
+    usage_context: Optional[dict] = None,
 ) -> None:
     """Flat post-success charge on a fresh session (mirrors ai_billing) — a
     failed deduction rolls back whole, never leaving a balance decrement
     without its ledger row. Best-effort: delivered work is still returned."""
     try:
+        from ..services.ai_billing import build_deduct_request, metering_kwargs
+        # Usage-event attribution only (optional request fields; the charge and
+        # the ledger row are exactly as before).
+        meter = metering_kwargs(use_case, metering, usage_context)
         with db_session() as db:
-            CreditService(db).deduct_credits(CreditDeductRequest(
+            CreditService(db).deduct_credits(build_deduct_request(
+                meter,
                 institute_id=institute_id,
                 request_type=request_type.value,
                 model=model,
@@ -274,6 +290,7 @@ async def _text_chat(payload: dict):
 async def generate_field_text(
     body: AssistTextRequest,
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> AssistTextResponse:
     institute_id, user_id = _principal(current_user)
     if not body.prompt.strip():
@@ -292,6 +309,8 @@ async def generate_field_text(
     _charge(
         institute_id, user_id, _TEXT_COST, RequestType.CONTENT, result.model,
         f"Course field AI assist: {body.field or 'text'}", run_id,
+        use_case=UC.COURSE_ASSIST, metering=_metering(request, institute_id, current_user, user_id),
+        usage_context={"field": body.field, "course_name": body.course_name, "run_id": run_id},
     )
     return AssistTextResponse(html=html, model=result.model, credits_charged=float(_TEXT_COST))
 
@@ -300,6 +319,7 @@ async def generate_field_text(
 async def generate_field_image(
     body: AssistImageRequest,
     current_user=Depends(get_current_user),
+    request: Request = None,
 ) -> AssistImageResponse:
     institute_id, user_id = _principal(current_user)
     if not body.prompt.strip():
@@ -384,6 +404,8 @@ async def generate_field_image(
     _charge(
         institute_id, user_id, image_cost, RequestType.IMAGE, image_model,
         f"Course image AI assist: {body.kind or 'image'}", run_id,
+        use_case=UC.COURSE_ASSIST_IMAGE, metering=_metering(request, institute_id, current_user, user_id),
+        usage_context={"kind": body.kind, "course_name": body.course_name, "run_id": run_id},
     )
     return AssistImageResponse(
         image_base64=image_b64, mime_type=mime_type, model=image_model, credits_charged=float(image_cost),

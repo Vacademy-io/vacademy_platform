@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
@@ -285,7 +286,8 @@ public class ActivityLogProcessorService {
                                 instituteId,
                                 RequestType.ANALYTICS.getValue(),
                                 studentAnalyticsLLMService.getPrimaryAnalyticsModel(),
-                                estimatedTokens);
+                                estimatedTokens,
+                                MeteringFields.system("learner_analytics").build());
         }
 
         private void validateInsights(JsonNode insights) {

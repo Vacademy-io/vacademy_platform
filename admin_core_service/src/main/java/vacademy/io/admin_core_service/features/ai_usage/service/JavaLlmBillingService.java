@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.ai_usage.entity.AiTokenUsage;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -41,6 +42,8 @@ public class JavaLlmBillingService {
     public static final String SETTING_KEY = "billing.java_agent_charge";
     /** credit_transactions.external_reference_id for one usage row's charge. */
     static final String IDEMPOTENCY_PREFIX = "java-llm-usage:";
+    /** Metering use case when the caller names none (same default as LLMService). */
+    static final String DEFAULT_USE_CASE = "admin_agent";
 
     private static final Duration SETTING_TTL = Duration.ofSeconds(60);
     private static final BigDecimal ONE_MILLION = BigDecimal.valueOf(1_000_000L);
@@ -93,8 +96,19 @@ public class JavaLlmBillingService {
     @Async
     public void recordAndChargeAsync(RequestType requestType, String model, int promptTokens,
                                      int completionTokens, UUID instituteId, UUID userId) {
+        recordAndChargeAsync(requestType, model, promptTokens, completionTokens, instituteId, userId, null);
+    }
+
+    /**
+     * {@link #recordAndChargeAsync} naming the LLMService use case the call served
+     * ({@code LLMService.CTX_USE_CASE}); it is reported to usage metering only and
+     * changes nothing about the charge. Null = {@value #DEFAULT_USE_CASE}.
+     */
+    @Async
+    public void recordAndChargeAsync(RequestType requestType, String model, int promptTokens,
+                                     int completionTokens, UUID instituteId, UUID userId, String useCase) {
         try {
-            recordAndCharge(requestType, model, promptTokens, completionTokens, instituteId, userId);
+            recordAndCharge(requestType, model, promptTokens, completionTokens, instituteId, userId, useCase);
         } catch (Exception e) {
             log.error("[LLM-Billing] Failed to record/charge {} usage on {}: {}", requestType, model, e.getMessage());
         }
@@ -109,6 +123,12 @@ public class JavaLlmBillingService {
      */
     public AiTokenUsage recordAndCharge(RequestType requestType, String model, int promptTokens,
                                         int completionTokens, UUID instituteId, UUID userId) {
+        return recordAndCharge(requestType, model, promptTokens, completionTokens, instituteId, userId, null);
+    }
+
+    /** {@link #recordAndCharge} with the use case reported to usage metering (null = admin_agent). */
+    public AiTokenUsage recordAndCharge(RequestType requestType, String model, int promptTokens,
+                                        int completionTokens, UUID instituteId, UUID userId, String useCase) {
         AiTokenUsage saved = usageService.recordUsage(ApiProvider.OPENAI, requestType, model,
                 promptTokens, completionTokens, instituteId, userId);
         if (saved == null || saved.getId() == null) {
@@ -137,13 +157,26 @@ public class JavaLlmBillingService {
                 requestType.getValue() + " using " + model,
                 null,
                 IDEMPOTENCY_PREFIX + saved.getId(),
-                false);
+                false,
+                metering(useCase, user));
         if (!ok) {
             log.warn("[LLM-Billing] Charge not applied for usage row {} (institute {}): ai_service refused it "
                     + "(insufficient balance - charges never go negative here) or was unreachable",
                     saved.getId(), instituteId);
         }
         return saved;
+    }
+
+    /**
+     * Usage-metering fields for one charge: the signed-in user on the admin app, or a
+     * system call when there is none. The role is left for ai_service / the nightly
+     * role backfill (the ledger's "ADMIN" is a billing label, not a looked-up role).
+     */
+    static MeteringFields metering(String useCase, String userId) {
+        String uc = useCase != null && !useCase.isBlank() ? useCase : DEFAULT_USE_CASE;
+        return userId != null
+                ? MeteringFields.user(uc, MeteringFields.SURFACE_ADMIN_APP).build()
+                : MeteringFields.system(uc).build();
     }
 
     /**

@@ -12,6 +12,9 @@ import { isIOS } from '@/native';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { TopUpModal } from './TopUpModal';
+import { UsageHistoryV2 } from './UsageHistoryV2';
+import { UsageAnalyticsV2 } from './UsageAnalyticsV2';
+import { useUsageConfigQuery } from '@/services/ai-credits/usage-v2';
 import {
     usePlatformInvoicesQuery,
     downloadInvoicePdf,
@@ -723,6 +726,17 @@ export function AiCreditsPanel({
     const [topUpOpen, setTopUpOpen] = useState(false);
     const [resumePaymentId, setResumePaymentId] = useState<string | null>(null);
 
+    // Usage metering v2 (History v2 / Analytics v2). Asked for only once the
+    // popover is opened; any error or a false flag keeps today's v1 tabs.
+    const instituteId = getCurrentInstituteId();
+    const usageConfig = useUsageConfigQuery(instituteId, isOpen);
+    const usageV2 =
+        !!instituteId && usageConfig.data?.history_v2_enabled === true ? instituteId : null;
+    const usageV2Admin = usageConfig.data?.is_admin === true;
+    // Hold the History/Analytics tabs on a skeleton while the flag is in
+    // flight so v1 and v2 never both fire their requests.
+    const usageConfigPending = isOpen && !!instituteId && usageConfig.isPending;
+
     // Returning from Razorpay's hosted payment lands on …?topup_pp=<id>.
     // Reopen the top-up modal straight into its polling/confirmation state, then
     // scrub the payment params from the URL so a refresh can't re-trigger it.
@@ -819,8 +833,35 @@ export function AiCreditsPanel({
                 <div className="max-h-[400px] overflow-y-auto">
                     <div className="p-3">
                         {activeTab === 'overview' && <OverviewTab />}
-                        {activeTab === 'transactions' && <TransactionsTab />}
-                        {activeTab === 'analytics' && <AnalyticsTab />}
+                        {(activeTab === 'transactions' || activeTab === 'analytics') &&
+                        usageConfigPending ? (
+                            <div className="space-y-2">
+                                {[...Array(4)].map((_, i) => (
+                                    <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                                ))}
+                            </div>
+                        ) : (
+                            <>
+                                {activeTab === 'transactions' &&
+                                    (usageV2 ? (
+                                        <UsageHistoryV2
+                                            instituteId={usageV2}
+                                            isAdmin={usageV2Admin}
+                                        />
+                                    ) : (
+                                        <TransactionsTab />
+                                    ))}
+                                {activeTab === 'analytics' &&
+                                    (usageV2 ? (
+                                        <UsageAnalyticsV2
+                                            instituteId={usageV2}
+                                            isAdmin={usageV2Admin}
+                                        />
+                                    ) : (
+                                        <AnalyticsTab />
+                                    ))}
+                            </>
+                        )}
                         {activeTab === 'billing' && <BillingTab />}
                     </div>
                 </div>

@@ -108,6 +108,41 @@ def _recording_enabled() -> bool:
     return str(raw or "").strip().lower() in ("true", "1", "yes", "on")
 
 
+def _meter_free_event(session, usage, kwargs: Dict[str, Any], total_price: Optional[float]) -> None:
+    """The matching FREE / BUNDLED usage event (services/metering), on this
+    pool thread's session. Never raises; the usage row is already committed."""
+    try:
+        from .metering import service as _metering
+
+        rt = kwargs.get("request_type")
+        meta = None
+        try:
+            import json
+
+            meta = json.loads(kwargs.get("metadata") or "null")
+        except Exception:  # noqa: BLE001
+            meta = None
+        _metering.write_free_event(
+            session,
+            _metering.input_from(
+                None,
+                institute_id=kwargs.get("institute_id"),
+                request_type=rt.value if hasattr(rt, "value") else rt,
+                model=kwargs.get("model"),
+                prompt_tokens=kwargs.get("prompt_tokens") or 0,
+                completion_tokens=kwargs.get("completion_tokens") or 0,
+                user_id=kwargs.get("user_id"),
+                metadata=meta if isinstance(meta, dict) else None,
+                real_cost_usd=total_price,
+                use_case=kwargs.get("use_case"),
+            ),
+            usage_log_id=str(usage.id) if usage is not None and getattr(usage, "id", None) else None,
+            free_reason="BUNDLED",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("usage-record-only: usage event skipped: %s", exc)
+
+
 def _write(kwargs: Dict[str, Any]) -> None:
     """Runs on the pool thread. Swallows everything."""
     global _pending, _failure_logged
@@ -131,7 +166,7 @@ def _write(kwargs: Dict[str, Any]) -> None:
             if price is not None:
                 input_price, output_price = price
                 total_price = (input_price * kwargs["prompt_tokens"]) + (output_price * kwargs["completion_tokens"])
-            AiTokenUsageRepository(session).create_usage_record(
+            usage = AiTokenUsageRepository(session).create_usage_record(
                 api_provider=kwargs["api_provider"],
                 prompt_tokens=kwargs["prompt_tokens"],
                 completion_tokens=kwargs["completion_tokens"],
@@ -146,6 +181,7 @@ def _write(kwargs: Dict[str, Any]) -> None:
                 output_token_price=output_price,
                 total_price=total_price,
             )
+            _meter_free_event(session, usage, kwargs, total_price)
     except Exception as exc:  # noqa: BLE001
         # Log the first failure loudly, then quietly: a missing DB in a script
         # or a long outage must not turn into one warning per embedding batch.
@@ -171,11 +207,13 @@ def record_usage_only(
     user_id: Optional[str] = None,
     request_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    use_case: Optional[str] = None,
 ) -> bool:
     """Queue one record-only ai_token_usage row. Returns True when queued.
 
     Never raises and never blocks on I/O. `metadata` gets "charged": false so a
-    reader can tell these rows from billed ones at a glance.
+    reader can tell these rows from billed ones at a glance. `use_case` only
+    labels the matching usage event (never written to ai_token_usage).
     """
     global _pending
     try:
@@ -198,6 +236,8 @@ def record_usage_only(
             "request_id": request_id,
             "metadata": json.dumps(meta, default=str),
         }
+        if use_case:
+            kwargs["use_case"] = str(use_case)
         with _pending_lock:
             if _pending >= MAX_PENDING:
                 logger.debug("usage-record-only: backlog full (%d), row dropped", _pending)

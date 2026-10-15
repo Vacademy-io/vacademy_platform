@@ -220,7 +220,10 @@ public class LLMService {
                         llmResponse.getPromptTokens(),
                         llmResponse.getCompletionTokens(),
                         instituteId,
-                        userId);
+                        userId,
+                        // Usage-metering label only; the charge is the same for every use case.
+                        ctx != null && ctx.get(CTX_USE_CASE) instanceof String u && !u.isBlank()
+                                ? u : DEFAULT_USE_CASE);
                 return;
             }
 

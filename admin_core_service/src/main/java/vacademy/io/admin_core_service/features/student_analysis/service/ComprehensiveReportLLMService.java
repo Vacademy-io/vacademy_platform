@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.NarrativeSection;
@@ -313,12 +314,24 @@ public class ComprehensiveReportLLMService {
                     // silently drop the charge for tokens already spent at the provider.
                     creditClient.deductAttributedTokenUsageAsync(ctx.instituteId(), "analytics", model, prompt, completion,
                             null, ctx.actorUserId(), ctx.actorUserId() != null ? "ADMIN" : "SYSTEM",
-                            ctx.studentUserId(), "Student progress report (" + purpose + ")", ctx.processId());
+                            ctx.studentUserId(), "Student progress report (" + purpose + ")", ctx.processId(),
+                            reportMetering(ctx, purpose));
                 }
             }
         } catch (Exception e) {
             log.warn("[ComprehensiveReportLLM] Token usage logging failed: {}", e.getMessage());
         }
+    }
+
+    /** Usage-metering fields for one report charge: the admin who ran it, or the system. */
+    static MeteringFields reportMetering(ChargeContext ctx, String purpose) {
+        Map<String, Object> context = new HashMap<>();
+        if (ctx.processId() != null) context.put("process_id", ctx.processId());
+        if (purpose != null) context.put("purpose", purpose);
+        MeteringFields.MeteringFieldsBuilder b = ctx.actorUserId() != null
+                ? MeteringFields.user("student_report", MeteringFields.SURFACE_ADMIN_APP)
+                : MeteringFields.system("student_report");
+        return b.usageContext(context).build();
     }
 
     private Mono<AiInsightsSection> parseInsights(String body, String model) {

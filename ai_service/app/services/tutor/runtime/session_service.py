@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from ....db import db_session
 from ....models.ai_token_usage import ApiProvider, RequestType
 from ....models.teaching_plan import TeachingConcept, TeachingTopic
-from ...ai_billing import preflight_tool_credits, record_tool_billing
+from ...ai_billing import UC, metering_user, preflight_tool_credits, record_tool_billing
 from ....models.tutor_runtime import TutorConceptAttempt, TutorLearnerState, TutorSession
 from ....repositories.chat_message_repository import ChatMessageRepository
 from ....repositories.chat_session_repository import ChatSessionRepository
@@ -282,6 +282,8 @@ def bill_avatar_minute(*, tutor_session_id: str, institute_id: str, user_id: str
         model="spatius-avatar", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
         request_id=tutor_session_id, idempotency_key=f"tutor_avatar:{tutor_session_id}:{minute_no}",
         provider_cost_usd=SPATIUS_USD_PER_MINUTE, seconds=60,
+        use_case=UC.TUTOR_LIVE, metering=metering_user(user_id, surface="LEARNER_APP"),
+        usage_context={"tutor_session_id": tutor_session_id, "minute_no": minute_no, "feature": "avatar_minute"},
     )
     bump_telemetry(tutor_session_id, avatar_minutes=1)
 
@@ -293,6 +295,8 @@ def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, 
         tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1}, request_type=RequestType.CONVERSATION,
         model="tutor-live", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
         request_id=tutor_session_id, idempotency_key=f"tutor_live:{tutor_session_id}:{minute_no}",
+        use_case=UC.TUTOR_LIVE, metering=metering_user(user_id, surface="LEARNER_APP"),
+        usage_context={"tutor_session_id": tutor_session_id, "minute_no": minute_no, "feature": "live_minute"},
     )
     bump_telemetry(tutor_session_id, minutes_charged=1)
     try:
@@ -583,8 +587,15 @@ def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id
     from ...provider_rates import stt_cost_usd, tts_cost_usd
     try:
         cost = 0.0 if cached else (tts_cost_usd(provider, characters) if kind == "tts" else stt_cost_usd(provider, seconds or 0.0))
+        from ...ai_billing import metering_kwargs, supported_kwargs
+        # Usage-event attribution only: speech inside a lesson is part of the
+        # tutor session (record-only, never charged here).
+        meter = metering_kwargs(UC.TUTOR_LIVE, metering_user(user_id, surface="LEARNER_APP"),
+                                {"tutor_session_id": session_id, "feature": f"tutor_{kind}", "cached": cached},
+                                free_reason="BUNDLED")
         with db_session() as db:
-            TokenUsageService(db).record_usage(
+            tus = TokenUsageService(db)
+            tus.record_usage(
                 api_provider=ApiProvider.GOOGLE_TTS,
                 prompt_tokens=0, completion_tokens=0, total_tokens=0,
                 request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
@@ -597,6 +608,7 @@ def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id
                 total_price=cost,
                 metadata={"surface": "tutor", "language": language, "detail": detail, "cached": cached,
                           **({"seconds": round(float(seconds), 1)} if seconds else {})},
+                **supported_kwargs(tus.record_usage, meter),
             )
             db.commit()
     except Exception:  # noqa: BLE001

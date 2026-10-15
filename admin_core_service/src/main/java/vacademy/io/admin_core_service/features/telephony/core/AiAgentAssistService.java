@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.agent.service.LLMService;
 import vacademy.io.admin_core_service.features.ai_models.service.AiModelDefaultsResolver;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgentAssistJob;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentAssistJobRepository;
@@ -615,7 +616,7 @@ public class AiAgentAssistService {
             opening = agent.openingLine();
         }
         out.put("lint", lint(prompt, opening, agent.language()));
-        charge(instituteId, op);
+        charge(instituteId, op, agent != null ? agent.name() : null);
         return out;
     }
 
@@ -856,14 +857,34 @@ public class AiAgentAssistService {
     }
 
     /** Post-paid flat charge; a metering failure never fails the delivered work. */
-    private void charge(String instituteId, String op) {
+    private void charge(String instituteId, String op, String agentName) {
         try {
             creditClient.deductPrecomputed(instituteId, "content",
                     "AI agent prompt assist: " + op, COST,
-                    "agent-assist:" + UUID.randomUUID());
+                    "agent-assist:" + UUID.randomUUID(),
+                    assistMetering(op, agentName));
         } catch (Exception e) {
             log.warn("agent-assist: credit charge failed for {} ({}): {}", instituteId, op, e.getMessage());
         }
+    }
+
+    /**
+     * Usage-metering fields for one assist operation. An admin started it from the
+     * voice-agent editor; who exactly is not threaded this deep, so the actor is sent
+     * as a USER with no id and no role: the event stays UNRESOLVED instead of taking
+     * the ledger's hard-coded "SYSTEM" billing label (deductPrecomputed) as its role.
+     */
+    static MeteringFields assistMetering(String op, String agentName) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        if (op != null) context.put("operation", op);
+        if (agentName != null && !agentName.isBlank()) context.put("agent_name", agentName);
+        return MeteringFields.builder()
+                .useCase("agent_assist")
+                .actorKind(MeteringFields.ACTOR_USER)
+                .surface(MeteringFields.SURFACE_ADMIN_APP)
+                .sourceService(MeteringFields.SOURCE_ADMIN_CORE)
+                .usageContext(context)
+                .build();
     }
 
     private static String extractJson(String raw) {

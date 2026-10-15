@@ -500,7 +500,7 @@ async def get_institute_activity_log_by_user(
 # ============================================================================
 
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, List
 from ..models.ai_token_usage import ApiProvider
 
 
@@ -518,6 +518,30 @@ class RecordUsageRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     tts_provider: Optional[str] = Field(None, description="TTS provider: google, edge, elevenlabs")
     character_count: Optional[int] = Field(None, description="Character count for TTS requests")
+    # Optional usage-metering attribution (contract K2; ai_usage_event only).
+    use_case: Optional[str] = None
+    actor_kind: Optional[str] = None
+    actor_role_class: Optional[str] = None
+    actor_roles_raw: Optional[List[Any]] = None
+    actor_display_name: Optional[str] = None
+    subject_user_id: Optional[str] = None
+    subject_display_name: Optional[str] = None
+    surface: Optional[str] = None
+    source_service: Optional[str] = None
+    usage_context: Optional[Dict[str, Any]] = None
+    router: Optional[str] = None
+    provider: Optional[str] = None
+    gateway_key_id: Optional[str] = None
+    byo_key: Optional[bool] = None
+    parent_event_id: Optional[str] = None
+    usage_event_id: Optional[str] = None
+
+
+_RECORD_METERING_FIELDS = (
+    "use_case", "actor_kind", "actor_role_class", "actor_roles_raw", "actor_display_name",
+    "subject_display_name", "surface", "source_service", "usage_context", "router", "provider",
+    "gateway_key_id", "byo_key", "parent_event_id", "usage_event_id",
+)
 
 
 class RecordUsageResponse(BaseModel):
@@ -594,6 +618,8 @@ async def record_token_usage(
             metadata=request.metadata,
             tts_provider=request.tts_provider,
             character_count=request.character_count,
+            **({"subject_user_id": request.subject_user_id} if request.subject_user_id else {}),
+            **{k: getattr(request, k) for k in _RECORD_METERING_FIELDS if getattr(request, k) is not None},
         )
         
         return RecordUsageResponse(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import asyncio
-from typing import Optional, AsyncGenerator
+from typing import Any, Optional, AsyncGenerator
 from uuid import uuid4
 
 from ..domain.course_metadata import CourseMetadata
@@ -47,8 +47,12 @@ class CourseOutlineGenerationService:
         content_generation_service: Optional[ContentGenerationService] = None,
         db_session: Optional[Session] = None,
         institute_settings_service: Optional[InstituteSettingsService] = None,
+        metering: Any = None,
     ) -> None:
         self._llm_client = llm_client
+        # Usage-event attribution (MeteringContext.from_request from the
+        # router when it has one); never changes a charge.
+        self._metering = metering
         self._metadata_port = metadata_port
         self._prompt_builder = prompt_builder
         self._parser = parser
@@ -58,6 +62,19 @@ class CourseOutlineGenerationService:
         self._institute_settings_service = institute_settings_service
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
+
+    def _meter(self, user_id: Optional[str]) -> Any:
+        """The router's verified metering context (JWT), else an UNVERIFIED
+        one: these routes take user_id from the body/query, so it is kept only
+        as usage_context.claimed_user_id and never becomes the event actor."""
+        try:
+            ctx = getattr(self, "_metering", None)
+            if ctx is not None:
+                return ctx
+            from .ai_billing import metering_unverified
+            return metering_unverified(user_id, surface="ADMIN_APP")
+        except Exception:  # noqa: BLE001 - attribution must never cost a charge
+            return None
 
     def _resolve_outline_llm(self, request: CourseOutlineRequest):
         """(openai_key, gemini_key, model, fallback_models) for an outline call.
@@ -605,7 +622,7 @@ class CourseOutlineGenerationService:
             # Parametric course_outline charge: max(flat DB rate, actual tokens).
             # Best-effort on a fresh session; idempotent per request.
             if usage_info:
-                from .ai_billing import record_tool_billing
+                from .ai_billing import UC, record_tool_billing
                 request_id = str(uuid4())
                 record_tool_billing(
                     tool_key="course_outline",
@@ -618,6 +635,9 @@ class CourseOutlineGenerationService:
                     user_id=request.user_id,
                     request_id=request_id,
                     idempotency_key=f"course_outline:{request_id}",
+                    use_case=UC.COURSE_OUTLINE,
+                    metering=self._meter(request.user_id),
+                    usage_context={"request_id": request_id},
                 )
         else:
             # Fallback for clients that don't support usage tracking
@@ -746,7 +766,7 @@ class CourseOutlineGenerationService:
                 # Parametric course_outline charge: max(flat DB rate, actual
                 # tokens). Best-effort on a fresh session; idempotent per request.
                 if usage_info:
-                    from .ai_billing import record_tool_billing
+                    from .ai_billing import UC, record_tool_billing
                     record_tool_billing(
                         tool_key="course_outline",
                         tool_params={},
@@ -758,6 +778,9 @@ class CourseOutlineGenerationService:
                         user_id=request.user_id,
                         request_id=request_id,
                         idempotency_key=f"course_outline:{request_id}",
+                        use_case=UC.COURSE_OUTLINE,
+                        metering=self._meter(request.user_id),
+                        usage_context={"request_id": request_id},
                     )
             else:
                 # Fallback for clients that don't support usage tracking
@@ -959,15 +982,19 @@ class CourseOutlineGenerationService:
             
             # Create or update content generation service with DB session and IDs
             if not self._content_generation_service:
+                from .ai_billing import supported_kwargs
                 from .content_generation_service import ContentGenerationService
                 self._content_generation_service = ContentGenerationService(
                     llm_client=self._llm_client,
                     db_session=self._db_session,
                     institute_id=extracted_institute_id,
                     user_id=extracted_user_id,
+                    **supported_kwargs(ContentGenerationService, {"metering": getattr(self, "_metering", None)}),
                 )
             else:
                 # Update existing service with IDs and DB session
+                if getattr(self, "_metering", None) is not None:
+                    self._content_generation_service._metering = self._metering
                 self._content_generation_service._institute_id = extracted_institute_id or self._content_generation_service._institute_id
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
@@ -1405,9 +1432,13 @@ class CourseOutlineGenerationService:
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Image pricing plan failed ({e}); billing outline images as before")
                 charge = None
+        from .ai_billing import UC, metering_kwargs, supported_kwargs
+        meter = metering_kwargs(UC.CONTENT_IMAGE, self._meter(request.user_id),
+                                {"feature": "course_outline_image", "image_count": count, "request_id": request_id})
         if charge is not None and charge.precomputed_credits is not None:
             try:
-                TokenUsageService(self._db_session).record_usage_and_deduct_credits(
+                _tus = TokenUsageService(self._db_session)
+                _tus.record_usage_and_deduct_credits(
                     api_provider=ApiProvider.OPENAI,  # via OpenRouter
                     prompt_tokens=usage.get("prompt_tokens", 0),
                     completion_tokens=usage.get("completion_tokens", 0),
@@ -1419,6 +1450,7 @@ class CourseOutlineGenerationService:
                     request_id=request_id,
                     metadata=charge.metadata({"feature": "course_outline_image", "image_count": count}),
                     precomputed_credits=charge.precomputed_credits,
+                    **supported_kwargs(_tus.record_usage_and_deduct_credits, meter),
                 )
             except Exception as e:
                 logger.warning(f"Failed to record image token usage: {str(e)}")
@@ -1437,6 +1469,7 @@ class CourseOutlineGenerationService:
                     model="google/gemini-3.1-flash-image",
                     request_id=request_id,
                     metadata=charge.metadata(None) if charge is not None else None,
+                    **supported_kwargs(token_service.record_usage_and_deduct_credits, meter),
                 )
             except Exception as e:
                 logger.warning(f"Failed to record image token usage: {str(e)}")

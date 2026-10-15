@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
 import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
@@ -178,9 +179,14 @@ public class StudentReportLLMService {
                                                 userUuid);
 
                                 if (instituteId != null && !instituteId.isBlank()) {
+                                        // Metering only: the learner rides in usage_context, so the
+                                        // ledger row stays exactly as before (no user, no subject).
                                         creditClient.deductCreditsAsync(
                                                         instituteId, "analytics", model,
-                                                        promptTokens, completionTokens, null);
+                                                        promptTokens, completionTokens, null,
+                                                        MeteringFields.system("student_report")
+                                                                        .subjectUserId(userId)
+                                                                        .build());
                                 }
                         }
                 } catch (Exception e) {

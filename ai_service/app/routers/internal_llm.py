@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -69,6 +69,17 @@ class InternalCompletionRequest(BaseModel):
     institute_id: Optional[str] = None
     user_id: Optional[str] = None
     record_usage_only: bool = True
+    # Optional usage-event attribution from the calling service (contract K2);
+    # recorded on ai_usage_event only, never sent upstream.
+    source_service: Optional[str] = Field(None, max_length=24)
+    surface: Optional[str] = Field(None, max_length=24)
+    actor_kind: Optional[str] = Field(None, max_length=16)
+    actor_role_class: Optional[str] = Field(None, max_length=16)
+    actor_roles_raw: Optional[List[str]] = None
+    actor_display_name: Optional[str] = Field(None, max_length=255)
+    subject_user_id: Optional[str] = Field(None, max_length=255)
+    subject_display_name: Optional[str] = Field(None, max_length=255)
+    usage_context: Optional[Dict[str, Any]] = None
 
 
 class InternalCompletionResponse(BaseModel):
@@ -80,13 +91,68 @@ class InternalCompletionResponse(BaseModel):
     finish_reason: Optional[str] = None
 
 
-def _record_usage(db: Session, body: InternalCompletionRequest, result) -> None:
+# Model use case -> ai_use_case_catalog key, where the two names differ (from the
+# V586 seed's model_use_case column + test_metering_catalog_coverage COVERED_BY).
+# An explicit key that is not in the catalog is stored as 'unknown', so every chat
+# model use case that is not itself a catalog key is mapped here; "" = send no
+# explicit use case and let request_type decide.
+_CATALOG_USE_CASE: Dict[str, str] = {
+    "analytics": "learner_analytics",
+    "agent": "assessment_generation",
+    "assistant": "vacademy_assistant",
+    "chat": "chat_with_pdf",
+    "outline": "course_outline",
+    "video": "lesson_video",
+    "knowledge_base_qa": "knowledge_base",
+    "knowledge_base_summary": "knowledge_base",
+    "brand_kit": "page_builder",
+    "copy_check_deduction": "evaluation",
+    "image_keyword": "content_image",
+    "question_metadata": "questions",
+    "reels_selection": "reels",
+    "reels_preview": "reels",
+    "reels_director": "reels",
+    "platform_default": "",
+    "knowledge_base_figure": "",
+}
+
+
+def _metering(body: InternalCompletionRequest, source_service: Optional[str]) -> Dict[str, Any]:
+    """Usage-event attribution for a record-only internal call (never charges)."""
+    from ..services.ai_billing import metering_kwargs, metering_system
+
+    ctx = metering_system(subject_user_id=body.subject_user_id, subject_display_name=body.subject_display_name,
+                          surface=body.surface or "INTERNAL")
+    fields: Dict[str, Any] = dict(ctx.as_fields()) if ctx is not None and hasattr(ctx, "as_fields") else {}
+    if body.user_id:
+        fields.update({"actor_kind": body.actor_kind or "USER", "actor_user_id": body.user_id,
+                       "role_source": "CALLER" if (body.actor_role_class or body.actor_roles_raw) else "UNRESOLVED"})
+        fields.pop("actor_role_class", None)
+    for k in ("actor_kind", "actor_role_class", "actor_roles_raw", "actor_display_name"):
+        if getattr(body, k, None):
+            fields[k] = getattr(body, k)
+    svc = body.source_service or source_service
+    if svc:
+        fields["source_service"] = svc
+    return metering_kwargs(_CATALOG_USE_CASE.get(body.use_case, body.use_case) or None, fields,
+                           {**(body.usage_context or {}), "model_use_case": body.use_case},
+                           keep_subject=True)
+
+
+def _record_usage(db: Session, body: InternalCompletionRequest, result,
+                  source_service: Optional[str] = None) -> None:
     usage = result.usage or {}
     if not usage:
         return
     try:
+        from ..services.ai_billing import supported_kwargs
         from ..services.token_usage_service import TokenUsageService
-        TokenUsageService(db).record_usage(
+        tus = TokenUsageService(db)
+        try:
+            meter = supported_kwargs(tus.record_usage, _metering(body, source_service))
+        except Exception:  # noqa: BLE001 - attribution must never cost the record
+            meter = {}
+        tus.record_usage(
             api_provider=ApiProvider.OPENAI,
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
@@ -97,6 +163,7 @@ def _record_usage(db: Session, body: InternalCompletionRequest, result) -> None:
             model=result.model,
             metadata={"use_case": body.use_case, "router": result.router, "source": "internal_llm",
                       "charged_by_caller": True},
+            **meter,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("internal llm: usage record failed for %s: %s", body.use_case, exc)
@@ -104,7 +171,11 @@ def _record_usage(db: Session, body: InternalCompletionRequest, result) -> None:
 
 @router.post("/complete", response_model=InternalCompletionResponse,
              summary="Chat completion for a use case (service-to-service; no credit charge)")
-async def internal_complete(body: InternalCompletionRequest, db: Session = Depends(db_dependency)):
+async def internal_complete(
+    body: InternalCompletionRequest,
+    db: Session = Depends(db_dependency),
+    x_source_service: Optional[str] = Header(None, description="Calling service, for usage attribution"),
+):
     if body.use_case not in USE_CASE_CATALOG or not is_chat_use_case(body.use_case):
         raise HTTPException(status_code=422, detail=f"Unknown chat use case '{body.use_case}'")
 
@@ -126,7 +197,7 @@ async def internal_complete(body: InternalCompletionRequest, db: Session = Depen
         raise HTTPException(status_code=502, detail=str(exc)[:500])
 
     if body.record_usage_only:
-        _record_usage(db, body, result)
+        _record_usage(db, body, result, source_service=x_source_service)
     return InternalCompletionResponse(content=result.content, model=result.model, usage=result.usage or {},
                                       finish_reason=result.finish_reason)
 

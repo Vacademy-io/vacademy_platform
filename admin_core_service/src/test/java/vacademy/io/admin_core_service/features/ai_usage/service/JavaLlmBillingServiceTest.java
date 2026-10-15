@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.ai_usage.entity.AiTokenUsage;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
+import vacademy.io.admin_core_service.features.credits.client.MeteringFields;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -114,7 +115,8 @@ class JavaLlmBillingServiceTest {
         when(usage.recordUsage(ApiProvider.OPENAI, RequestType.AGENT, SONNET, 12000, 2000, INSTITUTE, USER))
                 .thenReturn(AiTokenUsage.builder().id(ROW).build());
         when(credits.deductAttributedTokenUsage(anyString(), anyString(), anyString(), anyInt(), anyInt(),
-                anyString(), any(), anyString(), any(), anyString(), any(), anyString(), anyBoolean())).thenReturn(true);
+                anyString(), any(), anyString(), any(), anyString(), any(), anyString(), anyBoolean(), any()))
+                .thenReturn(true);
 
         billing.recordAndCharge(RequestType.AGENT, SONNET, 12000, 2000, INSTITUTE, USER);
 
@@ -126,7 +128,8 @@ class JavaLlmBillingServiceTest {
         assertEquals(ROW, u[3]);
         verify(credits).deductAttributedTokenUsage(INSTITUTE.toString(), "agent", SONNET, 12000, 2000,
                 ROW.toString(), USER.toString(), "ADMIN", null, "agent using " + SONNET, null,
-                "java-llm-usage:" + ROW, false);
+                "java-llm-usage:" + ROW, false,
+                MeteringFields.user("admin_agent", MeteringFields.SURFACE_ADMIN_APP).build());
     }
 
     @Test
@@ -136,7 +139,7 @@ class JavaLlmBillingServiceTest {
         billing.recordAndCharge(RequestType.AGENT, SONNET, 10, 5, INSTITUTE, null);
         verify(credits).deductAttributedTokenUsage(eq(INSTITUTE.toString()), eq("agent"), eq(SONNET), eq(10), eq(5),
                 eq(ROW.toString()), isNull(), eq("SYSTEM"), isNull(), anyString(), isNull(), eq("java-llm-usage:" + ROW),
-                eq(false));
+                eq(false), eq(MeteringFields.system("admin_agent").build()));
     }
 
     @Test
@@ -146,7 +149,7 @@ class JavaLlmBillingServiceTest {
         billing.recordAndCharge(RequestType.AGENT, "x/not-in-registry", 10, 5, INSTITUTE, USER);
         assertTrue(db.updates.isEmpty());
         verify(credits).deductAttributedTokenUsage(anyString(), anyString(), eq("x/not-in-registry"), anyInt(), anyInt(),
-                anyString(), any(), anyString(), any(), anyString(), any(), anyString(), eq(false));
+                anyString(), any(), anyString(), any(), anyString(), any(), anyString(), eq(false), any());
     }
 
     @Test
@@ -157,7 +160,7 @@ class JavaLlmBillingServiceTest {
         billing.recordAndCharge(RequestType.AGENT, SONNET, 10, 5, null, USER);
         assertEquals(1, db.updates.size(), "still priced");
         verify(credits, never()).deductAttributedTokenUsage(any(), any(), any(), anyInt(), anyInt(),
-                any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+                any(), any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -166,6 +169,18 @@ class JavaLlmBillingServiceTest {
         billing.recordAndCharge(RequestType.AGENT, SONNET, 10, 5, INSTITUTE, USER);
         assertTrue(db.updates.isEmpty());
         verify(credits, never()).deductAttributedTokenUsage(any(), any(), any(), anyInt(), anyInt(),
-                any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+                any(), any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void theCallersUseCaseIsReportedToMeteringOnly() {
+        when(usage.recordUsage(any(), any(), any(), anyInt(), anyInt(), any(), any()))
+                .thenReturn(AiTokenUsage.builder().id(ROW).build());
+        billing.recordAndCharge(RequestType.AGENT, SONNET, 10, 5, INSTITUTE, USER, "workflow_draft");
+        // Same ledger fields as an admin_agent charge; only the metering label differs.
+        verify(credits).deductAttributedTokenUsage(INSTITUTE.toString(), "agent", SONNET, 10, 5,
+                ROW.toString(), USER.toString(), "ADMIN", null, "agent using " + SONNET, null,
+                "java-llm-usage:" + ROW, false,
+                MeteringFields.user("workflow_draft", MeteringFields.SURFACE_ADMIN_APP).build());
     }
 }

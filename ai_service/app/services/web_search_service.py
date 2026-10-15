@@ -69,6 +69,8 @@ class WebSearchService:
                 user_id=self._user_id,
                 request_id=self._request_id,
                 metadata=meta,
+                # Usage-event label only (the row above is unchanged).
+                use_case="web_search",
             )
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"[WebSearch] usage record skipped: {exc}")

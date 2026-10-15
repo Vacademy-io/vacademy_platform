@@ -570,7 +570,11 @@ def build_row(
 # ----------------------------------------------------------------------------
 
 def _insert_ignore(db, row: Dict[str, Any]) -> bool:
-    """INSERT ... ON CONFLICT DO NOTHING. True when a row was written."""
+    """INSERT ... ON CONFLICT DO NOTHING. True when a row was written.
+
+    Decided by RETURNING, never by rowcount: under psycopg 3 (the prod driver)
+    SQLAlchemy reports rowcount -1 for this statement, which read as "not
+    written" and silently skipped the ledger and usage back-links."""
     from .models import EVENT_TABLE
 
     dialect = db.get_bind().dialect.name
@@ -581,10 +585,10 @@ def _insert_ignore(db, row: Dict[str, Any]) -> bool:
     else:  # pragma: no cover - only Postgres in prod, SQLite in tests
         from sqlalchemy import insert as _plain
 
-        res = db.execute(_plain(EVENT_TABLE).values(**row))
-        return (res.rowcount or 0) > 0
-    res = db.execute(_ins(EVENT_TABLE).values(**row).on_conflict_do_nothing())
-    return (res.rowcount or 0) > 0
+        res = db.execute(_plain(EVENT_TABLE).values(**row).returning(EVENT_TABLE.c.id))
+        return res.first() is not None
+    res = db.execute(_ins(EVENT_TABLE).values(**row).on_conflict_do_nothing().returning(EVENT_TABLE.c.id))
+    return res.first() is not None
 
 
 # Columns an upgrade (an earlier FREE/record-only event becoming CHARGED) only

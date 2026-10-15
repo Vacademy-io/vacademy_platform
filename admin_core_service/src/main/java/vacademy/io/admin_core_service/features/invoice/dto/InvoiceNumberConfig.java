@@ -6,6 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.invoice.enums.InvoiceSeqScope;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -59,6 +62,54 @@ public class InvoiceNumberConfig {
      * already been issued is simply ignored instead of reusing numbers. 0/null means "no floor".
      */
     private long startFrom;
+
+    /**
+     * Extra counters picked per learner, read from {@code INVOICE_SETTING.numberingSeries}
+     * (outside {@code numbering}, which the settings screen rewrites from a fixed key list).
+     * The first series whose rule matches the learner numbers the document from its own
+     * counter; a learner no series matches stays on the main one above. Empty for every
+     * institute that has not configured it.
+     */
+    @Builder.Default
+    private List<Series> series = new ArrayList<>();
+
+    /**
+     * One extra counter, e.g. per branch: its own format and start number, chosen when the
+     * learner's value of {@link #learnerFieldId} is one of {@link #values} (case-insensitive).
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Series {
+        /** Stable id (A-Z, 0-9, _, at most 16 so the counter key fits seq_scope_key); never reuse it. */
+        private String key;
+        private String format;
+        private long startFrom;
+        /** Custom field holding the learner's value, from the profile or their latest lead. */
+        private String learnerFieldId;
+        @Builder.Default
+        private List<String> values = new ArrayList<>();
+
+        public boolean matches(String learnerValue) {
+            if (learnerValue == null || values == null) return false;
+            String v = learnerValue.trim();
+            return values.stream().anyMatch(x -> x != null && x.trim().equalsIgnoreCase(v));
+        }
+    }
+
+    /** This config with a series' format and start number, keeping every other setting. */
+    public InvoiceNumberConfig forSeries(Series s) {
+        return InvoiceNumberConfig.builder()
+                .format(s.getFormat())
+                .seqPadding(seqPadding)
+                .seqScope(seqScope)
+                .instituteCode(instituteCode)
+                .fyStartMonth(fyStartMonth)
+                .sanitizeTokens(sanitizeTokens)
+                .startFrom(Math.max(0, s.getStartFrom()))
+                .build();
+    }
 
     /** True when this format distinguishes document kinds itself (invoice vs receipt). */
     public boolean usesDocType() {
@@ -124,7 +175,37 @@ public class InvoiceNumberConfig {
                 .fyStartMonth(fyStart)
                 .sanitizeTokens(asBool(numbering.get("sanitizeTokens"), true))
                 .startFrom(Math.max(0, asLong(numbering.get("startFrom"), 0)))
+                .series(parseSeries(invoiceSettings.get("numberingSeries")))
                 .build();
+    }
+
+    /** Lenient like the rest: an entry missing its key, format or field is skipped. */
+    @SuppressWarnings("unchecked")
+    public static List<Series> parseSeries(Object raw) {
+        List<Series> out = new ArrayList<>();
+        if (!(raw instanceof List<?> list)) {
+            return out;
+        }
+        for (Object o : list) {
+            if (!(o instanceof Map)) continue;
+            Map<String, Object> m = (Map<String, Object>) o;
+            String key = asText(m.get("key"), "").toUpperCase(Locale.ROOT);
+            String format = asText(m.get("format"), "");
+            String fieldId = asText(m.get("learnerFieldId"), "");
+            if (!key.matches("[A-Z0-9_]{1,16}") || format.isEmpty() || fieldId.isEmpty()) continue;
+            List<String> values = new ArrayList<>();
+            if (m.get("values") instanceof List<?> vs) {
+                for (Object v : vs) {
+                    String text = asText(v, "");
+                    if (!text.isEmpty()) values.add(text);
+                }
+            }
+            if (values.isEmpty()) continue;
+            out.add(Series.builder().key(key).format(format)
+                    .startFrom(Math.max(0, asLong(m.get("startFrom"), 0)))
+                    .learnerFieldId(fieldId).values(values).build());
+        }
+        return out;
     }
 
     private static String asText(Object value, String fallback) {

@@ -2273,6 +2273,9 @@ public class InvoiceService {
                 .docType(StringUtils.hasText(docType) ? docType : DOC_TYPE_ENROLLMENT)
                 .enrollmentNumberSupplier(() -> lookupEnrollmentNumber(userPlan))
                 .packageContextSupplier(() -> lookupPackageContext(userPlan))
+                .learnerFieldLookup(user != null && StringUtils.hasText(user.getId())
+                        ? fieldId -> customFieldValuesRepository.findLatestValueForUser(fieldId, user.getId())
+                        : null)
                 .build();
     }
 

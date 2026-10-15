@@ -910,7 +910,9 @@
     "headingField": "Heading",
     "layout": "Layout",
     "layoutSplit": "Split (text left, button right)",
-    "showButton": "Show Button"
+    "showButton": "Show Button",
+    "buttonTextColor": "Button text colour",
+    "buttonBackground": "Button background"
   },
   "ctaBand": {
     "style": "Design",

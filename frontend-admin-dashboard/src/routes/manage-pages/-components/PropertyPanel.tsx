@@ -4606,6 +4606,12 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                                 onChange={(v) => updateProp('button', { ...props.button, target: v })}
                             />
                         )}
+                        {!isBand && (
+                            <>
+                                <OptionalColorField label={t('ctaBanner.buttonTextColor')} value={props.button?.textColor} onChange={(c) => updateProp('button', { ...props.button, textColor: c })} />
+                                <OptionalColorField label={t('ctaBanner.buttonBackground')} value={props.button?.backgroundColor} onChange={(c) => updateProp('button', { ...props.button, backgroundColor: c })} />
+                            </>
+                        )}
                     </>
                 )}
             </div>

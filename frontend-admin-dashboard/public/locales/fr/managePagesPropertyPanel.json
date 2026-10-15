@@ -907,7 +907,9 @@
     "headingField": "Titre",
     "layout": "Mise en page",
     "layoutSplit": "Divisé (texte à gauche, bouton à droite)",
-    "showButton": "Afficher le bouton"
+    "showButton": "Afficher le bouton",
+    "buttonTextColor": "Couleur du texte du bouton",
+    "buttonBackground": "Arrière-plan du bouton"
   },
   "ctaBand": {
     "style": "Design",

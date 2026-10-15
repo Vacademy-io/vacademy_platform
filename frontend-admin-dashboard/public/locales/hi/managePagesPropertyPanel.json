@@ -906,7 +906,9 @@
     "headingField": "हेडिंग",
     "layout": "लेआउट",
     "layoutSplit": "स्प्लिट (टेक्स्ट बाएं, बटन दाएं)",
-    "showButton": "बटन दिखाएं"
+    "showButton": "बटन दिखाएं",
+    "buttonTextColor": "बटन टेक्स्ट का रंग",
+    "buttonBackground": "बटन का बैकग्राउंड"
   },
   "ctaBand": {
     "style": "डिज़ाइन",

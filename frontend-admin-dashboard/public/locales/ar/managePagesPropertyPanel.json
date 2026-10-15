@@ -910,7 +910,9 @@
     "headingField": "العنوان",
     "layout": "التخطيط",
     "layoutSplit": "مقسّم (النص يسارًا، الزر يمينًا)",
-    "showButton": "إظهار الزر"
+    "showButton": "إظهار الزر",
+    "buttonTextColor": "لون نص الزر",
+    "buttonBackground": "خلفية الزر"
   },
   "ctaBand": {
     "style": "التصميم",

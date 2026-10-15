@@ -3,6 +3,7 @@ import { useLocalizedEditing } from '../-hooks/use-localized-editing';
 import { LanguagesSettingsCard } from './i18n/LanguagesSettingsCard';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
 import { buildComponentTemplates } from '../-utils/component-templates';
+import { componentLabel } from '../-utils/component-labels';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -4784,6 +4785,24 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
     });
     const categories = postsPage?.categories ?? [];
     const publishedHint = postsPage ? t('blog.postCount', { count: postsPage.total_elements }) : '';
+    // Whole-store read on purpose (no selector): render tests mock the store as a plain function.
+    const { config } = useEditorStore();
+    // Sections of this page that stay under an open article (the rest hide).
+    const otherSections: any[] = (config?.pages?.find((p: any) => p.id === pageId)?.components ?? []).filter(
+        (c: any) => c?.id && c.id !== component.id
+    );
+    const articleSectionIds: string[] = Array.isArray(props.articleSectionIds) ? props.articleSectionIds : [];
+    const toggleArticleSection = (id: string, on: boolean) =>
+        updateProp(
+            'articleSectionIds',
+            on ? [...articleSectionIds.filter((x) => x !== id), id] : articleSectionIds.filter((x) => x !== id)
+        );
+    const sectionName = (c: any) => {
+        const title = c.props?.heading || c.props?.title || c.props?.headerText || c.props?.headline;
+        return typeof title === 'string' && title.trim()
+            ? `${componentLabel(c.type)} · ${title.trim()}`
+            : componentLabel(c.type);
+    };
     const toggles: Array<[string, string]> = [
         ['showCoverImage', t('blog.showCoverImage')],
         ['showExcerpt', t('blog.showExcerpt')],
@@ -4889,6 +4908,21 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
                 <Input value={props.gateTitle || ''} onChange={(e) => updateProp('gateTitle', e.target.value)} placeholder={t('blog.gateTitlePlaceholder')} />
                 <p className="text-caption text-gray-400">{t('blog.gateHint')}</p>
             </div>
+            {otherSections.length > 0 && (
+                <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                    <p className="text-caption font-medium text-gray-500">{t('blog.articleSectionsHeading')}</p>
+                    {otherSections.map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 text-xs">
+                            <Checkbox
+                                checked={articleSectionIds.includes(c.id)}
+                                onCheckedChange={(v) => toggleArticleSection(c.id, v === true)}
+                            />
+                            <span className={c.enabled === false ? 'text-gray-400 line-through' : ''}>{sectionName(c)}</span>
+                        </label>
+                    ))}
+                    <p className="text-caption text-gray-400">{t('blog.articleSectionsHint')}</p>
+                </div>
+            )}
             <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
             <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
         </div>

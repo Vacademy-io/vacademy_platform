@@ -2,6 +2,9 @@ package vacademy.io.auth_service.feature.admin_core_service.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +32,31 @@ public class InstitutePolicyService {
 
     @Value("${admin.core.service.base_url}")
     private String adminCoreServiceBaseUrl;
+
+    private static final long POLICY_CACHE_TTL_MS = 5 * 60 * 1000L;
+
+    private record CachedPolicy(InstituteSignupPolicy policy, long fetchedAt) {
+    }
+
+    private final Map<String, CachedPolicy> policyCache = new ConcurrentHashMap<>();
+
+    /**
+     * Same as {@link #fetchSignupPolicy} but reuses the answer for five minutes. User
+     * creation calls this once per new learner, and a CSV of hundreds of rows must not
+     * turn into hundreds of calls to admin-core. A failed fetch (null) is cached too.
+     */
+    public InstituteSignupPolicy fetchSignupPolicyCached(String instituteId) {
+        if (!StringUtils.hasText(instituteId))
+            return null;
+        long now = System.currentTimeMillis();
+        CachedPolicy cached = policyCache.get(instituteId);
+        if (cached != null && now - cached.fetchedAt() < POLICY_CACHE_TTL_MS) {
+            return cached.policy();
+        }
+        InstituteSignupPolicy policy = fetchSignupPolicy(instituteId);
+        policyCache.put(instituteId, new CachedPolicy(policy, now));
+        return policy;
+    }
 
     public InstituteSignupPolicy fetchSignupPolicy(String instituteId) {
         if (!StringUtils.hasText(instituteId))
@@ -58,6 +86,9 @@ public class InstitutePolicyService {
             String passwordStrategy = null;
             String passwordDelivery = null;
             String usernameStrategy = null;
+            String usernameCustomFieldId = null;
+            String usernamePrefix = null;
+            boolean usernameApplyToAll = false;
             boolean allowCreateCourses = false;
 
             JsonNode studentDisplay = settingNode.get("STUDENT_DISPLAY_SETTINGS");
@@ -71,6 +102,11 @@ public class InstitutePolicyService {
                         passwordDelivery = signup.get("passwordDelivery").asText();
                     if (signup.has("usernameStrategy"))
                         usernameStrategy = signup.get("usernameStrategy").asText();
+                    if (signup.hasNonNull("usernameCustomFieldId"))
+                        usernameCustomFieldId = signup.get("usernameCustomFieldId").asText();
+                    if (signup.hasNonNull("usernamePrefix"))
+                        usernamePrefix = signup.get("usernamePrefix").asText();
+                    usernameApplyToAll = signup.path("usernameApplyToAll").asBoolean(false);
                 }
             }
 
@@ -87,6 +123,9 @@ public class InstitutePolicyService {
                     .passwordDelivery(passwordDelivery)
                     .allowLearnersToCreateCourses(allowCreateCourses)
                     .userNameStrategy(usernameStrategy)
+                    .usernameCustomFieldId(usernameCustomFieldId)
+                    .usernamePrefix(usernamePrefix)
+                    .usernameApplyToAll(usernameApplyToAll)
                     .build();
         } catch (Exception e) {
             return null;

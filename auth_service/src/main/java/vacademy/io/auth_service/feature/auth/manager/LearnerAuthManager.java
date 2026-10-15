@@ -55,6 +55,7 @@ import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
@@ -142,6 +143,11 @@ public class LearnerAuthManager {
                                 learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null,
                                 userDTO.getEmail() != null);
                 User user;
+                // Custom field values sent with the enrollment, for the username strategy.
+                if (learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null) {
+                        userDTO.setUsernameFieldValues(CustomFieldValueDTO.toValueMap(
+                                        learnerEnrollRequestDTO.getLearnerPackageSessionEnroll().getCustomFieldValues()));
+                }
 
                 // Check institute policy if instituteId is provided
                 if (instituteId != null && !instituteId.isBlank()) {
@@ -168,14 +174,14 @@ public class LearnerAuthManager {
                                         isOauth2Signup);
 
                         // user = authService.createUser(userDTO, instituteId, deliverPassword);
-                        user = authService.createUserForLearnerEnrollment(userDTO, instituteId, deliverPassword);
+                        user = authService.createUserForLearnerSelfSignup(userDTO, instituteId, deliverPassword);
                         log.debug("User createUser completed: userId={}, username={} (may be null if creation failed)",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);
                 } else {
                         log.debug("No instituteId provided. Creating user with notifications enabled by default");
                         // user = authService.createUser(userDTO, null, true);
-                        user = authService.createUserForLearnerEnrollment(userDTO, instituteId, true);
+                        user = authService.createUserForLearnerSelfSignup(userDTO, instituteId, true);
                         log.debug("User createUser (no institute) completed: userId={}, username={}",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);

@@ -24,6 +24,7 @@ import {
     transformLocalPlanToApiFormatArray,
 } from '@/services/payment-options';
 import { DeletePaymentOptionDialog } from './DeletePaymentOptionDialog';
+import { RegionalPricingDialog } from './RegionalPricingDialog';
 import { toast } from 'sonner';
 import { currencyOptions } from '../../-constants/payments';
 import { getInstituteId } from '@/constants/helper';
@@ -76,6 +77,7 @@ const PaymentSettings = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [planToDelete, setPlanToDelete] = useState<PaymentPlan | null>(null);
+    const [regionalPricingPlan, setRegionalPricingPlan] = useState<PaymentPlan | null>(null);
     const previewDialogRef = useRef<HTMLDivElement>(null);
     const [requireApproval, setRequireApproval] = useState(false);
     // Option-level master switch for plan change; the per-plan checkboxes are inert
@@ -751,6 +753,7 @@ const PaymentSettings = () => {
                                 onDelete={handleDeletePlan}
                                 onSetDefault={handleSetDefaultPlan}
                                 onPreview={handlePreviewPlan}
+                                onRegionalPricing={setRegionalPricingPlan}
                             />
                         )}
                     </div>
@@ -810,6 +813,17 @@ const PaymentSettings = () => {
                 allPaymentOptions={paymentPlans}
                 onDeleted={handleDeleteConfirmed}
             />
+
+            {regionalPricingPlan && (
+                <RegionalPricingDialog
+                    open={!!regionalPricingPlan}
+                    onOpenChange={(open) => {
+                        if (!open) setRegionalPricingPlan(null);
+                    }}
+                    paymentOptionId={regionalPricingPlan.id}
+                    paymentOptionName={regionalPricingPlan.name}
+                />
+            )}
         </>
     );
 };

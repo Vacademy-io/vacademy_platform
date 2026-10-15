@@ -1,0 +1,74 @@
+{
+    "title": "Regional pricing — {{name}}",
+    "settings": {
+        "enabledLabel": "Price by the learner's country",
+        "enabledHelp": "Learners see and pay the price for their country, worked out from their location. Everyone else pays this plan's normal price.",
+        "currenciesLabel": "Currencies to price automatically",
+        "currenciesPlaceholder": "Add currencies",
+        "currenciesHelp": "Each paid plan gets a price in these currencies, converted from its normal price at today's exchange rate and rounded to a clean amount. You can change any of them below.",
+        "ratesFetched": "Exchange rates updated {{date}}",
+        "ratesNever": "Exchange rates have not been fetched yet",
+        "gatewayNote": "Learners are only charged in a currency your payment gateway accepts. PhonePe and Cashfree take INR only, and eWay takes AUD and NZD. Razorpay needs international payments switched on in your Razorpay account."
+    },
+    "plans": {
+        "offNote": "Regional pricing is off, so every learner pays the normal price. The prices below are kept for when you switch it on.",
+        "empty": "This payment option has no plans.",
+        "basePrice": "Normal price {{price}}",
+        "freePlan": "Free plans are free everywhere.",
+        "noPrices": "No regional prices yet. Choose currencies above, or add a country."
+    },
+    "row": {
+        "allCountries": "All countries using {{currency}}",
+        "rate": "Rate {{rate}}",
+        "price": "Price ({{currency}})",
+        "strikePrice": "Strike-through price",
+        "priceInvalid": "Enter a price above 0"
+    },
+    "source": {
+        "auto": "Automatic",
+        "manual": "Set by you",
+        "review": "Check price"
+    },
+    "add": {
+        "button": "Add a country",
+        "country": "Country code",
+        "countryInvalid": "Use a 2-letter code",
+        "currency": "Currency",
+        "currencyPlaceholder": "Country's own",
+        "currencyInvalid": "Use a 3-letter code",
+        "price": "Price",
+        "auto": "Price it automatically from the exchange rate",
+        "save": "Add price"
+    },
+    "delete": {
+        "title": "Remove the price for {{region}}?",
+        "description": "Learners there will get the price for their currency, or the normal price."
+    },
+    "actions": {
+        "close": "Close",
+        "retry": "Try again",
+        "refresh": "Refresh rates now",
+        "refreshing": "Refreshing…",
+        "saveSettings": "Save",
+        "saving": "Saving…",
+        "save": "Save",
+        "keep": "Keep this price",
+        "resetToAuto": "Reset to automatic",
+        "delete": "Remove",
+        "cancel": "Cancel",
+        "openDialog": "Regional pricing"
+    },
+    "toast": {
+        "settingsSaved": "Regional pricing saved",
+        "refreshed": "Prices updated from today's exchange rates",
+        "refreshFailed": "Could not refresh exchange rates",
+        "priceSaved": "Price saved",
+        "kept": "Price kept",
+        "reset": "Price set back to automatic",
+        "deleted": "Price removed",
+        "saveFailed": "Could not save. Please try again."
+    },
+    "error": {
+        "load": "Could not load regional pricing."
+    }
+}

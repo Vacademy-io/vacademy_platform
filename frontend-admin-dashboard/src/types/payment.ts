@@ -26,6 +26,52 @@ export interface PaymentPlanApi {
     plan_change_allowed?: boolean;
 }
 
+/** One regional price of a plan (GET /v1/regional-pricing/payment-option/{id}). */
+export interface RegionalPriceApi {
+    id: string;
+    payment_plan_id: string;
+    currency: string;
+    /** Null = every country whose currency is `currency`. */
+    country_code: string | null;
+    actual_price: number;
+    elevated_price: number | null;
+    /** AUTO follows the base price and exchange rate; MANUAL is admin-set and never overwritten. */
+    price_source: 'AUTO' | 'MANUAL';
+    /** MANUAL price whose plan base price changed after it was set. */
+    needs_review: boolean;
+    base_price_at_compute: number | null;
+    base_currency: string | null;
+    fx_rate_used: number | null;
+    computed_at: string | null;
+}
+
+export interface RegionalPricingPlanApi {
+    payment_plan_id: string;
+    name: string;
+    base_actual_price: number;
+    base_elevated_price: number;
+    base_currency: string;
+    regional_prices: RegionalPriceApi[];
+}
+
+export interface RegionalPricingConfigApi {
+    payment_option_id: string;
+    enabled: boolean;
+    currencies: string[];
+    rates_fetched_at: string | null;
+    plans: RegionalPricingPlanApi[];
+}
+
+export interface RegionalPriceUpsertRequest {
+    payment_plan_id: string;
+    currency?: string;
+    country_code?: string;
+    actual_price?: number;
+    elevated_price?: number;
+    /** true = price this row from the exchange rate (AUTO) instead of the given price. */
+    auto?: boolean;
+}
+
 export interface PaymentOptionApi {
     id: string;
     name: string;
@@ -45,6 +91,9 @@ export interface PaymentOptionApi {
     plan_change_allowed?: boolean;
     /** Populated when type='CPO'. Points at the underlying ComplexPaymentOption row. */
     complex_payment_option_id?: string;
+    /** Regional (country-based) pricing switch; managed from the Regional pricing dialog. */
+    regional_pricing_enabled?: boolean;
+    regional_pricing_currencies?: string[];
     // Read-only provenance, server-stamped. The plan picker sorts on created_at and
     // shows who added the plan; both are absent on rows created before V507.
     created_at?: string | null;

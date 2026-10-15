@@ -70,6 +70,12 @@ interface ProductPageStore {
     // Computed
     totalPrice: () => number;
     /**
+     * The cart at the plans' own (base) prices when the server priced it for the viewer's
+     * region, else null. Coupon amounts are written in the base currency, so the coupon is
+     * checked against this figure and the server scales the discount to the regional one.
+     */
+    regionalBaseTotal: () => number | null;
+    /**
      * Whole-basket price, when the page is configured for one. Null means the
      * page prices per course and totalPrice() stands.
      */
@@ -185,6 +191,22 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
         return pageData.mappings
             .filter((m) => selectedPsOptionIds.includes(m.ps_invite_payment_option_id))
             .reduce((sum, m) => sum + (m.payment_plan?.actual_price ?? 0), 0);
+    },
+
+    regionalBaseTotal: () => {
+        const { pageData, selectedPsOptionIds } = get();
+        if (!pageData) return null;
+        const selected = pageData.mappings.filter((m) =>
+            selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
+        );
+        // The server prices a product-page cart regionally all or nothing, so one
+        // regionally priced course means the whole cart is.
+        if (!selected.some((m) => m.payment_plan?.pricing_country)) return null;
+        return selected.reduce(
+            (sum, m) =>
+                sum + (m.payment_plan?.base_actual_price ?? m.payment_plan?.actual_price ?? 0),
+            0
+        );
     },
 
     basketQuote: () => {

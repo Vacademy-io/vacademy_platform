@@ -70,7 +70,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, toggleSelection, setSelection, utmParams,
-        finalPrice, basketQuote, priceBeforeCoupon,
+        finalPrice, basketQuote, priceBeforeCoupon, regionalBaseTotal,
     } = useProductPageStore();
     // Institute-level kill switch (admin Settings → Coupons → "Enable coupon redemption").
     // ANDed with the per-product-page settings.coupon.enabled flag below — both must be on.
@@ -175,7 +175,8 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                 pageData.code,
                 couponInput.trim(),
                 priceBeforeCoupon(),
-                selectedPsOptionIds.length
+                selectedPsOptionIds.length,
+                regionalBaseTotal() ?? undefined
             ),
         onSuccess: (data) => {
             if (!data.valid) {

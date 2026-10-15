@@ -39,7 +39,12 @@ export const validateCoupon = async (
     couponCode: string,
     totalAmount: number,
     /** Basket size, for coupons carrying a minimum ("₹99 off on 2 or more"). */
-    itemCount?: number
+    itemCount?: number,
+    /**
+     * The same cart at base prices, sent only when it is regionally priced: the server
+     * checks the coupon on this and scales the discount to the regional total.
+     */
+    baseTotalAmount?: number
 ): Promise<CouponValidateResponse> => {
     const response = await axios.post<CouponValidateResponse>(
         VALIDATE_PRODUCT_PAGE_COUPON,
@@ -50,6 +55,7 @@ export const validateCoupon = async (
                 couponCode,
                 totalAmount,
                 ...(typeof itemCount === 'number' ? { itemCount } : {}),
+                ...(typeof baseTotalAmount === 'number' ? { baseTotalAmount } : {}),
             },
         }
     );

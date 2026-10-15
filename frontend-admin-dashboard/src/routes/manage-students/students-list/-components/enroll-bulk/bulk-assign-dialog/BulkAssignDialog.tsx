@@ -270,8 +270,11 @@ export const BulkAssignDialog = ({
                 send_credentials: showSendCredentials ? options.sendCredentials : false,
                 transaction_id: options.transactionId || undefined,
                 payment_date: options.paymentDate || undefined,
-                // Only with an actual payment: the fields preselect a mode on their own.
-                ...(options.paymentDate || options.transactionId
+                // Only with an actual payment: the fields preselect a mode on their own. And only
+                // while the shared fields are shown — hidden ones (every course records its
+                // payment in its own fee panel) must not reach a payment the admin never saw.
+                ...((options.paymentDate || options.transactionId) &&
+                selectedPackageSessions.some((ps) => !ps.ownsPayment)
                     ? { payment_details: toOfflinePaymentDetailsPayload(options.paymentDetails) }
                     : {}),
                 dry_run: dryRun,
@@ -605,7 +608,12 @@ export const BulkAssignDialog = ({
                         !(ps.cpoConfig?.payment_mode === 'OFFLINE' && ps.cpoPaymentError) &&
                         // Auto mode could not tell which invite is meant.
                         !ps.inviteNeedsChoice
-                ) && !((options.paymentDate || options.transactionId) && options.paymentDetailsError)
+                ) &&
+                !(
+                    (options.paymentDate || options.transactionId) &&
+                    selectedPackageSessions.some((ps) => !ps.ownsPayment) &&
+                    options.paymentDetailsError
+                )
             );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.

@@ -153,5 +153,16 @@
             "title": "Outside the copy",
             "description": "Marks stay on the answer sheet; remarks go in a Teacher comments panel beside it."
         }
+    },
+    "download": {
+        "button_one": "Download {{count}} checked copy",
+        "button_other": "Download {{count}} checked copies",
+        "preparing": "Preparing…",
+        "progress": "Downloading {{done}}/{{total}}…",
+        "done_one": "{{count}} checked copy downloaded",
+        "done_other": "{{count}} checked copies downloaded",
+        "partial": "{{count}} checked copies downloaded; {{failed}} could not be fetched",
+        "failed": "Could not download the checked copies",
+        "none": "No checked copies in this batch yet"
     }
 }

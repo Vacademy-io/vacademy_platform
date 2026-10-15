@@ -124,5 +124,16 @@
             "title": "Hors de la copie",
             "description": "Les marques restent sur la copie ; les remarques vont dans un panneau Commentaires à côté."
         }
+    },
+    "download": {
+        "button_one": "Télécharger {{count}} copie corrigée",
+        "button_other": "Télécharger {{count}} copies corrigées",
+        "preparing": "Préparation…",
+        "progress": "Téléchargement {{done}}/{{total}}…",
+        "done_one": "{{count}} copie corrigée téléchargée",
+        "done_other": "{{count}} copies corrigées téléchargées",
+        "partial": "{{count}} copies téléchargées ; {{failed}} n'ont pas pu être récupérées",
+        "failed": "Impossible de télécharger les copies corrigées",
+        "none": "Aucune copie corrigée dans ce lot pour l'instant"
     }
 }

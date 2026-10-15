@@ -194,6 +194,28 @@ export const getCopyIntakeBatch = async (
     return response.data;
 };
 
+/** One checked copy of a batch (AI check done, checked copy rendered). */
+export interface CopyIntakeCheckedCopy {
+    item_id: string;
+    file_name: string | null;
+    student_name: string | null;
+    roll: string | null;
+    evaluated_file_id: string;
+}
+
+/** Every checked copy of the batch, in upload order — for "Download checked copies". */
+export const listCheckedCopies = async (
+    batchId: string,
+    instituteId: string
+): Promise<CopyIntakeCheckedCopy[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${COPY_INTAKE_BASE_URL}/batch/${batchId}/checked-copies`,
+        params: { instituteId },
+    });
+    return response.data ?? [];
+};
+
 export const resolveCopyIntakeItem = async (
     itemId: string,
     instituteId: string,

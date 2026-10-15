@@ -56,7 +56,7 @@ This document covers every payment-related entity in `admin_core_service`, how t
    - [How to Apply a Special Discount to a User](#flow-6-how-to-apply-a-special-discount-to-a-user)
    - [How a Paid Live Session Gets Charged](#flow-7-how-a-paid-live-session-gets-charged-v401)
    - [How a Gateway Payment Is Confirmed (webhooks)](#flow-8-how-a-gateway-payment-is-confirmed-webhooks)
-   - [Regional (Country-Based) Pricing](#flow-9-regional-country-based-pricing-v580)
+   - [Regional (Country-Based) Pricing](#flow-9-regional-country-based-pricing-v585)
 9. [API Reference](#api-reference)
 10. [Statuses & Enums](#statuses--enums)
 11. [Scheduled Jobs](#scheduled-jobs)
@@ -1053,7 +1053,7 @@ PAID, allocate to fee bills by due date, ledger credit, UserPlan ACTIVE, school 
 
 ---
 
-### Flow 9: Regional (Country-Based) Pricing (V580)
+### Flow 9: Regional (Country-Based) Pricing (V585)
 
 A `PaymentOption` can price its plans by the viewer's country. Code: `features/regional_pricing/`.
 

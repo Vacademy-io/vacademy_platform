@@ -316,14 +316,15 @@ public class RegionalPriceService {
     /** Reprices AUTO rows whose converted price drifted past the threshold. Returns rows changed. */
     @Transactional
     public int refreshAllAutoRows() {
-        List<PaymentPlanRegionalPrice> rows = regionalPriceRepository.findActiveAutoRowsOnEnabledOptions();
-        if (rows.isEmpty()) {
+        // Live plans of options that still have the switch on (getPaymentPlans holds ACTIVE plans only).
+        Map<String, PaymentPlan> plans = paymentOptionRepository.findByRegionalPricingEnabledTrue().stream()
+                .flatMap(option -> Optional.ofNullable(option.getPaymentPlans()).orElse(List.of()).stream())
+                .collect(Collectors.toMap(PaymentPlan::getId, p -> p, (a, b) -> a));
+        if (plans.isEmpty()) {
             return 0;
         }
-        Map<String, PaymentPlan> plans = paymentPlanRepository
-                .findAllById(rows.stream().map(PaymentPlanRegionalPrice::getPaymentPlanId).distinct().toList())
-                .stream()
-                .collect(Collectors.toMap(PaymentPlan::getId, p -> p));
+        List<PaymentPlanRegionalPrice> rows = regionalPriceRepository.findByPaymentPlanIdInAndStatusAndPriceSource(
+                plans.keySet(), ACTIVE, RegionalPriceSource.AUTO.name());
         List<PaymentPlanRegionalPrice> changed = new ArrayList<>();
         for (PaymentPlanRegionalPrice row : rows) {
             PaymentPlan plan = plans.get(row.getPaymentPlanId());

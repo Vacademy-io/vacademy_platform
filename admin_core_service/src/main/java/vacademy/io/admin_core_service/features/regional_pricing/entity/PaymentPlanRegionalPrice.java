@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.util.Date;
 
 /**
- * One regional price for a payment plan (V580). {@code countryCode} null means the row
+ * One regional price for a payment plan (V585). {@code countryCode} null means the row
  * applies to every country whose currency is {@link #currency}; a country row wins over it.
  */
 @Getter

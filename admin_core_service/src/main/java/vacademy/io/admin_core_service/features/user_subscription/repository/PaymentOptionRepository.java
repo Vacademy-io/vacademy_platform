@@ -17,6 +17,11 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
     Optional<PaymentOption> findFirstBySourceAndSourceIdAndStatusOrderByCreatedAtDesc(
             String source, String sourceId, String status);
 
+    // Regional pricing (V585): options with the switch on. Derived queries, no SQL strings.
+    long countByRegionalPricingEnabledTrue();
+
+    List<PaymentOption> findByRegionalPricingEnabledTrue();
+
     /**
      * NOTE on parameter shape:
      * Postgres JDBC cannot infer the SQL type for a List parameter bound to NULL inside

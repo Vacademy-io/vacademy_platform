@@ -152,7 +152,7 @@ private String id;
     private Date lastRenewalAttemptAt;
 
     /**
-     * Regional price lock (V580). Set when the learner checked out under regional pricing:
+     * Regional price lock (V585). Set when the learner checked out under regional pricing:
      * the list price and currency they bought at, and the country it was resolved for.
      * Renewals, invoices and the ledger read these instead of the plan's base price so a
      * USD buyer keeps paying USD. Null = base price, as before.

@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.regional_pricing.repository.PaymentPlanRegionalPriceRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.admin_core_service.features.regional_pricing.service.FxRateService;
 import vacademy.io.admin_core_service.features.regional_pricing.service.RegionalPriceService;
 
@@ -20,13 +20,13 @@ public class FxRateRefreshJob {
 
     private final FxRateService fxRateService;
     private final RegionalPriceService regionalPriceService;
-    private final PaymentPlanRegionalPriceRepository regionalPriceRepository;
+    private final PaymentOptionRepository paymentOptionRepository;
 
     @Scheduled(cron = "${regional.pricing.fx.cron:0 15 1 * * ?}")
     @SchedulerLock(name = "FxRateRefreshJob", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void run() {
         try {
-            if (!regionalPriceRepository.anyOptionEnabled()) {
+            if (paymentOptionRepository.countByRegionalPricingEnabledTrue() == 0) {
                 return; // nobody uses regional pricing — no outbound call
             }
             int rates = fxRateService.refreshRates();

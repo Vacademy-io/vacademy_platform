@@ -69,7 +69,7 @@ public class PaymentOption {
     private Boolean planChangeAllowed = false;
 
     /**
-     * Regional pricing master switch (V580). When on, learner checkouts are priced from
+     * Regional pricing master switch (V585). When on, learner checkouts are priced from
      * payment_plan_regional_price by the viewer's country instead of the plan's own price.
      * Boxed for the same reason as planChangeAllowed: a partial edit must not switch it off.
      */

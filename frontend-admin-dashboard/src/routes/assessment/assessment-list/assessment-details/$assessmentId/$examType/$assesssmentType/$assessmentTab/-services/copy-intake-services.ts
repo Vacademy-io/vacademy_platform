@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { COPY_INTAKE_BASE_URL } from '@/constants/urls';
+import type { CommentPlacement } from '@/types/assessment-settings';
 
 /**
  * Bulk AI copy-check: many scanned copies uploaded at once, the student's
@@ -89,18 +90,26 @@ export interface CopyIntakeUploadedFile {
     page_count?: number;
 }
 
+export type { CommentPlacement };
+
 export const startCopyIntake = async (
     assessmentId: string,
     instituteId: string,
     files: CopyIntakeUploadedFile[],
     preferredModel?: string,
-    notifyEmail = true
+    notifyEmail = true,
+    commentPlacement: CommentPlacement = 'INSIDE'
 ): Promise<CopyIntakeBatch> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: `${COPY_INTAKE_BASE_URL}/start`,
         params: { assessmentId, instituteId },
-        data: { files, preferred_model: preferredModel, notify_email: notifyEmail },
+        data: {
+            files,
+            preferred_model: preferredModel,
+            notify_email: notifyEmail,
+            comment_placement: commentPlacement,
+        },
     });
     return response.data;
 };
@@ -123,6 +132,7 @@ export interface SubmittedCheckRequest {
     include_checked?: boolean;
     preferred_model?: string;
     notify_email?: boolean;
+    comment_placement?: CommentPlacement;
 }
 
 export const previewSubmittedCheck = async (

@@ -139,5 +139,19 @@
         "starting": "Queuing…",
         "toastStarted_one": "{{count}} submitted copy queued — the check runs in the background",
         "toastStarted_other": "{{count}} submitted copies queued — the checks run in the background"
+    },
+    "placement": {
+        "label": "Where should the teacher's comments go?",
+        "panelHeading": "Teacher comments",
+        "sampleStatus": "Q4: Partial",
+        "sampleRemark": "Explain both sides",
+        "INSIDE": {
+            "title": "Inside the copy",
+            "description": "Remarks written on the answer sheet, next to the answer (default)."
+        },
+        "OUTSIDE": {
+            "title": "Outside the copy",
+            "description": "Marks stay on the answer sheet; remarks go in a Teacher comments panel beside it."
+        }
     }
 }

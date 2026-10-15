@@ -110,5 +110,19 @@
         "search": "Rechercher par nom, numéro ou e-mail",
         "none": "Aucun élève ne correspond à cette recherche.",
         "registered": "Participant inscrit"
+    },
+    "placement": {
+        "label": "Où placer les commentaires de l'enseignant ?",
+        "panelHeading": "Commentaires",
+        "sampleStatus": "Q4 : Partiel",
+        "sampleRemark": "Expliquez les deux côtés",
+        "INSIDE": {
+            "title": "Sur la copie",
+            "description": "Les remarques sont écrites sur la copie, à côté de la réponse (par défaut)."
+        },
+        "OUTSIDE": {
+            "title": "Hors de la copie",
+            "description": "Les marques restent sur la copie ; les remarques vont dans un panneau Commentaires à côté."
+        }
     }
 }

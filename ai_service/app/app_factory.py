@@ -162,17 +162,19 @@ async def _lifespan(app: FastAPI):
             ensure_mcp_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("mcp schema init skipped: %s", exc)
-    # Tables only admin_core Flyway creates (V561, V562, V565): no DDL here, only a check
+    # Tables only admin_core Flyway creates (V561, V562, V565, V583): no DDL here, only a check
     # that logs an error naming the migration when one is missing. Never raises.
     try:
         with db_session() as db:
             from .models.catalog_data_edit import check_catalog_data_schema
+            from .models.crm_confirm import check_crm_confirm_schema
             from .models.design_import import check_design_import_schema
             from .models.file_export import check_file_export_schema
             from .models.publish_confirm import check_publish_confirm_schema
             check_design_import_schema(db)
             check_catalog_data_schema(db)
             check_publish_confirm_schema(db)
+            check_crm_confirm_schema(db)
             check_file_export_schema(db)
     except Exception as exc:  # noqa: BLE001
         _logger.error("mcp table check skipped: %s", exc)

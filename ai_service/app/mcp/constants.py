@@ -50,6 +50,21 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "learner_report",       # READ:  a learner's progress-report data (facts + discarded detail) for the AI app to write the report
     "learner_enroll",       # WRITE: additive — enrols learners into courses via an invite; preview + confirm token
     "learner_edit",         # WRITE: live — edits a learner's details (never email / username); preview + confirm token
+    # CRM (docs/crm/CRM_MCP.md): every CRM tool is mcp_only, verifies each id against the institute and the
+    # caller's dashboard lead scope, and needs its plan feature (ToolSpec.module_feature). Writes are opt-in.
+    "crm_leads",            # READ:  find / list / one lead, timeline, my day, the CRM catalog, export
+    "crm_lead_activity",    # WRITE: live additive — log interactions and notes, schedule / move / complete follow-ups
+    "crm_lead_edit",        # WRITE: live — status, tier, details, tags; preview + confirm token
+    "crm_team_edit",        # WRITE: live — assign / reassign leads, pause / resume a counsellor's routing; preview + confirm
+    "crm_lead_intake",      # WRITE: live — add a lead (walk-ins too) or import a short list; preview + confirm token
+    "crm_calls",            # READ:  calls, transcripts, callbacks due, missed inbound, AI agents / queue / runs
+    "crm_dial",             # WRITE: outbound — one call or one AI call to one lead; single-use confirm token
+    "crm_ai_campaign",      # WRITE: outbound, admin only — AI-call a resolved list of ≤500 leads; single-use confirm
+    "crm_meetings",         # READ:  meetings (mine / team / a lead's), free slots, booking pages
+    "crm_meetings_edit",    # WRITE: outbound — book a meeting for a lead (they get the invite); log a meeting's outcome
+    "crm_messages",         # READ:  a lead's WhatsApp / email history, inbox, approved templates, escalations
+    "crm_send",             # WRITE: outbound — one approved WhatsApp template to one lead; single-use confirm token
+    "crm_reports",          # READ:  CRM reports, each figure with its window and definition
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -68,6 +83,12 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #:   * learner_enroll / learner_edit (product decision 2026-10-10): a preview the
 #:     admin is shown → a signed confirm_token over the identical request → the
 #:     write (see services/learner_data.py).
+#:   * the CRM writes (crm_*): live lead edits and outbound contact (calls,
+#:     WhatsApp, meeting invites). Each verifies every id against the institute
+#:     and the caller's dashboard lead scope; changes and every contact with a
+#:     lead go through a preview the user is shown → a confirm_token (signed over
+#:     the resolved leads and their current state, or single-use for outbound and
+#:     bulk actions, bound to the exact resolved target list) → the write.
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": (
         "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
@@ -128,6 +149,56 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "confirm-gated live edit, the admin's explicit choice: changes one learner of this institute at a time; "
         "never email or username; needs the confirm_token of a preview that showed every before → after"
     ),
+    "crm_lead_activity": (
+        "live additive, the admin's explicit choice: adds notes / logged interactions to one lead at a time as "
+        "timeline activity and schedules or moves follow-ups; never edits or deletes earlier activity; every lead, "
+        "call and follow-up id is verified to belong to this institute and the caller's lead scope; completing a "
+        "follow-up, and a status change that would fire an automation, apply only with the confirm_token of a "
+        "preview of the identical request"
+    ),
+    "crm_lead_edit": (
+        "confirm-gated live edit, the admin's explicit choice: changes the status, tier, details or tags of leads "
+        "in the caller's lead scope (at most 500 per call); never deletes a lead; every write needs the "
+        "confirm_token of a preview that showed each before → after, signed over the resolved leads and their "
+        "current state (single-use for more than one lead), so a changed lead or target list is refused"
+    ),
+    "crm_team_edit": (
+        "confirm-gated live edit, admins and managers only: assigns or reassigns leads of this institute (at most "
+        "500) to counsellors verified to be in the caller's assignable set, and pauses / resumes a counsellor's routing without moving "
+        "leads; never deletes leads or follow-ups; every write needs the confirm_token of a preview listing each "
+        "lead's current → new owner"
+    ),
+    "crm_lead_intake": (
+        "live additive, confirm-gated: adds leads (one, or up to 100 from a list) to a lead list verified to belong "
+        "to this institute; looks the person up first and refuses an existing lead or an opted-out person unless "
+        "the user asks for a re-enquiry; never edits or removes existing leads; every write needs the confirm_token "
+        "of a preview of the identical request"
+    ),
+    "crm_dial": (
+        "outbound, single-use confirmed: places ONE call (the caller's own phone rings first) or queues ONE AI call "
+        "to a lead in the caller's scope, to the number on the lead's record; refuses opted-out and do-not-call "
+        "leads, AI calls outside calling hours or inside the recall gaps; each call needs a single-use confirm_token "
+        "from a preview of that exact lead and counts toward an hourly cap; cancel_queued cancels only the caller's "
+        "own queued items"
+    ),
+    "crm_ai_campaign": (
+        "outbound, admins only, single-use confirmed: AI-calls at most 500 leads resolved in the caller's scope and "
+        "listed in the preview (opted-out, converted, lost, do-not-call and recently contacted leads are dropped "
+        "with a reason); the apply sends exactly that stored list, re-checked against the scope, never an empty or "
+        "whole list; cancelling a run or pausing / resuming the queue acts only on runs verified to belong to this "
+        "institute"
+    ),
+    "crm_meetings_edit": (
+        "outbound, confirm-gated: books one meeting for one lead in the caller's scope on a booking page and slot "
+        "verified to belong to this institute and still free, after a preview showing what the lead receives "
+        "(calendar invite, email, WhatsApp); log_outcome only adds timeline activity; never cancels or deletes a "
+        "booking"
+    ),
+    "crm_send": (
+        "outbound, single-use confirmed: sends ONE approved WhatsApp template to ONE lead in the caller's scope, to "
+        "the number on the lead's record (never a number typed in the chat); refuses opted-out leads; needs a "
+        "single-use confirm_token from a preview of that exact message and counts toward an hourly cap per user"
+    ),
 }
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
@@ -155,6 +226,19 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "learner_enrollments": "Learners: enrol into courses",
     "learner_profile_edits": "Learners: edit details",
     "learner_reports": "Progress reports: view data",
+    "crm_leads": "CRM leads: view",
+    "crm_lead_activity": "CRM leads: log activity and follow-ups",
+    "crm_lead_edits": "CRM leads: edit status, tier, details and tags",
+    "crm_team_edits": "CRM leads: assign and route",
+    "crm_lead_intake": "CRM leads: add leads",
+    "crm_calls": "CRM calls: view",
+    "crm_calling_outbound": "CRM calls: place calls",
+    "crm_ai_campaigns": "CRM calls: AI-call campaigns",
+    "crm_meetings": "CRM meetings: view",
+    "crm_meeting_edits": "CRM meetings: book and log",
+    "crm_messages": "CRM messages: view",
+    "crm_messaging_outbound": "CRM messages: send WhatsApp",
+    "crm_reports": "CRM reports: view",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -272,6 +356,69 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "fields — after showing you the before and after and getting your confirmation. Changes apply right away. "
         "Email and username can never be changed from here."
     ),
+    "crm_leads": (
+        "Find leads by name, phone or email and see each lead's details, status, owner, follow-ups, calls and "
+        "timeline, a counsellor's day plan, and the statuses, lists and counsellors the CRM uses. Each user sees "
+        "only the leads they see on the dashboard; lists show phone numbers and emails masked, and a bulk export "
+        "comes as a private download link."
+    ),
+    "crm_lead_activity": (
+        "Let the connected AI app log calls, visits and notes on a lead and schedule, move or complete follow-ups — "
+        "for example after a counsellor says \"spoke to her, call back Friday 5 pm\". Adds to the lead's history and "
+        "never removes anything. Follow-ups can trigger your follow-up automations. Turned on separately."
+    ),
+    "crm_lead_edits": (
+        "Let the connected AI app change leads' status, tier, details and tags, one lead or up to 500 at a time. It "
+        "always shows you each change first and applies it only after you confirm. Status changes can trigger your "
+        "automations. Turned on separately."
+    ),
+    "crm_team_edits": (
+        "Let the connected AI app assign or reassign leads between counsellors (for example while someone is on "
+        "leave) and pause or resume a counsellor's lead routing. For admins and managers; shows the moves first and "
+        "applies them only after you confirm. Turned on separately."
+    ),
+    "crm_lead_intake": (
+        "Let the connected AI app add new leads — a walk-in or a phone enquiry, or a short list of up to 100 — to "
+        "one of your lead lists. It checks first whether the person already is a lead and adds only after you "
+        "confirm. New leads can trigger your automations. Turned on separately."
+    ),
+    "crm_calls": (
+        "See calls with leads — human and AI calls, their outcomes, transcripts and summaries — plus callbacks due, "
+        "missed inbound calls, and the AI calling agents, queue and campaign runs."
+    ),
+    "crm_calling_outbound": (
+        "Let the connected AI app call a lead for you (your phone rings first, then the lead's) or have an AI agent "
+        "call one lead. Each call is shown to you first and placed only after you confirm; opted-out and do-not-call "
+        "leads are refused, and calls can use telephony or AI credits. Turned on separately."
+    ),
+    "crm_ai_campaigns": (
+        "Let the connected AI app start AI-calling campaigns for up to 500 leads at a time, and cancel a run or "
+        "pause the AI call queue. Admins only. It shows you exactly who will be called (and who was left out, and "
+        "why) and the estimated credits before you confirm. Turned on separately."
+    ),
+    "crm_meetings": (
+        "See counselling meetings — yours, your team's or a lead's — free slots and the booking pages leads book "
+        "through."
+    ),
+    "crm_meeting_edits": (
+        "Let the connected AI app book a meeting with a lead (the lead receives the calendar invite, email and "
+        "WhatsApp your booking page sends) and record how a meeting went. Bookings are shown to you first and made "
+        "only after you confirm. Turned on separately."
+    ),
+    "crm_messages": (
+        "See a lead's WhatsApp and email history, the WhatsApp inbox, your approved message templates, whether a "
+        "lead can be messaged, and conversations escalated to staff."
+    ),
+    "crm_messaging_outbound": (
+        "Let the connected AI app send one of your approved WhatsApp templates to one lead at a time. Each message is "
+        "shown to you first and sent only after you confirm; opted-out leads are refused and sends per hour are "
+        "capped. Turned on separately."
+    ),
+    "crm_reports": (
+        "See CRM reports — lead sources and campaigns, the funnel, counsellor performance and workload, calling and "
+        "AI calling, follow-up ageing, SLA breaches, meetings and revenue — each figure with its date range and how "
+        "it is counted. Each user sees the figures for the leads they can see."
+    ),
 }
 
 #: Settings-page areas, in display order. Each exposed tool group sits in one
@@ -289,6 +436,12 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "learner_reports": {"label": "Progress reports",
                         "summary": "A learner's attendance, scores, study time and progress, for the AI app to write "
                                    "their report."},
+    "crm_leads": {"label": "CRM: Leads",
+                  "summary": "Find and work leads: details, follow-ups, status, owners and new enquiries."},
+    "crm_calls": {"label": "CRM: Calls", "summary": "Calls, transcripts and callbacks; calling leads and AI campaigns."},
+    "crm_meetings": {"label": "CRM: Meetings", "summary": "Counselling meetings, free slots and booking pages."},
+    "crm_messages": {"label": "CRM: Messages", "summary": "Lead WhatsApp and email history, inbox and templates."},
+    "crm_reports": {"label": "CRM: Reports", "summary": "Sources, funnel, counsellors, calling, follow-ups and SLAs."},
 }
 
 #: group key → where it sits on the settings page.
@@ -299,7 +452,8 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
 #:          draft, while tags on live courses and courses added to an active
 #:          store page show at once; the settings page never turns it on with
 #:          the area's Edit level), "live"
-#:          (changes what learners see straight away)
+#:          (changes what learners see straight away), "outbound" (contacts
+#:          leads: calls, WhatsApp, meeting invites; always opt-in)
 #:   sub_label: the edit's own name, shown when an area has several edits
 MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "identity": {"area": "identity", "level": "view"},
@@ -328,13 +482,35 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "learner_enrollments": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Enrol into courses"},
     "learner_profile_edits": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Edit learner details"},
     "learner_reports": {"area": "learner_reports", "level": "view"},
+    "crm_leads": {"area": "crm_leads", "level": "view"},
+    "crm_lead_activity": {"area": "crm_leads", "level": "edit", "risk": "live_additive",
+                          "sub_label": "Log activity and follow-ups"},
+    "crm_lead_edits": {"area": "crm_leads", "level": "edit", "risk": "live",
+                       "sub_label": "Edit status, tier, details and tags"},
+    "crm_team_edits": {"area": "crm_leads", "level": "edit", "risk": "live", "sub_label": "Assign leads and routing"},
+    "crm_lead_intake": {"area": "crm_leads", "level": "edit", "risk": "live", "sub_label": "Add leads"},
+    "crm_calls": {"area": "crm_calls", "level": "view"},
+    "crm_calling_outbound": {"area": "crm_calls", "level": "edit", "risk": "outbound", "sub_label": "Place calls"},
+    "crm_ai_campaigns": {"area": "crm_calls", "level": "edit", "risk": "outbound", "sub_label": "AI-call campaigns"},
+    "crm_meetings": {"area": "crm_meetings", "level": "view"},
+    "crm_meeting_edits": {"area": "crm_meetings", "level": "edit", "risk": "outbound",
+                          "sub_label": "Book meetings and log outcomes"},
+    "crm_messages": {"area": "crm_messages", "level": "view"},
+    "crm_messaging_outbound": {"area": "crm_messages", "level": "edit", "risk": "outbound",
+                               "sub_label": "Send WhatsApp templates"},
+    "crm_reports": {"area": "crm_reports", "level": "view"},
 }
 
 #: Groups an admin turns on ONE BY ONE: the settings page never switches them
 #: on with their area's Edit level or the "Turn everything on" preset (the
-#: catalogue marks them ``opt_in``). Off for every existing institute.
+#: catalogue marks them ``opt_in``). Off for every existing institute. Every
+#: CRM edit is opt-in, so the area's Edit level never turns on a write that
+#: changes leads or contacts them.
 MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish",
-                               "learner_enrollments", "learner_profile_edits", "course_structure_edits"})
+                               "learner_enrollments", "learner_profile_edits", "course_structure_edits",
+                               "crm_lead_activity", "crm_lead_edits", "crm_team_edits", "crm_lead_intake",
+                               "crm_calling_outbound", "crm_ai_campaigns", "crm_meeting_edits",
+                               "crm_messaging_outbound"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.

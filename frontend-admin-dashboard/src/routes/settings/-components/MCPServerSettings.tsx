@@ -32,6 +32,7 @@ import {
     McpAccessPresets,
     McpToolAccessList,
     groupToolsByArea,
+    isNeverAutoOn,
     withViewsForEdits,
 } from './McpToolAccessList';
 
@@ -172,10 +173,11 @@ export default function MCPServerSettings() {
             // listed zero tools — technically correct, but it reads as broken. An
             // admin enabling the server means "make this usable", so switch the
             // read-only catalogue on with it. They can untick individually below.
-            // Opt-in capabilities (website publishing) are never seeded.
+            // Opt-in capabilities (website publishing) and edits that call or message
+            // leads are never seeded.
             const seedTools =
                 on && prev.enabled_tools.length === 0 && toggleableTools.length > 0
-                    ? toggleableTools.filter((tool) => !tool.opt_in).map((tool) => tool.key)
+                    ? toggleableTools.filter((tool) => !isNeverAutoOn(tool)).map((tool) => tool.key)
                     : prev.enabled_tools;
             return { ...prev, enabled: on, enabled_tools: seedTools };
         });

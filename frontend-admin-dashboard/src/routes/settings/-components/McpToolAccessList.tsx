@@ -6,7 +6,7 @@ import { RadioGroup } from '@/components/ui/radio-group';
 import { MyButton } from '@/components/design-system/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
-import { StatusChip } from '@/components/design-system/status-chips';
+import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
 import { cn } from '@/lib/utils';
 import type { McpToolCatalogEntry, McpToolRisk } from '../-constants/mcp-server';
 
@@ -61,19 +61,30 @@ export function areaLevel(area: McpToolArea, enabled: string[]): McpAccessLevel 
 }
 
 /** Risks the Edit level never switches on by itself: the admin opts in to each one. */
-const OPT_IN_RISKS: ReadonlySet<McpToolRisk> = new Set<McpToolRisk>(['live_additive']);
+const OPT_IN_RISKS: ReadonlySet<McpToolRisk> = new Set<McpToolRisk>(['live_additive', 'outbound']);
 
-/** Turned on one by one: flagged `opt_in` by the server (publishing) or a live-additive edit. */
+/**
+ * Risks nothing switches on in bulk — not the Edit level (even as an area's only edit),
+ * a preset, or the first Enable — whether or not the server also flags them `opt_in`.
+ */
+const NEVER_AUTO_RISKS: ReadonlySet<McpToolRisk> = new Set<McpToolRisk>(['outbound']);
+
+/** Turned on one by one: flagged `opt_in` by the server (publishing) or a risk in OPT_IN_RISKS. */
 export function isOptInEdit(tool: McpToolCatalogEntry): boolean {
     return Boolean(tool.opt_in) || Boolean(tool.risk && OPT_IN_RISKS.has(tool.risk));
 }
 
+/** Only ever turned on by its own switch: flagged `opt_in`, or it calls or messages leads. */
+export function isNeverAutoOn(tool: McpToolCatalogEntry): boolean {
+    return Boolean(tool.opt_in) || Boolean(tool.risk && NEVER_AUTO_RISKS.has(tool.risk));
+}
+
 /**
  * The edits the Edit level turns on: all but the opt-in ones. When an area has only
- * live-additive edits those are turned on, but never an edit the server flags `opt_in`.
+ * live-additive edits those are turned on, but never one flagged `opt_in` or outbound.
  */
 export function autoEditKeys(area: McpToolArea): string[] {
-    const eligible = area.edits.filter((t) => !t.opt_in);
+    const eligible = area.edits.filter((t) => !isNeverAutoOn(t));
     const auto = eligible.filter((t) => !isOptInEdit(t));
     return (auto.length ? auto : eligible).map((t) => t.key);
 }
@@ -91,9 +102,11 @@ export function withAreaLevel(
     } else {
         if (area.view) next.add(area.view.key);
         if (level === 'view') editKeys.forEach((k) => next.delete(k));
-        // Moving up to Edit turns the area's edits on except the opt-in ones (publishing, and
-        // edits that write live data); the admin narrows it, or adds those, in the row's details.
-        else if (!editKeys.some((k) => enabled.includes(k))) autoEditKeys(area).forEach((k) => next.add(k));
+        // Moving up to Edit turns the area's edits on except the opt-in ones (publishing, edits
+        // that write live data, and edits that call or message leads); the admin narrows it, or
+        // adds those, in the row's details.
+        else if (!editKeys.some((k) => enabled.includes(k)))
+            autoEditKeys(area).forEach((k) => next.add(k));
     }
     return Array.from(next);
 }
@@ -129,13 +142,17 @@ export function withViewsForEdits(areas: McpToolArea[], enabled: string[]): stri
     return Array.from(next);
 }
 
-const RISK_STATUS: Record<McpToolRisk, 'INFO' | 'WARNING'> = {
+const RISK_STATUS: Record<McpToolRisk, StatusType> = {
     drafts: 'INFO',
     additive: 'INFO',
     not_live: 'INFO',
     live_additive: 'WARNING',
     live: 'WARNING',
+    outbound: 'DANGER',
 };
+
+/** A risk this bundle does not know yet still shows as a warning, never unstyled. */
+const riskStatus = (risk: McpToolRisk): StatusType => RISK_STATUS[risk] ?? 'WARNING';
 
 interface LevelControlProps {
     label: string;
@@ -190,6 +207,21 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
         (tool) =>
             (tool.risk === 'live' || tool.risk === 'live_additive') && enabled.includes(tool.key)
     );
+    const outboundEditOn = area.edits.some(
+        (tool) => tool.risk === 'outbound' && enabled.includes(tool.key)
+    );
+    // Edits the Edit level turns on by itself; the rest each get their own switch,
+    // even when the area has just one edit.
+    const autoKeys = autoEditKeys(area);
+    const ownSwitch = (tool: McpToolCatalogEntry) =>
+        area.edits.length > 1 || !autoKeys.includes(tool.key);
+
+    const changeLevel = (next: McpAccessLevel) => {
+        // Edit turns nothing on in an area whose edits are all opt-in: open the
+        // row so the admin sees the switches instead of a control that did nothing.
+        if (next === 'edit' && !autoKeys.length && level !== 'edit') setOpen(true);
+        onChange(withAreaLevel(area, next, enabled));
+    };
 
     const toggleEdit = (key: string, on: boolean) => {
         const next = new Set(enabled);
@@ -235,6 +267,14 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                                         text={t('tools.risk.live')}
                                     />
                                 )}
+                                {outboundEditOn && (
+                                    <StatusChip
+                                        status="DANGER"
+                                        textSize="text-caption"
+                                        showIcon={false}
+                                        text={t('tools.risk.outbound')}
+                                    />
+                                )}
                             </span>
                             {area.summary && (
                                 <span className="mt-0.5 block text-caption text-neutral-500">
@@ -248,7 +288,7 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                             label={area.label}
                             value={level}
                             levels={levels}
-                            onChange={(l) => onChange(withAreaLevel(area, l, enabled))}
+                            onChange={changeLevel}
                         />
                     )}
                 </div>
@@ -265,12 +305,17 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                                 </p>
                             </div>
                         )}
+                        {area.edits.length > 0 && !autoKeys.length && (
+                            <p className="text-caption text-neutral-500">
+                                {t('tools.eachOnItsOwn')}
+                            </p>
+                        )}
                         {area.edits.map((tool) => {
                             const on = enabled.includes(tool.key);
                             const switchId = `${idPrefix}-${tool.key}`;
                             return (
                                 <div key={tool.key} className="flex items-start gap-3">
-                                    {area.edits.length > 1 && (
+                                    {ownSwitch(tool) && (
                                         <Switch
                                             id={switchId}
                                             checked={on}
@@ -279,7 +324,7 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                                     )}
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            {area.edits.length > 1 ? (
+                                            {ownSwitch(tool) ? (
                                                 <label
                                                     htmlFor={switchId}
                                                     className="cursor-pointer text-caption font-medium text-neutral-700"
@@ -293,13 +338,13 @@ function AreaRow({ area, enabled, onChange, idPrefix }: AreaRowProps) {
                                             )}
                                             {tool.risk && (
                                                 <StatusChip
-                                                    status={RISK_STATUS[tool.risk]}
+                                                    status={riskStatus(tool.risk)}
                                                     textSize="text-caption"
                                                     showIcon={false}
                                                     text={t(`tools.risk.${tool.risk}`)}
                                                 />
                                             )}
-                                            {tool.opt_in && (
+                                            {isNeverAutoOn(tool) && (
                                                 <StatusChip
                                                     status="INFO"
                                                     textSize="text-caption"

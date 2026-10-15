@@ -436,7 +436,10 @@
     "titleWithHero": "Extra heading above the tabs (usually empty)",
     "titleWithHeroHint": "The page heading visitors see comes from this section's page header (hero). Text here adds a second heading.",
     "legacyFiltersSummary": "More filters from course data (not used by this design)",
-    "legacyFiltersHint": "This page's sidebar has its own filter groups. Ticking one of these adds an extra group after them."
+    "legacyFiltersHint": "This page's sidebar has its own filter groups. Ticking one of these adds an extra group after them.",
+    "optionOrder": "{{group}} order",
+    "optionOrderReset": "Reset order",
+    "optionOrderHint": "Not set yet: the site uses its default order. Move any item to set this order."
   },
   "catalogDesign": {
     "title": "Courses page design",
@@ -910,7 +913,9 @@
     "headingField": "Heading",
     "layout": "Layout",
     "layoutSplit": "Split (text left, button right)",
-    "showButton": "Show Button"
+    "showButton": "Show Button",
+    "buttonTextColor": "Button text colour",
+    "buttonBackground": "Button background"
   },
   "ctaBand": {
     "style": "Design",

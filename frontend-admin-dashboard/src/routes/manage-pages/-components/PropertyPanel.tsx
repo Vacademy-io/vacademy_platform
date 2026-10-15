@@ -66,6 +66,7 @@ import { CampaignPicker, websiteFormFields } from './CampaignPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import { CatalogDesignGroups } from './catalog/CatalogDesignGroups';
+import { RowActions } from './catalog/design-fields';
 import { CtaBandFields } from './chrome/CtaBandFields';
 import { OptionalColorField, bandButtonShown } from './chrome/chrome-controls';
 import { FooterBrandFields } from './chrome/FooterBrandFields';
@@ -2503,10 +2504,68 @@ const buildCourseCatalogSortLabels = (t: TFunction): Record<string, string> => (
     Popular: t('bookCatalogue.sort.popular', { defaultValue: 'Popular (most enrolled)' }),
 });
 
+
+/**
+ * Order of the options inside one filter group (levels or tags) on the public
+ * courses page. Writes the full name list; options not in it (new tags) fall
+ * in after, in natural order. Reset clears it, so the site's default order
+ * (levels A–Z, tags as before) applies again.
+ */
+const FilterOptionOrder = ({
+    label,
+    names,
+    order,
+    onChange,
+}: {
+    label: string;
+    names: string[];
+    order: unknown;
+    onChange: (next: string[] | undefined) => void;
+}) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const saved = Array.isArray(order) ? order.map(String) : [];
+    const key = (n: string) => n.trim().toLowerCase();
+    const known = new Set(names.map(key));
+    const listed = saved.filter((n) => known.has(key(n)));
+    const listedKeys = new Set(listed.map(key));
+    const rest = names
+        .filter((n) => !listedKeys.has(key(n)))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    const effective = [...listed, ...rest];
+    if (effective.length < 2) return null;
+    const move = (index: number, delta: number) => {
+        const next = [...effective];
+        const [item] = next.splice(index, 1);
+        next.splice(index + delta, 0, item as string);
+        onChange(next);
+    };
+    return (
+        <div className="space-y-1 rounded border border-dashed border-gray-200 p-2">
+            <div className="flex items-center justify-between">
+                <p className="text-caption font-medium text-gray-500">{t('bookCatalogue.optionOrder', { group: label })}</p>
+                {saved.length > 0 && (
+                    <button type="button" className="text-caption text-primary-500 hover:underline" onClick={() => onChange(undefined)}>
+                        {t('bookCatalogue.optionOrderReset')}
+                    </button>
+                )}
+            </div>
+            {saved.length === 0 && <p className="text-caption text-gray-400">{t('bookCatalogue.optionOrderHint')}</p>}
+            {effective.map((name, i) => (
+                <div key={name} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate">{name}</span>
+                    <RowActions index={i} count={effective.length} item={name} onMove={(d) => move(i, d)} />
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     // Whole-store read on purpose (no selector): render tests mock the store as a plain function.
     const { config } = useEditorStore();
+    // Level / tag names for the filter option order lists.
+    const { instituteDetails } = useInstituteDetailsStore();
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2584,6 +2643,26 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }:
             {filter.label}
         </label>
     ));
+    const filterOrderFields = (
+        <>
+            {selectedFilterIds.has('level') && (
+                <FilterOptionOrder
+                    label={catalogueFilters[0].label}
+                    names={[...new Set((instituteDetails?.levels ?? []).map((l: { level_name?: string }) => l.level_name || '').filter((n: string) => n && n.toUpperCase() !== 'DEFAULT'))]}
+                    order={props.levelOrder}
+                    onChange={(next) => updateProp('levelOrder', next)}
+                />
+            )}
+            {selectedFilterIds.has('tags') && (
+                <FilterOptionOrder
+                    label={catalogueFilters[2].label}
+                    names={[...new Set((instituteDetails?.tags ?? []).map((n: string) => n.trim()).filter(Boolean))]}
+                    order={props.tagOrder}
+                    onChange={(next) => updateProp('tagOrder', next)}
+                />
+            )}
+        </>
+    );
 
     return (
         <div className="space-y-4">
@@ -2623,6 +2702,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }:
                         <div className="mt-2 space-y-2">
                             <p className="text-xs text-neutral-500">{t('bookCatalogue.legacyFiltersHint')}</p>
                             {catalogueFilterBoxes}
+                            {filterOrderFields}
                         </div>
                     </details>
                 ) : (
@@ -2633,6 +2713,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent, siteConfig }:
                             })}
                         </Label>
                         {catalogueFilterBoxes}
+                        {filterOrderFields}
                     </div>
                 ))}
 
@@ -4605,6 +4686,12 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                                 value={props.button?.target || ''}
                                 onChange={(v) => updateProp('button', { ...props.button, target: v })}
                             />
+                        )}
+                        {!isBand && (
+                            <>
+                                <OptionalColorField label={t('ctaBanner.buttonTextColor')} value={props.button?.textColor} onChange={(c) => updateProp('button', { ...props.button, textColor: c })} />
+                                <OptionalColorField label={t('ctaBanner.buttonBackground')} value={props.button?.backgroundColor} onChange={(c) => updateProp('button', { ...props.button, backgroundColor: c })} />
+                            </>
                         )}
                     </>
                 )}

@@ -671,7 +671,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
     // Plain rendering — still add anchor ID if present
     if (component.anchorId) {
-      return <div key={component.id} id={component.anchorId}>{rendered}</div>;
+      return <div key={component.id} id={component.anchorId} className="catalogue-block-anchor">{rendered}</div>;
     }
     return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
   };
@@ -907,6 +907,9 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
   // Intentional white: the button sits on the author-colored banner surface,
   // so it must stay white in every theme/mode (not a token surface).
   const ctaButtonClass = 'mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90'; // design-lint-ignore: intentional white over author-colored surface
+  // Optional author colours for the button; defaults keep the white button
+  // with banner-coloured text.
+  const ctaButtonStyle = { color: button?.textColor || backgroundColor, backgroundColor: button?.backgroundColor || undefined }; // design-lint-ignore: page-builder dynamic button color
   return (
     <section style={{ backgroundColor }} className="catalogue-section">
       <div className={`catalogue-shell flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
@@ -920,12 +923,12 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
               type="button"
               onClick={() => dispatchOpenAudienceForm(button.audienceId, button.formTitle || button.text)}
               className={ctaButtonClass}
-              style={{ color: backgroundColor }}
+              style={ctaButtonStyle}
             >
               {button.text}
             </button>
           ) : (
-            <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={{ color: backgroundColor }}>
+            <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={ctaButtonStyle}>
               {button.text}
             </CatalogueLink>
           ))}
@@ -2528,7 +2531,7 @@ const ComponentStyleWrapper: React.FC<{
         ref={ref}
         id={component.anchorId || undefined}
         data-cid={component.id}
-        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+        className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
         style={{ ...canvasStyle, ...animationStyle, ...decorClip, ...authoredPaddingVars(component.style) }}
       >
         {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
@@ -2557,7 +2560,7 @@ const ComponentStyleWrapper: React.FC<{
       ref={ref}
       id={component.anchorId || undefined}
       data-cid={component.id}
-      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
+      className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}${component.anchorId ? ' catalogue-block-anchor' : ''}`}
       style={{
         ...componentStyle,
         ...animationStyle,

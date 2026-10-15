@@ -434,7 +434,10 @@
     "titleWithHero": "Titre supplémentaire au-dessus des onglets (généralement vide)",
     "titleWithHeroHint": "Le titre de page vu par les visiteurs vient de l'en-tête de page (hero) de cette section. Un texte ici ajoute un second titre.",
     "legacyFiltersSummary": "Autres filtres issus des données des cours (non utilisés par ce design)",
-    "legacyFiltersHint": "La barre latérale de cette page a ses propres groupes de filtres. En cocher un ajoute un groupe supplémentaire après eux."
+    "legacyFiltersHint": "La barre latérale de cette page a ses propres groupes de filtres. En cocher un ajoute un groupe supplémentaire après eux.",
+    "optionOrder": "Ordre : {{group}}",
+    "optionOrderReset": "Réinitialiser l'ordre",
+    "optionOrderHint": "Pas encore défini : le site garde son ordre par défaut. Déplacez un élément pour fixer cet ordre."
   },
   "catalogDesign": {
     "title": "Design de la page des cours",
@@ -907,7 +910,9 @@
     "headingField": "Titre",
     "layout": "Mise en page",
     "layoutSplit": "Divisé (texte à gauche, bouton à droite)",
-    "showButton": "Afficher le bouton"
+    "showButton": "Afficher le bouton",
+    "buttonTextColor": "Couleur du texte du bouton",
+    "buttonBackground": "Arrière-plan du bouton"
   },
   "ctaBand": {
     "style": "Design",

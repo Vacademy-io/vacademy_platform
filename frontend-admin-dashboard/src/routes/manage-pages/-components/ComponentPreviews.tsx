@@ -1023,7 +1023,7 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => {
             {props.button?.enabled && (
                 <span
                     className="mt-5 inline-block rounded-lg bg-catalogue-bg-elevated px-7 py-2.5 text-sm font-semibold shadow"
-                    style={{ color: props.backgroundColor || '#3B82F6' }}  // design-lint-ignore: page-builder default color
+                    style={{ color: props.button.textColor || props.backgroundColor || '#3B82F6', backgroundColor: props.button.backgroundColor || undefined }}  // design-lint-ignore: page-builder default color
                 >
                     {props.button.text}
                 </span>

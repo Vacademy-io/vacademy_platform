@@ -171,9 +171,9 @@ The paper, converted from PDF to HTML:
 Extract EVERY question exactly as printed, in order. Return ONLY this JSON:
 {{
   "title": "string",                       // the paper's own title, e.g. "Half Yearly Mock — Class 7 Social Science"
-  "total_marks": number | null,            // the maximum marks the paper states, else null
+  "total_marks": number | null,            // the maximum marks the paper states ("MM: 40", "M.M. 40", "Max. Marks 40", "Maximum Marks: 40", "Full Marks 40"), else null
   "duration_minutes": number | null,       // the time allowed the paper states, else null
-  "sections": [ {{ "name": "Section A", "instruction": "string", "marks_each": number | null, "question_count": number | null, "total_marks": number | null }} ],
+  "sections": [ {{ "name": "Section A", "instruction": "string", "marks_each": number | null, "question_count": number | null, "total_marks": number | null, "attempt": number | null }} ],
   "questions": [
     {{
       "question_number": "1",              // as printed: "1", "2(a)", "Q7"
@@ -205,6 +205,7 @@ Rules:
 7. Keep every <img …> tag and every <!--DS_TAG:…--> comment exactly where it appears in the source.
 8. If the numbering restarts inside a section (a second passage or part printed 1, 2, 3… again), give that block its own section name — the printed heading if there is one ("Passage II", "Part B"), else "<Section> · Block 2" — so no two questions share the same section AND number.
 9. Valid JSON only. No markdown fences, no commentary outside the JSON.
+10. Internal choice. When a section lets the student answer only SOME of its questions ("Answer any FOUR of the following", "Attempt any 4", "Do any two", "any 3 out of 5"), set that section's "attempt" to how many must be answered (4 here) - in the field, not only in a note - and still list EVERY printed question of the section. A header such as "(4 × 3M = 12)" on such a section means attempt 4, marks_each 3, total_marks 12 (the total counts only the attempted questions; question_count is then the number to attempt, 4, not the number printed). "attempt" is null when every question of the section must be answered. An "Either … OR …" inside one question is rule 3, not this.
 """
 
 _CONTINUATION = (
@@ -231,6 +232,8 @@ class DigitisedPaper:
     raw_questions: List[Dict[str, Any]]
     questions: List[Dict[str, Any]]  # assessment-builder DTOs
     warnings: List[str] = field(default_factory=list)
+    # Internal choice ("answer any 4 of 5"), positions in `questions` order.
+    choice_groups: List[Dict[str, Any]] = field(default_factory=list)
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -239,6 +242,11 @@ class DigitisedPaper:
     @property
     def marks_total(self) -> float:
         return round(sum(float(q.get("marks") or 0) for q in self.raw_questions), 2)
+
+    @property
+    def paper_total(self) -> float:
+        """The paper's maximum, internal choice applied (marks_total when there is none)."""
+        return paper_total(self.raw_questions, self.choice_groups)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -249,6 +257,8 @@ class DigitisedPaper:
             "questions": self.questions,
             "raw_questions": self.raw_questions,
             "warnings": self.warnings,
+            "choice_groups": self.choice_groups,
+            "paper_total": self.paper_total,
             "model": self.model,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
@@ -278,11 +288,64 @@ def _section_marks_each(section: Dict[str, Any]) -> Optional[float]:
     each = _num(section.get("marks_each"))
     count = _num(section.get("question_count"))
     total = _num(section.get("total_marks"))
+    # "Answer any FOUR (4 × 3M = 12)": the header's count is how many are
+    # answered, not how many are printed - 12 ÷ 5 printed would make every
+    # question 2.4.
+    attempt = _attempt(section.get("attempt"))
+    if attempt:
+        count = float(attempt)
     if count and total:
         derived = total / count
         if derived > 0 and (each is None or abs(each * count - total) > 1e-6):
             return round(derived, 2)
     return each
+
+
+def _attempt(value: Any) -> Optional[int]:
+    """How many of a section's questions are answered ("any FOUR" -> 4); None = all."""
+    n = _num(value)
+    return int(n) if n and float(n).is_integer() and n >= 1 else None
+
+
+# Extra answers in a choice group: the best-marked ones count. The teacher can
+# switch a group to "first" (answer order) when the paper is set that way.
+DEFAULT_CHOICE_POLICY = "best"
+
+
+def choice_groups_for(raw_questions: List[Dict[str, Any]],
+                      sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The paper's internal choices: per section with an "attempt", the positions
+    (in `raw_questions` order) of its questions and how many of them count.
+
+    A section whose attempt is not below its number of questions is not a
+    choice at all (every question is answered) and is left out, so a model
+    that writes attempt = 5 on a five-question section changes nothing.
+    """
+    groups: List[Dict[str, Any]] = []
+    for section in sections:
+        attempt = _attempt(section.get("attempt"))
+        name = str(section.get("name") or "").strip()
+        if not attempt or not name:
+            continue
+        members = [i for i, q in enumerate(raw_questions)
+                   if str(q.get("section") or "").strip().lower() == name.lower()]
+        if attempt >= len(members):
+            continue
+        groups.append({"label": name, "question_indexes": members,
+                       "question_numbers": [str(raw_questions[i].get("question_number") or "") for i in members],
+                       "attempt": attempt, "policy": DEFAULT_CHOICE_POLICY})
+    return groups
+
+
+def paper_total(raw_questions: List[Dict[str, Any]], groups: Sequence[Dict[str, Any]]) -> float:
+    """The paper's maximum: every compulsory question, plus, per choice group,
+    the `attempt` highest-marked of its questions (equal marks in practice)."""
+    grouped = {i for g in groups for i in g["question_indexes"]}
+    total = sum(float(q.get("marks") or 0) for i, q in enumerate(raw_questions) if i not in grouped)
+    for g in groups:
+        marks = sorted((float(raw_questions[i].get("marks") or 0) for i in g["question_indexes"]), reverse=True)
+        total += sum(marks[: g["attempt"]])
+    return round(total, 2)
 
 
 def _norm_type(value: Any) -> str:
@@ -341,6 +404,7 @@ def reconcile_marks(
     sections: List[Dict[str, Any]],
     stated_total: Optional[float],
     expected_total: Optional[float],
+    groups: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[str]:
     """Fill missing marks and explain every guess.
 
@@ -391,6 +455,14 @@ def reconcile_marks(
             )
 
     total_found = round(sum(float(q.get("marks") or 0) for q in raw_questions), 2)
+    if groups:
+        # "Answer any FOUR of five": the paper's maximum counts four of them, so
+        # 18 questions adding to 46 on a 40-mark paper is exactly right.
+        choice_total = paper_total(raw_questions, groups)
+        target = stated_total or expected_total
+        if not target or abs(choice_total - target) <= 0.01:
+            return warnings
+        total_found = choice_total
     if stated_total and abs(total_found - stated_total) > 0.01:
         warnings.append(
             f"The paper states {stated_total:g} marks but the questions add up to {total_found:g}. "
@@ -525,7 +597,8 @@ def build_paper(
                 sections.append({"name": str(s.get("name")), "instruction": s.get("instruction") or "",
                                  "marks_each": _section_marks_each(s),
                                  "question_count": _num(s.get("question_count")),
-                                 "total_marks": _num(s.get("total_marks"))})
+                                 "total_marks": _num(s.get("total_marks")),
+                                 "attempt": _attempt(s.get("attempt"))})
         notes.extend(str(n) for n in (data.get("notes") or []) if str(n or "").strip())
         for q in data.get("questions") or []:
             if not isinstance(q, dict):
@@ -538,7 +611,8 @@ def build_paper(
             seen.add(key)
             raw_questions.append(q)
 
-    warnings = reconcile_marks(raw_questions, sections, total_marks, expected_total)
+    warnings = reconcile_marks(raw_questions, sections, total_marks, expected_total,
+                               choice_groups_for(raw_questions, sections))
 
     formatted: List[Dict[str, Any]] = []
     kept: List[Dict[str, Any]] = []
@@ -591,6 +665,8 @@ def build_paper(
         raw_questions=kept,
         questions=formatted,
         warnings=warnings,
+        # Positions in the questions that were kept: a dropped question leaves its group.
+        choice_groups=choice_groups_for(kept, sections),
     )
 
 
@@ -669,5 +745,6 @@ def tool_params(pages: int) -> Dict[str, Any]:
 __all__ = [
     "PaperPdf", "PaperPdfError", "DigitisedPaper", "TOOL_KEY", "MAX_PAGES", "MAX_PDF_BYTES",
     "fetch_paper_pdf", "digitise", "extract_questions", "build_paper", "reconcile_marks",
+    "choice_groups_for", "paper_total",
     "marking_rubric", "tool_params", "file_name_from_url",
 ]

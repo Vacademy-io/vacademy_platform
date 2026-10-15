@@ -3,7 +3,16 @@ import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useNavigate } from '@tanstack/react-router';
-import { Eye, EyeSlash, User, Lock, CheckCircle, WarningCircle, CircleNotch } from '@phosphor-icons/react';
+import {
+    Eye,
+    EyeSlash,
+    User,
+    Lock,
+    CheckCircle,
+    WarningCircle,
+    CircleNotch,
+    Info,
+} from '@phosphor-icons/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,7 +23,8 @@ import { UPDATE_USER_DETAILS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getUserId, getUserName } from '@/utils/userDetails';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { MyDialog } from '@/components/design-system/dialog';
+import { cn } from '@/lib/utils';
 import { noAutofillProps } from '@/lib/no-autofill';
 import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 
@@ -150,196 +160,204 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
         }
     };
 
+    const renderError = (message?: string) =>
+        message ? (
+            <p className="flex items-center gap-1 text-caption text-danger-600">
+                <WarningCircle className="size-3.5 shrink-0" />
+                {message}
+            </p>
+        ) : null;
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col overflow-y-auto p-0 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
-                <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                    {t('dialogTitle')}
-                </h1>
+        <MyDialog
+            open={open}
+            onOpenChange={setOpen}
+            heading={t('dialogTitle')}
+            dialogWidth="max-w-lg"
+            footer={
+                <>
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="secondary"
+                        onClick={handleClose}
+                        disable={isLoading || redirecting}
+                    >
+                        {t('actions.cancel')}
+                    </MyButton>
+                    <MyButton
+                        type="submit"
+                        form={ACCOUNT_DETAILS_FORM_ID}
+                        scale="medium"
+                        buttonType="primary"
+                        disable={isLoading}
+                    >
+                        {isLoading && <CircleNotch className="size-4 animate-spin" />}
+                        {isLoading ? t('actions.updating') : t('actions.update')}
+                    </MyButton>
+                </>
+            }
+        >
+            <form
+                id={ACCOUNT_DETAILS_FORM_ID}
+                onSubmit={handleSubmit(onSubmit)}
+                className="flex flex-col gap-6"
+            >
+                {/* Change-credentials form, not a login: without this Chrome
+                    drops the saved password straight into "New Password". */}
+                <AutofillDecoy />
 
-                {/* Form Content */}
-                <div className="space-y-6 p-4">
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        {/* Change-credentials form, not a login: without this Chrome
-                            drops the saved password straight into "New Password". */}
-                        <AutofillDecoy />
-                        {/* Username Section */}
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                <User size={16} />
-                                <h3>{t('username.sectionTitle')}</h3>
-                            </div>
+                <div className="flex items-start gap-2 rounded-md border border-info-200 bg-info-50 p-3 text-caption text-info-700">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <span>{t('signOutNote')}</span>
+                </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="username" className="text-sm">
-                                    {t('username.label')}
-                                </Label>
-                                <Input
-                                    id="username"
-                                    {...noAutofillProps('text')}
-                                    {...register('username')}
-                                    placeholder={t('username.placeholder')}
-                                    className="h-11 text-sm"
-                                    disabled={isLoading}
-                                />
-                                {errors.username && (
-                                    <p className="text-xs text-red-500">
-                                        {errors.username.message}
-                                    </p>
+                {/* Username Section */}
+                <section className="flex flex-col gap-3">
+                    <SectionHeading icon={<User className="size-4" />}>
+                        {t('username.sectionTitle')}
+                    </SectionHeading>
+                    <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="username" className="text-body text-neutral-700">
+                            {t('username.label')}
+                        </Label>
+                        <Input
+                            id="username"
+                            {...noAutofillProps('text')}
+                            {...register('username')}
+                            placeholder={t('username.placeholder')}
+                            className={cn('h-10 text-body', errors.username && 'border-danger-600')}
+                            disabled={isLoading}
+                        />
+                        {renderError(errors.username?.message)}
+                        {currentUsername && !errors.username && (
+                            <p className="text-caption text-neutral-500">
+                                {t('username.current', { username: currentUsername })}
+                            </p>
+                        )}
+                    </div>
+                </section>
+
+                {/* Password Section */}
+                <section className="flex flex-col gap-3 border-t border-neutral-200 pt-6">
+                    <SectionHeading icon={<Lock className="size-4" />}>
+                        {t('password.sectionTitle')}
+                    </SectionHeading>
+
+                    {/* New Password */}
+                    <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="newPassword" className="text-body text-neutral-700">
+                            {t('password.newLabel')}
+                        </Label>
+                        <div className="relative">
+                            <Input
+                                id="newPassword"
+                                type={showNewPassword ? 'text' : 'password'}
+                                {...noAutofillProps('password')}
+                                {...register('newPassword')}
+                                placeholder={t('password.newPlaceholder')}
+                                className={cn(
+                                    'h-10 pr-10 text-body',
+                                    errors.newPassword && 'border-danger-600'
                                 )}
-                                {currentUsername && (
-                                    <p className="text-xs text-gray-500">
-                                        {t('username.current', { username: currentUsername })}
-                                    </p>
-                                )}
-                            </div>
+                                disabled={isLoading}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowNewPassword(!showNewPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                            >
+                                {showNewPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
+                            </button>
                         </div>
+                        {renderError(errors.newPassword?.message)}
 
-                        {/* Password Section */}
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                <Lock size={16} />
-                                <h3>{t('password.sectionTitle')}</h3>
-                            </div>
-
-                            {/* New Password */}
-                            <div className="space-y-2">
-                                <Label htmlFor="newPassword" className="text-sm">
-                                    {t('password.newLabel')}
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        id="newPassword"
-                                        type={showNewPassword ? 'text' : 'password'}
-                                        {...noAutofillProps('password')}
-                                        {...register('newPassword')}
-                                        placeholder={t('password.newPlaceholder')}
-                                        className="h-11 pr-10 text-sm"
-                                        disabled={isLoading}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowNewPassword(!showNewPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    >
-                                        {showNewPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
-                                    </button>
-                                </div>
-                                {errors.newPassword && (
-                                    <p className="text-xs text-red-500">
-                                        {errors.newPassword.message}
-                                    </p>
-                                )}
-
-                                {/* Password validation indicators */}
-                                {newPassword && (
-                                    <div className="mt-2 space-y-1">
-                                        {passwordValidations.map((validation, index) => (
-                                            <div
-                                                key={index}
-                                                className={`flex items-center gap-1 text-xs ${
-                                                    validation.valid
-                                                        ? 'text-green-600'
-                                                        : 'text-gray-400'
-                                                }`}
-                                            >
-                                                {validation.valid ? (
-                                                    <CheckCircle size={12} />
-                                                ) : (
-                                                    <WarningCircle size={12} />
-                                                )}
-                                                <span>{validation.label}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Confirm Password */}
-                            <div className="space-y-2">
-                                <Label htmlFor="confirmPassword" className="text-sm">
-                                    {t('password.confirmLabel')}
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        id="confirmPassword"
-                                        type={showConfirmPassword ? 'text' : 'password'}
-                                        {...noAutofillProps('password')}
-                                        {...register('confirmPassword')}
-                                        placeholder={t('password.confirmPlaceholder')}
-                                        className="h-11 pr-10 text-sm"
-                                        disabled={isLoading}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    >
-                                        {showConfirmPassword ? (
-                                            <EyeSlash size={16} />
-                                        ) : (
-                                            <Eye size={16} />
-                                        )}
-                                    </button>
-                                </div>
-                                {errors.confirmPassword && (
-                                    <p className="text-xs text-red-500">
-                                        {errors.confirmPassword.message}
-                                    </p>
-                                )}
-
-                                {/* Password match indicator */}
-                                {confirmPassword && (
+                        {/* Password validation indicators */}
+                        {newPassword && !errors.newPassword && (
+                            <div className="flex flex-col gap-1">
+                                {passwordValidations.map((validation, index) => (
                                     <div
-                                        className={`flex items-center gap-1 text-xs ${
-                                            passwordsMatch ? 'text-green-600' : 'text-red-500'
-                                        }`}
+                                        key={index}
+                                        className={cn(
+                                            'flex items-center gap-1 text-caption',
+                                            validation.valid
+                                                ? 'text-success-600'
+                                                : 'text-neutral-400'
+                                        )}
                                     >
-                                        {passwordsMatch ? (
+                                        {validation.valid ? (
                                             <CheckCircle size={12} />
                                         ) : (
                                             <WarningCircle size={12} />
                                         )}
-                                        <span>
-                                            {passwordsMatch
-                                                ? t('password.match')
-                                                : t('password.mismatch')}
-                                        </span>
+                                        <span>{validation.label}</span>
                                     </div>
-                                )}
+                                ))}
                             </div>
-                        </div>
+                        )}
+                    </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-3 pt-4">
-                            <MyButton
-                                type="button"
-                                scale="medium"
-                                buttonType="secondary"
-                                layoutVariant="default"
-                                className="flex-1"
-                                onClick={handleClose}
-                                disable={isLoading || redirecting}
-                            >
-                                {redirecting && (
-                                    <CircleNotch className="size-10 animate-spin text-primary-500" />
+                    {/* Confirm Password */}
+                    <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="confirmPassword" className="text-body text-neutral-700">
+                            {t('password.confirmLabel')}
+                        </Label>
+                        <div className="relative">
+                            <Input
+                                id="confirmPassword"
+                                type={showConfirmPassword ? 'text' : 'password'}
+                                {...noAutofillProps('password')}
+                                {...register('confirmPassword')}
+                                placeholder={t('password.confirmPlaceholder')}
+                                className={cn(
+                                    'h-10 pr-10 text-body',
+                                    errors.confirmPassword && 'border-danger-600'
                                 )}
-                                {t('actions.cancel')}
-                            </MyButton>
-                            <MyButton
-                                type="submit"
-                                scale="medium"
-                                buttonType="primary"
-                                layoutVariant="default"
-                                className="flex-1"
                                 disabled={isLoading}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
                             >
-                                {isLoading ? t('actions.updating') : t('actions.update')}
-                            </MyButton>
+                                {showConfirmPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
+                            </button>
                         </div>
-                    </form>
-                </div>
-            </DialogContent>
-        </Dialog>
+                        {errors.confirmPassword ? (
+                            renderError(errors.confirmPassword.message)
+                        ) : confirmPassword ? (
+                            <div
+                                className={cn(
+                                    'flex items-center gap-1 text-caption',
+                                    passwordsMatch ? 'text-success-600' : 'text-danger-600'
+                                )}
+                            >
+                                {passwordsMatch ? (
+                                    <CheckCircle size={12} />
+                                ) : (
+                                    <WarningCircle size={12} />
+                                )}
+                                <span>
+                                    {passwordsMatch ? t('password.match') : t('password.mismatch')}
+                                </span>
+                            </div>
+                        ) : null}
+                    </div>
+                </section>
+            </form>
+        </MyDialog>
+    );
+}
+
+const ACCOUNT_DETAILS_FORM_ID = 'account-details-form';
+
+function SectionHeading({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+    return (
+        <h3 className="flex items-center gap-2 text-subtitle font-semibold text-neutral-700">
+            <span className="flex size-7 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                {icon}
+            </span>
+            {children}
+        </h3>
     );
 }

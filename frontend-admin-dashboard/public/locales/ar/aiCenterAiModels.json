@@ -21,5 +21,9 @@
             "description": "OpenAI"
         }
     },
-    "fallbackDescription": "نموذج ذكاء اصطناعي"
+    "fallbackDescription": "نموذج ذكاء اصطناعي",
+    "platformDefault": {
+        "name": "الإعداد الافتراضي للمنصة",
+        "description": "موصى به — النموذج الذي حدده مسؤول المنصة لتصحيح الأوراق"
+    }
 }

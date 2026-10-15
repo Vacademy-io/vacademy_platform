@@ -21,5 +21,9 @@
             "description": "OpenAI"
         }
     },
-    "fallbackDescription": "एआई मॉडल"
+    "fallbackDescription": "एआई मॉडल",
+    "platformDefault": {
+        "name": "प्लेटफ़ॉर्म डिफ़ॉल्ट",
+        "description": "अनुशंसित — कॉपी जाँच के लिए प्लेटफ़ॉर्म एडमिन द्वारा चुना गया मॉडल"
+    }
 }

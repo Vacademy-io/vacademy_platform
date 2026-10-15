@@ -4954,8 +4954,10 @@ def test_an_opening_after_pickup_noises_is_not_a_replay():
 
 def test_pickup_scraps_are_not_counted_as_lost_answers():
     import inspect
-    src = inspect.getsource(b.run_bot)
-    assert "if i > _first_bot" in src, "pickup scraps before the opening must not count as lost"
+    # The filter lives in TranscriptCollector.answers_heard since 2026-10-14.
+    src = inspect.getsource(b.TranscriptCollector.answers_heard)
+    assert "if i > first_bot" in src, "pickup scraps before the opening must not count as lost"
+    assert "transcript.answers_heard()" in inspect.getsource(b.run_bot)
 
 
 def test_played_invariants_name_todays_faults():
@@ -5607,6 +5609,8 @@ async def test_nothing_generates_before_the_opening_unless_the_caller_takes_over
         g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
                        opening_pending=lambda: pending["v"])
         g.push_frame = _push
+        # The opening is on its way (default): the run waits for it.
+        g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
         return g
     b.FrameProcessor.process_frame = _noop_super
     ctx = LLMContext(messages=[{"role": "system", "content": "x"},
@@ -6241,9 +6245,13 @@ async def test_no_re_send_while_the_model_is_already_writing():
                            resume_unplayed=lambda n=600: "x y z", resume_settle_secs=0.01,
                            forget_resume=lambda: forgotten.__setitem__("n", 1) or True)
     tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
-    tc._reply_in_flight = lambda: True
+    # The model starts writing once the resume is under way (a resume never
+    # STARTS over a reply already on its way — _resume_cut_words).
+    writing = {"v": False}
+    tc._reply_in_flight = lambda: writing["v"]
     b.FrameProcessor.process_frame = _noop_super
     assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    writing["v"] = True
     await asyncio.wait_for(tc._resume_check, timeout=6)
     # sent once, never repeated over the model, and handed back so the model
     # is free to say them itself

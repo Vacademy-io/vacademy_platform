@@ -40,6 +40,7 @@ from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.figma_links import FIGMA_LINK_GUIDANCE, find_figma_url, is_figma_url
+from ..services.image_model_resolver import PAGE_BUILDER_IMAGE, ImageCharge, image_model_for, plan_image_charge
 from ..services.llm_json import generate_json
 from ..constants.model_defaults import GLM_DEFAULT
 from ..services.model_selection import resolve_models
@@ -215,7 +216,12 @@ def _load_catalog() -> Dict[str, Any]:
 
 # ─── Image generation (logos / hero art / illustrations) ────────────────────
 
-_IMAGE_MODEL = os.getenv("PAGE_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
+# PAGE_IMAGE_MODEL (env) wins; else the 'page_builder_image' use case
+# (super-admin portal), else this literal. Chat-completions image models only
+# (the call below sends `modalities`).
+_IMAGE_MODEL_ENV = os.getenv("PAGE_IMAGE_MODEL")
+_IMAGE_MODEL_DEFAULT = "google/gemini-3.1-flash-image"
+_IMAGE_MODEL = _IMAGE_MODEL_ENV or _IMAGE_MODEL_DEFAULT
 _IMAGE_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 _IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
 # Auto-generated images per page. Was 5, which quietly became the binding
@@ -232,7 +238,12 @@ _MIN_BAND_PADDING_PX = 32.0
 _GEN_PREFIX = "gen:"
 
 
-async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
+def _image_model() -> str:
+    """The page-builder image model right now (cached 30 s by the resolver)."""
+    return _IMAGE_MODEL_ENV or image_model_for(PAGE_BUILDER_IMAGE, _IMAGE_MODEL_DEFAULT)
+
+
+async def _openrouter_image(prompt: str, aspect: str, model: Optional[str] = None) -> Optional[bytes]:
     """One image via OpenRouter (same call the course/doc image path uses).
     Returns raw PNG bytes or None."""
     from ..config import get_settings
@@ -245,7 +256,7 @@ async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
             _IMAGE_API_URL,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": _IMAGE_MODEL,
+                "model": model or _image_model(),
                 "messages": [{"role": "user", "content": prompt}],
                 "modalities": ["image"],
                 "image_config": {"aspect_ratio": aspect if aspect in _IMAGE_ASPECTS else "16:9"},
@@ -277,9 +288,18 @@ def _upload_image(data: bytes, kind: str) -> Optional[str]:
         return None
 
 
-def _bill_image(db, institute_id: Optional[str], user_id: Optional[str]) -> None:
+def _bill_image(db, institute_id: Optional[str], user_id: Optional[str], model: Optional[str] = None) -> None:
     if not institute_id:
         return
+    model = model or _image_model()
+    # billing.image_registry_pricing: off (default) charges the flat image
+    # rate exactly as before; shadow adds would_be_credits to the usage
+    # metadata; on charges the registry price of the model that ran.
+    try:
+        charge = plan_image_charge(model, 1, feature="page_builder_image")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] image pricing plan failed (%s); billing as before", e)
+        charge = ImageCharge("off")
     try:
         from ..services.token_usage_service import TokenUsageService
         from ..models.ai_token_usage import ApiProvider
@@ -288,7 +308,8 @@ def _bill_image(db, institute_id: Optional[str], user_id: Optional[str]) -> None
             prompt_tokens=0, completion_tokens=0, total_tokens=0,
             request_type=RequestType.IMAGE,
             institute_id=institute_id, user_id=user_id,
-            model=_IMAGE_MODEL, metadata={"feature": "page_builder_image"},
+            model=model, metadata=charge.metadata({"feature": "page_builder_image"}),
+            precomputed_credits=charge.precomputed_credits,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-image] billing skipped: %s", e)
@@ -298,12 +319,13 @@ async def _generate_and_upload_image(
     prompt: str, aspect: str, kind: str, db, institute_id: Optional[str], user_id: Optional[str]
 ) -> Optional[str]:
     """Generate → upload → bill one image. Returns the public URL or None."""
-    data = await _openrouter_image(prompt, aspect)
+    model = _image_model()
+    data = await _openrouter_image(prompt, aspect, model)
     if not data:
         return None
     url = _upload_image(data, kind)
     if url:
-        _bill_image(db, institute_id, user_id)
+        _bill_image(db, institute_id, user_id, model)
     return url
 
 
@@ -4208,7 +4230,7 @@ async def generate_page_image(
     urls = [r for r in results if isinstance(r, str) and r]
     if not urls:
         raise HTTPException(status_code=502, detail="Image generation failed — please try again.")
-    return GenerateImageResponse(urls=urls, model=_IMAGE_MODEL)
+    return GenerateImageResponse(urls=urls, model=_image_model())
 
 
 # ─── Multi-page site (one brief → several coherent pages) ────────────────────

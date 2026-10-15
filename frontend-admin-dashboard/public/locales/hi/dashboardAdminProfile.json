@@ -33,7 +33,8 @@
         "contactInformation": "संपर्क जानकारी"
     },
     "actions": {
-        "saveChanges": "परिवर्तन सहेजें"
+        "saveChanges": "परिवर्तन सहेजें",
+        "cancel": "रद्द करें"
     },
     "toast": {
         "updateSuccess": "आपका विवरण सफलतापूर्वक अपडेट कर दिया गया है!"

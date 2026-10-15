@@ -324,6 +324,25 @@ public class InstallmentScheduleService {
             }
         }
 
+        List<BigDecimal> discounts = rowDiscounts(schedule);
+        if (discounts != null) {
+            if (discounts.size() != count) {
+                throw new VacademyException("Give a discount for every installment row, or none");
+            }
+            for (int k = 0; k < count; k++) {
+                BigDecimal gross = BigDecimal.ZERO;
+                for (List<BigDecimal> s : shares) gross = gross.add(s.get(k));
+                BigDecimal off = discounts.get(k);
+                if (off.signum() < 0) {
+                    throw new VacademyException("Installment " + (k + 1) + " has a negative discount");
+                }
+                if (off.compareTo(gross) > 0) {
+                    throw new VacademyException("Installment " + (k + 1) + " has " + off.toPlainString()
+                            + " off but is only " + gross.toPlainString());
+                }
+            }
+        }
+
         List<LocalDate> startDates = new ArrayList<>(count);
         LocalDate first = dueDates.get(0);
         startDates.add(first.isBefore(today) ? first : today);
@@ -343,6 +362,23 @@ public class InstallmentScheduleService {
             bills.add(new PlannedBill(part, null, startDates.get(0), first, part.total()));
         }
         return new SchedulePlan(dueDates, startDates, bills);
+    }
+
+    /**
+     * The per-installment discounts of an edited schedule, in row order (null entries as 0), or
+     * null when no row carries one — then the enrollment's plan discount is spread as before.
+     */
+    public static List<BigDecimal> rowDiscounts(InstallmentScheduleDTO schedule) {
+        if (schedule == null || schedule.getRows() == null || schedule.getRows().isEmpty()) return null;
+        boolean any = schedule.getRows().stream()
+                .anyMatch(r -> r != null && r.getDiscount() != null && r.getDiscount().signum() != 0);
+        if (!any) return null;
+        List<BigDecimal> out = new ArrayList<>(schedule.getRows().size());
+        for (InstallmentScheduleDTO.RowDTO r : schedule.getRows()) {
+            BigDecimal d = r == null || r.getDiscount() == null ? BigDecimal.ZERO : r.getDiscount();
+            out.add(d.setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+        return out;
     }
 
     /** Due dates from explicit rows, or generated from count + interval + first due date. */

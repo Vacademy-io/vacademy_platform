@@ -76,6 +76,7 @@ function buildHeadlineText(t: TFunction): Record<string, string> {
         REPLY_LOOP: t('headline.replyLoop'),
         OPENING_REPLAYED: t('headline.openingReplayed'),
         HANDBACK_LOOP: t('headline.handbackLoop'),
+        CALLER_IGNORED: t('headline.callerIgnored'),
         REPEATED_LINE: t('headline.repeatedLine'),
         DEAD_AIR: t('headline.deadAir'),
         FALSE_REASK: t('headline.falseReask'),
@@ -99,6 +100,7 @@ function buildFaultLabel(t: TFunction): Record<string, string> {
         REPLY_LOOP: t('faultLabel.replyLoop'),
         OPENING_REPLAYED: t('faultLabel.openingReplayed'),
         HANDBACK_LOOP: t('faultLabel.handbackLoop'),
+        CALLER_IGNORED: t('faultLabel.callerIgnored'),
         REPEATED_LINE: t('faultLabel.repeatedLine'),
         DEAD_AIR: t('faultLabel.deadAir'),
         FALSE_REASK: t('faultLabel.falseReask'),
@@ -296,6 +298,9 @@ function faultEvidence(t: TFunction, code: string, d: CallDiagnostics): string[]
             break;
         case 'STT_DEAF':
             out.push(pluralCount(t, 'evidence.sttReconnect', infra.sttReconnects));
+            break;
+        case 'CALLER_IGNORED':
+            out.push(pluralCount(t, 'evidence.swallowedTurn', turn.swallowedTurns));
             break;
         case 'SLOW_TTS':
             out.push(

@@ -638,6 +638,8 @@ public class AiAgentAssistService {
         FAULT_MEANING.put("DEAD_AIR", "long silence from the agent (platform/audio — not a prompt issue)");
         FAULT_MEANING.put("ANSWER_DELETED", "a caller answer was lost in speech recognition (platform)");
         FAULT_MEANING.put("STT_DEAF", "speech recognition heard nothing (platform)");
+        FAULT_MEANING.put("CALLER_IGNORED", "the caller spoke and the agent stayed silent while its "
+                + "opening was owed (platform — not a prompt issue)");
         FAULT_MEANING.put("LIKELY_MACHINE", "voicemail or IVR answered (ignore)");
     }
 
@@ -809,6 +811,8 @@ public class AiAgentAssistService {
             session.getContext().put(LLMService.CTX_USE_CASE, USE_CASE);
             // This class runs its own primary -> fallback loop (callJson); one model per call.
             session.getContext().put(LLMService.CTX_NO_FAILOVER, Boolean.TRUE);
+            // Billed as a flat COST per operation (charge()), never per token on top.
+            session.getContext().put(LLMService.CTX_BILLED_BY_CALLER, Boolean.TRUE);
             // Anthropic via OpenRouter: extended thinking rejects a non-1 temperature and
             // json_object is not uniformly supported — the fallback runs plain.
             if (!useModel.startsWith("anthropic/")) {

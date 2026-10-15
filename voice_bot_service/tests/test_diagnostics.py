@@ -694,3 +694,18 @@ def test_every_fault_has_headline_text():
         assert text, f"{code} has no headline sentence"
         assert len(text) < 90, f"{code} headline too long for a row hover: {text!r}"
         del d
+
+
+def test_max_reply_restarts_skips_the_openings_deliberate_resays():
+    """Replay of 7fb703a4 (2026-10-14): the opening and its two re-says sat next
+    to each other once an ack over them stopped splitting the entries — three
+    deliveries of the opening are not a REPLY_LOOP; a real loop still is."""
+    opening = "Namaste ji, main Asha bol rahi hoon Example Academy se, aapne classes ke baare mein poocha tha"
+    t = [{"role": "assistant", "text": opening}, {"role": "assistant", "text": opening},
+         {"role": "assistant", "text": opening}, {"role": "user", "text": "haan ji"},
+         {"role": "assistant", "text": "Bachche ka naam kya hai aur woh kis class mein padhta hai?"}]
+    assert dg.max_reply_restarts(t) == 3
+    assert dg.max_reply_restarts(t, skip_like=opening) == 1
+    loop = "Kya main jaan sakti hoon ki pichhli class mein kitne marks aaye the?"
+    t2 = t + [{"role": "assistant", "text": loop}] * 3
+    assert dg.max_reply_restarts(t2, skip_like=opening) == 3

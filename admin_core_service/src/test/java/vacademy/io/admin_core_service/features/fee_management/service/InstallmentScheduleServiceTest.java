@@ -346,4 +346,35 @@ class InstallmentScheduleServiceTest {
                         .interval(InstallmentScheduleDTO.IntervalDTO.builder().unit("YEARS").value(1).build())
                         .build()));
     }
+
+    // ---------------- per-installment discounts ----------------
+
+    private static InstallmentScheduleDTO.RowDTO row(String date, String amount, String discount) {
+        InstallmentScheduleDTO.RowDTO r = row(date, amount);
+        r.setDiscount(discount != null ? new BigDecimal(discount) : null);
+        return r;
+    }
+
+    @Test
+    void rowDiscountsAreReadAndChecked() {
+        InstallmentScheduleDTO ok = InstallmentScheduleDTO.builder().rows(List.of(
+                row("2026-10-15", "2334", "334"), row("2026-11-15", "833", "333"), row("2026-12-15", "833", null)))
+                .build();
+        assertEquals(List.of(new BigDecimal("334.00"), new BigDecimal("333.00"), new BigDecimal("0.00")),
+                InstallmentScheduleService.rowDiscounts(ok));
+        InstallmentScheduleService.buildPlan(List.of(split("a", "4000")), ok, TODAY);
+
+        InstallmentScheduleDTO none = InstallmentScheduleDTO.builder().rows(List.of(
+                row("2026-10-15", "2000", null), row("2026-11-15", "2000", "0"))).build();
+        assertNull(InstallmentScheduleService.rowDiscounts(none));
+
+        InstallmentScheduleDTO tooMuch = InstallmentScheduleDTO.builder().rows(List.of(
+                row("2026-10-15", "3000", "0"), row("2026-11-15", "1000", "1000.01"))).build();
+        assertThrows(VacademyException.class,
+                () -> InstallmentScheduleService.buildPlan(List.of(split("a", "4000")), tooMuch, TODAY));
+        InstallmentScheduleDTO negative = InstallmentScheduleDTO.builder().rows(List.of(
+                row("2026-10-15", "3000", "-1"), row("2026-11-15", "1000", "0"))).build();
+        assertThrows(VacademyException.class,
+                () -> InstallmentScheduleService.buildPlan(List.of(split("a", "4000")), negative, TODAY));
+    }
 }

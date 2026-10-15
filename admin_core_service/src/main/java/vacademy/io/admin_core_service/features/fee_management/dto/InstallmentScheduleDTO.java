@@ -60,5 +60,11 @@ public class InstallmentScheduleDTO {
         private LocalDate dueDate;
         /** Gross amount of this installment; null = use the generated equal share. */
         private BigDecimal amount;
+        /**
+         * Amount of the plan discount taken off this installment. When any row has one, the
+         * enrollment's plan discount is exactly these amounts (stored as fixed per-installment
+         * shares) instead of being spread in proportion; null/0 = nothing off this one.
+         */
+        private BigDecimal discount;
     }
 }

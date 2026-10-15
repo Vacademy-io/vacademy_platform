@@ -10,7 +10,6 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { countPdfPages } from '@/services/pdf-page-count';
-import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 import { cn } from '@/lib/utils';
 import { startCopyIntake, type CopyIntakeBatch } from '../../-services/copy-intake-services';
 
@@ -186,13 +185,8 @@ export const BulkAiCheckDialog = ({
             };
             await Promise.all([worker(), worker()]);
             if (uploaded.length === 0) throw new Error(t('errors.nothingUploaded'));
-            return startCopyIntake(
-                assessmentId,
-                instituteId,
-                uploaded,
-                DEFAULT_EVALUATION_MODEL,
-                notifyEmail
-            );
+            // No preferred model: the platform's evaluation default applies.
+            return startCopyIntake(assessmentId, instituteId, uploaded, undefined, notifyEmail);
         },
         onSuccess: (batch) => {
             toast.success(t('toasts.started', { count: batch.total_items }));

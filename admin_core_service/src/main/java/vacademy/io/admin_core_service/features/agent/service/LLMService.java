@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
 import vacademy.io.admin_core_service.features.ai_models.service.AiModelDefaultsResolver;
@@ -15,6 +17,7 @@ import vacademy.io.admin_core_service.features.ai_models.service.LlmGatewayRoute
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
+import vacademy.io.admin_core_service.features.ai_usage.service.JavaLlmBillingService;
 
 import java.time.Duration;
 import java.util.*;
@@ -50,6 +53,14 @@ public class LLMService {
     private final AiTokenUsageService aiTokenUsageService;
     private final LlmGatewayRouter gatewayRouter;
     private final AiModelDefaultsResolver modelDefaults;
+
+    /**
+     * Charges calls no caller bills, behind billing.java_agent_charge (default off). Field
+     * injection keeps the constructor as it was; null (unit tests) = record only, as before.
+     */
+    @Autowired(required = false)
+    @Lazy
+    private JavaLlmBillingService llmBilling;
 
     /**
      * Generate a chat completion with tool calling support
@@ -141,6 +152,13 @@ public class LLMService {
      */
     public static final String CTX_USAGE_LOG_SYNC = "usage_log_sync";
 
+    /**
+     * Context flag (Boolean TRUE): the caller charges this work itself some other way (a flat
+     * per-operation fee), so billing.java_agent_charge must not add a token charge on top.
+     * Callers that set {@link #CTX_USAGE_LOG_SYNC} bill themselves too and need not set it.
+     */
+    public static final String CTX_BILLED_BY_CALLER = "billed_by_caller";
+
     /** Context (Boolean TRUE): caller runs off-request (a background job) — 10 min read timeout. */
     public static final String CTX_LONG_RUNNING = "long_running";
 
@@ -188,6 +206,21 @@ public class LLMService {
                 if (saved != null && saved.getId() != null) {
                     llmResponse.setUsageLogId(saved.getId().toString());
                 }
+                return;
+            }
+
+            // Nobody bills this call. With billing.java_agent_charge on, price and charge it
+            // (still off the request thread); off - the default - records it exactly as before.
+            if (llmBilling != null
+                    && !(ctx != null && Boolean.TRUE.equals(ctx.get(CTX_BILLED_BY_CALLER)))
+                    && llmBilling.isEnabled()) {
+                llmBilling.recordAndChargeAsync(
+                        requestType,
+                        llmResponse.getModelUsed(),
+                        llmResponse.getPromptTokens(),
+                        llmResponse.getCompletionTokens(),
+                        instituteId,
+                        userId);
                 return;
             }
 

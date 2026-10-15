@@ -25,8 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The managed paths of LlmGatewayRouter (chat / callModel) against a local fake of both
- * gateways: Isoquant under /iq/v1, OpenRouter under /or/v1.
+ * The managed paths of LlmGatewayRouter (chat / callModel) against a local fake of every
+ * gateway: Isoquant under /iq/v1, OpenRouter under /or/v1, ai_service's Anthropic bridge
+ * under /ai-service/.
  */
 class LlmGatewayRouterChatTest {
 
@@ -34,9 +35,16 @@ class LlmGatewayRouterChatTest {
     private static final String GLM = ModelDefaults.GLM_DEFAULT;
     private static final String GEMINI = ModelDefaults.NON_GLM_FALLBACK;
     private static final String ROUTES = "\"{\\\"z-ai/glm-5.3-flash\\\": \\\"isoquant\\\"}\"";
+    private static final String SONNET = "anthropic/claude-sonnet-4.5";
+    /** Prod's string form, with a Claude model routed to the Anthropic key pool. */
+    private static final String ANTHROPIC_ROUTES =
+            "\"{\\\"z-ai/glm-5.3-flash\\\": \\\"isoquant\\\", \\\"" + SONNET
+                    + "\\\": {\\\"router\\\": \\\"anthropic\\\", \\\"model\\\": \\\"claude-sonnet-4-5\\\"}}\"";
 
     /** One request the fake saw. */
-    record Seen(String gateway, JsonNode body, String auth) {}
+    record Seen(String gateway, JsonNode body, String auth, String path, String internalToken) {}
+
+    private volatile String routesSetting = ROUTES;
 
     /** (gateway, request body) -> {status, response body}. */
     private volatile BiFunction<String, JsonNode, Object[]> responder;
@@ -49,9 +57,11 @@ class LlmGatewayRouterChatTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
-            String gateway = path.startsWith("/iq/") ? "isoquant" : "openrouter";
+            String gateway = path.startsWith("/iq/") ? "isoquant"
+                    : path.startsWith("/ai-service/") ? "anthropic" : "openrouter";
             JsonNode body = MAPPER.readTree(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            seen.add(new Seen(gateway, body, exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION)));
+            seen.add(new Seen(gateway, body, exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION), path,
+                    exchange.getRequestHeaders().getFirst("X-Internal-Service-Token")));
             Object[] reply = responder.apply(gateway, body);
             byte[] out = ((String) reply[1]).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -69,12 +79,12 @@ class LlmGatewayRouterChatTest {
     }
 
     /** Routes setting + ai_model_defaults rows, both through the one JdbcTemplate. */
-    private static JdbcTemplate db(Map<String, String[]> defaults) {
+    private JdbcTemplate db(Map<String, String[]> defaults) {
         return new JdbcTemplate() {
             @Override
             @SuppressWarnings("unchecked")
             public <T> List<T> queryForList(String sql, Class<T> elementType, Object... args) {
-                return (List<T>) List.of(ROUTES);
+                return (List<T>) List.of(routesSetting);
             }
 
             @Override
@@ -95,6 +105,14 @@ class LlmGatewayRouterChatTest {
         JdbcTemplate jdbc = db(defaults);
         return new LlmGatewayRouter(jdbc, MAPPER, new AiModelDefaultsResolver(jdbc),
                 isoquantKey, base + "/iq/v1", "or-key", base + "/or/v1");
+    }
+
+    /** Anthropic routes on, with the ai_service bridge configured (or not, when token is blank). */
+    private LlmGatewayRouter bridgeRouter(String internalToken) {
+        routesSetting = ANTHROPIC_ROUTES;
+        JdbcTemplate jdbc = db(Map.of());
+        return new LlmGatewayRouter(jdbc, MAPPER, new AiModelDefaultsResolver(jdbc),
+                "iq-key", base + "/iq/v1", "or-key", base + "/or/v1", base + "/", internalToken);
     }
 
     private static String completion(String content) {
@@ -251,5 +269,140 @@ class LlmGatewayRouterChatTest {
         assertEquals("high", LlmGatewayRouter.gatewayEffort("medium"));
         assertEquals("max", LlmGatewayRouter.gatewayEffort("MAX"));
         assertEquals("low", LlmGatewayRouter.gatewayEffort("minimal"));
+    }
+
+    // ── Anthropic bridge ([C6]) ─────────────────────────────────────────────
+
+    private static Map<String, Object> toolPayload() {
+        Map<String, Object> p = payload(900);
+        p.put("temperature", 0.7);
+        p.put("tools", List.of(Map.of("type", "function", "function",
+                Map.of("name", "lookup", "description", "find", "parameters", Map.of("type", "object")))));
+        p.put("tool_choice", "auto");
+        p.put("provider", Map.of("order", List.of("x")));
+        return p;
+    }
+
+    @Test
+    void anthropicRouteGoesToTheBridgeWithTheRegistryIdAndTheInternalToken() {
+        responder = (gw, body) -> new Object[]{200, completion("from claude")};
+        LlmGatewayRouter router = bridgeRouter("svc-token");
+
+        LlmGatewayRouter.LlmResult result =
+                router.chat(List.of(SONNET), toolPayload(), Duration.ofSeconds(5), null, null);
+
+        assertEquals(SONNET, result.modelId(), "usage stays under the registry id");
+        assertEquals("from claude", result.content());
+        assertEquals(1, seen.size());
+        Seen s = seen.get(0);
+        assertEquals("anthropic", s.gateway());
+        assertEquals(LlmGatewayRouter.ANTHROPIC_BRIDGE_PATH, s.path());
+        assertEquals("svc-token", s.internalToken());
+        assertEquals(SONNET, s.body().get("model").asText(), "the bridge maps registry id -> Anthropic id itself");
+        assertEquals(900, s.body().get("max_tokens").asInt(), "no GLM headroom for Claude");
+        assertEquals("lookup", s.body().path("tools").path(0).path("function").path("name").asText());
+        assertEquals("auto", s.body().get("tool_choice").asText());
+        assertEquals(0.7, s.body().get("temperature").asDouble());
+        assertFalse(s.body().has("usage"), "'usage' is OpenRouter-only");
+        assertFalse(s.body().has("provider"), "'provider' is OpenRouter-only");
+        assertFalse(s.body().has("reasoning"));
+        assertFalse(s.body().has("reasoning_effort"));
+        assertEquals(null, s.auth(), "no OpenRouter key leaves admin_core on the bridge leg");
+    }
+
+    @Test
+    void callerReasoningReachesTheBridgeAndTheFailoverLeg() {
+        responder = (gw, body) -> "anthropic".equals(gw)
+                ? new Object[]{503, "{\"error\":{\"message\":\"busy\"}}"}
+                : new Object[]{200, completion("from openrouter")};
+        LlmGatewayRouter router = bridgeRouter("svc-token");
+
+        router.callModel(SONNET, payload(900), Duration.ofSeconds(5), "high").block();
+
+        assertEquals(List.of("anthropic", "openrouter"), seen.stream().map(Seen::gateway).toList());
+        Seen bridge = seen.get(0);
+        assertEquals("high", bridge.body().path("reasoning").path("effort").asText(),
+                "the bridge understands the OpenRouter reasoning shape");
+        assertFalse(bridge.body().has("reasoning_effort"));
+        assertEquals("high", seen.get(1).body().path("reasoning").path("effort").asText(), "same on OpenRouter");
+    }
+
+    @Test
+    void bridge5xxFallsBackToOpenRouterAndCoolsDown() {
+        responder = (gw, body) -> "anthropic".equals(gw)
+                ? new Object[]{502, "{\"error\":{\"message\":\"upstream\",\"type\":\"api_error\",\"code\":502}}"}
+                : new Object[]{200, completion("from openrouter")};
+        LlmGatewayRouter router = bridgeRouter("svc-token");
+
+        LlmGatewayRouter.LlmResult result =
+                router.chat(List.of(SONNET), toolPayload(), Duration.ofSeconds(5), null, null);
+
+        assertEquals(SONNET, result.modelId());
+        assertEquals("from openrouter", result.content());
+        assertEquals(List.of("anthropic", "openrouter"), seen.stream().map(Seen::gateway).toList());
+        JsonNode or = seen.get(1).body();
+        assertEquals(SONNET, or.get("model").asText(), "same registry model on OpenRouter");
+        assertEquals("Bearer or-key", seen.get(1).auth());
+        assertEquals("lookup", or.path("tools").path(0).path("function").path("name").asText());
+        assertTrue(router.resolve(SONNET).isOpenRouter(), "the bridge cools down after a failure");
+        assertFalse(router.resolve(GLM).isOpenRouter(), "an Anthropic cooldown leaves Isoquant alone");
+    }
+
+    @Test
+    void unreachableBridgeFallsBackToOpenRouter() {
+        responder = (gw, body) -> new Object[]{200, completion("ok")};
+        routesSetting = ANTHROPIC_ROUTES;
+        JdbcTemplate jdbc = db(Map.of());
+        // Nothing listens on port 1: a transport error, not an HTTP status.
+        LlmGatewayRouter router = new LlmGatewayRouter(jdbc, MAPPER, new AiModelDefaultsResolver(jdbc),
+                "iq-key", base + "/iq/v1", "or-key", base + "/or/v1", "http://127.0.0.1:1", "svc-token");
+
+        LlmGatewayRouter.LlmResult result =
+                router.chat(List.of(SONNET), payload(500), Duration.ofSeconds(5), null, null);
+
+        assertEquals("ok", result.content());
+        assertEquals(List.of("openrouter"), seen.stream().map(Seen::gateway).toList());
+    }
+
+    @Test
+    void bridge400IsTheRequestsFaultAndMovesToTheNextModel() {
+        responder = (gw, body) -> "anthropic".equals(gw)
+                ? new Object[]{400, "{\"error\":{\"message\":\"bad\",\"type\":\"invalid_request_error\",\"code\":400}}"}
+                : new Object[]{200, completion("gemini here")};
+        LlmGatewayRouter router = bridgeRouter("svc-token");
+
+        LlmGatewayRouter.LlmResult result =
+                router.chat(List.of(SONNET, GEMINI), payload(500), Duration.ofSeconds(5), null, null);
+
+        assertEquals(GEMINI, result.modelId());
+        assertEquals(List.of("anthropic", "openrouter"), seen.stream().map(Seen::gateway).toList());
+        assertEquals(GEMINI, seen.get(1).body().get("model").asText(), "no OpenRouter retry of Claude on a 400");
+        assertFalse(router.resolve(SONNET).isOpenRouter(), "a 400 does not cool the bridge down");
+    }
+
+    @Test
+    void withoutTheInternalTokenAnAnthropicRouteStaysOnOpenRouter() {
+        responder = (gw, body) -> new Object[]{200, completion("ok")};
+        LlmGatewayRouter router = bridgeRouter("");
+
+        assertFalse(router.anthropicBridgeConfigured());
+        assertTrue(router.resolve(SONNET).isOpenRouter());
+        router.chat(List.of(SONNET), payload(500), Duration.ofSeconds(5), null, null);
+        assertEquals(List.of("openrouter"), seen.stream().map(Seen::gateway).toList());
+        assertEquals(SONNET, seen.get(0).body().get("model").asText());
+    }
+
+    @Test
+    void theRouteMapWithoutAnthropicIgnoresAConfiguredBridge() {
+        responder = (gw, body) -> new Object[]{200, completion("ok")};
+        JdbcTemplate jdbc = db(Map.of());
+        LlmGatewayRouter router = new LlmGatewayRouter(jdbc, MAPPER, new AiModelDefaultsResolver(jdbc),
+                "iq-key", base + "/iq/v1", "or-key", base + "/or/v1", base + "/", "svc-token");
+
+        router.chat(List.of(SONNET), payload(500), Duration.ofSeconds(5), null, null);
+        router.chat(List.of(GLM), payload(500), Duration.ofSeconds(5), null, null);
+
+        assertEquals(List.of("openrouter", "isoquant"), seen.stream().map(Seen::gateway).toList(),
+                "today's map: Claude on OpenRouter, GLM on Isoquant");
     }
 }

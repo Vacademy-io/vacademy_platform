@@ -352,11 +352,77 @@ SETTING_SPECS["llm.model_routes"] = SettingSpec(
         'Models served by a gateway other than OpenRouter, e.g. {"z-ai/glm-5.3-flash": "isoquant"} '
         'or {"z-ai/glm-5.3-flash": {"router": "isoquant", "model": "glm-5.3-flash", "reasoning_effort": "low"}}. '
         "Unlisted models stay on OpenRouter. Institutes using their own OpenRouter key always stay "
-        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes."
+        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes. "
+        '"anthropic" sends a Claude model straight to Anthropic with the keys under LLM keys, e.g. '
+        '{"anthropic/claude-sonnet-4.5": "anthropic"}; with no active key it stays on OpenRouter.'
     ),
     type="string",
     default=lambda: os.getenv("LLM_MODEL_ROUTES", "") or "{}",
     max_length=6000,
+)
+
+SETTING_SPECS["security.credit_history_scope"] = SettingSpec(
+    key="security.credit_history_scope",
+    group="rollout",
+    label="Credit history: who sees which rows",
+    description=(
+        "Who can read an institute's credit transaction history and AI usage. 'institute' "
+        "(default) = any member sees every row. 'own_unless_admin' = institute admins and "
+        "platform staff see every row; other members see only the credit rows they caused and "
+        "cannot open the institute-wide AI usage views (they keep their own usage)."
+    ),
+    type="enum",
+    default=lambda: "institute",
+    options=("institute", "own_unless_admin"),
+)
+
+SETTING_SPECS["billing.image_registry_pricing"] = SettingSpec(
+    key="billing.image_registry_pricing",
+    group="images",
+    label="Image billing: registry pricing",
+    description=(
+        "How page-builder, course-assist, course-slide and course-banner images are charged. "
+        "'off' (default) = as before (flat image rate; course assist 5 credits). 'shadow' = charge "
+        "as before and log/record would_be_credits at the registry price. 'on' = charge "
+        "ai_models.image_price_per_unit of the model that ran x the credit ratio. "
+        "AI video billing is not affected by this switch."
+    ),
+    type="enum",
+    default=lambda: "off",
+    options=("off", "shadow", "on"),
+)
+
+# Read by admin_core directly from ai_platform_settings (60 s cache), not by ai_service.
+SETTING_SPECS["billing.java_agent_charge"] = SettingSpec(
+    key="billing.java_agent_charge",
+    group="rollout",
+    label="Charge admin_core AI calls (admin agent, workflow drafter)",
+    description=(
+        "'false' (default) = as before: these calls are logged in AI usage but not charged. "
+        "'true' = each call is priced from ai_models and charged at the normal token rate "
+        "(post-paid, once per usage row), whichever gateway served it. A charge the "
+        "institute's balance cannot cover is dropped (logged), never taken below zero. Calls "
+        "that already carry their own fee or are free by product decision (chatbot turns, the "
+        "voice-agent prompt assistant, the WhatsApp engagement brain) are never charged. "
+        "Takes up to a minute to apply."
+    ),
+    type="enum",
+    default=lambda: "false",
+    options=("false", "true"),
+)
+
+SETTING_SPECS["billing.record_unbilled_usage"] = SettingSpec(
+    key="billing.record_unbilled_usage",
+    group="rollout",
+    label="Log unbilled AI usage (embeddings, web search)",
+    description=(
+        "Off (default) = as before: OpenRouter embedding calls (knowledge-base indexing and "
+        "search) and the video pipeline's web searches are not logged. On = each call writes "
+        "an AI usage row with its tokens and registry price but charges no credits. Those rows "
+        "appear in the institute's AI Settings activity log and its cost total."
+    ),
+    type="bool",
+    default=lambda: False,
 )
 
 GROUP_LABELS = {
@@ -629,8 +695,10 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
 def _check_model_routes(raw: Any) -> Optional[str]:
     """None if the map parses and every routed model answers one token through
     its gateway with the platform key; else why not. A route whose gateway key
-    is missing would silently stay on OpenRouter, so that is refused too."""
-    from .llm_router import ROUTERS, parse_routes
+    is missing would silently stay on OpenRouter, so that is refused too.
+    An "anthropic" entry is probed through the key pool (no OpenRouter
+    failover), so a map is refused while no Anthropic key is active."""
+    from .llm_router import ROUTERS, parse_routes, probe_anthropic_route
 
     try:
         routes = parse_routes(raw)
@@ -639,6 +707,11 @@ def _check_model_routes(raw: Any) -> Optional[str]:
     for model_id, entry in routes.items():
         spec = ROUTERS[entry["router"]]
         if entry["router"] == "openrouter":
+            continue
+        if spec.transport == "anthropic":
+            err = probe_anthropic_route(model_id, routes)
+            if err:
+                return f"{model_id} failed through {spec.label}: {err}"
             continue
         if not spec.api_key():
             return f"{spec.label} API key is not configured on ai-service (needed for {model_id})"

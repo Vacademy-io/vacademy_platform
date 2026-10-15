@@ -33,6 +33,8 @@ public class InstituteApiAuditWriter {
 
     public static final String ENTITY_API_KEY = "INSTITUTE_API_KEY";
     public static final String ENTITY_API_ACCESS = "INSTITUTE_API_ACCESS";
+    /** An approved website of the Catalogue API (institute_website). */
+    public static final String ENTITY_WEBSITE = "INSTITUTE_WEBSITE";
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())

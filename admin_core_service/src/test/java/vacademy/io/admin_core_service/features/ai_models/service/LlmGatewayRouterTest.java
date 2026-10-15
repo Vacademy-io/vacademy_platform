@@ -63,6 +63,49 @@ class LlmGatewayRouterTest {
     }
 
     @Test
+    void anthropicRoutesAreAcceptedAndUnknownGatewaysStillSkipped() {
+        String raw = "{\"anthropic/claude-sonnet-4.5\": {\"router\": \"anthropic\", \"model\": \"claude-sonnet-4-5\"},"
+                + " \"anthropic/claude-opus-5.5\": \"Anthropic\","
+                + " \"anthropic/claude-haiku-5.5\": {\"router\": \"anthropic\", \"reasoning_effort\": \"medium\"},"
+                + " \"x/y\": \"bedrock\", \"z-ai/glm-5.3-flash\": \"isoquant\"}";
+        Map<String, LlmGatewayRouter.Route> routes = LlmGatewayRouter.parseRoutes(raw, MAPPER);
+        assertEquals(new LlmGatewayRouter.Route("anthropic", "anthropic/claude-sonnet-4.5", null),
+                routes.get("anthropic/claude-sonnet-4.5"),
+                "the bridge takes the registry id; the Anthropic id is ai_service's business");
+        assertEquals(new LlmGatewayRouter.Route("anthropic", "anthropic/claude-opus-5.5", null),
+                routes.get("anthropic/claude-opus-5.5"), "plain string form, any case");
+        assertNull(routes.get("anthropic/claude-haiku-5.5").reasoningEffort(), "no effort on the bridge leg");
+        assertFalse(routes.containsKey("x/y"), "unknown gateway stays on OpenRouter");
+        assertEquals(new LlmGatewayRouter.Route("isoquant", "glm-5.3-flash", "low"), routes.get("z-ai/glm-5.3-flash"));
+        assertEquals(4, routes.size());
+    }
+
+    @Test
+    void anthropicRouteNeedsTheBridgeConfigured() {
+        String raw = "{\"anthropic/claude-sonnet-4.5\": \"anthropic\"}";
+        // Routing-only constructor: no ai_service URL or token.
+        LlmGatewayRouter noBridge = new LlmGatewayRouter(settingsReturning(raw), MAPPER, "k", "http://unused");
+        assertFalse(noBridge.anthropicBridgeConfigured());
+        LlmGatewayRouter.Route r = noBridge.resolve("anthropic/claude-sonnet-4.5");
+        assertTrue(r.isOpenRouter());
+        assertEquals("anthropic/claude-sonnet-4.5", r.wireModel());
+        assertNull(r.reasoningEffort());
+
+        LlmGatewayRouter urlOnly = new LlmGatewayRouter(settingsReturning(raw), MAPPER,
+                new AiModelDefaultsResolver(settingsReturning(raw)), "k", "http://unused", "or", "http://unused",
+                "http://ai-service:8077", " ");
+        assertTrue(urlOnly.resolve("anthropic/claude-sonnet-4.5").isOpenRouter(), "blank token = no bridge");
+
+        LlmGatewayRouter bridged = new LlmGatewayRouter(settingsReturning(raw), MAPPER,
+                new AiModelDefaultsResolver(settingsReturning(raw)), "k", "http://unused", "or", "http://unused",
+                "http://ai-service:8077", "tok");
+        assertTrue(bridged.anthropicBridgeConfigured());
+        assertEquals("anthropic", bridged.resolve("anthropic/claude-sonnet-4.5").gateway());
+        bridged.coolDown("anthropic", new RuntimeException("boom"));
+        assertTrue(bridged.resolve("anthropic/claude-sonnet-4.5").isOpenRouter());
+    }
+
+    @Test
     void bareModelIdDropsVendorAndVariant() {
         assertEquals("glm-5.3-flash", LlmGatewayRouter.bareModelId("z-ai/glm-5.3-flash:batch"));
         assertEquals("glm-5.3-flash", LlmGatewayRouter.bareModelId("glm-5.3-flash"));

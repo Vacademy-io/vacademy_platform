@@ -238,6 +238,51 @@ public class CreditClient {
             String subjectUserId,
             String description,
             String batchId) {
+        return deductAttributedTokenUsage(instituteId, requestType, model, promptTokens, completionTokens,
+                usageLogId, userId, userRole, subjectUserId, description, batchId, null);
+    }
+
+    /**
+     * {@link #deductAttributedTokenUsage} with an idempotency key: ai_service no-ops a repeated
+     * key (credit_transactions.external_reference_id, V243 partial unique), so a retried or
+     * replayed charge lands once. A null/blank key sends exactly the body above.
+     */
+    public boolean deductAttributedTokenUsage(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId,
+            String idempotencyKey) {
+        return deductAttributedTokenUsage(instituteId, requestType, model, promptTokens, completionTokens,
+                usageLogId, userId, userRole, subjectUserId, description, batchId, idempotencyKey, true);
+    }
+
+    /**
+     * {@link #deductAttributedTokenUsage} choosing {@code allow_negative}. Pass false for a
+     * caller with no pre-flight affordability gate: ai_service then applies the charge only
+     * when the balance covers it (and reports success=false otherwise).
+     */
+    public boolean deductAttributedTokenUsage(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId,
+            String idempotencyKey,
+            boolean allowNegative) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
@@ -249,7 +294,7 @@ public class CreditClient {
             body.put("model", model != null ? model : "unknown");
             body.put("prompt_tokens", promptTokens);
             body.put("completion_tokens", completionTokens);
-            body.put("allow_negative", true);
+            body.put("allow_negative", allowNegative);
             // Null-safe puts: HashMap (not Map.of) precisely so the optional
             // attribution fields can be omitted rather than sent as "".
             if (usageLogId != null && !usageLogId.isBlank()) body.put("usage_log_id", usageLogId);
@@ -258,6 +303,7 @@ public class CreditClient {
             if (subjectUserId != null && !subjectUserId.isBlank()) body.put("subject_user_id", subjectUserId);
             if (description != null && !description.isBlank()) body.put("description", clampDescription(description));
             if (batchId != null && !batchId.isBlank()) body.put("batch_id", batchId);
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) body.put("idempotency_key", idempotencyKey);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 

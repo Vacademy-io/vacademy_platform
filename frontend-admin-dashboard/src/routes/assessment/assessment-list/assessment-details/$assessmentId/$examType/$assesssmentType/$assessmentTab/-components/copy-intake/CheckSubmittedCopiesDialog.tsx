@@ -16,7 +16,6 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
-import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 import { cn } from '@/lib/utils';
 import {
     previewSubmittedCheck,
@@ -99,7 +98,7 @@ export const CheckSubmittedCopiesDialog = ({
             startSubmittedCheck(assessmentId, instituteId, {
                 attempt_ids: scoped ? attemptIds : undefined,
                 include_checked: includeChecked,
-                preferred_model: DEFAULT_EVALUATION_MODEL,
+                // No preferred_model: the platform's evaluation default applies.
                 notify_email: notifyEmail,
             }),
         onSuccess: (batch) => {

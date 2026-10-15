@@ -319,6 +319,11 @@ public class LearnerEnrollRequestService {
 
             String learndashBaseUrl = resolveLearnerPortalUrl(
                     enrollDTO.getPackageSessionIds(), learnerEnrollRequestDTO.getInstituteId());
+            if (learnerEnrollRequestDTO.getUser() != null) {
+                // Lets the institute's username strategy use a custom field (e.g. roll number).
+                learnerEnrollRequestDTO.getUser().setUsernameFieldValues(
+                        CustomFieldValueDTO.toValueMap(enrollDTO.getCustomFieldValues()));
+            }
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials, learndashBaseUrl);
             learnerEnrollRequestDTO.setUser(user);

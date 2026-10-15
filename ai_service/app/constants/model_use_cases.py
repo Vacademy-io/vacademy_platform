@@ -32,6 +32,7 @@ GROUPS: Tuple[str, ...] = (
 
 KIND_CHAT = "chat"
 KIND_VISION = "vision"
+KIND_IMAGE = "image"  # an image-generation model (ai_models.category = image)
 
 _AI = "ai_service/app/"
 _AC = "admin_core_service: "
@@ -345,6 +346,51 @@ USE_CASES: Tuple[UseCase, ...] = (
         (_AI + "services/image_service.py:31",),
         held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
     ),
+    # Per-feature image models (services/image_model_resolver.py): only
+    # default_model_id is read; a missing row = the literal in the code.
+    UseCase(
+        "page_builder_image", "Page builder images", GROUP_CONTENT, "ai_service", KIND_IMAGE,
+        "Logos, hero art and illustrations the website builder generates. Chat-completions image "
+        "models only (Gemini / GPT image). PAGE_IMAGE_MODEL env still wins. Default "
+        "google/gemini-3.1-flash-image.",
+        (_AI + "routers/page_builder.py:_image_model",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
+    UseCase(
+        "course_assist_image", "Course step-1 image assist", GROUP_CONTENT, "ai_service", KIND_IMAGE,
+        "Course preview / banner / media artwork in the course wizard. Chat-completions image models "
+        "only. COURSE_ASSIST_IMAGE_MODEL env still wins. Default google/gemini-3.1-flash-image.",
+        (_AI + "routers/course_assist.py:_image_model",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
+    UseCase(
+        "quiz_image", "Assessment question images", GROUP_ASSESSMENT, "ai_service", KIND_IMAGE,
+        "Illustrations generated for assessment questions. Chat-completions image models only. "
+        "Default google/gemini-3.1-flash-image.",
+        (_AI + "services/quiz_service.py:_gen_image_s3_url",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
+    UseCase(
+        "document_image", "Document & slide illustrations", GROUP_CONTENT, "ai_service", KIND_IMAGE,
+        "Pictures drawn into AI HTML documents and course DOCUMENT slides (either OpenRouter image API "
+        "is routed automatically). DOC_IMAGE_MODEL env still wins. Default qwen/qwen-image-3.",
+        (_AI + "services/document_postprocess.py:doc_image_model",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
+    UseCase(
+        "video_image", "AI video images (default)", GROUP_VIDEO, "ai_service", KIND_IMAGE,
+        "The AI video pipeline's default image model (shots without an explicit model). Billed per "
+        "image at its ai_models price. Default recraft/recraft-v4.1.",
+        (_AI + "ai-video-gen-main/automation_pipeline.py:_call_image_generation_llm",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
+    UseCase(
+        "video_support_visual", "AI video support visuals", GROUP_VIDEO, "ai_service", KIND_IMAGE,
+        "Supporting photos/diagrams beside the narration in AI videos. Host identity and cast sheets "
+        "stay on Seedream regardless. Default bytedance-seed/seedream-4.5.",
+        (_AI + "ai-video-gen-main/automation_pipeline.py:_sv_model",),
+        held_reason=_NOT_CHAT.format(what="image generation"), chat=False,
+    ),
     UseCase(
         "embedding", "Embeddings", GROUP_PLATFORM, "ai_service", KIND_CHAT,
         "Text embeddings for knowledge bases and search. Not a chat LLM.",
@@ -406,7 +452,7 @@ def uncatalogued_entry(use_case: str) -> Dict[str, object]:
 
 __all__: List[str] = [
     "UseCase", "USE_CASES", "USE_CASE_CATALOG", "NON_CHAT_USE_CASES", "DEFAULT_ONLY_IN_BULK",
-    "SEEDED_IN_RELEASE_2", "GROUPS", "GROUP_OTHER", "KIND_CHAT", "KIND_VISION",
+    "SEEDED_IN_RELEASE_2", "GROUPS", "GROUP_OTHER", "KIND_CHAT", "KIND_VISION", "KIND_IMAGE",
     "STUDENT_REPORT_HELD", "REELS_SELECTION_HELD",
     "get_use_case", "held_reason", "is_chat_use_case", "uncatalogued_entry",
 ]

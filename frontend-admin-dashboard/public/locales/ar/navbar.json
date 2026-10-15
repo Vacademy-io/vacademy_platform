@@ -56,7 +56,11 @@
         "username": "اسم المستخدم:",
         "contactInformation": "معلومات الاتصال",
         "email": "البريد الإلكتروني:",
-        "mobile": "الجوال:"
+        "mobile": "الجوال:",
+        "usernameLabel": "اسم المستخدم",
+        "emailLabel": "البريد الإلكتروني",
+        "mobileLabel": "الجوال",
+        "notProvided": "غير متوفر"
     },
     "institute": {
         "viewInstituteDetails": "عرض تفاصيل المؤسسة",
@@ -71,7 +75,15 @@
         "cityVillage": "المدينة/القرية:",
         "state": "الولاية:",
         "country": "الدولة:",
-        "pincode": "الرمز البريدي:"
+        "pincode": "الرمز البريدي:",
+        "emailLabel": "البريد الإلكتروني",
+        "mobileLabel": "الجوال",
+        "websiteLabel": "الموقع الإلكتروني",
+        "addressLabel": "العنوان",
+        "cityLabel": "المدينة/القرية",
+        "stateLabel": "الولاية",
+        "countryLabel": "الدولة",
+        "pincodeLabel": "الرمز البريدي"
     },
     "instituteSwitcher": {
         "currentInstitute": "المؤسسة الحالية",

@@ -8,7 +8,6 @@ import {
     TRIGGER_EVALUATION_URL,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 
 // Types
 export interface TriggerEvaluationRequest {
@@ -111,20 +110,20 @@ export interface EvaluationProgress {
 /**
  * Trigger AI evaluation for one or more student attempts
  * @param attempt_ids - Array of student attempt IDs
- * @param preferred_model - Optional AI model to use (default: DEFAULT_EVALUATION_MODEL)
+ * @param preferred_model - AI model the teacher explicitly picked. Omit it and no
+ *   `preferred_model` is sent: the platform's "evaluation" use-case default applies.
  * @returns Array of process IDs for tracking evaluation progress
  */
 export const triggerAIEvaluation = async (
     attempt_ids: string[],
-    preferred_model: string = DEFAULT_EVALUATION_MODEL
+    preferred_model?: string
 ): Promise<string[]> => {
+    const data: TriggerEvaluationRequest = { attempt_ids };
+    if (preferred_model) data.preferred_model = preferred_model;
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: TRIGGER_EVALUATION_URL,
-        data: {
-            attempt_ids,
-            preferred_model,
-        },
+        data,
     });
 
     return response?.data || [];

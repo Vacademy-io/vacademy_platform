@@ -381,9 +381,14 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
      */
     private void applyMandateMaxAmount(PaymentInitiationRequestDTO request,
                                        EnrollInvite enrollInvite, UserPlan userPlan) {
-        // Locked regional price when there is one, so the cap matches what renewals will debit.
-        mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite,
-                RegionalPriceLock.listPrice(userPlan));
+        if (RegionalPriceLock.isLocked(userPlan)) {
+            // Locked regional price, so the cap matches what renewals will debit.
+            mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite,
+                    RegionalPriceLock.listPrice(userPlan));
+        } else {
+            // Not regionally priced: exactly the original call.
+            mandateRequestDefaults.applyMaxAmountAndFrequency(request, enrollInvite, userPlan.getPaymentPlan());
+        }
     }
 
 }

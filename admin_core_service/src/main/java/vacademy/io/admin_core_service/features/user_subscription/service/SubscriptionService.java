@@ -475,7 +475,12 @@ public class SubscriptionService {
             // mandate fields must be filled here just as enrolment fills them — an empty
             // RazorpayRequestDTO makes the gateway fall back to a CARD e-mandate with no
             // ceiling, which is wrong for a learner who authorised UPI Autopay.
-            mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payableAmount);
+            if (regionalRenewal) {
+                mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payableAmount);
+            } else {
+                // Not regionally priced: exactly the original call.
+                mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payablePlan);
+            }
             mandateRequestDefaults.applyMethod(request, mandateMethod,
                     plan.getUserId(), instituteId, invite.getVendor());
             return paymentService.handleMandatePayment(user, instituteId, invite, plan, request);

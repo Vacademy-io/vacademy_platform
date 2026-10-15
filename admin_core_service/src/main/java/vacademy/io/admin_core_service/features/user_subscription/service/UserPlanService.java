@@ -500,7 +500,12 @@ public class UserPlanService {
                 && paymentPlan != null && paymentPlan.getActualPrice() > 0
                 && enrollInvite != null && enrollInvite.getInstituteId() != null) {
             // Regional lock: accrue in the currency and list price the learner was quoted.
-            double accrualAmount = RegionalPriceLock.listPrice(saved);
+            // Unlocked (every plan unless regional pricing is on): the plan's own price, as before.
+            boolean regionallyPriced = RegionalPriceLock.isLocked(saved);
+            double planListPrice = regionallyPriced
+                    ? saved.getRegionalPrice().doubleValue()
+                    : paymentPlan.getActualPrice();
+            double accrualAmount = planListPrice;
             if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getAmount() != null
                     && paymentInitiationRequestDTO.getAmount() >= 0) {
                 accrualAmount = paymentInitiationRequestDTO.getAmount();
@@ -510,7 +515,7 @@ public class UserPlanService {
                 // (gross list price + discount, amount = net) so the side-view
                 // Transaction History can render "gross struck through → net", and name
                 // the coupon in the remark.
-                double listPrice = RegionalPriceLock.listPrice(saved);
+                double listPrice = planListPrice;
                 String accrualRemark = "Plan enrollment payment required";
                 java.math.BigDecimal grossAmount = null;
                 java.math.BigDecimal discountAmount = null;
@@ -527,8 +532,9 @@ public class UserPlanService {
                 userAccountLedgerService.recordDebitAccrual(
                         userId, enrollInvite.getInstituteId(),
                         java.math.BigDecimal.valueOf(accrualAmount),
-                        RegionalPriceLock.currency(saved,
-                                paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR"),
+                        regionallyPriced
+                                ? saved.getRegionalCurrency()
+                                : (paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR"),
                         null,
                         "USER_PLAN", saved.getId(),
                         null, accrualRemark,

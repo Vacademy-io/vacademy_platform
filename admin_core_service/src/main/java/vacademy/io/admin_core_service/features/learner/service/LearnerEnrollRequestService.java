@@ -1147,9 +1147,17 @@ public class LearnerEnrollRequestService {
         if (!regionalEligible) {
             return null;
         }
-        RegionalQuote quote = regionalPriceResolver
-                .quote(paymentPlan, enrollInvite != null ? enrollInvite.getVendor() : null)
-                .orElse(null);
+        RegionalQuote quote;
+        try {
+            quote = regionalPriceResolver
+                    .quote(paymentPlan, enrollInvite != null ? enrollInvite.getVendor() : null)
+                    .orElse(null);
+        } catch (Exception e) {
+            // Never fail an enrolment over regional pricing: fall back to the base-price flow.
+            log.warn("Regional pricing skipped for plan {}: {}",
+                    paymentPlan != null ? paymentPlan.getId() : null, e.getMessage());
+            return null;
+        }
         PaymentInitiationRequestDTO payReq = enrollDTO.getPaymentInitiationRequest();
         if (quote != null && payReq != null) {
             payReq.setCurrency(quote.currency());

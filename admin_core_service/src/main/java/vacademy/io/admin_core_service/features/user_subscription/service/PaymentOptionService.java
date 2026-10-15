@@ -345,6 +345,10 @@ public class PaymentOptionService {
      * until the daily job or the panel's "Refresh rates" fills them in.
      */
     private void syncRegionalPrices(PaymentOption option) {
+        // Flag off (the default): do nothing at all, so saving an option is exactly as before.
+        if (option == null || !Boolean.TRUE.equals(option.getRegionalPricingEnabled())) {
+            return;
+        }
         try {
             regionalPriceService.sync(option, false);
         } catch (Exception e) {

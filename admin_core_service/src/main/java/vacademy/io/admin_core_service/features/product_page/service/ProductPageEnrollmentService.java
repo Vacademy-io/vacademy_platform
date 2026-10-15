@@ -171,9 +171,24 @@ public class ProductPageEnrollmentService {
         }
     }
 
-    /** @param vendor the gateway this order is charged through (already settled from the cart) */
+    /**
+     * Never fails a checkout: any error resolving regional prices leaves the order on base
+     * prices, i.e. exactly the flow that ran before regional pricing existed.
+     *
+     * @param vendor the gateway this order is charged through (already settled from the cart)
+     */
     private RegionalBasket resolveRegionalBasket(Map<String, PaymentPlan> planByMappingId, ProductPage page,
                                                  String vendor) {
+        try {
+            return resolveRegionalBasketOrThrow(planByMappingId, page, vendor);
+        } catch (Exception e) {
+            log.warn("Regional pricing skipped for product page {}: {}", page.getCode(), e.getMessage());
+            return RegionalBasket.NONE;
+        }
+    }
+
+    private RegionalBasket resolveRegionalBasketOrThrow(Map<String, PaymentPlan> planByMappingId, ProductPage page,
+                                                        String vendor) {
         if (regionalPriceResolver.hasCurrencyBoundSettings(page.getSettingsJson())) {
             return RegionalBasket.NONE;
         }
@@ -429,9 +444,14 @@ public class ProductPageEnrollmentService {
             }
             couponDiscount = appliedCouponDiscountRepository.findById(couponResp.getAppliedCouponDiscountId())
                     .orElse(null);
-            discountAmount = couponResp.getDiscountValue() != null
-                    ? Math.round(couponResp.getDiscountValue() * couponScale * 100.0) / 100.0
-                    : 0.0;
+            if (regional.active()) {
+                discountAmount = couponResp.getDiscountValue() != null
+                        ? Math.round(couponResp.getDiscountValue() * couponScale * 100.0) / 100.0
+                        : 0.0;
+            } else {
+                // Exactly the pre-regional-pricing behaviour: the validator's figure, unrounded.
+                discountAmount = couponResp.getDiscountValue() != null ? couponResp.getDiscountValue() : 0.0;
+            }
         }
 
         double finalTotal = Math.max(0.0, afterOffer - discountAmount);

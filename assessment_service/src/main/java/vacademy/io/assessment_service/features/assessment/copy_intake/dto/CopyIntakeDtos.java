@@ -26,6 +26,8 @@ public final class CopyIntakeDtos {
         private String preferredModel;
         /** Email the person who started the batch when it finishes (default true). */
         private Boolean notifyEmail;
+        /** Checked-copy template: INSIDE (remarks on the copy) or OUTSIDE (panel beside it). */
+        private String commentPlacement;
     }
 
     /**
@@ -44,6 +46,8 @@ public final class CopyIntakeDtos {
         private Boolean includeChecked;
         private String preferredModel;
         private Boolean notifyEmail;
+        /** Checked-copy template: INSIDE (remarks on the copy) or OUTSIDE (panel beside it). */
+        private String commentPlacement;
     }
 
     /** What a submitted-copies check would do, before any credit is spent. */

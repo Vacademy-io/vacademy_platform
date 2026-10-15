@@ -37,6 +37,7 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentR
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationEnqueueContext;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationService;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCommentPlacement;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
@@ -162,6 +163,7 @@ public class CopyIntakeService {
         // Every copy must fit the institute's AI credits before any work starts (10.6);
         // each is checked again, under the institute lock, when it is queued.
         aiEvaluationService.requireCreditsForCopies(assessment, instituteId, usable.size());
+        rememberCommentPlacement(assessment, request.getCommentPlacement());
 
         AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()
                 .assessmentId(assessment.getId())
@@ -192,6 +194,14 @@ public class CopyIntakeService {
                 "started AI check of " + items.size() + " uploaded copies for assessment " + assessment.getName(),
                 Map.of("batch_id", batch.getId(), "copies", items.size()));
         return batch;
+    }
+
+    /** Keep the checked-copy template chosen for this batch on the assessment; dispatch reads it there. */
+    private void rememberCommentPlacement(Assessment assessment, String requested) {
+        String placement = CopyCommentPlacement.changed(assessment, requested);
+        if (placement != null) {
+            assessmentRepository.updateCopyCommentPlacement(assessment.getId(), placement);
+        }
     }
 
     // ------------------------------------------------- submitted copies
@@ -276,6 +286,10 @@ public class CopyIntakeService {
         // transaction commits (10.6); a shortfall refuses the batch with the reason.
         Map<String, AiEvaluationCreditGate.Reservation> reserved = aiEvaluationService.reserveDashboardCredits(
                 copies.stream().map(SubmittedCopy::attempt).toList());
+
+        if (request != null) {
+            rememberCommentPlacement(assessment, request.getCommentPlacement());
+        }
 
         String model = request == null ? null : request.getPreferredModel();
         AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()

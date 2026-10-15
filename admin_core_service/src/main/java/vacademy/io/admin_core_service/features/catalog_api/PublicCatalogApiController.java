@@ -33,7 +33,7 @@ public class PublicCatalogApiController {
 
     /** Every route of this API, for telling a wrong method (405) from an unknown path (404). */
     private static final Pattern KNOWN_PATHS = Pattern.compile(
-            "^/(site|courses(/[^/]+(/outline)?)?|streams|learning-paths(/[^/]+)?|sitemap|leads)/?$");
+            "^/(site|courses(/[^/]+(/outline)?)?|streams|learning-paths(/[^/]+)?|sitemap|leads)$");
 
     private final CatalogApiAuth auth;
     private final CatalogApiService service;

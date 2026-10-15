@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.catalog_api.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
@@ -61,8 +62,13 @@ public class CatalogDataLoader {
     private final CatalogMediaResolver mediaResolver;
     private final ObjectMapper objectMapper;
 
-    private final Cache<String, CatalogSnapshot> snapshots = Caffeine.newBuilder()
-            .expireAfterWrite(TTL).maximumSize(2_000).build();
+    /**
+     * Refreshed in the background once older than {@link #TTL}: callers keep getting the previous
+     * snapshot while it reloads, so only an institute's first request ever waits on a load.
+     */
+    private final LoadingCache<String, CatalogSnapshot> snapshots = Caffeine.newBuilder()
+            .refreshAfterWrite(TTL).expireAfterWrite(Duration.ofMinutes(10)).maximumSize(2_000)
+            .build(this::load);
     private final Cache<String, Optional<List<FolderNode>>> trees = Caffeine.newBuilder()
             .expireAfterWrite(TTL).maximumSize(2_000).build();
     private final Cache<String, Optional<ProductPageResponse>> productPages = Caffeine.newBuilder()
@@ -88,7 +94,7 @@ public class CatalogDataLoader {
 
     /** The institute's catalogue, loaded at most once a minute (concurrent callers share one load). */
     public CatalogSnapshot snapshot(String instituteId) {
-        return snapshots.get(instituteId, this::load);
+        return snapshots.get(instituteId);
     }
 
     /** Drop the cached snapshot (after the institute's API settings change). */

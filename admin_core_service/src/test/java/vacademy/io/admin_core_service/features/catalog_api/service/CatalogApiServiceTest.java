@@ -207,6 +207,14 @@ class CatalogApiServiceTest {
     }
 
     @Test
+    void aHugePageIsEmptyNotAnError() {
+        Map<String, Object> page = service.courses(BV_INSTITUTE,
+                new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 30_000_000, 100, null));
+        assertTrue(data(page).isEmpty());
+        assertEquals(34, page.get("total"));
+    }
+
+    @Test
     void rejectsBadParameters() {
         for (CatalogApiService.CourseQuery bad : List.of(
                 new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 1, 24, "popular"),
@@ -351,6 +359,7 @@ class CatalogApiServiceTest {
         assertEquals(34, entries.size());
         for (Map<String, Object> e : entries) {
             assertTrue(((String) e.get("url")).startsWith(BASE + "/"));
+            assertFalse(((String) e.get("url")).contains("?"), "sitemap lists canonical addresses");
             assertEquals("course", e.get("type"));
         }
     }

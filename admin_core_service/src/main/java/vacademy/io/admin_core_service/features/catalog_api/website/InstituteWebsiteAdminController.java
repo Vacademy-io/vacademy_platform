@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Institute-admin management of approved websites (Settings → Integrations → Websites): the
+ * Institute-admin management of approved websites (Settings → Integrations → Catalogue API & websites): the
  * hosts whose browser pages may call the public Catalogue API with the institute's publishable
  * key. Same guard as the API key routes: {@code requireInstituteAdmin} (ADMIN role in that
  * institute, no root-user bypass).

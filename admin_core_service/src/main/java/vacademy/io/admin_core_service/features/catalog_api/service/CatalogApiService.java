@@ -230,8 +230,9 @@ public class CatalogApiService {
                     Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(byOrder);
         };
         hits.sort(comparator);
-        int from = Math.min(hits.size(), (query.page() - 1) * query.pageSize());
-        int to = Math.min(hits.size(), from + query.pageSize());
+        long offset = (long) (query.page() - 1) * query.pageSize();
+        int from = (int) Math.min(hits.size(), offset);
+        int to = (int) Math.min(hits.size(), (long) from + query.pageSize());
         List<Map<String, Object>> data = hits.subList(from, to).stream().map(Hit::view).toList();
         return page(data, query, hits.size());
     }
@@ -716,7 +717,10 @@ public class CatalogApiService {
             if (!inLanguage.isEmpty()) rows = inLanguage;
         }
         final List<CatalogRow> levels = rows;
-        String key = instituteId + "|" + found.card().group().courseId() + "|" + (code == null ? "" : code);
+        // Keyed by the levels actually chosen, not the requested code: any language that matches
+        // none falls back to every level, and must share that entry rather than rebuild it.
+        String key = instituteId + "|" + levels.stream().map(CatalogRow::packageSessionId)
+                .filter(Objects::nonNull).sorted().collect(Collectors.joining(","));
         return outlines.get(key, k -> buildOutline(levels));
     }
 
@@ -740,6 +744,8 @@ public class CatalogApiService {
                     List<Map<String, Object>> chapters = new ArrayList<>();
                     if (module.getChapters() != null) {
                         module.getChapters().stream()
+                                // is_hidden is not selected by the open query today; kept so a
+                                // hidden chapter can never surface once it is.
                                 .filter(c -> c != null && !Boolean.TRUE.equals(c.getIsHidden()))
                                 .forEach(c -> chapters.add(named(c.getId(), c.getChapterName())));
                     }
@@ -982,7 +988,7 @@ public class CatalogApiService {
             String url = hostedUrl(s, p.packageId(), p.packageSessionId(), p.enrollInviteId(), p.levelName());
             if (url == null) continue;
             Map<String, Object> v = new LinkedHashMap<>();
-            v.put("url", url);
+            v.put("url", withoutQuery(url)); // the canonical page address, as in seo.canonical_url
             v.put("type", "course");
             v.put("id", card.group().courseId());
             v.put("lastmod", card.createdAt() == null ? null : card.createdAt().toString());

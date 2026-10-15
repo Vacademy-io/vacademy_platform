@@ -58,6 +58,10 @@ public class CatalogLeadService {
     }
 
     /** Validates the raw body (snake_case fields) into a {@link Lead}; 400 invalid_request on the first problem. */
+    /** Keys the lead's own fields use; custom_fields may not carry them. */
+    static final Set<String> RESERVED_FIELDS = Set.of("full_name", "fullname", "name", "email", "phone",
+            "mobile", "mobile_number", "message", "source", "course_id");
+
     public static Lead validate(JsonNode body) {
         if (body == null || !body.isObject()) {
             throw invalid("Send a JSON object with full_name and email.", null);
@@ -107,6 +111,11 @@ public class CatalogLeadService {
                 if (value.length() > MAX_CUSTOM_VALUE) {
                     throw invalid("custom_fields." + key + " must be at most " + MAX_CUSTOM_VALUE + " characters.", "custom_fields");
                 }
+                // The lead's own fields are set from the validated values; a custom field must
+                // not shadow them in the lead list.
+                if (RESERVED_FIELDS.contains(key.toLowerCase(Locale.ROOT))) {
+                    throw invalid("custom_fields." + key + " is reserved; send it as the top-level field.", "custom_fields");
+                }
                 if (!value.isEmpty()) custom.put(key, value);
             }
         }
@@ -118,9 +127,9 @@ public class CatalogLeadService {
             throw invalid("course_id is not a published course of this institute.", "course_id");
         }
         Map<String, String> fields = new LinkedHashMap<>(lead.customFields());
-        if (lead.message() != null) fields.putIfAbsent("message", lead.message());
-        if (lead.source() != null) fields.putIfAbsent("source", lead.source());
-        if (lead.courseId() != null) fields.putIfAbsent("course_id", lead.courseId());
+        if (lead.message() != null) fields.put("message", lead.message());
+        if (lead.source() != null) fields.put("source", lead.source());
+        if (lead.courseId() != null) fields.put("course_id", lead.courseId());
 
         CatalogueLeadRequestDTO dto = CatalogueLeadRequestDTO.builder()
                 .instituteId(instituteId)

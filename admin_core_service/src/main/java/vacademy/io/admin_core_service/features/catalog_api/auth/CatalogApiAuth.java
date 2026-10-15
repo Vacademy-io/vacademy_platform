@@ -77,8 +77,8 @@ public class CatalogApiAuth {
     }
 
     /**
-     * Key → principal, scope check, read rate limit ({@value #READS_PER_MINUTE}/min per key), then
-     * the origin lock. Throws {@link CatalogApiException} with the public error code.
+     * Key → principal, scope check, the origin lock, then the read rate limit
+     * ({@value #READS_PER_MINUTE}/min per key). Throws {@link CatalogApiException} with the public error code.
      */
     public Principal authenticate(HttpServletRequest request, String requiredScope) {
         String key = presentedKey(request);
@@ -92,9 +92,10 @@ public class CatalogApiAuth {
                     "This API key does not have the " + requiredScope + " scope.",
                     Map.of("required_scope", requiredScope), null);
         }
+        // Origin first: a call from a site that is not the institute's must not use up its quota.
+        checkOrigin(p, request.getHeader("Origin"));
         hit("read:" + p.keyId(), READS_PER_MINUTE,
                 "Too many requests for this API key (limit " + READS_PER_MINUTE + " per minute).");
-        checkOrigin(p, request.getHeader("Origin"));
         return p;
     }
 
@@ -177,8 +178,8 @@ public class CatalogApiAuth {
         if (shown.length() > 100) shown = shown.substring(0, 100);
         throw new CatalogApiException(HttpStatus.FORBIDDEN, "origin_not_allowed",
                 host != null
-                        ? "Add and verify " + host + " in Settings → Integrations → Websites to call this API from it."
-                        : "This API can only be called from your verified websites (Settings → Integrations → Websites).",
+                        ? "Add and verify " + host + " in Settings → Integrations → Catalogue API & websites to call this API from it."
+                        : "This API can only be called from your verified websites (Settings → Integrations → Catalogue API & websites).",
                 Map.of("origin", shown), null);
     }
 

@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.catalog_api.CatalogApiException;
 import vacademy.io.admin_core_service.features.catalog_api.CatalogTestData;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -93,5 +95,13 @@ class CatalogLeadServiceTest {
                 CatalogLeadService.validate(body("{\"full_name\":\"A\",\"email\":\"a@b.co\",\"course_id\":\"nope\"}"))));
         assertEquals("course_id", e.getDetails().get("param"));
         verifyNoInteractions(audience);
+    }
+
+    @Test
+    void customFieldsCannotShadowTheLeadsOwnFields() {
+        for (String key : List.of("email", "Full_Name", "course_id", "source")) {
+            assertEquals("custom_fields", invalidParam(
+                    "{\"full_name\":\"A\",\"email\":\"a@b.co\",\"custom_fields\":{\"" + key + "\":\"x\"}}"), key);
+        }
     }
 }

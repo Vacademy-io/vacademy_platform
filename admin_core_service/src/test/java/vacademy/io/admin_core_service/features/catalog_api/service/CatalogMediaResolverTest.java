@@ -38,4 +38,23 @@ class CatalogMediaResolverTest {
         verify(media, times(1)).getPublicUrlsWithoutExpiry(any());
         verify(media, times(1)).getFilePublicUrlByIdWithoutExpiry("gone");
     }
+
+    @Test
+    void aHangingMediaServiceIsCutOffAndSkippedForAMinute() {
+        MediaService media = mock(MediaService.class);
+        when(media.getPublicUrlsWithoutExpiry(any())).thenAnswer(inv -> {
+            Thread.sleep(CatalogMediaResolver.BATCH_TIMEOUT_MS + 5_000);
+            return Map.of();
+        });
+        CatalogMediaResolver r = new CatalogMediaResolver(media);
+        long t0 = System.currentTimeMillis();
+        assertEquals(Map.of(), r.resolve(List.of("a")));
+        long took = System.currentTimeMillis() - t0;
+        assertTrue(took < CatalogMediaResolver.BATCH_TIMEOUT_MS + 2_000, "cut off at the deadline, took " + took);
+        assertTrue(r.isDown());
+        // While down: no remote call at all, and the id is not remembered as missing.
+        assertEquals(Map.of(), r.resolve(List.of("a", "https://x/y.png")).entrySet().stream()
+                .filter(e -> !e.getKey().startsWith("http")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        verify(media, times(1)).getPublicUrlsWithoutExpiry(any());
+    }
 }

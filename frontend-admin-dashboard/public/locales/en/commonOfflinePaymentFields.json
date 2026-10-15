@@ -23,10 +23,13 @@
         "referenceRequired": "Enter the reference for this payment mode.",
         "proofRequired": "Attach proof of payment for this mode.",
         "subModeRequired": "Choose an option for this payment mode.",
-        "fieldRequired": "Fill in all the fields marked *."
+        "fieldRequired": "Fill in all the fields marked *.",
+        "numberingRequired": "Choose the {{label}}."
     },
     "modePlaceholder": "Select payment mode",
     "subModePlaceholder": "Select",
     "selectPlaceholder": "Select",
-    "notSpecified": "Not specified"
+    "notSpecified": "Not specified",
+    "numberingLabel": "Receipt series",
+    "numberingHint": "Picks the receipt number series. Asked once per course; later installments use the same."
 }

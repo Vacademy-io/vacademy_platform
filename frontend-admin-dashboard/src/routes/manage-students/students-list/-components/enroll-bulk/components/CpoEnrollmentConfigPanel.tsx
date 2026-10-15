@@ -26,6 +26,7 @@ import {
 } from '@/routes/manage-students/students-list/-utils/installment-schedule';
 import { InstallmentScheduleEditor } from './InstallmentScheduleEditor';
 import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import type { NumberingTarget } from '@/services/numbering-field';
 
 interface InstallmentRow {
     id: string; // aft_installment id (matches SFP.iId)
@@ -50,6 +51,8 @@ interface Props {
     onScheduleErrorChange?: (message: string | null) => void;
     /** Reports what blocks the offline payment details (translated); null when fine. */
     onPaymentErrorChange?: (message: string | null) => void;
+    /** Learner being enrolled, for the numbering-series field (e.g. branch); see OfflinePaymentFields. */
+    numbering?: NumberingTarget | null;
 }
 
 const flattenInstallments = (feeTypes: CPOFeeType[] | undefined): InstallmentRow[] => {
@@ -129,6 +132,7 @@ export const CpoEnrollmentConfigPanel = ({
     onChange,
     onScheduleErrorChange,
     onPaymentErrorChange,
+    numbering,
 }: Props) => {
     const { t } = useTranslation('manageStudentsCpoEnrollmentConfigPanel');
     const { data, isLoading, isError } = useCPOFullDetails(cpoId, !!cpoId);
@@ -884,6 +888,7 @@ export const CpoEnrollmentConfigPanel = ({
                                 compact
                                 value={cfg.payment_details ?? {}}
                                 onChange={(v) => setPayment({ payment_details: v })}
+                                numbering={numbering}
                                 onErrorChange={onPaymentErrorChange}
                             />
                         </div>

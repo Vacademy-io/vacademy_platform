@@ -367,6 +367,7 @@ const RecordPaymentPanel = ({
                     value={details}
                     onChange={setDetails}
                     onErrorChange={setDetailsError}
+                    numbering={{ userPlanId, userId }}
                 />
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

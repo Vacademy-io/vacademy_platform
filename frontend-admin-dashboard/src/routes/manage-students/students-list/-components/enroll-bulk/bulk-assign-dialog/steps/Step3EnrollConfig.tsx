@@ -44,6 +44,7 @@ import {
 import { isDiscountablePlanType } from '@/services/admin-discounts';
 import { useCanApplyDiscounts } from '@/hooks/useCanApplyDiscounts';
 import { OfflinePaymentFields } from '@/components/common/payments/OfflinePaymentFields';
+import type { NumberingTarget } from '@/services/numbering-field';
 
 interface Props {
     instituteId: string;
@@ -56,15 +57,22 @@ interface Props {
     options: BulkEnrollOptions;
     /** Takes an updater too: the payment fields patch options from effects. */
     onOptionsChange: React.Dispatch<React.SetStateAction<BulkEnrollOptions>>;
+    /**
+     * The one existing learner being enrolled, if exactly one: preselects their own value of
+     * the numbering-series field (e.g. branch). With several learners the picked value applies
+     * to all of them.
+     */
+    numberingUserId?: string | null;
 }
 
 interface CourseConfigRowProps {
     instituteId: string;
+    numbering: NumberingTarget;
     ps: SelectedPackageSession;
     onUpdate: (patch: Partial<SelectedPackageSession>) => void;
 }
 
-const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) => {
+const CourseConfigRow = ({ instituteId, numbering, ps, onUpdate }: CourseConfigRowProps) => {
     const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const { data: resolved } = useResolvedInviteDetails({
         instituteId,
@@ -257,6 +265,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     onChange={(v) => onUpdate({ cpoConfig: v })}
                     onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
                     onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
+                    numbering={numbering}
                 />
             )}
 
@@ -268,6 +277,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     onChange={(v) => onUpdate({ cpoConfig: v })}
                     onScheduleErrorChange={(e) => onUpdate({ cpoScheduleError: e })}
                     onPaymentErrorChange={(e) => onUpdate({ cpoPaymentError: e })}
+                    numbering={numbering}
                 />
             )}
         </div>
@@ -280,7 +290,10 @@ export const Step3EnrollConfig = ({
     onSelectedPackageSessionsChange,
     options,
     onOptionsChange,
+    numberingUserId,
 }: Props) => {
+    // A new enrolment has no plan yet, so the field is always asked (when the institute has it).
+    const numbering = useMemo<NumberingTarget>(() => ({ userId: numberingUserId ?? null }), [numberingUserId]);
     const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
@@ -311,6 +324,7 @@ export const Step3EnrollConfig = ({
                         <CourseConfigRow
                             key={ps.packageSessionId}
                             instituteId={instituteId}
+                            numbering={numbering}
                             ps={ps}
                             onUpdate={(patch) => updateSession(ps.packageSessionId, patch)}
                         />
@@ -500,6 +514,7 @@ export const Step3EnrollConfig = ({
                         <OfflinePaymentFields
                             showReference={false}
                             externalReference={options.transactionId}
+                            numbering={numbering}
                             value={options.paymentDetails ?? {}}
                             onChange={(v) => onOptionsChange((prev) => ({ ...prev, paymentDetails: v }))}
                             onErrorChange={(e) =>

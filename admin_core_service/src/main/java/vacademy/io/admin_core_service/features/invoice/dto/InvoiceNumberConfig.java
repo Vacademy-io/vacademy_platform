@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.invoice.enums.InvoiceSeqScope;
 
 import java.util.ArrayList;
@@ -72,6 +73,38 @@ public class InvoiceNumberConfig {
      */
     @Builder.Default
     private List<Series> series = new ArrayList<>();
+
+    /**
+     * INVOICE_SETTING.numberingSeriesPolicy: whether the record-payment dialogs ask for the
+     * series field on the first payment of an enrolment, and whether it is required. Off
+     * unless set.
+     */
+    @Builder.Default
+    private SeriesPolicy seriesPolicy = new SeriesPolicy();
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SeriesPolicy {
+        private boolean askOnFirstPayment;
+        private boolean required;
+        /** Field to ask for; blank = the first series' field. */
+        private String fieldId;
+    }
+
+    /** The field the dialogs ask for, or null when there is no series. */
+    public String askFieldId() {
+        if (seriesPolicy != null && StringUtils.hasText(seriesPolicy.getFieldId())) {
+            return seriesPolicy.getFieldId().trim();
+        }
+        return series == null || series.isEmpty() ? null : series.get(0).getLearnerFieldId();
+    }
+
+    /** True when the institute numbers by series and asks for the field on a first payment. */
+    public boolean asksOnFirstPayment() {
+        return series != null && !series.isEmpty() && seriesPolicy != null
+                && seriesPolicy.isAskOnFirstPayment() && askFieldId() != null;
+    }
 
     /**
      * One extra counter, e.g. per branch: its own format and start number, chosen when the
@@ -157,6 +190,10 @@ public class InvoiceNumberConfig {
         if (invoiceSettings == null) {
             return fallback;
         }
+        // Series and their policy live outside the numbering block, so they apply even to an
+        // institute that never saved a numbering format of its own.
+        fallback.setSeries(parseSeries(invoiceSettings.get("numberingSeries")));
+        fallback.setSeriesPolicy(parsePolicy(invoiceSettings.get("numberingSeriesPolicy")));
         Object raw = invoiceSettings.get("numbering");
         if (!(raw instanceof Map)) {
             return fallback;
@@ -176,7 +213,18 @@ public class InvoiceNumberConfig {
                 .sanitizeTokens(asBool(numbering.get("sanitizeTokens"), true))
                 .startFrom(Math.max(0, asLong(numbering.get("startFrom"), 0)))
                 .series(parseSeries(invoiceSettings.get("numberingSeries")))
+                .seriesPolicy(parsePolicy(invoiceSettings.get("numberingSeriesPolicy")))
                 .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    static SeriesPolicy parsePolicy(Object raw) {
+        if (!(raw instanceof Map)) {
+            return new SeriesPolicy();
+        }
+        Map<String, Object> m = (Map<String, Object>) raw;
+        return new SeriesPolicy(asBool(m.get("askOnFirstPayment"), false), asBool(m.get("required"), false),
+                asText(m.get("fieldId"), null));
     }
 
     /** Lenient like the rest: an entry missing its key, format or field is skipped. */

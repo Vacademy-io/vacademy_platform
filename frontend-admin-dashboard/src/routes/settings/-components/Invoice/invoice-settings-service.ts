@@ -176,6 +176,14 @@ export interface InvoiceSettingsData {
      */
     numbering: InvoiceNumberingConfig;
     /**
+     * Extra receipt series picked by a learner field (e.g. one per branch); a learner no
+     * series matches stays on {@link numbering}. Top-level on purpose: {@link numbering} is
+     * rebuilt from a fixed key list on load. Read by InvoiceNumberConfig on the backend.
+     */
+    numberingSeries?: InvoiceNumberingSeries[];
+    /** Whether the record-payment dialogs ask for the series field on an enrolment's first payment. */
+    numberingSeriesPolicy?: InvoiceNumberingSeriesPolicy;
+    /**
      * Institute-level invoice defaults set from the admin Create-Invoice dialog (Review
      * step "Institute" group) — corrected institute name/address/contact and default
      * notes, remembered so future invoices (by any admin) prefill them. Not editable
@@ -187,6 +195,22 @@ export interface InvoiceSettingsData {
     instituteAddressOverride?: string;
     instituteContactOverride?: string;
     defaultNotes?: string;
+}
+
+/** One extra receipt series: its own format and counter, for learners with one of `values`. */
+export interface InvoiceNumberingSeries {
+    /** Names the counter; A-Z 0-9 _, at most 16. Never reuse one for something else. */
+    key: string;
+    format: string;
+    startFrom: number;
+    learnerFieldId: string;
+    values: string[];
+}
+
+export interface InvoiceNumberingSeriesPolicy {
+    askOnFirstPayment: boolean;
+    required: boolean;
+    fieldId?: string | null;
 }
 
 export const SETTING_KEY = 'INVOICE_SETTING';

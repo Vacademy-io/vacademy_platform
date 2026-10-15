@@ -18,6 +18,7 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -128,6 +129,22 @@ class InvoiceNumberSeriesTest {
         assertTrue(InvoiceNumberConfig.legacyDefault().getSeries().isEmpty());
         assertTrue(InvoiceNumberConfig.fromInvoiceSettings(Map.of()).getSeries().isEmpty());
         assertTrue(InvoiceNumberConfig.parseSeries(null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("the ask-on-first-payment policy is off unless set, and needs a series")
+    void policy() {
+        assertFalse(InvoiceNumberConfig.fromInvoiceSettings(Map.of()).asksOnFirstPayment());
+        assertFalse(config().asksOnFirstPayment());
+        Map<String, Object> on = new java.util.HashMap<>(Map.of(
+                "numberingSeriesPolicy", Map.of("askOnFirstPayment", true, "required", true)));
+        assertFalse(InvoiceNumberConfig.fromInvoiceSettings(on).asksOnFirstPayment(), "no series, nothing to ask");
+        on.put("numberingSeries", List.of(Map.of("key", "B", "format", "RCPT-B-{{seq}}",
+                "learnerFieldId", FIELD, "values", List.of("Branch B"))));
+        InvoiceNumberConfig c = InvoiceNumberConfig.fromInvoiceSettings(on);
+        assertTrue(c.asksOnFirstPayment());
+        assertTrue(c.getSeriesPolicy().isRequired());
+        assertEquals(FIELD, c.askFieldId());
     }
 
     @Test

@@ -23,10 +23,13 @@
         "referenceRequired": "أدخل المرجع لطريقة الدفع هذه.",
         "proofRequired": "أرفق إثبات الدفع لهذه الطريقة.",
         "subModeRequired": "اختر خيارًا لطريقة الدفع هذه.",
-        "fieldRequired": "املأ جميع الحقول المميزة بـ *."
+        "fieldRequired": "املأ جميع الحقول المميزة بـ *.",
+        "numberingRequired": "اختر {{label}}."
     },
     "modePlaceholder": "اختر طريقة الدفع",
     "subModePlaceholder": "اختر",
     "selectPlaceholder": "اختر",
-    "notSpecified": "غير محدد"
+    "notSpecified": "غير محدد",
+    "numberingLabel": "سلسلة الإيصالات",
+    "numberingHint": "يحدد سلسلة أرقام الإيصالات. يُطلب مرة لكل دورة؛ وتبقى الأقساط اللاحقة فيها."
 }

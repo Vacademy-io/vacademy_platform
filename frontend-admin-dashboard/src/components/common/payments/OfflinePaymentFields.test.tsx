@@ -37,14 +37,31 @@ const modes: OfflinePaymentModes = {
     ],
 };
 
+// Branch-style numbering field: asked for plan-new (no value yet), not for plan-pinned.
+vi.mock('@/services/numbering-field', () => ({
+    useNumberingField: (target: { userPlanId?: string | null } | null | undefined) => ({
+        data: !target
+            ? undefined
+            : target.userPlanId === 'plan-pinned'
+              ? { ask: false, required: true, options: ['Branch A', 'Branch B'], value: 'Branch A', label: 'Branch' }
+              : { ask: true, required: true, options: ['Branch A', 'Branch B'], suggested: 'branch b', label: 'Branch' },
+    }),
+}));
+
 vi.mock('@/services/offline-payment-modes', async (importActual) => ({
     ...(await importActual<typeof import('@/services/offline-payment-modes')>()),
     useOfflinePaymentModes: () => ({ data: modes, isLoading: false }),
 }));
 
-const Harness = ({ initial }: { initial: OfflinePaymentDetails }) => {
+const Harness = ({
+    initial,
+    numbering,
+}: {
+    initial: OfflinePaymentDetails;
+    numbering?: { userPlanId?: string | null; userId?: string | null };
+}) => {
     const [value, setValue] = useState<OfflinePaymentDetails>(initial);
-    return <OfflinePaymentFields value={value} onChange={setValue} />;
+    return <OfflinePaymentFields value={value} onChange={setValue} numbering={numbering} />;
 };
 
 describe('OfflinePaymentFields', () => {
@@ -79,5 +96,33 @@ describe('OfflinePaymentFields', () => {
         render(<Harness initial={{ mode: 'CASH' }} />);
         expect(screen.getAllByRole('combobox')).toHaveLength(1);
         expect(screen.queryByText('Bank Branch Name')).toBeNull();
+    });
+
+    it('asks the numbering field on an enrolment\'s first payment, preselecting the learner\'s value', () => {
+        render(
+            <Harness
+                initial={{ mode: 'CASH' }}
+                numbering={{ userPlanId: 'plan-new', userId: 'u-1' }}
+            />
+        );
+        const branch = screen.getByRole('combobox', { name: 'Branch' });
+        expect(branch.textContent).toContain('Branch B');
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('preselects the default mode and the learner\'s branch together', () => {
+        render(<Harness initial={{}} numbering={{ userPlanId: 'plan-new', userId: 'u-1' }} />);
+        expect(screen.getByRole('combobox', { name: 'modeLabel' }).textContent).toContain('Cheque');
+        expect(screen.getByRole('combobox', { name: 'Branch' }).textContent).toContain('Branch B');
+    });
+
+    it('does not ask again once the enrolment has a value', () => {
+        render(<Harness initial={{ mode: 'CASH' }} numbering={{ userPlanId: 'plan-pinned', userId: 'u-1' }} />);
+        expect(screen.queryByRole('combobox', { name: 'Branch' })).toBeNull();
+    });
+
+    it('without a numbering target nothing is asked (dialogs that do not pass one are unchanged)', () => {
+        render(<Harness initial={{ mode: 'CASH' }} />);
+        expect(screen.getAllByRole('combobox')).toHaveLength(1);
     });
 });

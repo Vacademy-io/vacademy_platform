@@ -278,6 +278,11 @@ public class FeeLedgerAllocationService {
 
         vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService.Resolved details =
                 offlinePaymentDetailsService.resolve(instituteId, paymentDetails, null);
+        // First payment of an enrolment: pin the numbering-series field picked in the dialog.
+        for (String planId : selectedBills.stream().map(StudentFeePayment::getUserPlanId)
+                .filter(id -> id != null && !id.isBlank()).distinct().toList()) {
+            offlinePaymentDetailsService.pinNumberingValue(instituteId, planId, userId, paymentDetails);
+        }
 
         // Create PaymentLog
         PaymentLog paymentLog = new PaymentLog();

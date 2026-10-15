@@ -83,6 +83,20 @@ class RegionalPricingFlagOffParityTest {
         assertTrue(resolver.quote(plan(option(false)), "RAZORPAY").isEmpty());
         assertTrue(resolver.quote(plan(option(false)), "US", "STRIPE").isEmpty());
         verifyNoInteractions(regionalPriceRepository);
+        // The viewer's country (an IP lookup) is not even worked out for an option that is off.
+        verifyNoInteractions(viewerCountryResolver);
+    }
+
+    @Test
+    void inviteCarryingTheSwitchOffIsLeftAloneWithoutAnyLookup() throws Exception {
+        EnrollInviteDTO dto = invite();
+        dto.getPackageSessionToPaymentOptions().get(0).getPaymentOption().setRegionalPricingEnabled(false);
+        String before = json.writeValueAsString(dto);
+
+        resolver.localize(dto);
+
+        assertEquals(before, json.writeValueAsString(dto));
+        verifyNoInteractions(paymentOptionRepository, regionalPriceRepository, viewerCountryResolver);
     }
 
     @Test
@@ -117,9 +131,10 @@ class RegionalPricingFlagOffParityTest {
     }
 
     @Test
-    void noViewerCountryMeansNoLookupAtAll() throws Exception {
+    void enabledOptionButUnknownViewerCountryKeepsTheBasePrice() throws Exception {
         when(viewerCountryResolver.currentCountry()).thenReturn(Optional.empty());
         EnrollInviteDTO dto = invite();
+        dto.getPackageSessionToPaymentOptions().get(0).getPaymentOption().setRegionalPricingEnabled(true);
         String before = json.writeValueAsString(dto);
 
         resolver.localize(dto);

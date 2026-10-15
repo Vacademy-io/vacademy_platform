@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowSquareOut, WarningCircle } from '@phosphor-icons/react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -26,8 +27,20 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
     const instituteId = getCurrentInstituteId() || '';
     const enabled = !!value?.enabled;
     const code = (value?.storeProductPageCode || '').trim();
+    const autoSync = value?.autoSync !== false;
 
-    const { data: pages, isLoading, isError } = useQuery({
+    const setAutoSync = (on: boolean) => {
+        // On is the default: drop the key rather than store `autoSync: true`.
+        const rest: SiteCartSettings = { ...value };
+        delete rest.autoSync;
+        onChange(on ? rest : { ...rest, autoSync: false });
+    };
+
+    const {
+        data: pages,
+        isLoading,
+        isError,
+    } = useQuery({
         queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId],
         queryFn: () => getAllProductPages(instituteId),
         enabled: enabled && !!instituteId,
@@ -48,9 +61,9 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
                 />
             </div>
             <p className="text-caption text-neutral-500">
-                One cart across the whole site. Visitors collect courses from the Courses page, course pages and
-                learning paths, then pay once through your store product page — its coupons, offers and payment
-                gateway apply.
+                One cart across the whole site. Visitors collect courses from the Courses page,
+                course pages and learning paths, then pay once through your store product page — its
+                coupons, offers and payment gateway apply.
             </p>
 
             {enabled && (
@@ -73,14 +86,20 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
                                 });
                             }}
                         >
-                            <option value="">{isLoading ? 'Loading product pages…' : 'Choose the store page'}</option>
+                            <option value="">
+                                {isLoading ? 'Loading product pages…' : 'Choose the store page'}
+                            </option>
                             {storeMissing && (
-                                <option value={code}>{value?.storeProductPageName || code} (not found)</option>
+                                <option value={code}>
+                                    {value?.storeProductPageName || code} (not found)
+                                </option>
                             )}
                             {list.map((p) => (
                                 <option key={p.id} value={p.code}>
                                     {p.name}
-                                    {p.status !== 'ACTIVE' ? ` (${String(p.status).toLowerCase()})` : ''}
+                                    {p.status !== 'ACTIVE'
+                                        ? ` (${String(p.status).toLowerCase()})`
+                                        : ''}
                                 </option>
                             ))}
                         </select>
@@ -92,32 +111,55 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
                         )}
                         {isError && (
                             <p className="mt-1 text-caption text-danger-600">
-                                Could not load your product pages. Close and reopen Global Settings to try again.
+                                Could not load your product pages. Close and reopen Global Settings
+                                to try again.
                             </p>
                         )}
                         {storeMissing && (
                             <p className="mt-1 text-caption text-danger-600">
-                                This product page no longer exists, so checkout would fail. Choose another.
+                                This product page no longer exists, so checkout would fail. Choose
+                                another.
                             </p>
                         )}
                         {store && store.status !== 'ACTIVE' && (
                             <p className="mt-1 text-caption text-warning-600">
-                                This page is a draft. Its checkout works, but make it active before you go live.
+                                This page is a draft. Its checkout works, but make it active before
+                                you go live.
                             </p>
                         )}
                         {!isLoading && !isError && list.length === 0 && (
                             <p className="mt-1 text-caption text-neutral-500">
-                                No product pages yet. Create one under Manage Pages → Product pages (for example
-                                &ldquo;Store&rdquo;), then pick it here.
+                                No product pages yet. Create one under Manage Pages → Product pages
+                                (for example &ldquo;Store&rdquo;), then pick it here.
                             </p>
                         )}
                         <p className="mt-1 text-caption text-neutral-400">
-                            Use a page made for this: the catalogue sync adds your catalogue courses to it, each through its default invite link.
+                            Use a page made for this: the catalogue sync adds your catalogue courses
+                            to it, each through its default invite link.
                         </p>
                     </div>
 
                     {store && (
                         <>
+                            <div className="space-y-1">
+                                <label
+                                    htmlFor="site-cart-auto-sync"
+                                    className="flex cursor-pointer items-start gap-2 text-caption text-neutral-600"
+                                >
+                                    <Checkbox
+                                        id="site-cart-auto-sync"
+                                        className="mt-0.5"
+                                        checked={autoSync}
+                                        onCheckedChange={(v) => setAutoSync(v === true)}
+                                    />
+                                    Keep the store in step with the catalogue
+                                </label>
+                                <p className="ms-6 text-caption text-neutral-400">
+                                    Every few minutes, new course versions are added to the store
+                                    and ones that leave the catalogue are switched off. Turn off to
+                                    manage the store by hand.
+                                </p>
+                            </div>
                             <CatalogueSyncPanel
                                 // A fresh panel per store page: another page's summary never lingers.
                                 key={store.id}
@@ -135,7 +177,9 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
                                 Open the store page <ArrowSquareOut className="size-3.5" />
                             </a>
                             <p className="text-caption text-neutral-400">
-                                Run the sync again whenever you publish new courses, so the store can sell them.
+                                {autoSync
+                                    ? 'New courses reach the store within a few minutes. Sync now to add them straight away.'
+                                    : 'Run the sync again whenever you publish new courses, so the store can sell them.'}
                             </p>
                         </>
                     )}

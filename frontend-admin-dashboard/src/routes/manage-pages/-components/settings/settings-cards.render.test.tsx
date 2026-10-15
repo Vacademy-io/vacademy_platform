@@ -38,7 +38,9 @@ beforeEach(() => {
 describe('CourseLanguagesSettingsCard', () => {
     it('says each Courses section needs its own "One card per course" switch', () => {
         render(<CourseLanguagesSettingsCard value={undefined} onChange={vi.fn()} />);
-        expect(screen.getByText(/switch on “One card per course” in each Courses section/)).toBeInTheDocument();
+        expect(
+            screen.getByText(/switch on “One card per course” in each Courses section/)
+        ).toBeInTheDocument();
     });
 
     it('shows the built-in English / Hindi rules once switched on', () => {
@@ -55,7 +57,10 @@ describe('CourseLanguagesSettingsCard', () => {
         fireEvent.change(screen.getByDisplayValue('हिं'), { target: { value: 'HI' } });
         expect(onChange).toHaveBeenCalledWith({
             enabled: true,
-            languages: [DEFAULT_COURSE_LANGUAGES[0], { ...DEFAULT_COURSE_LANGUAGES[1], chip: 'HI' }],
+            languages: [
+                DEFAULT_COURSE_LANGUAGES[0],
+                { ...DEFAULT_COURSE_LANGUAGES[1], chip: 'HI' },
+            ],
         });
     });
 
@@ -68,14 +73,21 @@ describe('CourseLanguagesSettingsCard', () => {
         fireEvent.change(words, { target: { value: 'english, eng, angrezi' } });
         fireEvent.blur(words);
         expect(onChange).toHaveBeenCalledTimes(1);
-        expect(onChange.mock.calls[0]![0].languages[0].match).toEqual(['english', 'eng', 'angrezi']);
+        expect(onChange.mock.calls[0]![0].languages[0].match).toEqual([
+            'english',
+            'eng',
+            'angrezi',
+        ]);
     });
 
     it('resets a custom list back to the defaults by removing it', () => {
         const onChange = vi.fn();
         render(
             <CourseLanguagesSettingsCard
-                value={{ enabled: true, languages: [{ code: 'ta', label: 'Tamil', match: ['tamil'] }] }}
+                value={{
+                    enabled: true,
+                    languages: [{ code: 'ta', label: 'Tamil', match: ['tamil'] }],
+                }}
                 onChange={onChange}
             />
         );
@@ -85,9 +97,13 @@ describe('CourseLanguagesSettingsCard', () => {
 
     it('answers what a level name will be read as', () => {
         render(<CourseLanguagesSettingsCard value={{ enabled: true }} onChange={vi.fn()} />);
-        fireEvent.change(screen.getByPlaceholderText('e.g. Beginner Hindi'), { target: { value: 'Beginner Hindi' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g. Beginner Hindi'), {
+            target: { value: 'Beginner Hindi' },
+        });
         expect(screen.getByText('→ Hindi (हिं)')).toBeInTheDocument();
-        fireEvent.change(screen.getByPlaceholderText('e.g. Beginner Hindi'), { target: { value: 'Engineering' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g. Beginner Hindi'), {
+            target: { value: 'Engineering' },
+        });
         expect(screen.getByText(/No language recognised/)).toBeInTheDocument();
     });
 
@@ -121,8 +137,12 @@ describe('SiteCartSettingsCard', () => {
         ];
         const onChange = vi.fn();
         render(<SiteCartSettingsCard value={{ enabled: true }} onChange={onChange} />);
-        expect(screen.getByText('The cart stays off until a store page is chosen.')).toBeInTheDocument();
-        fireEvent.change(screen.getByLabelText('Store product page'), { target: { value: 'store' } });
+        expect(
+            screen.getByText('The cart stays off until a store page is chosen.')
+        ).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Store product page'), {
+            target: { value: 'store' },
+        });
         expect(onChange).toHaveBeenCalledWith({
             enabled: true,
             storeProductPageCode: 'store',
@@ -134,7 +154,11 @@ describe('SiteCartSettingsCard', () => {
         productPages = [{ id: 'pp-1', code: 'store', name: 'Store', status: 'ACTIVE' }];
         render(
             <SiteCartSettingsCard
-                value={{ enabled: true, storeProductPageCode: 'store', storeProductPageName: 'Store' }}
+                value={{
+                    enabled: true,
+                    storeProductPageCode: 'store',
+                    storeProductPageName: 'Store',
+                }}
                 onChange={vi.fn()}
             />
         );
@@ -154,32 +178,80 @@ describe('SiteCartSettingsCard', () => {
         syncCatalogue.mockResolvedValue({ ...store, added: 3 });
         const { rerender } = render(
             <SiteCartSettingsCard
-                value={{ enabled: true, storeProductPageCode: 'store', storeProductPageName: 'Store' }}
+                value={{
+                    enabled: true,
+                    storeProductPageCode: 'store',
+                    storeProductPageName: 'Store',
+                }}
                 onChange={vi.fn()}
             />
         );
-        expect(screen.getByRole('checkbox')).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: /Also switch off courses/ })).toBeChecked();
         fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
         expect(await screen.findByText('Added 3 course versions')).toBeInTheDocument();
         expect(syncCatalogue).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true });
         // No product page editor is open here, yet its cached copy is refreshed.
-        await waitFor(() => expect(setQueryData).toHaveBeenCalledWith(['productPage', 'pp-1'], store));
+        await waitFor(() =>
+            expect(setQueryData).toHaveBeenCalledWith(['productPage', 'pp-1'], store)
+        );
 
         rerender(
             <SiteCartSettingsCard
-                value={{ enabled: true, storeProductPageCode: 'shop', storeProductPageName: 'Shop' }}
+                value={{
+                    enabled: true,
+                    storeProductPageCode: 'shop',
+                    storeProductPageName: 'Shop',
+                }}
                 onChange={vi.fn()}
             />
         );
         expect(screen.queryByText('Added 3 course versions')).not.toBeInTheDocument();
     });
 
+    it('keeps the store in step with the catalogue unless switched off', () => {
+        productPages = [{ id: 'pp-1', code: 'store', name: 'Store', status: 'ACTIVE' }];
+        const value = {
+            enabled: true,
+            storeProductPageCode: 'store',
+            storeProductPageName: 'Store',
+        };
+        const onChange = vi.fn();
+        const { rerender } = render(<SiteCartSettingsCard value={value} onChange={onChange} />);
+        const toggle = () =>
+            screen.getByRole('checkbox', { name: 'Keep the store in step with the catalogue' });
+        expect(toggle()).toBeChecked();
+        expect(screen.getByText(/Turn off to manage the store by hand/)).toBeInTheDocument();
+        // The manual sync stays.
+        expect(screen.getByText('Sync all catalogue courses')).toBeInTheDocument();
+
+        fireEvent.click(toggle());
+        expect(onChange).toHaveBeenLastCalledWith({ ...value, autoSync: false });
+
+        rerender(
+            <SiteCartSettingsCard value={{ ...value, autoSync: false }} onChange={onChange} />
+        );
+        expect(toggle()).not.toBeChecked();
+        expect(
+            screen.getByText(/Run the sync again whenever you publish new courses/)
+        ).toBeInTheDocument();
+        fireEvent.click(toggle());
+        // On is the default, so the key is dropped rather than stored as true.
+        expect(onChange).toHaveBeenLastCalledWith(value);
+
+        rerender(<SiteCartSettingsCard value={{ ...value, autoSync: true }} onChange={onChange} />);
+        expect(toggle()).toBeChecked();
+    });
+
     it('flags a store page that no longer exists', () => {
         productPages = [{ id: 'pp-1', code: 'store', name: 'Store', status: 'ACTIVE' }];
         render(
             <SiteCartSettingsCard
-                value={{ enabled: true, storeProductPageCode: 'gone', storeProductPageName: 'Old store' }}
+                value={{
+                    enabled: true,
+                    storeProductPageCode: 'gone',
+                    storeProductPageName: 'Old store',
+                }}
                 onChange={vi.fn()}
             />
         );

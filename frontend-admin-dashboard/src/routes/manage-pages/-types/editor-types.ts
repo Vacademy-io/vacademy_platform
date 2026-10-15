@@ -81,9 +81,9 @@ export interface GlobalSettings {
     coursePages?: {
         enabled: boolean;
         courses?: Record<
-        string,
-        { mode?: 'DETAILS' | 'PAGE' | 'OUTLINE' | 'TILES'; route?: string }
-    >;
+            string,
+            { mode?: 'DETAILS' | 'PAGE' | 'OUTLINE' | 'TILES'; route?: string }
+        >;
         /** Pre-modes shape: course id → page route, always meaning PAGE. */
         map?: Record<string, string>;
     };
@@ -196,6 +196,12 @@ export interface SiteCartSettings {
     /** Code of the product page whose checkout takes the whole cart. */
     storeProductPageCode?: string;
     storeProductPageName?: string;
+    /**
+     * Keep the store page in step with the catalogue: every few minutes the
+     * server adds new course versions and switches off ones that left
+     * (SiteCartStoreAutoSyncJob). On unless false.
+     */
+    autoSync?: boolean;
 }
 
 /**
@@ -278,7 +284,11 @@ export type {
     BackgroundLayer,
     OverlayPreset,
 } from '../-utils/style-engine';
-export type { OrnamentConfig, DividerConfig, SectionDividers } from '../-utils/catalogue-decorations';
+export type {
+    OrnamentConfig,
+    DividerConfig,
+    SectionDividers,
+} from '../-utils/catalogue-decorations';
 import type { ComponentStyle } from '../-utils/style-engine';
 
 export interface Component {

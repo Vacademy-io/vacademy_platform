@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -69,6 +70,18 @@ public class ProductPageCatalogueSyncService {
     @Autowired
     private InstituteAccessValidator accessValidator;
 
+    /**
+     * The most mappings one auto sync may switch off when it would switch off more
+     * than it adds. That shape is far likelier a store filled by other means
+     * (copied from other pages, or courses not published to the catalogue) or a
+     * catalogue that came back short than courses leaving it, so the auto sync
+     * then only adds and leaves the switching off to an admin's manual sync,
+     * which shows what would go. A restructure that replaces versions (as many
+     * added as switched off, or more) is not held back.
+     */
+    @Value("${site-cart.auto-sync.max-deactivations:20}")
+    private int maxAutoDeactivations = 20;
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -80,6 +93,24 @@ public class ProductPageCatalogueSyncService {
     public ProductPageCatalogueSyncResponse syncCatalogue(CustomUserDetails user, String productPageId,
                                                           String instituteId, boolean deactivateMissing) {
         accessValidator.requireInstituteAdmin(user, instituteId);
+        return sync(productPageId, instituteId, deactivateMissing, false);
+    }
+
+    /**
+     * {@link #syncCatalogue} with no user behind it, for SiteCartStoreAutoSyncJob:
+     * the caller has already resolved the page to the institute whose site
+     * names it as its store. Same lock, same planner, same rules; only the
+     * admin check is left out, and the response carries the page's id and
+     * code and the sync summary, not the page body.
+     */
+    @Transactional
+    public ProductPageCatalogueSyncResponse syncCatalogueAsSystem(String productPageId, String instituteId,
+                                                                  boolean deactivateMissing) {
+        return sync(productPageId, instituteId, deactivateMissing, true);
+    }
+
+    private ProductPageCatalogueSyncResponse sync(String productPageId, String instituteId,
+                                                  boolean deactivateMissing, boolean auto) {
         if (!StringUtils.hasText(productPageId)) {
             throw new VacademyException("productPageId is required");
         }
@@ -107,6 +138,20 @@ public class ProductPageCatalogueSyncService {
         }
 
         CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, deactivateMissing);
+        String guardWarning = null;
+        // A restructure (new versions replacing old ones) adds at least as many as it
+        // switches off; a store filled by other means, or a catalogue that came back
+        // short, switches off far more than it adds. Only the second is held back.
+        if (auto && plan.deactivations().size() > maxAutoDeactivations
+                && plan.deactivations().size() > plan.adds().size()) {
+            guardWarning = "The auto sync would have switched off " + plan.deactivations().size()
+                    + " courses on this page (more than " + maxAutoDeactivations
+                    + "), so it only added courses. Run the sync by hand to switch them off.";
+            log.warn("Catalogue auto sync of product page {} (institute {}) would switch off {} mappings "
+                            + "(limit {}); adding only", page.getId(), instituteId,
+                    plan.deactivations().size(), maxAutoDeactivations);
+            plan = CatalogueSyncPlanner.plan(rows, picks, false);
+        }
 
         Map<String, ProductPageInviteMapping> byId = new HashMap<>();
         for (ProductPageInviteMapping mapping : active) byId.put(mapping.getId(), mapping);
@@ -129,18 +174,28 @@ public class ProductPageCatalogueSyncService {
             changed.add(mapping);
         }
 
-        List<ProductPageInviteMapping> after = active;
         if (!changed.isEmpty()) {
             mappingRepository.saveAll(changed);
             mappingRepository.flush();
-            // Re-read the page's rows from the database: the new ones hold
-            // bridge references that were never loaded.
-            entityManager.clear();
-            after = productPageService.activeMappings(page.getId());
         }
 
         ProductPageCatalogueSyncResponse response = new ProductPageCatalogueSyncResponse();
-        productPageService.fillAdminResponseWithCustomFields(response, page, after);
+        if (!auto) {
+            List<ProductPageInviteMapping> after = active;
+            if (!changed.isEmpty()) {
+                // Re-read the page's rows from the database: the new ones hold
+                // bridge references that were never loaded.
+                entityManager.clear();
+                after = productPageService.activeMappings(page.getId());
+            }
+            productPageService.fillAdminResponseWithCustomFields(response, page, after);
+        } else {
+            // Nobody shows the auto sync's page body, and building it (custom
+            // fields, settings) every few minutes per store would hold the
+            // page lock for nothing: only the counts and lists below are set.
+            response.setId(page.getId());
+            response.setCode(page.getCode());
+        }
         response.setAdded(plan.adds().size());
         response.setDeactivated(plan.deactivations().size());
         for (CatalogueSyncPlanner.Add add : plan.adds()) {
@@ -157,11 +212,23 @@ public class ProductPageCatalogueSyncService {
                     skip.pick().packageName(), skip.pick().levelName()));
         }
         response.getWarnings().addAll(plan.warnings());
+        if (guardWarning != null) response.getWarnings().add(guardWarning);
 
-        log.info("Catalogue sync of product page {} (institute {}): {} added, {} deactivated, {} skipped, "
-                        + "{} catalogue sessions, deactivateMissing={}",
-                page.getId(), instituteId, plan.adds().size(), plan.deactivations().size(),
-                plan.skipped().size(), picks.size(), deactivateMissing);
+        if (!auto) {
+            log.info("Catalogue sync of product page {} (institute {}): {} added, {} deactivated, {} skipped, "
+                            + "{} catalogue sessions, deactivateMissing={}",
+                    page.getId(), instituteId, plan.adds().size(), plan.deactivations().size(),
+                    plan.skipped().size(), picks.size(), deactivateMissing);
+        } else if (!changed.isEmpty()) {
+            log.info("Catalogue auto sync of product page {} (institute {}): {} added, {} deactivated, {} skipped, "
+                            + "{} catalogue sessions, deactivateMissing={}",
+                    page.getId(), instituteId, plan.adds().size(), plan.deactivations().size(),
+                    plan.skipped().size(), picks.size(), deactivateMissing);
+        } else {
+            // Runs every few minutes per store: an unchanged store is not news.
+            log.debug("Catalogue auto sync of product page {} (institute {}): nothing to change, {} skipped, "
+                            + "{} catalogue sessions", page.getId(), instituteId, plan.skipped().size(), picks.size());
+        }
         return response;
     }
 

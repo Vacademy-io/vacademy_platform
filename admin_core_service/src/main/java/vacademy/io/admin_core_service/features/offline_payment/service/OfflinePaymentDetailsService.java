@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.offline_payment.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,8 +13,12 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentL
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -30,19 +35,27 @@ public class OfflinePaymentDetailsService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** How the built-in extras are named in error messages. */
+    private static final Map<String, String> EXTRA_LABELS =
+            Map.of("cheque_date", "cheque date", "bank_name", "bank", "payer_name", "payer name");
+
     private final OfflinePaymentModeService modeService;
     private final PaymentLogRepository paymentLogRepository;
 
     /** Validated details with the labels in force when the payment was recorded. */
     public record Resolved(String mode, String modeLabel, String subMode, String subModeLabel,
                            String reference, LocalDate paymentDate, String notes, String proofFileId,
-                           Map<String, String> extra) {
+                           Map<String, String> extra, List<CustomValue> custom) {
 
         /** "UPI · PhonePe", "Cash", or null when no mode was given. */
         public String describe() {
             if (modeLabel == null) return null;
             return subModeLabel != null ? modeLabel + " · " + subModeLabel : modeLabel;
         }
+    }
+
+    /** A custom field's value with the field's label as it was when the payment was recorded. */
+    public record CustomValue(String key, String label, String value) {
     }
 
     /**
@@ -86,7 +99,7 @@ public class OfflinePaymentDetailsService {
                     details != null ? details.getPaymentDate() : null,
                     details != null ? trim(details.getNotes(), 1000) : null,
                     details != null ? trim(details.getProofFileId(), 255) : null,
-                    Map.of());
+                    Map.of(), List.of());
         }
 
         OfflinePaymentModesDTO.Mode mode = modes.getModes().stream()
@@ -109,6 +122,10 @@ public class OfflinePaymentDetailsService {
                 throw new VacademyException(sub.getLabel() + " is switched off in Payment Settings");
             }
             subLabel = sub.getLabel();
+        } else if (mode.isSubModeRequired()
+                && mode.getSubModes().stream().anyMatch(OfflinePaymentModesDTO.SubMode::isActive)) {
+            throw new VacademyException("Choose the " + (StringUtils.hasText(mode.getSubModeLabel())
+                    ? mode.getSubModeLabel() : "option") + " for " + mode.getLabel());
         }
         if (mode.isReferenceRequired() && reference == null) {
             throw new VacademyException("Enter the " + (mode.getReferenceLabel() != null
@@ -126,8 +143,61 @@ public class OfflinePaymentDetailsService {
                 if (StringUtils.hasText(v)) extra.put(key, trim(v, 255));
             }
         }
+        for (String key : mode.getRequiredExtraFields() == null ? List.<String>of() : mode.getRequiredExtraFields()) {
+            if (mode.getExtraFields().contains(key) && !extra.containsKey(key)) {
+                throw new VacademyException("Enter the " + EXTRA_LABELS.getOrDefault(key, key) + " for " + mode.getLabel());
+            }
+        }
+        List<CustomValue> custom = resolveCustom(mode, details.getCustom());
         return new Resolved(mode.getCode(), mode.getLabel(), subCode, subLabel, reference,
-                details.getPaymentDate(), trim(details.getNotes(), 1000), trim(details.getProofFileId(), 255), extra);
+                details.getPaymentDate(), trim(details.getNotes(), 1000), trim(details.getProofFileId(), 255),
+                extra, custom);
+    }
+
+    /** The mode's active custom fields, checked for required, date, number and dropdown values. */
+    private static List<CustomValue> resolveCustom(OfflinePaymentModesDTO.Mode mode, Map<String, String> given) {
+        List<CustomValue> out = new ArrayList<>();
+        if (mode.getCustomFields() == null) return out;
+        for (OfflinePaymentModesDTO.CustomField f : mode.getCustomFields()) {
+            if (f == null || !f.isActive()) continue;
+            String raw = given != null ? given.get(f.getKey()) : null;
+            String v = StringUtils.hasText(raw) ? raw.trim() : null;
+            if (v == null) {
+                if (f.isRequired()) {
+                    throw new VacademyException("Enter " + f.getLabel() + " for " + mode.getLabel());
+                }
+                continue;
+            }
+            String type = f.getType() == null ? "TEXT" : f.getType();
+            switch (type) {
+                case "DATE" -> {
+                    try {
+                        LocalDate.parse(v);
+                    } catch (DateTimeParseException e) {
+                        throw new VacademyException(f.getLabel() + " must be a date (YYYY-MM-DD)");
+                    }
+                }
+                case "NUMBER" -> {
+                    try {
+                        new BigDecimal(v);
+                    } catch (NumberFormatException e) {
+                        throw new VacademyException(f.getLabel() + " must be a number");
+                    }
+                }
+                case "SELECT" -> {
+                    String value = v;
+                    v = (f.getOptions() == null ? List.<String>of() : f.getOptions()).stream()
+                            .filter(o -> o.equalsIgnoreCase(value))
+                            .findFirst()
+                            .orElseThrow(() -> new VacademyException(
+                                    "\"" + value + "\" is not a choice for " + f.getLabel()));
+                }
+                default -> {
+                }
+            }
+            out.add(new CustomValue(f.getKey(), f.getLabel(), trim(v, 255)));
+        }
+        return out;
     }
 
     /** Writes the resolved details onto the PaymentLog. A null {@code resolved} only stamps who recorded it. */
@@ -145,6 +215,12 @@ public class OfflinePaymentDetailsService {
             putIfText(json, "notes", resolved.notes());
             putIfText(json, "proof_file_id", resolved.proofFileId());
             resolved.extra().forEach((k, v) -> putIfText(json, k, v));
+            if (!resolved.custom().isEmpty()) {
+                // Nested so an institute's field key can never shadow mode_label, notes ...
+                ArrayNode custom = json.putArray("custom_fields");
+                resolved.custom().forEach(c -> custom.addObject()
+                        .put("key", c.key()).put("label", c.label()).put("value", c.value()));
+            }
             log.setPaymentDetailsJson(json.isEmpty() ? null : json.toString());
             log.setPaymentSpecificData(withTransactionId(log.getPaymentSpecificData(), resolved.reference()));
         }
@@ -169,7 +245,8 @@ public class OfflinePaymentDetailsService {
 
     private static boolean isEmpty(OfflinePaymentDetailsDTO d) {
         return !StringUtils.hasText(d.getNotes()) && !StringUtils.hasText(d.getProofFileId())
-                && d.getPaymentDate() == null && (d.getExtra() == null || d.getExtra().isEmpty());
+                && d.getPaymentDate() == null && (d.getExtra() == null || d.getExtra().isEmpty())
+                && (d.getCustom() == null || d.getCustom().isEmpty());
     }
 
     private static void putIfText(ObjectNode json, String key, String value) {

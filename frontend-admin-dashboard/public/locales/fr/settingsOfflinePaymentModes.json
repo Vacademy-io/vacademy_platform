@@ -26,7 +26,9 @@
         "active": "Option active",
         "placeholder": "Nom de l’option",
         "remove": "Supprimer l’option",
-        "add": "Ajouter une option"
+        "add": "Ajouter une option",
+        "labelPlaceholder": "Nom des options, ex. Compte",
+        "required": "Une option doit être choisie"
     },
     "addMode": "Ajouter un mode de paiement",
     "save": "Enregistrer",
@@ -38,6 +40,26 @@
     "errors": {
         "modeLabel": "Chaque mode doit avoir un nom.",
         "subModeLabel": "Chaque option doit avoir un nom.",
-        "noActive": "Gardez au moins un mode actif."
+        "noActive": "Gardez au moins un mode actif.",
+        "fieldLabel": "Chaque champ doit avoir un nom.",
+        "selectOptions": "Chaque liste déroulante doit avoir au moins un choix."
+    },
+    "required": "Obligatoire",
+    "fields": {
+        "heading": "Champs supplémentaires pour ce mode (ex. agence, statut du chèque, date de transaction)",
+        "active": "Champ actif",
+        "labelPlaceholder": "Nom du champ, ex. Statut du chèque",
+        "type": "Type de champ",
+        "types": {
+            "TEXT": "Texte",
+            "DATE": "Date",
+            "NUMBER": "Nombre",
+            "SELECT": "Liste déroulante"
+        },
+        "remove": "Supprimer le champ",
+        "optionPlaceholder": "Choix, ex. Encaissé",
+        "removeOption": "Supprimer le choix",
+        "addOption": "Ajouter un choix",
+        "add": "Ajouter un champ"
     }
 }

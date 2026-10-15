@@ -26,7 +26,9 @@
         "active": "Option on",
         "placeholder": "Option name",
         "remove": "Remove option",
-        "add": "Add option"
+        "add": "Add option",
+        "labelPlaceholder": "What options are called, e.g. Account",
+        "required": "An option must be picked"
     },
     "addMode": "Add payment mode",
     "save": "Save",
@@ -38,6 +40,26 @@
     "errors": {
         "modeLabel": "Every mode needs a name.",
         "subModeLabel": "Every option needs a name.",
-        "noActive": "Keep at least one mode on."
+        "noActive": "Keep at least one mode on.",
+        "fieldLabel": "Every field needs a name.",
+        "selectOptions": "Every dropdown field needs at least one choice."
+    },
+    "required": "Required",
+    "fields": {
+        "heading": "Extra fields for this mode (e.g. Bank branch, Cheque status, Transaction date)",
+        "active": "Field on",
+        "labelPlaceholder": "Field name, e.g. Cheque status",
+        "type": "Field type",
+        "types": {
+            "TEXT": "Text",
+            "DATE": "Date",
+            "NUMBER": "Number",
+            "SELECT": "Dropdown"
+        },
+        "remove": "Remove field",
+        "optionPlaceholder": "Choice, e.g. Cleared",
+        "removeOption": "Remove choice",
+        "addOption": "Add choice",
+        "add": "Add field"
     }
 }

@@ -118,6 +118,33 @@ Rules:
   mandatory for that mode.
 - The PUT sends the whole object; codes left blank are derived from the label.
 
+Per-mode fields and options (added after phase 3):
+- `sub_mode_label` names the options in the dialogs ("Account", "App"); `sub_mode_required`
+  makes picking one mandatory when the mode has an active option. Mode and options are
+  dropdowns in every dialog.
+- `required_extra_fields` marks built-in extras (`cheque_date`, `bank_name`, `payer_name`) as
+  mandatory; it is a subset of `extra_fields`.
+- `custom_fields` are the institute's own inputs for the mode:
+  `{ "key", "label", "type": "TEXT|DATE|NUMBER|SELECT", "required", "active", "options" }`.
+  The key is derived from the label on first save and never changes; a used field is switched
+  off, not deleted. A `SELECT` needs at least one choice. At most 20 per mode.
+
+```json
+{ "code": "CHEQUE", "label": "Cheque", "reference_label": "Cheque/DD No.", "reference_required": true,
+  "extra_fields": ["cheque_date", "bank_name"], "required_extra_fields": ["cheque_date", "bank_name"],
+  "sub_mode_label": "Account", "sub_mode_required": true,
+  "sub_modes": [ { "code": "CURRENT_ACCOUNT", "label": "Current account ••4321", "active": true } ],
+  "custom_fields": [
+    { "key": "bank_branch_name", "label": "Bank branch name", "type": "TEXT", "required": false, "active": true },
+    { "key": "cheque_status", "label": "Cheque status", "type": "SELECT", "required": true, "active": true,
+      "options": ["Pending", "Cleared", "Bounced"] } ] }
+```
+
+On a payment, values travel as `payment_details.custom` (`{ key: value }`) and are checked
+(required, date `YYYY-MM-DD`, number, dropdown choice). They are stored in
+`payment_details_json.custom_fields` as `[{ "key", "label", "value" }]`, so the label as it was
+at recording time survives later edits, and no field key can shadow `mode_label` or `notes`.
+
 ## 5. API
 
 One shared optional block, accepted by every admin record-payment request next to its current

@@ -31,8 +31,14 @@ public class OfflinePaymentModeService {
     /** Extra inputs a mode can ask for. */
     public static final Set<String> EXTRA_FIELDS = Set.of("cheque_date", "bank_name", "payer_name");
 
+    /** Types a custom field can have. */
+    public static final Set<String> CUSTOM_FIELD_TYPES = Set.of("TEXT", "DATE", "NUMBER", "SELECT");
+
     private static final int MAX_MODES = 30;
     private static final int MAX_SUB_MODES = 50;
+    private static final int MAX_CUSTOM_FIELDS = 20;
+    private static final int MAX_FIELD_OPTIONS = 50;
+    private static final Pattern FIELD_KEY = Pattern.compile("^[a-z0-9_]{1,40}$");
     private static final Pattern MODE_CODE = Pattern.compile("^[A-Z0-9_]{1,40}$");
     private static final Pattern SUB_MODE_CODE = Pattern.compile("^[A-Z0-9_]{1,80}$");
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -114,6 +120,12 @@ public class OfflinePaymentModeService {
                 }
                 if (!extras.contains(key)) extras.add(key);
             }
+            List<String> requiredExtras = new ArrayList<>();
+            for (String f : in.getRequiredExtraFields() == null ? List.<String>of() : in.getRequiredExtraFields()) {
+                String key = f == null ? "" : f.trim().toLowerCase(Locale.ROOT);
+                if (extras.contains(key) && !requiredExtras.contains(key)) requiredExtras.add(key);
+            }
+            List<OfflinePaymentModesDTO.CustomField> customFields = normalizeCustomFields(in.getCustomFields(), label);
             List<OfflinePaymentModesDTO.SubMode> subs = new ArrayList<>();
             Set<String> subCodes = new HashSet<>();
             List<OfflinePaymentModesDTO.SubMode> inSubs = in.getSubModes() == null ? List.of() : in.getSubModes();
@@ -136,6 +148,10 @@ public class OfflinePaymentModeService {
             out.setActive(in.isActive());
             out.setReferenceRequired(in.isReferenceRequired());
             out.setProofRequired(in.isProofRequired());
+            out.setRequiredExtraFields(requiredExtras);
+            out.setCustomFields(customFields);
+            out.setSubModeLabel(trimToNull(in.getSubModeLabel(), 80));
+            out.setSubModeRequired(in.isSubModeRequired());
             modes.add(out);
         }
         if (modes.stream().noneMatch(OfflinePaymentModesDTO.Mode::isActive)) {
@@ -151,6 +167,51 @@ public class OfflinePaymentModeService {
                 .defaultMode(defaultMode)
                 .modes(modes)
                 .build();
+    }
+
+    private static List<OfflinePaymentModesDTO.CustomField> normalizeCustomFields(
+            List<OfflinePaymentModesDTO.CustomField> in, String modeLabel) {
+        List<OfflinePaymentModesDTO.CustomField> out = new ArrayList<>();
+        if (in == null) return out;
+        if (in.size() > MAX_CUSTOM_FIELDS) {
+            throw new VacademyException("At most " + MAX_CUSTOM_FIELDS + " fields under " + modeLabel);
+        }
+        Set<String> keys = new HashSet<>();
+        for (OfflinePaymentModesDTO.CustomField f : in) {
+            if (f == null) continue;
+            String label = requireText(f.getLabel(), "Every field under " + modeLabel + " needs a name", 80);
+            String key = StringUtils.hasText(f.getKey())
+                    ? f.getKey().trim().toLowerCase(Locale.ROOT)
+                    : codeFrom(label, 40).toLowerCase(Locale.ROOT);
+            if (!FIELD_KEY.matcher(key).matches()) {
+                throw new VacademyException("Invalid key for field \"" + label + "\" under " + modeLabel);
+            }
+            if (!keys.add(key)) {
+                throw new VacademyException("Two fields under " + modeLabel + " share the key " + key);
+            }
+            String type = StringUtils.hasText(f.getType()) ? f.getType().trim().toUpperCase(Locale.ROOT) : "TEXT";
+            if (!CUSTOM_FIELD_TYPES.contains(type)) {
+                throw new VacademyException("Unknown type \"" + f.getType() + "\" for field " + label);
+            }
+            List<String> options = new ArrayList<>();
+            if ("SELECT".equals(type)) {
+                for (String o : f.getOptions() == null ? List.<String>of() : f.getOptions()) {
+                    if (!StringUtils.hasText(o)) continue;
+                    String option = requireText(o, "", 80);
+                    if (options.stream().noneMatch(option::equalsIgnoreCase)) options.add(option);
+                }
+                if (options.isEmpty()) {
+                    throw new VacademyException("Add at least one choice to the dropdown " + label + " under " + modeLabel);
+                }
+                if (options.size() > MAX_FIELD_OPTIONS) {
+                    throw new VacademyException("At most " + MAX_FIELD_OPTIONS + " choices in " + label);
+                }
+            }
+            out.add(OfflinePaymentModesDTO.CustomField.builder()
+                    .key(key).label(label).type(type).required(f.isRequired()).active(f.isActive())
+                    .options(options).build());
+        }
+        return out;
     }
 
     /** "Google Pay (merchant)" → GOOGLE_PAY_MERCHANT. */

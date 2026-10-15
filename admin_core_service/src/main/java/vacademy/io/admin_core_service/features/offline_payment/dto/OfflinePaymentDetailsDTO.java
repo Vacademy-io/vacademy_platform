@@ -36,4 +36,6 @@ public class OfflinePaymentDetailsDTO {
     private String proofFileId;
     /** Mode-specific extras: cheque_date, bank_name, payer_name. */
     private Map<String, String> extra;
+    /** Values of the mode's custom fields, by field key. */
+    private Map<String, String> custom;
 }

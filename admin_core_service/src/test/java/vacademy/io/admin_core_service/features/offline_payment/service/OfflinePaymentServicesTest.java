@@ -187,6 +187,136 @@ class OfflinePaymentServicesTest {
         assertEquals(Map.of("cheque_date", "2026-10-10", "bank_name", "HDFC"), r.extra());
     }
 
+    // ---------------- custom fields ----------------
+
+    private static OfflinePaymentModesDTO.CustomField field(String label, String type, boolean required, String... options) {
+        return OfflinePaymentModesDTO.CustomField.builder()
+                .label(label).type(type).required(required).active(true).options(List.of(options)).build();
+    }
+
+    /** A cheque mode set up the way an institute would: account dropdown, branch, status, required bank. */
+    private static OfflinePaymentModesDTO chequeWithCustomFields() {
+        OfflinePaymentModesDTO.Mode cheque = OfflinePaymentModesDTO.Mode.builder()
+                .label("Cheque").active(true).referenceLabel("Cheque/DD No.").referenceRequired(true)
+                .extraFields(List.of("cheque_date", "bank_name")).requiredExtraFields(List.of("bank_name", "payer_name"))
+                .subModeLabel(" Account ").subModeRequired(true)
+                .subModes(List.of(OfflinePaymentModesDTO.SubMode.builder().label("Current account A").active(true).build()))
+                .customFields(List.of(
+                        field("Bank Branch Name", "text", false),
+                        field("Cheque Status", "SELECT", true, "Pending", " Cleared ", "pending", ""),
+                        field("Transaction Date", "DATE", false)))
+                .build();
+        return OfflinePaymentModeService.normalize(OfflinePaymentModesDTO.builder().modes(List.of(cheque)).build());
+    }
+
+    @Test
+    @DisplayName("Saving derives field keys, upper-cases types, dedupes choices and keeps only valid required extras")
+    void normalizeCustomFields() {
+        OfflinePaymentModesDTO.Mode m = chequeWithCustomFields().getModes().get(0);
+        assertEquals(List.of("bank_branch_name", "cheque_status", "transaction_date"),
+                m.getCustomFields().stream().map(OfflinePaymentModesDTO.CustomField::getKey).toList());
+        assertEquals("TEXT", m.getCustomFields().get(0).getType());
+        assertEquals(List.of("Pending", "Cleared"), m.getCustomFields().get(1).getOptions());
+        assertTrue(m.getCustomFields().get(2).getOptions().isEmpty());
+        assertEquals(List.of("bank_name"), m.getRequiredExtraFields());
+        assertEquals("Account", m.getSubModeLabel());
+        assertTrue(m.isSubModeRequired());
+    }
+
+    @Test
+    @DisplayName("Saving rejects an unknown type, a dropdown with no choices and duplicate field keys")
+    void normalizeRejectsBadCustomFields() {
+        java.util.function.Function<List<OfflinePaymentModesDTO.CustomField>, OfflinePaymentModesDTO> withFields =
+                fields -> OfflinePaymentModesDTO.builder().modes(List.of(OfflinePaymentModesDTO.Mode.builder()
+                        .label("Cheque").active(true).customFields(fields).build())).build();
+        assertThrows(VacademyException.class, () -> OfflinePaymentModeService.normalize(
+                withFields.apply(List.of(field("Status", "COLOR", false)))));
+        assertThrows(VacademyException.class, () -> OfflinePaymentModeService.normalize(
+                withFields.apply(List.of(field("Status", "SELECT", false, " ")))));
+        assertThrows(VacademyException.class, () -> OfflinePaymentModeService.normalize(
+                withFields.apply(List.of(field("Branch", "TEXT", false), field("branch", "TEXT", false)))));
+        assertThrows(VacademyException.class, () -> OfflinePaymentModeService.normalize(
+                withFields.apply(List.of(field(" ", "TEXT", false)))));
+    }
+
+    @Test
+    @DisplayName("Settings saved before custom fields existed still read and resolve as before")
+    void oldStoredJsonStillWorks() throws Exception {
+        OfflinePaymentModesDTO back = MAPPER.readValue(
+                "{\"modes\":[{\"code\":\"CHEQUE\",\"label\":\"Cheque\",\"extra_fields\":[\"bank_name\"],"
+                        + "\"sub_modes\":[{\"code\":\"A\",\"label\":\"A\"}]}]}",
+                OfflinePaymentModesDTO.class);
+        OfflinePaymentModesDTO.Mode m = back.getModes().get(0);
+        assertTrue(m.getCustomFields().isEmpty());
+        assertTrue(m.getRequiredExtraFields().isEmpty());
+        assertEquals(false, m.isSubModeRequired());
+        OfflinePaymentDetailsService.Resolved r = detailsService(back, null).resolve("i", details("CHEQUE", null, null), null);
+        assertEquals("CHEQUE", r.mode());
+        assertTrue(r.custom().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Required option, required extra and required custom field are enforced")
+    void enforcesCustomRequirements() {
+        OfflinePaymentDetailsService svc = detailsService(chequeWithCustomFields(), null);
+        java.util.function.BiFunction<String, Map<String, String>, OfflinePaymentDetailsDTO> cheque = (sub, custom) -> {
+            OfflinePaymentDetailsDTO d = details("CHEQUE", sub, "000123");
+            d.setExtra(Map.of("bank_name", "Some Bank"));
+            d.setCustom(custom);
+            return d;
+        };
+        // no account picked
+        assertThrows(VacademyException.class, () -> svc.resolve("i", cheque.apply(null, Map.of("cheque_status", "Pending")), null));
+        // no cheque status
+        assertThrows(VacademyException.class, () -> svc.resolve("i", cheque.apply("CURRENT_ACCOUNT_A", Map.of()), null));
+        // no bank
+        OfflinePaymentDetailsDTO noBank = cheque.apply("CURRENT_ACCOUNT_A", Map.of("cheque_status", "Pending"));
+        noBank.setExtra(Map.of());
+        assertThrows(VacademyException.class, () -> svc.resolve("i", noBank, null));
+        // a value outside the dropdown, a bad date
+        assertThrows(VacademyException.class, () -> svc.resolve("i", cheque.apply("CURRENT_ACCOUNT_A", Map.of("cheque_status", "Bounced")), null));
+        assertThrows(VacademyException.class, () -> svc.resolve("i", cheque.apply("CURRENT_ACCOUNT_A",
+                Map.of("cheque_status", "Pending", "transaction_date", "12/10/2026")), null));
+    }
+
+    @Test
+    @DisplayName("Custom values are canonicalised, unknown keys dropped and stored with their labels")
+    void customValuesStored() throws Exception {
+        PaymentLogRepository logs = mock(PaymentLogRepository.class);
+        PaymentLog log = new PaymentLog();
+        log.setId("pl-2");
+        when(logs.findById("pl-2")).thenReturn(Optional.of(log));
+        OfflinePaymentDetailsService svc = detailsService(chequeWithCustomFields(), logs);
+        OfflinePaymentDetailsDTO d = details("CHEQUE", "CURRENT_ACCOUNT_A", "000123");
+        d.setExtra(Map.of("bank_name", "Some Bank"));
+        d.setCustom(Map.of("cheque_status", "cleared", "bank_branch_name", " Main Road ", "mode_label", "spoof"));
+
+        OfflinePaymentDetailsService.Resolved r = svc.resolve("i", d, null);
+        assertEquals("Cheque · Current account A", r.describe());
+        assertEquals(List.of(
+                new OfflinePaymentDetailsService.CustomValue("bank_branch_name", "Bank Branch Name", "Main Road"),
+                new OfflinePaymentDetailsService.CustomValue("cheque_status", "Cheque Status", "Cleared")), r.custom());
+
+        svc.apply("pl-2", r, "admin-1");
+        JsonNode json = MAPPER.readTree(log.getPaymentDetailsJson());
+        assertEquals("Cheque", json.path("mode_label").asText());
+        assertEquals("Some Bank", json.path("bank_name").asText());
+        assertEquals(2, json.path("custom_fields").size());
+        assertEquals("Cheque Status", json.path("custom_fields").get(1).path("label").asText());
+        assertEquals("Cleared", json.path("custom_fields").get(1).path("value").asText());
+    }
+
+    @Test
+    @DisplayName("A switched-off custom field is neither required nor stored")
+    void inactiveCustomFieldIgnored() {
+        OfflinePaymentModesDTO modes = chequeWithCustomFields();
+        modes.getModes().get(0).getCustomFields().get(1).setActive(false); // cheque status
+        OfflinePaymentDetailsDTO d = details("CHEQUE", "CURRENT_ACCOUNT_A", "000123");
+        d.setExtra(Map.of("bank_name", "Some Bank"));
+        d.setCustom(Map.of("cheque_status", "Pending"));
+        assertTrue(detailsService(modes, null).resolve("i", d, null).custom().isEmpty());
+    }
+
     // ---------------- apply ----------------
 
     @Test

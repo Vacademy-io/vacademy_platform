@@ -21,6 +21,21 @@ export interface OfflinePaymentSubMode {
     active: boolean;
 }
 
+export type OfflineCustomFieldType = 'TEXT' | 'DATE' | 'NUMBER' | 'SELECT';
+export const OFFLINE_CUSTOM_FIELD_TYPES: OfflineCustomFieldType[] = ['TEXT', 'DATE', 'NUMBER', 'SELECT'];
+
+/** An input an institute adds to a mode (cheque status, branch, transaction date ...). */
+export interface OfflineCustomField {
+    /** Stable id within the mode; derived from the label on first save. */
+    key?: string | null;
+    label: string;
+    type: OfflineCustomFieldType;
+    required?: boolean;
+    active: boolean;
+    /** Choices of a SELECT field. */
+    options?: string[];
+}
+
 export interface OfflinePaymentMode {
     code?: string | null;
     label: string;
@@ -29,6 +44,12 @@ export interface OfflinePaymentMode {
     reference_required?: boolean;
     proof_required?: boolean;
     extra_fields?: OfflineExtraField[];
+    /** Built-in extras that must be filled (subset of extra_fields). */
+    required_extra_fields?: OfflineExtraField[];
+    custom_fields?: OfflineCustomField[];
+    /** What the options are called, e.g. "Account"; empty = a generic label. */
+    sub_mode_label?: string | null;
+    sub_mode_required?: boolean;
     sub_modes?: OfflinePaymentSubMode[];
 }
 
@@ -48,6 +69,8 @@ export interface OfflinePaymentDetails {
     notes?: string | null;
     proof_file_id?: string | null;
     extra?: Partial<Record<OfflineExtraField, string>>;
+    /** Custom field values by field key. */
+    custom?: Record<string, string>;
 }
 
 export const fetchOfflinePaymentModes = async (instituteId: string): Promise<OfflinePaymentModes> => {
@@ -106,10 +129,20 @@ export const offlinePaymentDetailsError = (
     if (!modes) return null;
     const mode = findActiveMode(modes, value?.mode);
     if (!mode) return modes.require_mode ? 'errors.modeRequired' : null;
+    if (mode.sub_mode_required && !value?.sub_mode && (mode.sub_modes ?? []).some((s) => s.active))
+        return 'errors.subModeRequired';
     if (mode.reference_required && !value?.reference?.trim()) return 'errors.referenceRequired';
+    if ((mode.required_extra_fields ?? []).some((f) => (mode.extra_fields ?? []).includes(f) && !value?.extra?.[f]?.trim()))
+        return 'errors.fieldRequired';
+    if (activeCustomFields(mode).some((f) => f.required && !value?.custom?.[f.key!]?.trim()))
+        return 'errors.fieldRequired';
     if (mode.proof_required && !value?.proof_file_id) return 'errors.proofRequired';
     return null;
 };
+
+/** A mode's custom fields that are switched on and saved (have a key). */
+export const activeCustomFields = (mode: OfflinePaymentMode | undefined): OfflineCustomField[] =>
+    (mode?.custom_fields ?? []).filter((f) => f.active && f.key);
 
 /** The details to send: null when nothing was filled in, empty strings dropped. */
 export const toOfflinePaymentDetailsPayload = (
@@ -119,6 +152,9 @@ export const toOfflinePaymentDetailsPayload = (
     const extra = Object.fromEntries(
         Object.entries(value.extra ?? {}).filter(([, v]) => typeof v === 'string' && v.trim() !== '')
     );
+    const custom = Object.fromEntries(
+        Object.entries(value.custom ?? {}).filter(([, v]) => typeof v === 'string' && v.trim() !== '')
+    );
     const out: OfflinePaymentDetails = {
         mode: value.mode || null,
         sub_mode: value.mode && value.sub_mode ? value.sub_mode : null,
@@ -127,8 +163,10 @@ export const toOfflinePaymentDetailsPayload = (
         notes: value.notes?.trim() || null,
         proof_file_id: value.proof_file_id || null,
         extra: Object.keys(extra).length ? extra : undefined,
+        custom: value.mode && Object.keys(custom).length ? custom : undefined,
     };
-    const empty = !out.mode && !out.reference && !out.payment_date && !out.notes && !out.proof_file_id && !out.extra;
+    const empty =
+        !out.mode && !out.reference && !out.payment_date && !out.notes && !out.proof_file_id && !out.extra && !out.custom;
     return empty ? null : out;
 };
 
@@ -145,6 +183,8 @@ export interface RecordedPaymentDetails {
     notes: string | null;
     proofFileId: string | null;
     extra: Partial<Record<OfflineExtraField, string>>;
+    /** Custom field values with their labels as recorded. */
+    custom: { key: string; label: string; value: string }[];
 }
 
 export const readRecordedPaymentDetails = (log?: {
@@ -153,7 +193,8 @@ export const readRecordedPaymentDetails = (log?: {
     payment_details_json?: string | null;
 } | null): RecordedPaymentDetails | null => {
     if (!log || (!log.payment_mode && !log.payment_reference && !log.payment_details_json)) return null;
-    let json: Record<string, string> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let json: Record<string, any> = {};
     try {
         json = log.payment_details_json ? JSON.parse(log.payment_details_json) : {};
     } catch {
@@ -169,5 +210,11 @@ export const readRecordedPaymentDetails = (log?: {
         notes: json.notes ?? null,
         proofFileId: json.proof_file_id ?? null,
         extra,
+        custom: Array.isArray(json.custom_fields)
+            ? json.custom_fields.filter(
+                  (c: unknown): c is { key: string; label: string; value: string } =>
+                      !!c && typeof (c as { value?: unknown }).value === 'string'
+              )
+            : [],
     };
 };

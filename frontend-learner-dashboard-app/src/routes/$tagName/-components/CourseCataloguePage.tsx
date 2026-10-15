@@ -746,14 +746,21 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   /** While a blog article is open (/<page>/<slug> or ?post=), the page shows
    *  only its blog section: on a page with other sections (Free Resources:
    *  hero, resource cards, blog cards) the article would otherwise open as one
-   *  band in the middle of them. Header and footer stay. */
+   *  band in the middle of them. Header and footer stay. The blog block's
+   *  `articleSectionIds` keeps chosen sections (e.g. a newsletter signup)
+   *  under the article, in page order. */
   const withArticleOnly = (page: CourseCatalogueData["pages"][number]) => {
-    const blog = (page.components || []).find(
-      (c: { type?: string; enabled?: boolean }) => c?.type === "blog" && c.enabled !== false
-    );
+    const components = page.components || [];
+    const blog = components.find((c) => c?.type === "blog" && c.enabled !== false);
     if (!blog) return page;
     const slug = blogPostSlugFor(location.pathname, location.searchStr, tagName, page.route || "");
-    return slug ? { ...page, components: [blog] } : page;
+    if (!slug) return page;
+    const keepIds: unknown = blog.props?.articleSectionIds;
+    const keep = new Set(Array.isArray(keepIds) ? keepIds : []);
+    const below = components.filter(
+      (c) => c !== blog && c?.enabled !== false && !!c?.id && keep.has(c.id)
+    );
+    return { ...page, components: [blog, ...below] };
   };
   const hidesSiteChrome = !!(activePage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 

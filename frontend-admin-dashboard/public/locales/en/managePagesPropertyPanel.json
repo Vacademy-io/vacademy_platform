@@ -1344,7 +1344,9 @@
     "emptyMessage": "Message when there are no posts",
     "gateHeading": "Ask for details before reading",
     "gateTitlePlaceholder": "Popup title (e.g. Read our free articles)",
-    "gateHint": "Pick a list and every article opens only after its form is filled once. The same list on resource cards means one form unlocks both."
+    "gateHint": "Pick a list and every article opens only after its form is filled once. The same list on resource cards means one form unlocks both.",
+    "articleSectionsHeading": "Also show under an open article",
+    "articleSectionsHint": "Ticked sections of this page stay below the article (after recommended courses), e.g. a newsletter signup. Everything else hides while an article is open."
   },
   "sectionJson": {
     "button": "Edit as JSON",

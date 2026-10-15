@@ -1347,7 +1347,9 @@
     "emptyMessage": "Message quand il n’y a aucun article",
     "gateHeading": "Demander les coordonnées avant la lecture",
     "gateTitlePlaceholder": "Titre du formulaire (ex. Lisez nos articles gratuits)",
-    "gateHint": "Choisissez une liste : chaque article ne s'ouvre qu'après un premier remplissage du formulaire. Avec la même liste sur les cartes ressources, un seul formulaire débloque les deux."
+    "gateHint": "Choisissez une liste : chaque article ne s'ouvre qu'après un premier remplissage du formulaire. Avec la même liste sur les cartes ressources, un seul formulaire débloque les deux.",
+    "articleSectionsHeading": "Afficher aussi sous un article ouvert",
+    "articleSectionsHint": "Les sections cochées de cette page restent sous l'article (après les cours recommandés), par ex. une inscription à la newsletter. Tout le reste est masqué pendant la lecture d'un article."
   },
   "sectionJson": {
     "button": "Modifier en JSON",

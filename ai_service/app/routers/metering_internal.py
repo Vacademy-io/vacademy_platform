@@ -92,6 +92,33 @@ def _none() -> Dict[str, Any]:
 
 @router.post("/authorize", summary="Usage-limits decision for one operation (always 200; fails open)")
 def authorize(body: AuthorizeRequest, db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    out = _authorize_limits(body, db)
+    return _with_billing_mode(out, body, db)
+
+
+def _with_billing_mode(out: Dict[str, Any], body: AuthorizeRequest, db: Session) -> Dict[str, Any]:
+    """AI plans (additive): `billing_mode` CHARGED | INCLUDED | ALLOWANCE for
+    an institute with a live AI subscription (INCLUDED / ALLOWANCE = a LIVE
+    plan covers the estimate, so the caller's balance requirement does not
+    apply). Left out for everyone else (in-memory lookup), so their JSON is
+    exactly today's. Never fails the call."""
+    try:
+        from ..services.metering import plan_wiring
+
+        if not body.institute_id or not plan_wiring.live(body.institute_id):
+            return out
+        mode = plan_wiring.billing_mode_for(
+            db, institute_id=body.institute_id, use_case=body.use_case, tool_key=body.tool_key,
+            request_type=body.request_type, ctx=_ctx(body), estimate=body.estimate_credits)
+        if mode:
+            out = dict(out)
+            out["billing_mode"] = mode
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("internal authorize billing_mode skipped: %s", exc)
+    return out
+
+
+def _authorize_limits(body: AuthorizeRequest, db: Session) -> Dict[str, Any]:
     try:
         from ..services.metering import limit_gate
     except Exception:  # noqa: BLE001

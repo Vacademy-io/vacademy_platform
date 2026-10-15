@@ -541,6 +541,32 @@ def record_tool_billing(
         logger.warning("Tool billing failed (tool=%s, request_id=%s): %s", tool_key, request_id, exc)
 
 
+def _plan_cover_preflight(db: Session, result: dict, *, tool_key: str, institute_id: str, metering: Any,
+                          use_case: Optional[str]) -> None:
+    """AI plans: a balance-short pre-flight that a LIVE subscription covers in
+    full (included within fair use, or the remaining allowance) is allowed:
+    `sufficient` becomes True and `plan_covered` names the mode. Read-only;
+    never creates a wallet. Nothing (an in-memory lookup) without a live
+    subscription; any failure leaves today's result."""
+    try:
+        from .metering import plan_wiring
+
+        if not plan_wiring.live(institute_id):
+            return
+        ctx = metering
+        if ctx is None:
+            from .metering import limit_gate
+
+            ctx = limit_gate.context_from_current_request(institute_id)
+        mode = plan_wiring.precheck_mode(db, institute_id=institute_id, use_case=use_case, tool_key=tool_key,
+                                         ctx=ctx, estimate=result.get("estimated_credits"))
+        if mode:
+            result["sufficient"] = True
+            result["plan_covered"] = mode
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("plan pre-flight skipped: %s", exc)
+
+
 def preflight_tool_credits(
     db: Session,
     *,
@@ -568,6 +594,9 @@ def preflight_tool_credits(
     from .tool_cost_estimator import ToolCostEstimator
 
     result = ToolCostEstimator(db).estimate_with_balance(tool_key, tool_params, institute_id)
+    if result.get("sufficient") is False and institute_id:
+        _plan_cover_preflight(db, result, tool_key=tool_key, institute_id=institute_id, metering=metering,
+                              use_case=use_case)
     if enforce_limits and institute_id and result.get("sufficient") is not False:
         try:
             from .metering import limit_gate

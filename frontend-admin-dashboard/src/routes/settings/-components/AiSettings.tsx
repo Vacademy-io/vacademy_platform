@@ -28,6 +28,7 @@ import {
     Books,
     Article,
     Gauge,
+    SealCheck,
 } from '@phosphor-icons/react';
 import {
     SettingsPageShell,
@@ -36,6 +37,8 @@ import {
 } from '@/components/settings/shell';
 import { AiUsageSection } from './ai-usage/AiUsageSection';
 import { AiLimitsSection } from './ai-limits/AiLimitsSection';
+import { AiPlanSection } from './ai-plan/AiPlanSection';
+import { isPlanInEffect, useAiPlanQuery } from '@/components/common/ai-credits/aiPlan';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
@@ -129,6 +132,8 @@ import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 import { noAutofillProps } from '@/lib/no-autofill';
 
 const LIMITS_SECTION_ID = 'grp-limits';
+/** Shown only to admins of an institute with an AI plan in effect (no plan = no change here). */
+const PLAN_SECTION_ID = 'grp-plan';
 
 /** `?aiSection=grp-limits` deep-links a tab (the usage-limit modal links here). */
 const readAiSectionParam = (): string | undefined => {
@@ -141,7 +146,8 @@ const readAiSectionParam = (): string | undefined => {
 
 const getAiSettingsSections = (
     t: (key: string) => string,
-    showLimits: boolean
+    showLimits: boolean,
+    showPlan = false
 ): SettingsSectionGroup[] => [
     {
         sections: [
@@ -157,6 +163,7 @@ const getAiSettingsSections = (
             ...(showLimits
                 ? [{ id: LIMITS_SECTION_ID, label: t('sections.limits'), icon: Gauge }]
                 : []),
+            ...(showPlan ? [{ id: PLAN_SECTION_ID, label: t('sections.plan'), icon: SealCheck }] : []),
         ],
     },
 ];
@@ -165,7 +172,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const { t } = useTranslation(['settingsAi', 'videoApiStudioVideoStyleBranding']);
     const instituteIdForLimits = getInstituteId();
     const showLimits = isAdminForInstitute(instituteIdForLimits);
-    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t, showLimits);
+    const aiPlanQuery = useAiPlanQuery(instituteIdForLimits, showLimits);
+    const showPlan = showLimits && isPlanInEffect(aiPlanQuery.data);
+    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t, showLimits, showPlan);
     const [initialSection] = useState(readAiSectionParam);
     const watermarkPositions = buildWatermarkPositions(t);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -2049,6 +2058,12 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 {showLimits && (
                     <section id={LIMITS_SECTION_ID} className="space-y-6">
                         <AiLimitsSection />
+                    </section>
+                )}
+
+                {showPlan && (
+                    <section id={PLAN_SECTION_ID} className="space-y-6">
+                        <AiPlanSection />
                     </section>
                 )}
             </SettingsSectionsLayout>

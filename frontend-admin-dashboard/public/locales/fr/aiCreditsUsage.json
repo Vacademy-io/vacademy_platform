@@ -29,7 +29,10 @@
         "free": "Gratuit",
         "ownKey": "Votre clé",
         "notCharged": "Non facturé (solde faible)",
-        "refunded": "{{credits}} remboursés"
+        "refunded": "{{credits}} remboursés",
+        "includedInPlan": "Inclus dans le forfait",
+        "fromAllowance": "Sur le crédit du forfait",
+        "splitAllowance": "{{credits}} sur le crédit du forfait"
     },
     "details": {
         "promptTokens": "Jetons d’entrée",
@@ -47,7 +50,8 @@
         "onBehalfOf": "Pour",
         "byUser": "Par",
         "realCost": "Coût fournisseur (équipe uniquement)",
-        "status": "Statut"
+        "status": "Statut",
+        "fromAllowance": "Sur le crédit du forfait"
     },
     "ledger": {
         "usage": "Utilisation",
@@ -93,5 +97,12 @@
         "empty": "Aucune utilisation de l’IA sur cette période",
         "error": "Impossible de charger les analyses. Veuillez réessayer plus tard.",
         "dayTooltip": "{{date}} : {{credits}}"
+    },
+    "plan": {
+        "grace": "Période de grâce",
+        "periodEnds": "Fin de période le {{date}}",
+        "allowance": "Crédit du forfait",
+        "allowanceLeft": "{{remaining}} sur {{total}} restants",
+        "includedCount": "Fonctionnalités incluses : {{count}}"
     }
 }

@@ -29,7 +29,10 @@
         "free": "निःशुल्क",
         "ownKey": "अपनी कुंजी",
         "notCharged": "शुल्क नहीं लिया (कम शेष)",
-        "refunded": "{{credits}} वापस किए गए"
+        "refunded": "{{credits}} वापस किए गए",
+        "includedInPlan": "प्लान में शामिल",
+        "fromAllowance": "प्लान अलाउंस से",
+        "splitAllowance": "{{credits}} प्लान अलाउंस से"
     },
     "details": {
         "promptTokens": "इनपुट टोकन",
@@ -47,7 +50,8 @@
         "onBehalfOf": "किसके लिए",
         "byUser": "द्वारा",
         "realCost": "विक्रेता लागत (केवल स्टाफ़)",
-        "status": "स्थिति"
+        "status": "स्थिति",
+        "fromAllowance": "प्लान अलाउंस से"
     },
     "ledger": {
         "usage": "उपयोग",
@@ -93,5 +97,12 @@
         "empty": "इस अवधि में कोई AI उपयोग नहीं",
         "error": "एनालिटिक्स लोड नहीं हो सका। कृपया बाद में फिर से प्रयास करें।",
         "dayTooltip": "{{date}}: {{credits}}"
+    },
+    "plan": {
+        "grace": "ग्रेस अवधि",
+        "periodEnds": "अवधि {{date}} को समाप्त",
+        "allowance": "प्लान अलाउंस",
+        "allowanceLeft": "{{total}} में से {{remaining}} बाकी",
+        "includedCount": "शामिल सुविधाएँ: {{count}}"
     }
 }

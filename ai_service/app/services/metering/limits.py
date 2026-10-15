@@ -494,13 +494,20 @@ class Decision:
     retry_after_seconds: Optional[int] = None
     #: SHADOW / enforce switched off: the 429 body a BLOCK would have returned
     would_block: Optional[Dict[str, Any]] = None
+    #: AI plans (additive): CHARGED | INCLUDED | ALLOWANCE for an institute with
+    #: a live subscription (plan_wiring.billing_mode_for); None = not reported
+    #: (the key is then left out, so the JSON is exactly the pre-plans one).
+    billing_mode: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             "allow": self.allow, "decision": self.decision, "warnings": list(self.warnings), "block": self.block,
             "reservation_id": self.reservation_id, "use_case": self.use_case,
             "retry_after_seconds": self.retry_after_seconds, "would_block": self.would_block,
         }
+        if self.billing_mode is not None:
+            out["billing_mode"] = self.billing_mode
+        return out
 
     def __getitem__(self, key: str) -> Any:
         return self.to_dict()[key]

@@ -380,6 +380,12 @@ class TokenUsageService:
             row = result.fetchone()
             total_deducted = Decimal(str(row.total_deducted)) if row else Decimal("0")
 
+            # AI plans: shots paid from a plan allowance have no ledger row, so
+            # the sum above never sees them; give that allowance back. No-op
+            # (no I/O) unless the institute has a live AI subscription.
+            from .credit_service import CreditService as _PlanCS
+            _PlanCS(self._session).restore_plan_allowance(institute_id, video_id)
+
             if total_deducted <= Decimal("0"):
                 logger.info(f"[RefundVideo] No credits to refund for video {video_id}")
                 return

@@ -14,6 +14,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { TopUpModal } from './TopUpModal';
 import { UsageHistoryV2 } from './UsageHistoryV2';
 import { UsageAnalyticsV2 } from './UsageAnalyticsV2';
+import { PlanSummaryCard } from './PlanSummaryCard';
 import { useUsageConfigQuery } from '@/services/ai-credits/usage-v2';
 import {
     usePlatformInvoicesQuery,
@@ -174,6 +175,9 @@ function OverviewTab() {
                     <span>{usagePercent.toFixed(0)}% consumed</span>
                 </div>
             </div>
+
+            {/* AI plan (renders nothing unless the institute has a plan in effect) */}
+            <PlanSummaryCard />
 
             {/* Stats grid */}
             <div className="grid grid-cols-2 gap-2">

@@ -29,7 +29,10 @@
         "free": "Free",
         "ownKey": "Own key",
         "notCharged": "Not charged (low balance)",
-        "refunded": "{{credits}} refunded"
+        "refunded": "{{credits}} refunded",
+        "includedInPlan": "Included in plan",
+        "fromAllowance": "From plan allowance",
+        "splitAllowance": "{{credits}} from plan allowance"
     },
     "details": {
         "promptTokens": "Input tokens",
@@ -47,7 +50,8 @@
         "onBehalfOf": "For",
         "byUser": "By",
         "realCost": "Vendor cost (staff only)",
-        "status": "Status"
+        "status": "Status",
+        "fromAllowance": "From plan allowance"
     },
     "ledger": {
         "usage": "Usage",
@@ -93,5 +97,12 @@
         "empty": "No AI usage in this period",
         "error": "Could not load analytics. Please try again later.",
         "dayTooltip": "{{date}}: {{credits}}"
+    },
+    "plan": {
+        "grace": "Grace period",
+        "periodEnds": "Period ends {{date}}",
+        "allowance": "Plan allowance",
+        "allowanceLeft": "{{remaining}} of {{total}} left",
+        "includedCount": "Included features: {{count}}"
     }
 }

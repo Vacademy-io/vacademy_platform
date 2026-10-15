@@ -514,6 +514,55 @@ if "metering.limits.rebuild.enabled" not in SETTING_SPECS:
         default=lambda: True,
     )
 
+# AI subscription plans (services/metering/plans.py). Off = every charge exactly as before.
+if "billing.plans.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.plans.enabled"] = SettingSpec(
+        key="billing.plans.enabled",
+        group="rollout",
+        label="AI subscription plans: apply plans to charges",
+        description=(
+            "Off (default) = as before: every AI charge comes from the institute's credit balance, "
+            "whatever subscription it has. On = institutes with a live AI subscription follow it: a "
+            "subscription set to Shadow still pays exactly as before and only records what the plan "
+            "would have done; one set to Live has included features (within fair use) and plan "
+            "allowance taken off the plan instead of the balance. AI calling and telephony are always "
+            "charged. Institutes without a subscription are never affected. Takes up to 30 s to apply."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.inr_per_usd" not in SETTING_SPECS:
+    SETTING_SPECS["billing.inr_per_usd"] = SettingSpec(
+        key="billing.inr_per_usd",
+        group="rollout",
+        label="AI plans: rupees per US dollar (P&L)",
+        description=(
+            "The exchange rate the AI plan P&L and simulator use to turn real vendor cost in US "
+            "dollars into rupees (default 86). Reports only; no charge depends on it."
+        ),
+        type="number",
+        default=lambda: 86,
+        min_value=1,
+        max_value=1000,
+    )
+
+# Read by admin_core's hourly AI plan renewal job directly from ai_platform_settings.
+if "billing.plans.roll.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.plans.roll.enabled"] = SettingSpec(
+        key="billing.plans.roll.enabled",
+        group="rollout",
+        label="AI plans: renew and expire subscriptions hourly",
+        description=(
+            "On (default) = an hourly admin_core job starts the next period of subscriptions that "
+            "auto-renew, applies scheduled plan changes and cancellations at the period end, and "
+            "expires subscriptions past their end date. It does nothing while no institute has a "
+            "subscription. Off = the job does nothing (periods are still opened when a charge needs one)."
+        ),
+        type="bool",
+        default=lambda: True,
+    )
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",

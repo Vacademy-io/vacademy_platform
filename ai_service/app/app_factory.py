@@ -36,6 +36,9 @@ from .routers.metering_admin import router as metering_admin_router
 from .routers.credits_limits import router as credits_limits_router
 from .routers.metering_limits_admin import router as metering_limits_admin_router
 from .routers.metering_internal import router as metering_internal_router
+from .routers.plans_admin import router as plans_admin_router
+from .routers.plans_internal import router as plans_internal_router
+from .routers.credits_plan import router as credits_plan_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
@@ -334,6 +337,11 @@ def create_app() -> FastAPI:
     app.include_router(metering_limits_admin_router, prefix=settings.api_base_path)
     # AI usage limits, service-to-service: /internal/metering/v1/authorize + counters/rebuild
     app.include_router(metering_internal_router, prefix=settings.api_base_path)
+    # AI subscription plans: super admin (/super-admin/v1/plans), tenant view
+    # (/credits/v2/institutes/{id}/plan) and the renewal job (/internal/plans/v1/roll)
+    app.include_router(plans_admin_router, prefix=settings.api_base_path)
+    app.include_router(credits_plan_router, prefix=settings.api_base_path)
+    app.include_router(plans_internal_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

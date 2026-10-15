@@ -12,7 +12,8 @@
         "coursePrompt": "Course Prompt",
         "video": "Video",
         "usage": "Usage",
-        "limits": "Limits"
+        "limits": "Limits",
+        "plan": "Plan"
     },
     "common": {
         "saving": "Saving...",

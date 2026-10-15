@@ -12,7 +12,8 @@
         "coursePrompt": "Prompt du cours",
         "video": "Vidéo",
         "usage": "Utilisation",
-        "limits": "Limites"
+        "limits": "Limites",
+        "plan": "Forfait"
     },
     "common": {
         "saving": "Enregistrement...",

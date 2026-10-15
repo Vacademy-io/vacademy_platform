@@ -603,6 +603,9 @@ _ALWAYS_ON_UPGRADE = (
     "list_credits", "credits_charged", "billing_mode", "charge_status", "free_reason", "ledger_tx_id",
     "occurred_at",
 )
+# AI-plan columns (V586): only in a row when the charge went through a live
+# subscription (record_event's plan_fields); absent from every other row.
+PLAN_EVENT_COLUMNS = ("shadow_billing_mode", "subscription_id", "plan_id", "plan_item_id")
 
 
 def _upgrade(db, where_clause, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -616,6 +619,13 @@ def _upgrade(db, where_clause, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     for k in _COALESCE_ON_UPGRADE:
         if row.get(k) is not None:
             values[k] = row[k]
+    for k in PLAN_EVENT_COLUMNS:
+        if row.get(k) is not None:
+            values[k] = row[k]
+    if row.get("ledger_tx_id") is None and row.get("idempotency_key") and row.get("billing_mode") in ("INCLUDED",
+                                                                                                    "ALLOWANCE"):
+        # A plan-covered use has no ledger row: its event key is its idempotency record.
+        values["idempotency_key"] = row["idempotency_key"]
     if row.get("use_case") and row["use_case"] != UNKNOWN_USE_CASE:
         values.update(use_case=row["use_case"], use_case_source=row["use_case_source"],
                       feature_group=row["feature_group"])
@@ -673,6 +683,20 @@ def _ready(db) -> Optional[Any]:
     return snap
 
 
+def _apply_plan_fields(row: Dict[str, Any], plan_fields: Dict[str, Any]) -> None:
+    """Put the AI-plan columns (and plan context keys) on a built event row."""
+    mode = _upper_in(plan_fields.get("shadow_billing_mode"), BILLING_MODES)
+    if mode:
+        row["shadow_billing_mode"] = mode[:W_BILLING_MODE]
+    for k in ("subscription_id", "plan_id", "plan_item_id"):
+        v = _uuid_or_none(plan_fields.get(k))
+        if v:
+            row[k] = v
+    extra = plan_fields.get("context")
+    if isinstance(extra, dict) and extra:
+        row["context"] = _clean_context(row.get("context") or {}, extra)
+
+
 def record_event(
     db,
     inp: Optional[EventInput] = None,
@@ -689,6 +713,8 @@ def record_event(
     link_usage_only_if_unlinked: bool = False,
     lookup_existing: bool = True,
     _out: Optional[Dict[str, Any]] = None,
+    plan_fields: Optional[Dict[str, Any]] = None,
+    upgrade_without_ledger: bool = False,
     **fields: Any,
 ) -> Optional[str]:
     """Write one usage event on `db` inside a SAVEPOINT. Never raises; returns
@@ -699,7 +725,12 @@ def record_event(
     in place instead of inserting a second one, and the ledger row is linked.
     `_out` (internal): receives {"previous": <row before the upgrade>} when the
     institute has a usage-limits policy, so the counter hook can replace the
-    earlier event's contribution instead of counting the operation twice."""
+    earlier event's contribution instead of counting the operation twice.
+    `plan_fields` (AI plans, only for an institute with a live subscription):
+    shadow_billing_mode / subscription_id / plan_id / plan_item_id, plus a
+    "context" dict merged into the event context. `upgrade_without_ledger`:
+    look up the earlier event (as above) also when there is no ledger row (an
+    INCLUDED / ALLOWANCE use)."""
     try:
         if inp is None:
             inp = input_from(None, **fields)
@@ -711,6 +742,8 @@ def record_event(
         row = build_row(snap, inp, billing_mode=billing_mode, charge_status=charge_status,
                         list_credits=list_credits, credits_charged=credits_charged, free_reason=free_reason,
                         ledger_tx_id=ledger_tx_id, occurred_at=occurred_at, idempotency_key=idempotency_key)
+        if plan_fields:
+            _apply_plan_fields(row, plan_fields)
     except Exception as exc:  # noqa: BLE001
         _note_failure("resolve", exc)
         return None
@@ -723,7 +756,7 @@ def record_event(
         with db.begin_nested():
             event_id: Optional[str] = None
             use_case = row["use_case"]
-            if ledger_tx_id and lookup_existing:
+            if (ledger_tx_id or upgrade_without_ledger) and lookup_existing:
                 supplied = _uuid_or_none(inp.usage_event_id)
                 found = None
                 snap_prev = _out is not None and _limits_on(inp.institute_id)
@@ -764,10 +797,18 @@ def record_event(
 # Hooks used by the credit / usage services
 # ----------------------------------------------------------------------------
 
-def record_charged_event(db, request: Any, *, transaction_id: str, credits: Any,
-                         now: Optional[datetime] = None, _out: Optional[Dict[str, Any]] = None) -> Optional[str]:
+def record_charged_event(db, request: Any, *, transaction_id: Optional[str], credits: Any,
+                         now: Optional[datetime] = None, _out: Optional[Dict[str, Any]] = None,
+                         billing_mode: str = "CHARGED", charge_status: str = "POSTED",
+                         list_credits: Any = None, plan_fields: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """deduct_credits, after the USAGE_DEDUCTION INSERT, before its commit.
-    list_credits = the amount today's code computed; credits_charged = -ledger.amount."""
+    list_credits = the amount today's code computed; credits_charged = -ledger.amount.
+
+    AI plans (live subscription only): `billing_mode` SPLIT / INCLUDED /
+    ALLOWANCE with `list_credits` (what CHARGED would have debited) differing
+    from `credits` (the wallet part), `plan_fields` for the plan columns, and
+    `transaction_id` None when no ledger row was written (INCLUDED /
+    ALLOWANCE). The defaults are exactly the CHARGED event."""
     try:
         inp = input_from(request)
         private = getattr(request, "__pydantic_private__", None) or {}
@@ -782,14 +823,24 @@ def record_charged_event(db, request: Any, *, transaction_id: str, credits: Any,
     except Exception as exc:  # noqa: BLE001
         _note_failure("input", exc)
         return None
+    if plan_fields is None and billing_mode == "CHARGED" and list_credits is None:
+        return record_event(
+            db, inp,
+            billing_mode="CHARGED", charge_status="POSTED",
+            list_credits=credits, credits_charged=credits,
+            ledger_tx_id=transaction_id, usage_log_id=usage_log_id,
+            occurred_at=now, idempotency_key=inp.idempotency_key,
+            lookup_existing=bool(_uuid_or_none(inp.usage_event_id)) or (bool(usage_log_id) and not fresh_usage),
+            _out=_out,
+        )
     return record_event(
         db, inp,
-        billing_mode="CHARGED", charge_status="POSTED",
-        list_credits=credits, credits_charged=credits,
+        billing_mode=billing_mode, charge_status=charge_status,
+        list_credits=credits if list_credits is None else list_credits, credits_charged=credits,
         ledger_tx_id=transaction_id, usage_log_id=usage_log_id,
         occurred_at=now, idempotency_key=inp.idempotency_key,
         lookup_existing=bool(_uuid_or_none(inp.usage_event_id)) or (bool(usage_log_id) and not fresh_usage),
-        _out=_out,
+        _out=_out, plan_fields=plan_fields, upgrade_without_ledger=not transaction_id,
     )
 
 
@@ -822,7 +873,7 @@ def _pool_would_wait(db) -> bool:
 
 
 def record_charged_event_after_commit(db, request: Any, *, transaction_id: str, credits: Any,
-                                      now: Optional[datetime] = None) -> Optional[str]:
+                                      now: Optional[datetime] = None, **plan_kwargs: Any) -> Optional[str]:
     """deduct_credits, right AFTER its commit: the CHARGED event in a short
     transaction of its own on the same session (SAVEPOINT inside), so the
     event write never lengthens the institute balance row lock. That
@@ -839,7 +890,7 @@ def record_charged_event_after_commit(db, request: Any, *, transaction_id: str, 
     try:
         out: Dict[str, Any] = {}
         event_id = record_charged_event(db, request, transaction_id=transaction_id, credits=credits, now=now,
-                                        _out=out)
+                                        _out=out, **plan_kwargs)
         # Usage-limit counters (contract N4), same short post-commit
         # transaction, own SAVEPOINT; an institute without a limits policy
         # costs one in-memory lookup here.
@@ -1271,6 +1322,18 @@ def allocate_refunds(refunds: List[Any], events: List[Any]) -> Dict[str, Decimal
     return share
 
 
+def _allowance_refunded(ctx: Any) -> Decimal:
+    """Plan allowance given back on an event (context.allowance_refunded)."""
+    try:
+        if isinstance(ctx, str):
+            ctx = json.loads(ctx)
+        if isinstance(ctx, dict):
+            return _num(ctx.get("allowance_refunded"))
+    except Exception:  # noqa: BLE001
+        pass
+    return Decimal("0")
+
+
 def mark_batch_refunds(db, institute_id: Optional[str], batch_id: Optional[str]) -> int:
     """After a REFUND ledger row for `batch_id`: the batch's REFUND rows are
     applied to its CHARGED events (allocate_refunds: per-shot refunds to that
@@ -1298,17 +1361,29 @@ def mark_batch_refunds(db, institute_id: Optional[str], batch_id: Optional[str])
                 {"b": batch_id, "i": institute_id}).all()
             refunds = [(r[2], r[3]) for r in ledger if r[1] == "REFUND"]
             desc_by_tx = {str(r[0]).lower(): r[3] for r in ledger if r[1] == "USAGE_DEDUCTION"}
+            # SPLIT (AI plans): the wallet part has a ledger row like a CHARGED
+            # event; its allowance part refunded (plan_wiring) is kept on top.
             events = db.execute(
-                select(T.c.id, T.c.credits_charged, T.c.refunded_credits, T.c.charge_status, T.c.ledger_tx_id)
+                select(T.c.id, T.c.credits_charged, T.c.refunded_credits, T.c.charge_status, T.c.ledger_tx_id,
+                       T.c.billing_mode, T.c.list_credits, T.c.context)
                 .where(T.c.batch_id == batch_id, T.c.institute_id == str(institute_id),
-                       T.c.billing_mode == "CHARGED", T.c.ledger_tx_id.isnot(None))
+                       T.c.billing_mode.in_(("CHARGED", "SPLIT")), T.c.ledger_tx_id.isnot(None))
                 .order_by(T.c.occurred_at, T.c.id)).all()
             shares = allocate_refunds(
                 refunds, [(ev[0], ev[1], desc_by_tx.get(str(ev[4]).lower())) for ev in events])
-            for ev_id, charged, already, status, _tx in events:
+            for ev_id, charged, already, status, _tx, mode, listed, ctx in events:
                 charged_d = Decimal(str(charged or 0))
                 share = shares.get(str(ev_id), Decimal("0"))
-                if share <= 0:
+                if mode == "SPLIT":
+                    share = share + _allowance_refunded(ctx)
+                    full = Decimal(str(listed or 0))
+                    if share <= 0:
+                        new_status = "POSTED"
+                    elif share >= full:
+                        new_status = "REFUNDED"
+                    else:
+                        new_status = "PARTIAL_REFUND"
+                elif share <= 0:
                     new_status = "POSTED"
                 elif share >= charged_d:
                     new_status = "REFUNDED"

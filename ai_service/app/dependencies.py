@@ -324,13 +324,18 @@ def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingServ
 def _limit_actor_fields(request: Request, institute_id: Optional[str]) -> dict:
     """Usage-limit attribution for require_credits' check (the X-Institute-Key
     caller is a PARTNER_API / API_KEY actor). Empty — so the check request is
-    exactly today's — unless the institute has a limits policy (an in-memory
-    lookup; no I/O). Never raises."""
+    exactly today's — unless the institute has a limits policy or a live AI
+    subscription (in-memory lookups; no I/O). Never raises."""
     try:
         from .services.metering import limit_gate
 
         if not limit_gate.policy_active(institute_id):
-            return {}
+            # AI plans: a live subscription's roles_included check needs the
+            # actor too (in-memory lookup; {} for everyone else, as before).
+            from .services.metering import plan_wiring
+
+            if not plan_wiring.live(institute_id):
+                return {}
         from .services.metering.context import MeteringContext
 
         ctx = MeteringContext.from_request(request, institute_id, auth_mode="INSTITUTE")

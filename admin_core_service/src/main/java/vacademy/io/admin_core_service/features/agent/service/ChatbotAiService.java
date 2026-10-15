@@ -66,8 +66,10 @@ public class ChatbotAiService {
         // 1. Affordability, fail CLOSED. hasActiveCredits already returns false when the
         // balance cannot be read, so an unreachable credits service pauses the bot rather
         // than letting it keep spending at the provider un-metered. Same posture as the
-        // Engagement Engine's autonomous sends and AI calling.
-        if (!hasCredits(request.getInstituteId())) {
+        // Engagement Engine's autonomous sends and AI calling. An empty wallet is then asked
+        // once more about the institute's LIVE AI plan (chatbot replies can be included in a
+        // plan); no LIVE plan = no extra call, and any failure there = today's answer.
+        if (!hasCredits(request)) {
             log.warn("Chatbot AI turn refused — institute {} has no AI credits", request.getInstituteId());
             return ChatbotAiResponse.builder()
                     .insufficientCredits(true)
@@ -169,10 +171,21 @@ public class ChatbotAiService {
         }
     }
 
-    /** Balance gate. Never throws — an error here is "cannot confirm funds", i.e. no. */
-    private boolean hasCredits(String instituteId) {
+    /**
+     * Balance gate, then the plan. Never throws — an error here is "cannot confirm funds",
+     * i.e. no. The wallet is read first and unchanged; only a "no" from it asks whether the
+     * institute's LIVE AI plan covers this reply ({@link CreditClient#planCovers}).
+     */
+    private boolean hasCredits(ChatbotAiRequest request) {
+        String instituteId = request.getInstituteId();
         try {
-            return creditClient.hasActiveCredits(instituteId);
+            if (creditClient.hasActiveCredits(instituteId)) {
+                return true;
+            }
+            String model = request.getModelId() != null && !request.getModelId().isBlank()
+                    ? request.getModelId().trim() : null;
+            return creditClient.planCovers(instituteId, RequestType.CHATBOT.getValue(), model,
+                    estimateTokens(request), request.getUserId(), chargeMetering(request));
         } catch (Exception e) {
             log.warn("Credit check failed for institute {} — pausing chatbot AI: {}",
                     instituteId, e.getMessage());
@@ -243,6 +256,22 @@ public class ChatbotAiService {
             b.actorKind("PUBLIC").actorRoleClass("PUBLIC");
         }
         return b.build();
+    }
+
+    /** Rough prompt + reply token estimate for the plan pre-check (about 4 characters a token). */
+    static int estimateTokens(ChatbotAiRequest request) {
+        long chars = length(request.getSystemPrompt()) + length(request.getUserMessage());
+        if (request.getConversationHistory() != null) {
+            for (Map<String, String> msg : request.getConversationHistory()) {
+                if (msg != null) chars += length(msg.get("content"));
+            }
+        }
+        int reply = request.getMaxTokens() > 0 ? request.getMaxTokens() : 500;
+        return (int) Math.min(Integer.MAX_VALUE, chars / 4 + reply);
+    }
+
+    private static long length(String s) {
+        return s == null ? 0 : s.length();
     }
 
     private static String describe(ChatbotAiRequest request) {

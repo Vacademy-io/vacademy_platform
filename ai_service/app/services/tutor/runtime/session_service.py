@@ -272,7 +272,8 @@ def preflight_live_session(db: Session, institute_id: str, user_id: Optional[str
         # (with a policy, the limits are checked below for ONE minute, not here for N)
         est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL,
                                      tool_params={"audio_minutes": minutes}, institute_id=institute_id,
-                                     **({"enforce_limits": False} if limits_on else {}))
+                                     **({"enforce_limits": False} if limits_on else {}),
+                                     **_plan_actor(institute_id, user_id, roles_raw))
     except Exception:  # noqa: BLE001
         est = None
     if est is not None and est.get("sufficient") is False:
@@ -286,6 +287,21 @@ def preflight_live_session(db: Session, institute_id: str, user_id: Optional[str
             per_minute = None
         _live_limit_authorize(db, institute_id, user_id=user_id, roles_raw=roles_raw, estimate=per_minute)
     return None
+
+
+def _plan_actor(institute_id: Optional[str], user_id: Optional[str], roles_raw: Optional[List[str]]) -> Dict[str, Any]:
+    """AI plans: the learner as the actor of the minute gate's plan pre-check
+    ({} — today's call — unless the institute has a live AI subscription; an
+    in-memory lookup). Only the plan pre-check reads it: the limits check of
+    these calls is either off (enforce_limits=False) or has no policy."""
+    try:
+        from ...metering import plan_wiring
+
+        if not plan_wiring.live(institute_id):
+            return {}
+        return {"metering": metering_user(user_id, surface="LEARNER_APP", roles_raw=roles_raw)}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 # ── usage limits for live minutes (only for institutes with a limits policy) ──
@@ -402,7 +418,7 @@ def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, 
     try:
         with db_session() as db:
             est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1},
-                                         institute_id=institute_id)
+                                         institute_id=institute_id, **_plan_actor(institute_id, user_id, roles_raw))
         return est.get("sufficient") is not False
     except Exception:  # noqa: BLE001
         return True
@@ -417,7 +433,8 @@ def _affordable_within_limits(*, tutor_session_id: str, institute_id: str, user_
     try:
         with db_session() as db:
             est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1},
-                                         institute_id=institute_id, enforce_limits=False)
+                                         institute_id=institute_id, enforce_limits=False,
+                                         **_plan_actor(institute_id, user_id, roles_raw))
             if est.get("sufficient") is False:
                 return False
             try:

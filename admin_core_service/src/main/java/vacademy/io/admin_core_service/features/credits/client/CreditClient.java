@@ -55,11 +55,16 @@ public class CreditClient {
     /** Which institutes have limits on; null (plain unit tests) = always ask ai_service. */
     private volatile AiLimitsPolicyIndex limitsPolicyIndex;
 
+    /** Which institutes have a LIVE AI plan; null (plain unit tests) = none, never ask. */
+    private volatile AiPlanSubscriptionIndex planSubscriptionIndex;
+
     /** Last time an authorize failure was logged (the gate logs at most once a minute). */
     private final AtomicLong lastAuthorizeFailureLog = new AtomicLong(0L);
 
     static final String AUTHORIZE_PATH = "/ai-service/internal/metering/v1/authorize";
     static final String REBUILD_PATH = "/ai-service/internal/metering/v1/counters/rebuild";
+    static final String CHECK_PATH = "/ai-service/credits/v1/check";
+    static final String PLANS_ROLL_PATH = "/ai-service/internal/plans/v1/roll";
     static final int LIMITS_CONNECT_TIMEOUT_MS = 500;
     static final int LIMITS_READ_TIMEOUT_MS = 1000;
     static final long AUTHORIZE_FAILURE_LOG_INTERVAL_MS = 60_000L;
@@ -87,6 +92,11 @@ public class CreditClient {
     @Autowired(required = false)
     public void setLimitsPolicyIndex(AiLimitsPolicyIndex limitsPolicyIndex) {
         this.limitsPolicyIndex = limitsPolicyIndex;
+    }
+
+    @Autowired(required = false)
+    public void setPlanSubscriptionIndex(AiPlanSubscriptionIndex planSubscriptionIndex) {
+        this.planSubscriptionIndex = planSubscriptionIndex;
     }
 
     private static RestTemplate timeoutRestTemplate(int connectMs, int readMs) {
@@ -992,6 +1002,143 @@ public class CreditClient {
             return null;
         } catch (Exception e) {
             log.warn("[ai-limits] counter rebuild failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // ========================================================================
+    // AI subscription plans. Fail SAFE everywhere: any error, timeout or odd answer = "not
+    // covered", i.e. the caller's wallet check decides, exactly as today.
+    // ========================================================================
+
+    /**
+     * Whether the institute's LIVE AI plan covers this operation (INCLUDED, or paid from the
+     * plan's allowance), so a pre-check may let it run although the wallet is empty. Never
+     * throws.
+     *
+     * <p>Only for INCLUDABLE / allowance features (chatbot replies, learner reports, copy
+     * check ...). AI calling and telephony never ask: they are always charged.
+     *
+     * <p>For an institute without a LIVE subscription (see {@link AiPlanSubscriptionIndex}) this
+     * returns false at once, with no HTTP call. Otherwise one {@code POST /credits/v1/check} on
+     * the ~1.5 s limits template; ai_service's check is plan-aware (it answers sufficient
+     * without the balance requirement when the plan covers the estimate). Covered only on
+     * explicit evidence: {@code has_sufficient_credits} true AND either a
+     * {@code billing_mode} of INCLUDED / ALLOWANCE ({@code plan_covered: true} also counts),
+     * or, for a positive estimate, a balance below it or a {@code balance_after} equal to the
+     * balance (neither of which today's balance comparison can answer as sufficient). Anything
+     * else, including a failure, is false.
+     *
+     * @param requestType     the legacy request_type the charge will use (chatbot, analytics ...)
+     * @param model           the model about to run, may be null (the feature's default chain)
+     * @param estimatedTokens prompt + completion estimate; at least 1 is sent
+     * @param userId          the user the work is done by / for, may be null
+     * @param metering        use_case, actor and subject fields, may be null
+     */
+    public boolean planCovers(String instituteId, String requestType, String model, int estimatedTokens,
+            String userId, MeteringFields metering) {
+        try {
+            if (instituteId == null || instituteId.isBlank() || requestType == null || requestType.isBlank()) {
+                return false;
+            }
+            AiPlanSubscriptionIndex index = planSubscriptionIndex;
+            if (index == null || !index.mayHaveLivePlan(instituteId)) {
+                return false;
+            }
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("request_type", requestType);
+            body.put("model", model != null ? model : "");
+            body.put("estimated_tokens", Math.max(1, estimatedTokens));
+            if (userId != null && !userId.isBlank()) body.put("user_id", userId);
+            // A check writes no ledger row, so (as on authorize) the subject may go top-level:
+            // per-learner fair-use caps (user_cap_basis SUBJECT) are counted against it.
+            if (metering != null && metering.subjectUserId() != null && !metering.subjectUserId().isBlank()) {
+                body.put("subject_user_id", metering.subjectUserId());
+            }
+            MeteringFields.applyTo(metering, body);
+
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = limitsRestTemplate.exchange(
+                    aiServiceUrl + CHECK_PATH,
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, buildInternalHeaders()),
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return false;
+            }
+            boolean covered = isPlanCovered(response.getBody());
+            if (covered) {
+                log.info("[ai-plans] institute {} ({}) covered by its AI plan; wallet balance not required",
+                        instituteId, requestType);
+            }
+            return covered;
+        } catch (Exception e) {
+            // A usage-limit 429, a timeout, ai_service down: not covered, today's wallet rule decides.
+            log.debug("[ai-plans] plan check for institute {} ({}) failed; wallet decides: {}",
+                    instituteId, requestType, e.getMessage());
+            return false;
+        }
+    }
+
+    /** The covered rule on a /credits/v1/check answer; package-private for tests. */
+    static boolean isPlanCovered(Map<String, Object> resp) {
+        if (resp == null || !Boolean.TRUE.equals(resp.get("has_sufficient_credits"))) {
+            return false;
+        }
+        Object mode = resp.get("billing_mode");
+        if (mode != null) {
+            String m = mode.toString().trim().toUpperCase(java.util.Locale.ROOT);
+            return "INCLUDED".equals(m) || "ALLOWANCE".equals(m);
+        }
+        if (Boolean.TRUE.equals(resp.get("plan_covered"))) {
+            return true;
+        }
+        BigDecimal balance = decimalOrNull(resp.get("current_balance"));
+        BigDecimal cost = decimalOrNull(resp.get("estimated_cost"));
+        if (balance == null || cost == null || cost.signum() <= 0) {
+            return false;
+        }
+        // Today: sufficient = balance >= cost and balance_after = balance - cost. Sufficient
+        // with balance < cost, or a positive cost that leaves the balance untouched, is the
+        // plan's answer (ai_service's covered check reports balance_after = current balance).
+        BigDecimal after = decimalOrNull(resp.get("balance_after"));
+        return balance.compareTo(cost) < 0 || (after != null && after.compareTo(balance) == 0);
+    }
+
+    private static BigDecimal decimalOrNull(Object v) {
+        if (v instanceof BigDecimal b) return b;
+        if (v instanceof Number n) return new BigDecimal(n.toString());
+        if (v instanceof String s && !s.isBlank()) {
+            try {
+                return new BigDecimal(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Ask ai_service to roll AI plan subscriptions forward ({@code POST
+     * /internal/plans/v1/roll}: next periods, pending plan changes, cancellations, expiries;
+     * idempotent). Returns the report, or null on any failure (logged). Never throws.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> rollAiPlans() {
+        try {
+            ResponseEntity<Map<String, Object>> response = rebuildRestTemplate.exchange(
+                    aiServiceUrl + PLANS_ROLL_PATH,
+                    HttpMethod.POST,
+                    new HttpEntity<>("{}", buildInternalHeaders()),
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                return response.getBody() != null ? response.getBody() : Map.of();
+            }
+            log.warn("[ai-plans] roll returned HTTP {}", response.getStatusCode().value());
+            return null;
+        } catch (Exception e) {
+            log.warn("[ai-plans] roll failed: {}", e.getMessage());
             return null;
         }
     }

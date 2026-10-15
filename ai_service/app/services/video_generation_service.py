@@ -643,6 +643,28 @@ def _lesson_teacher_idempotency_key(db: Any, video_id: str, institute_id: str) -
             video_id, exc,
         )
         n = 0
+    # AI plans: a teacher paid from the plan allowance has no ledger row, and a
+    # full refund that only gave allowance back writes no REFUND row. Its usage
+    # event (keyed with this key) is then REFUNDED: count those too, so the
+    # re-run gets a fresh key instead of an idempotent no-op (a free teacher).
+    # Only for an institute that has or had an AI subscription (in-memory check).
+    try:
+        from .metering import plan_wiring
+
+        if plan_wiring.known(institute_id):
+            with db.begin_nested():   # a failure here never aborts the caller's transaction
+                n = int(n) + int(db.execute(
+                    text(
+                        "SELECT count(*) FROM ai_usage_event "
+                        "WHERE batch_id = :v AND institute_id = :i AND idempotency_key LIKE :k "
+                        "AND billing_mode IN ('INCLUDED', 'ALLOWANCE') AND charge_status = 'REFUNDED'"
+                    ),
+                    {"v": video_id, "i": institute_id, "k": key + "%"},
+                ).scalar() or 0)
+    except Exception as exc:  # noqa: BLE001
+        __import__("logging").getLogger(__name__).warning(
+            "[VideoGenService] Lesson-teacher plan refund count failed for %s (%s)", video_id, exc,
+        )
     return f"{key}:refund{int(n)}" if int(n) > 0 else key
 
 

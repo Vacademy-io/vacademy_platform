@@ -38,6 +38,7 @@ import {
     modelShortName,
     unitLines,
 } from './usageV2Format';
+import { allowancePart, planRowBadge } from './aiPlan';
 
 const PAGE_SIZE = 10;
 const ALL = '__all__';
@@ -97,12 +98,19 @@ function EventAmount({ event, fmt }: { event: UsageEventItem; fmt: Formatters })
                     {fmt.credits.format(amount.credits)}
                 </span>
             );
-        case 'included':
+        case 'included': {
+            // Plan wording: INCLUDED = covered by the plan, ALLOWANCE = paid from the plan allowance.
+            const badge = planRowBadge(event.billing_mode, amount.credits);
             return (
                 <span className="rounded bg-purple-50 px-1 py-0.5 text-2xs font-semibold text-purple-700">
-                    {t('amount.included')}
+                    {badge === 'fromAllowance'
+                        ? t('amount.fromAllowance')
+                        : badge === 'includedInPlan'
+                          ? t('amount.includedInPlan')
+                          : t('amount.included')}
                 </span>
             );
+        }
         case 'ownKey':
             return (
                 <span className="rounded bg-info-50 px-1 py-0.5 text-2xs font-semibold text-info-700">
@@ -157,6 +165,11 @@ function UsageEventRow({
     const ctx = contextEntries(event.context);
     const listCredits = toNumber(event.list_credits);
     const realCost = event.real_cost_usd;
+    const planBadge = planRowBadge(event.billing_mode, toNumber(event.credits_charged));
+    const allowancePaid =
+        planBadge === 'fromAllowance' || planBadge === 'splitAllowance'
+            ? allowancePart(listCredits, toNumber(event.credits_charged))
+            : 0;
 
     return (
         <div className="overflow-hidden rounded-lg border bg-white">
@@ -197,6 +210,13 @@ function UsageEventRow({
                 </span>
                 <span className="block shrink-0 text-end">
                     <EventAmount event={event} fmt={fmt} />
+                    {planBadge === 'splitAllowance' && allowancePaid > 0 && (
+                        <span className="block text-2xs text-purple-600">
+                            {t('amount.splitAllowance', {
+                                credits: fmt.credits.format(allowancePaid),
+                            })}
+                        </span>
+                    )}
                     {amount.refunded > 0 && (
                         <span className="block text-2xs text-success-600">
                             {t('amount.refunded', {
@@ -247,6 +267,12 @@ function UsageEventRow({
                         label={t('details.charged')}
                         value={fmt.credits.format(toNumber(event.credits_charged))}
                     />
+                    {allowancePaid > 0 && (
+                        <DetailRow
+                            label={t('details.fromAllowance')}
+                            value={fmt.credits.format(allowancePaid)}
+                        />
+                    )}
                     {amount.refunded > 0 && (
                         <DetailRow
                             label={t('details.refundedCredits')}

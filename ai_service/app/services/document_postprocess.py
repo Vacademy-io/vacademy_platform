@@ -34,6 +34,7 @@ from typing import Awaitable, Callable, Optional, Tuple
 from uuid import uuid4
 
 from ..config import get_settings
+from .image_model_resolver import DOCUMENT_IMAGE, image_model_for
 from .s3_service import S3Service
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,18 @@ MAX_DOC_IMAGES = 6
 # Bound concurrent image calls across parallel document todos.
 _IMAGE_SEMAPHORE = asyncio.Semaphore(4)
 _IMAGE_TIMEOUT_SECONDS = 90.0
-# Image model via OpenRouter. Override with DOC_IMAGE_MODEL.
-DOC_IMAGE_MODEL = os.getenv("DOC_IMAGE_MODEL") or "qwen/qwen-image-3"
+# Image model via OpenRouter. DOC_IMAGE_MODEL (env) wins, else the
+# 'document_image' use case (super-admin portal), else this literal. The
+# constant is today's static value, kept for importers; the generation path
+# resolves through doc_image_model().
+_DOC_IMAGE_MODEL_ENV = os.getenv("DOC_IMAGE_MODEL")
+_DOC_IMAGE_MODEL_DEFAULT = "qwen/qwen-image-3"
+DOC_IMAGE_MODEL = _DOC_IMAGE_MODEL_ENV or _DOC_IMAGE_MODEL_DEFAULT
+
+
+def doc_image_model() -> str:
+    """The document-illustration image model right now (cached 30 s)."""
+    return _DOC_IMAGE_MODEL_ENV or image_model_for(DOCUMENT_IMAGE, _DOC_IMAGE_MODEL_DEFAULT)
 # Pixel dims per aspect, handed to the image service (it maps them to the
 # provider's aspect ratio); the page CSS decides the displayed size.
 _ASPECT_DIMS = {
@@ -143,7 +154,7 @@ async def _generate_one_image(
         async with _IMAGE_SEMAPHORE:
             image_bytes, _usage = await asyncio.wait_for(
                 svc._call_image_generation_llm(
-                    styled, width, height, model=model or DOC_IMAGE_MODEL
+                    styled, width, height, model=model or doc_image_model()
                 ),
                 timeout=_IMAGE_TIMEOUT_SECONDS,
             )
@@ -261,6 +272,8 @@ async def illustrate_document(
     # gemini_api_key here would strip every illustration once that key is
     # retired, even though OpenRouter can still generate them.
     if settings.openrouter_api_key:
+        # One model for every picture in this document.
+        model = model or doc_image_model()
         capped = matches[:max_images]
         if len(matches) > max_images:
             logger.info(
@@ -322,4 +335,5 @@ __all__ = [
     "strip_wrapping_fence",
     "MAX_DOC_IMAGES",
     "DOC_IMAGE_MODEL",
+    "doc_image_model",
 ]

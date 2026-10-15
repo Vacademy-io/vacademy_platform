@@ -651,21 +651,7 @@ class CourseOutlineGenerationService:
                 )
                 
                 # Record image generation token usage
-                if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
-                    try:
-                        token_service = TokenUsageService(self._db_session)
-                        token_service.record_usage_and_deduct_credits(
-                            api_provider=ApiProvider.GEMINI,
-                            prompt_tokens=image_usage.get("prompt_tokens", 0),
-                            completion_tokens=image_usage.get("completion_tokens", 0),
-                            total_tokens=image_usage.get("total_tokens", 0),
-                            request_type=RequestType.IMAGE,
-                            institute_id=request.institute_id,
-                            user_id=request.user_id,
-                            model="google/gemini-3.1-flash-image",
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to record image token usage: {str(e)}")
+                self._bill_outline_images(request, image_usage, [banner_url, preview_url, media_url])
                 
                 # Update metadata with image URLs if generation was successful
                 if banner_url:
@@ -814,22 +800,9 @@ class CourseOutlineGenerationService:
                     )
                     
                     # Record image generation token usage
-                    if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
-                        try:
-                            token_service = TokenUsageService(self._db_session)
-                            token_service.record_usage_and_deduct_credits(
-                                api_provider=ApiProvider.GEMINI,
-                                prompt_tokens=image_usage.get("prompt_tokens", 0),
-                                completion_tokens=image_usage.get("completion_tokens", 0),
-                                total_tokens=image_usage.get("total_tokens", 0),
-                                request_type=RequestType.IMAGE,
-                                institute_id=request.institute_id,
-                                user_id=request.user_id,
-                                model="google/gemini-3.1-flash-image",
-                                request_id=request_id,
-                            )
-                        except Exception as e:
-                            logger.warning(f"Failed to record image token usage: {str(e)}")
+                    self._bill_outline_images(
+                        request, image_usage, [banner_url, preview_url, media_url], request_id=request_id,
+                    )
 
                     # Update metadata with image URLs if generation was successful
                     if banner_url:
@@ -1403,6 +1376,70 @@ class CourseOutlineGenerationService:
                 "type": "ERROR",
                 "message": f"Failed to generate content: {str(e)}"
             })
+
+    def _bill_outline_images(self, request, image_usage, urls, request_id: Optional[str] = None) -> None:
+        """Charge the course banner / preview / media images.
+
+        billing.image_registry_pricing off (default) and shadow: exactly as
+        before — one IMAGE row under the historical gemini label, and only when
+        the image calls reported tokens (dedicated image models report none, so
+        those images went unbilled). Shadow also logs what registry pricing
+        would charge. On: every image that came back is charged at the
+        registry price of the model that drew it (`image.model`), tokens or not.
+        """
+        if not self._db_session:
+            return
+        usage = image_usage or {}
+        count = sum(1 for u in (urls or []) if u)
+        charge = None
+        model = None
+        if count:
+            try:
+                from .image_model_resolver import PRICING_OFF, image_pricing_mode, plan_image_charge
+                from .image_service import resolve_image_model
+
+                # Off (default): one cached settings read and nothing else, as before.
+                if image_pricing_mode() != PRICING_OFF:
+                    model = resolve_image_model()
+                    charge = plan_image_charge(model, count, feature="course_outline_image")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Image pricing plan failed ({e}); billing outline images as before")
+                charge = None
+        if charge is not None and charge.precomputed_credits is not None:
+            try:
+                TokenUsageService(self._db_session).record_usage_and_deduct_credits(
+                    api_provider=ApiProvider.OPENAI,  # via OpenRouter
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0),
+                    request_type=RequestType.IMAGE,
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    model=model,
+                    request_id=request_id,
+                    metadata=charge.metadata({"feature": "course_outline_image", "image_count": count}),
+                    precomputed_credits=charge.precomputed_credits,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record image token usage: {str(e)}")
+            return
+        if image_usage and usage.get("total_tokens", 0) > 0:
+            try:
+                token_service = TokenUsageService(self._db_session)
+                token_service.record_usage_and_deduct_credits(
+                    api_provider=ApiProvider.GEMINI,
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0),
+                    request_type=RequestType.IMAGE,
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    model="google/gemini-3.1-flash-image",
+                    request_id=request_id,
+                    metadata=charge.metadata(None) if charge is not None else None,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record image token usage: {str(e)}")
 
     def _apply_structure_options(self, outline_response: CourseOutlineResponse, request) -> CourseOutlineResponse:
         """Chapter-level deliverables chosen in the create-course UI.

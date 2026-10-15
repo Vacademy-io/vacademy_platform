@@ -21,5 +21,9 @@
             "description": "OpenAI"
         }
     },
-    "fallbackDescription": "AI Model"
+    "fallbackDescription": "AI Model",
+    "platformDefault": {
+        "name": "Platform default",
+        "description": "recommended — the model your platform admin set for copy checking"
+    }
 }

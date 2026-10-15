@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import db_dependency
 from ..core.security import (
+    decode_access_token,
     get_current_user,
     get_optional_user,
     is_platform_staff,
@@ -331,7 +332,106 @@ def get_transactions(
         page_size=page_size,
         transaction_types=transaction_types,
     )
+    own_only = _own_transactions_only(current_user, authorization, institute_id, service.db)
+    if own_only is not None:
+        return _own_transaction_history(service, institute_id, own_only, request)
     return service.get_transaction_history(institute_id, request)
+
+
+def _credit_history_scope(db: Optional[Session] = None) -> str:
+    """security.credit_history_scope; any failure reads as the default ('institute')."""
+    try:
+        from ..services.platform_settings_service import get_platform_setting
+        return str(get_platform_setting("security.credit_history_scope", "institute", db=db) or "institute")
+    except Exception:
+        return "institute"
+
+
+# Matches no credit_transactions.user_id (real ids are UUIDs).
+_NO_USER = "-no-user-"
+
+
+def _own_transactions_only(
+    user, authorization: Optional[str], institute_id: str, db: Optional[Session] = None
+) -> Optional[str]:
+    """
+    The user id to restrict the history to, or None for the whole institute.
+
+    Default scope 'institute' = every member sees every row (today). Under
+    'own_unless_admin' a member without the ADMIN role in THIS institute (read
+    from the signed JWT) sees only rows they caused; platform staff keep the
+    full view. A caller whose id cannot be read gets a filter that matches
+    nothing rather than the full ledger.
+    """
+    if _credit_history_scope(db) != "own_unless_admin":
+        return None
+    if is_platform_staff(user):
+        return None
+    roles = jwt_institute_roles(authorization, institute_id) or set()
+    if "ADMIN" in roles:
+        return None
+    token = authorization[len("Bearer "):] if authorization and authorization.startswith("Bearer ") else None
+    claims = decode_access_token(token) if token else None
+    caller = (claims or {}).get("user") or getattr(user, "user_id", None)
+    caller = str(caller).strip() if caller else ""
+    return caller if caller and caller != "unknown" else _NO_USER
+
+
+def _own_transaction_history(
+    service: CreditService,
+    institute_id: str,
+    user_id: str,
+    request: TransactionHistoryRequest,
+) -> TransactionHistoryResponse:
+    """CreditService.get_transaction_history narrowed to user_id = :user_id (same shape)."""
+    from sqlalchemy import text
+    from ..schemas.credits import CreditTransactionResponse
+
+    params = {"institute_id": institute_id, "user_id": user_id}
+    total_count = service.db.execute(
+        text(
+            "SELECT COUNT(*) FROM credit_transactions "
+            "WHERE institute_id = :institute_id AND user_id = :user_id"
+        ),
+        params,
+    ).scalar() or 0
+    rows = service.db.execute(
+        text(
+            "SELECT id, institute_id, transaction_type, amount, balance_after, "
+            "description, request_type, model_name, granted_by, "
+            "user_id, user_role, subject_user_id, created_at "
+            "FROM credit_transactions "
+            "WHERE institute_id = :institute_id AND user_id = :user_id "
+            "ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+        ),
+        {**params, "limit": request.page_size, "offset": (request.page - 1) * request.page_size},
+    ).fetchall()
+    transactions = [
+        CreditTransactionResponse(
+            id=str(row.id),
+            institute_id=row.institute_id,
+            transaction_type=row.transaction_type,
+            amount=row.amount,
+            balance_after=row.balance_after,
+            description=row.description,
+            request_type=row.request_type,
+            model_name=row.model_name,
+            granted_by=row.granted_by,
+            user_id=getattr(row, "user_id", None),
+            user_role=getattr(row, "user_role", None),
+            subject_user_id=getattr(row, "subject_user_id", None),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+    total_pages = (total_count + request.page_size - 1) // request.page_size if total_count > 0 else 0
+    return TransactionHistoryResponse(
+        transactions=transactions,
+        total_count=total_count,
+        page=request.page,
+        page_size=request.page_size,
+        total_pages=total_pages,
+    )
 
 
 # ============================================================================

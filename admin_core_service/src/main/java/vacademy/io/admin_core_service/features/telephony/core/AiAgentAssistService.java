@@ -811,6 +811,8 @@ public class AiAgentAssistService {
             session.getContext().put(LLMService.CTX_USE_CASE, USE_CASE);
             // This class runs its own primary -> fallback loop (callJson); one model per call.
             session.getContext().put(LLMService.CTX_NO_FAILOVER, Boolean.TRUE);
+            // Billed as a flat COST per operation (charge()), never per token on top.
+            session.getContext().put(LLMService.CTX_BILLED_BY_CALLER, Boolean.TRUE);
             // Anthropic via OpenRouter: extended thinking rejects a non-1 temperature and
             // json_object is not uniformly supported — the fallback runs plain.
             if (!useModel.startsWith("anthropic/")) {

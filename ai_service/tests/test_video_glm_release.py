@@ -455,8 +455,10 @@ def _image_pipeline(monkeypatch, response: Dict[str, Any]):
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     ns = _base_ns()
     ns["_ImageGenRateLimitError"] = type("_ImageGenRateLimitError", (Exception,), {})
-    _lift(["_RUN_TRACKER", "_image_cost_usd", "_record_image_cost_event"], ns,
+    _lift(["_RUN_TRACKER", "_image_cost_usd", "_record_image_cost_event", "_IMAGE_RESOLVER_MODULE",
+           "_image_model_for"], ns,
           {"VideoGenerationPipeline": ["_call_image_generation_llm"]})
+    ns["_IMAGE_RESOLVER_MODULE"] = None  # no registry here: the 'video_image' literal default
     pipe = object.__new__(ns["VideoGenerationPipeline"])
     pipe.video_width, pipe.video_height = 1920, 1080
     pipe.script_client = type("C", (), {"api_key": "or-key"})()

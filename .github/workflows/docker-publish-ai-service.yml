@@ -127,6 +127,14 @@ jobs:
                 SPATIUS_API_KEY=${{ secrets.SPATIUS_API_KEY }} SPATIUS_APP_ID=${{ secrets.SPATIUS_APP_ID }}
             fi
 
+            # Encryption key for the Claude key pool (llm_provider_keys). It lives in its
+            # own k8s secret mounted only into ai-service, never in the shared
+            # `vacademy-secrets`; without it the pool stays empty and calls use OpenRouter.
+            if kubectl get secret ai-llm-key-encryption --namespace "$NAMESPACE" >/dev/null 2>&1; then
+              kubectl set env deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
+                --from=secret/ai-llm-key-encryption --keys=LLM_KEY_ENCRYPTION_KEY
+            fi
+
             # Apply resource limits from deployment YAML (helm upgrade not used in CI,
             # so patch directly to keep requests/limits in sync with the checked-in values).
             kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \

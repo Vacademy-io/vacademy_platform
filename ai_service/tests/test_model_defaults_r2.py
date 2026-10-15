@@ -471,7 +471,7 @@ def test_catalog_merges_rows_models_routes_and_last_change():
     assert by["student_report"]["held_reason"].startswith("GLM timed out >170 s")
     assert by["copy_check_deduction"]["description"] == "Re-reads cropped handwritten marks — affects student marks"
     assert by["copy_check_deduction"]["kind"] == "vision"
-    assert all(u["kind"] in ("chat", "vision") for u in data["use_cases"])
+    assert all(u["kind"] in ("chat", "vision", "image") for u in data["use_cases"])
     assert all(set(u) >= {"use_case", "label", "group", "service", "kind", "description", "consumers",
                           "held_reason", "row", "last_change"} for u in data["use_cases"])
     glm = next(m for m in data["models"] if m["model_id"] == GLM)

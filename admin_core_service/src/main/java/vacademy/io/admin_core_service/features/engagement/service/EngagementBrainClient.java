@@ -77,6 +77,8 @@ public class EngagementBrainClient {
                     .history(new ArrayList<>(history))
                     .build();
             session.getContext().put(LLMService.CTX_USE_CASE, "engagement");
+            // Engagement is billed per dispatched message (EngagementDispatchJob.charge), not per brain token.
+            session.getContext().put(LLMService.CTX_BILLED_BY_CALLER, Boolean.TRUE);
             LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
             String raw = resp != null ? resp.getContent() : null;
             if (raw == null || raw.isBlank()) {

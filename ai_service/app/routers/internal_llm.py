@@ -11,13 +11,22 @@ Service-to-service only (X-Internal-Service-Token). It charges NO credits —
 the caller keeps its own billing — but records the call in ai_token_usage under
 the registry id that answered (unless record_usage_only is false, in which case
 nothing is recorded here at all).
+
+POST /ai-service/internal/llm/v1/chat/completions is the raw bridge for
+admin_core's LlmGatewayRouter: an OpenAI chat payload whose `model` is a
+registry id goes out through llm_router.post_chat (route map, direct-Anthropic
+key pool, OpenRouter failover) and the gateway's OpenAI-shaped reply comes
+back with `model` = the registry id and `router` = the gateway that served
+it. Non-2xx statuses pass through with an OpenAI-style error body. It records
+nothing and charges nothing — Java logs its own usage.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -120,6 +129,69 @@ async def internal_complete(body: InternalCompletionRequest, db: Session = Depen
         _record_usage(db, body, result)
     return InternalCompletionResponse(content=result.content, model=result.model, usage=result.usage or {},
                                       finish_reason=result.finish_reason)
+
+
+# Metadata the Java caller may attach; never sent upstream.
+_BRIDGE_METADATA_KEYS = ("institute_id", "user_id", "use_case")
+# The bridge answers with one JSON body; streaming is not offered.
+_BRIDGE_DROPPED_KEYS = ("stream", "stream_options")
+# At least admin_core's longest per-attempt timeout (600 s for background jobs):
+# a shorter cut here would make Java retry the whole call on OpenRouter.
+_BRIDGE_TIMEOUT_SECONDS = 600.0
+
+
+def _bridge_error(status: int, message: str, err_type: str = "bridge_error") -> JSONResponse:
+    return JSONResponse(status_code=status,
+                        content={"error": {"message": message, "type": err_type, "code": status}})
+
+
+@router.post("/chat/completions",
+             summary="OpenAI chat completion through the platform model router (service-to-service; no charge)")
+async def bridge_chat_completions(body: Dict[str, Any] = Body(...)):
+    import httpx
+
+    from ..services.llm_router import _router_of, post_chat
+
+    model = body.get("model")
+    if not isinstance(model, str) or not model.strip():
+        return _bridge_error(422, "model (a registry model id) is required", "invalid_request_error")
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return _bridge_error(422, "messages must be a non-empty list", "invalid_request_error")
+
+    meta = {k: body.get(k) for k in _BRIDGE_METADATA_KEYS if body.get(k) is not None}
+    payload = {k: v for k, v in body.items()
+               if k not in _BRIDGE_METADATA_KEYS and k not in _BRIDGE_DROPPED_KEYS}
+    payload["model"] = model.strip()
+
+    try:
+        async with httpx.AsyncClient(timeout=_BRIDGE_TIMEOUT_SECONDS) as client:
+            resp = await post_chat(client, payload)
+    except httpx.HTTPError as exc:
+        logger.warning("internal llm bridge: %s unreachable for %s (%s)", type(exc).__name__, payload["model"],
+                       meta.get("use_case"))
+        return _bridge_error(502, f"gateway unreachable: {type(exc).__name__}")
+
+    router_name = _router_of(resp)
+    if resp.status_code >= 400:
+        try:
+            err = resp.json()
+        except Exception:  # noqa: BLE001
+            err = None
+        if not (isinstance(err, dict) and err.get("error")):
+            err = {"error": {"message": (resp.text or "")[:500] or f"HTTP {resp.status_code}",
+                             "type": "upstream_error", "code": resp.status_code}}
+        err["router"] = router_name
+        return JSONResponse(status_code=resp.status_code, content=err)
+    try:
+        data = resp.json()
+    except Exception:  # noqa: BLE001
+        return _bridge_error(502, f"unreadable gateway reply: {(resp.text or '')[:200]}", "upstream_error")
+    if not isinstance(data, dict):
+        return _bridge_error(502, "gateway reply is not a JSON object", "upstream_error")
+    data["model"] = payload["model"]
+    data["router"] = router_name
+    return JSONResponse(status_code=resp.status_code, content=data)
 
 
 __all__ = ["router"]

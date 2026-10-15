@@ -30,6 +30,7 @@ from .routers.super_admin import router as super_admin_router
 from .routers.super_admin_models import router as super_admin_models_router
 from .routers.super_admin_ai_video_policy import router as super_admin_ai_video_policy_router
 from .routers.internal_llm import router as internal_llm_router
+from .routers.llm_keys_admin import router as llm_keys_admin_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
@@ -305,6 +306,8 @@ def create_app() -> FastAPI:
     app.include_router(super_admin_ai_video_policy_router, prefix=settings.api_base_path)
     # Service-to-service chat completion by use case (assessment / community services).
     app.include_router(internal_llm_router, prefix=settings.api_base_path)
+    # Vendor API keys for direct LLM gateways (/super-admin/v1/llm/keys), platform staff only.
+    app.include_router(llm_keys_admin_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

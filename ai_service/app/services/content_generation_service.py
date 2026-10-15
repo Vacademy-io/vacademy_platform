@@ -12,7 +12,7 @@ from ..schemas.course_outline import Todo
 from .youtube_service import YouTubeService
 from .content_prompts import ContentGenerationPrompts
 from .document_postprocess import (
-    DOC_IMAGE_MODEL,
+    doc_image_model,
     illustrate_document,
     normalize_code_blocks,
     strip_wrapping_fence,
@@ -351,8 +351,19 @@ class ContentGenerationService:
                 generated_content, slide_path=todo.path, max_images=_COURSE_SLIDE_MAX_IMAGES
             )
             if image_count and self._db_session:
+                # billing.image_registry_pricing: off (default) = the flat
+                # image rate as before; shadow adds would_be_credits to the
+                # usage metadata; on charges the model's registry price.
+                image_model = doc_image_model()
+                try:
+                    from .image_model_resolver import plan_image_charge
+                    charge = plan_image_charge(image_model, 1, feature="document_illustration")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Image pricing plan failed ({e}); billing illustrations as before")
+                    charge = None
                 try:
                     token_service = TokenUsageService(self._db_session)
+                    base_metadata = {"slide_path": todo.path, "feature": "document_illustration"}
                     for _ in range(image_count):
                         token_service.record_usage_and_deduct_credits(
                             api_provider=ApiProvider.OPENAI,  # via OpenRouter
@@ -362,8 +373,9 @@ class ContentGenerationService:
                             request_type=RequestType.IMAGE,
                             institute_id=self._institute_id,
                             user_id=self._user_id,
-                            model=DOC_IMAGE_MODEL,
-                            metadata={"slide_path": todo.path, "feature": "document_illustration"},
+                            model=image_model,
+                            metadata=charge.metadata(dict(base_metadata)) if charge else dict(base_metadata),
+                            precomputed_credits=charge.precomputed_credits if charge else None,
                         )
                 except Exception as e:
                     logger.warning(f"Failed to record document illustration usage: {str(e)}")

@@ -3,7 +3,10 @@ import type {
     InstallmentSchedule,
     InstallmentScheduleRow,
 } from '../-types/bulk-assign-types';
-import type { CPOFeeType, CPOFlexibleDefaults } from '@/routes/financial-management/fee-plans/-types/cpo-types';
+import type {
+    CPOFeeType,
+    CPOFlexibleDefaults,
+} from '@/routes/financial-management/fee-plans/-types/cpo-types';
 
 /**
  * Installment-schedule maths for the Enroll wizard. Mirrors the backend's
@@ -66,7 +69,9 @@ export const generateDueDates = (
     value: number
 ): string[] =>
     Array.from({ length: count }, (_, k) =>
-        unit === 'DAYS' ? addDaysIso(firstDueDate, k * value) : addMonthsIso(firstDueDate, k * value)
+        unit === 'DAYS'
+            ? addDaysIso(firstDueDate, k * value)
+            : addMonthsIso(firstDueDate, k * value)
     );
 
 /** Whole-unit equal split, remainder on the first part. Works in paise to avoid float drift. */
@@ -120,7 +125,8 @@ export const rowsFromRule = (
     const count = schedule.count ?? 0;
     if (!schedule.first_due_date || count < 1 || count > MAX_INSTALLMENTS) return [];
     const unit = schedule.interval?.unit ?? 'MONTHS';
-    const value = schedule.interval?.value && schedule.interval.value > 0 ? schedule.interval.value : 1;
+    const value =
+        schedule.interval?.value && schedule.interval.value > 0 ? schedule.interval.value : 1;
     const dates = generateDueDates(schedule.first_due_date, count, unit, value);
     const shares = splitParts.map((p) => equalSplit(p.total, count));
     return dates.map((due_date, k) => ({
@@ -146,7 +152,8 @@ export const validateSchedule = (
 ): ScheduleError | null => {
     if (!schedule) return null;
     const splitParts = parts.filter((p) => p.split);
-    if (parts.length > 0 && splitParts.length === 0) return { key: 'schedule.errors.nothingToSplit' };
+    if (parts.length > 0 && splitParts.length === 0)
+        return { key: 'schedule.errors.nothingToSplit' };
     const max = Math.min(maxCount, MAX_INSTALLMENTS);
     if (!schedule.rows && (schedule.count ?? 0) > 1) {
         const unit = schedule.interval?.unit ?? 'MONTHS';
@@ -156,9 +163,11 @@ export const validateSchedule = (
         }
     }
     const rows = schedule.rows ?? rowsFromRule(schedule, splitParts);
-    if (rows.length < 1 || rows.length > max) return { key: 'schedule.errors.countRange', params: { max } };
+    if (rows.length < 1 || rows.length > max)
+        return { key: 'schedule.errors.countRange', params: { max } };
     for (let k = 0; k < rows.length; k++) {
-        if (!rows[k]?.due_date) return { key: 'schedule.errors.missingDueDate', params: { n: k + 1 } };
+        if (!rows[k]?.due_date)
+            return { key: 'schedule.errors.missingDueDate', params: { n: k + 1 } };
         if (k > 0 && rows[k]!.due_date < rows[k - 1]!.due_date) {
             return { key: 'schedule.errors.datesOutOfOrder', params: { n: k + 1, prev: k } };
         }
@@ -173,10 +182,16 @@ export const validateSchedule = (
         }
     }
     const withAmount = rows.filter((r) => r.amount != null).length;
-    if (withAmount > 0 && withAmount !== rows.length) return { key: 'schedule.errors.mixedAmounts' };
+    if (withAmount > 0 && withAmount !== rows.length)
+        return { key: 'schedule.errors.mixedAmounts' };
     if (withAmount > 0) {
-        if (rows.some((r) => (r.amount ?? 0) <= 0)) return { key: 'schedule.errors.negativeAmount' };
-        if (rows.some((r) => Math.abs((r.amount ?? 0) * 100 - Math.round((r.amount ?? 0) * 100)) > 1e-6)) {
+        if (rows.some((r) => (r.amount ?? 0) <= 0))
+            return { key: 'schedule.errors.negativeAmount' };
+        if (
+            rows.some(
+                (r) => Math.abs((r.amount ?? 0) * 100 - Math.round((r.amount ?? 0) * 100)) > 1e-6
+            )
+        ) {
             return { key: 'schedule.errors.decimals' };
         }
         const splitTotal = splitParts.reduce((s, p) => s + p.total, 0);
@@ -186,6 +201,15 @@ export const validateSchedule = (
                 key: 'schedule.errors.amountMismatch',
                 params: { given: formatInr(given), total: formatInr(splitTotal) },
             };
+        }
+    }
+    const generated = rowsFromRule({ ...schedule, rows: null, count: rows.length }, splitParts);
+    for (let k = 0; k < rows.length; k++) {
+        const off = rows[k]!.discount ?? 0;
+        if (off < 0) return { key: 'schedule.errors.negativeDiscount', params: { n: k + 1 } };
+        const gross = rows[k]!.amount ?? generated[k]?.amount;
+        if (gross != null && Math.round(off * 100) > Math.round(gross * 100)) {
+            return { key: 'schedule.errors.discountTooBig', params: { n: k + 1 } };
         }
     }
     return null;
@@ -225,3 +249,90 @@ export const rebalanceRows = (
     });
     return next;
 };
+
+/**
+ * The discount in money for a plan of `gross` (a percentage is of the whole price), in paise
+ * precision and never more than the price.
+ */
+export const discountAmount = (
+    spec: { type: 'PERCENTAGE' | 'FLAT'; value: number } | null | undefined,
+    gross: number
+): number => {
+    if (!spec || !Number.isFinite(spec.value) || spec.value <= 0 || gross <= 0) return 0;
+    const raw = spec.type === 'PERCENTAGE' ? (gross * spec.value) / 100 : spec.value;
+    return Math.min(Math.round(raw * 100), Math.round(gross * 100)) / 100;
+};
+
+/**
+ * Splits a discount of `total` over installments of `gross` amounts. EVEN: the same amount off
+ * each, whole units with the remainder on the first (an installment too small for its share
+ * gives the rest to the others). FIRST / LAST: all off the first / last installment, spilling
+ * to the next one when it is used up. Never more off an installment than it is.
+ */
+export const spreadDiscount = (
+    gross: number[],
+    total: number,
+    split: 'EVEN' | 'FIRST' | 'LAST'
+): number[] => {
+    const cap = gross.map((g) => Math.max(0, Math.round(g * 100)));
+    let rest = Math.min(
+        Math.round(total * 100),
+        cap.reduce((s, c) => s + c, 0)
+    );
+    const out = gross.map(() => 0);
+    if (rest <= 0 || gross.length === 0) return out;
+    if (split === 'EVEN') {
+        let open = cap.map((c, i) => (c > 0 ? i : -1)).filter((i) => i >= 0);
+        while (rest > 0 && open.length > 0) {
+            const shares = equalSplit(rest / 100, open.length).map((v) => Math.round(v * 100));
+            let given = 0;
+            const stillOpen: number[] = [];
+            open.forEach((i, k) => {
+                const take = Math.min(shares[k] ?? 0, cap[i]! - out[i]!);
+                out[i] = out[i]! + take;
+                given += take;
+                if (out[i]! < cap[i]!) stillOpen.push(i);
+            });
+            rest -= given;
+            if (given === 0) break;
+            open = stillOpen;
+        }
+    } else {
+        const order = gross.map((_, i) => i);
+        if (split === 'LAST') order.reverse();
+        for (const i of order) {
+            if (rest <= 0) break;
+            const take = Math.min(cap[i]!, rest);
+            out[i] = take;
+            rest -= take;
+        }
+    }
+    return out.map((p) => p / 100);
+};
+
+/**
+ * The admin typed what the learner pays for installment `index`. Each installment keeps its
+ * discount; with `rebalance`, what the others pay is spread so the total to pay stays the
+ * same (as rebalanceRows does for amounts). Returns rows with gross = to pay + discount.
+ */
+export const setToPay = (
+    rows: InstallmentScheduleRow[],
+    index: number,
+    toPay: number,
+    rebalance: boolean
+): InstallmentScheduleRow[] => {
+    const nets = rows.map((r) => ({
+        due_date: r.due_date,
+        amount: round2((r.amount ?? 0) - (r.discount ?? 0)),
+    }));
+    const netTotal = nets.reduce((s, r) => s + (r.amount ?? 0), 0);
+    const next = rebalance
+        ? rebalanceRows(nets, index, toPay, round2(netTotal))
+        : nets.map((r, k) => (k === index ? { ...r, amount: toPay } : r));
+    return rows.map((r, k) => ({
+        ...r,
+        amount: round2((next[k]?.amount ?? 0) + (r.discount ?? 0)),
+    }));
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;

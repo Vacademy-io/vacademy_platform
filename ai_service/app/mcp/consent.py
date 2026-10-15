@@ -65,8 +65,10 @@ def _require_institute_admin(principal: PinnedPrincipal) -> None:
     administer the server while it is switched off, or while the allow-list
     names only other roles.
     """
+    # No root bypass: is_root_user is set for ordinary users and carries no
+    # membership of this institute (see access.check_mcp_access).
     roles = {normalize_role(r) for r in (principal.roles or [])}
-    if principal.is_root_user or "ADMIN" in roles:
+    if "ADMIN" in roles:
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,

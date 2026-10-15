@@ -46,6 +46,7 @@
         "empty": "Aucun outil n'est encore disponible sur ce serveur.",
         "alwaysOn": "Toujours actif",
         "optIn": "Activé séparément",
+        "eachOnItsOwn": "Activez chacune séparément.",
         "level": {
             "off": "Désactivé",
             "view": "Consulter",
@@ -57,7 +58,8 @@
             "additive": "Ajouts uniquement",
             "not_live": "Cours non publiés uniquement",
             "live_additive": "Ajoute aux données en direct",
-            "live": "Modifie en direct"
+            "live": "Modifie en direct",
+            "outbound": "Appelle ou écrit aux prospects"
         },
         "preset": {
             "viewOnly": "Consultation seule",

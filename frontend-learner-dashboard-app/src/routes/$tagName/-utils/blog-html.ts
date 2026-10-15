@@ -35,7 +35,7 @@ const ALLOWED_ATTR = [
 const EMBED_HOST_RE =
   /^https:\/\/(www\.)?(youtube\.com\/embed\/|youtube-nocookie\.com\/embed\/|player\.vimeo\.com\/video\/)/i;
 
-export const sanitizeBlogHtml = (html: string): string => {
+const sanitizeToDom = (html: string): HTMLElement => {
   // RETURN_DOM rather than DOMPurify hooks: hooks are registered on the
   // global instance that catalogue-html.ts shares, and a link/iframe rule
   // added here would silently change how every htmlBlock renders too.
@@ -65,7 +65,52 @@ export const sanitizeBlogHtml = (html: string): string => {
   body.querySelectorAll("img").forEach((img) => {
     if (!img.getAttribute("loading")) img.setAttribute("loading", "lazy");
   });
-  return body.innerHTML;
+  return body;
+};
+
+export const sanitizeBlogHtml = (html: string): string => sanitizeToDom(html).innerHTML;
+
+export interface BlogHeading {
+  id: string;
+  text: string;
+  level: 2 | 3;
+}
+
+/** "Why NEET?" → "toc-why-neet"; letters of any script survive (Hindi titles). */
+const headingId = (text: string) => {
+  const s = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `toc-${s || "section"}`;
+};
+
+/**
+ * The sanitised body plus its H2/H3 outline, for the table of contents. Every
+ * H2/H3 gets an id the contents can link to: an authored id is kept (in-article
+ * links may point at it), otherwise one is made from the heading text and
+ * de-duplicated. The `toc-` prefix keeps a heading called "location" or
+ * "forms" from shadowing a document property.
+ */
+export const sanitizeBlogArticle = (html: string): { html: string; headings: BlogHeading[] } => {
+  const body = sanitizeToDom(html);
+  const used = new Set<string>();
+  const headings: BlogHeading[] = [];
+  body.querySelectorAll("h2, h3").forEach((h) => {
+    const text = (h.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text) return;
+    let id = h.getAttribute("id") || "";
+    if (!id || used.has(id)) {
+      const base = headingId(text);
+      id = base;
+      for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+      h.setAttribute("id", id);
+    }
+    used.add(id);
+    headings.push({ id, text, level: h.tagName === "H2" ? 2 : 3 });
+  });
+  return { html: body.innerHTML, headings };
 };
 
 /** Plain-text preview of a body, for cards that have no excerpt. */

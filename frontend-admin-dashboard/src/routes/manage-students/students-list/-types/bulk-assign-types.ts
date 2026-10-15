@@ -48,7 +48,19 @@ export interface InstallmentScheduleRow {
     due_date: string;
     /** Gross amount (before discount). Omitted when the plan splits more than one fee. */
     amount?: number | null;
+    /**
+     * Plan discount taken off this installment. When any row has one, the enrollment's
+     * discount is exactly these amounts (InstallmentScheduleService.rowDiscounts).
+     */
+    discount?: number | null;
 }
+
+/**
+ * How the enrollment discount is split over a custom schedule (wizard only, not sent):
+ * the same amount off each installment, all off the first or the last one (spilling to the
+ * next when one is too small), or typed per installment.
+ */
+export type ScheduleDiscountSplit = 'EVEN' | 'FIRST' | 'LAST' | 'CUSTOM';
 
 export interface InstallmentSchedule {
     count?: number | null;
@@ -57,6 +69,8 @@ export interface InstallmentSchedule {
     first_due_date?: string | null;
     /** Final rows; the backend uses these when present. */
     rows?: InstallmentScheduleRow[] | null;
+    /** Wizard-only: how the discount is split over the rows. Stripped before sending. */
+    discount_split?: ScheduleDiscountSplit | null;
 }
 
 /** What the backend will write for one learner (dry run `cpo_schedule`). */

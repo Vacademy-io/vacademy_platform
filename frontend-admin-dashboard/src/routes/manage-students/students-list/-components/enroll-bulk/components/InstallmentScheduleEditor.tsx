@@ -4,12 +4,14 @@ import type {
     InstallmentIntervalUnit,
     InstallmentSchedule,
     InstallmentScheduleRow,
+    ScheduleDiscountSplit,
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
 import {
     MAX_INSTALLMENTS,
     formatInr,
     rebalanceRows,
     rowsFromRule,
+    setToPay,
     type ScheduleError,
     type SchedulePart,
 } from '@/routes/manage-students/students-list/-utils/installment-schedule';
@@ -18,8 +20,10 @@ interface Props {
     schedule: InstallmentSchedule;
     parts: SchedulePart[];
     maxCount: number;
-    /** Share of the gross that remains after the plan discount (1 = no discount). */
-    netFactor: number;
+    /** True when the enrollment has a discount: rows then show Discount and To pay. */
+    discountActive: boolean;
+    /** How the discount is split; CUSTOM makes each row's discount editable. */
+    split: ScheduleDiscountSplit;
     error: ScheduleError | null;
     onChange: (next: InstallmentSchedule) => void;
 }
@@ -37,7 +41,8 @@ export const InstallmentScheduleEditor = ({
     schedule,
     parts,
     maxCount,
-    netFactor,
+    discountActive,
+    split,
     error,
     onChange,
 }: Props) => {
@@ -51,7 +56,16 @@ export const InstallmentScheduleEditor = ({
 
     const generated = useMemo(() => rowsFromRule(schedule, splitParts), [schedule, splitParts]);
     const rows: InstallmentScheduleRow[] = schedule.rows ?? generated;
-    const edited = schedule.rows != null;
+    // Rows also exist just to carry discounts, so "edited" means a date or amount differs
+    // from what the rule generates.
+    const edited =
+        schedule.rows != null &&
+        (schedule.rows.length !== generated.length ||
+            schedule.rows.some(
+                (r, k) =>
+                    r.due_date !== generated[k]?.due_date ||
+                    (r.amount != null && r.amount !== generated[k]?.amount)
+            ));
     // On by default: changing one amount spreads the difference over the other installments
     // so the schedule still adds up to the fee. Off: every row is edited on its own.
     const [rebalance, setRebalance] = useState(true);
@@ -65,7 +79,8 @@ export const InstallmentScheduleEditor = ({
     const updateRow = (index: number, patch: Partial<InstallmentScheduleRow>) => {
         const base = rows.map((r) => ({
             due_date: r.due_date,
-            amount: amountsEditable ? (r.amount ?? null) : null,
+            amount: amountsEditable ? r.amount ?? null : null,
+            discount: r.discount ?? null,
         }));
         base[index] = { ...base[index]!, ...patch };
         onChange({ ...schedule, rows: base });
@@ -79,9 +94,25 @@ export const InstallmentScheduleEditor = ({
         const base = rows.map((r, k) => ({
             due_date: r.due_date,
             amount: r.amount ?? generated[k]?.amount ?? 0,
+            discount: r.discount ?? null,
         }));
         onChange({ ...schedule, rows: rebalanceRows(base, index, amount, splitParts[0]!.total) });
     };
+
+    // What the learner pays for one installment: its discount stays, the amount follows.
+    const updateToPay = (index: number, toPay: number | null) => {
+        if (toPay == null) return;
+        const base = rows.map((r, k) => ({
+            due_date: r.due_date,
+            amount: r.amount ?? generated[k]?.amount ?? 0,
+            discount: r.discount ?? null,
+        }));
+        onChange({ ...schedule, rows: setToPay(base, index, toPay, rebalance) });
+    };
+
+    const grossOf = (k: number) => rows[k]?.amount ?? generated[k]?.amount ?? 0;
+    const discountOf = (k: number) => rows[k]?.discount ?? 0;
+    const toPayOf = (k: number) => Math.round((grossOf(k) - discountOf(k)) * 100) / 100;
 
     const unit: InstallmentIntervalUnit = schedule.interval?.unit ?? 'MONTHS';
     const value = schedule.interval?.value ?? 1;
@@ -90,21 +121,26 @@ export const InstallmentScheduleEditor = ({
         <div className="mb-3 rounded-md border border-neutral-200 bg-white p-2.5">
             <div className="mb-2 flex flex-wrap items-end gap-3">
                 <div>
-                    <label className="block text-2xs text-neutral-500">{t('schedule.countLabel')}</label>
+                    <label className="block text-2xs text-neutral-500">
+                        {t('schedule.countLabel')}
+                    </label>
                     <input
                         type="number"
                         min={1}
                         max={max}
                         value={schedule.count ?? ''}
                         onChange={(e) => {
-                            const n = e.target.value === '' ? null : Math.floor(Number(e.target.value));
+                            const n =
+                                e.target.value === '' ? null : Math.floor(Number(e.target.value));
                             applyRule({ count: n });
                         }}
                         className={`${inputClass} w-16`}
                     />
                 </div>
                 <div>
-                    <label className="block text-2xs text-neutral-500">{t('schedule.everyLabel')}</label>
+                    <label className="block text-2xs text-neutral-500">
+                        {t('schedule.everyLabel')}
+                    </label>
                     <div className="flex items-center gap-1">
                         <input
                             type="number"
@@ -126,7 +162,10 @@ export const InstallmentScheduleEditor = ({
                             disabled={(schedule.count ?? 0) <= 1}
                             onChange={(e) =>
                                 applyRule({
-                                    interval: { unit: e.target.value as InstallmentIntervalUnit, value },
+                                    interval: {
+                                        unit: e.target.value as InstallmentIntervalUnit,
+                                        value,
+                                    },
                                 })
                             }
                             className={`${inputClass} disabled:bg-neutral-50`}
@@ -137,7 +176,9 @@ export const InstallmentScheduleEditor = ({
                     </div>
                 </div>
                 <div>
-                    <label className="block text-2xs text-neutral-500">{t('schedule.firstDueLabel')}</label>
+                    <label className="block text-2xs text-neutral-500">
+                        {t('schedule.firstDueLabel')}
+                    </label>
                     <input
                         type="date"
                         value={schedule.first_due_date ?? ''}
@@ -167,10 +208,19 @@ export const InstallmentScheduleEditor = ({
                             <tr>
                                 <th className="px-2 py-1 font-medium">{t('table.index')}</th>
                                 <th className="px-2 py-1 font-medium">{t('table.dueDate')}</th>
-                                <th className="px-2 py-1 text-end font-medium">{t('table.amount')}</th>
                                 <th className="px-2 py-1 text-end font-medium">
-                                    {t('schedule.afterDiscount')}
+                                    {t('table.amount')}
                                 </th>
+                                {discountActive && (
+                                    <>
+                                        <th className="px-2 py-1 text-end font-medium">
+                                            {t('schedule.discountColumn')}
+                                        </th>
+                                        <th className="px-2 py-1 text-end font-medium">
+                                            {t('schedule.toPay')}
+                                        </th>
+                                    </>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100">
@@ -212,9 +262,75 @@ export const InstallmentScheduleEditor = ({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-2 py-1 text-end align-middle tabular-nums text-neutral-600">
-                                            {formatInr(Math.round(gross * netFactor * 100) / 100)}
-                                        </td>
+                                        {discountActive && (
+                                            <>
+                                                <td className="px-2 py-1 text-end align-middle tabular-nums">
+                                                    {split === 'CUSTOM' ? (
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            min={0}
+                                                            max={gross}
+                                                            value={row.discount ?? ''}
+                                                            placeholder="0"
+                                                            onChange={(e) =>
+                                                                updateRow(k, {
+                                                                    discount:
+                                                                        e.target.value === ''
+                                                                            ? null
+                                                                            : Number(
+                                                                                  e.target.value
+                                                                              ),
+                                                                })
+                                                            }
+                                                            aria-label={t('schedule.discountFor', {
+                                                                n: k + 1,
+                                                            })}
+                                                            className={`${inputClass} w-20 text-end`}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-success-700">
+                                                            {discountOf(k) > 0
+                                                                ? `−${formatInr(discountOf(k))}`
+                                                                : '—'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-2 py-1 text-end align-middle">
+                                                    {amountsEditable ? (
+                                                        <input
+                                                            key={`pay-${k}-${toPayOf(k)}`}
+                                                            type="number"
+                                                            step="any"
+                                                            min={0}
+                                                            defaultValue={toPayOf(k)}
+                                                            onBlur={(e) => {
+                                                                const v = Number(e.target.value);
+                                                                if (
+                                                                    e.target.value !== '' &&
+                                                                    Number.isFinite(v) &&
+                                                                    v !== toPayOf(k)
+                                                                ) {
+                                                                    updateToPay(k, v);
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter')
+                                                                    e.currentTarget.blur();
+                                                            }}
+                                                            aria-label={t('schedule.toPayFor', {
+                                                                n: k + 1,
+                                                            })}
+                                                            className={`${inputClass} w-24 text-end font-semibold`}
+                                                        />
+                                                    ) : (
+                                                        <span className="font-semibold tabular-nums text-neutral-800">
+                                                            {formatInr(toPayOf(k))}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </>
+                                        )}
                                     </tr>
                                 );
                             })}
@@ -223,6 +339,15 @@ export const InstallmentScheduleEditor = ({
                 </div>
             )}
 
+            {discountActive && rows.length > 0 && (
+                <p className="mt-1 text-2xs text-neutral-500">
+                    {t('schedule.toPayHint', {
+                        gross: formatInr(rows.reduce((s, _, k) => s + grossOf(k), 0)),
+                        off: formatInr(rows.reduce((s, _, k) => s + discountOf(k), 0)),
+                        net: formatInr(rows.reduce((s, _, k) => s + toPayOf(k), 0)),
+                    })}
+                </p>
+            )}
             {amountsEditable && rows.length > 1 && (
                 <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-2xs text-neutral-600">
                     <input

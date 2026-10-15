@@ -333,6 +333,19 @@ def _layout_page_count(layout_map: Any) -> Optional[int]:
     return len(pages) if isinstance(pages, list) else None
 
 
+def _printed_labels(questions: list[dict[str, Any]]) -> dict[str, str]:
+    """question_id -> the number printed on the paper, for the checked copy's
+    comment panel. Never raises: the copy is rendered after grading succeeded."""
+    labels: dict[str, str] = {}
+    for q in questions or []:
+        try:
+            if q.get("question_id"):
+                labels[str(q["question_id"])] = str(q.get("paper_label") or "").strip()
+        except Exception:
+            continue
+    return labels
+
+
 def billing_context(req: dict[str, Any]) -> dict[str, Any]:
     """What the charge at completion is computed from (spec 10.3, 10.8): who
     is billed ("apikey:<key_id>" for API runs, None = the institute), the rate
@@ -844,8 +857,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         total_awarded = counted_awarded(verdicts)
         if paper_max is not None:
             total_max = paper_max
+        # The "Teacher comments outside the copy" template; the default copy is
+        # rendered exactly as before.
+        panel = ({"comment_placement": "OUTSIDE", "question_labels": _printed_labels(questions)}
+                 if str(req.get("comment_placement") or "").strip().upper() == "OUTSIDE" else {})
         evaluated_file_id = await annotator.render_and_upload(
-            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
+            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id, **panel,
         )
 
         # 5. Done.

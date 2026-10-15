@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.assessment.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
@@ -378,4 +379,10 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             WHERE aim.institute_id = :instituteId
             """, nativeQuery = true)
     AssessmentCountResponse getAssessmentAllTypeCount(@Param("instituteId") String instituteId);
+
+    /** Store the checked-copy template on its own, without rewriting the rest of the row. */
+    @Modifying
+    @Query(value = "UPDATE assessment SET copy_comment_placement = :placement WHERE id = :assessmentId",
+            nativeQuery = true)
+    int updateCopyCommentPlacement(@Param("assessmentId") String assessmentId, @Param("placement") String placement);
 }

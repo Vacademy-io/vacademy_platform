@@ -33,7 +33,21 @@
         "valueLabel": "Value",
         "reasonLabel": "Reason",
         "reasonPlaceholder": "e.g. Sibling discount",
-        "offSuffix": "= {{amount}} off"
+        "offSuffix": "= {{amount}} off",
+        "splitLabel": "Split the discount",
+        "split": {
+            "EVEN": "Equally",
+            "FIRST": "First installment",
+            "LAST": "Last installment",
+            "CUSTOM": "Custom"
+        },
+        "splitHint": {
+            "EVEN": "The same amount comes off each installment.",
+            "FIRST": "It all comes off the first installment (any rest off the next).",
+            "LAST": "It all comes off the last installment (any rest off the one before).",
+            "CUSTOM": "Type the discount on each installment in the table below."
+        },
+        "cappedToInstallments": "Only {{amount}} can come off the installments; fees paid upfront are not discounted."
     },
     "payment": {
         "heading": "Initial Payment (optional)",
@@ -77,7 +91,14 @@
             "amountMismatch": "Installments add up to {{given}} but the fee is {{total}}. Use the discount below to change the price.",
             "gapRange": "The gap must be between 1 and {{max}}.",
             "tooSmall": "{{fee}} is too small to split into {{count}} installments.",
-            "decimals": "Amounts can have at most 2 decimal places."
-        }
+            "decimals": "Amounts can have at most 2 decimal places.",
+            "negativeDiscount": "Installment {{n}} has a negative discount.",
+            "discountTooBig": "Installment {{n}} has more discount than its amount."
+        },
+        "discountColumn": "Discount",
+        "toPay": "To pay",
+        "discountFor": "Discount on installment {{n}}",
+        "toPayFor": "To pay for installment {{n}}",
+        "toPayHint": "{{gross}} − {{off}} discount = {{net}} to pay. Type what the learner pays in To pay; the amount follows and the discount stays."
     }
 }

@@ -48,6 +48,10 @@ public class CopyCheckGradeRequestDto {
     @JsonProperty("questions")
     private List<QuestionInput> questions;
 
+    /** OUTSIDE = remarks in a panel beside the copy; null keeps them on the copy. */
+    @JsonProperty("comment_placement")
+    private String commentPlacement;
+
     // ---- Partner API fields (AI_EVALUATION_PUBLIC_API.md 10.3, 10.8, C4). All null on
     // ---- dashboard runs, and NON_NULL keeps them out of the JSON, so a dashboard
     // ---- request is byte-for-byte what it was.

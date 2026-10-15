@@ -83,8 +83,16 @@ def test_non_root_user_without_roles_is_denied():
     assert check_mcp_access(principal([]), enabled_setting()) == DENY_ROLE
 
 
-def test_root_user_bypasses_the_role_leg():
-    assert check_mcp_access(principal([], is_root=True), enabled_setting()) is None
+def test_root_user_without_roles_in_this_institute_is_denied():
+    # resolve_pinned_principal pins a root user to any institute they name, with
+    # no roles; is_root_user is set for ordinary users, so it is not membership.
+    assert check_mcp_access(principal([], is_root=True), enabled_setting()) == DENY_ROLE
+
+
+def test_root_user_still_needs_an_allowed_role():
+    setting = enabled_setting(allowed_roles=["ADMIN"])
+    assert check_mcp_access(principal(["TEACHER"], is_root=True), setting) == DENY_ROLE
+    assert check_mcp_access(principal(["ADMIN"], is_root=True), setting) is None
 
 
 # ── learners are never allowed ───────────────────────────────────────────

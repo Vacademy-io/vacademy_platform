@@ -486,7 +486,14 @@
         "copyLink": "نسخ الرابط",
         "linkCopied": "تم نسخ الرابط",
         "gateTitle": "افتح هذا المقال",
-        "gateSubtitle": "شارك بياناتك مرة واحدة لقراءة هذا المقال وجميع الموارد المجانية على موقعنا."
+        "gateSubtitle": "شارك بياناتك مرة واحدة لقراءة هذا المقال وجميع الموارد المجانية على موقعنا.",
+        "contents": "في هذه الصفحة",
+        "readingProgress": "تقدم القراءة",
+        "percentRead": "تمت قراءة {{percent}}%",
+        "recommendedCourses": "{{courses}} مقترحة",
+        "relatedPosts": "تابع القراءة",
+        "share": "مشاركة",
+        "shareOn": "المشاركة على {{network}}"
     },
     "comingSoon": {
         "ribbon": "قريبًا",

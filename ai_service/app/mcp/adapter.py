@@ -32,6 +32,8 @@ from ..services.assistant_tool_registry import (
     ToolSpec,
     execute_tool,
     is_tool_allowed,
+    load_entitlements,
+    missing_module_feature,
 )
 from .access import setting_for_tool_gate
 from .constants import (
@@ -71,7 +73,7 @@ def _placement(key: str) -> Dict[str, Any]:
             "opt_in": key in MCP_OPT_IN_GROUPS}
 
 
-def tool_catalog(include_opt_in: bool = True) -> List[Dict[str, Any]]:
+def tool_catalog(include_opt_in: bool = True, entitlements: Optional[Any] = None) -> List[Dict[str, Any]]:
     """
     The catalogue the settings UI renders toggles from.
 
@@ -83,6 +85,11 @@ def tool_catalog(include_opt_in: bool = True) -> List[Dict[str, Any]]:
     them on with a preset; an older dashboard bundle does not know the flag, so it
     never sees them and its "everything" / Edit-level presets cannot switch on
     live publishing or live data edits.
+
+    Each entry names the plan feature its tool needs (``module_feature``, None
+    when it needs none). With ``entitlements`` (the institute's, from
+    app/services/entitlements.py) it also says whether the plan includes it
+    (``entitled``), so the page can grey out tools the institute cannot use.
     """
     catalog: List[Dict[str, Any]] = []
     for spec in exposed_specs():
@@ -106,9 +113,12 @@ def tool_catalog(include_opt_in: bool = True) -> List[Dict[str, Any]]:
                 "mode": spec.mode,
                 # Not a toggle: on for everyone who may connect (identity only).
                 "always_on": bool(spec.always_allowed),
+                "module_feature": spec.module_feature or (spec.module_features_any or (None,))[0],
                 **_placement(key),
             }
         )
+        if entitlements is not None:
+            catalog[-1]["entitled"] = missing_module_feature(spec, entitlements) is None
     return catalog
 
 
@@ -130,14 +140,24 @@ def _to_mcp_tool(spec: ToolSpec) -> Tool:
     )
 
 
-def list_tools_for(principal: PinnedPrincipal, mcp_setting: Dict[str, Any]) -> List[Tool]:
-    """Exposed tools this caller is entitled to, per the institute's MCP settings."""
+def list_tools_for(principal: PinnedPrincipal, mcp_setting: Dict[str, Any],
+                   db: Optional[Session] = None) -> List[Tool]:
+    """Exposed tools this caller is entitled to, per the institute's MCP settings.
+
+    With ``db``, a tool tied to a plan feature (``module_feature``) is listed only
+    when the institute's plan includes it — the same check execute_tool repeats
+    on every call. Without it (tests, DB-less callers) that check is skipped.
+    """
     gate_setting = setting_for_tool_gate(mcp_setting, principal)
-    return [
-        _to_mcp_tool(spec)
-        for spec in exposed_specs()
-        if is_tool_allowed(spec.name, principal, gate_setting)
-    ]
+    specs = [spec for spec in exposed_specs() if is_tool_allowed(spec.name, principal, gate_setting)]
+    if db is not None and any(s.module_feature or s.module_features_any for s in specs):
+        try:
+            ent = load_entitlements(db, principal.institute_id)
+            specs = [s for s in specs if missing_module_feature(s, ent) is None]
+        except Exception:  # noqa: BLE001 — never list a module tool the check could not clear
+            logger.exception("MCP tools/list module check failed for institute=%s", principal.institute_id)
+            specs = [s for s in specs if not (s.module_feature or s.module_features_any)]
+    return [_to_mcp_tool(spec) for spec in specs]
 
 
 def _summarize(payload: Any) -> Tuple[bool, Optional[str]]:
@@ -191,6 +211,7 @@ async def call_tool(
         bearer_token=platform_token,
         images_as_content=True,  # image fields become ImageContent below
         via_mcp=True,  # mcp_only tools (design_import, website_publish) run only here
+        client_id=client_id,
     )
 
     started = time.monotonic()

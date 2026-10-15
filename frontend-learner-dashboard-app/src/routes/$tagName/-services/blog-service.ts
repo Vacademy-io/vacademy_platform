@@ -26,7 +26,13 @@ export interface BlogPostSummary {
   seo_title?: string | null;
   seo_description?: string | null;
   reading_minutes?: number | null;
+  /** Article layout; absent on posts saved before layouts existed. */
+  template?: BlogTemplate | null;
+  /** Course (package) ids shown as cards under the article, in order. */
+  recommended_course_ids?: string[] | null;
 }
+
+export type BlogTemplate = "CLASSIC" | "SIDEBAR_TOC" | "MAGAZINE" | "FOCUS";
 
 export interface BlogPostPage {
   content: BlogPostSummary[];

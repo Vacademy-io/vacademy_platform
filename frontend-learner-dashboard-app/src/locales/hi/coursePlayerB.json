@@ -637,7 +637,14 @@
         "copyLink": "लिंक कॉपी करें",
         "linkCopied": "लिंक कॉपी हुआ",
         "gateTitle": "यह लेख खोलें",
-        "gateSubtitle": "यह लेख और हमारी साइट के सभी मुफ़्त संसाधन पढ़ने के लिए एक बार अपनी जानकारी दें।"
+        "gateSubtitle": "यह लेख और हमारी साइट के सभी मुफ़्त संसाधन पढ़ने के लिए एक बार अपनी जानकारी दें।",
+        "contents": "इस पेज पर",
+        "readingProgress": "पढ़ने की प्रगति",
+        "percentRead": "{{percent}}% पढ़ा गया",
+        "recommendedCourses": "सुझाए गए {{courses}}",
+        "relatedPosts": "आगे पढ़ें",
+        "share": "शेयर करें",
+        "shareOn": "{{network}} पर शेयर करें"
     },
     "comingSoon": {
         "ribbon": "जल्द आ रहा है",

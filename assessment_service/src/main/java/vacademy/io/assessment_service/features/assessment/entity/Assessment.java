@@ -65,6 +65,13 @@ public class Assessment {
     private String aiEvaluationModel;
 
     /**
+     * Checked-copy template for AI-checked copies (V55): OUTSIDE = remarks in a
+     * Teacher Comments panel beside the copy. NULL / INSIDE = written on the copy.
+     */
+    @Column(name = "copy_comment_placement")
+    private String copyCommentPlacement;
+
+    /**
      * Proctoring tier + knobs as JSON (V50); see
      * {@link vacademy.io.assessment_service.features.proctoring.dto.ProctoringConfigDTO}.
      * NULL means off -- the behaviour of every assessment that predates it. Read and

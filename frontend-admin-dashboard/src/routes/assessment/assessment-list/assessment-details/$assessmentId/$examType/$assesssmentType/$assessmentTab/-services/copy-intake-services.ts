@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { COPY_INTAKE_BASE_URL } from '@/constants/urls';
+import type { CommentPlacement } from '@/types/assessment-settings';
 
 /**
  * Bulk AI copy-check: many scanned copies uploaded at once, the student's
@@ -89,18 +90,26 @@ export interface CopyIntakeUploadedFile {
     page_count?: number;
 }
 
+export type { CommentPlacement };
+
 export const startCopyIntake = async (
     assessmentId: string,
     instituteId: string,
     files: CopyIntakeUploadedFile[],
     preferredModel?: string,
-    notifyEmail = true
+    notifyEmail = true,
+    commentPlacement: CommentPlacement = 'INSIDE'
 ): Promise<CopyIntakeBatch> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: `${COPY_INTAKE_BASE_URL}/start`,
         params: { assessmentId, instituteId },
-        data: { files, preferred_model: preferredModel, notify_email: notifyEmail },
+        data: {
+            files,
+            preferred_model: preferredModel,
+            notify_email: notifyEmail,
+            comment_placement: commentPlacement,
+        },
     });
     return response.data;
 };
@@ -123,6 +132,7 @@ export interface SubmittedCheckRequest {
     include_checked?: boolean;
     preferred_model?: string;
     notify_email?: boolean;
+    comment_placement?: CommentPlacement;
 }
 
 export const previewSubmittedCheck = async (
@@ -182,6 +192,28 @@ export const getCopyIntakeBatch = async (
         params: { instituteId },
     });
     return response.data;
+};
+
+/** One checked copy of a batch (AI check done, checked copy rendered). */
+export interface CopyIntakeCheckedCopy {
+    item_id: string;
+    file_name: string | null;
+    student_name: string | null;
+    roll: string | null;
+    evaluated_file_id: string;
+}
+
+/** Every checked copy of the batch, in upload order — for "Download checked copies". */
+export const listCheckedCopies = async (
+    batchId: string,
+    instituteId: string
+): Promise<CopyIntakeCheckedCopy[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${COPY_INTAKE_BASE_URL}/batch/${batchId}/checked-copies`,
+        params: { instituteId },
+    });
+    return response.data ?? [];
 };
 
 export const resolveCopyIntakeItem = async (

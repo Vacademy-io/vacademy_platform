@@ -650,7 +650,14 @@
         "copyLink": "Copy link",
         "linkCopied": "Link copied",
         "gateTitle": "Unlock this article",
-        "gateSubtitle": "Share your details once to read this and every free resource on our site."
+        "gateSubtitle": "Share your details once to read this and every free resource on our site.",
+        "contents": "On this page",
+        "readingProgress": "Reading progress",
+        "percentRead": "{{percent}}% read",
+        "recommendedCourses": "Recommended {{courses}}",
+        "relatedPosts": "Keep reading",
+        "share": "Share",
+        "shareOn": "Share on {{network}}"
     },
     "comingSoon": {
         "ribbon": "Coming soon",

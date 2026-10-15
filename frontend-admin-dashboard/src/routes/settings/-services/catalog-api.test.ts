@@ -273,6 +273,6 @@ describe('course page address', () => {
     });
 
     it('keeps the docs link in one place', () => {
-        expect(CATALOG_API_DOCS_URL).toBe('https://vacademy-platform.mintlify.site/catalog');
+        expect(CATALOG_API_DOCS_URL).toBe('https://docs.vacademy.io/catalog');
     });
 });

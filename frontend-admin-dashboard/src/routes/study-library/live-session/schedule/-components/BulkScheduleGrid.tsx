@@ -360,6 +360,7 @@ export function BulkScheduleGrid() {
                 waitingRoomMusicFileId: undefined,
                 allowRewind: true,
                 allowPause: true,
+                showToLearners: false,
                 // Feedback defaults to ON, but never when the institute has
                 // hidden the whole feedback feature (feedbackEnabled = false).
                 enableFeedback:
@@ -1105,6 +1106,10 @@ export function BulkScheduleGrid() {
                     streamingType: computedStreamingType,
                     allowRewind: shared.allowRewind,
                     allowPause: shared.allowPause,
+                    // Sent only by attendance-only institutes; omitted otherwise.
+                    showToLearners: liveSessionSettings.attendanceOnlyMode
+                        ? shared.showToLearners
+                        : undefined,
                     startTime: startTimeISO,
                     timeZone: data.timeZone,
                     events: '0',
@@ -1535,6 +1540,31 @@ export function BulkScheduleGrid() {
                 description={t('sharedSettings.description')}
             >
                 <div className="grid gap-3 sm:grid-cols-2">
+                    {/* Learner visibility (attendance-only institutes) */}
+                    {liveSessionSettings.attendanceOnlyMode && (
+                        <Controller
+                            control={form.control}
+                            name="sharedOptions.showToLearners"
+                            render={({ field }) => (
+                                <label className="flex items-center justify-between gap-4 rounded-md border border-neutral-200 bg-neutral-50 p-3 sm:col-span-2">
+                                    <div>
+                                        <div className="text-sm font-medium text-neutral-800">
+                                            {t('sharedSettings.showToLearnersLabel')}
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-neutral-500">
+                                            {field.value
+                                                ? t('sharedSettings.showToLearnersOnHint')
+                                                : t('sharedSettings.showToLearnersOffHint')}
+                                        </div>
+                                    </div>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </label>
+                            )}
+                        />
+                    )}
                     {/* Waiting room */}
                     <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
                         <div className="flex items-start justify-between gap-3">
@@ -2767,7 +2797,10 @@ export function BulkScheduleGrid() {
                 validCount={previewValidCount}
                 courses={courses ?? []}
                 sessionList={sessionList}
-                attendanceOnly={liveSessionSettings.attendanceOnlyMode}
+                attendanceOnly={
+                    liveSessionSettings.attendanceOnlyMode &&
+                    !form.watch('sharedOptions.showToLearners')
+                }
             />
 
             <MyDialog

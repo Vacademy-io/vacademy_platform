@@ -53,6 +53,23 @@ class LiveSessionAttendanceOnlyModeServiceTest {
     }
 
     @Test
+    void classMarkedShowToLearnersKeepsLearnerNotifications() {
+        when(settings.getSettingByInstituteIdAndKey("i1", "LIVE_SESSION_SETTING"))
+                .thenReturn(Map.of("attendanceOnlyMode", true));
+        LiveSession online = session("online", null, null);
+        online.setShowToLearners(true);
+        LiveSession offline = session("offline", null, null);
+        offline.setShowToLearners(false);
+        when(sessions.findById("online")).thenReturn(Optional.of(online));
+        when(sessions.findById("offline")).thenReturn(Optional.of(offline));
+
+        assertFalse(service.suppressesLearnerNotifications("i1", "online"));
+        assertTrue(service.suppressesLearnerNotifications("i1", "offline"));
+        assertFalse(service.suppressesLearnerNotifications(online));
+        assertTrue(service.suppressesLearnerNotifications(offline));
+    }
+
+    @Test
     void notificationsUntouchedWhenModeOff() {
         when(settings.getSettingByInstituteIdAndKey("i1", "LIVE_SESSION_SETTING"))
                 .thenReturn(Map.of("feedbackEnabled", true));

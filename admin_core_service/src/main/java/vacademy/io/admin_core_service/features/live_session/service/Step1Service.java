@@ -582,6 +582,8 @@ public class Step1Service {
 
         // New Field
         session.setAllowPlayPause(request.isAllowPlayPause());
+        if (request.getShowToLearners() != null)
+            session.setShowToLearners(request.getShowToLearners());
         // Normalize rather than store verbatim: the read queries splice this column into
         // `AT TIME ZONE`, so an unresolvable value (older ICU clients still send the legacy
         // `Asia/Calcutta`, which prod Postgres dropped) aborts the whole query and takes

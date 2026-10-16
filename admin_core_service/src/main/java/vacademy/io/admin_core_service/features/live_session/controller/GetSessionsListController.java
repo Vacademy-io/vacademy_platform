@@ -68,11 +68,9 @@ public class GetSessionsListController {
             @RequestAttribute("user") CustomUserDetails user) {
         // Checked outside the cached service call so flipping the setting
         // takes effect without waiting out the 2-minute server cache.
-        if (attendanceOnlyModeService.hidesLearnerSessions(batchId, instituteId)) {
-            return ResponseEntity.ok(List.of());
-        }
+        boolean learnerVisibleOnly = attendanceOnlyModeService.hidesLearnerSessions(batchId, instituteId);
         return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                batchId, userId, instituteId, page, size, startDate, endDate, user));
+                batchId, userId, instituteId, page, size, startDate, endDate, user, learnerVisibleOnly));
     }
 
     /**

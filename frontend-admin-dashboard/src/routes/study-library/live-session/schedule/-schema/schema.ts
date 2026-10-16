@@ -102,6 +102,8 @@ export const sessionFormSchema = z
         streamingType: z.string(),
         allowRewind: z.boolean(),
         allowPause: z.boolean(),
+        // Attendance-only institutes: show this class to learners.
+        showToLearners: z.boolean().optional(),
         startTime: z.string({
             required_error: t('validation.startTimeRequired'),
             invalid_type_error: t('validation.invalidDate'),

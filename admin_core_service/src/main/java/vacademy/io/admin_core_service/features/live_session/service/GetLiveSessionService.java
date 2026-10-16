@@ -377,10 +377,13 @@ public class GetLiveSessionService {
 
     // instituteId is in the key because it can change which institute's
     // unassigned public classes are added when no batchId is sent.
-    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #instituteId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
+    // learnerVisibleOnly (attendance-only institutes, see
+    // LiveSessionAttendanceOnlyModeService) is resolved by the caller outside
+    // the cache so flipping the setting is not delayed by it.
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #instituteId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate + '_' + #learnerVisibleOnly")
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
             String batchId, String userId, String instituteId, int page, Integer size, String startDate,
-            String endDate, CustomUserDetails user) {
+            String endDate, CustomUserDetails user, boolean learnerVisibleOnly) {
         // Calculate offset for pagination (only if size is provided)
         Integer offset = (size != null) ? page * size : null;
 
@@ -391,9 +394,9 @@ public class GetLiveSessionService {
         // Institutes that opted in also get their unassigned public classes (see LearnerPublicSessionVisibilityService).
         List<LiveSessionRepository.LiveSessionListProjection> projections = broadcastInstituteId != null
                 ? sessionRepository.findUpcomingSessionsForUserAndBatchIncludingUnassignedPublic(
-                        batchId, userId, broadcastInstituteId, startDate, endDate, offset, size)
+                        batchId, userId, broadcastInstituteId, startDate, endDate, offset, size, learnerVisibleOnly)
                 : sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(
-                        batchId, userId, startDate, endDate, offset, size);
+                        batchId, userId, startDate, endDate, offset, size, learnerVisibleOnly);
 
         // Map projections to DTOs
         List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> {

@@ -90,7 +90,10 @@
         "disablePublicChat": "Les participants ne peuvent pas envoyer de messages dans le chat de classe",
         "disableSharedNotes": "Les participants ne peuvent pas modifier les notes partagées",
         "hideUserList": "Les participants ne peuvent pas voir qui d'autre est dans la classe",
-        "endWhenNoModerator": "Terminer la classe après le départ de l'hôte"
+        "endWhenNoModerator": "Terminer la classe après le départ de l'hôte",
+        "showToLearnersLabel": "Afficher ce cours aux apprenants",
+        "showToLearnersOnHint": "Activé : les apprenants voient ce cours et peuvent le rejoindre comme un cours en direct normal.",
+        "showToLearnersOffHint": "Désactivé : cours hors ligne. Les apprenants ne le voient pas et ne sont pas notifiés ; seule la présence est enregistrée."
     },
     "descriptionSection": {
         "title": "Description",

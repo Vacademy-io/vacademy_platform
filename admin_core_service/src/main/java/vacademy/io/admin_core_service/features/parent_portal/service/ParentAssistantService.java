@@ -179,11 +179,12 @@ public class ParentAssistantService {
         }
 
         // Upcoming classes — "does my child have class tomorrow?"
-        // Skipped for attendance-only institutes, whose classes are never shown.
-        if (primaryBatch != null && !attendanceOnlyModeService.isEnabled(child.instituteId())) {
+        // Attendance-only institutes: only classes marked show_to_learners.
+        if (primaryBatch != null) {
             try {
                 List<GroupedSessionsByDateDTO> groups = getLiveSessionService
-                        .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
+                        .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller,
+                                attendanceOnlyModeService.isEnabled(child.instituteId()));
                 if (groups != null && !groups.isEmpty()) {
                     sb.append("Upcoming classes:\n");
                     groups.stream().limit(6).forEach(g -> {

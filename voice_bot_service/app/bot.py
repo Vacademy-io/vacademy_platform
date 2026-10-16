@@ -5696,7 +5696,22 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # (agent.bookingEnabled, sent by admin_core) is the platform offering a
     # meeting, so it lifts the meeting ban.
     grounding_rule = ""
+    # The LAST line of a GENERAL prompt. In the middle of ~19k characters the
+    # grounding rule did not hold against a point-blank "आप exactly क्या offer
+    # करते हो?": the live probe (2026-10-16) still got "digital marketing
+    # services", "an AI customer-engagement platform" in most runs. The end of
+    # the prompt is what the model weighs most. Empty for education agents.
+    closing_grounding = ""
     if general:
+        closing_grounding = (
+            "LAST AND MOST IMPORTANT: you know ONLY what your instructions at the top say "
+            "about your company. If they do not say what it sells or does, you do NOT know "
+            "it — when asked, say 'Iski poori jaankari hamari team aapko degi' (or the same "
+            "in the caller's language) and ask if a team member may contact them. Never "
+            "describe a product, service, platform or solution that your instructions do "
+            "not name, not even in general words, and never promise anything your "
+            "instructions do not offer."
+        )
         _offers_meeting = bool(agent.get("bookingEnabled"))
         # The enquiry may be the stated reason only when it is a real one: a
         # known source (_ENQUIRY_SOURCES) or a genuine date. A bulk-imported
@@ -5719,6 +5734,19 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "instructions do not say it, you do not know it. If the caller asks something your "
             "instructions do not cover, say honestly, in the caller's language, that a "
             "colleague will share those details with them — never fill the gap with a guess.\n"
+            # Live probe of the AAIBUZZ setup (2026-10-16): with the education examples
+            # gone, "आप exactly क्या offer करते हो?" still got "AI-powered marketing /
+            # business-intelligence solutions" in 5 of 6 runs — read off "AAIBUZZ AI
+            # Agent". A name is not a product description, and the honest answer has
+            # to be spelled out or the model reaches for a plausible one.
+            "YOUR NAMES ARE NOT A DESCRIPTION: the company's name and your own agent name "
+            "(even when they contain words like AI, Tech, Digital, Solutions, Labs) tell you "
+            "NOTHING about what the company sells — never work a product out of a name. When "
+            "the caller asks what your company does or offers and your instructions above do "
+            "not describe it, answer exactly that, honestly and briefly — e.g. 'Iski poori "
+            "jaankari hamari team aapko degi.' / 'Our team will share the full details with "
+            "you.' — and ask whether a team member may contact them. Do not describe any "
+            "product, service, feature or benefit in that case, not even in general words.\n"
             "THE REASON FOR THIS CALL: give only the reason your instructions give"
             + (", or, if they give none, that this person enquired, exactly as the enquiry "
                "details in these rules say (you may say that without being asked)."
@@ -6334,6 +6362,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             human_line,
             sends_line,
             disposition_line,
+            closing_grounding,
         ]
         return "\n".join(l for l in lines if l)
 
@@ -6399,6 +6428,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         f"every single time, and NEVER introduce yourself with any other name, spelling or "
         f"variation. Use the SAME company name you introduce yourself with for the whole call; "
         f"never change, translate or invent a different company name.",
+        closing_grounding,
     ]
     return "\n".join(l for l in lines if l)
 

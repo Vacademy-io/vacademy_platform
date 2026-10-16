@@ -57,6 +57,7 @@ import {
   useSiteCart,
   useSiteCartNotifier,
 } from "../site-cart/use-site-cart";
+import { useAutoScrollRail } from "../../-utils/use-auto-scroll-rail";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -152,6 +153,9 @@ interface ProductPageOfferProps {
   railMaxCards?: number;
   /** Cap the grid's height and scroll inside it instead of growing the page. */
   scrollable?: boolean;
+  /** 'carousel' only: advance the rail one card every autoScrollIntervalMs (min 1.5s), pausing while in use. */
+  autoScroll?: boolean;
+  autoScrollIntervalMs?: number;
   scrollMaxHeight?: number;
   backgroundColor?: string;
   /**
@@ -372,6 +376,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   railMaxCards,
   showSearch = true,
   scrollable = false,
+  autoScroll = false,
+  autoScrollIntervalMs,
   scrollMaxHeight = 640,
   backgroundColor,
   embedded = false,
@@ -774,6 +780,12 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     return () => window.removeEventListener("resize", syncArrows);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCarousel, visible.length, cols]);
+
+  useAutoScrollRail(trackRef, {
+    enabled: isCarousel && !!autoScroll,
+    intervalMs: autoScrollIntervalMs,
+    itemCount: visible.length,
+  });
 
   // A horizontal rail IS the app pattern, so unless the admin chose otherwise
   // it gets the app-style header (left, compact) — a big centered heading over

@@ -178,7 +178,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
     if (!autoplayOn) return;
     const id = window.setInterval(
       () => setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1)),
-      Math.max(2500, Number(autoplayIntervalMs) || 5000)
+      Math.max(1500, Number(autoplayIntervalMs) || 5000)
     );
     return () => window.clearInterval(id);
   }, [autoplayOn, maxIndex, autoplayIntervalMs]);

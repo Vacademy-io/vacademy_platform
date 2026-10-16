@@ -1397,5 +1397,10 @@
     "speed": "Scroll Speed",
     "direction": "Scroll Direction",
     "pauseOnHover": "Pause on hover"
-  }
+  },
+    "autoScroll": {
+        "label": "Auto-scroll",
+        "seconds": "seconds per card",
+        "hint": "Moves one card at a time and pauses while the visitor hovers, taps or tabs into the row."
+    }
 }

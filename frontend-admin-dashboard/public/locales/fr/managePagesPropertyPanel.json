@@ -1400,5 +1400,10 @@
     "speed": "Vitesse de défilement",
     "direction": "Sens de défilement",
     "pauseOnHover": "Pause au survol"
-  }
+  },
+    "autoScroll": {
+        "label": "Défilement automatique",
+        "seconds": "secondes par carte",
+        "hint": "Avance d’une carte à la fois et se met en pause quand le visiteur survole, touche ou parcourt la rangée au clavier."
+    }
 }

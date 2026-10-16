@@ -233,6 +233,7 @@
     }
   },
   "options": {
+    "categoryTiles": "مربعات الفئات",
     "default": "افتراضي",
     "ocean": "محيط",
     "forest": "غابة",
@@ -1254,6 +1255,9 @@
     "autoFromTitle": "تلقائي من العنوان"
   },
   "featureGrid": {
+    "categoryParam": "مفتاح التصفية في الرابط",
+    "categoryParamHint": "كل مربع يضبط ?{key}=<قيمته> (المربع بلا قيمة يعرض الكل). أضف إلى الأقسام أدناه قاعدة ظهور على المفتاح نفسه لتظهر لتلك الفئة فقط.",
+    "categoryValuePlaceholder": "قيمة التصفية، مثل ssc (فارغ = الكل)",
     "defaults": {
       "title": "ميزة جديدة",
       "description": "الوصف هنا"

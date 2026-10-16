@@ -31,6 +31,16 @@ import {
 } from "@/hooks/use-preferred-phone-countries";
 import {
   GraduationCap,
+  Train,
+  Bank,
+  Newspaper,
+  Exam,
+  Books,
+  FileText,
+  SquaresFour,
+  Fire,
+  Student,
+  ChalkboardTeacher,
   Rocket,
   Target,
   UsersThree,
@@ -86,6 +96,7 @@ import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
 import { useAutoScrollRail } from "../-utils/use-auto-scroll-rail";
+import { useCatalogueSearchParams } from "../-utils/catalogue-url-state";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
 // other page (and the logged-in app, which bundles this renderer) skips it.
@@ -850,6 +861,61 @@ const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb,
   ShieldCheck, ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle,
   Wrench, Sparkle, Medal, Briefcase, Globe,
+  Train, Bank, Newspaper, Exam, Books, FileText, SquaresFour, Fire, Student, ChalkboardTeacher,
+};
+
+/**
+ * featureGrid style 'categoryTiles': a row of icon tiles that filter the page.
+ * Each tile writes `?<filterParam>=<value>` (a tile with no value clears it =
+ * "All"), and the sections below opt in with visibleWhen rules on that param.
+ * The tile matching the current URL is filled, so the visitor always sees
+ * which category they are in. No navigation, no scroll jump.
+ */
+const CategoryTilesRenderer: React.FC<any> = ({ headerText, subheading, features = [], filterParam, backgroundColor }) => {
+  const txt = sectionText(backgroundColor);
+  const param = String(filterParam || 'cat').trim() || 'cat';
+  const { get, update } = useCatalogueSearchParams();
+  const current = (get(param) || '').toLowerCase();
+  return (
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+      <div className="catalogue-shell">
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+        {subheading && <p className={`catalogue-lead catalogue-measure mb-8 text-center ${txt.muted}`}>{subheading}</p>}
+        <div
+          role="tablist"
+          aria-label={headerText || param}
+          className="catalogue-no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-4 sm:overflow-visible sm:px-0"
+        >
+          {features.map((f: any, i: number) => {
+            const value = String(f.value || '').trim();
+            const active = value.toLowerCase() === current;
+            const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => update({ [param]: value || null })}
+                className={`flex w-28 shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-catalogue-lg border p-4 text-center transition-all duration-200 sm:w-36 sm:p-5 ${
+                  active
+                    ? 'border-transparent bg-primary-500 text-primary-foreground shadow-lg'
+                    : 'border-catalogue-border bg-catalogue-bg-subtle text-catalogue-text-primary hover:-translate-y-0.5 hover:shadow-md'
+                }`}
+              >
+                {IconComp ? (
+                  <IconComp size={40} weight="duotone" aria-hidden="true" className={active ? '' : 'text-catalogue-brand-ink'} />
+                ) : f.icon ? (
+                  <span className="text-3xl" aria-hidden="true">{f.icon}</span>
+                ) : null}
+                <span className="text-sm font-semibold leading-tight">{f.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 };
 
 const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor }) => {
@@ -1851,7 +1917,7 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs,
+  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs, filterParam,
 }) => {
   // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
   const railRef = React.useRef<HTMLDivElement>(null);
@@ -1862,6 +1928,17 @@ const FeatureGridRenderer: React.FC<any> = ({
   });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
+  if (style === 'categoryTiles') {
+    return (
+      <CategoryTilesRenderer
+        headerText={headerText}
+        subheading={subheading}
+        features={features}
+        filterParam={filterParam}
+        backgroundColor={backgroundColor}
+      />
+    );
+  }
   const cardClass =
     style === 'cards' ? 'catalogue-card-elevated group p-6 sm:p-7' :
     style === 'bordered' ? 'rounded-xl border-2 border-catalogue-border p-6' :

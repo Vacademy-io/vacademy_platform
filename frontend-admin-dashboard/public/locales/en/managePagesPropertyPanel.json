@@ -233,6 +233,7 @@
     }
   },
   "options": {
+    "categoryTiles": "Category tiles",
     "default": "Default",
     "ocean": "Ocean",
     "forest": "Forest",
@@ -1230,6 +1231,9 @@
     "autoFromTitle": "auto from title"
   },
   "featureGrid": {
+    "categoryParam": "Filter key in the URL",
+    "categoryParamHint": "Each tile sets ?{key}=<its value> (a tile with no value shows everything). Give the sections below a visibility rule on the same key to show them only for that category.",
+    "categoryValuePlaceholder": "Filter value, e.g. ssc (empty = All)",
     "defaults": {
       "title": "New Feature",
       "description": "Description here"

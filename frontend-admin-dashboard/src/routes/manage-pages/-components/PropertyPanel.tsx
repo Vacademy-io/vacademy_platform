@@ -7293,11 +7293,22 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo', 'resource'].map((s) => (
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo', 'resource', 'categoryTiles'].map((s) => (
                         <button key={s} onClick={() => chooseStyle(s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
+                {props.style === 'categoryTiles' && (
+                    <div className="mt-1 space-y-1">
+                        <Label className="text-xs">{t('featureGrid.categoryParam')}</Label>
+                        <Input
+                            value={props.filterParam || ''}
+                            onChange={(e) => updateProp('filterParam', e.target.value.trim() || undefined)}
+                            placeholder="cat"
+                        />
+                        <p className="text-caption text-gray-400">{t('featureGrid.categoryParamHint')}</p>
+                    </div>
+                )}
                 {(props.style === 'photo' || props.style === 'resource') && (
                     <div className="mt-1 space-y-1">
                         {props.style === 'photo' && (
@@ -7396,11 +7407,18 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     >
                                         <option value="">{t('featureGrid.iconLibraryNone')}</option>
                                         {/* Icon identifiers — internal component names, not translated. */}
-                                        {['GraduationCap','Rocket','Target','UsersThree','Code','Brain','Trophy','Lightbulb','ShieldCheck','ChartLineUp','Clock','Star','BookOpen','Certificate','ChatsCircle','Wrench','Sparkle','Medal','Briefcase','Globe'].map((n) => (
+                                        {['GraduationCap','Rocket','Target','UsersThree','Code','Brain','Trophy','Lightbulb','ShieldCheck','ChartLineUp','Clock','Star','BookOpen','Certificate','ChatsCircle','Wrench','Sparkle','Medal','Briefcase','Globe','Train','Bank','Newspaper','Exam','Books','FileText','SquaresFour','Fire','Student','ChalkboardTeacher'].map((n) => (
                                             <option key={n} value={n}>{n}</option>
                                         ))}
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder={t('header.title')} />
+                                    {props.style === 'categoryTiles' && (
+                                        <Input
+                                            value={f.value || ''}
+                                            onChange={(e) => updateFeature(i, 'value', e.target.value.trim().toLowerCase() || undefined)}
+                                            placeholder={t('featureGrid.categoryValuePlaceholder')}
+                                        />
+                                    )}
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
                                     <ImageUploadField slot="card" label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
                                     {isResource && (

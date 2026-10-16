@@ -233,6 +233,7 @@
     }
   },
   "options": {
+    "categoryTiles": "कैटेगरी टाइल",
     "default": "डिफ़ॉल्ट",
     "ocean": "ओशन",
     "forest": "फॉरेस्ट",
@@ -1226,6 +1227,9 @@
     "autoFromTitle": "टाइटल से ऑटो"
   },
   "featureGrid": {
+    "categoryParam": "URL में फ़िल्टर की",
+    "categoryParamHint": "हर टाइल ?{key}=<उसकी वैल्यू> सेट करती है (बिना वैल्यू वाली टाइल सब दिखाती है)। नीचे के सेक्शन पर उसी key का विज़िबिलिटी नियम लगाएँ ताकि वे सिर्फ़ उसी कैटेगरी में दिखें।",
+    "categoryValuePlaceholder": "फ़िल्टर वैल्यू, जैसे ssc (खाली = सभी)",
     "defaults": {
       "title": "नया फीचर",
       "description": "यहां विवरण"

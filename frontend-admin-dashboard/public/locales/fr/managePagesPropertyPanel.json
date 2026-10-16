@@ -233,6 +233,7 @@
     }
   },
   "options": {
+    "categoryTiles": "Tuiles de catégorie",
     "default": "Par défaut",
     "ocean": "Océan",
     "forest": "Forêt",
@@ -1233,6 +1234,9 @@
     "autoFromTitle": "auto depuis le titre"
   },
   "featureGrid": {
+    "categoryParam": "Clé de filtre dans l’URL",
+    "categoryParamHint": "Chaque tuile définit ?{key}=<sa valeur> (une tuile sans valeur affiche tout). Ajoutez aux sections en dessous une règle de visibilité sur la même clé pour ne les montrer que pour cette catégorie.",
+    "categoryValuePlaceholder": "Valeur du filtre, ex. ssc (vide = Tout)",
     "defaults": {
       "title": "Nouvelle fonctionnalité",
       "description": "Description ici"

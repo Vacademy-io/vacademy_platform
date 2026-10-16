@@ -4999,6 +4999,19 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
                 <p className="text-xs text-gray-500">{t('blog.pageSizeHelp')}</p>
             </div>
             <div className="space-y-2">
+                <Label>{t('blog.viewMoreRoute')}</Label>
+                <Input value={props.viewMoreRoute || ''} onChange={(e) => updateProp('viewMoreRoute', e.target.value.trim())} placeholder="blog" />
+                <p className="text-xs text-gray-500">{t('blog.viewMoreRouteHelp')}</p>
+                {props.viewMoreRoute && (
+                    <Input
+                        value={props.viewMoreLabel || ''}
+                        onChange={(e) => updateProp('viewMoreLabel', e.target.value)}
+                        placeholder={t('blog.viewMoreLabelPlaceholder')}
+                        aria-label={t('blog.viewMoreLabel')}
+                    />
+                )}
+            </div>
+            <div className="space-y-2">
                 <Label>{t('blog.category')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.category || ''} onChange={(e) => updateProp('category', e.target.value)}>
                     <option value="">{t('blog.allCategories')}</option>

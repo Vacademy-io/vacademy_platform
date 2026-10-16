@@ -25,6 +25,7 @@ import {
 import { PlanTypeSelection } from './PlanTypeSelection';
 import { ApprovalToggle } from './ApprovalToggle';
 import { PlanChangeToggle } from './PlanChangeToggle';
+import { RegionalPricingSection } from './RegionalPricingSection';
 import { DonationPlanConfiguration } from './DonationPlanConfiguration';
 import { SubscriptionPlanConfiguration } from './SubscriptionPlanConfiguration';
 import { UpfrontPlanConfiguration } from './UpfrontPlanConfiguration';
@@ -63,6 +64,11 @@ interface PaymentPlanCreatorProps {
     /** Option-level master switch for plan change; see PlanChangeToggle. */
     planChangeAllowed: boolean;
     setPlanChangeAllowed: (value: boolean) => void;
+    /** Option-level regional pricing; see RegionalPricingSection. */
+    regionalPricingEnabled: boolean;
+    setRegionalPricingEnabled: (value: boolean) => void;
+    regionalPricingCurrencies: string[];
+    setRegionalPricingCurrencies: (value: string[]) => void;
 }
 
 export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
@@ -79,6 +85,10 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     setRequireApproval,
     planChangeAllowed = false,
     setPlanChangeAllowed,
+    regionalPricingEnabled = false,
+    setRegionalPricingEnabled,
+    regionalPricingCurrencies = [],
+    setRegionalPricingCurrencies,
 }) => {
     const { t } = useTranslation('settingsPaymentPlanCreator');
     const [currentStep, setCurrentStep] = useState(1);
@@ -475,6 +485,10 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         setRequireApproval={onApprovalChange}
                         planChangeAllowed={planChangeAllowed}
                         setPlanChangeAllowed={onPlanChangeAllowedChange}
+                        regionalPricingEnabled={regionalPricingEnabled}
+                        setRegionalPricingEnabled={setRegionalPricingEnabled}
+                        regionalPricingCurrencies={regionalPricingCurrencies}
+                        setRegionalPricingCurrencies={setRegionalPricingCurrencies}
                     />
                 </DialogContent>
             </Dialog>
@@ -566,6 +580,15 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                         </p>
                                     </div>
                                 )}
+
+                            <RegionalPricingSection
+                                planType={planData.type as PaymentPlanType}
+                                baseCurrency={planData.currency}
+                                enabled={regionalPricingEnabled}
+                                onEnabledChange={setRegionalPricingEnabled}
+                                currencies={regionalPricingCurrencies}
+                                onCurrenciesChange={setRegionalPricingCurrencies}
+                            />
 
                             {planData.type === PaymentPlans.DONATION && (
                                 <DonationPlanConfiguration

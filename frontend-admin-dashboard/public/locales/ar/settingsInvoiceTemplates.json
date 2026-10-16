@@ -20,7 +20,9 @@
         "sampleCreated": "تم إنشاء القالب النموذجي — جارٍ فتح المحرر…",
         "generateSampleFailed": "فشل إنشاء القالب النموذجي. يرجى المحاولة مرة أخرى.",
         "deleteSuccess": "تم حذف القالب بنجاح!",
-        "deleteFailed": "فشل حذف القالب. يرجى المحاولة مرة أخرى."
+        "deleteFailed": "فشل حذف القالب. يرجى المحاولة مرة أخرى.",
+        "defaultSet": "تم تحديث القالب الافتراضي",
+        "defaultSetFailed": "تعذّر تعيين القالب الافتراضي. يُرجى المحاولة مرة أخرى."
     },
     "loading": "جارٍ تحميل القوالب…",
     "emptyState": {
@@ -39,8 +41,11 @@
         "actions": {
             "preview": "معاينة",
             "edit": "تعديل",
-            "delete": "حذف"
-        }
+            "delete": "حذف",
+            "setDefault": "تعيين كافتراضي"
+        },
+        "defaultBadge": "افتراضي",
+        "defaultBadgeTitle": "يُستخدم لكل فاتورة جديدة"
     },
     "pagination": {
         "templateCount_zero": "{{count}} قالب",

@@ -20,7 +20,9 @@
         "sampleCreated": "Modèle d'exemple créé — ouverture de l'éditeur…",
         "generateSampleFailed": "Échec de la génération du modèle d'exemple. Veuillez réessayer.",
         "deleteSuccess": "Modèle supprimé avec succès !",
-        "deleteFailed": "Échec de la suppression du modèle. Veuillez réessayer."
+        "deleteFailed": "Échec de la suppression du modèle. Veuillez réessayer.",
+        "defaultSet": "Modèle par défaut mis à jour",
+        "defaultSetFailed": "Impossible de définir le modèle par défaut. Veuillez réessayer."
     },
     "loading": "Chargement des modèles…",
     "emptyState": {
@@ -39,8 +41,11 @@
         "actions": {
             "preview": "Aperçu",
             "edit": "Modifier",
-            "delete": "Supprimer"
-        }
+            "delete": "Supprimer",
+            "setDefault": "Définir par défaut"
+        },
+        "defaultBadge": "Par défaut",
+        "defaultBadgeTitle": "Utilisé pour chaque nouvelle facture"
     },
     "pagination": {
         "templateCount_one": "{{count}} modèle",

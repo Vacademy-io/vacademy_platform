@@ -62,7 +62,7 @@ describe('renamePageInConfig', () => {
         expect(nav.map((n) => n.route)).toEqual(['courses', 'books']);
         const hero = page.components[0]!.props as Hero;
         expect(hero.button.target).toBe('/courses#plans');
-        expect(hero.slots[0][0].props.url).toBe('courses?stream=a');
+        expect(hero.slots[0]?.[0]?.props.url).toBe('courses?stream=a');
         // Text that merely equals the slug is not a link.
         expect(hero.title).toBe('books-copy');
     });

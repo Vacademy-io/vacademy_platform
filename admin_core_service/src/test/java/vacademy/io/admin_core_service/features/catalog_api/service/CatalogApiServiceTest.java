@@ -40,7 +40,11 @@ class CatalogApiServiceTest {
     static CatalogSnapshot snapshot(SiteConfig site) {
         List<CatalogRow> rows = CatalogTestData.bvRows();
         Map<String, String> media = new HashMap<>();
-        for (CatalogRow r : rows) if (r.imageMediaId() != null) media.put(r.imageMediaId(), "https://cdn.example.com/" + r.imageMediaId() + ".png");
+        for (CatalogRow r : rows) {
+            for (String id : new String[]{r.imageMediaId(), r.bannerImageId(), r.thumbnailId()}) {
+                if (id != null) media.put(id, "https://cdn.example.com/" + id + ".png");
+            }
+        }
         media.put("logo-1", "https://cdn.example.com/logo.png");
         List<CatalogStreams.FolderNode> roots = CatalogTestData.bvTree();
         return new CatalogSnapshot(BV_INSTITUTE, "Brahm Varchas Shiksha", "logo-1", null,
@@ -90,7 +94,7 @@ class CatalogApiServiceTest {
         assertEquals("Brahm Varchas Shiksha", institute.get("name"));
         assertEquals("https://cdn.example.com/logo.png", institute.get("logo_url"));
         assertEquals(BASE, site.get("course_base_url"));
-        assertEquals(List.of(Map.of("code", "en", "label", "English"), Map.of("code", "hi", "label", "Hindi")),
+        assertEquals(List.of(Map.of("code", "en", "label", "English", "chip", "EN"), Map.of("code", "hi", "label", "Hindi", "chip", "हिं")),
                 site.get("languages"));
         assertEquals(8, ((List<?>) site.get("formats")).size());
         assertEquals("INR", site.get("currency"));
@@ -125,7 +129,7 @@ class CatalogApiServiceTest {
         assertEquals(List.of(Map.of("key", "ebook", "label", "E-books")), c.get("formats"));
         assertEquals(Map.of("slug", "dharma", "label", "Virtue | Civilisation"), c.get("stream"));
         assertEquals(Map.of("slug", "vedic-parenting", "label", "Holistic Parenting"), c.get("category"));
-        assertEquals(List.of(Map.of("code", "en", "label", "English"), Map.of("code", "hi", "label", "Hindi")),
+        assertEquals(List.of(Map.of("code", "en", "label", "English", "chip", "EN"), Map.of("code", "hi", "label", "Hindi", "chip", "हिं")),
                 c.get("languages"));
         assertEquals("available", c.get("availability"));
         assertEquals(true, c.get("price_visible"));
@@ -139,7 +143,7 @@ class CatalogApiServiceTest {
         assertEquals("2026-09-22T09:05:02.499Z", c.get("created_at"));
         List<Map<String, Object>> variants = at(c, "variants");
         assertEquals(2, variants.size());
-        assertEquals(Map.of("code", "hi", "label", "Hindi"), variants.get(1).get("language"));
+        assertEquals(Map.of("code", "hi", "label", "Hindi", "chip", "हिं"), variants.get(1).get("language"));
         assertTrue(((String) variants.get(1).get("url")).startsWith(BASE + "/" + EBOOK_HI + "?"));
         assertNotNull(c.get("subtitle"));
         assertTrue(((String) c.get("subtitle")).length() <= 300);
@@ -156,7 +160,7 @@ class CatalogApiServiceTest {
         Map<String, Object> all = service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
                 null, null, null, null, "hi", null, null, 1, 100, null));
         for (Map<String, Object> course : data(all)) {
-            assertTrue(((List<?>) course.get("languages")).contains(Map.of("code", "hi", "label", "Hindi")));
+            assertTrue(((List<?>) course.get("languages")).contains(Map.of("code", "hi", "label", "Hindi", "chip", "हिं")));
         }
         assertEquals(0, service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
                 null, null, null, null, "fr", null, null, 1, 24, null)).get("total"));
@@ -223,7 +227,7 @@ class CatalogApiServiceTest {
     @Test
     void rejectsBadParameters() {
         for (CatalogApiService.CourseQuery bad : List.of(
-                new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 1, 24, "popular"),
+                new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 1, 24, "trending"),
                 new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 0, 24, null),
                 new CatalogApiService.CourseQuery(null, null, null, null, null, null, null, 1, 101, null),
                 new CatalogApiService.CourseQuery(null, null, null, null, null, null, "soon", 1, 24, null))) {

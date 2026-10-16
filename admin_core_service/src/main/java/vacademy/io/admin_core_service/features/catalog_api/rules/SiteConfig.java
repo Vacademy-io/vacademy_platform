@@ -19,7 +19,8 @@ import static vacademy.io.admin_core_service.features.catalog_api.rules.CatalogJ
  * {@code globalSettings.courseLanguages.enabled}; a site without a Courses section groups when
  * course languages are on. Version groups: {@code resolveVersionGroups} (lists of 2+ distinct
  * ids, at most 500). Descriptions: {@code render.card.descriptions} of an editorial card section
- * ({@code resolveCardDesign} in {@code catalog-card-view.ts}).
+ * ({@code resolveCardDesign} in {@code catalog-card-view.ts}). Discovery: the same section's sort,
+ * filter, badge and quick-filter props ({@link CatalogDiscovery}).
  */
 public record SiteConfig(
         String tag,
@@ -34,7 +35,8 @@ public record SiteConfig(
         SiteSections.CatalogSection catalog,
         CatalogStreams.StreamsConfig streams,
         Map<String, String> descriptions,
-        String pathLibraryId) {
+        String pathLibraryId,
+        CatalogDiscovery discovery) {
 
     public static SiteConfig empty(String tag) {
         return of(tag, JsonNodeFactory.instance.objectNode());
@@ -67,9 +69,12 @@ public record SiteConfig(
                 && !payment.get("enabled").booleanValue());
         CatalogStreams.StreamsConfig streams = catalog == null ? null
                 : CatalogStreams.resolveStreams(catalog.props().get("streams"));
-        return new SiteConfig(tag, gs, pages, CourseFormats.resolve(gs), languages, courseLanguagesOn, grouping,
+        CourseFormats.Resolved formats = CourseFormats.resolve(gs);
+        return new SiteConfig(tag, gs, pages, formats, languages, courseLanguagesOn, grouping,
                 resolveVersionGroups(field(languageSettings, "versionGroups")), paymentEnabled, catalog, streams,
-                descriptions(catalog), SiteSections.findPathLibraryId(pages));
+                descriptions(catalog), SiteSections.findPathLibraryId(pages),
+                CatalogDiscovery.resolve(catalog == null ? null : catalog.props(), courseLanguagesOn, languages,
+                        streams, formats));
     }
 
     static List<List<String>> resolveVersionGroups(JsonNode raw) {

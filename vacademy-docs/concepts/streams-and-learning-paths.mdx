@@ -18,7 +18,9 @@ A **stream** is a top-level subject area of the catalogue; its **categories** ar
       "image_url": "https://d1om4dxj9e7kkd.cloudfront.net/CATALOGUE/2719d8d1-43fd-4f9f-97af-a5b067d770a6/e6004c6c-11b6-440a-a05f-546d2a94f193-bv-stream-dharma.png",
       "accent_color": "#82b74b",
       "coming_soon": false,
-      "course_count": 1,
+      "course_count": 13,
+      "tag": "dharma",
+      "notify_campaign_id": null,
       "categories": [
         {
           "slug": "vedic-parenting",
@@ -26,7 +28,9 @@ A **stream** is a top-level subject area of the catalogue; its **categories** ar
           "subtitle": "Holistic Parenting",
           "image_url": null,
           "coming_soon": false,
-          "course_count": 1
+          "course_count": 13,
+          "accent_color": "#82b74b",
+          "notify_campaign_id": null
         }
       ]
     }
@@ -38,8 +42,10 @@ A **stream** is a top-level subject area of the catalogue; its **categories** ar
 |---|---|
 | `slug` | Use it in `GET /courses?stream=` / `?category=` and in your URLs. |
 | `label`, `subtitle` | The stream's title and its secondary name. Brahm Varchas uses a Hindi title and an English subtitle. |
-| `accent_color` | `#rgb`, `#rrggbb` or `#rrggbbaa`, or `null`. |
-| `coming_soon` | Show it greyed out, or hide it. It has no courses yet. |
+| `accent_color` | `#rgb`, `#rrggbb` or `#rrggbbaa`, or `null`. Streams and categories each have one. |
+| `tag` | Streams only: the course tag the stream filters by (`dharma`). Courses carrying it are in the stream; the `popular` badge is given per stream tag. |
+| `notify_campaign_id` | On streams and categories: the CRM campaign the hosted site files "notify me" sign-ups under, set when the folder has a notify audience (typically a `coming_soon` one), else `null`. Send your own sign-ups to [`POST /leads`](/guides/enquiries) with this `campaign_id`. |
+| `coming_soon` | Show it greyed out, or hide it. It has no courses yet; offer "notify me" when `notify_campaign_id` is set. |
 | `course_count` | Courses tagged or levelled into the stream or any of its categories. A course can count in more than one stream. |
 | `source` | `folder_library` or `tags`: how the institute defines streams. `null` with an empty list when streams are off. |
 
@@ -56,6 +62,8 @@ const courses = await vacademy.courses({ stream: stream.slug, page_size: 48 });
 // a category inside it:
 const parenting = await vacademy.courses({ stream: 'dharma', category: 'vedic-parenting' });
 ```
+
+`stream` and `category` take comma lists: `?stream=dharma,shastra` shows courses in either stream. To show how many courses each stream or category would have under the visitor's other filters, add `facets=true` and read `facets.streams` / `facets.categories` ([Facets](/concepts/courses#facets-live-filter-counts)); `course_count` here is the unfiltered total.
 
 ## Learning paths
 
@@ -92,6 +100,6 @@ A learning path is an ordered sequence of courses ("A woman's life stages": mens
 }
 ```
 
-- A step can be a course that is not published to the catalogue on its own. It is still listed, from the path's data: `subtitle`, `instructors` and `created_at` are empty and `availability` is `available`. `GET /courses/{id}` returns `404` for it; link to its `url`.
+- A step can be a course that is not published to the catalogue on its own. It is still listed, from the path's data: `subtitle`, `instructors` and `created_at` are empty, `availability` is `available`, `badges` is empty, `images` has only `preview_url`, and `duration_minutes`, `available_slots`, `max_seats`, `package_type` and `coming_soon` are `null`. `GET /courses/{id}` returns `404` for it; link to its `url`.
 - A `step_count` of `0` means the path has no steps to show yet; hide it.
 - On a course page, `series` (from `GET /courses/{id}`) names the path the course belongs to and lists its steps, with `current: true` on this course: use it for a "Part 2 of 3" strip.

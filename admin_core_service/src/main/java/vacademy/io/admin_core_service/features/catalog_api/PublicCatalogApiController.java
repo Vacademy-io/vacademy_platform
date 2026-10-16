@@ -56,12 +56,22 @@ public class PublicCatalogApiController {
             @RequestParam(value = "availability", required = false) String availability,
             @RequestParam(value = "page", required = false) String page,
             @RequestParam(value = "page_size", required = false) String pageSize,
-            @RequestParam(value = "sort", required = false) String sort) {
+            @RequestParam(value = "sort", required = false) String sort,
+            @RequestParam(value = "level", required = false) String level,
+            @RequestParam(value = "instructor", required = false) String instructor,
+            @RequestParam(value = "session", required = false) String session,
+            @RequestParam(value = "badge", required = false) String badge,
+            @RequestParam(value = "price", required = false) String price,
+            @RequestParam(value = "price_min", required = false) String priceMin,
+            @RequestParam(value = "price_max", required = false) String priceMax,
+            @RequestParam(value = "custom", required = false) String custom,
+            @RequestParam(value = "facets", required = false) String facets) {
         var p = auth.authenticate(http, CatalogApiAuth.SCOPE_READ);
         int pageNo = intParam("page", page, 1);
         int size = intParam("page_size", pageSize, 24);
         return cacheable(service.courses(p.instituteId(), new CatalogApiService.CourseQuery(q, stream, category,
-                format, language, tag, availability, pageNo, size, sort)));
+                format, language, tag, availability, pageNo, size, sort, level, instructor, session, badge, price,
+                priceMin, priceMax, custom, boolParam("facets", facets))));
     }
 
     @GetMapping("/courses/{id}")
@@ -144,6 +154,17 @@ public class PublicCatalogApiController {
             throw new CatalogApiException(HttpStatus.BAD_REQUEST, "invalid_request", name + " must be a whole number.",
                     details, null);
         }
+    }
+
+    static boolean boolParam(String name, String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        String v = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (v.equals("true") || v.equals("1")) return true;
+        if (v.equals("false") || v.equals("0")) return false;
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("param", name);
+        throw new CatalogApiException(HttpStatus.BAD_REQUEST, "invalid_request", name + " must be true or false.",
+                details, null);
     }
 
     private static ResponseEntity<Map<String, Object>> cacheable(Map<String, Object> body) {

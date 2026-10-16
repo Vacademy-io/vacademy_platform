@@ -1409,28 +1409,43 @@ const MarqueeRenderer: React.FC<any> = ({
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const list = (Array.isArray(items) ? items : []).filter((it: any) => it && it.text);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const unitRef = useRef<HTMLDivElement>(null);
+  // Copies of the items in each half of the track. The loop is seamless only
+  // when one half is at least as wide as the band: two short items doubled
+  // ran out halfway across a desktop screen, and the ticker looked stuck.
+  const [copies, setCopies] = useState(1);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const unit = unitRef.current;
+    if (!viewport || !unit || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = unit.offsetWidth;
+      if (width > 0) setCopies(Math.max(1, Math.ceil(viewport.clientWidth / width)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(unit);
+    return () => observer.disconnect();
+  }, [list.length]);
   if (list.length === 0) return null;
-  const row = [...list, ...list];
-  return (
-    <section
-      className="catalogue-marquee-viewport overflow-hidden py-3"
-      style={{ backgroundColor }}
-      aria-label={t("jsonRenderer.announcements")}
-    >
+  // The duration covers one half, so it grows with the copies to keep the speed.
+  const seconds = parseFloat(MARQUEE_SPEED_MAP[speed] || "30s") * copies;
+  // Each item carries its own trailing space (no flex gap), so a half is
+  // exactly N items wide and translate(-50%) lands on the next copy.
+  const half = (part: number) =>
+    Array.from({ length: copies }, (_, copy) => (
       <div
-        className={`catalogue-marquee flex items-center gap-10 ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
-        style={{
-          animationDuration: MARQUEE_SPEED_MAP[speed] || '30s',
-          // The keyframes scroll left; 'right' simply plays them backwards.
-          animationDirection: direction === 'right' ? 'reverse' : undefined,
-          color: textColor,
-        }}
+        key={`${part}-${copy}`}
+        ref={part === 0 && copy === 0 ? unitRef : undefined}
+        aria-hidden={part > 0 || copy > 0 || undefined}
+        className="flex shrink-0 items-center"
       >
-        {row.map((item: any, i: number) => (
+        {list.map((item: any, i: number) => (
           <span
             key={i}
-            aria-hidden={i >= list.length}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`}
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`}
           >
             {(item.icon || defaultIcon) && (
               <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
@@ -1438,6 +1453,25 @@ const MarqueeRenderer: React.FC<any> = ({
             {item.text}
           </span>
         ))}
+      </div>
+    ));
+  return (
+    // The band keeps its colour edge to edge; only the moving text fades at
+    // the sides (the mask on the band itself faded the colour into a smudge).
+    <section style={{ backgroundColor }} aria-label={t("jsonRenderer.announcements")}>
+      <div ref={viewportRef} className="catalogue-marquee-viewport overflow-hidden py-3">
+        <div
+          className={`catalogue-marquee flex items-center ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
+          style={{
+            animationDuration: `${seconds}s`,
+            // The keyframes scroll left; 'right' simply plays them backwards.
+            animationDirection: direction === 'right' ? 'reverse' : undefined,
+            color: textColor,
+          }}
+        >
+          {half(0)}
+          {half(1)}
+        </div>
       </div>
     </section>
   );

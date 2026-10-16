@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.invoice.service;
 
+import vacademy.io.admin_core_service.features.invoice.util.InvoiceDefaultTemplatePicker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
@@ -2352,18 +2353,22 @@ public class InvoiceService {
     /**
      * Load institute invoice PDF layout template (defines how the invoice PDF looks: line items, totals, placeholders like default_invoice.html).
      * Uses templates table with type=INVOICE (institute invoice PDF templates), not email templates.
-     * If the institute has one or more INVOICE templates, the last-created one is used; otherwise
-     * resources/templates/invoice/default_invoice.html is used.
+     * If the institute has one or more INVOICE templates, the one marked default in
+     * Settings &gt; Invoice is used, else the last-created one (see InvoiceDefaultTemplatePicker);
+     * otherwise resources/templates/invoice/default_invoice.html is used.
      */
     private String loadInvoiceTemplate(String instituteId) {
         try {
             var templates = templateService.getTemplatesByInstituteAndType(instituteId, INVOICE_TEMPLATE_TYPE);
             log.info("Found {} INVOICE templates for institute: {}", templates.size(), instituteId);
-            if (!templates.isEmpty()) {
-                String content = templates.get(0).getContent();
+            var chosen = templates.isEmpty() ? null : InvoiceDefaultTemplatePicker.pick(templates,
+                    readDefaultInvoiceTemplateId(instituteId, InvoiceDefaultTemplatePicker.PDF_SETTING_KEY))
+                    .orElse(null);
+            if (chosen != null) {
+                String content = chosen.getContent();
                 if (StringUtils.hasText(content)) {
                     log.info("Using custom INVOICE template '{}' (id={}) for institute: {}, content length: {}",
-                            templates.get(0).getName(), templates.get(0).getId(), instituteId,
+                            chosen.getName(), chosen.getId(), instituteId,
                             content.length());
                     return content;
                 } else {
@@ -2376,6 +2381,20 @@ public class InvoiceService {
 
         log.info("Using default invoice PDF template from resources (default_invoice.html) for institute: {}", instituteId);
         return loadDefaultInvoiceTemplateFromResources();
+    }
+
+    /**
+     * The template id the admin marked default for invoices ({@code INVOICE_SETTING.<key>}),
+     * or null. Never throws: a settings read failure falls back to the newest template.
+     */
+    private String readDefaultInvoiceTemplateId(String instituteId, String key) {
+        try {
+            return InvoiceDefaultTemplatePicker.defaultIdFrom(
+                    instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "INVOICE_SETTING"), key);
+        } catch (Exception e) {
+            log.warn("Could not read {} for institute {}: {}", key, instituteId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -4029,11 +4048,12 @@ public class InvoiceService {
             boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
 
             // First: try INVOICE_EMAIL type templates (created via easy-email editor)
-            // Uses most recently created template for the institute
+            // Uses the template marked default in Settings > Invoice, else the most recently created
             var invoiceEmailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "INVOICE_EMAIL");
             var invoiceEmailTemplate = invoiceEmailTemplates.isEmpty()
                     ? Optional.<vacademy.io.admin_core_service.features.institute.dto.template.TemplateResponse>empty()
-                    : Optional.of(invoiceEmailTemplates.get(0));
+                    : InvoiceDefaultTemplatePicker.pick(invoiceEmailTemplates,
+                            readDefaultInvoiceTemplateId(instituteId, InvoiceDefaultTemplatePicker.EMAIL_SETTING_KEY));
 
             // Fallback: legacy EMAIL type with name "Invoice Email"
             if (invoiceEmailTemplate.isEmpty()) {

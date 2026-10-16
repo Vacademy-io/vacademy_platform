@@ -294,7 +294,7 @@ public class StudentAnalyticsLLMService {
                                                 Generate a JSON response with ALL of the following sections:
 
                                                 {
-                                                  "performance_analysis": "2-3 paragraphs: overall performance, accuracy patterns, time usage, comparison with class if class_context is available",
+                                                  "performance_analysis": "One paragraph of 60-110 words, to the student: overall performance, strongest and weakest areas, time usage, comparison with class if class_context is available",
 
                                                   "strengths": { "topic_name": 90 },
                                                   "weaknesses": { "topic_name": 30 },
@@ -360,7 +360,7 @@ public class StudentAnalyticsLLMService {
                                                       "current_level": "Beginner|Developing|Proficient",
                                                       "target_level": "Proficient|Expert",
                                                       "suggestion": "Specific actionable study advice",
-                                                      "estimated_time": "2-3 hours"
+                                                      "estimated_time": "45 minutes"
                                                     }
                                                   ]
                                                 }
@@ -379,7 +379,13 @@ public class StudentAnalyticsLLMService {
                                                 5. BEHAVIORAL: Use time_taken per question data. Look for patterns (rushing, fatigue, difficulty avoidance).
                                                 6. COMPARISON: If class_context is present, reference rank/percentile/class averages in performance_analysis.
                                                 7. FLASHCARDS: 5-10 cards focusing on concepts from wrong/partial answers.
-                                                8. LEARNING PATH: 3-5 steps ordered by priority (weakest topics first).
+                                                8. LEARNING PATH: 3-5 steps ordered by priority (weakest topics first). Give estimated_time in minutes, e.g. "45 minutes".
+                                                9. VOICE: The student reads this report, often with a parent. Write every narrative field
+                                                   (performance_analysis, insight, behavioral_insights, misconception, remediation, suggestion,
+                                                   areas_of_improvement, improvement_path, flashcard backs) to the student in the second person
+                                                   ("you", "your"), never "the student". Use their first name at most once, at the start of
+                                                   performance_analysis, if a name is in the data. Short, plain sentences a Class 5 to 12 student
+                                                   understands; encouraging but honest; no jargon such as "metadata" or "accuracy calculation".
 
                                                 CORRECTNESS: The per-question "status" field is the source of truth. Never re-grade a
                                                 question yourself from the options or the answer text.

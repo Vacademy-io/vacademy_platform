@@ -334,7 +334,8 @@
         "companyWebsite": "Company website",
         "sending": "Sending…",
         "submit": "Submit",
-        "placeholderPrefix": "Enter {{name}}"
+        "placeholderPrefix": "Enter {{name}}",
+        "selectParentFirst": "Select {{name}} first"
     },
     "bookDetails": {
         "bookAltFallback": "Book",

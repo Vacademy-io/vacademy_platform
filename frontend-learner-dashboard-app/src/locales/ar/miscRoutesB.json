@@ -234,6 +234,7 @@
         "pinCodePlaceholder": "أدخل الرمز البريدي"
       },
       "additionalInfo": "معلومات إضافية",
+      "selectParentFirst": "اختر {{name}} أولاً",
       "submit": "إرسال الرد",
       "submitting": "جارٍ الإرسال..."
     },

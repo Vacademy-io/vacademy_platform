@@ -268,7 +268,8 @@
         "companyWebsite": "موقع الشركة",
         "sending": "جارٍ الإرسال…",
         "submit": "إرسال",
-        "placeholderPrefix": "أدخل {{name}}"
+        "placeholderPrefix": "أدخل {{name}}",
+        "selectParentFirst": "اختر {{name}} أولاً"
     },
     "bookDetails": {
         "bookAltFallback": "كتاب",

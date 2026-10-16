@@ -253,6 +253,7 @@
         "sending": "Envoi en cours…",
         "submit": "Envoyer",
         "placeholderPrefix": "Saisissez {{name}}",
+        "selectParentFirst": "Choisissez d’abord {{name}}",
         "redirectingIn_many": "Redirection dans {{count}} secondes…"
     },
     "bookDetails": {

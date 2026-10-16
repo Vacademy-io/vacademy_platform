@@ -334,7 +334,8 @@
         "companyWebsite": "कंपनी की वेबसाइट",
         "sending": "भेजा जा रहा है…",
         "submit": "सबमिट करें",
-        "placeholderPrefix": "{{name}} दर्ज करें"
+        "placeholderPrefix": "{{name}} दर्ज करें",
+        "selectParentFirst": "पहले {{name}} चुनें"
     },
     "bookDetails": {
         "bookAltFallback": "किताब",

@@ -74,7 +74,7 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
                                 }
                             />
                         );
-                        if (!folderUi.enabled) return card;
+                        if (!folderUi.enabled || !folderUi.canManage) return card;
                         return (
                             <DraggableAssessment
                                 key={item.assessment_id ?? index}

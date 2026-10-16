@@ -37,6 +37,8 @@ export interface FolderStripActions {
     onEdit: (folder: AssessmentFolder) => void;
     onDelete: (folder: AssessmentFolder) => void;
     onCopyLink: (folder: AssessmentFolder) => void;
+    /** Display Settings → Assessment Actions → Manage assessment folders, for the current role. */
+    canManage: boolean;
 }
 
 const useIsDraggingAssessment = () => {
@@ -102,26 +104,30 @@ export const AssessmentFolderStrip = ({
                 </SortableContext>
                 <StaticChip
                     dropId={DROP_UNFILED_ID}
-                    acceptsDrop
+                    acceptsDrop={actions.canManage}
                     active={selectedKey === UNFILED_FOLDER_ID}
                     onClick={() => actions.onSelect(UNFILED_FOLDER_ID)}
                     icon={<FolderMinus size={14} />}
                     label={t('rail.unfiled')}
                 />
-                <button
-                    type="button"
-                    onClick={actions.onCreate}
-                    className="flex items-center gap-1 rounded-full border border-dashed border-neutral-300 px-3 py-1 text-sm text-neutral-600 hover:border-primary-400 hover:text-primary-500"
-                >
-                    <Plus size={14} />
-                    {t('rail.newFolder')}
-                </button>
+                {actions.canManage ? (
+                    <button
+                        type="button"
+                        onClick={actions.onCreate}
+                        className="flex items-center gap-1 rounded-full border border-dashed border-neutral-300 px-3 py-1 text-sm text-neutral-600 hover:border-primary-400 hover:text-primary-500"
+                    >
+                        <Plus size={14} />
+                        {t('rail.newFolder')}
+                    </button>
+                ) : null}
                 {loading ? (
                     <span className="text-caption text-neutral-400">{t('rail.loading')}</span>
                 ) : null}
             </div>
             {selectedFolder && selectedFolder.assessment_count === 0 ? (
-                <p className="mt-1 text-caption text-neutral-500">{t('banner.emptyHint')}</p>
+                <p className="mt-1 text-caption text-neutral-500">
+                    {actions.canManage ? t('banner.emptyHint') : t('banner.emptyReadOnly')}
+                </p>
             ) : null}
         </section>
     );
@@ -174,6 +180,7 @@ const FolderChip = ({
     onEdit,
     onDelete,
     onCopyLink,
+    canManage,
 }: FolderStripActions & { folder: AssessmentFolder; active: boolean }) => {
     const { t } = useTranslation('assessmentFolders');
     const draggingAssessment = useIsDraggingAssessment();
@@ -186,7 +193,12 @@ const FolderChip = ({
         transition,
         isDragging,
         isOver,
-    } = useSortable({ id: folder.id, data: { type: DRAG_TYPE_FOLDER, folderId: folder.id } });
+    } = useSortable({
+        id: folder.id,
+        data: { type: DRAG_TYPE_FOLDER, folderId: folder.id },
+        // Read-only roles can still drop nothing here and reorder nothing.
+        disabled: !canManage,
+    });
 
     return (
         <div
@@ -198,17 +210,19 @@ const FolderChip = ({
                 isDragging && 'z-10 opacity-70 shadow-md'
             )}
         >
-            <button
-                ref={setActivatorNodeRef}
-                type="button"
-                aria-label={t('rail.reorder', { name: folder.name })}
-                title={t('rail.reorder', { name: folder.name })}
-                className="-ml-1 cursor-grab touch-none text-neutral-400 opacity-0 transition-opacity hover:text-neutral-600 focus-visible:opacity-100 active:cursor-grabbing group-hover:opacity-100"
-                {...attributes}
-                {...listeners}
-            >
-                <DotsSixVertical size={14} />
-            </button>
+            {canManage ? (
+                <button
+                    ref={setActivatorNodeRef}
+                    type="button"
+                    aria-label={t('rail.reorder', { name: folder.name })}
+                    title={t('rail.reorder', { name: folder.name })}
+                    className="-ml-1 cursor-grab touch-none text-neutral-400 opacity-0 transition-opacity hover:text-neutral-600 focus-visible:opacity-100 active:cursor-grabbing group-hover:opacity-100"
+                    {...attributes}
+                    {...listeners}
+                >
+                    <DotsSixVertical size={14} />
+                </button>
+            ) : null}
             <button
                 type="button"
                 onClick={() => onSelect(folder.id)}
@@ -250,13 +264,15 @@ const FolderChip = ({
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                        className="cursor-pointer gap-2"
-                        onSelect={() => onEdit(folder)}
-                    >
-                        <PencilSimple size={16} />
-                        {t('menu.edit')}
-                    </DropdownMenuItem>
+                    {canManage ? (
+                        <DropdownMenuItem
+                            className="cursor-pointer gap-2"
+                            onSelect={() => onEdit(folder)}
+                        >
+                            <PencilSimple size={16} />
+                            {t('menu.edit')}
+                        </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                         className="cursor-pointer gap-2"
                         onSelect={() => onCopyLink(folder)}
@@ -264,14 +280,18 @@ const FolderChip = ({
                         <LinkIcon size={16} />
                         {t('menu.copyLink')}
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                        className="cursor-pointer gap-2 text-danger-600 focus:text-danger-600"
-                        onSelect={() => onDelete(folder)}
-                    >
-                        <Trash size={16} />
-                        {t('menu.delete')}
-                    </DropdownMenuItem>
+                    {canManage ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                className="cursor-pointer gap-2 text-danger-600 focus:text-danger-600"
+                                onSelect={() => onDelete(folder)}
+                            >
+                                <Trash size={16} />
+                                {t('menu.delete')}
+                            </DropdownMenuItem>
+                        </>
+                    ) : null}
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>

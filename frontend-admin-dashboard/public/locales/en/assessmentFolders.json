@@ -70,6 +70,7 @@
     },
     "banner": {
         "hiddenFromStudents": "Hidden from students",
-        "emptyHint": "No tests here yet. Open All assessments and drag a test onto this folder, or use ⋮ → Move to folder."
+        "emptyHint": "No tests here yet. Open All assessments and drag a test onto this folder, or use ⋮ → Move to folder.",
+        "emptyReadOnly": "No tests in this folder yet."
     }
 }

@@ -11,8 +11,8 @@ export const MoveToFolderMenuItem = ({
     scheduleTestContent: TestContent;
 }) => {
     const { t } = useTranslation('assessmentFolders');
-    const { enabled, openMove } = useAssessmentFolderUi();
-    if (!enabled) return null;
+    const { enabled, canManage, openMove } = useAssessmentFolderUi();
+    if (!enabled || !canManage) return null;
     return (
         <DropdownMenuItem
             className="cursor-pointer gap-2"

@@ -31,6 +31,11 @@ const buildRows = (
         label: t('rows.showDeleteAssessment.label'),
         hint: t('rows.showDeleteAssessment.hint'),
     },
+    {
+        key: 'showManageFolders',
+        label: t('rows.showManageFolders.label'),
+        hint: t('rows.showManageFolders.hint'),
+    },
 ];
 
 export const AssessmentActionsCard = ({ settings, onChange }: AssessmentActionsCardProps) => {
@@ -43,6 +48,7 @@ export const AssessmentActionsCard = ({ settings, onChange }: AssessmentActionsC
             showCreateAssessment: settings?.showCreateAssessment !== false,
             showEditAssessment: settings?.showEditAssessment !== false,
             showDeleteAssessment: settings?.showDeleteAssessment !== false,
+            showManageFolders: settings?.showManageFolders !== false,
             ...partial,
         });
 

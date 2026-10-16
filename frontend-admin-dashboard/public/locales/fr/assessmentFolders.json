@@ -72,6 +72,7 @@
     },
     "banner": {
         "hiddenFromStudents": "Masqué pour les élèves",
-        "emptyHint": "Aucun test ici pour l’instant. Ouvrez Toutes les évaluations et faites glisser un test sur ce dossier, ou utilisez ⋮ → Déplacer vers un dossier."
+        "emptyHint": "Aucun test ici pour l’instant. Ouvrez Toutes les évaluations et faites glisser un test sur ce dossier, ou utilisez ⋮ → Déplacer vers un dossier.",
+        "emptyReadOnly": "Aucun test dans ce dossier pour l’instant."
     }
 }

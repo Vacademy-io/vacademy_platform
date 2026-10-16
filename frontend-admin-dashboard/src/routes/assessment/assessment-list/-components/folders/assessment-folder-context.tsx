@@ -10,6 +10,8 @@ export interface MoveTarget {
 
 export interface AssessmentFolderUi {
     enabled: boolean;
+    /** The role may create/edit/delete folders and move assessments (Display Settings). */
+    canManage: boolean;
     /** 'all', 'unfiled' or the open folder's id. */
     selectedKey: string;
     folders: AssessmentFolder[];
@@ -22,6 +24,7 @@ export interface AssessmentFolderUi {
 
 const DISABLED: AssessmentFolderUi = {
     enabled: false,
+    canManage: false,
     selectedKey: 'all',
     folders: [],
     foldersById: {},

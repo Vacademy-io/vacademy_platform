@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -35,6 +35,7 @@ import {
     useMoveAssessmentsMutation,
 } from '@/services/assessment-folders';
 import { AssessmentFolderStrip } from './AssessmentFolderStrip';
+import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 import {
     AssessmentFolderUi,
     AssessmentFolderUiContext,
@@ -87,8 +88,15 @@ export const AssessmentFolderWorkspace = ({
     const [deleting, setDeleting] = useState(false);
     const [dragLabel, setDragLabel] = useState<string | null>(null);
     const suppressClickUntil = useRef(0);
+    // Display Settings → Assessment Actions → Manage assessment folders (per role).
+    const { canManageFolders } = useAssessmentActionVisibility();
     const pendingPrompt = usePendingFolderPrompt((st) => st.pending);
     const clearPendingPrompt = () => usePendingFolderPrompt.getState().setPending(null);
+
+    // A role without folder access gets no "Add to a folder" step; drop the request.
+    useEffect(() => {
+        if (pendingPrompt && !canManageFolders) clearPendingPrompt();
+    }, [pendingPrompt, canManageFolders]);
 
     const orderedFolders = useMemo(() => {
         if (!orderOverride) return folders;
@@ -144,7 +152,7 @@ export const AssessmentFolderWorkspace = ({
         suppressClickUntil.current = Date.now() + 300;
         const { active, over } = event;
         const data = active.data.current;
-        if (!over || !data) return;
+        if (!over || !data || !canManageFolders) return;
 
         if (data.type === DRAG_TYPE_FOLDER) {
             if (active.id === over.id) return;
@@ -228,13 +236,14 @@ export const AssessmentFolderWorkspace = ({
     const ui: AssessmentFolderUi = useMemo(
         () => ({
             enabled: true,
+            canManage: canManageFolders,
             selectedKey: effectiveKey,
             folders,
             foldersById,
             openMove: setMoveTarget,
             isClickSuppressed: () => Date.now() < suppressClickUntil.current,
         }),
-        [folders, foldersById, effectiveKey]
+        [folders, foldersById, effectiveKey, canManageFolders]
     );
 
     const folderFilter: FolderListFilter =
@@ -267,6 +276,7 @@ export const AssessmentFolderWorkspace = ({
                             onEdit={(folder) => setFormFolder(folder)}
                             onDelete={setDeleteFolder}
                             onCopyLink={copyLink}
+                            canManage={canManageFolders}
                         />
                     ),
                 })}
@@ -290,7 +300,7 @@ export const AssessmentFolderWorkspace = ({
             />
             {/* Step after publishing a new assessment (set by the create wizard). */}
             <MoveToFolderDialog
-                open={!!pendingPrompt}
+                open={!!pendingPrompt && canManageFolders}
                 onOpenChange={(open) => !open && clearPendingPrompt()}
                 assessmentIds={pendingPrompt ? [pendingPrompt.assessmentId] : []}
                 assessmentName={pendingPrompt?.name || undefined}

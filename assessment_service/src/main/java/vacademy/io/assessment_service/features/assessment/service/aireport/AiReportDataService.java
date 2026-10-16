@@ -111,12 +111,14 @@ public class AiReportDataService {
 
         attachShortTexts(questions);
 
+        String logoUri = logo(branding);
         String brand = validHex(branding != null ? branding.getPrimaryColor() : null, "#0F9A83");
         String accent = accentFor(branding);
 
         return AiReportModel.builder()
                 .instituteName(safe(() -> adminCoreServiceClient.getInstituteName(instituteId)))
-                .logoDataUri(logo(branding))
+                .logoDataUri(logoUri)
+                .logoAspect(aspect(logoUri))
                 .assessmentName(Objects.toString(assessment.get("name"), "Assessment"))
                 .studentName(attempt.studentName())
                 .enrollmentNumber(safe(() -> adminCoreServiceClient.getEnrollmentNumber(userId, instituteId)))
@@ -153,6 +155,18 @@ public class AiReportDataService {
         if (inline != null) return inline;
         String url = safe(() -> brandingHelper.resolveLogoUrl(branding));
         return StringUtils.hasText(url) ? url : null;
+    }
+
+    /** Width / height of an inline image, read from its bytes; null for URLs or unreadable data. */
+    public static Double aspect(String dataUri) {
+        if (dataUri == null || !dataUri.startsWith("data:image/")) return null;
+        try {
+            byte[] bytes = Base64.getDecoder().decode(dataUri.substring(dataUri.indexOf(',') + 1));
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+            return img == null || img.getHeight() == 0 ? null : (double) img.getWidth() / img.getHeight();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ── Attempt ──

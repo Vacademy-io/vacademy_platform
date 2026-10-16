@@ -93,9 +93,19 @@ public class AiReportHtmlBuilderV2 {
 
     private String band(AiReportModel m, ReportPalette p, boolean first) {
         String inst = m.getInstituteName() == null ? "" : m.getInstituteName();
-        String logo = m.getLogoDataUri() != null
-                ? "<div class=\"logo-img\"><img src=\"" + m.getLogoDataUri().replace("\"", "%22") + "\" style=\"height:32px;max-width:150px;\"/></div>"
-                : "<div class=\"logo\"><span class=\"logo-t\">" + esc(initials(inst)) + "</span></div>";
+        String logo;
+        int cellW = 58; // initials badge: 40px + gaps
+        if (m.getLogoDataUri() != null) {
+            // The badge is a fixed-size cell sized from the logo's own proportions: an auto-width
+            // block stretched to the header cell and left white space beside the logo.
+            double aspect = m.getLogoAspect() == null ? 1.0 : Math.max(0.5, Math.min(4.0, m.getLogoAspect()));
+            int h = 38, w = (int) Math.round(h * aspect);
+            cellW = w + 14;
+            logo = "<table class=\"logo-img\"><tr><td style=\"width:" + w + "px;height:" + h + "px;\"><img src=\""
+                    + m.getLogoDataUri().replace("\"", "%22") + "\" style=\"width:" + w + "px;height:" + h + "px;\"/></td></tr></table>";
+        } else {
+            logo = "<div class=\"logo\"><span class=\"logo-t\">" + esc(initials(inst)) + "</span></div>";
+        }
         StringBuilder right = new StringBuilder();
         right.append("<div class=\"band-r1\">").append(esc(displayName(m.getStudentName()))).append("</div><div class=\"band-r2\">");
         List<String> bits = new ArrayList<>();
@@ -103,7 +113,7 @@ public class AiReportHtmlBuilderV2 {
         if (first && m.getAttemptDate() != null) bits.add(date(m.getAttemptDate()));
         if (!first || bits.isEmpty()) bits.add(0, m.getAssessmentName());
         right.append(esc(String.join(" · ", bits))).append("</div>");
-        return "<table class=\"band\"><tr><td class=\"band-logo\">" + logo + "</td>"
+        return "<table class=\"band\"><tr><td class=\"band-logo\" style=\"width:" + (cellW + 36) + "px;\">" + logo + "</td>"
                 + "<td><div class=\"band-i1\">" + esc(inst) + "</div>"
                 + (first ? "<div class=\"band-i2\">" + esc(m.getAssessmentName()) + "</div>" : "")
                 + "</td><td class=\"band-right\">" + right + "</td></tr></table>";
@@ -855,8 +865,9 @@ public class AiReportHtmlBuilderV2 {
                 + "table{border-collapse:collapse;}"
                 + ".band{width:100%;background:" + p.brand + ";color:" + p.onBrand + ";}"
                 + ".band td{padding:12px 0;vertical-align:middle;}"
-                + ".band-logo{width:1px;white-space:nowrap;padding-left:36px !important;padding-right:12px !important;}"
-                + ".logo-img{background:#ffffff;border-radius:9px;padding:4px 8px;line-height:0;}"
+                + ".band-logo{padding-left:36px !important;padding-right:0 !important;}"
+                + ".logo-img{background:#ffffff;border-radius:9px;border-collapse:separate;}"
+                + ".logo-img td{padding:5px 7px !important;line-height:0;}"
                 + ".logo{width:40px;height:40px;background:#ffffff;border-radius:10px;text-align:center;line-height:40px;}"
                 + ".logo img{vertical-align:middle;}"
                 + ".logo-t{font-family:'Baloo 2';font-weight:800;font-size:16px;color:" + p.brandInk + ";}"

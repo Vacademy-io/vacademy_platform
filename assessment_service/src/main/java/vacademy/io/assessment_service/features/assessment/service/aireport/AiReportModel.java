@@ -23,6 +23,8 @@ public class AiReportModel {
     private final String instituteName;
     /** data: URI of the institute logo, or null to show the initials badge. */
     private final String logoDataUri;
+    /** Logo width / height, so the header badge fits it exactly; null when unknown. */
+    private final Double logoAspect;
     private final String assessmentName;
     private final String studentName;
     private final String enrollmentNumber;

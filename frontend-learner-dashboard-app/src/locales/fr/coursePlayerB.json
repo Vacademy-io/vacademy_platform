@@ -454,6 +454,7 @@
     "blog": {
         "readMore": "Lire la suite",
         "backToList": "Tous les articles",
+        "viewMore": "Voir plus",
         "empty": "Pas encore d’articles — revenez bientôt.",
         "emptyGuidance": "Aucun article publié pour l’instant. Rédigez-en un dans Manage Pages → Blog et publiez-le pour le voir ici.",
         "homePageHint": "Ce blog est sur la page d’accueil : les articles s’ouvrent avec ?post=… dans l’adresse. Placez-le sur sa propre page (par ex. /blog) pour donner à chaque article une URL propre.",

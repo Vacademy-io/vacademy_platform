@@ -60,6 +60,13 @@ export interface BlogComponentProps {
   gateAudienceId?: string;
   /** Heading above that form. */
   gateTitle?: string;
+  /**
+   * Teaser mode, e.g. a "Blog & News" strip on the home page: the first
+   * `pageSize` posts with no pager, a "View more" button to this page route,
+   * and every article opening on that page instead of this one.
+   */
+  viewMoreRoute?: string;
+  viewMoreLabel?: string;
   /* injected by the renderer */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   globalSettings?: any;
@@ -91,6 +98,8 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
   textColor,
   gateAudienceId = "",
   gateTitle,
+  viewMoreRoute,
+  viewMoreLabel,
   globalSettings,
   instituteId,
   tagName,
@@ -110,8 +119,15 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
   );
 
   const listPath = RouteMatcher.pagePath(tagName, pageRoute);
+  // A teaser opens its articles on the full blog page it points to.
+  const teaserRoute = String(viewMoreRoute || "").trim();
+  const articleRoute = teaserRoute || pageRoute;
+  const articlesOnHome = isHomeRoute(articleRoute);
+  const articleListPath = teaserRoute ? RouteMatcher.pagePath(tagName, teaserRoute) : listPath;
   const postPath = (slug: string) =>
-    onHome ? `${listPath}?post=${encodeURIComponent(slug)}` : `${listPath}/${encodeURIComponent(slug)}`;
+    articlesOnHome
+      ? `${articleListPath}?post=${encodeURIComponent(slug)}`
+      : `${articleListPath}/${encodeURIComponent(slug)}`;
 
   const sectionStyle: React.CSSProperties | undefined =
     backgroundColor || textColor ? { backgroundColor: backgroundColor || undefined, color: textColor || undefined } : undefined;
@@ -119,8 +135,8 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
   const openPost = (slug: string) => {
     // pagePath() already applied the root-mount rule. The home-page form is a
     // search param, which the router wants as an object, not in `to`.
-    if (onHome) {
-      navigate({ to: listPath as never, search: { post: slug } as never });
+    if (articlesOnHome) {
+      navigate({ to: articleListPath as never, search: { post: slug } as never });
       return;
     }
     navigate({ to: postPath(slug) as never });
@@ -173,8 +189,17 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
       postPath={postPath}
       onOpenPost={openPost}
       isPreviewMode={isPreviewMode}
-      onHome={onHome}
+      onHome={onHome && !teaserRoute}
       locale={i18n.language}
+      viewMore={
+        teaserRoute
+          ? {
+              href: articleListPath,
+              label: viewMoreLabel || t("blog.viewMore"),
+              onOpen: () => navigate({ to: articleListPath as never }),
+            }
+          : undefined
+      }
     />
   );
 };
@@ -204,12 +229,15 @@ interface BlogListProps {
   isPreviewMode: boolean;
   onHome: boolean;
   locale: string;
+  /** Teaser mode: no pager, this button instead. */
+  viewMore?: { href: string; label: string; onOpen: () => void };
 }
 
 const BlogList: React.FC<BlogListProps> = ({
   heading, subheading, layout, columns, pageSize, category,
   showCoverImage, showExcerpt, showDate, showAuthor, showCategory, showReadingTime, showCategoryFilter,
   readMoreLabel, emptyMessage, sectionStyle, instituteId, postPath, onOpenPost, isPreviewMode, onHome, locale,
+  viewMore,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const [page, setPage] = useState(0);
@@ -334,7 +362,23 @@ const BlogList: React.FC<BlogListProps> = ({
           </div>
         )}
 
-        {totalPages > 1 && (
+        {viewMore && posts.length > 0 && (
+          <div className="mt-10 flex justify-center">
+            <a
+              href={viewMore.href}
+              className="catalogue-btn catalogue-btn-secondary"
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                e.preventDefault();
+                viewMore.onOpen();
+              }}
+            >
+              {viewMore.label} <ArrowRight size={16} aria-hidden="true" />
+            </a>
+          </div>
+        )}
+
+        {!viewMore && totalPages > 1 && (
           <nav className="mt-10 flex items-center justify-center gap-3" aria-label={t("blog.pagination")}>
             <button
               type="button"

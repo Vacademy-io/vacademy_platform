@@ -633,6 +633,7 @@
     "blog": {
         "readMore": "Read more",
         "backToList": "All posts",
+        "viewMore": "View more",
         "empty": "No posts yet — check back soon.",
         "emptyGuidance": "No published posts yet. Write one under Manage Pages → Blog and publish it to see it here.",
         "homePageHint": "This blog sits on the home page, so posts open with ?post=… in the address. Put it on its own page (for example /blog) to give every article a clean URL of its own.",

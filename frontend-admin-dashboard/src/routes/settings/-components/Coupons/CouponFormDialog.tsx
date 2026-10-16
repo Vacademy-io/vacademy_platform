@@ -60,12 +60,23 @@ const buildCouponSchema = (t: TFunction) =>
                 .max(32, t('schema.codeMaxLength'))
                 .regex(/^[A-Z0-9_-]+$/, t('schema.codeFormat')),
             discountType: z.enum(['PERCENTAGE', 'FLAT']),
+            // null while the field is blank, so clearing it never snaps back to 0.
             discountValue: z
                 .number({ invalid_type_error: t('schema.discountValueRequired') })
-                .positive(t('schema.discountValuePositive')),
-            maxDiscountValue: z.number().positive().nullable().optional(),
+                .nullable()
+                // superRefine (not refine) so the form type keeps null for the blank state.
+                .superRefine((v, ctx) => {
+                    if (v === null) {
+                        ctx.addIssue({ code: 'custom', message: t('schema.discountValueRequired') });
+                    } else if (v <= 0) {
+                        ctx.addIssue({ code: 'custom', message: t('schema.discountValuePositive') });
+                    }
+                }),
+            // Blank or 0 = no cap.
+            maxDiscountValue: z.number().min(0).nullable().optional(),
             redeemStartDate: z.string().optional(),
-            redeemEndDate: z.string().min(1, t('schema.endDateRequired')),
+            // Blank = never expires.
+            redeemEndDate: z.string().optional(),
             usageLimit: z
                 .number({ invalid_type_error: t('schema.usageLimitInvalid') })
                 .int()
@@ -81,16 +92,15 @@ const buildCouponSchema = (t: TFunction) =>
             }),
             status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
         })
-        .refine((v) => v.discountType !== 'PERCENTAGE' || v.discountValue <= 100, {
+        .refine((v) => v.discountType !== 'PERCENTAGE' || (v.discountValue ?? 0) <= 100, {
             message: t('schema.percentageMax'),
             path: ['discountValue'],
         })
-        .refine((v) => v.discountType !== 'PERCENTAGE' || (v.maxDiscountValue ?? 0) > 0, {
-            message: t('schema.maxCapRequired'),
-            path: ['maxDiscountValue'],
-        })
         .refine(
-            (v) => !v.redeemStartDate || new Date(v.redeemEndDate) > new Date(v.redeemStartDate),
+            (v) =>
+                !v.redeemStartDate ||
+                !v.redeemEndDate ||
+                new Date(v.redeemEndDate) > new Date(v.redeemStartDate),
             {
                 message: t('schema.endDateAfterStart'),
                 path: ['redeemEndDate'],
@@ -152,12 +162,12 @@ const formatPreview = (
         v.discountType === 'PERCENTAGE'
             ? v.maxDiscountValue
                 ? t('priceLine.percentOffWithMax', {
-                      value: v.discountValue,
+                      value: v.discountValue ?? 0,
                       max: `${currencySymbol}${v.maxDiscountValue.toLocaleString(locale)}`,
                   })
-                : t('priceLine.percentOff', { value: v.discountValue })
+                : t('priceLine.percentOff', { value: v.discountValue ?? 0 })
             : t('priceLine.flatOff', {
-                  amount: `${currencySymbol}${v.discountValue.toLocaleString(locale)}`,
+                  amount: `${currencySymbol}${(v.discountValue ?? 0).toLocaleString(locale)}`,
               });
     const expiry = v.redeemEndDate
         ? new Date(v.redeemEndDate).toLocaleDateString(undefined, {
@@ -214,7 +224,7 @@ export const CouponFormDialog = ({
             return {
                 code: editing.code,
                 discountType: (discount?.discount_type ?? 'PERCENTAGE') as 'PERCENTAGE' | 'FLAT',
-                discountValue: discount?.discount_point ?? 0,
+                discountValue: discount?.discount_point ?? null,
                 maxDiscountValue: discount?.max_discount_point ?? null,
                 redeemStartDate: formatDateForInput(editing.redeem_start_date),
                 redeemEndDate: formatDateForInput(editing.redeem_end_date),
@@ -238,7 +248,7 @@ export const CouponFormDialog = ({
         return {
             code: '',
             discountType: 'PERCENTAGE',
-            discountValue: 0,
+            discountValue: null,
             maxDiscountValue: null,
             redeemStartDate: '',
             redeemEndDate: '',
@@ -271,9 +281,12 @@ export const CouponFormDialog = ({
     const onSubmit = async (values: CouponFormValues) => {
         const appliedDiscount: AppliedDiscountInput = {
             discount_type: values.discountType,
-            discount_point: values.discountValue,
+            // The schema rejects a blank value, so it is always set here.
+            discount_point: values.discountValue ?? 0,
             max_discount_point:
-                values.discountType === 'PERCENTAGE' ? values.maxDiscountValue ?? null : null,
+                values.discountType === 'PERCENTAGE' && values.maxDiscountValue
+                    ? values.maxDiscountValue
+                    : null,
         };
 
         const emails = values.isEmailRestricted ? parseEmails(values.allowedEmailsRaw) : [];
@@ -291,7 +304,11 @@ export const CouponFormDialog = ({
                     redeem_start_date: values.redeemStartDate
                         ? new Date(values.redeemStartDate).toISOString()
                         : null,
-                    redeem_end_date: new Date(values.redeemEndDate).toISOString(),
+                    redeem_end_date: values.redeemEndDate
+                        ? new Date(values.redeemEndDate).toISOString()
+                        : null,
+                    // A null end date means "unchanged" to the API, so blanking it must be explicit.
+                    clear_redeem_end_date: !values.redeemEndDate,
                     usage_limit: values.usageLimit ?? null,
                     is_email_restricted: values.isEmailRestricted,
                     allowed_email_ids: allowedEmailIdsJson,
@@ -312,7 +329,9 @@ export const CouponFormDialog = ({
                     redeem_start_date: values.redeemStartDate
                         ? new Date(values.redeemStartDate).toISOString()
                         : null,
-                    redeem_end_date: new Date(values.redeemEndDate).toISOString(),
+                    redeem_end_date: values.redeemEndDate
+                        ? new Date(values.redeemEndDate).toISOString()
+                        : null,
                     usage_limit: values.usageLimit ?? null,
                     is_email_restricted: values.isEmailRestricted,
                     allowed_email_ids: allowedEmailIdsJson,
@@ -462,7 +481,7 @@ export const CouponFormDialog = ({
                                                     onChange={(e) =>
                                                         field.onChange(
                                                             e.target.value === ''
-                                                                ? 0
+                                                                ? null
                                                                 : Number(e.target.value)
                                                         )
                                                     }
@@ -478,7 +497,12 @@ export const CouponFormDialog = ({
                                         name="maxDiscountValue"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>{t('basics.maxCap.label')}</FormLabel>
+                                                <FormLabel>
+                                                    {t('basics.maxCap.label')}{' '}
+                                                    <span className="text-caption text-neutral-400">
+                                                        {t('basics.maxCap.noCapHint')}
+                                                    </span>
+                                                </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         type="number"
@@ -537,7 +561,12 @@ export const CouponFormDialog = ({
                                     name="redeemEndDate"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>{t('validity.endDate.label')}</FormLabel>
+                                            <FormLabel>
+                                                {t('validity.endDate.label')}{' '}
+                                                <span className="text-caption text-neutral-400">
+                                                    {t('validity.endDate.noExpiryHint')}
+                                                </span>
+                                            </FormLabel>
                                             <FormControl>
                                                 <Input {...field} type="date" />
                                             </FormControl>

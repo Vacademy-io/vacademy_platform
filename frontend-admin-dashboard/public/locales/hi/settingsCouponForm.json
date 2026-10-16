@@ -5,10 +5,8 @@
         "codeFormat": "बड़े अक्षर, अंक, _ या - का उपयोग करें",
         "discountValueRequired": "छूट मूल्य आवश्यक है",
         "discountValuePositive": "छूट मूल्य 0 से अधिक होना चाहिए",
-        "endDateRequired": "समाप्ति तिथि आवश्यक है",
         "usageLimitInvalid": "एक संख्या दर्ज करें या खाली छोड़ें",
         "percentageMax": "प्रतिशत 100 से अधिक नहीं हो सकता",
-        "maxCapRequired": "प्रतिशत छूट के लिए अधिकतम सीमा आवश्यक है",
         "endDateAfterStart": "समाप्ति तिथि आरंभ तिथि के बाद होनी चाहिए"
     },
     "priceLine": {
@@ -51,7 +49,8 @@
         },
         "maxCap": {
             "label": "अधिकतम सीमा (₹)",
-            "placeholder": "1000"
+            "placeholder": "कोई कैप नहीं",
+            "noCapHint": "(खाली = कोई कैप नहीं)"
         }
     },
     "validity": {
@@ -61,7 +60,8 @@
             "optional": "(वैकल्पिक)"
         },
         "endDate": {
-            "label": "समाप्ति तिथि"
+            "label": "समाप्ति तिथि",
+            "noExpiryHint": "(खाली = कभी एक्सपायर नहीं)"
         },
         "usageLimit": {
             "label": "उपयोग सीमा",

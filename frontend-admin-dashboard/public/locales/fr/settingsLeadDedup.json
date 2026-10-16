@@ -68,6 +68,10 @@
                 "resetClosedToNew": "Remettre à Nouveau seulement si converti ou écarté"
             }
         },
+        "alsoMatchEmail": {
+            "label": "Comparer aussi l'e-mail",
+            "hint": "Une demande avec un nouveau numéro compte quand même comme une répétition si son e-mail correspond à un prospect existant (par ex. un formulaire Google prérempli avec un autre numéro)."
+        },
         "samePersonByPhone": {
             "label": "Considérer le même téléphone comme la même personne",
             "hint": "Une nouvelle demande avec un autre e-mail rejoint le prospect existant et garde son conseiller, au lieu de créer un second prospect."

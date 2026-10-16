@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAcce
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
+import vacademy.io.admin_core_service.features.audience.service.LeadDeduplicationService;
 import vacademy.io.admin_core_service.features.audience.service.LeadVisibilityResolver;
 import vacademy.io.admin_core_service.features.audience.service.ManualLeadOwnerGuard;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
@@ -58,6 +59,9 @@ public class AudienceController {
 
     @Autowired
     private InstituteAccessValidator instituteAccessValidator;
+
+    @Autowired
+    private LeadDeduplicationService leadDeduplicationService;
 
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
@@ -455,6 +459,20 @@ public class AudienceController {
      * Get lead score details for a specific lead.
      * GET /admin-core-service/v1/audience/lead/{responseId}/score
      */
+    /**
+     * The different phone numbers and real emails the person behind this lead has enquired
+     * with, each with the first enquiry that brought it, e.g. a repeat that came in with a
+     * new phone or a new email. Snake_case {phones: [...], emails: [...]}, each item
+     * {value, response_id, source_type, campaign_name, created_at}. The caller must be
+     * staff of the lead's institute.
+     */
+    @GetMapping("/lead/{responseId}/enquiry-contacts")
+    public ResponseEntity<LeadEnquiryContactsDTO> getLeadEnquiryContacts(@PathVariable String responseId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(leadDeduplicationService.findEnquiryContacts(responseId,
+                instituteId -> instituteAccessValidator.requireStaffAccess(user, instituteId)));
+    }
+
     @GetMapping("/lead/{responseId}/score")
     public ResponseEntity<LeadScoreDTO> getLeadScore(@PathVariable String responseId) {
         LeadScoreDTO score = audienceService.getLeadScore(responseId);

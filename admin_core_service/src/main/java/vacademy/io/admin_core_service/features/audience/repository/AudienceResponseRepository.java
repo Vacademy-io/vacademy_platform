@@ -2444,6 +2444,67 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         }
 
         /** Projection for {@link #findPrimaryLeadByPhoneLast10}; aliases are quoted camelCase. */
+        /**
+         * Every active enquiry of the person behind this lead (same user in the same
+         * institute) with the phone and email it was submitted with, oldest first. A
+         * repeat matched by phone or email joins the same user, so a different phone or
+         * email it brought is listed here.
+         */
+        @Query(value = """
+                            SELECT ar.id              AS "responseId",
+                                   ar.parent_mobile   AS "phone",
+                                   ar.parent_email    AS "email",
+                                   ar.source_type     AS "sourceType",
+                                   a.campaign_name    AS "campaignName",
+                                   ar.created_at      AS "createdAt",
+                                   ma.institute_id    AS "instituteId"
+                            FROM audience_response me
+                            JOIN audience ma ON ma.id = me.audience_id
+                            JOIN audience_response ar ON ar.user_id = me.user_id
+                            JOIN audience a ON a.id = ar.audience_id AND a.institute_id = ma.institute_id
+                            WHERE me.id = :responseId
+                            AND ar.audience_status = 'ACTIVE'
+                            ORDER BY ar.created_at
+                            LIMIT 50
+                        """, nativeQuery = true)
+        List<EnquiryContactRow> findEnquiryContactsOfLeadPerson(@Param("responseId") String responseId);
+
+        /**
+         * The phone and email one lead was submitted with, read as plain columns so the
+         * intake transaction never loads (and could later re-save) that lead as an entity.
+         */
+        @Query(value = """
+                            SELECT ar.parent_mobile AS "phone",
+                                   ar.parent_email  AS "email"
+                            FROM audience_response ar
+                            WHERE ar.id = :responseId
+                        """, nativeQuery = true)
+        List<ResponseContactRow> findContactOfResponse(@Param("responseId") String responseId);
+
+        /** Projection for {@link #findContactOfResponse}; aliases are quoted camelCase. */
+        interface ResponseContactRow {
+                String getPhone();
+
+                String getEmail();
+        }
+
+        /** Projection for {@link #findEnquiryContactsOfLeadPerson}; aliases are quoted camelCase. */
+        interface EnquiryContactRow {
+                String getResponseId();
+
+                String getPhone();
+
+                String getEmail();
+
+                String getSourceType();
+
+                String getCampaignName();
+
+                java.sql.Timestamp getCreatedAt();
+
+                String getInstituteId();
+        }
+
         interface PrimaryLeadRow {
                 String getResponseId();
 

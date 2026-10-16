@@ -521,6 +521,29 @@ export default function LeadDedupSettings() {
 
                                                 <div className="flex items-start gap-3">
                                                     <Switch
+                                                        id="repeat-also-email"
+                                                        checked={repeatLead.alsoMatchEmail}
+                                                        onCheckedChange={(v) =>
+                                                            updateRepeatLead({
+                                                                alsoMatchEmail: v,
+                                                            })
+                                                        }
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <Label
+                                                            htmlFor="repeat-also-email"
+                                                            className="cursor-pointer"
+                                                        >
+                                                            {t('repeatLead.alsoMatchEmail.label')}
+                                                        </Label>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t('repeatLead.alsoMatchEmail.hint')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-start gap-3">
+                                                    <Switch
                                                         id="repeat-block-owned"
                                                         checked={repeatLead.blockOwnedManualAdd}
                                                         onCheckedChange={(v) =>

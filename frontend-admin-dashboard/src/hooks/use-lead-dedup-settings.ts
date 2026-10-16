@@ -7,7 +7,7 @@
  *     "repeatLead": { "counsellorMode": "SAME_AS_PREVIOUS", "specificCounsellorId": null,
  *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING",
  *                     "samePersonByPhone": false, "blockOwnedManualAdd": false,
- *                     "blockOpenLeadManualAdd": false,
+ *                     "blockOpenLeadManualAdd": false, "alsoMatchEmail": false,
  *                     "reattempt": { "markDuplicate": false, "journeyEntry": false,
  *                                    "notifyOwner": false, "showBadge": false,
  *                                    "followUp": false, "tier": null,
@@ -63,6 +63,7 @@ export interface RepeatLeadSettingsSubtree {
     samePersonByPhone?: boolean;
     blockOwnedManualAdd?: boolean;
     blockOpenLeadManualAdd?: boolean;
+    alsoMatchEmail?: boolean;
     reattempt?: Partial<ReattemptSettings>;
 }
 
@@ -78,6 +79,8 @@ export interface RepeatLeadSettings {
     blockOwnedManualAdd: boolean;
     /** A counsellor cannot add by hand a lead that is still open (not converted / discarded). */
     blockOpenLeadManualAdd: boolean;
+    /** Match by phone only: an enquiry with a new phone is still a repeat when its email matches a lead. */
+    alsoMatchEmail: boolean;
     reattempt: ReattemptSettings;
 }
 
@@ -120,6 +123,7 @@ export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
     samePersonByPhone: false,
     blockOwnedManualAdd: false,
     blockOpenLeadManualAdd: false,
+    alsoMatchEmail: false,
     reattempt: REATTEMPT_SETTINGS_DEFAULTS,
 };
 
@@ -152,6 +156,7 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
         samePersonByPhone: subtree?.samePersonByPhone === true,
         blockOwnedManualAdd: subtree?.blockOwnedManualAdd === true,
         blockOpenLeadManualAdd: subtree?.blockOpenLeadManualAdd === true,
+        alsoMatchEmail: subtree?.alsoMatchEmail === true,
         reattempt: {
             markDuplicate: subtree?.reattempt?.markDuplicate === true,
             journeyEntry: subtree?.reattempt?.journeyEntry === true,

@@ -68,6 +68,10 @@
                 "resetClosedToNew": "Reset to New only if converted or discarded"
             }
         },
+        "alsoMatchEmail": {
+            "label": "Also match on email",
+            "hint": "An enquiry with a new phone number still counts as a repeat when its email matches an existing lead (e.g. a Google form prefilled with another number)."
+        },
         "samePersonByPhone": {
             "label": "Treat the same phone as the same person",
             "hint": "A repeat enquiry with a new email joins the existing lead and keeps its counsellor, instead of becoming a second lead."

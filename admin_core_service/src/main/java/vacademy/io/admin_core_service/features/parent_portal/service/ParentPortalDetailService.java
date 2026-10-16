@@ -141,16 +141,14 @@ public class ParentPortalDetailService {
                                                               String packageSessionId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "liveSessions");
-        // Attendance-only institute: classes are never listed (past is gated
-        // inside LearnerPastSessionService).
-        if (attendanceOnlyModeService.isEnabled(child.instituteId())) {
-            return List.of();
-        }
+        // Attendance-only institute: only classes marked show_to_learners are
+        // listed (past is gated inside LearnerPastSessionService).
+        boolean learnerVisibleOnly = attendanceOnlyModeService.isEnabled(child.instituteId());
         List<String> targets = targetPackageSessions(child, packageSessionId);
 
         if (targets.size() == 1) {
             return getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                    targets.get(0), child.childUserId(), child.instituteId(), 0, null, null, null, caller);
+                    targets.get(0), child.childUserId(), child.instituteId(), 0, null, null, null, caller, learnerVisibleOnly);
         }
 
         // millis(midnight) -> merged group, TreeMap keeps ascending date order
@@ -160,7 +158,7 @@ public class ParentPortalDetailService {
         Set<String> seenScheduleIds = new HashSet<>();
         for (String psId : targets) {
             List<GroupedSessionsByDateDTO> groups = getLiveSessionService
-                    .getLiveAndUpcomingSessionsForUserAndBatch(psId, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
+                    .getLiveAndUpcomingSessionsForUserAndBatch(psId, child.childUserId(), child.instituteId(), 0, null, null, null, caller, learnerVisibleOnly);
             if (groups == null) continue;
             for (GroupedSessionsByDateDTO g : groups) {
                 if (g == null || g.getSessions() == null || g.getSessions().isEmpty()) continue;

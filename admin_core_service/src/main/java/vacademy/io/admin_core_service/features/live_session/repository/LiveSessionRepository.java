@@ -454,6 +454,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
         AND s.status IN ('DRAFT', 'LIVE')
         AND ss.status != 'DELETED'
+        AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
         ORDER BY ss.meeting_date, ss.start_time
         LIMIT CASE WHEN :size IS NULL THEN NULL ELSE :size END
         OFFSET CASE WHEN :offset IS NULL THEN 0 ELSE :offset END
@@ -464,7 +465,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         @Param("startDate") String startDate,
         @Param("endDate") String endDate,
         @Param("offset") Integer offset,
-        @Param("size") Integer size
+        @Param("size") Integer size,
+        @Param("learnerVisibleOnly") boolean learnerVisibleOnly
     );
 
     /**
@@ -503,6 +505,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         )
         AND s.status = 'LIVE'
         AND ss.status != 'DELETED'
+        AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
         AND (
             ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
             OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -524,6 +527,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         )
         AND s.status = 'LIVE'
         AND ss.status != 'DELETED'
+        AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
         AND (
             ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
             OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -538,6 +542,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         @Param("userId") String userId,
         @Param("startDate") String startDate,
         @Param("endDate") String endDate,
+        @Param("learnerVisibleOnly") boolean learnerVisibleOnly,
         Pageable pageable
     );
 
@@ -596,6 +601,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
             AND s.status IN ('DRAFT', 'LIVE')
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
 
             UNION
 
@@ -635,6 +641,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             AND ss.meeting_date >= COALESCE(CAST(:startDate AS DATE), CURRENT_DATE - INTERVAL '1 day')
             AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
         ) learner_sessions
         ORDER BY learner_sessions.meetingDate, learner_sessions.startTime, learner_sessions.scheduleId
         LIMIT CASE WHEN :size IS NULL THEN NULL ELSE :size END
@@ -647,7 +654,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         @Param("startDate") String startDate,
         @Param("endDate") String endDate,
         @Param("offset") Integer offset,
-        @Param("size") Integer size
+        @Param("size") Integer size,
+        @Param("learnerVisibleOnly") boolean learnerVisibleOnly
     );
 
     /**
@@ -681,6 +689,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             )
             AND s.status = 'LIVE'
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
             AND (
                 ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
                 OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -711,6 +720,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             AND UPPER(s.access_level) = 'PUBLIC'
             AND NOT EXISTS (SELECT 1 FROM live_session_participants p WHERE p.session_id = s.id)
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
             AND (
                 ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
                 OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -734,6 +744,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             )
             AND s.status = 'LIVE'
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
             AND (
                 ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
                 OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -752,6 +763,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             AND UPPER(s.access_level) = 'PUBLIC'
             AND NOT EXISTS (SELECT 1 FROM live_session_participants p WHERE p.session_id = s.id)
             AND ss.status != 'DELETED'
+            AND (:learnerVisibleOnly = FALSE OR s.show_to_learners IS TRUE)
             AND (
                 ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
                 OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
@@ -768,6 +780,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         @Param("instituteId") String instituteId,
         @Param("startDate") String startDate,
         @Param("endDate") String endDate,
+        @Param("learnerVisibleOnly") boolean learnerVisibleOnly,
         Pageable pageable
     );
 

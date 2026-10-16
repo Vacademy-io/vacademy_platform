@@ -82,13 +82,8 @@ public class LearnerPastSessionService {
         int pageNumber = Math.max(page, 0);
 
         String resolvedInstituteId = resolveInstituteId(batchId, userId, instituteId);
-        if (attendanceOnlyModeService.isEnabled(resolvedInstituteId)) {
-            // Attendance-only institute: learners never see classes. All flags
-            // off so the FE hides the Past section rather than showing it empty.
-            return LearnerPastSessionsResponseDTO.empty(
-                    LearnerPastSessionsResponseDTO.DisplayFlagsDTO.from(LearnerDisplaySettingsFlags.allOff()),
-                    pageNumber, pageSize);
-        }
+        // Attendance-only institute: only classes marked show_to_learners are listed.
+        boolean learnerVisibleOnly = attendanceOnlyModeService.isEnabled(resolvedInstituteId);
         LearnerDisplaySettingsFlags flags = displaySettingsService.getFlags(resolvedInstituteId);
         LearnerPastSessionsResponseDTO.DisplayFlagsDTO flagsDTO = LearnerPastSessionsResponseDTO.DisplayFlagsDTO
                 .from(flags);
@@ -105,8 +100,19 @@ public class LearnerPastSessionService {
                 && publicSessionVisibilityService.isEnrolledLearner(resolvedInstituteId, userId);
         Page<LiveSessionRepository.LearnerPastSessionProjection> pageResult = includeUnassignedPublic
                 ? liveSessionRepository.findPastSessionsForUserAndBatchIncludingUnassignedPublic(
-                        batchId, userId, resolvedInstituteId, startDate, endDate, pageable)
-                : liveSessionRepository.findPastSessionsForUserAndBatch(batchId, userId, startDate, endDate, pageable);
+                        batchId, userId, resolvedInstituteId, startDate, endDate, learnerVisibleOnly, pageable)
+                : liveSessionRepository.findPastSessionsForUserAndBatch(
+                        batchId, userId, startDate, endDate, learnerVisibleOnly, pageable);
+
+        if (learnerVisibleOnly && pageResult.getTotalElements() == 0
+                && !StringUtils.hasText(startDate) && !StringUtils.hasText(endDate)) {
+            // Attendance-only institute with no class shown to learners: all
+            // flags off so the FE hides the Past section, as before the
+            // per-class choice existed, rather than showing it empty.
+            return LearnerPastSessionsResponseDTO.empty(
+                    LearnerPastSessionsResponseDTO.DisplayFlagsDTO.from(LearnerDisplaySettingsFlags.allOff()),
+                    pageNumber, pageSize);
+        }
 
         List<LiveSessionRepository.LearnerPastSessionProjection> projections = pageResult.getContent();
 

@@ -6,7 +6,11 @@ vi.mock('@/lib/auth/sessionUtility', () => ({
 }));
 vi.mock('@/constants/helper', () => ({ getInstituteId: () => 'inst-1' }));
 
-import { convertQuestionsDataToResponse, usableNumericAnswers } from './helper';
+import {
+    convertQuestionsDataToResponse,
+    findNumericQuestionWithoutAnswer,
+    usableNumericAnswers,
+} from './helper';
 import type { MyQuestion } from '@/types/assessments/question-paper-form';
 
 const blank = (n: number) => Array(n).fill({ id: '', name: '', isSelected: false });
@@ -147,5 +151,47 @@ describe('numeric answers left empty in the editor', () => {
     it('keeps 0 when 0 is the typed answer, and passes other values through untouched', () => {
         expect(usableNumericAnswers([0])).toEqual([0]);
         expect(usableNumericAnswers(['2.5', '', null, undefined])).toEqual(['2.5']);
+    });
+
+    it('finds the first numeric question with no usable answer', () => {
+        const questions = [
+            question({ questionType: 'MCQS' }),
+            question({ questionType: 'NUMERIC', validAnswers: [275] }),
+            question({ questionType: 'CNUMERIC', validAnswers: [null] as unknown as number[] }),
+            question({ questionType: 'NUMERIC', validAnswers: undefined }),
+        ];
+        expect(findNumericQuestionWithoutAnswer(questions)).toBe(2);
+        expect(findNumericQuestionWithoutAnswer(questions.slice(0, 2))).toBe(-1);
+        expect(findNumericQuestionWithoutAnswer(undefined)).toBe(-1);
+    });
+
+    it('on an edit, leaves alone a question already saved without an answer', () => {
+        const saved = [
+            question({ questionId: 'old', questionType: 'NUMERIC', validAnswers: undefined }),
+        ];
+        // Untouched: it saves exactly as before.
+        expect(findNumericQuestionWithoutAnswer(structuredClone(saved), saved)).toBe(-1);
+        // A question added in this edit still needs an answer.
+        expect(
+            findNumericQuestionWithoutAnswer(
+                [
+                    ...structuredClone(saved),
+                    question({ questionId: 'new', questionType: 'NUMERIC' }),
+                ],
+                saved
+            )
+        ).toBe(1);
+    });
+
+    it('on an edit, catches an answer the teacher cleared', () => {
+        const saved = [question({ questionId: 'q', questionType: 'NUMERIC', validAnswers: [275] })];
+        const edited = [
+            question({
+                questionId: 'q',
+                questionType: 'NUMERIC',
+                validAnswers: [null] as unknown as number[],
+            }),
+        ];
+        expect(findNumericQuestionWithoutAnswer(edited, saved)).toBe(0);
     });
 });

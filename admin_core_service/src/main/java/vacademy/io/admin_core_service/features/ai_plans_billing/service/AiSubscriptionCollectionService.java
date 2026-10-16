@@ -315,6 +315,14 @@ public class AiSubscriptionCollectionService {
             if (now.isBefore(c.serviceStart().minus(Duration.ofHours(NOTICE_LEAD_HOURS)))) {
                 return true; // too early for anything; autopay will handle it
             }
+            // The customer can cancel or pause the mandate from their UPI / bank app, and a token.*
+            // webhook can be missed: ask Razorpay before promising a debit in the notice.
+            String tokenState = tokenStateAtRazorpay(m, now);
+            if (tokenState != null && !AiSubscriptionMandateStore.ACTIVE.equals(tokenState)) {
+                handler.applyMandateStatus(m, tokenState, "token " + tokenState + " at Razorpay before the pre-debit notice");
+                r.inc("mandates_unusable_at_notice");
+                return false; // the link path takes this charge
+            }
             Instant createAt = later(debitAt, now.plus(MIN_NOTICE));
             // What the customer is told: when Razorpay debits after we raise the payment.
             Instant expectedDebit = createAt.plus(upi ? AiSubscriptionPaymentService.UPI_EXPECTED_DEBIT
@@ -374,6 +382,32 @@ public class AiSubscriptionCollectionService {
             notRaised(c, now, e, r);
         }
         return true;
+    }
+
+    /**
+     * The mandate's state as Razorpay reports it ({@code GET /customers/{id}/tokens}): ACTIVE,
+     * PAUSED, REJECTED, CANCELLED or EXPIRED, or null when unknown (token not listed, a status we
+     * don't map, or the call failed). Null keeps today's path: the debit is attempted and a
+     * refusal falls back to a payment link.
+     */
+    String tokenStateAtRazorpay(Mandate m, Instant now) {
+        if (!StringUtils.hasText(m.razorpayCustomerId())) {
+            return null;
+        }
+        try {
+            for (TokenInfo t : gateway.fetchTokens(m.razorpayCustomerId())) {
+                if (m.tokenId().equals(t.id())) {
+                    if (t.expiredAt() != null && t.expiredAt() > 0
+                            && Instant.ofEpochSecond(t.expiredAt()).isBefore(now)) {
+                        return AiSubscriptionMandateStore.EXPIRED;
+                    }
+                    return AiSubscriptionPaymentHandler.mandateStatusFor(null, t.status());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ai-plans-billing] token check for mandate {} failed: {}", m.id(), e.getMessage());
+        }
+        return null;
     }
 
     private void refusedDebitFallback(ChargeView c, Exception e, Report r) {

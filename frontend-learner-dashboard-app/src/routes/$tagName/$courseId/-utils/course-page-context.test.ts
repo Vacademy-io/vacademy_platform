@@ -48,6 +48,16 @@ describe("findCatalogSection", () => {
     expect(findCatalogSection([])).toBeNull();
     expect(findCatalogSection([pages[2]!])).toBeNull();
   });
+
+  it("names the crumb after the header menu item, not the page's SEO title", () => {
+    const site = [{ route: "books-copy", title: "Books & Kits — Acme Academy (Copy)", components: [{ type: "courseCatalog" }] }];
+    const header = (navigation: unknown[]) => ({ layout: { header: { props: { navigation } } } });
+    expect(findCatalogSection(site, header([{ label: "Home", route: "home" }, { label: "Courses", route: "books-copy" }]))?.title).toBe("Courses");
+    // Inside a mega-menu column too.
+    expect(findCatalogSection(site, header([{ type: "megaMenu", label: "Learn", columns: [{ links: [{ label: "All courses", route: "/books-copy" }] }] }]))?.title).toBe("All courses");
+    // Not in the menu: the page title, as before.
+    expect(findCatalogSection(site, header([{ label: "Home", route: "home" }]))?.title).toBe("Books & Kits — Acme Academy (Copy)");
+  });
 });
 
 describe("coursePageContext", () => {

@@ -63,6 +63,26 @@ def _escape_html(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+# "$…$", "$$…$$", "\(…\)", "\[…\]" — escaped dollars ("\$5") open nothing.
+_MATH_SPAN_RE = re.compile(r"\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]", re.S)
+_MATH_LT_RE = re.compile(r"<(?!/?br\s*/?>)", re.I)
+
+
+def _escape_math(text: str) -> str:
+    """Escape "<" inside math spans. The page is parsed as HTML later
+    (extract_body), and a raw "3<x" in "\\begin{cases} … 3<x \\leq 5" opened
+    a tag that swallowed the rest of the block. The renderer reads the
+    formula from text, which decodes "&lt;" back. "&" is left alone: the
+    parser already writes a bare one as "&amp;", and an entity MathPix wrote
+    itself must not be escaped twice. A "<br>" MathPix put on the line stays
+    a line break, even between two "$" amounts."""
+    if "<" not in text:
+        return text
+    masked = text.replace("\\$", "\x00")
+    out = _MATH_SPAN_RE.sub(lambda m: _MATH_LT_RE.sub("&lt;", m.group(0)), masked)
+    return out.replace("\x00", "\\$")
+
+
 def _parse_inline(text: str) -> str:
     text = _IMG_RE.sub(r'<img src="\2" alt="\1" />', text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
@@ -104,7 +124,7 @@ def convert_markdown_to_html(markdown_text: str | None) -> str:
         end = _display_math_end(lines, i - 1)
         if end is not None:
             body = "\n".join(l for l in lines[i - 1:end + 1] if l)
-            html.append(f'<div class="math-block">{body}</div>\n')
+            html.append(f'<div class="math-block">{_escape_math(body)}</div>\n')
             i = end + 1
             continue
         if line.startswith("##"):
@@ -112,10 +132,10 @@ def convert_markdown_to_html(markdown_text: str | None) -> str:
             for part in _heading_lines(title):
                 html.append(f"<h2>{_escape_html(part)}</h2>\n")
         elif line.startswith("$$"):
-            html.append(f'<div class="math-block">{line}</div>\n')
+            html.append(f'<div class="math-block">{_escape_math(line)}</div>\n')
         elif _NUMBERED_RE.match(line):
-            html.append(f'<div class="question">{_parse_inline(line)}</div>\n')
+            html.append(f'<div class="question">{_parse_inline(_escape_math(line))}</div>\n')
         else:
-            html.append(f"<p>{_parse_inline(line)}</p>\n")
+            html.append(f"<p>{_parse_inline(_escape_math(line))}</p>\n")
     html.append("\n</body>\n</html>")
     return "".join(html)

@@ -36,7 +36,10 @@ class AiReportHtmlBuilderV2Test {
 
         assertThat(html).contains("Riya's result", "Enrollment no. ENR-001", "Top quarter of 20 students",
                 "Marks by section", "Where you stand", "Every answer", "Topic mastery", "Bloom", "Speed vs accuracy",
-                "Mistakes explained", "This week's plan", "Flashcards", "Progress");
+                "Mistakes explained", "This week's plan", "Flashcards", "Progress",
+                // everything the normal report has
+                "Question by question", "All 15 questions, with your answers", "Your answer", "Right answer",
+                "Explanation:", "Your potential", "top 18");
         // Classmates are counted, never named.
         assertThat(html).doesNotContain("Classmate");
 
@@ -56,6 +59,25 @@ class AiReportHtmlBuilderV2Test {
         assertThat(html).doesNotContain("Topic mastery", "Bloom", "Mistakes explained", "This week's plan");
         assertThat(html).contains("Marks by section", "Every answer");
         assertThat(pdfText(html)).isNotBlank();
+    }
+
+    @Test
+    void greekAndArrowsAreSetInTheSymbolFontOnly() {
+        assertThat(AiReportHtmlBuilderV2.esc("x → y < z"))
+                .isEqualTo("x <span style=\"font-family:'Noto Sans Math'\">→</span> y &lt; z");
+        assertThat(AiReportHtmlBuilderV2.esc("θ = 30°")).startsWith("<span style=\"font-family:'Noto Sans Math'\">θ</span>");
+    }
+
+    @Test
+    void skippedQuestionsProjectAPotentialScoreAtTheClassRate() {
+        QuestionRow skipped = new QuestionRow("q1", "s", 0, "S", 1, 4, 0, Outcome.SKIPPED, null, 50.0, 20.0, null);
+        QuestionRow right = new QuestionRow("q2", "s", 0, "S", 2, 4, 4, Outcome.CORRECT, 10L, 90.0, 20.0, null);
+        AiReportDataService.ClassData klass = new AiReportDataService.ClassData(List.of(), null, null, null, null, null,
+                java.util.Map.of(), java.util.Map.of(), List.of(3.0, 5.0, 7.0));
+        AiReportModel.Potential p = AiReportDataService.potential(List.of(skipped, right), klass, 4, 8);
+        assertThat(p.score()).isEqualTo(6.0);
+        assertThat(p.rank()).isEqualTo(2);
+        assertThat(AiReportDataService.potential(List.of(right), klass, 4, 8)).isNull();
     }
 
     @Test
@@ -81,7 +103,7 @@ class AiReportHtmlBuilderV2Test {
 
     @Test
     void readsMaxMarksStoredAsNumberOrString() {
-        AiReportDataService svc = new AiReportDataService(null, OM, null, null, null);
+        AiReportDataService svc = new AiReportDataService(null, OM, null, null, null, null);
         assertThat(svc.maxMark("{\"type\":\"MCQS\",\"data\":{\"totalMark\":\"2.5\"}}")).isEqualTo(2.5);
         assertThat(svc.maxMark("{\"data\":{\"totalMark\":4}}")).isEqualTo(4.0);
         assertThat(svc.maxMark("not json")).isZero();
@@ -112,8 +134,8 @@ class AiReportHtmlBuilderV2Test {
         double phyScore = qs.stream().filter(x -> x.sectionId().equals("s1")).mapToDouble(QuestionRow::marks).sum();
         double matScore = qs.stream().filter(x -> x.sectionId().equals("s2")).mapToDouble(QuestionRow::marks).sum();
         List<SectionRow> sections = List.of(
-                new SectionRow("s1", "Physics", 0, 10, phyScore, 5.5, 120, 100.0),
-                new SectionRow("s2", "Maths", 1, 20, matScore, 9.0, 240, 210.0));
+                new SectionRow("s1", "Physics", 0, 10, phyScore, 5.5, 120, 100.0, 10.0),
+                new SectionRow("s2", "Maths", 1, 20, matScore, 9.0, 240, 210.0, 18.0));
         double score = phyScore + matScore;
         List<Double> klass = new ArrayList<>(List.of(2.0, 5.0, 6.5, 8.0, 9.0, 10.0, 11.0, 12.0, 12.5, 13.0, 14.0, 15.0, 15.5,
                 16.0, 17.0, 18.0, 19.0, 26.0, 28.0));
@@ -130,7 +152,19 @@ class AiReportHtmlBuilderV2Test {
                 .history(List.of(new HistoryPoint("Unit Test 1", new Date(1_780_000_000_000L), 48),
                         new HistoryPoint("Unit Test 2", new Date(1_785_000_000_000L), 55),
                         new HistoryPoint(null, new Date(1_790_000_000_000L), 100 * score / 30)))
+                .details(details(qs))
+                .potential(new AiReportModel.Potential(score + 1.4, 2, 85.0, 1))
                 .ai(ai).build();
+    }
+
+    private static java.util.Map<String, AiReportModel.QuestionDetail> details(List<QuestionRow> qs) {
+        java.util.Map<String, AiReportModel.QuestionDetail> out = new java.util.HashMap<>();
+        for (QuestionRow q : qs) {
+            out.put(AiReportDataService.key(q.questionId(), q.sectionId()), new AiReportModel.QuestionDetail("MCQS",
+                    "Sample question " + q.numberInSection() + " about θ → 2θ", q.outcome() == Outcome.SKIPPED ? null : "Option A",
+                    "Option B", null, List.of(), "Because 2θ doubles the angle."));
+        }
+        return out;
     }
 
     private static QuestionRow q(String id, String sid, int idx, String sname, int n, Outcome o, long t) {

@@ -509,6 +509,23 @@ The endpoint now checks the attempt belongs to the caller and that its result is
 appear only as counts; no names. Enrollment number: admin_core
 `GET /internal/learner/v1/enrollment-number`.
 
+**One report per attempt.** Once admin_core has a processed AI report for (learner,
+assessment), it replaces the normal report everywhere a single student's report is opened:
+
+- `AiReportPdfService.renderIfAvailable` is asked first by the learner `report/pdf` and the
+  admin `export/pdf/student-report` downloads; null means "serve the normal report".
+- The AI report is a superset of the normal one: it adds the normal report's question-by-
+  question detail (question, your answer, right answer, feedback, AI marking criteria,
+  explanation, plus class % right and class time), section toppers, "Your expertise" and
+  "Your potential". Only the named leaderboard is left out, on purpose.
+- Learner app: one "View report" button (`services/student-report-routing.ts`) opens the AI
+  report when it exists, else the normal report. The AI page has a "Questions & marks" tab
+  that is the normal report (`ComparisonDashboard`).
+- Admin: student menu → "Download AI Report" (`StudentAiReportDialog`) renders the same AI
+  report; it warns before generating one, which spends AI credits.
+- Not switched: the release-results email attachment and the bulk ZIP still use the normal
+  report.
+
 ---
 
 ## 5. End-to-End Lifecycle Cheat Sheet

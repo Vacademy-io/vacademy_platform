@@ -40,7 +40,8 @@ public class AiReportHtmlBuilderV2 {
         pages.add(page1(m, p, ai));
         addIfAny(pages, page(m, p, false, blocks(classBlock(m, p), timeBlock(m, p), answerMapBlock(m, p))));
         addIfAny(pages, page(m, p, false, blocks(topicsBlock(ai, p), bloomBlock(ai, p))));
-        addIfAny(pages, page(m, p, false, blocks(behaviourBlock(m, p, ai), easyMarksBlock(m, p, ai))));
+        addIfAny(pages, page(m, p, false, behaviourBlock(m, p, ai)));
+        addIfAny(pages, page(m, p, false, blocks(easyMarksBlock(m, p, ai), expertiseBlock(m, p), potentialBlock(m, p))));
         String fix = fixBlock(ai, p), plan = planBlock(ai, p), cards = cardsAndProgress(m, p, ai);
         if (estimateFix(ai) + estimatePlan(ai) + (cards.isEmpty() ? 0 : 300) <= 960) {
             addIfAny(pages, page(m, p, false, blocks(fix, plan, cards)));
@@ -48,6 +49,8 @@ public class AiReportHtmlBuilderV2 {
             addIfAny(pages, page(m, p, false, fix));
             addIfAny(pages, page(m, p, false, blocks(plan, cards)));
         }
+
+        addIfAny(pages, page(m, p, false, questionByQuestion(m, p)));
 
         StringBuilder html = new StringBuilder(64 * 1024);
         html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><style>").append(css(m, p)).append("</style></head><body>");
@@ -524,8 +527,7 @@ public class AiReportHtmlBuilderV2 {
         if (missed.isEmpty()) return "";
         StringBuilder s = new StringBuilder("<table class=\"miss\">");
         for (QuestionRow q : missed) {
-            String title = (m.getSections().size() > 1 ? q.sectionName() + " " : "Question ") + q.numberInSection()
-                    + (notBlank(q.shortText()) ? " · " + clip(q.shortText(), 60) : "");
+            String title = questionTitle(m, q, 60);
             String sub = q.outcome() == Outcome.SKIPPED ? "You skipped it" : q.timeSeconds() == null ? "" : "You took " + q.timeSeconds() + " seconds";
             long pc = Math.round(q.classCorrectPercent());
             s.append("<tr><td class=\"miss-l\"><div class=\"miss-t\">").append(esc(title)).append("</div><div class=\"miss-s\">").append(esc(sub))
@@ -537,6 +539,131 @@ public class AiReportHtmlBuilderV2 {
         return block("Easy marks missed", "Most of the class got " + (missed.size() == 1 ? "this one" : "these") + " right",
                 "Questions you missed that at least 3 in 5 classmates answered correctly.",
                 s + (caption.isEmpty() ? "" : "<div class=\"cap\">" + esc(caption) + "</div>"));
+    }
+
+    private String expertiseBlock(AiReportModel m, ReportPalette p) {
+        if (!m.hasClass() || m.getParticipants() < 5) return "";
+        List<QuestionRow> rows = m.getQuestions().stream()
+                .filter(q -> q.outcome() == Outcome.CORRECT && q.classCorrectPercent() != null && q.classCorrectPercent() <= 30)
+                .sorted(Comparator.comparingDouble(QuestionRow::classCorrectPercent))
+                .limit(5).toList();
+        if (rows.isEmpty()) return "";
+        StringBuilder s = new StringBuilder("<table class=\"miss\">");
+        for (QuestionRow q : rows) {
+            long pc = Math.round(q.classCorrectPercent());
+            s.append("<tr><td class=\"miss-l\"><div class=\"miss-t\">").append(esc(questionTitle(m, q, 60))).append("</div>")
+                    .append("<div class=\"miss-s\" style=\"color:").append(OK).append("\">You got it right</div></td>")
+                    .append("<td class=\"miss-r\"><div class=\"bar\"><div class=\"bar-f\" style=\"width:").append(Math.max(3, pc))
+                    .append("%;background:").append(p.brand).append("\"></div></div><div class=\"miss-p\">only ").append(pc)
+                    .append("% of class right</div></td></tr>");
+        }
+        s.append("</table>");
+        String head = rows.size() == 1 ? "You got one right that most of the class missed"
+                : "You got " + rows.size() + " right that most of the class missed";
+        return block("Your expertise", head, "Questions 30% or fewer of your classmates answered correctly, and you did.", s.toString());
+    }
+
+    private String potentialBlock(AiReportModel m, ReportPalette p) {
+        AiReportModel.Potential pot = m.getPotential();
+        if (pot == null) return "";
+        StringBuilder s = new StringBuilder("<table class=\"tiles pot\"><tr>");
+        s.append(potTile("Score", num(m.getScore()), num(pot.score()), p));
+        if (pot.rank() != null && m.getRank() != null && m.hasClass() && m.getParticipants() >= 5) {
+            s.append(potTile("Rank", "#" + m.getRank(), "#" + pot.rank(), p));
+        }
+        if (pot.percentile() != null && m.getPercentile() != null && m.hasClass() && m.getParticipants() >= 5) {
+            s.append(potTile("Better than", Math.round(m.getPercentile()) + "%", Math.round(pot.percentile()) + "%", p));
+        }
+        s.append("</tr></table>");
+        String n = pot.skippedConsidered() == 1 ? "the 1 question" : "the " + pot.skippedConsidered() + " questions";
+        return block("Your potential", "Attempting " + n + " you skipped could have taken you to " + num(pot.score()),
+                "If you had answered them as well as the class did on each one.", s.toString());
+    }
+
+    private String potTile(String label, String from, String to, ReportPalette p) {
+        return "<td class=\"tile\" style=\"background:" + p.brand50 + "\"><div class=\"tile-l\">" + esc(label) + "</div>"
+                + "<div class=\"tile-v\"><span style=\"color:" + MUTED + "\">" + esc(from) + "</span>"
+                + "<span style=\"color:" + MUTED + ";font-size:18px\"> &#8594; </span>"
+                + "<span style=\"color:" + p.brandInk + "\">" + esc(to) + "</span></div></td>";
+    }
+
+    // ── Question by question ──
+
+    private String questionByQuestion(AiReportModel m, ReportPalette p) {
+        if (m.getDetails() == null || m.getDetails().isEmpty() || m.getQuestions().isEmpty()) return "";
+        StringBuilder s = new StringBuilder();
+        s.append("<div class=\"tag\">Question by question</div><div class=\"h3\">All ").append(m.getQuestions().size())
+                .append(" questions, with your answers</div><div class=\"lede\">What you answered, the right answer where you missed it, ")
+                .append(m.hasClass() ? "how the class did, " : "").append("and the explanation.</div>");
+        String currentSection = null;
+        for (QuestionRow q : m.getQuestions()) {
+            if (m.getSections().size() > 1 && !q.sectionId().equals(currentSection)) {
+                currentSection = q.sectionId();
+                s.append("<div class=\"qsec\"><span class=\"sw\" style=\"background:").append(section(q.sectionIndex())).append("\"></span> ")
+                        .append(esc(q.sectionName())).append("</div>");
+            }
+            s.append(questionCard(m, p, q, m.getDetails().get(AiReportDataService.key(q.questionId(), q.sectionId()))));
+        }
+        return s.toString();
+    }
+
+    private String questionCard(AiReportModel m, ReportPalette p, QuestionRow q, AiReportModel.QuestionDetail d) {
+        String[] status = switch (q.outcome()) {
+            case CORRECT -> new String[]{"Correct", OK, OK_50};
+            case PARTIAL -> new String[]{"Partly right", AMBER, AMBER_50};
+            case WRONG -> new String[]{"Wrong", BAD, BAD_50};
+            case PENDING -> new String[]{"Being checked", MUTED, WAIT_50};
+            case SKIPPED -> new String[]{"Skipped", MUTED, WAIT_50};
+        };
+        StringBuilder s = new StringBuilder("<table class=\"qc\">");
+        String type = d == null ? "" : vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService.formatQuestionType(d.type());
+        s.append("<tr><td class=\"qc-h\"><table class=\"qc-ht\"><tr><td><span class=\"qc-n\">Q").append(q.numberInSection()).append("</span>");
+        if (!type.isBlank()) s.append(" <span class=\"qc-type\">").append(esc(type)).append("</span>");
+        s.append("</td><td style=\"text-align:right\"><span class=\"qc-st\" style=\"background:").append(status[2]).append(";color:")
+                .append(status[1]).append("\">").append(status[0]).append("</span></td></tr></table></td></tr>");
+        if (d != null && notBlank(d.text())) s.append("<tr><td class=\"qc-t\">").append(esc(d.text())).append("</td></tr>");
+
+        String yours = d == null ? null : d.yourAnswer();
+        String right = d == null ? null : d.correctAnswer();
+        boolean showRight = right != null && q.outcome() != Outcome.CORRECT;
+        s.append("<tr><td class=\"qc-a\"><table class=\"qc-at\"><tr>");
+        s.append("<td class=\"qc-you\" style=\"background:").append(q.outcome() == Outcome.CORRECT ? OK_50 : q.outcome() == Outcome.WRONG ? BAD_50 : SOFT)
+                .append("\"><div class=\"lbl\" style=\"color:").append(status[1]).append("\">Your answer</div>")
+                .append(esc(yours != null ? yours : q.outcome() == Outcome.SKIPPED ? "Not attempted" : "-")).append("</td>");
+        if (showRight) {
+            s.append("<td class=\"qc-right\"><div class=\"lbl\" style=\"color:").append(OK).append("\">Right answer</div>")
+                    .append(esc(right)).append("</td>");
+        }
+        s.append("</tr></table></td></tr>");
+
+        if (d != null && notBlank(d.feedback())) {
+            s.append("<tr><td class=\"qc-f\"><b>Feedback:</b> ").append(esc(d.feedback())).append("</td></tr>");
+        }
+        if (d != null && d.criteria() != null && !d.criteria().isEmpty()) {
+            s.append("<tr><td class=\"qc-f\"><b>How it was marked</b>");
+            for (AiReportModel.Criterion c : d.criteria()) {
+                s.append("<div>").append(esc(c.name())).append(" (").append(esc(c.marks())).append(" marks)")
+                        .append(notBlank(c.reason()) ? ": " + esc(c.reason()) : "").append("</div>");
+            }
+            s.append("</td></tr>");
+        }
+
+        List<String> meta = new ArrayList<>();
+        meta.add((q.marks() > 0 ? "+" : "") + num(q.marks()) + " of " + num(q.max()) + (q.max() == 1 ? " mark" : " marks"));
+        if (q.timeSeconds() != null && q.timeSeconds() > 0) meta.add(q.timeSeconds() + " s");
+        if (m.hasClass() && q.classCorrectPercent() != null) meta.add(Math.round(q.classCorrectPercent()) + "% of class right");
+        if (m.hasClass() && q.classAverageTimeSeconds() != null) meta.add("class average " + Math.round(q.classAverageTimeSeconds()) + " s");
+        s.append("<tr><td class=\"qc-m\">").append(esc(String.join("  ·  ", meta))).append("</td></tr>");
+
+        if (d != null && notBlank(d.explanation())) {
+            s.append("<tr><td class=\"qc-x\"><b style=\"color:").append(p.brandInk).append("\">Explanation:</b> ").append(esc(d.explanation())).append("</td></tr>");
+        }
+        return s.append("</table>").toString();
+    }
+
+    private String questionTitle(AiReportModel m, QuestionRow q, int max) {
+        return (m.getSections().size() > 1 ? q.sectionName() + " " : "Question ") + q.numberInSection()
+                + (notBlank(q.shortText()) ? " · " + clip(q.shortText(), max) : "");
     }
 
     // ── Page 5: fix and plan ──
@@ -820,7 +947,25 @@ public class AiReportHtmlBuilderV2 {
                 + ".fold-t{position:relative;top:-8px;margin-right:10px;background:" + p.accent + ";color:" + p.onAccent
                 + ";font-weight:bold;font-size:8px;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:3px;}"
                 + ".card-b{padding:8px 12px 10px 12px;font-size:12px;color:" + MUTED + ";}"
-                + ".insight{font-size:12.5px;margin-bottom:6px;}";
+                + ".insight{font-size:12.5px;margin-bottom:6px;}"
+                + ".pot{margin:4px -8px 0 -8px;}"
+                + ".qsec{font-family:'Baloo 2';font-weight:800;font-size:16px;margin:16px 0 6px 0;}"
+                + ".qc{width:100%;border:1.5px solid " + LINE + ";margin-bottom:10px;page-break-inside:avoid;}"
+                + ".qc td{padding:0 12px;}"
+                + ".qc-h{background:" + SOFT + ";padding:7px 12px !important;}"
+                + ".qc-ht{width:100%;}"
+                + ".qc-ht td{padding:0 !important;vertical-align:middle;}"
+                + ".qc-n{font-family:'Baloo 2';font-weight:800;font-size:15px;}"
+                + ".qc-type{font-size:10.5px;color:" + MUTED + ";text-transform:uppercase;letter-spacing:0.8px;}"
+                + ".qc-st{font-weight:bold;font-size:10.5px;padding:3px 9px;border-radius:9px;}"
+                + ".qc-t{font-size:12.5px;line-height:1.45;padding-top:8px !important;padding-bottom:6px !important;}"
+                + ".qc-a{padding-bottom:6px !important;}"
+                + ".qc-at{width:100%;border-collapse:separate;border-spacing:0;}"
+                + ".qc-you{padding:7px 10px;font-size:12px;vertical-align:top;}"
+                + ".qc-right{padding:7px 10px;font-size:12px;vertical-align:top;background:" + OK_50 + ";}"
+                + ".qc-f{font-size:11.5px;color:" + INK + ";padding-bottom:5px !important;}"
+                + ".qc-m{font-size:11px;color:" + MUTED + ";padding-bottom:7px !important;}"
+                + ".qc-x{font-size:11.5px;line-height:1.45;color:" + INK + ";background:" + p.brand50 + ";padding:7px 12px !important;}";
     }
 
     // ── Text helpers ──
@@ -943,6 +1088,43 @@ public class AiReportHtmlBuilderV2 {
 
     private static boolean notBlank(String s) {
         return s != null && !s.isBlank();
+    }
+
+    /**
+     * HTML-escapes text and wraps symbols the body fonts lack (Greek, arrows, maths, primes,
+     * geometric shapes) in Noto Sans Math. Without this iText switches the whole rest of the
+     * run to whichever font has the symbol, e.g. Baloo 2 Bold after a "→".
+     */
+    static String esc(String text) {
+        if (text == null || text.isEmpty()) return "";
+        StringBuilder out = new StringBuilder(text.length() + 16);
+        boolean inSym = false;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            boolean sym = isSymbol(cp);
+            if (sym && !inSym) { out.append("<span style=\"font-family:'Noto Sans Math'\">"); inSym = true; }
+            if (!sym && inSym) { out.append("</span>"); inSym = false; }
+            switch (cp) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                default -> out.appendCodePoint(cp);
+            }
+        }
+        if (inSym) out.append("</span>");
+        return out.toString();
+    }
+
+    static boolean isSymbol(int cp) {
+        return (cp >= 0x0370 && cp <= 0x03FF)      // Greek
+                || (cp >= 0x2032 && cp <= 0x2037)   // primes
+                || (cp >= 0x2100 && cp <= 0x214F)   // letterlike
+                || (cp >= 0x2190 && cp <= 0x22FF)   // arrows, maths operators
+                || (cp >= 0x25A0 && cp <= 0x25FF)   // geometric shapes
+                || (cp >= 0x27C0 && cp <= 0x27FF)   // maths symbols, long arrows
+                || (cp >= 0x2900 && cp <= 0x2AFF);  // more arrows and operators
     }
 
     private static String cssString(String s) {

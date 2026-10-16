@@ -190,6 +190,9 @@ public class AdminExportManager {
     ReportPdfUploadService reportPdfUploadService;
 
     @Autowired
+    vacademy.io.assessment_service.features.assessment.service.aireport.AiReportPdfService aiReportPdfService;
+
+    @Autowired
     ClassAiReportGenerationService classAiReportGenerationService;
 
     public static String convertToReadableTime(Long timeInSeconds) {
@@ -835,6 +838,18 @@ public class AdminExportManager {
 
     public ResponseEntity<byte[]> getStudentReportPdf(CustomUserDetails user, String assessmentId, String attemptId, String instituteId) {
         StudentReportOverallDetailDto studentReportOverallDetailDto = assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+
+        // One report per student: once the learner's AI report exists, the admin downloads
+        // the same document the learner sees (it includes everything this report has).
+        byte[] aiPdf = aiReportPdfService.renderIfAvailable(resolveAttemptUserId(attemptId), assessmentId, attemptId,
+                instituteId, studentReportOverallDetailDto);
+        if (aiPdf != null) {
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(aiPdf);
+        }
+
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
@@ -947,6 +962,20 @@ public class AdminExportManager {
 
         StudentReportOverallDetailDto detail =
                 assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+
+        // The same AI report the learner sees (2026-10 design). The teacher layout below is
+        // only the fallback if that render fails.
+        if (aiReportPdfService.isEnabled()) {
+            try {
+                byte[] pdf = aiReportPdfService.render(processedJson, studentUserId, assessmentId, attemptId, instituteId, detail);
+                return ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=ai-student-report.pdf")
+                        .contentType(MediaType.APPLICATION_PDF)
+                        .body(pdf);
+            } catch (Exception e) {
+                log.error("[ai-report] student AI report failed for attempt {}, using the teacher layout", attemptId, e);
+            }
+        }
 
         // Class comparison is best-effort: a report without rank/percentile is
         // still a usable diagnostic, an exception here would give the teacher

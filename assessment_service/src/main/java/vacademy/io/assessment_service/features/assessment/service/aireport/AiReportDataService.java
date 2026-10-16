@@ -8,7 +8,13 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.service.ReportLogoService;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportAnswerReviewDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.Criterion;
+import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.Potential;
+import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.QuestionDetail;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.DashboardChoiceGroups;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.HistoryPoint;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.Outcome;
@@ -40,18 +46,20 @@ public class AiReportDataService {
     private final AdminCoreServiceClient adminCoreServiceClient;
     private final ReportLogoService reportLogoService;
     private final DashboardChoiceGroups choiceGroups;
+    private final HtmlBuilderService htmlBuilderService;
 
     // Built from the JdbcTemplate (as ApiCandidateStore does) so startup never depends on a
     // NamedParameterJdbcTemplate bean being auto-configured.
     public AiReportDataService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper,
                                AdminCoreServiceClient adminCoreServiceClient, ReportLogoService reportLogoService,
-                               DashboardChoiceGroups choiceGroups) {
+                               DashboardChoiceGroups choiceGroups, HtmlBuilderService htmlBuilderService) {
         this.jdbcTemplate = jdbcTemplate;
         this.namedJdbc = jdbcTemplate == null ? null : new NamedParameterJdbcTemplate(jdbcTemplate);
         this.objectMapper = objectMapper;
         this.adminCoreServiceClient = adminCoreServiceClient;
         this.reportLogoService = reportLogoService;
         this.choiceGroups = choiceGroups;
+        this.htmlBuilderService = htmlBuilderService;
     }
 
     private static final int HISTORY_LIMIT = 5;
@@ -73,8 +81,14 @@ public class AiReportDataService {
             )
             """;
 
+    /**
+     * @param detail the same per-question review the normal report renders (question text,
+     *               responses, feedback); passed in by the caller to keep this service free of a
+     *               dependency on AssessmentParticipantsManager. Nullable: the question-by-question
+     *               pages are then left out.
+     */
     public AiReportModel load(String userId, String assessmentId, String attemptId, String instituteId,
-                              JsonNode ai, ReportBrandingDto branding) {
+                              JsonNode ai, ReportBrandingDto branding, StudentReportOverallDetailDto detail) {
         Attempt attempt = loadAttempt(attemptId);
         Map<String, Object> assessment = jdbcTemplate.queryForMap(
                 "SELECT name, duration FROM assessment WHERE id = ?", assessmentId);
@@ -121,6 +135,8 @@ public class AiReportDataService {
                 .sections(sections)
                 .questions(questions)
                 .history(safeList(() -> loadHistory(userId, instituteId, assessmentId, attempt, score, maxScore)))
+                .details(safeMap(() -> buildDetails(detail)))
+                .potential(potential(questions, klass, score, maxScore))
                 .ai(ai != null ? ai : objectMapper.createObjectNode())
                 .build();
     }
@@ -269,11 +285,12 @@ public class AiReportDataService {
     record QuestionStat(double correctPercent, Double avgTimeSeconds) {
     }
 
-    record SectionStat(double avgMarks, double avgTimeSeconds) {
+    record SectionStat(double avgMarks, double avgTimeSeconds, double topMarks) {
     }
 
     record ClassData(List<Double> scores, Integer rank, Double percentile, Double average, Double highest,
-                     Long averageTimeSeconds, Map<String, QuestionStat> questions, Map<String, SectionStat> sections) {
+                     Long averageTimeSeconds, Map<String, QuestionStat> questions, Map<String, SectionStat> sections,
+                     List<Double> others) {
     }
 
     private ClassData loadClass(String assessmentId, String instituteId, String attemptId, String userId, Double ownMarks) {
@@ -306,13 +323,13 @@ public class AiReportDataService {
             }, assessmentId, instituteId);
 
             jdbcTemplate.query(LATEST_ATTEMPTS_CTE + """
-                    SELECT s.section_id, AVG(s.m)::float8 AS avg_m, AVG(s.t)::float8 AS avg_t FROM (
+                    SELECT s.section_id, AVG(s.m)::float8 AS avg_m, AVG(s.t)::float8 AS avg_t, MAX(s.m)::float8 AS top_m FROM (
                         SELECT w.attempt_id, w.section_id, SUM(w.marks) AS m, SUM(COALESCE(w.time_taken_in_seconds, 0)) AS t
                         FROM question_wise_marks w JOIN latest l ON l.attempt_id = w.attempt_id
                         GROUP BY w.attempt_id, w.section_id
                     ) s GROUP BY s.section_id
                     """, rs -> {
-                sStats.put(rs.getString("section_id"), new SectionStat(rs.getDouble("avg_m"), rs.getDouble("avg_t")));
+                sStats.put(rs.getString("section_id"), new SectionStat(rs.getDouble("avg_m"), rs.getDouble("avg_t"), rs.getDouble("top_m")));
             }, assessmentId, instituteId);
         } catch (Exception e) {
             log.warn("[ai-report] class figures unavailable for assessment {}: {}", assessmentId, e.getMessage());
@@ -328,7 +345,7 @@ public class AiReportDataService {
         double avg = all.stream().mapToDouble(Double::doubleValue).average().orElse(own);
         double highest = all.stream().mapToDouble(Double::doubleValue).max().orElse(own);
         Long avgTime = times.isEmpty() ? null : Math.round(times.stream().mapToLong(Long::longValue).average().orElse(0));
-        return new ClassData(all, rank, percentile, avg, highest, avgTime, qStats, sStats);
+        return new ClassData(all, rank, percentile, avg, highest, avgTime, qStats, sStats, others);
     }
 
     // ── Rows ──
@@ -369,7 +386,8 @@ public class AiReportDataService {
             }
             SectionStat stat = klass.sections().get(sec.id());
             out.add(new SectionRow(sec.id(), sec.name(), i, max, score,
-                    stat == null ? null : stat.avgMarks(), time, stat == null ? null : stat.avgTimeSeconds()));
+                    stat == null ? null : stat.avgMarks(), time, stat == null ? null : stat.avgTimeSeconds(),
+                    stat == null ? null : stat.topMarks()));
         }
         return out;
     }
@@ -411,6 +429,113 @@ public class AiReportDataService {
         if (text.length() <= max) return text;
         int cut = text.lastIndexOf(' ', max);
         return text.substring(0, cut > max / 2 ? cut : max).trim() + "…";
+    }
+
+    // ── Question by question ──
+
+    /** The normal report's per-question review, reshaped for the AI report. Option ids become text. */
+    Map<String, QuestionDetail> buildDetails(StudentReportOverallDetailDto detail) {
+        if (detail == null || detail.getAllSections() == null) return Map.of();
+        Map<String, QuestionDetail> out = new HashMap<>();
+        for (Map.Entry<String, List<StudentReportAnswerReviewDto>> e : detail.getAllSections().entrySet()) {
+            if (e.getValue() == null) continue;
+            for (StudentReportAnswerReviewDto row : e.getValue()) {
+                if (row == null || row.getQuestionId() == null) continue;
+                String feedback = notBlank(row.getEvaluatorFeedback()) ? row.getEvaluatorFeedback() : row.getAiFeedback();
+                out.put(key(row.getQuestionId(), e.getKey()), new QuestionDetail(
+                        row.getQuestionType(),
+                        clean(row.getQuestionName(), 900),
+                        answerText(row),
+                        correctText(row),
+                        clean(feedback, 600),
+                        criteria(row.getAiCriteriaBreakdown()),
+                        clean(row.getExplanation(), 700)));
+            }
+        }
+        return out;
+    }
+
+    private String answerText(StudentReportAnswerReviewDto row) {
+        String response = row.getStudentResponseOptions();
+        if (response != null && !"CODING".equals(row.getQuestionType())) {
+            try {
+                List<String> answers = htmlBuilderService.extractResponseContent(response);
+                if (answers != null && !answers.isEmpty()) return clean(String.join(", ", answers), 600);
+            } catch (Exception ignored) {
+                // fall through to the generic labels below
+            }
+        }
+        if (response != null && "CODING".equals(row.getQuestionType())) return "Code submitted (see the app for the full program)";
+        if (row.getMark() != 0) return "Marks awarded directly (" + AiReportCharts.num(row.getMark()) + ")";
+        return null;
+    }
+
+    private String correctText(StudentReportAnswerReviewDto row) {
+        if (row.getCorrectOptions() == null) return null;
+        try {
+            List<String> correct = htmlBuilderService.extractContent(row.getCorrectOptions());
+            return correct == null || correct.isEmpty() ? null : clean(String.join(", ", correct), 600);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private List<Criterion> criteria(String raw) {
+        if (!StringUtils.hasText(raw)) return List.of();
+        try {
+            JsonNode arr = objectMapper.readTree(raw);
+            if (!arr.isArray()) return List.of();
+            List<Criterion> out = new ArrayList<>();
+            for (JsonNode c : arr) {
+                String marks = c.has("marks") && !c.get("marks").isNull() ? c.get("marks").asText() : "-";
+                out.add(new Criterion(c.path("criteria_name").asText("Criterion"), marks, clean(c.path("reason").asText(""), 300)));
+            }
+            return out;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private static String clean(String html, int max) {
+        if (!StringUtils.hasText(html)) return null;
+        String t = HtmlBuilderService.stripHtmlTags(html).replaceAll("\\s+", " ").trim();
+        if (t.isEmpty()) return null;
+        return t.length() <= max ? t : t.substring(0, max).trim() + "…";
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    // ── Potential ──
+
+    /**
+     * Same rule as the normal report (StudentReportAnalyticsService): each skipped question
+     * adds its marks times the share of the class that got it right.
+     */
+    static Potential potential(List<QuestionRow> questions, ClassData klass, double score, double maxScore) {
+        double gain = 0;
+        int considered = 0;
+        for (QuestionRow q : questions) {
+            if (q.outcome() != Outcome.SKIPPED || q.classCorrectPercent() == null || q.max() <= 0) continue;
+            double fraction = q.classCorrectPercent() / 100.0;
+            if (fraction <= 0) continue;
+            gain += q.max() * fraction;
+            considered++;
+        }
+        if (considered == 0 || gain < 0.05) return null;
+        double projected = Math.min(maxScore > 0 ? maxScore : Double.MAX_VALUE, score + gain);
+        projected = Math.round(projected * 10) / 10.0;
+        if (projected <= score + 0.05) return null;
+        List<Double> others = klass.others();
+        Integer rank = null;
+        Double percentile = null;
+        if (others != null && !others.isEmpty()) {
+            final double p = projected;
+            rank = 1 + (int) others.stream().filter(v -> v > p).count();
+            percentile = 100.0 * others.stream().filter(v -> v < p).count() / (others.size() + 1);
+        }
+        return new Potential(projected, rank, percentile, considered);
     }
 
     // ── History ──
@@ -486,6 +611,16 @@ public class AiReportDataService {
         } catch (Exception e) {
             log.debug("[ai-report] optional lookup failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private static <K, V> Map<K, V> safeMap(java.util.function.Supplier<Map<K, V>> s) {
+        try {
+            Map<K, V> v = s.get();
+            return v == null ? Map.of() : v;
+        } catch (Exception e) {
+            log.warn("[ai-report] question details unavailable: {}", e.getMessage());
+            return Map.of();
         }
     }
 

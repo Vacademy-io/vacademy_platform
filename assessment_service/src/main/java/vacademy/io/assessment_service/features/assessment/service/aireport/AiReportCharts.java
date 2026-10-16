@@ -67,7 +67,8 @@ final class AiReportCharts {
             double tx = trackX + trackW + 16;
             s.append(text(tx, cy + 1, num(r.score()) + " / " + num(r.max()), 15, 700, r.score() < 0 ? BAD : INK, "start"));
             if (r.classAverage() != null) {
-                s.append(text(tx, cy + 17, "class " + num1(r.classAverage()), 12, 400, MUTED, "start"));
+                String sub = "class " + num1(r.classAverage()) + (r.classTop() != null ? " · top " + num(r.classTop()) : "");
+                s.append(text(tx, cy + 17, sub, 11.5, 400, MUTED, "start"));
             }
         }
         return svg(w, h, s);

@@ -25,6 +25,7 @@ public class AiReportFonts {
             "fonts/report/Baloo2-SemiBold.ttf",
             "fonts/report/Baloo2-Bold.ttf",
             "fonts/report/Baloo2-ExtraBold.ttf",
+            "fonts/report/NotoSansMath-Regular.ttf",
     };
 
     private final List<byte[]> fonts = new ArrayList<>();

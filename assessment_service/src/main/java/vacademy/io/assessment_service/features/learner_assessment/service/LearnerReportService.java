@@ -72,18 +72,9 @@ public class LearnerReportService {
     @Autowired
     private vacademy.io.assessment_service.features.assessment.service.AiReportHtmlBuilder aiReportHtmlBuilder;
 
+    /** The 2026-10 AI report; also answers "is there an AI report?" for the one-report rule. */
     @Autowired
-    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportDataService aiReportDataService;
-
-    @Autowired
-    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportHtmlBuilderV2 aiReportHtmlBuilderV2;
-
-    @Autowired
-    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportFonts aiReportFonts;
-
-    /** Kill switch for the 2026-10 AI report redesign; false serves the previous layout. */
-    @org.springframework.beans.factory.annotation.Value("${assessment.ai-report.v2.enabled:true}")
-    private boolean aiReportV2Enabled;
+    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportPdfService aiReportPdfService;
 
     @Autowired
     private vacademy.io.common.media.service.FileService fileService;
@@ -502,6 +493,16 @@ public class LearnerReportService {
         StudentReportOverallDetailDto reportDetail = assessmentParticipantsManager
                 .createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
 
+        // One report per student: once the AI report exists it replaces this one (it carries
+        // everything this report has, question by question included).
+        byte[] aiPdf = aiReportPdfService.renderIfAvailable(user.getUserId(), assessmentId, attemptId, instituteId, reportDetail);
+        if (aiPdf != null) {
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(aiPdf);
+        }
+
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
@@ -520,6 +521,16 @@ public class LearnerReportService {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+    }
+
+    /** The normal report's per-question review, which the AI report also renders; null on failure. */
+    private StudentReportOverallDetailDto reviewDetailOrNull(String assessmentId, String attemptId, String instituteId) {
+        try {
+            return assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+        } catch (Exception e) {
+            log.warn("[ai-report] question review unavailable for attempt {}: {}", attemptId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -760,20 +771,15 @@ public class LearnerReportService {
                 validateOwnershipAndAccess(user.getUserId(), assessmentId, resolvedAttemptId);
             }
 
-            if (aiReportV2Enabled && resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
+            if (aiReportPdfService.isEnabled() && resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
                 try {
-                    com.fasterxml.jackson.databind.JsonNode ai = new com.fasterxml.jackson.databind.ObjectMapper().readTree(processedJson);
-                    var model = aiReportDataService.load(user.getUserId(), assessmentId, resolvedAttemptId, instituteId, ai, branding);
-                    String html = aiReportHtmlBuilderV2.build(model);
-                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-                    com.itextpdf.html2pdf.ConverterProperties props = new com.itextpdf.html2pdf.ConverterProperties();
-                    props.setFontProvider(aiReportFonts.newProvider());
-                    com.itextpdf.html2pdf.HtmlConverter.convertToPdf(html, out, props);
+                    byte[] pdf = aiReportPdfService.render(processedJson, user.getUserId(), assessmentId, resolvedAttemptId,
+                            instituteId, reviewDetailOrNull(assessmentId, resolvedAttemptId, instituteId));
                     return ResponseEntity.ok()
                             .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
                                     "attachment; filename=ai-report-" + assessmentId + ".pdf")
                             .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
-                            .body(out.toByteArray());
+                            .body(pdf);
                 } catch (VacademyException e) {
                     throw e;
                 } catch (Exception e) {

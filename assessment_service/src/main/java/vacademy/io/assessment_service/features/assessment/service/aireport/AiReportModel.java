@@ -54,13 +54,29 @@ public class AiReportModel {
     /** Most recent last; includes this test as the final point. Empty when this is the only test. */
     private final List<HistoryPoint> history;
 
+    /** Question-by-question content (text, answers, feedback), keyed by questionId|sectionId. */
+    private final java.util.Map<String, QuestionDetail> details;
+
+    /** Projected score had the skipped questions been attempted at the class's success rate; null when none. */
+    private final Potential potential;
+
     /** The processed AI JSON from admin_core (may be an empty object, never null). */
     private final JsonNode ai;
 
     public enum Outcome { CORRECT, PARTIAL, WRONG, SKIPPED, PENDING }
 
     public record SectionRow(String id, String name, int index, double max, double score,
-                             Double classAverage, long timeSeconds, Double classAverageTimeSeconds) {
+                             Double classAverage, long timeSeconds, Double classAverageTimeSeconds, Double classTop) {
+    }
+
+    public record Criterion(String name, String marks, String reason) {
+    }
+
+    public record QuestionDetail(String type, String text, String yourAnswer, String correctAnswer,
+                                 String feedback, List<Criterion> criteria, String explanation) {
+    }
+
+    public record Potential(double score, Integer rank, Double percentile, int skippedConsidered) {
     }
 
     public record QuestionRow(String questionId, String sectionId, int sectionIndex, String sectionName,

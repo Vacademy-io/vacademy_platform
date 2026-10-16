@@ -68,7 +68,10 @@ public class ReportComposer {
         String type = page.path("type").asText("");
         switch (type) {
             case "TEMPLATE" -> append(merger, htmlToPdf(fullDocument(ReportTemplateEngine.render(page.path("html").asText(""), ctx))));
-            case "PDF" -> append(merger, file(page.path("file_id").asText()));
+            case "PDF" -> {
+                String uri = page.path("data_uri").asText("");
+                append(merger, uri.startsWith("data:application/pdf;base64,") ? inlinePdf(uri) : file(page.path("file_id").asText()));
+            }
             case "IMAGE" -> {
                 String uri = page.path("data_uri").asText("");
                 if (uri.isBlank()) uri = dataUri(file(page.path("file_id").asText()));
@@ -94,6 +97,12 @@ public class ReportComposer {
                 throw new IllegalStateException("Report page file " + id + " could not be read: " + e.getMessage(), e);
             }
         });
+    }
+
+    /** An inline PDF page (data:application/pdf;base64,...), decoded once and reused for every student. */
+    private byte[] inlinePdf(String uri) {
+        return fileCache.computeIfAbsent("inline:" + Integer.toHexString(uri.hashCode()) + ":" + uri.length(),
+                k -> Base64.getDecoder().decode(uri.substring(uri.indexOf(',') + 1)));
     }
 
     private static String dataUri(byte[] bytes) {

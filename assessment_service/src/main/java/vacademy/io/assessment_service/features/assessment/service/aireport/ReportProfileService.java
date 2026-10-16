@@ -86,17 +86,34 @@ public class ReportProfileService {
         }
     }
 
+    private record Cached(Object version, Profile profile) {
+    }
+
+    /** Profiles can carry inline pages (several MB): parsed once, reloaded only when updated_at changes. */
+    private final java.util.concurrent.ConcurrentHashMap<String, Cached> cache = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** An ACTIVE profile of this institute, or null. */
     public Profile get(String profileId, String instituteId) {
+        List<Map<String, Object>> meta = jdbc.queryForList("""
+                SELECT updated_at FROM assessment_report_profile
+                WHERE id = ? AND institute_id = ? AND status = 'ACTIVE'
+                """, profileId, instituteId);
+        if (meta.isEmpty()) return null;
+        Object version = meta.get(0).get("updated_at");
+        Cached hit = cache.get(profileId);
+        if (hit != null && java.util.Objects.equals(hit.version(), version)) return hit.profile();
+
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, institute_id, name, config_json, is_institute_default FROM assessment_report_profile
+                SELECT id, institute_id, name, config_json, is_institute_default, updated_at FROM assessment_report_profile
                 WHERE id = ? AND institute_id = ? AND status = 'ACTIVE'
                 """, profileId, instituteId);
         if (rows.isEmpty()) return null;
         Map<String, Object> r = rows.get(0);
         try {
-            return new Profile((String) r.get("id"), (String) r.get("institute_id"), (String) r.get("name"),
+            Profile p = new Profile((String) r.get("id"), (String) r.get("institute_id"), (String) r.get("name"),
                     objectMapper.readTree((String) r.get("config_json")), Boolean.TRUE.equals(r.get("is_institute_default")));
+            cache.put(profileId, new Cached(r.get("updated_at"), p));
+            return p;
         } catch (Exception e) {
             log.warn("[report-profile] profile {} has unreadable config: {}", profileId, e.getMessage());
             return null;
@@ -174,7 +191,10 @@ public class ReportProfileService {
                         if (p.path("html").asText("").isBlank()) throw new IllegalArgumentException("TEMPLATE page needs html");
                     }
                     case "PDF" -> {
-                        if (p.path("file_id").asText("").isBlank()) throw new IllegalArgumentException("PDF page needs file_id");
+                        if (p.path("file_id").asText("").isBlank()
+                                && !p.path("data_uri").asText("").startsWith("data:application/pdf;base64,")) {
+                            throw new IllegalArgumentException("PDF page needs file_id or data_uri");
+                        }
                     }
                     case "IMAGE" -> {
                         if (p.path("file_id").asText("").isBlank() && !p.path("data_uri").asText("").startsWith("data:image/")) {

@@ -1316,8 +1316,8 @@ public class AssessmentParticipantsManager {
         //
         // Emails now go out in batches as reports are made: holding every PDF until the end
         // and sending one request with all of them breaks on large classes once each report
-        // is the AI report (several hundred KB each).
-        final int emailBatch = 25;
+        // is the AI report plus profile pages (~2 MB each, 2.7 MB as base64): 5 per request.
+        final int emailBatch = 5;
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
             try {

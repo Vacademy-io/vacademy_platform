@@ -91,7 +91,7 @@ class MessageOriginTest {
     void unifiedSendPutsOriginOnRecipientParams() {
         WhatsAppService whatsAppService = mock(WhatsAppService.class);
         when(whatsAppService.sendWhatsappMessagesDetailed(anyString(), any(), any(), any(), any(), any(),
-                anyString(), any(), anyString(), any(), any()))
+                anyString(), any(), anyString(), any(), any(), any()))
                 .thenReturn(List.of(new WhatsAppService.WhatsAppSendResult(PHONE, true, null, "wamid.1")));
         NotificationTemplateRepository templates = mock(NotificationTemplateRepository.class);
         when(templates.findByInstituteIdAndNameAndLanguage(any(), any(), any())).thenReturn(Optional.empty());
@@ -113,7 +113,7 @@ class MessageOriginTest {
 
         ArgumentCaptor<List<Map<String, Map<String, String>>>> body = ArgumentCaptor.forClass(List.class);
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq("unlockx_registration1"), body.capture(),
-                any(), any(), any(), any(), anyString(), any(), anyString(), any(), any());
+                any(), any(), any(), any(), anyString(), any(), anyString(), any(), any(), any());
         assertThat(body.getValue().get(0).get(PHONE))
                 .containsEntry("_originType", "WORKFLOW")
                 .containsEntry("_originId", "wf-1")

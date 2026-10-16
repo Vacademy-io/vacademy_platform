@@ -48,6 +48,14 @@ public class CertificateVerificationService {
     private final IssuedCertificateRepository issuedCertificateRepository;
     private final InstituteRepository instituteRepository;
     private final AuthService authService;
+
+    /**
+     * Shrinks long values to their boxes on the verification document, the same
+     * way issued certificates are fitted. Stateless, so built here rather than
+     * injected — an initialised final field stays out of the generated
+     * constructor that the verification tests call directly.
+     */
+    private final CertificateTextFitService textFitService = new CertificateTextFitService();
     /**
      * Deliberately NOT a constructor dependency.
      *
@@ -432,7 +440,9 @@ public class CertificateVerificationService {
         if (!StringUtils.hasText(template)) {
             return Optional.empty();
         }
-        return Optional.of(substituteVerificationTokens(template, dto));
+        // Fitted after substitution, as on the certificate: only the real value
+        // says whether it fits. A no-op for documents without data-fit fields.
+        return Optional.of(textFitService.fitTemplate(substituteVerificationTokens(template, dto)));
     }
 
     /**

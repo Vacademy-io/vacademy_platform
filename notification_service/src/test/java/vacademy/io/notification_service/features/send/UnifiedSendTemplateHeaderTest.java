@@ -65,7 +65,7 @@ class UnifiedSendTemplateHeaderTest {
                 mock(NotificationLogRepository.class));
 
         when(whatsAppService.sendWhatsappMessagesDetailed(anyString(), any(), any(), any(), any(), any(),
-                anyString(), any(), anyString(), any(), any()))
+                anyString(), any(), anyString(), any(), any(), any()))
                 .thenReturn(List.of(new WhatsAppService.WhatsAppSendResult("917999873846", true, null, "wamid.1")));
     }
 
@@ -108,7 +108,7 @@ class UnifiedSendTemplateHeaderTest {
         ArgumentCaptor<Map<String, Map<String, String>>> headers = headerParamsCaptor();
         ArgumentCaptor<String> headerType = ArgumentCaptor.forClass(String.class);
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), headers.capture(),
-                any(), any(), any(), eq("en"), headerType.capture(), eq(INSTITUTE), any(), any());
+                any(), any(), any(), eq("en"), headerType.capture(), eq(INSTITUTE), any(), any(), any());
         assertThat(headers.getValue()).containsEntry("917999873846", Map.of("link", BROCHURE));
         assertThat(headerType.getValue()).isEqualTo("document");
     }
@@ -124,7 +124,7 @@ class UnifiedSendTemplateHeaderTest {
 
         ArgumentCaptor<Map<String, Map<String, String>>> headers = headerParamsCaptor();
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), headers.capture(),
-                any(), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any());
+                any(), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any(), any());
         assertThat(headers.getValue()).containsEntry("917999873846", Map.of("link", custom));
     }
 
@@ -139,7 +139,7 @@ class UnifiedSendTemplateHeaderTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> video = ArgumentCaptor.forClass(Map.class);
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), eq(null),
-                video.capture(), any(), any(), eq("en"), eq("video"), eq(INSTITUTE), any(), any());
+                video.capture(), any(), any(), eq("en"), eq("video"), eq(INSTITUTE), any(), any(), any());
         assertThat(video.getValue()).containsEntry("917999873846", clip);
     }
 
@@ -151,7 +151,7 @@ class UnifiedSendTemplateHeaderTest {
         service.send(request(null));
 
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), eq(null),
-                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any());
+                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any(), any());
     }
 
     @Test
@@ -164,7 +164,7 @@ class UnifiedSendTemplateHeaderTest {
         // Nothing to fall back to: the provider gets the header type but no file, and reports
         // the mismatch itself — same as before, just not silently.
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), eq(null),
-                eq(null), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any());
+                eq(null), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any(), any());
     }
 
     @Test
@@ -175,7 +175,7 @@ class UnifiedSendTemplateHeaderTest {
         service.send(request(null));
 
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), eq(null),
-                eq(null), any(), any(), eq("en"), eq("image"), eq(INSTITUTE), any(), any());
+                eq(null), any(), any(), eq("en"), eq("image"), eq(INSTITUTE), any(), any(), any());
     }
 
     @Test
@@ -192,7 +192,7 @@ class UnifiedSendTemplateHeaderTest {
 
         ArgumentCaptor<Map<String, Map<String, String>>> headers = headerParamsCaptor();
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), headers.capture(),
-                any(), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any());
+                any(), any(), any(), eq("en"), eq("document"), eq(INSTITUTE), any(), any(), any());
         assertThat(headers.getValue()).containsEntry("917999873846", Map.of("link", perLead));
     }
 
@@ -216,7 +216,7 @@ class UnifiedSendTemplateHeaderTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Map<String, Map<String, String>>>> body = ArgumentCaptor.forClass(List.class);
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), body.capture(), eq(null),
-                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any());
+                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any(), any());
         assertThat(body.getValue()).hasSize(1);
         assertThat(body.getValue().get(0).get("917999873846"))
                 .containsEntry("1", "Asha").containsEntry("2", "SAP HCM")
@@ -232,6 +232,6 @@ class UnifiedSendTemplateHeaderTest {
         service.send(request(null));
 
         verify(whatsAppService).sendWhatsappMessagesDetailed(eq(TEMPLATE), any(), eq(null),
-                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any());
+                eq(null), any(), any(), eq("en"), eq(null), eq(INSTITUTE), any(), any(), any());
     }
 }

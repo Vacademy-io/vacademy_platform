@@ -126,6 +126,9 @@ public class UnifiedSendService implements SendChannelRouter {
 
         // Phase 3: Resolve named variables → positional using stored template
         Map<String, Integer> nameToPosition = resolveTemplateVariablePositions(storedTemplate);
+        // {{n}} count of the approved body; WhatsAppService drops undeclared params on the Meta path.
+        Integer declaredBodyParams = storedTemplate
+                .map(t -> WhatsAppService.countBodyPlaceholders(t.getBodyText())).orElse(null);
 
         // A template approved with a media header (IMAGE/VIDEO/DOCUMENT) must be sent WITH that
         // header component — Meta rejects the message otherwise: #132012 "header: Format
@@ -292,7 +295,8 @@ public class UnifiedSendService implements SendChannelRouter {
                     // (announcements, campaigns) keeps its legacy row values byte-identical —
                     // announcement stats/timeline consumers key on the old source strings.
                     isEngagementEngineSend(request) ? request.getOptions().getSource() : null,
-                    isEngagementEngineSend(request) ? request.getOptions().getSourceId() : null);
+                    isEngagementEngineSend(request) ? request.getOptions().getSourceId() : null,
+                    declaredBodyParams);
 
             if (waResults != null) {
                 for (WhatsAppService.WhatsAppSendResult r : waResults) {

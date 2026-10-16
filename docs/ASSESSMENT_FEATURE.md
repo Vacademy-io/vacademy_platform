@@ -523,8 +523,20 @@ assessment), it replaces the normal report everywhere a single student's report 
   that is the normal report (`ComparisonDashboard`).
 - Admin: student menu → "Download AI Report" (`StudentAiReportDialog`) renders the same AI
   report; it warns before generating one, which spends AI credits.
-- Not switched: the release-results email attachment and the bulk ZIP still use the normal
-  report.
+- The release-results email now attaches the same one report (sent in batches of 25). The
+  bulk ZIP still uses the normal report.
+
+**Report profiles (V57).** Institutes add pages before/after the report: `TEMPLATE` (HTML
+with `{{values}}`, see `ReportTemplateEngine`), `PDF` and `IMAGE` (media file ids). A profile
+is the institute default (`is_institute_default`) or linked per assessment
+(`assessment_report_profile_link`, `NONE` = no pages). Banded values such as a scholarship
+(`variables.scholarship_percent.bands`) are computed in `ReportComposer.evaluate`; QR codes
+come from `qr_url`. Values: student_name, first_name, enrollment_number, score, max_score,
+percentage, rank, participants, correct/wrong/skipped/attempted, sections[name, questions,
+attempted, correct, wrong, marks, max], marking_note, result_date, asset.*, qr_svg.
+Admin API `/assessment-service/assessment/report-profile/v1`: list, get, save, link,
+preview (the exact PDF for one attempt), `ai-reports/generate-missing` (dry run by default;
+spends AI credits) and `ai-reports/job`.
 
 ---
 

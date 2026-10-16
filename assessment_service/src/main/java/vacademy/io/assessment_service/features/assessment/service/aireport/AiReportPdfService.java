@@ -28,17 +28,105 @@ public class AiReportPdfService {
     private final AiReportHtmlBuilderV2 builder;
     private final AiReportFonts fonts;
     private final AdminCoreServiceClient adminCoreServiceClient;
+    private final ReportProfileService profileService;
+    private final ReportComposer composer;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** The normal report, rendered only when it is needed. */
+    @FunctionalInterface
+    public interface NormalReport {
+        byte[] render() throws Exception;
+    }
 
     @Value("${assessment.ai-report.v2.enabled:true}")
     private boolean enabled;
 
     public AiReportPdfService(AiReportDataService dataService, AiReportHtmlBuilderV2 builder, AiReportFonts fonts,
-                              AdminCoreServiceClient adminCoreServiceClient) {
+                              AdminCoreServiceClient adminCoreServiceClient, ReportProfileService profileService,
+                              ReportComposer composer) {
         this.dataService = dataService;
         this.builder = builder;
         this.fonts = fonts;
         this.adminCoreServiceClient = adminCoreServiceClient;
+        this.profileService = profileService;
+        this.composer = composer;
+    }
+
+    /**
+     * The one PDF a student gets for an attempt: the AI report when it exists (else the
+     * normal report), wrapped in the pages of the assessment's report profile, if any.
+     *
+     * @param knownProcessedJson the AI analysis when the caller already has it; null to look it up
+     * @param normal             renders the normal report; null means "AI report or nothing" (throws)
+     */
+    public byte[] renderStudentReport(String userId, String assessmentId, String attemptId, String instituteId,
+                                      StudentReportOverallDetailDto detail, String knownProcessedJson,
+                                      NormalReport normal) throws Exception {
+        return renderWithProfile(userId, assessmentId, attemptId, instituteId, detail, knownProcessedJson, normal,
+                profileService.resolve(assessmentId, instituteId));
+    }
+
+    /** Same as {@link #renderStudentReport} with an explicit profile (null = none), for previews. */
+    public byte[] renderWithProfile(String userId, String assessmentId, String attemptId, String instituteId,
+                                    StudentReportOverallDetailDto detail, String knownProcessedJson,
+                                    NormalReport normal, ReportProfileService.Profile profile) throws Exception {
+        boolean wrap = profile != null && profile.hasPages();
+
+        String processed = knownProcessedJson;
+        if (processed == null && enabled && userId != null) {
+            try {
+                processed = adminCoreServiceClient.getProcessedAIReport(userId, assessmentId);
+            } catch (Exception e) {
+                log.warn("[ai-report] AI analysis lookup failed for attempt {}: {}", attemptId, e.getMessage());
+            }
+        }
+
+        AiReportModel model = null;
+        byte[] core = null;
+        if (enabled && processed != null && !processed.isBlank()) {
+            try {
+                model = dataService.load(userId, assessmentId, attemptId, instituteId,
+                        objectMapper.readTree(processed), branding(instituteId), detail);
+                core = toPdf(builder.build(model));
+            } catch (Exception e) {
+                if (normal == null) throw e;
+                log.error("[ai-report] AI report failed for attempt {}, using the normal report", attemptId, e);
+                model = null;
+            }
+        }
+        if (core == null) {
+            if (normal == null) throw new IllegalStateException("No AI report for attempt " + attemptId);
+            core = normal.render();
+        }
+        if (!wrap) return core;
+        try {
+            if (model == null) {
+                model = dataService.load(userId, assessmentId, attemptId, instituteId, null, branding(instituteId), detail);
+            }
+            return composer.compose(profile, model, core);
+        } catch (Exception e) {
+            log.error("[report-profile] could not add profile {} pages for attempt {}; serving the report alone",
+                    profile.id(), attemptId, e);
+            return core;
+        }
+    }
+
+    private ReportBrandingDto branding(String instituteId) {
+        try {
+            ReportBrandingDto b = adminCoreServiceClient.getReportBranding(instituteId);
+            if (b != null) return b;
+        } catch (Exception e) {
+            log.warn("[ai-report] branding unavailable for institute {}: {}", instituteId, e.getMessage());
+        }
+        return ReportBrandingDto.builder().build();
+    }
+
+    private byte[] toPdf(String html) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ConverterProperties props = new ConverterProperties();
+        props.setFontProvider(fonts.newProvider());
+        HtmlConverter.convertToPdf(html, out, props);
+        return out.toByteArray();
     }
 
     public boolean isEnabled() {

@@ -839,43 +839,28 @@ public class AdminExportManager {
     public ResponseEntity<byte[]> getStudentReportPdf(CustomUserDetails user, String assessmentId, String attemptId, String instituteId) {
         StudentReportOverallDetailDto studentReportOverallDetailDto = assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
 
-        // One report per student: once the learner's AI report exists, the admin downloads
-        // the same document the learner sees (it includes everything this report has).
-        byte[] aiPdf = aiReportPdfService.renderIfAvailable(resolveAttemptUserId(attemptId), assessmentId, attemptId,
-                instituteId, studentReportOverallDetailDto);
-        if (aiPdf != null) {
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .body(aiPdf);
-        }
-
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        // Comparison used to be passed as null here, so the admin's copy
-        // silently dropped rank, percentile, class average, marks distribution
-        // and section-wise comparison — i.e. everything that makes it a
-        // comparison report. Built the same way the learner download does it
-        // (LearnerReportService#getStudentReportPdf) so admin and learner get
-        // a byte-identical document.
-        StudentComparisonDto comparison = null;
+        // One report per student, identical to the learner's copy: the AI report once it
+        // exists, else the normal report, wrapped in the assessment's report-profile pages.
+        String studentUserId = resolveAttemptUserId(attemptId);
+        byte[] pdfBytes;
         try {
-            String studentUserId = studentAttemptRepository.findById(attemptId)
-                    .map(attempt -> attempt.getRegistration() != null
-                            ? attempt.getRegistration().getUserId()
-                            : null)
-                    .orElse(null);
-            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
-        } catch (Exception ignored) {
+            pdfBytes = aiReportPdfService.renderStudentReport(studentUserId, assessmentId, attemptId, instituteId,
+                    studentReportOverallDetailDto, null, () -> {
+                        StudentComparisonDto comparison = null;
+                        try {
+                            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
+                        } catch (Exception ignored) {
+                        }
+                        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+                        return reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
+                    });
+        } catch (Exception e) {
+            log.error("Student report PDF failed for attempt {}", attemptId, e);
+            throw new VacademyException("Failed to generate report PDF");
         }
-
-        // Shared release-flow renderer (v2 report). The class context carries
-        // branding, option distribution and the full leaderboard — the source
-        // of the student name in the letterhead — so the admin download is the
-        // same professional document the learner gets, not the legacy layout.
-        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
-        byte[] pdfBytes = reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
@@ -967,7 +952,8 @@ public class AdminExportManager {
         // only the fallback if that render fails.
         if (aiReportPdfService.isEnabled()) {
             try {
-                byte[] pdf = aiReportPdfService.render(processedJson, studentUserId, assessmentId, attemptId, instituteId, detail);
+                byte[] pdf = aiReportPdfService.renderStudentReport(studentUserId, assessmentId, attemptId, instituteId,
+                        detail, processedJson, null);
                 return ResponseEntity.ok()
                         .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=ai-student-report.pdf")
                         .contentType(MediaType.APPLICATION_PDF)

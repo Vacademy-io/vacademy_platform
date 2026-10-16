@@ -60,6 +60,9 @@ public class AiReportModel {
     /** Projected score had the skipped questions been attempted at the class's success rate; null when none. */
     private final Potential potential;
 
+    /** "+2.5 per correct answer, −0.5 per wrong answer" when every question is marked alike; else null. */
+    private final String markingNote;
+
     /** The processed AI JSON from admin_core (may be an empty object, never null). */
     private final JsonNode ai;
 

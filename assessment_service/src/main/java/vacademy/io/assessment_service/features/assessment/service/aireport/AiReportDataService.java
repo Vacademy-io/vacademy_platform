@@ -137,6 +137,7 @@ public class AiReportDataService {
                 .history(safeList(() -> loadHistory(userId, instituteId, assessmentId, attempt, score, maxScore)))
                 .details(safeMap(() -> buildDetails(detail)))
                 .potential(potential(questions, klass, score, maxScore))
+                .markingNote(markingNote(structure.questions()))
                 .ai(ai != null ? ai : objectMapper.createObjectNode())
                 .build();
     }
@@ -164,7 +165,7 @@ public class AiReportDataService {
     record StructSection(String id, String name, int order) {
     }
 
-    record StructQuestion(String questionId, String sectionId, int order, double max) {
+    record StructQuestion(String questionId, String sectionId, int order, double max, double negative) {
     }
 
     record Structure(List<StructSection> sections, List<StructQuestion> questions) {
@@ -189,7 +190,7 @@ public class AiReportDataService {
                 sections.add(new StructSection(sid, rs.getString("section_name"), rs.getInt("section_order")));
             }
             questions.add(new StructQuestion(rs.getString("question_id"), sid,
-                    rs.getInt("question_order"), maxMark(rs.getString("marking_json"))));
+                    rs.getInt("question_order"), maxMark(rs.getString("marking_json")), negativeMark(rs.getString("marking_json"))));
         }, assessmentId);
 
         sections.sort(Comparator.comparingInt(StructSection::order).thenComparing(StructSection::name, Comparator.nullsLast(String::compareTo)));
@@ -198,6 +199,30 @@ public class AiReportDataService {
         questions.sort(Comparator.comparingInt((StructQuestion q) -> sectionPos.getOrDefault(q.sectionId(), 0))
                 .thenComparingInt(StructQuestion::order));
         return new Structure(sections, questions);
+    }
+
+    /** marking_json data.negativeMark (a positive number meaning "minus this"); missing = 0. */
+    double negativeMark(String markingJson) {
+        if (!StringUtils.hasText(markingJson)) return 0;
+        try {
+            JsonNode mark = objectMapper.readTree(markingJson).path("data").path("negativeMark");
+            if (mark.isNumber()) return Math.abs(mark.asDouble());
+            String text = mark.asText("").trim();
+            return text.isEmpty() ? 0 : Math.abs(Double.parseDouble(text));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    static String markingNote(List<StructQuestion> qs) {
+        if (qs.isEmpty()) return null;
+        double plus = qs.get(0).max(), minus = qs.get(0).negative();
+        for (StructQuestion q : qs) {
+            if (Math.abs(q.max() - plus) > 1e-9 || Math.abs(q.negative() - minus) > 1e-9) return null;
+        }
+        if (plus <= 0) return null;
+        return "+" + AiReportCharts.num(plus) + " per correct answer"
+                + (minus > 0 ? ", " + AiReportCharts.num(-minus) + " per wrong answer" : ", no negative marking") + ".";
     }
 
     /** marking_json data.totalMark, which is stored as a number or a string ("2.5"). Missing = 0. */

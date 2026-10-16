@@ -493,30 +493,22 @@ public class LearnerReportService {
         StudentReportOverallDetailDto reportDetail = assessmentParticipantsManager
                 .createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
 
-        // One report per student: once the AI report exists it replaces this one (it carries
-        // everything this report has, question by question included).
-        byte[] aiPdf = aiReportPdfService.renderIfAvailable(user.getUserId(), assessmentId, attemptId, instituteId, reportDetail);
-        if (aiPdf != null) {
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .body(aiPdf);
-        }
-
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        StudentComparisonDto comparison = self.buildComparisonData(user.getUserId(), assessmentId, attemptId, instituteId);
-
-        // Render through the shared release-flow path (ReportPdfRenderService),
-        // not the legacy HtmlBuilderService template: the learner-initiated
-        // download must be the same v2 document the release email attaches —
-        // student name in the letterhead, band chart, insight tables — instead
-        // of the anonymous legacy layout. The class context also carries the
-        // branding, option distribution and full leaderboard the v2 builder
-        // needs, so the separate best-effort fetches above became redundant.
-        ReportClassContext ctx = loadClassContext(assessmentId, instituteId);
-        byte[] pdfBytes = reportPdfRenderService.render(reportDetail, comparison, ctx);
+        // One report per student: the AI report once it exists, else the normal report
+        // (rendered through the shared release-flow builder), wrapped in the assessment's
+        // report-profile pages if it has any.
+        byte[] pdfBytes;
+        try {
+            pdfBytes = aiReportPdfService.renderStudentReport(user.getUserId(), assessmentId, attemptId, instituteId,
+                    reportDetail, null, () -> reportPdfRenderService.render(reportDetail,
+                            self.buildComparisonData(user.getUserId(), assessmentId, attemptId, instituteId),
+                            loadClassContext(assessmentId, instituteId)));
+        } catch (Exception e) {
+            log.error("Error generating student report PDF for attempt {}", attemptId, e);
+            throw new VacademyException("Failed to generate report PDF");
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
@@ -773,8 +765,8 @@ public class LearnerReportService {
 
             if (aiReportPdfService.isEnabled() && resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
                 try {
-                    byte[] pdf = aiReportPdfService.render(processedJson, user.getUserId(), assessmentId, resolvedAttemptId,
-                            instituteId, reviewDetailOrNull(assessmentId, resolvedAttemptId, instituteId));
+                    byte[] pdf = aiReportPdfService.renderStudentReport(user.getUserId(), assessmentId, resolvedAttemptId,
+                            instituteId, reviewDetailOrNull(assessmentId, resolvedAttemptId, instituteId), processedJson, null);
                     return ResponseEntity.ok()
                             .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
                                     "attachment; filename=ai-report-" + assessmentId + ".pdf")

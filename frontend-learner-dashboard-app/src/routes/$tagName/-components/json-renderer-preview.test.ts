@@ -229,3 +229,40 @@ describe("the header in the preview", () => {
     expect(captured.header?.previewPath).toBeUndefined();
   });
 });
+
+describe("Background Color from the style panel", () => {
+  const sectionOf = (host: HTMLElement) => host.querySelector("section") as HTMLElement;
+  const styled = (style: Record<string, unknown>, props: Section = { title: "Support" }) =>
+    heading("bg", "Support", { props, style });
+
+  it("paints the block's own section, which would otherwise cover it", async () => {
+    const host = await mount([styled({ backgroundColor: "#fdf6ee" })], { isPreviewMode: true });
+    expect(sectionOf(host).style.backgroundColor).toBe("rgb(253, 246, 238)");
+  });
+
+  it("does the same on the live site", async () => {
+    const host = await mount([styled({ backgroundColor: "#fdf6ee" })]);
+    expect(sectionOf(host).style.backgroundColor).toBe("rgb(253, 246, 238)");
+  });
+
+  it("switches the heading to light text on a dark colour", async () => {
+    const host = await mount([styled({ backgroundColor: "#112233" })]);
+    expect(host.querySelector("h2")!.className).toContain("text-white");
+  });
+
+  it("leaves a colour set on the block itself alone", async () => {
+    const host = await mount([styled({ backgroundColor: "#fdf6ee" }, { title: "Support", backgroundColor: "#112233" })]);
+    expect(sectionOf(host).style.backgroundColor).toBe("rgb(17, 34, 51)");
+  });
+
+  it("keeps today's rendering when the style also paints an image or gradient", async () => {
+    const host = await mount([styled({ backgroundColor: "#fdf6ee", backgroundImage: "https://x/y.png" })]);
+    expect(sectionOf(host).style.backgroundColor).toBe("");
+  });
+
+  it("keeps today's rendering for a colour that is not #rrggbb", async () => {
+    const host = await mount([styled({ backgroundColor: "rgba(0, 0, 0, 0.5)" })]);
+    expect(sectionOf(host).style.backgroundColor).toBe("");
+    expect(host.querySelector("h2")!.className).toContain("text-catalogue-text-primary");
+  });
+});

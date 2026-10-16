@@ -3253,7 +3253,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
     // Footer social links (Column 1 — Brand). platform drives both the label
     // and the icon the learner footer renders (icon = platform lowercased).
-    const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'Twitter'];
+    const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'Twitter', 'Telegram'];
 
     const updateSocial = (index: number, field: string, value: any) => {
         const socials = [...(props.leftSection?.socials || [])];

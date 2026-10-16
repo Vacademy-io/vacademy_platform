@@ -41,6 +41,7 @@ import { MyFilterOption } from '@/types/assessments/my-filter';
 import { RoleTypeSelectedFilter } from '@/routes/dashboard/-components/RoleTypeComponent';
 import { UserRolesDataEntry } from '@/types/dashboard/user-roles';
 import Step4InviteUsers from './-components/Step4InviteUsers';
+import { usePendingFolderPrompt } from '@/components/common/assessment-folders/pending-folder-prompt';
 
 interface Role {
     roleId: string;
@@ -174,7 +175,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             instituteId: string | undefined;
             type: string | undefined;
         }) => publishAssessment({ assessmentId, instituteId, type }),
-        onSuccess: async () => {
+        onSuccess: async (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTIONS_DATA_FOR_SECTIONS'] });
             if (assessmentId !== 'defaultId') {
                 useAccessControlStore.getState().reset();
@@ -185,6 +186,9 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 });
                 queryClient.invalidateQueries({ queryKey: ['GET_ASSESSMENT_DETAILS'] });
             } else {
+                // Read before the stores reset below.
+                const publishedName =
+                    useBasicInfoStore.getState().testCreation?.assessmentName ?? '';
                 syncStep4DataWithStore(form);
                 setSavedAssessmentId('');
                 useBasicInfoStore.getState().reset();
@@ -197,6 +201,13 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 });
                 handleCompleteCurrentStep();
                 queryClient.invalidateQueries({ queryKey: ['GET_ASSESSMENT_DETAILS'] });
+                // With assessment folders on, the list asks which folder this goes in.
+                if (variables.assessmentId) {
+                    usePendingFolderPrompt.getState().setPending({
+                        assessmentId: variables.assessmentId,
+                        name: publishedName,
+                    });
+                }
                 navigate({
                     to: '/assessment/assessment-list',
                 });

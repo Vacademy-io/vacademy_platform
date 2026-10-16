@@ -34,6 +34,20 @@
     "loading": {
       "assessments": "جارٍ تحميل الاختبارات...",
       "more": "جارٍ تحميل المزيد..."
+    },
+    "folders": {
+      "title": "مجلدات تقييماتك",
+      "subtitle": "افتح مجلدًا لرؤية اختباراته الجارية والقادمة والسابقة.",
+      "others": "أخرى",
+      "othersDescription": "اختبارات ليست في أي مجلد",
+      "count_zero": "لا اختبارات",
+      "count_one": "اختبار واحد",
+      "count_two": "اختباران",
+      "count_few": "{{count}} اختبارات",
+      "count_many": "{{count}} اختبارًا",
+      "count_other": "{{count}} اختبار",
+      "back": "العودة إلى المجلدات",
+      "fallbackName": "مجلد"
     }
   },
   "card": {

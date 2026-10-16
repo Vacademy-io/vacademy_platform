@@ -26,5 +26,11 @@
     "aiCopyCheck": {
         "title": "Modèle de correction IA des copies",
         "description": "Comment les remarques de l'enseignant apparaissent sur les copies corrigées par l'IA. Présélectionné à l'envoi des copies, modifiable pour chaque lot."
+    },
+    "assessmentFolders": {
+        "title": "Dossiers d’évaluations",
+        "description": "Regroupez les évaluations dans des dossiers comme Anglais ou Maths. Les élèves voient d’abord les dossiers, puis en ouvrent un pour voir ses tests.",
+        "enableLabel": "Organiser les évaluations en dossiers",
+        "enableHint": "Affiche un panneau de dossiers sur la liste des évaluations, une étape de dossier après la publication et des cartes de dossiers dans l’application élève."
     }
 }

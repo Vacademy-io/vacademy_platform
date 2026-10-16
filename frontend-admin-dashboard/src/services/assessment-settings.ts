@@ -44,6 +44,9 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
         aiCopyCheck: {
             commentPlacement: normalizeCommentPlacement(settings?.aiCopyCheck?.commentPlacement),
         },
+        assessmentFolders: {
+            enabled: settings?.assessmentFolders?.enabled === true,
+        },
     };
 };
 

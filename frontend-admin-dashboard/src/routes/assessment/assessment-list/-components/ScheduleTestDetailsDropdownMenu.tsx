@@ -32,6 +32,7 @@ import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { getAssessmentJoinLink } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { assessmentQrId, JoinLinkMenuItems, JoinLinkQrDialog } from './assessment-share';
+import { MoveToFolderMenuItem } from './folders/MoveToFolderMenuItem';
 
 export function ScheduleTestDetailsDropdownLive({
     scheduleTestContent,
@@ -128,6 +129,7 @@ export function ScheduleTestDetailsDropdownLive({
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
                     />
+                    <MoveToFolderMenuItem scheduleTestContent={scheduleTestContent} />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleSendReminderClick(scheduleTestContent.assessment_id)}
@@ -304,6 +306,7 @@ export function ScheduleTestDetailsDropdownUpcoming({
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
                     />
+                    <MoveToFolderMenuItem scheduleTestContent={scheduleTestContent} />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() =>
@@ -422,6 +425,7 @@ export function ScheduleTestDetailsDropdownPrevious({
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
                     />
+                    <MoveToFolderMenuItem scheduleTestContent={scheduleTestContent} />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() =>
@@ -517,6 +521,7 @@ export function ScheduleTestDetailsDropdowDrafts({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    <MoveToFolderMenuItem scheduleTestContent={scheduleTestContent} />
                     {canDelete && (
                         <DropdownMenuItem
                             className="cursor-pointer"

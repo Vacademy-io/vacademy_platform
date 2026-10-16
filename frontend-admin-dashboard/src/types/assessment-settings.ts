@@ -75,10 +75,20 @@ export interface AiCopyCheckSettings {
     commentPlacement: CommentPlacement;
 }
 
+/**
+ * Assessment folders: group assessments (e.g. an "English" folder) on the admin list
+ * and show them to learners as folder cards. Off = the flat list, as before.
+ * Read by the learner app too, so keep the shape in sync there.
+ */
+export interface AssessmentFolderSettings {
+    enabled: boolean;
+}
+
 export interface AssessmentSettingsData {
     offlineEntry: {
         enabled: boolean;
     };
+    assessmentFolders?: AssessmentFolderSettings;
     reportBranding: ReportBrandingSettings;
     resultNotifications: ResultNotificationSettings;
     examExperience: ExamExperienceSettings;
@@ -144,6 +154,7 @@ export const DEFAULT_ASSESSMENT_SETTINGS: AssessmentSettingsData = {
         mobile: { ...DEFAULT_EXAM_EXPERIENCE.mobile },
     },
     aiCopyCheck: { commentPlacement: 'INSIDE' },
+    assessmentFolders: { enabled: false },
 };
 
 /** The saved template, or INSIDE for anything missing or unknown. */

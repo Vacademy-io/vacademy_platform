@@ -5,6 +5,7 @@ import {
     CalendarBlank,
     CalendarCheck,
     CheckSquareOffset,
+    FolderSimple,
     PlugsConnected,
     Timer,
     UsersThree,
@@ -127,12 +128,15 @@ const ScheduleTestDetails = ({
     selectedTab,
     handleRefetchData,
     subjectNamesById = {},
+    folderName,
 }: {
     scheduleTestContent: TestContent;
     selectedTab: string;
     handleRefetchData: () => void;
     /** Names for the subject ids the institute list cannot resolve — see subject-names.ts. */
     subjectNamesById?: Record<string, string>;
+    /** Assessment folder this test is in (folders on); shown as a chip. */
+    folderName?: string;
 }) => {
     const { t } = useTranslation('assessmentScheduleTestDetails');
     const navigate = useNavigate();
@@ -208,6 +212,15 @@ const ScheduleTestDetails = ({
                     className="flex shrink-0 flex-wrap items-center justify-end gap-2"
                     onClick={(e) => e.stopPropagation()}
                 >
+                    {folderName ? (
+                        <span title={folderName}>
+                            <AssessmentTag tone="neutral" icon={<FolderSimple size={12} />}>
+                                <span className="inline-block max-w-32 truncate align-bottom">
+                                    {folderName}
+                                </span>
+                            </AssessmentTag>
+                        </span>
+                    ) : null}
                     <AssessmentTag tone={type.tone}>{t(`types.${type.key}`)}</AssessmentTag>
                     {isApiSourced(scheduleTestContent.source) ? (
                         <span title={t('source.apiTooltip')}>

@@ -22,6 +22,11 @@ import {
   getEnrolledBatchIds,
 } from "@/services/studentDetails";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import {
+  fetchLearnerAssessmentFolders,
+  OTHERS_FOLDER_ID,
+  type LearnerFolderList,
+} from "@/services/assessment-folders";
 
 export const getStoredDetails = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
@@ -88,7 +93,9 @@ export const fetchAssessmentData = async (
   pageNo: number,
   pageSize: number,
   assessmentType: assessmentTypes,
-  assessment_types: string
+  assessment_types: string,
+  /** Assessment folder id, or OTHERS_FOLDER_ID for tests in no folder. */
+  folderId?: string
 ) => {
   try {
     const { student, institute } = await getStoredDetails();
@@ -112,6 +119,11 @@ export const fetchAssessmentData = async (
       get_upcoming_assessments: assessmentType === assessmentTypes.UPCOMING,
       institute_ids: [institute.id],
       sort_columns: {},
+      ...(folderId === OTHERS_FOLDER_ID
+        ? { unfiled_only: true }
+        : folderId
+          ? { folder_id: folderId }
+          : {}),
     };
 
     const response = await authenticatedAxiosInstance.post(
@@ -134,6 +146,22 @@ export const fetchAssessmentData = async (
   } finally {
     // setLoading(false);
   }
+};
+
+/** The folders this learner has tests in, scoped exactly like the assessment list. */
+export const fetchAssessmentFolderList = async (
+  assessment_types: string
+): Promise<LearnerFolderList | null> => {
+  const { student, institute } = await getStoredDetails();
+  if (!student || !institute) return null;
+  const batchIds = await getEnrolledBatchIds(institute.id, student.user_id);
+  return fetchLearnerAssessmentFolders({
+    instituteId: institute.id,
+    batchIds:
+      batchIds?.length > 0 ? batchIds : [student.package_session_id].filter(Boolean),
+    userIds: [student.user_id],
+    assessmentTypes: [assessment_types],
+  });
 };
 
 export const storeAssessmentInfo = async (assessmentInfo: any) => {

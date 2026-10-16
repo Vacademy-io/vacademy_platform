@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatMessageRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatbotSessionRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatbotSummary;
@@ -25,6 +26,7 @@ import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.Usag
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UserUsageRow;
 import vacademy.io.admin_core_service.features.ai_usage.service.ConversationService;
 import vacademy.io.admin_core_service.features.ai_usage.service.CreditUsageService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Timestamp;
@@ -63,6 +65,9 @@ public class CreditUsageController {
 
     @Autowired
     private ConversationService conversationService;
+
+    @Autowired
+    private InstituteAccessValidator instituteAccessValidator;
 
     @GetMapping("/users")
     public ResponseEntity<Page<UserUsageRow>> listUsers(
@@ -243,11 +248,20 @@ public class CreditUsageController {
         return new Timestamp(endDate != null ? endDate : System.currentTimeMillis());
     }
 
+    /**
+     * The clientId-header institute, after checking the caller is STAFF there (admin, teacher,
+     * evaluator, mentor) with no root-user bypass. These endpoints return per-user AI usage and
+     * the text of AI conversations, so a learner, a parent or a member of another institute must
+     * never reach them by setting the header.
+     */
     private String requireInstituteId(HttpServletRequest request) {
         String instituteId = request.getHeader("clientId");
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("Missing clientId header");
         }
+        Object user = request.getAttribute("user");
+        instituteAccessValidator.requireInstituteStaff(
+                user instanceof CustomUserDetails details ? details : null, instituteId);
         return instituteId;
     }
 }

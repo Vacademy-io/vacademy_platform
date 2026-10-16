@@ -787,7 +787,7 @@
     "variantPrimary": "أساسي",
     "variantSecondary": "ثانوي",
     "removeButton": "إزالة الزر",
-    "actionNavigate": "الانتقال",
+    "actionNavigate": "انتقال (صفحة أو قسم أو رابط)",
     "actionOpenLeadCollection": "فتح نموذج العملاء المحتملين (قديم)",
     "actionOpenCampaignForm": "فتح نموذج الحملة (نافذة منبثقة)",
     "targetRoutePlaceholder": "المسار / الرابط المستهدف",
@@ -807,7 +807,10 @@
     "carouselImages": "صور العرض الدوّار",
     "carouselImagesHint": "أضف صورتين أو أكثر لتحويل وسائط القسم الرئيسي إلى عرض دوّار تلقائي. بصورة واحدة تبقى صورة مفردة؛ وبدون أي صورة تُستخدم الصورة اليمنى أعلاه.",
     "slideN": "الشريحة {{n}}",
-    "eyebrowStyleRule": "خط (خط قبل النص)"
+    "eyebrowStyleRule": "خط (خط قبل النص)",
+    "mainButton": "الزر الرئيسي",
+    "onClick": "عند النقر",
+    "navigateTo": "الانتقال إلى"
   },
   "heroEditorial": {
     "style": "التصميم",

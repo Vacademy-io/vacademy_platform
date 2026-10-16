@@ -3561,6 +3561,53 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 // Hero Section Editor
+// Mirrors the live hero's isHeroButtonEnabled: true, "true" (any case) or a non-zero number.
+const isTruthyFlag = (v: unknown) =>
+    v === true || (typeof v === 'string' && v.toLowerCase() === 'true') || (typeof v === 'number' && v !== 0);
+
+/** Click action for a hero CTA: go to a page / a section below / a URL, or open a form. */
+const HeroButtonActionFields = ({
+    button,
+    onChange,
+}: {
+    button: { action?: string; target?: string; audienceId?: string };
+    onChange: (patch: Record<string, unknown>) => void;
+}) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const action = button.action || 'navigate';
+    return (
+        <div className="space-y-2">
+            <div>
+                <Label className="text-xs">{t('hero.onClick')}</Label>
+                <select
+                    className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
+                    value={action}
+                    onChange={(e) => onChange({ action: e.target.value })}
+                >
+                    <option value="navigate">{t('hero.actionNavigate')}</option>
+                    <option value="openLeadCollection">{t('hero.actionOpenLeadCollection')}</option>
+                    <option value="openForm">{t('hero.actionOpenCampaignForm')}</option>
+                </select>
+            </div>
+            {action === 'navigate' && (
+                <LinkPicker
+                    label={t('hero.navigateTo')}
+                    value={button.target || ''}
+                    onChange={(v) => onChange({ target: v })}
+                />
+            )}
+            {action === 'openForm' && (
+                <CampaignPicker
+                    label={t('hero.audienceListLabel')}
+                    allowEmpty={false}
+                    value={button.audienceId || ''}
+                    onChange={(id) => onChange({ audienceId: id })}
+                />
+            )}
+        </div>
+    );
+};
+
 const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
@@ -3832,48 +3879,44 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                 ✕
                             </button>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <select
-                                className="rounded border px-2 py-1.5 text-xs"
-                                value={b.action || 'navigate'}
-                                onChange={(e) => {
-                                    const next = [...(props.left?.buttons || [])];
-                                    next[i] = { ...next[i], action: e.target.value };
-                                    updateLeft('buttons', next);
-                                }}
-                            >
-                                <option value="navigate">{t('hero.actionNavigate')}</option>
-                                <option value="openLeadCollection">{t('hero.actionOpenLeadCollection')}</option>
-                                <option value="openForm">{t('hero.actionOpenCampaignForm')}</option>
-                            </select>
-                            {(b.action || 'navigate') === 'navigate' && (
-                                <Input
-                                    className="flex-1"
-                                    placeholder={t('hero.targetRoutePlaceholder')}
-                                    value={b.target || ''}
-                                    onChange={(e) => {
-                                        const next = [...(props.left?.buttons || [])];
-                                        next[i] = { ...next[i], target: e.target.value };
-                                        updateLeft('buttons', next);
-                                    }}
-                                />
-                            )}
-                        </div>
-                        {b.action === 'openForm' && (
-                            <CampaignPicker
-                                label={t('hero.audienceListLabel')}
-                                allowEmpty={false}
-                                value={b.audienceId || ''}
-                                onChange={(id) => {
-                                    const next = [...(props.left?.buttons || [])];
-                                    next[i] = { ...next[i], audienceId: id };
-                                    updateLeft('buttons', next);
-                                }}
-                            />
-                        )}
+                        <HeroButtonActionFields
+                            button={b}
+                            onChange={(patch) => {
+                                const next = [...(props.left?.buttons || [])];
+                                next[i] = { ...next[i], ...patch };
+                                updateLeft('buttons', next);
+                            }}
+                        />
                     </div>
                 ))}
             </div>
+
+            {/* ── Legacy single button ── Older heroes (and the page templates) carry
+                left.button instead of left.buttons. The live hero shows it whenever no
+                multi-CTA has text, so it must stay editable here. */}
+            {!(props.left?.buttons || []).some((b: any) => b?.text?.trim()) &&
+                props.left?.button &&
+                isTruthyFlag(props.left.button.enabled) && (
+                    <div className="space-y-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-semibold">{t('hero.mainButton')}</h5>
+                            <Switch
+                                aria-label={t('hero.mainButton')}
+                                checked
+                                onCheckedChange={(c) => updateLeft('button', { ...props.left.button, enabled: c })}
+                            />
+                        </div>
+                        <Input
+                            placeholder={t('hero.buttonTextPlaceholder')}
+                            value={props.left.button.text || ''}
+                            onChange={(e) => updateLeft('button', { ...props.left.button, text: e.target.value })}
+                        />
+                        <HeroButtonActionFields
+                            button={props.left.button}
+                            onChange={(patch) => updateLeft('button', { ...props.left.button, ...patch })}
+                        />
+                    </div>
+                )}
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">{t('hero.leftContent')}</h5>

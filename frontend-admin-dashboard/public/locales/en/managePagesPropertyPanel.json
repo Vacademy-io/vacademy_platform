@@ -787,7 +787,7 @@
     "variantPrimary": "Primary",
     "variantSecondary": "Secondary",
     "removeButton": "Remove button",
-    "actionNavigate": "Navigate",
+    "actionNavigate": "Navigate (page, section or link)",
     "actionOpenLeadCollection": "Open lead form (legacy)",
     "actionOpenCampaignForm": "Open campaign form (popup)",
     "targetRoutePlaceholder": "Target route / URL",
@@ -807,7 +807,10 @@
     "carouselImages": "Carousel Images",
     "carouselImagesHint": "Add 2 or more images to turn the hero media into an auto-playing carousel. With one image it stays a single image; with none it uses the Right Image above.",
     "slideN": "Slide {{n}}",
-    "eyebrowStyleRule": "Rule (line before the text)"
+    "eyebrowStyleRule": "Rule (line before the text)",
+    "mainButton": "Main button",
+    "onClick": "On click",
+    "navigateTo": "Go to"
   },
   "heroEditorial": {
     "style": "Design",

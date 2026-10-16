@@ -784,7 +784,7 @@
     "variantPrimary": "Principal",
     "variantSecondary": "Secondaire",
     "removeButton": "Retirer le bouton",
-    "actionNavigate": "Naviguer",
+    "actionNavigate": "Naviguer (page, section ou lien)",
     "actionOpenLeadCollection": "Ouvrir le formulaire de leads (ancien)",
     "actionOpenCampaignForm": "Ouvrir le formulaire de campagne (fenêtre)",
     "targetRoutePlaceholder": "Route / URL cible",
@@ -804,7 +804,10 @@
     "carouselImages": "Images du carrousel",
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
     "slideN": "Diapositive {{n}}",
-    "eyebrowStyleRule": "Filet (trait avant le texte)"
+    "eyebrowStyleRule": "Filet (trait avant le texte)",
+    "mainButton": "Bouton principal",
+    "onClick": "Au clic",
+    "navigateTo": "Aller vers"
   },
   "heroEditorial": {
     "style": "Design",

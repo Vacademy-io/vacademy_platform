@@ -783,7 +783,7 @@
     "variantPrimary": "प्राइमरी",
     "variantSecondary": "सेकंडरी",
     "removeButton": "बटन हटाएं",
-    "actionNavigate": "नेविगेट करें",
+    "actionNavigate": "नेविगेट (पेज, सेक्शन या लिंक)",
     "actionOpenLeadCollection": "लीड फॉर्म खोलें (लीगेसी)",
     "actionOpenCampaignForm": "कैंपेन फॉर्म खोलें (पॉपअप)",
     "targetRoutePlaceholder": "टारगेट रूट / URL",
@@ -803,7 +803,10 @@
     "carouselImages": "कैरोसेल इमेजेस",
     "carouselImagesHint": "हीरो मीडिया को ऑटो-प्लेइंग कैरोसेल बनाने के लिए 2 या ज़्यादा इमेजेस जोड़ें। एक इमेज होने पर यह सिंगल इमेज रहती है; कोई न होने पर ऊपर वाली Right Image इस्तेमाल होती है।",
     "slideN": "स्लाइड {{n}}",
-    "eyebrowStyleRule": "रूल (टेक्स्ट से पहले एक लाइन)"
+    "eyebrowStyleRule": "रूल (टेक्स्ट से पहले एक लाइन)",
+    "mainButton": "मुख्य बटन",
+    "onClick": "क्लिक करने पर",
+    "navigateTo": "कहाँ जाए"
   },
   "heroEditorial": {
     "style": "डिज़ाइन",

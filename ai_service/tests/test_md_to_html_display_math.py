@@ -64,3 +64,46 @@ def test_unclosed_block_falls_back_to_line_by_line():
     assert '<div class="math-block">$$</div>' in body
     assert "<p>\\begin{aligned}</p>" in body
     assert "<p>a=1</p>" in body
+
+
+# A "<" inside math ("3<x") must not open a tag once the page is parsed as
+# HTML (extract_body): it swallowed the block's closing tag and the rest of
+# the solution.
+_CASES = "\n".join([
+    "Q50. (a)",
+    "$$",
+    "g(x)= \\begin{cases}k \\sqrt{x+1}, & 0 \\leq x \\leq 3 \\\\ m x+2, & 3<x \\leq 5\\end{cases}",
+    "$$",
+    "R.H.D.",
+])
+
+
+def test_less_than_inside_a_math_block_survives_the_html_parser():
+    from bs4 import BeautifulSoup
+
+    from app.utils.html_images import extract_body
+
+    body = extract_body(convert_markdown_to_html(_CASES))
+    soup = BeautifulSoup(body, "html.parser")
+    blocks = soup.select("div.math-block")
+    assert len(blocks) == 1
+    assert "3<x \\leq 5\\end{cases}" in blocks[0].get_text()
+    assert blocks[0].get_text().strip().endswith("$$")
+    assert soup.find("x") is None
+    assert [p.get_text() for p in soup.find_all("p")] == ["Q50. (a)", "R.H.D."]
+
+
+def test_less_than_inside_inline_math_is_escaped_prose_is_not():
+    body = _body("If $3<\\mathrm{x}$ and a <b>bold</b> word")
+    assert "$3&lt;\\mathrm{x}$" in body
+    assert "<b>bold</b>" in body
+
+
+def test_ampersand_inside_math_is_left_to_the_parser():
+    body = _body("$$\n\\begin{aligned}\n& a=1 \\\\\n& b=2\n\\end{aligned}\n$$")
+    assert "& a=1" in body and "&amp;" not in body
+
+
+def test_line_break_between_two_dollar_amounts_stays_a_break():
+    body = _body("Pay $5 <br> or $6 later")
+    assert "$5 <br> or $6" in body

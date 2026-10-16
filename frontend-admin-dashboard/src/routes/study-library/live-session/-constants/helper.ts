@@ -40,6 +40,8 @@ export interface LiveSessionStep1RequestDTO {
     link_type?: string;
     allow_rewind?: boolean;
     allow_play_pause?: boolean;
+    // Attendance-only institutes: true shows the class to learners.
+    show_to_learners?: boolean;
     is_live?: boolean;
     session_streaming_service_type?: string;
     cover_file_id?: string | null;
@@ -356,6 +358,7 @@ export function transformFormToDTOStep1(
         sessionPlatform,
         allowRewind,
         allowPause,
+        showToLearners,
         timeZone,
         learner_button_config,
         bbbRecord,
@@ -442,6 +445,7 @@ export function transformFormToDTOStep1(
         link_type: sessionPlatform,
         allow_rewind: allowRewind,
         allow_play_pause: allowPause,
+        show_to_learners: showToLearners,
         session_streaming_service_type: streamingType,
         cover_file_id: coverFileId,
         time_zone: timeZone,

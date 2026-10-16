@@ -119,6 +119,7 @@ export interface Schedule {
     waiting_room_time: number | null;
     allow_rewind: boolean | null;
     allow_play_pause: boolean | null;
+    show_to_learners?: boolean | null;
     thumbnail_file_id: string | null;
     background_score_file_id: string | null;
     cover_file_id: string | null;

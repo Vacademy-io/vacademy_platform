@@ -156,6 +156,8 @@ export const bulkSharedOptionsSchema = z.object({
     waitingRoomMusicFileId: z.string().optional(),
     allowRewind: z.boolean().default(true),
     allowPause: z.boolean().default(true),
+    /** Attendance-only institutes: show every class created from this grid to learners. */
+    showToLearners: z.boolean().default(false),
     enableFeedback: z.boolean().default(false),
     /** When true, learner cannot skip the feedback form — serialized as feedback_config.allow_skip = false. */
     feedbackCompulsory: z.boolean().default(false),

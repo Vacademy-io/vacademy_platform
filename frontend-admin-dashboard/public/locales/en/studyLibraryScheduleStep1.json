@@ -25,7 +25,10 @@
         "titleLabel": "Title",
         "selectSubject": "Select {{subject}}",
         "descriptionLabel": "Description",
-        "descriptionHint": "(Provide a brief overview of your live class. You can include text, emojis, images, or posters to give participants a quick idea of what the session is about)"
+        "descriptionHint": "(Provide a brief overview of your live class. You can include text, emojis, images, or posters to give participants a quick idea of what the session is about)",
+        "showToLearnersLabel": "Show this class to learners",
+        "showToLearnersOnHint": "On: learners see this class and can join it like a normal live class.",
+        "showToLearnersOffHint": "Off: offline class. Learners won't see it or get notified; only attendance is marked."
     },
     "meetingType": {
         "oneTime": "One Time Class",

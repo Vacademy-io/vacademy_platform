@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
@@ -20,6 +21,13 @@ import {
 } from '@phosphor-icons/react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     Command,
     CommandEmpty,
     CommandGroup,
@@ -40,6 +48,16 @@ export interface DropdownOption {
     id: string;
     value: string;
     disabled?: boolean;
+    /** Dependent dropdowns: the parent option value this option shows for. Absent = always. */
+    parent?: string;
+}
+
+/** Another dropdown in the same form that a dropdown can be made to depend on. */
+export interface ParentFieldCandidate {
+    /** The parent's field_key — what the child stores as `parentFieldKey`. */
+    key: string;
+    label: string;
+    options: string[];
 }
 
 export interface CustomFieldConfig {
@@ -55,6 +73,8 @@ export interface CustomFieldConfig {
     allowedFileTypes?: string[];
     maxSizeMB?: number;
     heading?: string;
+    /** Dependent dropdowns: field_key of the dropdown whose answer filters this one's options. */
+    parentFieldKey?: string;
     /** Checkbox consent body — rendered as a scrollable block above the box. */
     description?: string;
     /** Short hint shown under any field. Distinct from `description`. */
@@ -87,6 +107,8 @@ export interface CustomFieldInitialValues {
     name: string;
     /** Option labels for choice types. */
     options?: string[];
+    /** Index-aligned with `options`: each option's parent value (dependent dropdowns). */
+    optionParents?: Array<string | undefined>;
     isRequired?: boolean;
     config?: CustomFieldConfig;
 }
@@ -117,7 +139,15 @@ interface AddCustomFieldDialogProps {
      * with other forms, since its type and label live on one row.
      */
     notice?: React.ReactNode;
+    /**
+     * The other dropdowns in this form. When passed, a dropdown gets a "Depends on"
+     * picker and a per-option parent value. Callers that omit it see no change.
+     */
+    parentCandidates?: ParentFieldCandidate[];
 }
+
+const NO_PARENT = '__none__';
+const ANY_PARENT_VALUE = '__any__';
 
 const hasOptionsType = (type: CustomFieldType) =>
     type === 'dropdown' || type === 'radio' || type === 'multi_select';
@@ -135,7 +165,9 @@ export const AddCustomFieldDialog = ({
     notice,
     open: controlledOpen,
     onOpenChange,
+    parentCandidates,
 }: AddCustomFieldDialogProps) => {
+    const { t } = useTranslation('commonCustomFieldDependency');
     const isEditMode = mode === 'edit';
     const isControlled = controlledOpen !== undefined;
     const [internalOpen, setInternalOpen] = useState(false);
@@ -168,6 +200,7 @@ export const AddCustomFieldDialog = ({
     const [checkboxDescription, setCheckboxDescription] = useState('');
     const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>([]);
     const [maxSizeMB, setMaxSizeMB] = useState<number>(5);
+    const [parentKey, setParentKey] = useState('');
 
     const availableTypes = supportedTypes
         ? CUSTOM_FIELD_TYPES.filter((t) => supportedTypes.includes(t.value as CustomFieldType))
@@ -191,6 +224,7 @@ export const AddCustomFieldDialog = ({
         setVerifyEnabled(false);
         setVerifyTemplate('');
         setVerifyLanguage('');
+        setParentKey('');
     };
 
     /** Load an existing field's settings into the form so editing starts from what is there. */
@@ -200,7 +234,13 @@ export const AddCustomFieldDialog = ({
         const config = field.config ?? {};
         setSelectedType(type);
         setFieldName(field.name ?? '');
-        setDropdownOptions((field.options ?? []).map((value, idx) => ({ id: String(idx), value })));
+        setDropdownOptions(
+            (field.options ?? []).map((value, idx) => {
+                const parent = field.optionParents?.[idx];
+                return { id: String(idx), value, ...(parent ? { parent } : {}) };
+            })
+        );
+        setParentKey(config.parentFieldKey ?? '');
         setIsRequired(field.isRequired ?? true);
         setDefaultValue(type === 'checkbox' ? '' : config.defaultValue ?? '');
         setCheckboxDefault(config.defaultValue === 'true');
@@ -224,6 +264,12 @@ export const AddCustomFieldDialog = ({
             )
         );
     };
+
+    // Only dropdowns can depend on another field, and only for callers that offer it.
+    const parentField =
+        parentCandidates && selectedType === 'dropdown'
+            ? parentCandidates.find((candidate) => candidate.key === parentKey)
+            : undefined;
 
     const buildConfig = (): CustomFieldConfig | undefined => {
         // Start from what the field already had, so settings this dialog does not
@@ -271,6 +317,12 @@ export const AddCustomFieldDialog = ({
             delete config.verification;
         }
 
+        // Callers without "Depends on" never own this key, so their config passes through.
+        if (parentCandidates) {
+            if (parentField) config.parentFieldKey = parentField.key;
+            else delete config.parentFieldKey;
+        }
+
         // Only surface isRequired when it deviates from the default-true that
         // every caller already applies, so config stays undefined otherwise.
         if (!isRequired) config.isRequired = false;
@@ -284,7 +336,11 @@ export const AddCustomFieldDialog = ({
             selectedType === 'text' ? 'textfield' : selectedType,
             fieldName.trim(),
             false,
-            hasOptionsType(selectedType) ? dropdownOptions : undefined,
+            hasOptionsType(selectedType)
+                ? dropdownOptions.map(({ parent, ...option }) =>
+                      parentField && parent ? { ...option, parent } : option
+                  )
+                : undefined,
             buildConfig()
         );
         // Editing has nothing to clear out for — the dialog closes on the caller's terms.
@@ -317,6 +373,49 @@ export const AddCustomFieldDialog = ({
     }, [isDialogOpen, isEditMode]);
 
     const optionValues = dropdownOptions.map((o) => o.value);
+
+    const setOptionParent = (index: number, parent: string) =>
+        setDropdownOptions((prev) =>
+            prev.map((option, i) => {
+                if (i !== index) return option;
+                const { parent: _previous, ...rest } = option;
+                void _previous;
+                return parent === ANY_PARENT_VALUE ? rest : { ...rest, parent };
+            })
+        );
+
+    /** "Show when <parent> is …" under each option of a dependent dropdown. */
+    const renderParentValuePicker = (index: number) => {
+        if (!parentField) return null;
+        const current = dropdownOptions[index]?.parent;
+        // A value the parent no longer offers stays listed, so it can be seen and changed.
+        const choices = Array.from(
+            new Set(current ? [...parentField.options, current] : parentField.options)
+        );
+        return (
+            <div className="flex items-center gap-2">
+                <span className="shrink-0 text-caption text-neutral-500">
+                    {t('showWhen', { parent: parentField.label })}
+                </span>
+                <Select
+                    value={current ?? ANY_PARENT_VALUE}
+                    onValueChange={(next) => setOptionParent(index, next)}
+                >
+                    <SelectTrigger className="h-8">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={ANY_PARENT_VALUE}>{t('any')}</SelectItem>
+                        {choices.map((choice) => (
+                            <SelectItem key={choice} value={choice}>
+                                {choice}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        );
+    };
 
     return (
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -446,6 +545,52 @@ export const AddCustomFieldDialog = ({
                             )}
                         </div>
 
+                        {parentCandidates && selectedType === 'dropdown' && (
+                            <div className="flex flex-col gap-1">
+                                <Label className="text-body font-semibold">
+                                    {t('dependsOn.label')}
+                                </Label>
+                                <Select
+                                    value={parentField ? parentField.key : NO_PARENT}
+                                    disabled={parentCandidates.length === 0}
+                                    onValueChange={(next) => {
+                                        if (next === (parentField?.key ?? NO_PARENT)) return;
+                                        setParentKey(next === NO_PARENT ? '' : next);
+                                        // Values of the previous parent mean nothing for a new one.
+                                        setDropdownOptions((prev) =>
+                                            prev.map(({ parent, ...option }) => {
+                                                void parent;
+                                                return option;
+                                            })
+                                        );
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NO_PARENT}>
+                                            {t('dependsOn.none')}
+                                        </SelectItem>
+                                        {parentCandidates.map((candidate) => (
+                                            <SelectItem key={candidate.key} value={candidate.key}>
+                                                {candidate.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-caption text-neutral-500">
+                                    {parentCandidates.length === 0
+                                        ? t('dependsOn.noCandidates')
+                                        : parentField
+                                          ? t('dependsOn.activeHint', {
+                                                parent: parentField.label,
+                                            })
+                                          : t('dependsOn.hint')}
+                                </p>
+                            </div>
+                        )}
+
                         {hasOptionsType(selectedType) && (
                             <InlineFieldEditor
                                 name=""
@@ -453,10 +598,26 @@ export const AddCustomFieldDialog = ({
                                 hideName
                                 bare
                                 options={optionValues}
-                                onOptionsChange={(next) =>
-                                    setDropdownOptions(
-                                        next.map((value, idx) => ({ id: String(idx), value }))
-                                    )
+                                onOptionsChange={(next, removedIndex) =>
+                                    // Parents are index-aligned, so a deleted row takes
+                                    // its own parent with it rather than shifting the rest.
+                                    setDropdownOptions((prev) => {
+                                        const kept =
+                                            removedIndex === undefined
+                                                ? prev
+                                                : prev.filter((_, i) => i !== removedIndex);
+                                        return next.map((value, idx) => {
+                                            const parent = kept[idx]?.parent;
+                                            return {
+                                                id: String(idx),
+                                                value,
+                                                ...(parent ? { parent } : {}),
+                                            };
+                                        });
+                                    })
+                                }
+                                renderOptionAddon={
+                                    parentField ? renderParentValuePicker : undefined
                                 }
                             />
                         )}

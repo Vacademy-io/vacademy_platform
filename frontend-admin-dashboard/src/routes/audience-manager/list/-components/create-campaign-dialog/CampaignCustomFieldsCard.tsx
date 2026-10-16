@@ -12,6 +12,7 @@ import {
     AddCustomFieldDialog as SharedAddCustomFieldDialog,
     type DropdownOption,
     type CustomFieldConfig,
+    type ParentFieldCandidate,
 } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import {
@@ -21,6 +22,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { getCustomFieldUsages } from '@/services/custom-field-mappings';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { isDropdownFieldType, savedFieldKeyOf } from '../../-utils/campaignFormFields';
 
 /**
  * Props interface for Campaign Custom Fields Card
@@ -135,6 +137,47 @@ const CampaignCustomFieldsCard = ({
                   names: otherFormNamesList,
               });
 
+    /**
+     * The dropdowns a dropdown may depend on: every other live dropdown in this form,
+     * minus any that already depends on it (directly or further up), which would loop.
+     * Undefined without an institute, which hides "Depends on" altogether.
+     */
+    const parentCandidatesFor = (selfIndex: number | null): ParentFieldCandidate[] | undefined => {
+        if (!instituteId) return undefined;
+        const live = (customFields ?? [])
+            .map((field, index) => ({ field, index, key: savedFieldKeyOf(field, instituteId) }))
+            .filter(
+                ({ field, key }) =>
+                    key &&
+                    (field as unknown as { status?: string }).status !== 'DELETED' &&
+                    isDropdownFieldType(field.type)
+            );
+        const parentOf = new Map(
+            live.map(({ field, key }) => [key, field.config?.parentFieldKey as string | undefined])
+        );
+        const selfKey =
+            selfIndex !== null ? savedFieldKeyOf(customFields?.[selfIndex], instituteId) : '';
+        const dependsOnSelf = (key: string) => {
+            const seen = new Set<string>();
+            let cursor: string | undefined = key;
+            while (cursor && !seen.has(cursor)) {
+                if (cursor === selfKey) return true;
+                seen.add(cursor);
+                cursor = parentOf.get(cursor);
+            }
+            return false;
+        };
+        return live
+            .filter(({ index, key }) => index !== selfIndex && !(selfKey && dependsOnSelf(key)))
+            .map(({ field, key }) => ({
+                key,
+                label: field.name,
+                options: Array.from(
+                    new Set((field.options ?? []).map((o) => o.value.trim()).filter(Boolean))
+                ),
+            }));
+    };
+
     const previewFields = customFields?.filter(
         (field) => (field as unknown as { status?: string }).status !== 'DELETED'
     );
@@ -241,6 +284,7 @@ const CampaignCustomFieldsCard = ({
                                     ?.filter((f) => (f as any).status !== 'DELETED')
                                     .map((f) => f.name) ?? []
                             }
+                            parentCandidates={parentCandidatesFor(null)}
                         />
                         {/* Editing reuses the add dialog, prefilled. Keyed per row so opening a
                             different field re-runs the prefill. */}
@@ -265,6 +309,9 @@ const CampaignCustomFieldsCard = ({
                                     options: (customFieldsArray[editingIndex].options ?? []).map(
                                         (o) => o.value
                                     ),
+                                    optionParents: (
+                                        customFieldsArray[editingIndex].options ?? []
+                                    ).map((o) => o.parent),
                                     isRequired: customFieldsArray[editingIndex].isRequired,
                                     // So editing opens on the help text / file limits /
                                     // verification the field already carries, rather than
@@ -292,6 +339,7 @@ const CampaignCustomFieldsCard = ({
                                         )
                                         .map((f) => f.name) ?? []
                                 }
+                                parentCandidates={parentCandidatesFor(editingIndex)}
                             />
                         )}
                     </div>

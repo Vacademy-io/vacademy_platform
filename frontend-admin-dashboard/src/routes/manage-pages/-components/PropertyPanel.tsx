@@ -4319,14 +4319,14 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                             <Label>{t('testimonials.autoplaySeconds')}</Label>
                             <Input
                                 type="number"
-                                min={3}
+                                min={1.5}
                                 max={30}
-                                step={1}
+                                step={0.5}
                                 className="w-24"
-                                value={Math.round((props.autoplayIntervalMs || 5000) / 1000)}
+                                value={(props.autoplayIntervalMs || 5000) / 1000}
                                 onChange={(e) => {
-                                    // The live carousel floors the interval at 2.5s; keep the editor within a readable range
-                                    const s = Math.min(30, Math.max(3, Math.round(Number(e.target.value) || 5)));
+                                    // The live carousel floors the interval at 1.5s; half-second steps up to 30s
+                                    const s = Math.min(30, Math.max(1.5, Math.round((Number(e.target.value) || 5) * 2) / 2));
                                     updateProp('autoplayIntervalMs', s === 5 ? undefined : s * 1000);
                                 }}
                             />

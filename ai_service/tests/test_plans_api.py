@@ -779,6 +779,14 @@ def test_tenant_plan_view(env):
     assert feats["learner_analytics"]["usage_pct"] == 80.0          # the tightest cap, figure not shown
     assert feats["image_generation"]["mode"] == "ALLOWANCE" and feats["image_generation"]["usage_pct"] is None
     assert feats["ai_calling"]["mode"] == "CHARGED"
+    # tool keys per feature, so the admin app's cost previews can say "included in your plan"
+    owners = {}
+    for k, f in feats.items():
+        assert isinstance(f["tool_keys"], list)
+        for t in f["tool_keys"]:
+            assert t not in owners, f"{t} billed as both {owners[t]} and {k}"   # one feature per tool
+            owners[t] = k
+    assert owners.get("tutor_avatar_minute", "tutor_avatar_minutes") == "tutor_avatar_minutes"  # engine override
     keys = set(_walk_keys(admin))
     assert not any("usd" in k or "cost" in k or k.endswith("_cap") for k in keys), keys
     member = c.get(url, headers=_hdr(iid, ("TEACHER",), MEMBER)).json()

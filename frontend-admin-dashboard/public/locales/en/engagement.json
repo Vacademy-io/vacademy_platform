@@ -1108,7 +1108,12 @@
             "balance": "Balance {{balance}} → ~{{after}}",
             "extras": "Pictures and new versions of single tasks are extra, only if you ask for them.",
             "short": "Not enough credits for this draft.",
-            "topUp": "Top up credits"
+            "topUp": "Top up credits",
+            "plan": {
+                "INCLUDED": "Included in your {{plan}} plan",
+                "ALLOWANCE": "From your {{plan}} allowance",
+                "SPLIT": "Plan allowance, then ~{{count}} credits"
+            }
         },
         "grounding": {
             "readingFrom": "Reading from",

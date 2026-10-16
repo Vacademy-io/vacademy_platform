@@ -1180,7 +1180,12 @@
             "balance": "Solde {{balance}} → ~{{after}}",
             "extras": "Les images et les nouvelles versions de tâches individuelles sont en supplément, uniquement si vous les demandez.",
             "short": "Crédits insuffisants pour ce brouillon.",
-            "topUp": "Recharger des crédits"
+            "topUp": "Recharger des crédits",
+            "plan": {
+                "INCLUDED": "Inclus dans votre forfait {{plan}}",
+                "ALLOWANCE": "Sur l'enveloppe de votre forfait {{plan}}",
+                "SPLIT": "Enveloppe du forfait, puis ~{{count}} crédits"
+            }
         },
         "grounding": {
             "readingFrom": "Source",

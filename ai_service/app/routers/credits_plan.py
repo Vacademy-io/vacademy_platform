@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 from ..core.security import get_current_user, is_platform_staff, jwt_institute_roles, require_institute_member
 from ..db import db_dependency
 from . import plans_admin as pa
+from ..services.metering.plan_models import TOOL_FEATURE_OVERRIDES
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,7 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
             logger.warning("plan counters read failed", exc_info=True)
             pa._rollback(db)  # noqa: SLF001
 
+    tools = _feature_tool_keys(db)
     features = []
     for it in items:
         key = it["feature_key"]
@@ -260,6 +262,7 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
             f.update(_models(db, it))
         else:
             f.update({"any_model": None, "included_models": []})
+        f["tool_keys"] = tools.get(key, [])
         features.append(f)
     if is_admin:
         # the plan-wide internal cost cap, as a percentage only (never the USD figure)
@@ -269,6 +272,26 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
     if paid_plan and (is_admin or is_staff):
         out["billing"] = _billing(db, institute_id, now)
     return out
+
+
+def _feature_tool_keys(db: Session) -> Dict[str, List[str]]:
+    """billing feature -> the tool keys billed as it (the catalog's use cases, then the engine's
+    per-tool overrides). Lets a cost preview in the admin app say "included in your plan" for
+    the tool it is pricing. Read-only; empty on any error."""
+    out: Dict[str, List[str]] = {}
+    try:
+        for r in pa.rows(db, "SELECT billing_feature_key AS f, tool_keys FROM ai_use_case_catalog "
+                             "WHERE is_active AND billing_feature_key IS NOT NULL"):
+            for t in (r.get("tool_keys") or []):
+                if t and t not in TOOL_FEATURE_OVERRIDES:
+                    out.setdefault(str(r["f"]), []).append(str(t))
+        for t, f in TOOL_FEATURE_OVERRIDES.items():
+            out.setdefault(f, []).append(t)
+    except Exception:  # noqa: BLE001
+        logger.warning("plan tool keys read failed", exc_info=True)
+        pa._rollback(db)  # noqa: SLF001
+        return {}
+    return {k: sorted(set(v)) for k, v in out.items()}
 
 
 def _label_sql(db: Session) -> str:

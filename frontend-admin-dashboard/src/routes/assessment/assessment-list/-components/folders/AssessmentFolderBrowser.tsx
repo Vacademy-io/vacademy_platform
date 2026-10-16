@@ -95,12 +95,15 @@ export const FolderViewSwitch = ({
 export const FolderGrid = ({
     folders,
     loading,
+    showUnfiledHeading,
     view,
     onViewChange,
     ...actions
 }: FolderActions & {
     folders: AssessmentFolder[];
     loading: boolean;
+    /** False when every test is in a folder (no "Not in a folder" section below). */
+    showUnfiledHeading: boolean;
     view: FolderViewMode;
     onViewChange: (mode: FolderViewMode) => void;
 }) => {
@@ -153,14 +156,16 @@ export const FolderGrid = ({
                     </p>
                 ) : null}
             </div>
-            <div className="mt-6 flex flex-wrap items-baseline gap-x-2">
-                <h2 className="text-base font-semibold text-neutral-800">
-                    {t('grid.unfiledTitle')}
-                </h2>
-                <p className="text-caption text-neutral-500">
-                    {actions.canManage ? t('grid.unfiledHint') : t('grid.unfiledHintReadOnly')}
-                </p>
-            </div>
+            {showUnfiledHeading ? (
+                <div className="mt-6 flex flex-wrap items-baseline gap-x-2">
+                    <h2 className="text-base font-semibold text-neutral-800">
+                        {t('grid.unfiledTitle')}
+                    </h2>
+                    <p className="text-caption text-neutral-500">
+                        {actions.canManage ? t('grid.unfiledHint') : t('grid.unfiledHintReadOnly')}
+                    </p>
+                </div>
+            ) : null}
         </section>
     );
 };

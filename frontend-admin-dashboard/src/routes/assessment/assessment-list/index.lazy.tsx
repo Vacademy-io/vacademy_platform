@@ -34,11 +34,12 @@ function RouteComponent() {
             {foldersEnabled ? (
                 <AssessmentFolderWorkspace
                     folderKey={folderId || 'all'}
-                    renderList={({ key, folderFilter, toolbar }) => (
+                    renderList={({ key, folderFilter, toolbar, hideList }) => (
                         <ScheduleTestMainComponent
                             key={key}
                             folderFilter={folderFilter}
                             toolbar={toolbar}
+                            hideList={hideList}
                         />
                     )}
                 />

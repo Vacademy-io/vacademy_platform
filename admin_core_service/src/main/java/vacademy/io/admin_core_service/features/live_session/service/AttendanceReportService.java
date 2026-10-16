@@ -318,6 +318,8 @@ public class AttendanceReportService {
                     .providerTotalDurationMinutes(guestDto.getProviderTotalDurationMinutes())
                     .providerTotalDurationSeconds(guestDto.getProviderTotalDurationSeconds())
                     .feedbackDetails(null)
+                    .batchName(null)
+                    .registeredAt(guestDto.getRegisteredAt())
                     .build();
         }
     }

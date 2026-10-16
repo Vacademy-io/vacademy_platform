@@ -121,4 +121,10 @@ class AiPlansRollJobTest {
         assertFalse(AiPlansRollJob.SELECT_SETTING.contains(":"));
         assertFalse(AiPlansRollJob.SELECT_ANY_ROLLABLE.contains(":"));
     }
+
+    @Test
+    void anUnpaidCheckoutAloneStillTriggersTheRoll() {
+        // ai_service's roll expires PENDING paid-plan checkouts; the pre-check must not skip them.
+        assertTrue(AiPlansRollJob.SELECT_ANY_ROLLABLE.contains("'PENDING'"));
+    }
 }

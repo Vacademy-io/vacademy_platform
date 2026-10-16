@@ -37,9 +37,12 @@ public class AiPlansRollJob {
     static final String SELECT_SETTING =
             "SELECT CAST(setting_value AS text) FROM ai_platform_settings WHERE setting_key = ?";
 
-    /** Any subscription the roll could act on (one row is enough). */
+    /**
+     * Any subscription the roll could act on (one row is enough). PENDING is included: the roll
+     * expires an unpaid paid-plan checkout, which may be the only open subscription.
+     */
     static final String SELECT_ANY_ROLLABLE =
-            "SELECT 1 FROM institute_ai_subscription WHERE status IN ('SCHEDULED', 'TRIAL', 'ACTIVE', 'GRACE') LIMIT 1";
+            "SELECT 1 FROM institute_ai_subscription WHERE status IN ('SCHEDULED', 'PENDING', 'TRIAL', 'ACTIVE', 'GRACE') LIMIT 1";
 
     private final JdbcTemplate jdbcTemplate;
     private final CreditClient creditClient;

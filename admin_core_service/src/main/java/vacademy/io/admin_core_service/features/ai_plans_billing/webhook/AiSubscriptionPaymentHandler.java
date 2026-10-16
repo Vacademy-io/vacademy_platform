@@ -133,6 +133,7 @@ public class AiSubscriptionPaymentHandler implements SubscriptionPaymentHandler 
         if (mandateId != null && StringUtils.hasText(captured.tokenId())
                 && !"AUTOPAY_DEBIT".equals(purpose)) {
             mandates.recordToken(mandateId, captured.tokenId(), captured.customerId(), captured.vendorPaymentId());
+            syncTokenNow(mandateId, captured.tokenId());
             // Completed after the institute cancelled (or the mandate lapsed): the token must not live on.
             mandates.findById(mandateId).filter(m -> AiSubscriptionMandateStore.isTerminal(m.status()))
                     .ifPresent(m -> cancelTokenQuietly(m.razorpayCustomerId() != null ? m.razorpayCustomerId()
@@ -438,6 +439,34 @@ public class AiSubscriptionPaymentHandler implements SubscriptionPaymentHandler 
         Instant eventAt = root != null && root.path("created_at").isNumber()
                 ? Instant.ofEpochSecond(root.path("created_at").asLong()) : null;
         applyMandateStatus(found.get(), target, failure, eventAt);
+    }
+
+    /**
+     * token.confirmed often arrives a moment before this capture links the token to the mandate,
+     * and is then acked as an unknown token (seen live 2026-10-16: 0.55 s apart). Ask Razorpay
+     * for the token's state now instead of leaving the mandate PENDING until the hourly
+     * reconcile. Best-effort: any failure leaves it to that reconcile.
+     */
+    void syncTokenNow(String mandateId, String tokenId) {
+        try {
+            Mandate m = mandates.findById(mandateId).orElse(null);
+            if (m == null || !AiSubscriptionMandateStore.PENDING.equals(m.status())
+                    || !StringUtils.hasText(m.razorpayCustomerId()) || !StringUtils.hasText(tokenId)) {
+                return;
+            }
+            for (PlatformRazorpayGateway.TokenInfo t : gateway.fetchTokens(m.razorpayCustomerId())) {
+                if (tokenId.equals(t.id())) {
+                    String target = mandateStatusFor(null, t.status());
+                    if (target != null) {
+                        applyMandateStatus(m, target, null);
+                    }
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ai-plans-billing] token sync for mandate {} left to the hourly reconcile: {}", mandateId,
+                    e.getMessage());
+        }
     }
 
     /** token.* event (or recurring_details.status) -> mandate status; null = no change. */

@@ -87,4 +87,31 @@ describe('renderLatexDelimiters', () => {
         expect(latexOf(out)).toEqual([`math-inline:${tex}`]);
         expect(out).not.toContain('katex-error');
     });
+
+    // The question-paper converter wraps display maths as
+    // `<div class="math-block">$$ … $$</div>` — the editor's class, but with no
+    // data-latex. It used to be skipped here and then dropped as an empty formula.
+    it('renders a converter math-block wrapper instead of skipping it', () => {
+        const body = String.raw`\begin{aligned}
+& \text { So, } 52 m+42 f=50(m+f) \\
+& \Rightarrow m=4 f
+\end{aligned}`;
+        const out = renderLatexDelimiters(`<p>Sum of ages</p><div class="math-block">$$
+${body}
+$$</div><p>Let the total be 100.</p>`);
+        expect(latexOf(out)).toEqual([`math-block:${body}`]);
+        expect(out).not.toContain('$$');
+        expect(out).not.toContain('katex-error');
+        expect(out).toContain('Let the total be 100.');
+    });
+
+    it('keeps an editor math node (it has data-latex) as it is', () => {
+        const html = '<div class="math-block" data-latex="x^2"><span class="katex">x2</span></div>';
+        expect(renderLatexDelimiters(`<p>$y$</p>${html}`)).toContain(html);
+    });
+
+    it('keeps a math-block that already holds a rendered formula', () => {
+        const html = '<div class="math-block"><span class="katex">$x$</span></div>';
+        expect(renderLatexDelimiters(`<p>$y$</p>${html}`)).toContain(html);
+    });
 });

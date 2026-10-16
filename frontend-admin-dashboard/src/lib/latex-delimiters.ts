@@ -96,6 +96,17 @@ export function renderLatexDelimiters(html: string | null | undefined): string {
     if (!html.includes('$') && !html.includes('\\(') && !html.includes('\\[')) return html;
 
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    // An editor math node always carries `data-latex`. A `.math-block` without
+    // it and without a rendered formula is a plain wrapper around `$$…$$`
+    // text — the paper converter's own markup — so it is read like any other
+    // text, not skipped (and later dropped as an empty formula).
+    doc.querySelectorAll('.math-block:not([data-latex]), .math-inline:not([data-latex])').forEach(
+        (el) => {
+            if (el.querySelector('.katex')) return;
+            el.classList.remove('math-block', 'math-inline');
+            if (!el.classList.length) el.removeAttribute('class');
+        }
+    );
     const textNodes: Text[] = [];
     collectTextNodes(doc.body, textNodes);
 

@@ -102,7 +102,10 @@ public class CatalogApiService {
             Set<String> tagSet = new LinkedHashSet<>();
             Instant created = null;
             for (CatalogRow r : g.variants()) {
-                tagSet.addAll(CourseFormats.rowTags(r.tags(), null));
+                for (String t : CourseFormats.rowTags(r.tags(), null)) if (!LevelKeys.isLevelKey(t)) tagSet.add(t);
+                // A course levelled like a stream or category belongs to it (LevelKeys).
+                String level = LevelKeys.levelKey(r.levelName());
+                if (level != null) tagSet.add(level);
                 if (r.createdAt() != null && (created == null || r.createdAt().isAfter(created))) created = r.createdAt();
             }
             out.add(new Card(g, i++, tagSet, CourseFormats.cardFormatKeys(g.variants(), site.formats()), created));
@@ -241,7 +244,7 @@ public class CatalogApiService {
         for (CatalogRow r : card.rows()) {
             if (r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(q)) return true;
         }
-        for (String t : card.tagSet()) if (t.contains(q)) return true;
+        for (String t : card.tagSet()) if (!LevelKeys.isLevelKey(t) && t.contains(q)) return true;
         return false;
     }
 

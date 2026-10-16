@@ -12,6 +12,7 @@
  */
 import type { CatalogStream } from "../../-components/components/catalog/catalog-streams";
 import type { CatalogEditorialCardConfig } from "../../-types/catalog-cards-types";
+import { LEVEL_KEY_PREFIX, levelKeys } from "../../-utils/level-key";
 import {
   courseFormatKeys,
   resolveCourseFormats,
@@ -122,8 +123,9 @@ export const coursePageContext = (input: {
   /** The visitor's site language. */
   locale?: string | null;
 }): CoursePageContext => {
-  const tags = (input.tags || []).map(lower).filter(Boolean);
-  const tagSet = new Set(tags);
+  const tags = (input.tags || []).map(lower).filter((t) => t && !t.startsWith(LEVEL_KEY_PREFIX));
+  // Level keys too: a course levelled like a stream or category belongs to it.
+  const tagSet = new Set([...tags, ...levelKeys(input.levelName)]);
   const gs = isObject(input.globalSettings) ? input.globalSettings : null;
 
   const formats = resolveCourseFormats(gs);

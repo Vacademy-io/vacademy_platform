@@ -167,11 +167,16 @@ class CatalogApiServiceTest {
         List<Map<String, Object>> dharma = data(service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
                 null, "dharma", null, null, null, null, null, 1, 100, null)));
         assertFalse(dharma.isEmpty());
-        // a course tagged into two streams lists its first (folder order) stream, but every hit carries a dharma tag
+        // a course tagged into two streams lists its first (folder order) stream, but every hit carries a
+        // dharma tag or is levelled "Vedic Parenting" (level keys, 2026-10-16)
         for (Map<String, Object> c : dharma) {
             assertTrue(((List<?>) c.get("tags")).stream().map(t -> ((String) t).toLowerCase())
-                    .anyMatch(t -> t.equals("dharma") || t.equals("vedic-parenting")));
+                    .anyMatch(t -> t.equals("dharma") || t.equals("vedic-parenting"))
+                    || "Vedic Parenting".equals(c.get("level")), String.valueOf(c.get("title")));
         }
+        assertTrue(dharma.stream().anyMatch(c -> "Vedic Parenting".equals(c.get("level"))
+                && ((List<?>) c.get("tags")).stream().noneMatch(t -> "vedic-parenting".equalsIgnoreCase((String) t))),
+                "a course only levelled Vedic Parenting is in Dharma");
         List<Map<String, Object>> ebooks = data(service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
                 null, null, null, "ebook", null, null, null, 1, 100, null)));
         assertFalse(ebooks.isEmpty());
@@ -181,7 +186,8 @@ class CatalogApiServiceTest {
         assertFalse(parenting.isEmpty());
         assertTrue(parenting.size() <= dharma.size());
         for (Map<String, Object> c : parenting) {
-            assertTrue(((List<?>) c.get("tags")).stream().anyMatch(t -> "vedic-parenting".equalsIgnoreCase((String) t)));
+            assertTrue(((List<?>) c.get("tags")).stream().anyMatch(t -> "vedic-parenting".equalsIgnoreCase((String) t))
+                    || "Vedic Parenting".equals(c.get("level")));
         }
         assertEquals(0, service.courses(BV_INSTITUTE, new CatalogApiService.CourseQuery(
                 null, "no-such-stream", null, null, null, null, null, 1, 24, null)).get("total"));

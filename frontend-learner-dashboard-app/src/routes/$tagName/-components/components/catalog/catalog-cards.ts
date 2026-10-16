@@ -16,6 +16,7 @@ import {
   type CourseLanguageOption,
 } from "../../../-utils/course-variants";
 import { readComingSoon } from "../../../-utils/coming-soon";
+import { LEVEL_KEY_PREFIX, levelKeys } from "../../../-utils/level-key";
 
 /** The fields of a catalogue row the discovery logic reads. */
 export interface CatalogRowLike {
@@ -154,8 +155,21 @@ export const cardPriceView = <R extends CatalogRowLike>(
   return { row, minPrice, from: minPrice !== maxPrice };
 };
 
-const tagSetOf = (rows: CatalogRowLike[]) =>
-  new Set(rows.flatMap((r) => courseTagsOf(r)).map((t) => t.toLowerCase()));
+/** What a stream or category matches a course by: its tags, and its level as a level key. */
+export const courseMatchKeysOf = (row: {
+  comma_separeted_tags?: string | null;
+  tags?: unknown;
+  level_name?: string | null;
+  level?: unknown;
+}): string[] => [
+  // A tag spelt like a level key ("level:x") is not one.
+  ...courseTagsOf(row)
+    .map((t) => t.toLowerCase())
+    .filter((t) => !t.startsWith(LEVEL_KEY_PREFIX)),
+  ...levelKeys(row.level_name ?? row.level),
+];
+
+const tagSetOf = (rows: CatalogRowLike[]) => new Set(rows.flatMap((r) => courseMatchKeysOf(r)));
 
 const makeCard = <R extends CatalogRowLike>(
   courseId: string,

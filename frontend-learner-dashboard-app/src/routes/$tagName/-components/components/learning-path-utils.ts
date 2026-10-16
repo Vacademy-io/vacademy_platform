@@ -11,6 +11,7 @@
  * The list mode reads the paths from the folder library: the product pages
  * under the stream folder named by ?stream=, a chosen folder, or all of them.
  */
+import { LEVEL_KEY_PREFIX, levelKeys } from "../../-utils/level-key";
 import {
   languageOfLevel,
   languageOfTags,
@@ -494,13 +495,14 @@ export const displayVariant = <T extends PathMapping>(
  * steps load), the stream the path sits under.
  */
 export const pathStreams = <S extends { id: string; tags: string[] }>(
-  rows: Array<{ tags?: unknown }>,
+  rows: Array<{ tags?: unknown; level_name?: string | null }>,
   streams: S[],
   fallback: S | null,
 ): S[] => {
   const out: S[] = [];
   for (const row of rows) {
-    const tags = mappingTags(row);
+    // Level keys too: a step levelled like a stream belongs to it (-utils/level-key.ts).
+    const tags = [...mappingTags(row).filter((t) => !t.startsWith(LEVEL_KEY_PREFIX)), ...levelKeys(row.level_name)];
     for (const stream of streams) {
       if (!out.includes(stream) && stream.tags.some((t) => tags.includes(t))) out.push(stream);
     }

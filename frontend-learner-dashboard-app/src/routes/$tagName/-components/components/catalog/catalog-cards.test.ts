@@ -46,7 +46,7 @@ describe("buildCatalogCards", () => {
     expect(c1.rows.map((r) => r.packageSessionId)).toEqual(["c1-en", "c1-hi"]);
     expect(c1.languages.map((l) => l.chip)).toEqual(["EN", "हिं"]);
     expect(c1.primary.packageSessionId).toBe("c1-en");
-    expect([...c1.tagSet].sort()).toEqual(["hindi-medium", "shiksha", "yoga"]);
+    expect([...c1.tagSet].sort()).toEqual(["hindi-medium", "level:english", "level:hindi", "shiksha", "yoga"]);
   });
 
   it("computes the 'from' price across versions", () => {

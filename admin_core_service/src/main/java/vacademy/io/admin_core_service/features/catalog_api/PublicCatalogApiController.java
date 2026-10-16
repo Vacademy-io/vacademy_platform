@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 /**
  * Catalogue API v1: an institute's courses, streams and learning paths for its own website, read
  * from the same data the hosted catalogue site renders, plus enquiries into the CRM. Public base
- * URL https://api.vacademy.io/catalog/v1 (ingress rewrite to this path); authenticated with a
+ * URL https://api.vacademy.ai/catalog/v1 (ingress rewrite to this path); authenticated with a
  * publishable catalogue key ({@code vak_pub_…}, X-API-Key or Bearer). JSON is snake_case; errors
  * are {"error":{"code","message","request_id","details"?}} (CatalogApiErrorAdvice).
  *

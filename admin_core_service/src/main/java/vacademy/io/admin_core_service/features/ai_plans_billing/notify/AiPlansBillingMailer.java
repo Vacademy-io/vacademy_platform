@@ -112,8 +112,9 @@ public class AiPlansBillingMailer {
 
             String subject = subject(m, tradeName);
             String body = body(m, instituteName, linkBase == null ? null : linkBase + BILLING_PATH, tradeName, support);
-            if (!vacademy && (BRAND.matcher(subject).find() || BRAND.matcher(body).find()
-                    || NeutralSender.branded(fromName, fromEmail))) {
+            // The sender may carry the platform name (owner decision 2026-10-16, see NeutralSender);
+            // subject and body must not.
+            if (!vacademy && (BRAND.matcher(subject).find() || BRAND.matcher(body).find())) {
                 SentryLogger.logWarning("AI plan billing email withheld: brand word in a NEUTRAL email",
                         Map.of("institute.id", m.instituteId(), "kind", m.kind().name()));
                 return 0;

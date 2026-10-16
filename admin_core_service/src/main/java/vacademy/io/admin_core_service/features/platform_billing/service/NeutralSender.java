@@ -15,8 +15,10 @@ import java.util.regex.Pattern;
  * the sender included; critique §C, D3 interim: no neutral sender, no email).
  *
  * <ol>
- *   <li>{@code platform_payment_config.billing_from_email} (not on a Vacademy-owned host, no brand
- *       word) with {@code billing_from_name}, else the neutral display name / legal supplier;</li>
+ *   <li>{@code platform_payment_config.billing_from_email} with {@code billing_from_name}, else the
+ *       neutral display name / legal supplier. Owner decision 2026-10-16: this platform sender may
+ *       carry the Vacademy name (white-labelled admins may get mail from the Vacademy billing
+ *       address); subject and body stay brand-free;</li>
  *   <li>else the institute's OWN {@code UTILITY_EMAIL} sender ({@code setting_json ->
  *       setting.EMAIL_SETTING.data.UTILITY_EMAIL.from}), when it is brand-free: the email is sent
  *       with no from override and notification_service uses that sender;</li>
@@ -42,9 +44,12 @@ public final class NeutralSender {
 
     public static Optional<Sender> resolve(PlatformPaymentConfig cfg, Institute institute,
             Predicate<String> vacademyOwnedHost) {
-        String email = cfg == null ? null : cleanEmail(cfg.getBillingFromEmail(), vacademyOwnedHost);
+        // Owner decision 2026-10-16: admins of white-labelled institutes may get billing mail from
+        // the platform billing sender even when it carries the Vacademy name (e.g. "Billing ·
+        // Vacademy" <support@vacademy.io>). Only the sender is exempt; subject and body stay neutral.
+        String email = cfg == null ? null : validEmail(cfg.getBillingFromEmail());
         if (email != null) {
-            String name = firstNeutral(cfg.getBillingFromName(), cfg.getNeutralDisplayName(), cfg.getSupplierLegalName());
+            String name = firstText(cfg.getBillingFromName(), cfg.getNeutralDisplayName(), cfg.getSupplierLegalName());
             if (name != null) {
                 return Optional.of(new Sender(email, name));
             }
@@ -89,6 +94,25 @@ public final class NeutralSender {
         }
         String host = c.substring(at + 1);
         return vacademyOwnedHost != null && vacademyOwnedHost.test(host) ? null : c;
+    }
+
+    /** The configured platform sender address, if it looks like an email (brand allowed). */
+    static String validEmail(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String c = raw.trim();
+        int at = c.lastIndexOf('@');
+        return at <= 0 || at == c.length() - 1 ? null : c;
+    }
+
+    static String firstText(String... names) {
+        for (String n : names) {
+            if (StringUtils.hasText(n)) {
+                return n.trim();
+            }
+        }
+        return null;
     }
 
     static String firstNeutral(String... names) {

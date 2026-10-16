@@ -134,13 +134,14 @@ class PlatformDocumentMailServiceTest {
     }
 
     @Test
-    void neutralSenderCarryingTheBrandIsDropped() {
+    void neutralUsesThePlatformSenderEvenWhenItCarriesTheBrand() {
+        // owner decision 2026-10-16: white-labelled admins may get billing mail from the Vacademy sender
         cfg.setBillingFromName("Vacademy Billing");
         cfg.setBillingFromEmail("billing@vacademy.io");
         institute.setSetting(OWN_SENDER);
         mail.sendInvoiceEmail(invoice("NEUTRAL"));
-        verify(notificationService, never()).sendHtmlEmailViaUnified(any(), any(), any(), any(), any(), any(), any());
-        verify(notificationService).sendAttachmentEmailViaUnified(any(), eq("inst-1"));
+        verify(notificationService, org.mockito.Mockito.atLeastOnce()).sendHtmlEmailViaUnified(any(), any(), any(),
+                eq("inst-1"), eq("billing@vacademy.io"), eq("Vacademy Billing"), eq("UTILITY_EMAIL"));
         assertNull(PlatformDocumentMailService.neutralText("Team VACADEMY"));
         assertNull(mail.supportEmailFor("help@vacademy.io", BrandMode.NEUTRAL));
         assertEquals("help@vacademy.io", mail.supportEmailFor("help@vacademy.io", BrandMode.VACADEMY));

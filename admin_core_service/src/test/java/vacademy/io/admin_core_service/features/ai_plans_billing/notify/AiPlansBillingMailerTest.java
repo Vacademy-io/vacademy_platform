@@ -71,15 +71,18 @@ class AiPlansBillingMailerTest {
     }
 
     @Test
-    void neutralWithoutANeutralSenderIsWithheldNeverSentAsVacademySupport() {
+    void neutralUsesThePlatformSenderElseTheInstitutesOwnElseWithholds() {
         when(brand.resolve("i1")).thenReturn(BrandMode.NEUTRAL);
         // a name with no address would go out from the platform default (support@vacademy.io)
         cfg.setBillingFromEmail(null);
         assertEquals(0, mailer.send(mail("AI Pro")));
-        // a Vacademy-owned sender address never counts
-        cfg.setBillingFromEmail("billing@vacademy.io");
-        assertEquals(0, mailer.send(mail("AI Pro")));
         verifyNoInteractions(notifications);
+        // owner decision 2026-10-16: the platform billing sender is used even when it is a Vacademy address
+        cfg.setBillingFromEmail("billing@vacademy.io");
+        assertEquals(2, mailer.send(mail("AI Pro")));
+        verify(notifications, times(2)).sendHtmlEmailViaUnified(anyString(), anyString(), anyString(), eq("i1"),
+                eq("billing@vacademy.io"), anyString(), eq("UTILITY_EMAIL"));
+        org.mockito.Mockito.clearInvocations(notifications);
         // the institute's own brand-free UTILITY_EMAIL sender: sent with no override
         cfg.setBillingFromEmail(null);
         inst.setSetting("{\"setting\":{\"EMAIL_SETTING\":{\"data\":{\"UTILITY_EMAIL\":"

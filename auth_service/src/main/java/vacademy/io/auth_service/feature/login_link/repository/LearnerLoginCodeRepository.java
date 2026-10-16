@@ -14,6 +14,23 @@ public interface LearnerLoginCodeRepository extends JpaRepository<LearnerLoginCo
 
     Optional<LearnerLoginCode> findByCodeHash(String codeHash);
 
+    /**
+     * The newest user with this email (case-insensitive) who is a learner (STUDENT role, ACTIVE or
+     * INVITED) of the institute. Newest wins when an email has several accounts there.
+     */
+    @Query(value = """
+            SELECT u.id FROM users u
+            JOIN user_role ur ON ur.user_id = u.id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE LOWER(u.email) = LOWER(:email)
+              AND ur.institute_id = :instituteId
+              AND ur.status IN ('ACTIVE', 'INVITED')
+              AND r.role_name = 'STUDENT'
+            ORDER BY u.created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<String> findLearnerIdByEmail(@Param("email") String email, @Param("instituteId") String instituteId);
+
     @Modifying
     @Transactional
     @Query("UPDATE LearnerLoginCode c SET c.useCount = c.useCount + 1, c.lastUsedAt = :now, c.lastUsedIp = :ip WHERE c.id = :id")

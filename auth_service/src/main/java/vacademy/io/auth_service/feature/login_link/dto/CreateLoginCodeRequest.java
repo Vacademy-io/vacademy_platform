@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 /**
  * Body of POST /auth-service/open/v1/login-codes (institute's server, X-API-Key) and
  * POST /auth-service/internal/v1/login-codes (our services, HMAC). Exactly one of username /
- * user_id. institute_id is read only on the internal route; on the public one the key decides.
+ * email / user_id. institute_id is read only on the internal route; on the public one the key decides.
  */
 @Data
 @NoArgsConstructor
@@ -21,6 +21,9 @@ import lombok.NoArgsConstructor;
 public class CreateLoginCodeRequest {
 
     private String username;
+
+    /** The learner's email, for callers that do not know the username. */
+    private String email;
 
     @JsonProperty("user_id")
     @JsonAlias("userId")

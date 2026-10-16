@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * Login codes for our own services (HMAC, InternalAuthFilter): admin_core's live-class
  * reminders and workflow WhatsApp/email nodes mint one per learner and append {@code ?lc=}.
- * Body: {"institute_id", "username" | "user_id", "expires_in_days"}. Same response as the
+ * Body: {"institute_id", "username" | "email" | "user_id", "expires_in_days"}. Same response as the
  * public route.
  */
 @RestController
@@ -33,7 +33,7 @@ public class LoginCodeInternalController {
     public ResponseEntity<Map<String, Object>> create(@RequestHeader(value = "clientName", required = false) String clientName,
                                                       @RequestBody CreateLoginCodeRequest body) {
         LoginCodeService.MintedCode minted = loginCodeService.mint(body.getInstituteId(), body.getUsername(),
-                body.getUserId(), body.getExpiresInDays(), LearnerLoginCode.VIA_INTERNAL, clientName);
+                body.getEmail(), body.getUserId(), body.getExpiresInDays(), LearnerLoginCode.VIA_INTERNAL, clientName);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(LoginCodeOpenController.view(minted));
     }
 }

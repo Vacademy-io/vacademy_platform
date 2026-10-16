@@ -12,7 +12,8 @@
         "hidden": "Masqué pour les élèves",
         "reorder": "Faire glisser pour réordonner {{name}}",
         "loading": "Chargement des dossiers…",
-        "tip": "Ouvrez un dossier pour voir ses tests. Pour déplacer un test, faites glisser sa carte sur un dossier ou utilisez ⋮ → Déplacer vers un dossier."
+        "tip": "Ouvrez un dossier pour voir ses tests. Pour déplacer un test, faites glisser sa carte sur un dossier ou utilisez ⋮ → Déplacer vers un dossier.",
+        "emptyReadOnly": "Aucun dossier pour l’instant."
     },
     "menu": {
         "moveToFolder": "Déplacer vers un dossier",
@@ -74,5 +75,17 @@
         "hiddenFromStudents": "Masqué pour les élèves",
         "emptyHint": "Aucun test ici pour l’instant. Ouvrez Toutes les évaluations et faites glisser un test sur ce dossier, ou utilisez ⋮ → Déplacer vers un dossier.",
         "emptyReadOnly": "Aucun test dans ce dossier pour l’instant."
+    },
+    "view": {
+        "label": "Affichage des évaluations",
+        "folders": "Dossiers",
+        "list": "Tous les tests",
+        "listHint": "Toutes les évaluations dans une seule liste. Chaque carte indique son dossier."
+    },
+    "grid": {
+        "unfiledTitle": "Hors dossier",
+        "unfiledHint": "Faites glisser un test sur un dossier ci-dessus pour l’y déplacer, ou utilisez ⋮ → Déplacer vers un dossier.",
+        "unfiledHintReadOnly": "Tests qui ne sont dans aucun dossier.",
+        "allFolders": "Tous les dossiers"
     }
 }

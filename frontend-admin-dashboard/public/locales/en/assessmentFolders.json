@@ -11,7 +11,8 @@
         "hidden": "Hidden from students",
         "reorder": "Drag to reorder {{name}}",
         "loading": "Loading folders…",
-        "tip": "Open a folder to see its tests. To move a test, drag its card onto a folder or use ⋮ → Move to folder."
+        "tip": "Open a folder to see its tests. To move a test, drag its card onto a folder or use ⋮ → Move to folder.",
+        "emptyReadOnly": "No folders yet."
     },
     "menu": {
         "moveToFolder": "Move to folder",
@@ -72,5 +73,17 @@
         "hiddenFromStudents": "Hidden from students",
         "emptyHint": "No tests here yet. Open All assessments and drag a test onto this folder, or use ⋮ → Move to folder.",
         "emptyReadOnly": "No tests in this folder yet."
+    },
+    "view": {
+        "label": "How to show assessments",
+        "folders": "Folders",
+        "list": "All tests",
+        "listHint": "Every assessment in one list. Each card shows its folder."
+    },
+    "grid": {
+        "unfiledTitle": "Not in a folder",
+        "unfiledHint": "Drag a test onto a folder above to move it, or use ⋮ → Move to folder.",
+        "unfiledHintReadOnly": "Tests that are not in any folder.",
+        "allFolders": "All folders"
     }
 }

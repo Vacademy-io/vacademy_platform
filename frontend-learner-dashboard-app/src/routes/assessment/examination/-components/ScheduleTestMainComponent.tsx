@@ -332,7 +332,23 @@ export const ScheduleTestMainComponent = ({
   if (view.mode === "loading") return <DashboardLoader />;
 
   if (view.mode === "grid") {
-    return <AssessmentFolderGrid data={view.data} onOpen={openFolder} />;
+    // Folder cards first; tests that are in no folder follow in the usual tabs.
+    return (
+      <div className="flex flex-col gap-8">
+        <AssessmentFolderGrid data={view.data} onOpen={openFolder} />
+        {view.data.unfiled_count > 0 ? (
+          <AssessmentListView
+            assessment_types={assessment_types}
+            folderId={OTHERS_FOLDER_ID}
+            header={
+              <h2 className="text-h3 font-semibold text-foreground">
+                {t("scheduleTest.folders.otherTests")}
+              </h2>
+            }
+          />
+        ) : null}
+      </div>
+    );
   }
 
   if (view.mode === "folder" && folderId) {

@@ -1,10 +1,7 @@
 import { ArrowLeft, CaretRight, Folder, Stack } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import {
-  OTHERS_FOLDER_ID,
-  type LearnerFolderList,
-} from "@/services/assessment-folders";
+import { type LearnerFolderList } from "@/services/assessment-folders";
 
 const FolderImage = ({
   imageUrl,
@@ -31,7 +28,8 @@ const FolderImage = ({
 
 /**
  * The institute's assessment folders as cards. Tapping one opens its tests (with the
- * usual Live / Upcoming / Past tabs); "Others" holds tests that are in no folder.
+ * usual Live / Upcoming / Past tabs). Tests in no folder are listed below the cards
+ * by the caller, not behind a card of their own.
  */
 export const AssessmentFolderGrid = ({
   data,
@@ -50,18 +48,6 @@ export const AssessmentFolderGrid = ({
       count: folder.assessment_count,
       icon: <Folder size={40} weight="duotone" />,
     })),
-    ...(data.unfiled_count > 0
-      ? [
-          {
-            id: OTHERS_FOLDER_ID,
-            name: t("scheduleTest.folders.others"),
-            description: t("scheduleTest.folders.othersDescription"),
-            imageUrl: null,
-            count: data.unfiled_count,
-            icon: <Stack size={40} weight="duotone" />,
-          },
-        ]
-      : []),
   ];
 
   return (

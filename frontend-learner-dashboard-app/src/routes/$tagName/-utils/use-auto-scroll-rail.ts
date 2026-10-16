@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 /** Fastest an authored rail may advance; quicker than this nobody can read a card. */
 export const AUTO_SCROLL_MIN_MS = 1500;
@@ -96,3 +96,37 @@ export const useAutoScrollRail = (
   }, [trackRef, enabled, intervalMs, itemCount]);
 };
 
+/**
+ * Prev/next arrows for a horizontal rail: whether each way has room to travel,
+ * and a scroll of just under one view (a sliver of the previous card stays in
+ * sight, which tells the visitor the row continues).
+ */
+export const useRailArrows = (trackRef: RefObject<HTMLElement | null>, { enabled, itemCount = 0 }: { enabled: boolean; itemCount?: number }) => {
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+  const sync = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 8);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+  }, [trackRef]);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!enabled || !el) return;
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [trackRef, enabled, itemCount, sync]);
+  const scrollByPage = useCallback(
+    (dir: number) => {
+      const el = trackRef.current;
+      if (el) el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: "smooth" });
+    },
+    [trackRef]
+  );
+  return { canPrev, canNext, scrollByPage };
+};

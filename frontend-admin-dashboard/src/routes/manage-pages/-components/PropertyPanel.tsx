@@ -1863,6 +1863,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         mapEmbed: t('componentTypes.mapEmbed'), countdownTimer: t('componentTypes.countdownTimer'), textBlock: t('componentTypes.textBlock'),
         featureGrid: t('componentTypes.featureGrid'), imageBlock: t('componentTypes.imageBlock'), buttonBlock: t('componentTypes.buttonBlock'),
         newsletterSignup: t('componentTypes.newsletterSignup'), stepsProcess: t('componentTypes.stepsProcess'),
+        marquee: t('componentTypes.marquee'),
     };
 
     return (
@@ -2217,6 +2218,8 @@ const ComponentEditor = ({ component, pageId, updateComponent, siteConfig }: any
             return <NewsletterSignupEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'stepsProcess':
             return <StepsProcessEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'marquee':
+            return <MarqueeEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
         default:
             return (
@@ -3558,6 +3561,53 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 // Hero Section Editor
+// Mirrors the live hero's isHeroButtonEnabled: true, "true" (any case) or a non-zero number.
+const isTruthyFlag = (v: unknown) =>
+    v === true || (typeof v === 'string' && v.toLowerCase() === 'true') || (typeof v === 'number' && v !== 0);
+
+/** Click action for a hero CTA: go to a page / a section below / a URL, or open a form. */
+const HeroButtonActionFields = ({
+    button,
+    onChange,
+}: {
+    button: { action?: string; target?: string; audienceId?: string };
+    onChange: (patch: Record<string, unknown>) => void;
+}) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const action = button.action || 'navigate';
+    return (
+        <div className="space-y-2">
+            <div>
+                <Label className="text-xs">{t('hero.onClick')}</Label>
+                <select
+                    className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
+                    value={action}
+                    onChange={(e) => onChange({ action: e.target.value })}
+                >
+                    <option value="navigate">{t('hero.actionNavigate')}</option>
+                    <option value="openLeadCollection">{t('hero.actionOpenLeadCollection')}</option>
+                    <option value="openForm">{t('hero.actionOpenCampaignForm')}</option>
+                </select>
+            </div>
+            {action === 'navigate' && (
+                <LinkPicker
+                    label={t('hero.navigateTo')}
+                    value={button.target || ''}
+                    onChange={(v) => onChange({ target: v })}
+                />
+            )}
+            {action === 'openForm' && (
+                <CampaignPicker
+                    label={t('hero.audienceListLabel')}
+                    allowEmpty={false}
+                    value={button.audienceId || ''}
+                    onChange={(id) => onChange({ audienceId: id })}
+                />
+            )}
+        </div>
+    );
+};
+
 const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
@@ -3829,48 +3879,44 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                 ✕
                             </button>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <select
-                                className="rounded border px-2 py-1.5 text-xs"
-                                value={b.action || 'navigate'}
-                                onChange={(e) => {
-                                    const next = [...(props.left?.buttons || [])];
-                                    next[i] = { ...next[i], action: e.target.value };
-                                    updateLeft('buttons', next);
-                                }}
-                            >
-                                <option value="navigate">{t('hero.actionNavigate')}</option>
-                                <option value="openLeadCollection">{t('hero.actionOpenLeadCollection')}</option>
-                                <option value="openForm">{t('hero.actionOpenCampaignForm')}</option>
-                            </select>
-                            {(b.action || 'navigate') === 'navigate' && (
-                                <Input
-                                    className="flex-1"
-                                    placeholder={t('hero.targetRoutePlaceholder')}
-                                    value={b.target || ''}
-                                    onChange={(e) => {
-                                        const next = [...(props.left?.buttons || [])];
-                                        next[i] = { ...next[i], target: e.target.value };
-                                        updateLeft('buttons', next);
-                                    }}
-                                />
-                            )}
-                        </div>
-                        {b.action === 'openForm' && (
-                            <CampaignPicker
-                                label={t('hero.audienceListLabel')}
-                                allowEmpty={false}
-                                value={b.audienceId || ''}
-                                onChange={(id) => {
-                                    const next = [...(props.left?.buttons || [])];
-                                    next[i] = { ...next[i], audienceId: id };
-                                    updateLeft('buttons', next);
-                                }}
-                            />
-                        )}
+                        <HeroButtonActionFields
+                            button={b}
+                            onChange={(patch) => {
+                                const next = [...(props.left?.buttons || [])];
+                                next[i] = { ...next[i], ...patch };
+                                updateLeft('buttons', next);
+                            }}
+                        />
                     </div>
                 ))}
             </div>
+
+            {/* ── Legacy single button ── Older heroes (and the page templates) carry
+                left.button instead of left.buttons. The live hero shows it whenever no
+                multi-CTA has text, so it must stay editable here. */}
+            {!(props.left?.buttons || []).some((b: any) => b?.text?.trim()) &&
+                props.left?.button &&
+                isTruthyFlag(props.left.button.enabled) && (
+                    <div className="space-y-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-semibold">{t('hero.mainButton')}</h5>
+                            <Switch
+                                aria-label={t('hero.mainButton')}
+                                checked
+                                onCheckedChange={(c) => updateLeft('button', { ...props.left.button, enabled: c })}
+                            />
+                        </div>
+                        <Input
+                            placeholder={t('hero.buttonTextPlaceholder')}
+                            value={props.left.button.text || ''}
+                            onChange={(e) => updateLeft('button', { ...props.left.button, text: e.target.value })}
+                        />
+                        <HeroButtonActionFields
+                            button={props.left.button}
+                            onChange={(patch) => updateLeft('button', { ...props.left.button, ...patch })}
+                        />
+                    </div>
+                )}
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">{t('hero.leftContent')}</h5>
@@ -7699,6 +7745,103 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                     ))}
                 </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Marquee (announcement ticker) Editor ─────────────────────────────── */
+const MarqueeEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { props } = component;
+    const items: Array<{ icon?: string; text?: string }> = Array.isArray(props.items) ? props.items : [];
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addItem = () => updateProp('items', [...items, { icon: props.defaultIcon ?? '', text: t('marquee.newItem') }]);
+    const deleteItem = (i: number) => updateProp('items', items.filter((_, idx) => idx !== i));
+    const updateItem = (i: number, field: 'icon' | 'text', value: string) => {
+        const updated = [...items];
+        updated[i] = { ...updated[i], [field]: value };
+        updateProp('items', updated);
+    };
+    const moveItem = (i: number, dir: -1 | 1) => {
+        const j = i + dir;
+        if (j < 0 || j >= items.length) return;
+        const updated = [...items];
+        [updated[i], updated[j]] = [updated[j]!, updated[i]!];
+        updateProp('items', updated);
+    };
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">{t('marquee.itemsCount', { count: items.length })}</Label>
+                    <Button variant="ghost" size="sm" onClick={addItem} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
+                </div>
+                <div className="space-y-2">
+                    {items.map((item, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                            <Input
+                                value={item.icon ?? ''}
+                                onChange={(e) => updateItem(i, 'icon', e.target.value)}
+                                placeholder={props.defaultIcon || '⭐'}
+                                aria-label={t('marquee.iconLabel')}
+                                className="w-12 shrink-0 px-1 text-center"
+                            />
+                            <Input
+                                value={item.text ?? ''}
+                                onChange={(e) => updateItem(i, 'text', e.target.value)}
+                                placeholder={t('marquee.itemTextPlaceholder')}
+                                className="flex-1"
+                            />
+                            <Button variant="ghost" size="sm" onClick={() => moveItem(i, -1)} disabled={i === 0} className="size-6 p-0" aria-label={t('actions.moveUp')}><ChevronUp className="size-3" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} className="size-6 p-0" aria-label={t('actions.moveDown')}><ChevronDown className="size-3" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => deleteItem(i)} className="size-6 p-0 text-red-600" aria-label={t('actions.delete')}><Trash2 className="size-3" /></Button>
+                        </div>
+                    ))}
+                    {items.length === 0 && <p className="text-caption text-gray-500">{t('marquee.noItems')}</p>}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">{t('marquee.defaultIcon')}</Label>
+                <Input className="mt-1" value={props.defaultIcon ?? ''} onChange={(e) => updateProp('defaultIcon', e.target.value)} placeholder="⭐" />
+                <p className="mt-1 text-caption text-gray-500">{t('marquee.defaultIconHint')}</p>
+            </div>
+            <div>
+                <Label className="text-xs">{t('marquee.textSize')}</Label>
+                <select className="mt-1 w-full rounded border px-3 py-2 text-sm" value={props.fontSize || 'sm'} onChange={(e) => updateProp('fontSize', e.target.value)}>
+                    {['xs', 'sm', 'base', 'lg', 'xl'].map((s) => (
+                        <option key={s} value={s}>{t(`marquee.size.${s}`)}</option>
+                    ))}
+                </select>
+            </div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#1e1b4b' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || '#ffffff' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label={t('marquee.iconColor')} value={props.iconColor || '#facc15' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('iconColor', c)} />
+            <div>
+                <Label className="text-xs">{t('marquee.speed')}</Label>
+                <div className="flex gap-1 mt-1">
+                    {['slow', 'medium', 'fast'].map((sp) => (
+                        <button key={sp} onClick={() => updateProp('speed', sp)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.speed || 'medium') === sp ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, sp)}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">{t('marquee.direction')}</Label>
+                <div className="flex gap-1 mt-1">
+                    {['left', 'right'].map((d) => (
+                        <button key={d} onClick={() => updateProp('direction', d)}
+                            className={`rounded px-3 py-1 text-caption font-medium ${(props.direction || 'left') === d ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{d === 'left' ? '← ' : '→ '}{optionLabel(t, d)}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">{t('marquee.pauseOnHover')}</Label>
+                <Switch checked={props.pauseOnHover !== false} onCheckedChange={(c) => updateProp('pauseOnHover', c)} />
             </div>
         </div>
     );

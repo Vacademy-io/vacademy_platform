@@ -359,7 +359,8 @@
     "imageBlock": "صورة",
     "buttonBlock": "زر",
     "newsletterSignup": "الاشتراك في النشرة الإخبارية",
-    "stepsProcess": "خطوات/عملية"
+    "stepsProcess": "خطوات/عملية",
+    "marquee": "شريط متحرك"
   },
   "columnLayout": {
     "layoutSettings": "إعدادات التخطيط",
@@ -786,7 +787,7 @@
     "variantPrimary": "أساسي",
     "variantSecondary": "ثانوي",
     "removeButton": "إزالة الزر",
-    "actionNavigate": "الانتقال",
+    "actionNavigate": "انتقال (صفحة أو قسم أو رابط)",
     "actionOpenLeadCollection": "فتح نموذج العملاء المحتملين (قديم)",
     "actionOpenCampaignForm": "فتح نموذج الحملة (نافذة منبثقة)",
     "targetRoutePlaceholder": "المسار / الرابط المستهدف",
@@ -806,7 +807,10 @@
     "carouselImages": "صور العرض الدوّار",
     "carouselImagesHint": "أضف صورتين أو أكثر لتحويل وسائط القسم الرئيسي إلى عرض دوّار تلقائي. بصورة واحدة تبقى صورة مفردة؛ وبدون أي صورة تُستخدم الصورة اليمنى أعلاه.",
     "slideN": "الشريحة {{n}}",
-    "eyebrowStyleRule": "خط (خط قبل النص)"
+    "eyebrowStyleRule": "خط (خط قبل النص)",
+    "mainButton": "الزر الرئيسي",
+    "onClick": "عند النقر",
+    "navigateTo": "الانتقال إلى"
   },
   "heroEditorial": {
     "style": "التصميم",
@@ -1392,5 +1396,26 @@
     "keptTitle": "تم تطبيق النسخة الجديدة",
     "keptSettings": "تم الاحتفاظ بـ {{count}} من الإعدادات التي لم تتضمنها هذه النسخة. استخدم «تراجع» للعودة، أو «تعديل كـ JSON» لرؤيتها.",
     "keepsNote": "يحتفظ أيضًا بـ {{count}} من الإعدادات التي لا تتضمنها هذه النسخة: {{names}}"
+  },
+  "marquee": {
+    "itemsCount": "عناصر الشريط ({{count}})",
+    "newItem": "إعلان جديد",
+    "iconLabel": "أيقونة",
+    "itemTextPlaceholder": "نص الإعلان",
+    "noItems": "لا توجد عناصر بعد — أضف عنصرًا لعرض الشريط.",
+    "defaultIcon": "الأيقونة الافتراضية",
+    "defaultIconHint": "تظهر قبل العناصر التي ليس لها أيقونة خاصة. اتركها فارغة لعدم العرض.",
+    "textSize": "حجم النص",
+    "size": {
+      "xs": "صغير جدًا (12px)",
+      "sm": "صغير (14px)",
+      "base": "متوسط (16px)",
+      "lg": "كبير (18px)",
+      "xl": "كبير جدًا (20px)"
+    },
+    "iconColor": "لون الأيقونة",
+    "speed": "سرعة التمرير",
+    "direction": "اتجاه التمرير",
+    "pauseOnHover": "إيقاف عند التمرير فوقه"
   }
 }

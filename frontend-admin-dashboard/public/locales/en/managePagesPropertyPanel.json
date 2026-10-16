@@ -359,7 +359,8 @@
     "imageBlock": "Image",
     "buttonBlock": "Button",
     "newsletterSignup": "Newsletter",
-    "stepsProcess": "Steps/Process"
+    "stepsProcess": "Steps/Process",
+    "marquee": "Marquee"
   },
   "columnLayout": {
     "layoutSettings": "Layout Settings",
@@ -786,7 +787,7 @@
     "variantPrimary": "Primary",
     "variantSecondary": "Secondary",
     "removeButton": "Remove button",
-    "actionNavigate": "Navigate",
+    "actionNavigate": "Navigate (page, section or link)",
     "actionOpenLeadCollection": "Open lead form (legacy)",
     "actionOpenCampaignForm": "Open campaign form (popup)",
     "targetRoutePlaceholder": "Target route / URL",
@@ -806,7 +807,10 @@
     "carouselImages": "Carousel Images",
     "carouselImagesHint": "Add 2 or more images to turn the hero media into an auto-playing carousel. With one image it stays a single image; with none it uses the Right Image above.",
     "slideN": "Slide {{n}}",
-    "eyebrowStyleRule": "Rule (line before the text)"
+    "eyebrowStyleRule": "Rule (line before the text)",
+    "mainButton": "Main button",
+    "onClick": "On click",
+    "navigateTo": "Go to"
   },
   "heroEditorial": {
     "style": "Design",
@@ -1368,5 +1372,26 @@
     "keptTitle": "New version applied",
     "keptSettings": "{{count}} settings this version did not include were kept. Use Undo to go back, or open “Edit as JSON” to see them.",
     "keepsNote": "Also keeps {{count}} settings this version leaves out: {{names}}"
+  },
+  "marquee": {
+    "itemsCount": "Ticker items ({{count}})",
+    "newItem": "New announcement",
+    "iconLabel": "Icon",
+    "itemTextPlaceholder": "Announcement text",
+    "noItems": "No items yet — add one to show the ticker.",
+    "defaultIcon": "Default icon",
+    "defaultIconHint": "Shown before items that have no icon of their own. Leave blank for none.",
+    "textSize": "Text Size",
+    "size": {
+      "xs": "Extra Small (12px)",
+      "sm": "Small (14px)",
+      "base": "Medium (16px)",
+      "lg": "Large (18px)",
+      "xl": "Extra Large (20px)"
+    },
+    "iconColor": "Icon Color",
+    "speed": "Scroll Speed",
+    "direction": "Scroll Direction",
+    "pauseOnHover": "Pause on hover"
   }
 }

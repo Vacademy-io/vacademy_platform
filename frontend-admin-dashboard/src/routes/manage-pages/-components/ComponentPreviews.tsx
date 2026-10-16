@@ -1234,6 +1234,8 @@ const DataPlaceholder: React.FC<{ label: string; description?: string }> = ({ la
     );
 };
 
+const MARQUEE_TEXT_SIZE: Record<string, string> = { xs: 'text-xs', sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' };
+
 const MarqueePreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     const bg = props.backgroundColor || '#1e1b4b';  // design-lint-ignore: page-builder default color
@@ -1244,13 +1246,14 @@ const MarqueePreview: React.FC<P> = ({ props }) => {
         { icon: '⭐', text: t('marquee.defaultItem2') },
         { icon: '⭐', text: t('marquee.defaultItem3') },
     ];
+    const sizeClass = MARQUEE_TEXT_SIZE[props.fontSize] || 'text-sm';
 
     return (
         <div className="overflow-hidden py-3" style={{ backgroundColor: bg }}>
             <div className="flex items-center gap-8 px-4">
                 {[...items, ...items].slice(0, 8).map((item, i) => (
-                    <span key={i} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium" style={{ color: fg }}>
-                        {item.icon && <span style={{ color: iconColor }}>{item.icon}</span>}
+                    <span key={i} className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${sizeClass}`} style={{ color: fg }}>
+                        {(item.icon || props.defaultIcon) && <span style={{ color: iconColor }}>{item.icon || props.defaultIcon}</span>}
                         {item.text}
                     </span>
                 ))}

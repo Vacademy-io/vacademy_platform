@@ -1384,6 +1384,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
 /* ─── Logo Cloud ───────────────────────────────────────────────────────── */
 
 const MARQUEE_SPEED_MAP: Record<string, string> = { slow: '45s', medium: '30s', fast: '18s' };
+const MARQUEE_TEXT_SIZE: Record<string, string> = { xs: 'text-xs', sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' };
 
 /* ─── Marquee (announcement ticker) ────────────────────────────────────── */
 
@@ -1429,7 +1430,7 @@ const MarqueeRenderer: React.FC<any> = ({
           <span
             key={i}
             aria-hidden={i >= list.length}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${fontSize === 'base' ? 'text-base' : 'text-sm'}`}
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`}
           >
             {(item.icon || defaultIcon) && (
               <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>

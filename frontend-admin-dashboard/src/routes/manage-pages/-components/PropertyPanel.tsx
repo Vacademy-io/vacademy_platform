@@ -3253,7 +3253,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
     // Footer social links (Column 1 — Brand). platform drives both the label
     // and the icon the learner footer renders (icon = platform lowercased).
-    const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'Twitter'];
+    const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'Twitter', 'Telegram'];
 
     const updateSocial = (index: number, field: string, value: any) => {
         const socials = [...(props.leftSection?.socials || [])];
@@ -4997,6 +4997,19 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
                     onChange={(e) => updateProp('pageSize', Math.max(1, Math.min(50, Number(e.target.value) || 9)))}
                 />
                 <p className="text-xs text-gray-500">{t('blog.pageSizeHelp')}</p>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.viewMoreRoute')}</Label>
+                <Input value={props.viewMoreRoute || ''} onChange={(e) => updateProp('viewMoreRoute', e.target.value.trim())} placeholder="blog" />
+                <p className="text-xs text-gray-500">{t('blog.viewMoreRouteHelp')}</p>
+                {props.viewMoreRoute && (
+                    <Input
+                        value={props.viewMoreLabel || ''}
+                        onChange={(e) => updateProp('viewMoreLabel', e.target.value)}
+                        placeholder={t('blog.viewMoreLabelPlaceholder')}
+                        aria-label={t('blog.viewMoreLabel')}
+                    />
+                )}
             </div>
             <div className="space-y-2">
                 <Label>{t('blog.category')}</Label>

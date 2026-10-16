@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FacebookLogo, Globe, InstagramLogo, LinkedinLogo, TwitterLogo, YoutubeLogo, type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { FacebookLogo, Globe, InstagramLogo, LinkedinLogo, TelegramLogo, TwitterLogo, YoutubeLogo, type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../../-services/route-matcher";
 import type { FooterProps, GlobalSettings } from "../../../-types/course-catalogue-types";
@@ -50,6 +50,7 @@ const SOCIAL_ICONS: Record<string, PhosphorIcon> = {
   twitter: TwitterLogo,
   x: TwitterLogo,
   linkedin: LinkedinLogo,
+  telegram: TelegramLogo,
 };
 
 /** A logo prop that is a URL is used as is; anything else is a file id resolved to a public URL. */

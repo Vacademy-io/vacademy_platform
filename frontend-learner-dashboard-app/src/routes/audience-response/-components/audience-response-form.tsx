@@ -19,7 +19,10 @@ import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import {
   FieldRenderType,
+  dependentFieldKeys,
   getFieldRenderType,
+  getParentFieldKey,
+  resolveDependentField,
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { capitalise } from "@/utils/custom-field";
@@ -176,8 +179,14 @@ const AudienceResponseForm = ({
     [campaignData.institute_custom_fields]
   );
 
-  // Create dynamic schema
-  const zodSchema = getDynamicSchema(formFields);
+  // Create dynamic schema. A dependent dropdown (e.g. Course → Query) is only
+  // required when its parent's value offers it options, which a static schema
+  // cannot know — onSubmit checks those.
+  const zodSchema = getDynamicSchema(
+    formFields.map((field) =>
+      getParentFieldKey(field.config) ? { ...field, is_mandatory: false } : field
+    )
+  );
   type FormValues = z.infer<typeof zodSchema>;
 
   // Initialize form with default values
@@ -313,12 +322,16 @@ const AudienceResponseForm = ({
    * they have in fact finished.
    */
   const requiredProgress = useMemo(() => {
-    const required = formFields.filter((field) => field.is_mandatory);
-    if (required.length === 0) return null;
     const values = (watchedFormValues ?? {}) as Record<
       string,
       AudienceFieldValue | undefined
     >;
+    const required = formFields.filter(
+      (field) =>
+        field.is_mandatory &&
+        resolveDependentField(field.config, (k) => values[k]?.value).kind !== "empty"
+    );
+    if (required.length === 0) return null;
     const completed = required.filter((field) =>
       String(values[field.field_key]?.value ?? "").trim()
     ).length;
@@ -338,6 +351,21 @@ const AudienceResponseForm = ({
   }, [form.formState.errors, formFields]);
 
   const onSubmit = async (values: FormValues) => {
+    const current = values as Record<string, AudienceFieldValue | undefined>;
+    const missingDependents = formFields.filter((field) => {
+      if (!field.is_mandatory || !getParentFieldKey(field.config)) return false;
+      const state = resolveDependentField(field.config, (k) => current[k]?.value);
+      return state.kind !== "empty" && !String(current[field.field_key]?.value ?? "").trim();
+    });
+    if (missingDependents.length > 0) {
+      missingDependents.forEach((field) =>
+        form.setError(`${field.field_key}.value` as never, {
+          type: "required",
+          message: `${field.field_name} is required`,
+        })
+      );
+      return;
+    }
     setLoading(true);
     try {
       // Build the payload using the helper function
@@ -772,6 +800,19 @@ const AudienceResponseForm = ({
                   );
                 const label = capitalise(value?.name ?? field.field_name);
                 const isMandatory = value?.is_mandatory ?? field.is_mandatory;
+                // Cascading dropdown: options follow the parent field's value.
+                const dependent = resolveDependentField(
+                  value?.config ?? field.config,
+                  (k) => formValues[k]?.value
+                );
+                if (dependent.kind === "empty") return null;
+                const parentLabel =
+                  dependent.kind === "waiting"
+                    ? capitalise(
+                        formFields.find((f) => f.field_key === dependent.parentFieldKey)
+                          ?.field_name ?? ""
+                      )
+                    : "";
 
                 // Phone: use the specialized PhoneInputField with country-code detection
                 if (renderType === FieldRenderType.PHONE) {
@@ -828,9 +869,32 @@ const AudienceResponseForm = ({
                               type={renderType}
                               name={value?.name ?? field.field_name}
                               value={formField.value || ""}
-                              onChange={(val) => formField.onChange(val)}
+                              onChange={(val) => {
+                                const changed = val !== formField.value;
+                                formField.onChange(val);
+                                // A changed parent invalidates its dependents' answers.
+                                if (changed)
+                                  dependentFieldKeys(
+                                    key,
+                                    formFields.map((f) => ({ key: f.field_key, config: f.config }))
+                                  ).forEach((k) =>
+                                    form.setValue(`${k}.value` as never, "" as never)
+                                  );
+                              }}
                               config={value?.config ?? field.config}
-                              options={value?.comma_separated_options}
+                              options={
+                                dependent.kind === "ready"
+                                  ? dependent.options
+                                  : value?.comma_separated_options
+                              }
+                              disabled={dependent.kind === "waiting"}
+                              placeholder={
+                                dependent.kind === "waiting" && parentLabel
+                                  ? t("audienceResponse.form.selectParentFirst", {
+                                      name: parentLabel.toLowerCase(),
+                                    })
+                                  : undefined
+                              }
                               required={isMandatory}
                             />
                           </FormControl>

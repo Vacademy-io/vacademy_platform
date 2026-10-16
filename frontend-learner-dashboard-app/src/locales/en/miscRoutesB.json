@@ -234,6 +234,7 @@
         "pinCodePlaceholder": "Enter pin code"
       },
       "additionalInfo": "Additional Information",
+      "selectParentFirst": "Select {{name}} first",
       "submit": "Submit Response",
       "submitting": "Submitting..."
     },

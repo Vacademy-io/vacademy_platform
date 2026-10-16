@@ -33,7 +33,10 @@ import { getCampaignCustomFieldsAsync } from '../../-utils/getCampaignCustomFiel
 import {
     convertExistingCustomFields,
     convertFieldsToPayload,
+    isDropdownFieldType,
     nextFieldId,
+    retargetDependentFields,
+    savedFieldKeyOf,
 } from '../../-utils/campaignFormFields';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -366,7 +369,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                         key: field.key,
                         order: index,
                         _id: field._id,
+                        fieldKey: field.fieldKey,
                         options: field.options,
+                        config: field.config,
                     };
                 });
 
@@ -535,7 +540,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     key: field.key,
                                     order: index,
                                     _id: field._id,
+                                    fieldKey: field.fieldKey,
                                     options: field.options,
+                                    config: field.config,
                                 };
                             });
                         initialCreateModeCustomFields.current = normalized;
@@ -567,8 +574,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     // The handlers below read the form value, not the field-array rows: those
     // carry RHF's `_rhfKey`, which must not be written back into the value.
     const handleDeleteOpenField = (id: number) => {
+        const currentFields = getValues('custom_fields') ?? [];
         // Instead of removing the field, set its status to DELETED
-        const updatedFields = (getValues('custom_fields') ?? []).map((field, idx) => {
+        const updatedFields = currentFields.map((field, idx) => {
             if (idx === id) {
                 return {
                     ...field,
@@ -577,7 +585,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             }
             return field;
         });
-        setValue('custom_fields', updatedFields);
+        // Dropdowns that depended on the removed field become plain dropdowns again.
+        setValue(
+            'custom_fields',
+            retargetDependentFields(
+                updatedFields,
+                savedFieldKeyOf(currentFields[id], instituteDetails?.id ?? ''),
+                null
+            )
+        );
     };
 
     const toggleIsRequired = (id: number) => {
@@ -589,10 +605,23 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
     const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
-        const updatedFields = (getValues('custom_fields') ?? []).map((field, idx) =>
+        const currentFields = getValues('custom_fields') ?? [];
+        const updatedFields = currentFields.map((field, idx) =>
             idx === index ? { ...field, ...patch } : field
         );
-        setValue('custom_fields', updatedFields as typeof customFields);
+        // Dependent dropdowns store their parent's field_key. An unsaved parent is
+        // keyed from its label, so a rename moves them along; a parent that is no
+        // longer a dropdown releases them.
+        const instituteId = instituteDetails?.id ?? '';
+        const oldKey = savedFieldKeyOf(currentFields[index], instituteId);
+        const edited = updatedFields[index];
+        const newKey = isDropdownFieldType(edited?.type)
+            ? savedFieldKeyOf(edited, instituteId)
+            : null;
+        setValue(
+            'custom_fields',
+            retargetDependentFields(updatedFields, oldKey, newKey) as typeof customFields
+        );
     };
 
     /**
@@ -612,7 +641,11 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             isRequired: (config?.isRequired as boolean | undefined) ?? true,
             // The dialog only returns options for choice types, so switching away from one
             // clears them instead of leaving stale values to reappear.
-            options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+            options: options?.map((opt, i) => ({
+                id: String(i),
+                value: opt.value,
+                ...(opt.parent ? { parent: opt.parent } : {}),
+            })),
             // Always an object once the dialog has run, so "edited to nothing"
             // is distinguishable from "never touched" on save.
             config: config ?? {},
@@ -723,6 +756,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         const resolvedOptions = rawOptions?.map((opt) => ({
             id: String(opt.id),
             value: opt.value,
+            ...('parent' in opt && opt.parent ? { parent: opt.parent } : {}),
         }));
         const newField = {
             id: nextFieldId(customFields),

@@ -5,7 +5,12 @@ import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { getFieldVerification } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import { FieldVerification } from "@/routes/product-pages/$productPageCode/-components/FieldVerification";
-import { FieldRenderType, getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import {
+  FieldRenderType,
+  dependentFieldKeys,
+  getFieldRenderType,
+  resolveDependentField,
+} from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
   extractRespondentIdentity,
   handleGetAudienceCampaign,
@@ -213,7 +218,14 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     if (isPreviewMode) return;
     setError("");
 
-    const missing = fields.filter((f) => f.mandatory && !(values[f.key] || "").trim());
+    // A dependent dropdown with nothing to offer for the chosen parent is
+    // hidden, so it cannot be required either.
+    const missing = fields.filter(
+      (f) =>
+        f.mandatory &&
+        resolveDependentField(f.config, (k) => values[k]).kind !== "empty" &&
+        !(values[f.key] || "").trim()
+    );
     if (missing.length > 0) {
       setError(t("leadForm.missingFields", { fields: missing.map((f) => siteT(f.name)).join(", ") }));
       return;
@@ -395,6 +407,13 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         // skip the label above so the question is not shown twice.
         const renderType = getFieldRenderType(f.key, f.type);
         const isCheckbox = renderType === FieldRenderType.CHECKBOX;
+        // Cascading dropdown (e.g. Course → Query): options follow the parent's value.
+        const dependent = resolveDependentField(f.config, (k) => values[k]);
+        if (dependent.kind === "empty") return null;
+        const parentName =
+          dependent.kind === "waiting"
+            ? siteT(fields.find((p) => p.key === dependent.parentFieldKey)?.name || "")
+            : "";
         return (
         <div key={f.id}>
           {!isCheckbox && (
@@ -409,13 +428,26 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             // uses it as the field's id, so that one stays the stored key.
             name={isCheckbox ? siteT(f.name) : f.key}
             value={values[f.key] || ""}
-            onChange={(v: string) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+            onChange={(v: string) =>
+              setValues((prev) => {
+                const next = { ...prev, [f.key]: v };
+                // A changed parent invalidates whatever its dependents held.
+                if (prev[f.key] !== v) dependentFieldKeys(f.key, fields).forEach((k) => delete next[k]);
+                return next;
+              })
+            }
             config={f.config}
+            options={dependent.kind === "ready" ? dependent.options : undefined}
+            disabled={dependent.kind === "waiting"}
             required={f.mandatory}
             // Without this the renderer falls back to `Enter ${name}` where
             // name is the raw field KEY — visitors saw "Enter full_name" and
             // "Enter details_inst_<uuid>". Use the human label.
-            placeholder={t("leadForm.placeholderPrefix", { name: siteT(f.name).toLowerCase() })}
+            placeholder={
+              dependent.kind === "waiting" && parentName
+                ? t("leadForm.selectParentFirst", { name: parentName.toLowerCase() })
+                : t("leadForm.placeholderPrefix", { name: siteT(f.name).toLowerCase() })
+            }
           />
           {/* Same gate the product-page checkout uses, driven by the same
               per-field config — so a form built here can ask a visitor to prove

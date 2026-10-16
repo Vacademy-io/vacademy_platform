@@ -3,7 +3,7 @@ import { getCustomFieldSettingsFromCache } from '@/services/custom-field-setting
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
 import { isOptionFieldType, parseFieldOptionsForForm } from './parseFieldOptions';
-import { withUniqueFieldIds } from './campaignFormFields';
+import { parseSettingsConfig, withUniqueFieldIds } from './campaignFormFields';
 
 /**
  * Interface for campaign form custom field
@@ -17,6 +17,10 @@ export interface CampaignFormCustomField {
     order: number;
     options?: Array<{ id: string; value: string; disabled?: boolean }>;
     _id?: string;
+    /** The master row's real field_key (`key` above is derived from the label). */
+    fieldKey?: string;
+    /** Only set for a dependent dropdown, so saving keeps its parent link. */
+    config?: Record<string, unknown>;
     status?: 'ACTIVE' | 'DELETED';
 }
 
@@ -164,6 +168,7 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
                 key,
                 order: entry.individual_order ?? cf.formOrder ?? index,
                 _id: cf.id,
+                fieldKey: cf.fieldKey,
                 status: 'ACTIVE',
             };
 
@@ -171,6 +176,10 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
             // multi-select fields with no options at all.
             if (isOptionFieldType(fieldType) && cf.config) {
                 transformed.options = parseFieldOptionsForForm(cf.config, index);
+                // A dependent dropdown's parent link lives in its config; without it
+                // the save would write the bare option array and drop the link.
+                const settings = parseSettingsConfig(cf.config);
+                if (typeof settings?.parentFieldKey === 'string') transformed.config = settings;
             }
 
             result.push(transformed);

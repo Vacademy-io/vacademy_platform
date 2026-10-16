@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { CatalogueConfig, Page, Component, GlobalSettings } from '../-types/editor-types';
 import { mergeTranslations } from '../-utils/catalogue-i18n';
+import { renamePageInConfig } from '../-utils/rename-page';
 
 const MAX_HISTORY_LENGTH = 50;
 
@@ -72,6 +73,8 @@ interface EditorState {
     addPage: (page: Page) => void;
     deletePage: (pageId: string) => void;
     duplicatePage: (pageId: string) => void;
+    /** New title and slug; links to the old slug follow it. */
+    renamePage: (pageId: string, title: string, route: string) => void;
     updatePageSeo: (pageId: string, seo: Page['seo']) => void;
     updatePageBackgroundColor: (pageId: string, color: string) => void;
     setPageHideSiteChrome: (pageId: string, hide: boolean) => void;
@@ -450,6 +453,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 selectedPageId: newSelectedPageId,
                 selectedComponentId: null,
             };
+        }),
+
+    renamePage: (pageId, title, route) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newConfig = renamePageInConfig(state.config, pageId, title, route);
+            return newConfig === state.config ? {} : pushToHistory(state, newConfig);
         }),
 
     // togglePagePublished removed: page.published was never enforced on the

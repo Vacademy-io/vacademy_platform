@@ -32,7 +32,7 @@ interface PageLike {
 export interface CatalogSectionRef {
   /** The page's route ("courses"). */
   route: string;
-  /** The page's title, for the first crumb ("" = the site's word for courses). */
+  /** The first crumb: the header menu's label for the page, else its title ("" = the site's word for courses). */
   title: string;
   props: Record<string, unknown>;
 }
@@ -41,11 +41,43 @@ const HOME_ROUTES = new Set(["", "home", "homepage"]);
 const isObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
+const normRoute = (r: unknown) => (typeof r === "string" ? r.trim().replace(/^\//, "").toLowerCase() : "");
+
+/** The header menu's label for a route, at any depth (mega-menu columns too). */
+const navLabelFor = (globalSettings: unknown, route: string): string => {
+  const gs = isObject(globalSettings) ? globalSettings : null;
+  const layout = gs && isObject(gs.layout) ? gs.layout : null;
+  const header = layout && isObject(layout.header) ? layout.header : null;
+  const nav = header && isObject(header.props) ? header.props.navigation : null;
+  const target = normRoute(route);
+  const visit = (node: unknown): string => {
+    if (Array.isArray(node)) {
+      for (const n of node) {
+        const hit = visit(n);
+        if (hit) return hit;
+      }
+      return "";
+    }
+    if (!isObject(node)) return "";
+    if (normRoute(node.route) === target && typeof node.label === "string" && node.label.trim()) {
+      return node.label.trim();
+    }
+    return Object.values(node).reduce<string>((hit, v) => hit || (typeof v === "object" ? visit(v) : ""), "");
+  };
+  return target ? visit(nav) : "";
+};
+
 /**
  * The site's Courses section: an enabled course catalogue, preferring one on a
  * page of its own over the home page's, and one with streams over one without.
+ * Its crumb is what the header menu calls that page ("Courses"): the page
+ * title is the SEO one ("Books & Kits — Acme Academy") or a duplicate's
+ * "(Copy)" title, neither of which a visitor clicked on.
  */
-export const findCatalogSection = (pages: PageLike[] | null | undefined): CatalogSectionRef | null => {
+export const findCatalogSection = (
+  pages: PageLike[] | null | undefined,
+  globalSettings?: unknown,
+): CatalogSectionRef | null => {
   const found: Array<CatalogSectionRef & { score: number }> = [];
   (pages || []).forEach((page, order) => {
     for (const c of page.components || []) {
@@ -61,7 +93,8 @@ export const findCatalogSection = (pages: PageLike[] | null | undefined): Catalo
   });
   found.sort((a, b) => a.score - b.score);
   const best = found[0];
-  return best ? { route: best.route, title: best.title, props: best.props } : null;
+  if (!best) return null;
+  return { route: best.route, title: navLabelFor(globalSettings, best.route) || best.title, props: best.props };
 };
 
 export interface Crumb {

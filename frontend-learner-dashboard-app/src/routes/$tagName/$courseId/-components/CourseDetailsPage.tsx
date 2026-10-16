@@ -1382,8 +1382,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   // site's Courses section (its stream library) and course formats. Reads
   // nothing on the ebook or classic layouts.
   const catalogSection = useMemo(
-    () => (standardLayout ? findCatalogSection(catalogueData?.pages) : null),
-    [standardLayout, catalogueData?.pages],
+    () => (standardLayout ? findCatalogSection(catalogueData?.pages, catalogueData?.globalSettings) : null),
+    [standardLayout, catalogueData?.pages, catalogueData?.globalSettings],
   );
   const catalogStreamsConfig = useMemo(
     () =>

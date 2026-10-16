@@ -359,7 +359,8 @@
     "imageBlock": "Image",
     "buttonBlock": "Bouton",
     "newsletterSignup": "Inscription newsletter",
-    "stepsProcess": "Étapes/Processus"
+    "stepsProcess": "Étapes/Processus",
+    "marquee": "Bandeau défilant"
   },
   "columnLayout": {
     "layoutSettings": "Paramètres de mise en page",
@@ -783,7 +784,7 @@
     "variantPrimary": "Principal",
     "variantSecondary": "Secondaire",
     "removeButton": "Retirer le bouton",
-    "actionNavigate": "Naviguer",
+    "actionNavigate": "Naviguer (page, section ou lien)",
     "actionOpenLeadCollection": "Ouvrir le formulaire de leads (ancien)",
     "actionOpenCampaignForm": "Ouvrir le formulaire de campagne (fenêtre)",
     "targetRoutePlaceholder": "Route / URL cible",
@@ -803,7 +804,10 @@
     "carouselImages": "Images du carrousel",
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
     "slideN": "Diapositive {{n}}",
-    "eyebrowStyleRule": "Filet (trait avant le texte)"
+    "eyebrowStyleRule": "Filet (trait avant le texte)",
+    "mainButton": "Bouton principal",
+    "onClick": "Au clic",
+    "navigateTo": "Aller vers"
   },
   "heroEditorial": {
     "style": "Design",
@@ -1371,5 +1375,26 @@
     "keptTitle": "Nouvelle version appliquée",
     "keptSettings": "{{count}} paramètres absents de cette version ont été conservés. Annulez pour revenir en arrière, ou utilisez « Modifier en JSON » pour les voir.",
     "keepsNote": "Conserve aussi {{count}} paramètres absents de cette version : {{names}}"
+  },
+  "marquee": {
+    "itemsCount": "Éléments du bandeau ({{count}})",
+    "newItem": "Nouvelle annonce",
+    "iconLabel": "Icône",
+    "itemTextPlaceholder": "Texte de l'annonce",
+    "noItems": "Aucun élément — ajoutez-en un pour afficher le bandeau.",
+    "defaultIcon": "Icône par défaut",
+    "defaultIconHint": "Affichée avant les éléments sans icône propre. Laissez vide pour aucune.",
+    "textSize": "Taille du texte",
+    "size": {
+      "xs": "Très petit (12px)",
+      "sm": "Petit (14px)",
+      "base": "Moyen (16px)",
+      "lg": "Grand (18px)",
+      "xl": "Très grand (20px)"
+    },
+    "iconColor": "Couleur de l'icône",
+    "speed": "Vitesse de défilement",
+    "direction": "Sens de défilement",
+    "pauseOnHover": "Pause au survol"
   }
 }

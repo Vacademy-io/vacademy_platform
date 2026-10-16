@@ -5,10 +5,8 @@
         "codeFormat": "Utilisez des majuscules, des chiffres, _ ou -",
         "discountValueRequired": "La valeur de la remise est requise",
         "discountValuePositive": "La valeur de la remise doit être supérieure à 0",
-        "endDateRequired": "La date de fin est requise",
         "usageLimitInvalid": "Saisissez un nombre ou laissez vide",
         "percentageMax": "Le pourcentage ne peut pas dépasser 100",
-        "maxCapRequired": "Un plafond est requis pour les remises en pourcentage",
         "endDateAfterStart": "La date de fin doit être postérieure à la date de début"
     },
     "priceLine": {
@@ -51,7 +49,8 @@
         },
         "maxCap": {
             "label": "Plafond maximal (₹)",
-            "placeholder": "1000"
+            "placeholder": "Sans plafond",
+            "noCapHint": "(vide = sans plafond)"
         }
     },
     "validity": {
@@ -61,7 +60,8 @@
             "optional": "(facultatif)"
         },
         "endDate": {
-            "label": "Date de fin"
+            "label": "Date de fin",
+            "noExpiryHint": "(vide = sans expiration)"
         },
         "usageLimit": {
             "label": "Limite d'utilisation",

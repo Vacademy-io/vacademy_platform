@@ -359,7 +359,8 @@
     "imageBlock": "इमेज",
     "buttonBlock": "बटन",
     "newsletterSignup": "न्यूज़लेटर",
-    "stepsProcess": "स्टेप्स/प्रोसेस"
+    "stepsProcess": "स्टेप्स/प्रोसेस",
+    "marquee": "मार्की"
   },
   "columnLayout": {
     "layoutSettings": "लेआउट सेटिंग्स",
@@ -782,7 +783,7 @@
     "variantPrimary": "प्राइमरी",
     "variantSecondary": "सेकंडरी",
     "removeButton": "बटन हटाएं",
-    "actionNavigate": "नेविगेट करें",
+    "actionNavigate": "नेविगेट (पेज, सेक्शन या लिंक)",
     "actionOpenLeadCollection": "लीड फॉर्म खोलें (लीगेसी)",
     "actionOpenCampaignForm": "कैंपेन फॉर्म खोलें (पॉपअप)",
     "targetRoutePlaceholder": "टारगेट रूट / URL",
@@ -802,7 +803,10 @@
     "carouselImages": "कैरोसेल इमेजेस",
     "carouselImagesHint": "हीरो मीडिया को ऑटो-प्लेइंग कैरोसेल बनाने के लिए 2 या ज़्यादा इमेजेस जोड़ें। एक इमेज होने पर यह सिंगल इमेज रहती है; कोई न होने पर ऊपर वाली Right Image इस्तेमाल होती है।",
     "slideN": "स्लाइड {{n}}",
-    "eyebrowStyleRule": "रूल (टेक्स्ट से पहले एक लाइन)"
+    "eyebrowStyleRule": "रूल (टेक्स्ट से पहले एक लाइन)",
+    "mainButton": "मुख्य बटन",
+    "onClick": "क्लिक करने पर",
+    "navigateTo": "कहाँ जाए"
   },
   "heroEditorial": {
     "style": "डिज़ाइन",
@@ -1364,5 +1368,26 @@
     "keptTitle": "नया वर्शन लागू हुआ",
     "keptSettings": "जो {{count}} सेटिंग्स इस वर्शन में नहीं थीं, वे रखी गईं। वापस जाने के लिए Undo करें, या उन्हें देखने के लिए “JSON के रूप में बदलें” खोलें।",
     "keepsNote": "इस वर्शन में न होने वाली {{count}} सेटिंग्स भी रखी जाएँगी: {{names}}"
+  },
+  "marquee": {
+    "itemsCount": "टिकर आइटम ({{count}})",
+    "newItem": "नई घोषणा",
+    "iconLabel": "आइकन",
+    "itemTextPlaceholder": "घोषणा का टेक्स्ट",
+    "noItems": "अभी कोई आइटम नहीं — टिकर दिखाने के लिए एक जोड़ें।",
+    "defaultIcon": "डिफ़ॉल्ट आइकन",
+    "defaultIconHint": "जिन आइटम का अपना आइकन नहीं है, उनसे पहले दिखेगा। न चाहिए तो खाली छोड़ें।",
+    "textSize": "टेक्स्ट साइज़",
+    "size": {
+      "xs": "बहुत छोटा (12px)",
+      "sm": "छोटा (14px)",
+      "base": "मीडियम (16px)",
+      "lg": "बड़ा (18px)",
+      "xl": "बहुत बड़ा (20px)"
+    },
+    "iconColor": "आइकन कलर",
+    "speed": "स्क्रॉल स्पीड",
+    "direction": "स्क्रॉल दिशा",
+    "pauseOnHover": "होवर पर रोकें"
   }
 }

@@ -5,10 +5,8 @@
         "codeFormat": "Use uppercase letters, digits, _ or -",
         "discountValueRequired": "Discount value is required",
         "discountValuePositive": "Discount value must be greater than 0",
-        "endDateRequired": "End date is required",
         "usageLimitInvalid": "Enter a number or leave blank",
         "percentageMax": "Percentage cannot exceed 100",
-        "maxCapRequired": "Max cap is required for percentage discounts",
         "endDateAfterStart": "End date must be after start date"
     },
     "priceLine": {
@@ -51,7 +49,8 @@
         },
         "maxCap": {
             "label": "Max cap (₹)",
-            "placeholder": "1000"
+            "placeholder": "No cap",
+            "noCapHint": "(blank = no cap)"
         }
     },
     "validity": {
@@ -61,7 +60,8 @@
             "optional": "(optional)"
         },
         "endDate": {
-            "label": "End date"
+            "label": "End date",
+            "noExpiryHint": "(blank = never expires)"
         },
         "usageLimit": {
             "label": "Usage limit",

@@ -26,14 +26,24 @@ RUNS = int(os.environ.get("RUNS", "6"))
 
 
 async def turn(chat, system, msgs):
-    text, _ = await chat(system, msgs, 300, 0.7)
-    return (text or "").strip().replace("\n", " ")
+    for attempt in range(5):
+        try:
+            await asyncio.sleep(float(os.environ.get("PACE", "0")))
+            text, _ = await chat(system, msgs, 300, 0.7)
+            return (text or "").strip().replace("\n", " ")
+        except Exception as e:  # noqa: BLE001 — 429s share quota with live calls: back off
+            print(f"retry {attempt}: {type(e).__name__}", flush=True)
+            await asyncio.sleep(10 * (attempt + 1))
+    return ""
 
 
 async def main():
     chat = make_chat("vertex:gemini-2.5-flash")
     stats = {}
+    only = os.environ.get("ONLY", "")
     for prompt in ("old_aaibuzz", "new_aaibuzz", "new_solar"):
+        if only and prompt not in only.split(","):
+            continue
         kind = "solar" if "solar" in prompt else "aaibuzz"
         base = [{"role": "assistant", "content": OPEN[kind]}]
         scen = {
@@ -41,7 +51,7 @@ async def main():
             "why_call": ["हाँ बताइए, आपने call क्यों किया?"],
             "what_offer": ["आप लोग exactly क्या offer करते हो?"],
         }
-        for name, lines in scen.items():
+        for name, lines in ([] if os.environ.get("NEXT_ONLY") else scen.items()):
             for i in range(RUNS):
                 r = await turn(chat, P[prompt], base + [{"role": "user", "content": lines[0]}])
                 edu, book = bool(EDU.search(r)), bool(BOOK.search(r))

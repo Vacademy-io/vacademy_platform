@@ -31,6 +31,12 @@ export interface SavePaymentOptionRequest {
     payment_option_metadata_json: string;
     /** Option-level master switch for plan change. */
     plan_change_allowed?: boolean;
+    /**
+     * Regional (country-based) pricing. Omitted = leave as is (the backend null-guards both).
+     * Saving with it on makes the backend create an automatic price per plan per currency.
+     */
+    regional_pricing_enabled?: boolean;
+    regional_pricing_currencies?: string[];
 }
 
 export interface GetPaymentOptionsRequest {

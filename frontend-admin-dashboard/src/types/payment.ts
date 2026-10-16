@@ -117,6 +117,9 @@ export interface PaymentPlan {
     requireApproval?: boolean;
     /** Option-level master switch for "members can switch into this option". */
     planChangeAllowed?: boolean;
+    /** Option-level regional (country-based) pricing switch and its auto-priced currencies. */
+    regionalPricingEnabled?: boolean;
+    regionalPricingCurrencies?: string[];
 }
 
 export enum PaymentPlans {

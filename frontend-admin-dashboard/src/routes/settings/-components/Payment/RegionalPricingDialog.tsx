@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowsClockwise, Globe, Plus, Trash, WarningCircle } from '@phosphor-icons/react';
+import {
+    ArrowsClockwise,
+    GlobeHemisphereEast,
+    Plus,
+    Trash,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
-import { MultiSelect } from '@/components/design-system/multi-select';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,8 +29,16 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { CURRENCIES, getCurrencySymbol } from '@/constants/currencies';
+import {
+    COUNTRY_CODES,
+    countryFlag,
+    countryName,
+    currencyName,
+    currencyOfCountry,
+} from '@/constants/countries';
 import { useRegionalPricing, useRegionalPricingMutations } from '@/services/regional-pricing';
 import type { RegionalPriceApi, RegionalPricingPlanApi } from '@/types/payment';
+import { RegionalPricingSettingsFields } from './RegionalPricingSettingsFields';
 
 interface RegionalPricingDialogProps {
     open: boolean;
@@ -43,9 +56,13 @@ const errorMessage = (error: unknown, fallback: string): string => {
 const formatMoney = (amount: number | null | undefined, currency: string, locale: string) =>
     amount == null ? '—' : `${getCurrencySymbol(currency)}${amount.toLocaleString(locale)}`;
 
+const currencyLabel = (code: string, locale: string) => `${currencyName(code, locale)} (${code})`;
+
 /**
- * Admin panel for one payment option's regional pricing: the on/off switch, the currencies
- * the system auto-prices every plan in, and per-plan prices the admin can override.
+ * Admin panel for one payment option's regional pricing, in two steps:
+ *  1. switch it on and pick the currencies to price automatically;
+ *  2. review each plan's prices: automatic ones per currency, plus fixed prices the admin
+ *     sets for specific countries (picked by name, currency filled in from the country).
  */
 export const RegionalPricingDialog = ({
     open,
@@ -67,18 +84,7 @@ export const RegionalPricingDialog = ({
         }
     }, [data]);
 
-    const baseCurrencies = useMemo(
-        () => new Set((data?.plans ?? []).map((p) => p.base_currency)),
-        [data]
-    );
-    const currencyOptions = useMemo(
-        () =>
-            CURRENCIES.filter((c) => !baseCurrencies.has(c.code)).map((c) => ({
-                label: `${c.code} — ${c.name}`,
-                value: c.code,
-            })),
-        [baseCurrencies]
-    );
+    const baseCurrency = data?.plans?.[0]?.base_currency;
 
     const settingsDirty =
         !!data &&
@@ -132,99 +138,81 @@ export const RegionalPricingDialog = ({
                 </Alert>
             ) : (
                 <div className="space-y-6">
-                    <Card>
-                        <CardContent className="space-y-4 p-4">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="space-y-1">
-                                    <Label
-                                        htmlFor="regional-pricing-enabled"
-                                        className="text-subtitle font-semibold"
-                                    >
-                                        {t('settings.enabledLabel')}
-                                    </Label>
+                    <section className="space-y-2">
+                        <h3 className="text-subtitle font-semibold text-neutral-800">
+                            {t('steps.settings')}
+                        </h3>
+                        <Card>
+                            <CardContent className="space-y-4 p-4">
+                                <RegionalPricingSettingsFields
+                                    enabled={enabled}
+                                    onEnabledChange={setEnabled}
+                                    currencies={currencies}
+                                    onCurrenciesChange={setCurrencies}
+                                    baseCurrency={baseCurrency}
+                                    idPrefix="regional-dialog"
+                                />
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                     <p className="text-caption text-neutral-500">
-                                        {t('settings.enabledHelp')}
+                                        {data.rates_fetched_at
+                                            ? t('settings.ratesFetched', {
+                                                  date: new Date(
+                                                      data.rates_fetched_at
+                                                  ).toLocaleString(i18n.language),
+                                              })
+                                            : t('settings.ratesNever')}
                                     </p>
+                                    <div className="flex items-center gap-2">
+                                        <MyButton
+                                            buttonType="text"
+                                            scale="medium"
+                                            onAsyncClick={refreshRates}
+                                            loadingText={t('actions.refreshing')}
+                                            disable={!data.enabled}
+                                        >
+                                            <ArrowsClockwise className="size-4" />
+                                            {t('actions.refresh')}
+                                        </MyButton>
+                                        <MyButton
+                                            buttonType="primary"
+                                            scale="medium"
+                                            onAsyncClick={saveSettings}
+                                            loadingText={t('actions.saving')}
+                                            disable={!settingsDirty}
+                                        >
+                                            {t('actions.saveSettings')}
+                                        </MyButton>
+                                    </div>
                                 </div>
-                                <Switch
-                                    id="regional-pricing-enabled"
-                                    checked={enabled}
-                                    onCheckedChange={setEnabled}
-                                />
-                            </div>
+                            </CardContent>
+                        </Card>
+                    </section>
 
-                            <div className="space-y-1">
-                                <Label className="text-body">{t('settings.currenciesLabel')}</Label>
-                                <MultiSelect
-                                    options={currencyOptions}
-                                    selected={currencies}
-                                    onChange={setCurrencies}
-                                    placeholder={t('settings.currenciesPlaceholder')}
-                                    portal={false}
-                                    checkboxes
-                                />
-                                <p className="text-caption text-neutral-500">
-                                    {t('settings.currenciesHelp')}
-                                </p>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-caption text-neutral-500">
-                                    {data.rates_fetched_at
-                                        ? t('settings.ratesFetched', {
-                                              date: new Date(data.rates_fetched_at).toLocaleString(
-                                                  i18n.language
-                                              ),
-                                          })
-                                        : t('settings.ratesNever')}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                    <MyButton
-                                        buttonType="text"
-                                        scale="medium"
-                                        onAsyncClick={refreshRates}
-                                        loadingText={t('actions.refreshing')}
-                                        disable={!data.enabled}
-                                    >
-                                        <ArrowsClockwise className="size-4" />
-                                        {t('actions.refresh')}
-                                    </MyButton>
-                                    <MyButton
-                                        buttonType="primary"
-                                        scale="medium"
-                                        onAsyncClick={saveSettings}
-                                        loadingText={t('actions.saving')}
-                                        disable={!settingsDirty}
-                                    >
-                                        {t('actions.saveSettings')}
-                                    </MyButton>
-                                </div>
-                            </div>
-
+                    <section className="space-y-2">
+                        <h3 className="text-subtitle font-semibold text-neutral-800">
+                            {t('steps.prices')}
+                        </h3>
+                        <p className="text-caption text-neutral-500">{t('plans.explain')}</p>
+                        {!data.enabled && (
                             <Alert>
-                                <Globe className="size-4" />
+                                <WarningCircle className="size-4" />
                                 <AlertDescription className="text-caption">
-                                    {t('settings.gatewayNote')}
+                                    {t('plans.offNote')}
                                 </AlertDescription>
                             </Alert>
-                        </CardContent>
-                    </Card>
-
-                    {!data.enabled && (
-                        <p className="text-body text-neutral-500">{t('plans.offNote')}</p>
-                    )}
-
-                    {data.plans.length === 0 ? (
-                        <p className="text-body text-neutral-500">{t('plans.empty')}</p>
-                    ) : (
-                        data.plans.map((plan) => (
-                            <PlanRegionalPrices
-                                key={plan.payment_plan_id}
-                                plan={plan}
-                                paymentOptionId={paymentOptionId}
-                            />
-                        ))
-                    )}
+                        )}
+                        {data.plans.length === 0 ? (
+                            <p className="text-body text-neutral-500">{t('plans.empty')}</p>
+                        ) : (
+                            data.plans.map((plan) => (
+                                <PlanRegionalPrices
+                                    key={plan.payment_plan_id}
+                                    plan={plan}
+                                    paymentOptionId={paymentOptionId}
+                                />
+                            ))
+                        )}
+                    </section>
                 </div>
             )}
         </MyDialog>
@@ -239,6 +227,8 @@ const PlanRegionalPrices = ({
     paymentOptionId: string;
 }) => {
     const { t, i18n } = useTranslation('settingsRegionalPricing');
+    const currencyWide = plan.regional_prices.filter((r) => !r.country_code);
+    const perCountry = plan.regional_prices.filter((r) => r.country_code);
     return (
         <Card>
             <CardHeader className="p-4 pb-2">
@@ -255,38 +245,56 @@ const PlanRegionalPrices = ({
                     </span>
                 </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 p-4 pt-0">
+            <CardContent className="space-y-4 p-4 pt-0">
                 {plan.base_actual_price <= 0 ? (
                     <p className="text-caption text-neutral-500">{t('plans.freePlan')}</p>
                 ) : (
                     <>
-                        {plan.regional_prices.length === 0 && (
-                            <p className="text-caption text-neutral-500">{t('plans.noPrices')}</p>
-                        )}
-                        {plan.regional_prices.map((row) => (
-                            <RegionalPriceRow
-                                key={row.id}
-                                row={row}
+                        <div className="space-y-2">
+                            <p className="text-caption font-semibold uppercase text-neutral-500">
+                                {t('plans.byCurrency')}
+                            </p>
+                            {currencyWide.length === 0 ? (
+                                <p className="text-caption text-neutral-500">
+                                    {t('plans.noCurrencyPrices')}
+                                </p>
+                            ) : (
+                                currencyWide.map((row) => (
+                                    <RegionalPriceRow
+                                        key={row.id}
+                                        row={row}
+                                        paymentOptionId={paymentOptionId}
+                                    />
+                                ))
+                            )}
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-caption font-semibold uppercase text-neutral-500">
+                                {t('plans.byCountry')}
+                            </p>
+                            {perCountry.length === 0 && (
+                                <p className="text-caption text-neutral-500">
+                                    {t('plans.noCountryPrices')}
+                                </p>
+                            )}
+                            {perCountry.map((row) => (
+                                <RegionalPriceRow
+                                    key={row.id}
+                                    row={row}
+                                    paymentOptionId={paymentOptionId}
+                                />
+                            ))}
+                            <AddCountryPrice
+                                plan={plan}
                                 paymentOptionId={paymentOptionId}
+                                usedCountries={perCountry.map((r) => r.country_code as string)}
                             />
-                        ))}
-                        <AddCountryPrice
-                            paymentPlanId={plan.payment_plan_id}
-                            paymentOptionId={paymentOptionId}
-                        />
+                        </div>
                     </>
                 )}
             </CardContent>
         </Card>
     );
-};
-
-const countryName = (code: string, language: string): string => {
-    try {
-        return new Intl.DisplayNames([language], { type: 'region' }).of(code) ?? code;
-    } catch {
-        return code;
-    }
 };
 
 const RegionalPriceRow = ({
@@ -316,8 +324,11 @@ const RegionalPriceRow = ({
     const priceInvalid = price.trim() === '' || !(priceNumber > 0);
 
     const region = row.country_code
-        ? `${countryName(row.country_code, i18n.language)} (${row.country_code})`
-        : t('row.allCountries', { currency: row.currency });
+        ? `${countryFlag(row.country_code)} ${countryName(row.country_code, i18n.language)}`
+        : t('row.allCountries', { currency: currencyLabel(row.currency, i18n.language) });
+    const subtitle = row.country_code
+        ? t('row.paidIn', { currency: currencyLabel(row.currency, i18n.language) })
+        : null;
 
     const save = async () => {
         try {
@@ -347,6 +358,7 @@ const RegionalPriceRow = ({
         <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1 space-y-1">
                 <p className="truncate text-body font-semibold text-neutral-700">{region}</p>
+                {subtitle && <p className="text-caption text-neutral-500">{subtitle}</p>}
                 <div className="flex flex-wrap items-center gap-2">
                     {row.needs_review ? (
                         <StatusChip
@@ -363,17 +375,17 @@ const RegionalPriceRow = ({
                     ) : (
                         <StatusChip text={t('source.auto')} textSize="text-caption" status="INFO" />
                     )}
-                    {row.price_source === 'AUTO' && row.fx_rate_used != null && (
-                        <span className="text-caption text-neutral-500">
-                            {t('row.rate', { rate: Number(row.fx_rate_used).toPrecision(4) })}
-                        </span>
+                    {row.needs_review && (
+                        <span className="text-caption text-warning-700">{t('row.reviewHint')}</span>
                     )}
                 </div>
             </div>
             <MyInput
                 inputType="number"
                 size="small"
-                label={t('row.price', { currency: row.currency })}
+                label={t('row.price', {
+                    currency: `${getCurrencySymbol(row.currency)} ${row.currency}`,
+                })}
                 input={price}
                 onChangeFunction={(e) => setPrice(e.target.value)}
                 error={priceInvalid ? t('row.priceInvalid') : null}
@@ -457,14 +469,21 @@ const RegionalPriceRow = ({
     );
 };
 
+/**
+ * Fixed price for one country: pick the country by name (searchable, with flag), its
+ * currency is filled in from the country and can be changed, then type the price or let the
+ * system convert it from the exchange rate.
+ */
 const AddCountryPrice = ({
-    paymentPlanId,
+    plan,
     paymentOptionId,
+    usedCountries,
 }: {
-    paymentPlanId: string;
+    plan: RegionalPricingPlanApi;
     paymentOptionId: string;
+    usedCountries: string[];
 }) => {
-    const { t } = useTranslation('settingsRegionalPricing');
+    const { t, i18n } = useTranslation('settingsRegionalPricing');
     const mutations = useRegionalPricingMutations(paymentOptionId);
     const [adding, setAdding] = useState(false);
     const [country, setCountry] = useState('');
@@ -472,9 +491,33 @@ const AddCountryPrice = ({
     const [price, setPrice] = useState('');
     const [auto, setAuto] = useState(false);
 
-    const countryInvalid = !/^[A-Za-z]{2}$/.test(country.trim());
-    const currencyInvalid = currency.trim() !== '' && !/^[A-Za-z]{3}$/.test(currency.trim());
+    const countryOptions = useMemo(
+        () =>
+            COUNTRY_CODES.filter((c) => !usedCountries.includes(c))
+                .map((c) => ({ code: c, name: countryName(c, i18n.language) }))
+                .sort((a, b) => a.name.localeCompare(b.name, i18n.language))
+                .map(({ code, name }) => ({ value: code, label: `${countryFlag(code)} ${name}` })),
+        [usedCountries, i18n.language]
+    );
+
+    const currencyOptions = useMemo(() => {
+        const codes = new Set(CURRENCIES.map((c) => c.code));
+        const own = country ? currencyOfCountry(country) : undefined;
+        if (own) codes.add(own);
+        codes.add(plan.base_currency);
+        return [...codes]
+            .map((c) => ({ value: c, label: currencyLabel(c, i18n.language) }))
+            .sort((a, b) => a.label.localeCompare(b.label, i18n.language));
+    }, [country, plan.base_currency, i18n.language]);
+
+    const pickCountry = (code: string) => {
+        setCountry(code);
+        // The country's own currency by default; the admin can still pick another one.
+        setCurrency(currencyOfCountry(code) ?? plan.base_currency);
+    };
+
     const priceInvalid = !auto && !(Number(price) > 0);
+    const canSave = !!country && !!currency && !priceInvalid;
 
     const reset = () => {
         setAdding(false);
@@ -487,9 +530,9 @@ const AddCountryPrice = ({
     const add = async () => {
         try {
             await mutations.upsert.mutateAsync({
-                payment_plan_id: paymentPlanId,
-                country_code: country.trim().toUpperCase(),
-                currency: currency.trim() ? currency.trim().toUpperCase() : undefined,
+                payment_plan_id: plan.payment_plan_id,
+                country_code: country,
+                currency,
                 actual_price: auto ? undefined : Number(price),
                 auto,
             });
@@ -510,56 +553,75 @@ const AddCountryPrice = ({
     }
 
     return (
-        <div className="space-y-2 rounded-md border border-dashed border-border p-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <MyInput
-                    size="small"
-                    label={t('add.country')}
-                    inputPlaceholder="NP"
-                    input={country}
-                    onChangeFunction={(e) => setCountry(e.target.value)}
-                    error={country && countryInvalid ? t('add.countryInvalid') : null}
-                    className="sm:w-24"
-                    maxLength={2}
-                />
-                <MyInput
-                    size="small"
-                    label={t('add.currency')}
-                    inputPlaceholder={t('add.currencyPlaceholder')}
-                    input={currency}
-                    onChangeFunction={(e) => setCurrency(e.target.value)}
-                    error={currencyInvalid ? t('add.currencyInvalid') : null}
-                    className="sm:w-32"
-                    maxLength={3}
-                />
-                {!auto && (
-                    <MyInput
-                        inputType="number"
-                        size="small"
-                        label={t('add.price')}
-                        input={price}
-                        onChangeFunction={(e) => setPrice(e.target.value)}
-                        className="sm:w-32"
-                        min={0}
+        <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+            <p className="flex items-center gap-2 text-body font-semibold text-neutral-700">
+                <GlobeHemisphereEast className="size-4" />
+                {t('add.title')}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                    <Label className="text-body">{t('add.country')}</Label>
+                    <SearchableSelect
+                        options={countryOptions}
+                        value={country}
+                        onChange={pickCountry}
+                        placeholder={t('add.countryPlaceholder')}
+                        searchPlaceholder={t('add.countrySearch')}
+                        emptyText={t('add.countryEmpty')}
+                        portal={false}
                     />
-                )}
+                </div>
+                <div className="space-y-1">
+                    <Label className="text-body">{t('add.currency')}</Label>
+                    <SearchableSelect
+                        options={currencyOptions}
+                        value={currency}
+                        onChange={setCurrency}
+                        placeholder={t('add.currencyPlaceholder')}
+                        searchPlaceholder={t('add.currencySearch')}
+                        emptyText={t('add.currencyEmpty')}
+                        disabled={!country}
+                        portal={false}
+                    />
+                    {country && (
+                        <p className="text-caption text-neutral-500">
+                            {t('add.currencyHint', {
+                                country: countryName(country, i18n.language),
+                            })}
+                        </p>
+                    )}
+                </div>
             </div>
             <div className="flex items-center gap-2">
                 <Checkbox
-                    id={`auto-${paymentPlanId}`}
+                    id={`auto-${plan.payment_plan_id}`}
                     checked={auto}
                     onCheckedChange={(v) => setAuto(v === true)}
                 />
-                <Label htmlFor={`auto-${paymentPlanId}`} className="text-body">
+                <Label htmlFor={`auto-${plan.payment_plan_id}`} className="text-body">
                     {t('add.auto')}
                 </Label>
             </div>
+            {!auto && (
+                <MyInput
+                    inputType="number"
+                    size="small"
+                    label={t('add.price', {
+                        currency: currency ? `${getCurrencySymbol(currency)} ${currency}` : '',
+                    })}
+                    input={price}
+                    onChangeFunction={(e) => setPrice(e.target.value)}
+                    className="sm:w-40"
+                    min={0}
+                    disabled={!country}
+                />
+            )}
             <div className="flex items-center gap-2">
                 <MyButton
                     buttonType="secondary"
                     scale="small"
                     onAsyncClick={add}
-                    disable={countryInvalid || currencyInvalid || priceInvalid}
+                    disable={!canSave}
                 >
                     {t('add.save')}
                 </MyButton>

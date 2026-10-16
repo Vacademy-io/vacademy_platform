@@ -14,7 +14,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Trash2, Info } from 'lucide-react';
+import { Plus, Trash, Info } from '@phosphor-icons/react';
 import { currencyOptions } from '../../-constants/payments';
 import { PaymentPlan, PaymentPlanType, PaymentPlans } from '@/types/payment';
 import { getCurrencySymbol } from './utils/utils';
@@ -23,6 +23,7 @@ import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfig
 import { FreePlanConfiguration } from './PaymentPlanCreator/FreePlanConfiguration';
 import { ApprovalToggle } from './PaymentPlanCreator/ApprovalToggle';
 import { PlanChangeToggle } from './PaymentPlanCreator/PlanChangeToggle';
+import { RegionalPricingSection } from './PaymentPlanCreator/RegionalPricingSection';
 
 interface CustomInterval {
     /** payment_plan.id — carried so an edit updates this plan instead of replacing it. */
@@ -49,6 +50,11 @@ interface PaymentPlanEditorProps {
     /** Option-level master switch for plan change; see PlanChangeToggle. */
     planChangeAllowed: boolean;
     setPlanChangeAllowed: (value: boolean) => void;
+    /** Option-level regional pricing; see RegionalPricingSection. */
+    regionalPricingEnabled: boolean;
+    setRegionalPricingEnabled: (value: boolean) => void;
+    regionalPricingCurrencies: string[];
+    setRegionalPricingCurrencies: (value: string[]) => void;
 }
 
 export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
@@ -62,6 +68,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     setRequireApproval,
     planChangeAllowed,
     setPlanChangeAllowed,
+    regionalPricingEnabled,
+    setRegionalPricingEnabled,
+    regionalPricingCurrencies,
+    setRegionalPricingCurrencies,
 }) => {
     const { t } = useTranslation('settingsPaymentPlan');
     const [planData, setPlanData] = useState<PaymentPlan>(editingPlan);
@@ -390,6 +400,15 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                         planType={planData.type as PaymentPlanType}
                         planChangeAllowed={planChangeAllowed}
                         onPlanChangeAllowedChange={setPlanChangeAllowed}
+                    />
+
+                    <RegionalPricingSection
+                        planType={planData.type as PaymentPlanType}
+                        baseCurrency={planData.currency}
+                        enabled={regionalPricingEnabled}
+                        onEnabledChange={setRegionalPricingEnabled}
+                        currencies={regionalPricingCurrencies}
+                        onCurrenciesChange={setRegionalPricingCurrencies}
                     />
                 </div>
             )}
@@ -751,7 +770,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                     }}
                                                     className="text-red-600 hover:text-red-700"
                                                 >
-                                                    <Trash2 className="mr-2 size-4" />
+                                                    <Trash className="me-2 size-4" />
                                                     {t('subscription.removeInterval')}
                                                 </Button>
                                             </div>

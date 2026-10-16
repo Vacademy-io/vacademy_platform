@@ -188,6 +188,10 @@ public class AiSubscriptionCollectionService {
         }
         Instant now = payments.now();
         if (c.isFirstPurchase() || c.isUpgrade()) {
+            if (staffQueuedWithoutLink(c, now)) {
+                sendQueuedCheckoutLink(c, r);
+                return;
+            }
             expireStaleCheckout(c, now, r);
             return;
         }
@@ -254,6 +258,29 @@ public class AiSubscriptionCollectionService {
     }
 
     /** First purchase / upgrade: the link is made at checkout. Once it lapses unpaid, void the charge. */
+    /**
+     * A first-purchase / upgrade charge that never had a link but was queued by staff (super-admin
+     * assign with "send link", or the portal's Send link: both set {@code next_attempt_at}; a
+     * storefront checkout never does, it makes its link in the request).
+     */
+    static boolean staffQueuedWithoutLink(ChargeView c, Instant now) {
+        return !StringUtils.hasText(c.paymentLinkId()) && c.nextAttemptAt() != null && !c.nextAttemptAt().isAfter(now);
+    }
+
+    void sendQueuedCheckoutLink(ChargeView c, Report r) {
+        Instant expiry = payments.now().plus(c.isUpgrade() ? AiSubscriptionPaymentService.UPGRADE_TTL
+                : AiSubscriptionPaymentService.FIRST_PURCHASE_TTL);
+        LinkOutcome link = payments.createLinkForCharge(c, null, expiry, null, null, null);
+        if (link.alreadyPaid()) {
+            r.inc("already_paid");
+            return;
+        }
+        r.inc("links_created");
+        mailer.send(new Mail(c.isUpgrade() ? Kind.UPGRADE_LINK : Kind.PAYMENT_LINK, c.instituteId(), c.planName(),
+                AiPlansBillingMailer.money(link.totalMinor(), c.currency()), link.url(), c.serviceStart(),
+                link.expiresAt(), null, null));
+    }
+
     void expireStaleCheckout(ChargeView c, Instant now, Report r) {
         if (c.linkExpiresAt() == null || c.linkExpiresAt().isAfter(now)) {
             return;

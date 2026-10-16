@@ -147,6 +147,12 @@ const isPublicRoute = (pathname: string): boolean => {
   const isDynamicLiveClassRoute =
     /^\/study-library\/live-class\/[^/]+\/?$/.test(pathname);
 
+  // Passwordless "edit your profile" landing (/user-profile/edit/<username>).
+  // It signs the learner in itself, so it must render for signed-out visitors.
+  // /user-profile/edit alone stays protected.
+  const isProfileEditUsernameRoute =
+    /^\/user-profile\/edit\/[^/]+\/?$/.test(pathname);
+
   // Course catalogue dynamic routes - any single path segment (tagName)
   const isCourseCatalogueRoute =
     /^\/[^/]+\/?$/.test(pathname) &&
@@ -210,6 +216,7 @@ const isPublicRoute = (pathname: string): boolean => {
   const result =
     directMatch ||
     isDynamicLiveClassRoute ||
+    isProfileEditUsernameRoute ||
     isCourseCatalogueRoute ||
     isCourseDetailsRoute;
 
@@ -218,6 +225,7 @@ const isPublicRoute = (pathname: string): boolean => {
     pathSegments,
     directMatch,
     isDynamicLiveClassRoute,
+    isProfileEditUsernameRoute,
     isCourseCatalogueRoute,
     isCourseDetailsRoute,
     result,

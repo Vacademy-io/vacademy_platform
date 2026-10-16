@@ -77,6 +77,9 @@ public class LearnerReportService {
     private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportPdfService aiReportPdfService;
 
     @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.aireport.ReportProfileService reportProfileService;
+
+    @Autowired
     private vacademy.io.common.media.service.FileService fileService;
 
     @Autowired
@@ -235,6 +238,9 @@ public class LearnerReportService {
                                                                     String attemptId, String instituteId) {
         validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
         StudentComparisonDto comparison = self.buildComparisonData(user.getUserId(), assessmentId, attemptId, instituteId);
+        if (comparison != null) {
+            comparison.setQuestionWiseHidden(reportProfileService.hideQuestionWise(assessmentId, instituteId));
+        }
         return ResponseEntity.ok(comparison);
     }
 

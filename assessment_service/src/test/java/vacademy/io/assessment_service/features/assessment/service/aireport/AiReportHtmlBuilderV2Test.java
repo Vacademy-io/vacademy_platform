@@ -62,6 +62,27 @@ class AiReportHtmlBuilderV2Test {
     }
 
     @Test
+    void hidingQuestionWiseDataLeavesOutEveryPerQuestionItem() throws Exception {
+        AiReportModel m = model("Riya Verma", null, ai()).toBuilder().hideQuestionWise(true).build();
+        String html = new AiReportHtmlBuilderV2().build(m);
+        assertThat(html).doesNotContain("Question by question", "Every answer", "Mistakes explained",
+                "Easy marks missed", "Your expertise", "Sample question");
+        assertThat(html).contains("Marks by section", "Topic mastery", "This week's plan");
+        assertThat(pdfText(html)).isNotBlank();
+    }
+
+    @Test
+    void topicAnalysisHasARadarWhenThereAreThreeOrMoreTopics() throws Exception {
+        String three = new AiReportHtmlBuilderV2().build(model("Riya Verma", null, OM.readTree("""
+                {"topic_analysis":[{"topic":"Algebra and linear equations in two variables","questions_count":6,"correct":5,"accuracy":83},
+                                   {"topic":"Optics","questions_count":5,"correct":3,"accuracy":60},
+                                   {"topic":"Life processes","questions_count":4,"correct":0,"accuracy":0}]}
+                """)));
+        assertThat(three).contains("Algebra and linear").contains("<polygon");
+        assertThat(AiReportCharts.wrap("Algebra and linear equations in two variables", 22, 2)).hasSize(2);
+    }
+
+    @Test
     void greekAndArrowsAreSetInTheSymbolFontOnly() {
         assertThat(AiReportHtmlBuilderV2.esc("x → y < z"))
                 .isEqualTo("x <span style=\"font-family:'Noto Sans Math'\">→</span> y &lt; z");
@@ -103,7 +124,7 @@ class AiReportHtmlBuilderV2Test {
 
     @Test
     void readsMaxMarksStoredAsNumberOrString() {
-        AiReportDataService svc = new AiReportDataService(null, OM, null, null, null, null);
+        AiReportDataService svc = new AiReportDataService(null, OM, null, null, null, null, null);
         assertThat(svc.maxMark("{\"type\":\"MCQS\",\"data\":{\"totalMark\":\"2.5\"}}")).isEqualTo(2.5);
         assertThat(svc.maxMark("{\"data\":{\"totalMark\":4}}")).isEqualTo(4.0);
         assertThat(svc.maxMark("not json")).isZero();

@@ -47,12 +47,14 @@ public class AiReportDataService {
     private final ReportLogoService reportLogoService;
     private final DashboardChoiceGroups choiceGroups;
     private final HtmlBuilderService htmlBuilderService;
+    private final vacademy.io.assessment_service.features.assessment.service.ReportBrandingHelper brandingHelper;
 
     // Built from the JdbcTemplate (as ApiCandidateStore does) so startup never depends on a
     // NamedParameterJdbcTemplate bean being auto-configured.
     public AiReportDataService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper,
                                AdminCoreServiceClient adminCoreServiceClient, ReportLogoService reportLogoService,
-                               DashboardChoiceGroups choiceGroups, HtmlBuilderService htmlBuilderService) {
+                               DashboardChoiceGroups choiceGroups, HtmlBuilderService htmlBuilderService,
+                               vacademy.io.assessment_service.features.assessment.service.ReportBrandingHelper brandingHelper) {
         this.jdbcTemplate = jdbcTemplate;
         this.namedJdbc = jdbcTemplate == null ? null : new NamedParameterJdbcTemplate(jdbcTemplate);
         this.objectMapper = objectMapper;
@@ -60,6 +62,7 @@ public class AiReportDataService {
         this.reportLogoService = reportLogoService;
         this.choiceGroups = choiceGroups;
         this.htmlBuilderService = htmlBuilderService;
+        this.brandingHelper = brandingHelper;
     }
 
     private static final int HISTORY_LIMIT = 5;
@@ -113,8 +116,7 @@ public class AiReportDataService {
 
         return AiReportModel.builder()
                 .instituteName(safe(() -> adminCoreServiceClient.getInstituteName(instituteId)))
-                .logoDataUri(branding != null && Boolean.TRUE.equals(branding.getShowLogoInHeader())
-                        ? safe(() -> reportLogoService.resolveInlineLogo(branding.getLogoFileId())) : null)
+                .logoDataUri(logo(branding))
                 .assessmentName(Objects.toString(assessment.get("name"), "Assessment"))
                 .studentName(attempt.studentName())
                 .enrollmentNumber(safe(() -> adminCoreServiceClient.getEnrollmentNumber(userId, instituteId)))
@@ -140,6 +142,17 @@ public class AiReportDataService {
                 .markingNote(markingNote(structure.questions()))
                 .ai(ai != null ? ai : objectMapper.createObjectNode())
                 .build();
+    }
+
+    /** The institute logo: inlined (trimmed, scaled) when possible, else its URL; null when hidden or absent. */
+    private String logo(ReportBrandingDto branding) {
+        if (branding == null || !Boolean.TRUE.equals(branding.getShowLogoInHeader()) || !StringUtils.hasText(branding.getLogoFileId())) {
+            return null;
+        }
+        String inline = safe(() -> reportLogoService.resolveInlineLogo(branding.getLogoFileId()));
+        if (inline != null) return inline;
+        String url = safe(() -> brandingHelper.resolveLogoUrl(branding));
+        return StringUtils.hasText(url) ? url : null;
     }
 
     // ── Attempt ──

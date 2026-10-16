@@ -87,6 +87,7 @@ public class AiReportPdfService {
             try {
                 model = dataService.load(userId, assessmentId, attemptId, instituteId,
                         objectMapper.readTree(processed), branding(instituteId), detail);
+                if (profile != null && profile.hideQuestionWise()) model = model.toBuilder().hideQuestionWise(true).build();
                 core = toPdf(builder.build(model));
             } catch (Exception e) {
                 if (normal == null) throw e;

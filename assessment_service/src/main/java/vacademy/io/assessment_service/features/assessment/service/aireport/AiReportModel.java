@@ -16,7 +16,7 @@ import java.util.List;
  * client-supplied and often wrong (0, truncated, or stale), so it is never used.
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class AiReportModel {
 
     // Who and what
@@ -62,6 +62,9 @@ public class AiReportModel {
 
     /** "+2.5 per correct answer, −0.5 per wrong answer" when every question is marked alike; else null. */
     private final String markingNote;
+
+    /** Report option (profile report_options.question_wise = HIDE): leave out every per-question item. */
+    private final boolean hideQuestionWise;
 
     /** The processed AI JSON from admin_core (may be an empty object, never null). */
     private final JsonNode ai;

@@ -23,7 +23,8 @@ import java.util.UUID;
  *                                                       {"from":40,"to":100,"value":"percentage"} ],
  *                                           "round": "DOWN" } },
  *   "result_date": "17 October 2026",
- *   "qr_url": "https://..." }
+ *   "qr_url": "https://...",
+ *   "report_options": { "question_wise": "SHOW" | "HIDE" } }      // HIDE drops per-question pages/items
  * page = {"type":"TEMPLATE","html":"..."} | {"type":"PDF","file_id":"..."} | {"type":"IMAGE","file_id":"..."|"data_uri":"..."}
  * </pre>
  */
@@ -49,9 +50,20 @@ public class ReportProfileService {
             return config.path("after");
         }
 
+        /** report_options.question_wise = HIDE: reports leave out every per-question item. */
+        public boolean hideQuestionWise() {
+            return "HIDE".equalsIgnoreCase(config.path("report_options").path("question_wise").asText(""));
+        }
+
         public boolean hasPages() {
             return (before().isArray() && !before().isEmpty()) || (after().isArray() && !after().isEmpty());
         }
+    }
+
+    /** Whether reports for this assessment leave out per-question items. Never throws. */
+    public boolean hideQuestionWise(String assessmentId, String instituteId) {
+        Profile p = resolve(assessmentId, instituteId);
+        return p != null && p.hideQuestionWise();
     }
 
     /** The profile that applies to this assessment, or null for "no extra pages". Never throws. */
@@ -147,6 +159,10 @@ public class ReportProfileService {
 
     private static void validate(JsonNode config) {
         if (config == null || !config.isObject()) throw new IllegalArgumentException("config must be a JSON object");
+        String qw = config.path("report_options").path("question_wise").asText("SHOW");
+        if (!qw.equalsIgnoreCase("SHOW") && !qw.equalsIgnoreCase("HIDE")) {
+            throw new IllegalArgumentException("report_options.question_wise must be SHOW or HIDE");
+        }
         for (String side : new String[]{"before", "after"}) {
             JsonNode pages = config.path(side);
             if (pages.isMissingNode()) continue;

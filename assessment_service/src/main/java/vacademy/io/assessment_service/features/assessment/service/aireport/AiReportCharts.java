@@ -305,6 +305,99 @@ final class AiReportCharts {
         return svg(w, h, s);
     }
 
+    // ── Topic radar ──
+
+    record TopicPoint(String name, double accuracy) {
+    }
+
+    /**
+     * Accuracy per topic as a radar (3 to 10 topics). Labels sit outside the rings and wrap
+     * onto two lines instead of being cut off, anchored by which side of the chart they are on.
+     */
+    static String topicRadar(List<TopicPoint> topics, ReportPalette p, int w) {
+        int n = Math.min(10, topics.size());
+        if (n < 3) return "";
+        int h = 372;
+        double cx = w / 2.0, cy = 180, r = 112;
+        StringBuilder s = new StringBuilder();
+        // rings at 25/50/75/100%
+        for (int ring = 1; ring <= 4; ring++) {
+            double rr = r * ring / 4.0;
+            StringBuilder pts = new StringBuilder();
+            for (int i = 0; i < n; i++) {
+                double a = angle(i, n);
+                pts.append(f(cx + rr * Math.cos(a))).append(',').append(f(cy + rr * Math.sin(a))).append(' ');
+            }
+            s.append("<polygon points=\"").append(pts.toString().trim()).append("\" fill=\"").append(ring == 4 ? SOFT : "none")
+                    .append("\" stroke=\"").append(LINE).append("\" stroke-width=\"").append(ring == 4 ? "1.5" : "1").append("\"/>");
+        }
+        for (int i = 0; i < n; i++) {
+            double a = angle(i, n);
+            s.append(line(cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a), LINE, 1, null));
+        }
+        s.append(text(cx + 4, cy - r / 2 - 2, "50%", 9.5, 400, MUTED, "start"));
+        // the student's shape
+        StringBuilder pts = new StringBuilder();
+        double[][] xy = new double[n][2];
+        for (int i = 0; i < n; i++) {
+            double a = angle(i, n), v = Math.max(0.04, Math.min(1, topics.get(i).accuracy() / 100.0));
+            xy[i][0] = cx + r * v * Math.cos(a);
+            xy[i][1] = cy + r * v * Math.sin(a);
+            pts.append(f(xy[i][0])).append(',').append(f(xy[i][1])).append(' ');
+        }
+        s.append("<polygon points=\"").append(pts.toString().trim()).append("\" fill=\"").append(p.brand100)
+                .append("\" stroke=\"").append(p.brand).append("\" stroke-width=\"2.5\" stroke-linejoin=\"round\"/>");
+        for (int i = 0; i < n; i++) {
+            double acc = topics.get(i).accuracy();
+            s.append(circle(xy[i][0], xy[i][1], 4.5, acc < 40 ? BAD : acc < 75 ? AMBER : p.brand, PAPER, 1.5));
+        }
+        // labels
+        for (int i = 0; i < n; i++) {
+            double a = angle(i, n), lx = cx + (r + 16) * Math.cos(a), ly = cy + (r + 16) * Math.sin(a);
+            double cos = Math.cos(a);
+            String anchor = Math.abs(cos) < 0.25 ? "middle" : cos > 0 ? "start" : "end";
+            List<String> lines = wrap(topics.get(i).name(), 22, 2);
+            double sin = Math.sin(a);
+            double y0 = sin < -0.5 ? ly - 14 * (lines.size()) + 4 : sin > 0.5 ? ly + 10 : ly - 7 * (lines.size() - 1) + 3;
+            for (int k = 0; k < lines.size(); k++) {
+                s.append(text(lx, y0 + k * 13, lines.get(k), 11.5, 600, INK, anchor));
+            }
+            double acc = topics.get(i).accuracy();
+            s.append(text(lx, y0 + lines.size() * 13, Math.round(acc) + "%", 11.5, 700,
+                    acc < 40 ? BAD : acc < 75 ? "#a8651a" : p.brandInk, anchor));
+        }
+        return svg(w, h, s);
+    }
+
+    private static double angle(int i, int n) {
+        return -Math.PI / 2 + 2 * Math.PI * i / n;
+    }
+
+    /** Word-wraps into at most maxLines lines of about width chars; the last line gets an ellipsis if cut. */
+    static List<String> wrap(String text, int width, int maxLines) {
+        List<String> out = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        String[] words = (text == null ? "" : text.trim()).split("\\s+");
+        int i = 0;
+        for (; i < words.length; i++) {
+            String w = words[i];
+            if (line.length() > 0 && line.length() + 1 + w.length() > width) {
+                out.add(line.toString());
+                line = new StringBuilder();
+                if (out.size() == maxLines) break;
+            }
+            if (line.length() > 0) line.append(' ');
+            line.append(w);
+        }
+        if (out.size() < maxLines && line.length() > 0) out.add(line.toString());
+        if (i < words.length || (out.size() == maxLines && out.get(maxLines - 1).length() > width)) {
+            String last = out.get(out.size() - 1);
+            out.set(out.size() - 1, clip(last, width));
+            if (i < words.length && !out.get(out.size() - 1).endsWith("…")) out.set(out.size() - 1, clip(last + " …", width + 1));
+        }
+        return out;
+    }
+
     // ── Bloom's pyramid ──
 
     record BloomLevel(String name, String note, Integer correct, Integer total) {

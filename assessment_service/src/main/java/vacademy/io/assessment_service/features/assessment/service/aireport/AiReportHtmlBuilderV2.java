@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportCharts.Band;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportCharts.BloomLevel;
+import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportCharts.TopicPoint;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.Outcome;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.QuestionRow;
 import vacademy.io.assessment_service.features.assessment.service.aireport.AiReportModel.SectionRow;
@@ -38,19 +39,20 @@ public class AiReportHtmlBuilderV2 {
 
         List<String> pages = new ArrayList<>();
         pages.add(page1(m, p, ai));
-        addIfAny(pages, page(m, p, false, blocks(classBlock(m, p), timeBlock(m, p), answerMapBlock(m, p))));
-        addIfAny(pages, page(m, p, false, blocks(topicsBlock(ai, p), bloomBlock(ai, p))));
+        boolean qw = !m.isHideQuestionWise();
+        addIfAny(pages, page(m, p, false, blocks(classBlock(m, p), timeBlock(m, p), qw ? answerMapBlock(m, p) : "")));
+        addIfAny(pages, page(m, p, false, topicsBlock(ai, p)));
+        addIfAny(pages, page(m, p, false, blocks(bloomBlock(ai, p), qw ? easyMarksBlock(m, p, ai) : "", qw ? expertiseBlock(m, p) : "", potentialBlock(m, p))));
         addIfAny(pages, page(m, p, false, behaviourBlock(m, p, ai)));
-        addIfAny(pages, page(m, p, false, blocks(easyMarksBlock(m, p, ai), expertiseBlock(m, p), potentialBlock(m, p))));
-        String fix = fixBlock(ai, p), plan = planBlock(ai, p), cards = cardsAndProgress(m, p, ai);
-        if (estimateFix(ai) + estimatePlan(ai) + (cards.isEmpty() ? 0 : 300) <= 960) {
+        String fix = qw ? fixBlock(ai, p) : "", plan = planBlock(ai, p), cards = cardsAndProgress(m, p, ai);
+        if ((qw ? estimateFix(ai) : 0) + estimatePlan(ai) + (cards.isEmpty() ? 0 : 300) <= 960) {
             addIfAny(pages, page(m, p, false, blocks(fix, plan, cards)));
         } else {
             addIfAny(pages, page(m, p, false, fix));
             addIfAny(pages, page(m, p, false, blocks(plan, cards)));
         }
 
-        addIfAny(pages, page(m, p, false, questionByQuestion(m, p)));
+        if (qw) addIfAny(pages, page(m, p, false, questionByQuestion(m, p)));
 
         StringBuilder html = new StringBuilder(64 * 1024);
         html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><style>").append(css(m, p)).append("</style></head><body>");
@@ -82,7 +84,7 @@ public class AiReportHtmlBuilderV2 {
                     "Each bar is your score as a share of that section's marks." + (m.hasClass() ? " The dark tick is the class average." : ""),
                     legend(p, m.hasClass(), m.getSections().stream().anyMatch(r -> r.score() < 0))
                             + sectionScorecard(m.getSections(), p, CONTENT_W)));
-        } else {
+        } else if (!m.isHideQuestionWise()) {
             s.append(answerMapBlock(m, p));
         }
         s.append("</div>");
@@ -92,8 +94,8 @@ public class AiReportHtmlBuilderV2 {
     private String band(AiReportModel m, ReportPalette p, boolean first) {
         String inst = m.getInstituteName() == null ? "" : m.getInstituteName();
         String logo = m.getLogoDataUri() != null
-                ? "<img src=\"" + m.getLogoDataUri() + "\" style=\"width:34px;height:34px;\"/>"
-                : "<span class=\"logo-t\">" + esc(initials(inst)) + "</span>";
+                ? "<div class=\"logo-img\"><img src=\"" + m.getLogoDataUri().replace("\"", "%22") + "\" style=\"height:32px;max-width:150px;\"/></div>"
+                : "<div class=\"logo\"><span class=\"logo-t\">" + esc(initials(inst)) + "</span></div>";
         StringBuilder right = new StringBuilder();
         right.append("<div class=\"band-r1\">").append(esc(displayName(m.getStudentName()))).append("</div><div class=\"band-r2\">");
         List<String> bits = new ArrayList<>();
@@ -101,7 +103,7 @@ public class AiReportHtmlBuilderV2 {
         if (first && m.getAttemptDate() != null) bits.add(date(m.getAttemptDate()));
         if (!first || bits.isEmpty()) bits.add(0, m.getAssessmentName());
         right.append(esc(String.join(" · ", bits))).append("</div>");
-        return "<table class=\"band\"><tr><td class=\"band-logo\"><div class=\"logo\">" + logo + "</div></td>"
+        return "<table class=\"band\"><tr><td class=\"band-logo\">" + logo + "</td>"
                 + "<td><div class=\"band-i1\">" + esc(inst) + "</div>"
                 + (first ? "<div class=\"band-i2\">" + esc(m.getAssessmentName()) + "</div>" : "")
                 + "</td><td class=\"band-right\">" + right + "</td></tr></table>";
@@ -316,7 +318,11 @@ public class AiReportHtmlBuilderV2 {
                 ? (mastered == 1 ? "One topic mastered" : words(mastered) + " topics mastered")
                 + (zero > 0 ? ", " + (zero == 1 ? "one" : words(zero).toLowerCase()) + " to start from scratch" : weak.isEmpty() ? "" : ", " + weak.size() + " to work on")
                 : strong.isEmpty() ? "Topics to work on" : strong.size() + " strong " + (strong.size() == 1 ? "topic" : "topics") + ", " + weak.size() + " to work on";
-        String body = "<table class=\"cols\"><tr><td class=\"col\">" + topicColumn("Strengths", strong, strongAcc, p, true)
+        List<TopicPoint> radar = new ArrayList<>();
+        for (int i = 0; i < strong.size(); i++) radar.add(new TopicPoint(strong.get(i)[0], strongAcc.get(i)));
+        for (int i = 0; i < weak.size(); i++) radar.add(new TopicPoint(weak.get(i)[0], weakAcc.get(i)));
+        String chart = topicRadar(radar, p, CONTENT_W);
+        String body = chart + "<table class=\"cols\"><tr><td class=\"col\">" + topicColumn("Strengths", strong, strongAcc, p, true)
                 + "</td><td class=\"col-gap\"></td><td class=\"col\">" + topicColumn("Needs work", weak, weakAcc, p, false) + "</td></tr></table>";
         return block("Topic mastery", head, "Questions right in each topic, with a 4-step mastery level: Beginner, Developing, Proficient, Expert.", body);
     }
@@ -849,7 +855,8 @@ public class AiReportHtmlBuilderV2 {
                 + "table{border-collapse:collapse;}"
                 + ".band{width:100%;background:" + p.brand + ";color:" + p.onBrand + ";}"
                 + ".band td{padding:12px 0;vertical-align:middle;}"
-                + ".band-logo{width:58px;padding-left:36px !important;}"
+                + ".band-logo{width:1px;white-space:nowrap;padding-left:36px !important;padding-right:12px !important;}"
+                + ".logo-img{background:#ffffff;border-radius:9px;padding:4px 8px;line-height:0;}"
                 + ".logo{width:40px;height:40px;background:#ffffff;border-radius:10px;text-align:center;line-height:40px;}"
                 + ".logo img{vertical-align:middle;}"
                 + ".logo-t{font-family:'Baloo 2';font-weight:800;font-size:16px;color:" + p.brandInk + ";}"

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import aiPlansEn from '../../../public/locales/en/aiPlans.json';
 import {
     aboveAutopayCeiling,
+    effectivePrice,
     formatMinor,
     moneyLocale,
     periodKey,
@@ -122,5 +123,40 @@ describe('periodKey / aboveAutopayCeiling', () => {
         expect(aboveAutopayCeiling(1_500_000)).toBe(false);
         expect(aboveAutopayCeiling(1_500_001)).toBe(true);
         expect(aboveAutopayCeiling(1_000_000, 500_000)).toBe(true);
+    });
+});
+
+describe('effectivePrice', () => {
+    const pro: PlanPrice = {
+        currency: 'INR',
+        base_minor: 500_000,
+        tax_minor: 90_000,
+        total_minor: 590_000,
+        tax_rate_bps: 1800,
+        tax_label: 'CGST 9% + SGST 9%',
+    };
+
+    it('keeps the plan price without an override', () => {
+        expect(effectivePrice(pro, null)).toBe(pro);
+        expect(effectivePrice(pro, undefined)).toBe(pro);
+    });
+
+    it('reprices a custom deal at the same tax rate', () => {
+        expect(effectivePrice(pro, 1000)).toEqual({
+            ...pro,
+            base_minor: 1000,
+            tax_minor: 180,
+            total_minor: 1180,
+        });
+    });
+
+    it('derives the rate from base/tax when the server sent none', () => {
+        const p = effectivePrice({ ...pro, tax_rate_bps: null }, 250_000);
+        expect(p.tax_minor).toBe(45_000);
+        expect(p.total_minor).toBe(295_000);
+    });
+
+    it('headline shows the deal price', () => {
+        expect(priceLines(effectivePrice(pro, 1000), 1, t).headline).toContain('10');
     });
 });

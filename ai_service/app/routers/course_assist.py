@@ -199,17 +199,21 @@ def _charge(
     use_case: Optional[str] = None,
     metering: Any = None,
     usage_context: Optional[dict] = None,
-) -> None:
+) -> Decimal:
     """Flat post-success charge on a fresh session (mirrors ai_billing) — a
     failed deduction rolls back whole, never leaving a balance decrement
-    without its ledger row. Best-effort: delivered work is still returned."""
+    without its ledger row. Best-effort: delivered work is still returned.
+
+    Returns what the wallet was actually charged: 0 when an AI plan includes
+    the use or its allowance paid (the list price is still metered), the
+    flat cost when the deduction failed (as reported before)."""
     try:
         from ..services.ai_billing import build_deduct_request, metering_kwargs
         # Usage-event attribution only (optional request fields; the charge and
         # the ledger row are exactly as before).
         meter = metering_kwargs(use_case, metering, usage_context)
         with db_session() as db:
-            CreditService(db).deduct_credits(build_deduct_request(
+            res = CreditService(db).deduct_credits(build_deduct_request(
                 meter,
                 institute_id=institute_id,
                 request_type=request_type.value,
@@ -220,8 +224,11 @@ def _charge(
                 user_id=user_id,
                 allow_negative=True,
             ))
+        deducted = getattr(res, "credits_deducted", None)
+        return Decimal(str(deducted)) if deducted is not None else cost
     except Exception as e:  # noqa: BLE001
         logger.error("[course-assist] charge failed (institute=%s, %s): %s", institute_id, description, e)
+        return cost
 
 
 def _sanitize_html(value: str) -> str:
@@ -306,13 +313,13 @@ async def generate_field_text(
         raise HTTPException(status_code=502, detail="Text generation returned no content. Please try again.")
 
     run_id = uuid.uuid4().hex
-    _charge(
+    charged = _charge(
         institute_id, user_id, _TEXT_COST, RequestType.CONTENT, result.model,
         f"Course field AI assist: {body.field or 'text'}", run_id,
         use_case=UC.COURSE_ASSIST, metering=_metering(request, institute_id, current_user, user_id),
         usage_context={"field": body.field, "course_name": body.course_name, "run_id": run_id},
     )
-    return AssistTextResponse(html=html, model=result.model, credits_charged=float(_TEXT_COST))
+    return AssistTextResponse(html=html, model=result.model, credits_charged=float(charged))
 
 
 @router.post("/v1/image", response_model=AssistImageResponse)
@@ -401,12 +408,12 @@ async def generate_field_image(
         raise HTTPException(status_code=502, detail="Image generation returned malformed data. Please try again.")
 
     run_id = uuid.uuid4().hex
-    _charge(
+    charged = _charge(
         institute_id, user_id, image_cost, RequestType.IMAGE, image_model,
         f"Course image AI assist: {body.kind or 'image'}", run_id,
         use_case=UC.COURSE_ASSIST_IMAGE, metering=_metering(request, institute_id, current_user, user_id),
         usage_context={"kind": body.kind, "course_name": body.course_name, "run_id": run_id},
     )
     return AssistImageResponse(
-        image_base64=image_b64, mime_type=mime_type, model=image_model, credits_charged=float(image_cost),
+        image_base64=image_b64, mime_type=mime_type, model=image_model, credits_charged=float(charged),
     )

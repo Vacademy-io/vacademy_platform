@@ -834,7 +834,10 @@ def subscription_summary(db: Session, iid: str, now: datetime) -> Optional[Dict[
                            "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
                            "auto_renew": bool(sub.get("auto_renew")), "end_at": pa.iso(sub.get("end_at")),
                            "period_start": None, "period_end": None, "renews_at": None, "grace_until": None,
-                           "pending_plan": None, "open_charge": None}
+                           "pending_plan": None, "open_charge": None, "price_override_base_minor": None}
+    if sub.get("price_override_minor") is not None and v:
+        # The institute's own price (custom deal), pre-tax like the plan card's base_minor.
+        out["price_override_base_minor"] = _price_terms(sub, v)[0]
     periods = _paid_periods(db, sid) if str(sub.get("source") or "").upper() == "PAYMENT" else pa.rows(
         db, "SELECT * FROM ai_subscription_period WHERE subscription_id = CAST(:s AS UUID) ORDER BY period_start",
         {"s": sid})

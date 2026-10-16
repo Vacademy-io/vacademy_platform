@@ -34,7 +34,12 @@ import {
     validatePlanBilling,
     type GstBillingValue,
 } from '@/components/common/ai-credits/GstBillingFields';
-import { aboveAutopayCeiling, formatMinor, priceLines } from '@/services/ai-plans/format';
+import {
+    aboveAutopayCeiling,
+    effectivePrice,
+    formatMinor,
+    priceLines,
+} from '@/services/ai-plans/format';
 import {
     apiErrorCode,
     cancelMandate,
@@ -92,7 +97,11 @@ export function ManageSubscription({
     const charge = storefront.open_charge;
     const status = subscriptionStatusKey(sub, charge);
     const currentPlan = storefront.plans.find((p) => p.is_current) ?? null;
-    const lines = currentPlan ? priceLines(currentPlan.price, currentPlan.period_months, t) : null;
+    const currentPrice = currentPlan
+        ? effectivePrice(currentPlan.price, sub.price_override_base_minor)
+        : null;
+    const lines =
+        currentPlan && currentPrice ? priceLines(currentPrice, currentPlan.period_months, t) : null;
     const periodEnd = sub.period_end ? formatDate(sub.period_end) : null;
     const renewsAt = sub.renews_at ?? sub.period_end;
     const mandateActive = storefront.mandate?.status === 'ACTIVE';
@@ -103,7 +112,10 @@ export function ManageSubscription({
         (sub.status === 'ACTIVE' || sub.status === 'GRACE') &&
         !!currentPlan &&
         currentPlan.autopay_eligible !== false &&
-        !aboveAutopayCeiling(currentPlan.price.total_minor, storefront.autopay.max_debit_minor);
+        !aboveAutopayCeiling(
+            (currentPrice ?? currentPlan.price).total_minor,
+            storefront.autopay.max_debit_minor
+        );
 
     const refresh = async () => {
         await loadStorefront(instituteId, { force: true });

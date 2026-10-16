@@ -120,6 +120,8 @@ export interface StorefrontSubscription {
     grace_until: string | null;
     cancel_at_period_end: boolean;
     pending_plan: { name: string; effective_at: string | null } | null;
+    /** The institute's own pre-tax price per period (a custom deal), when it differs from the plan's. */
+    price_override_base_minor: number | null;
 }
 
 export interface OpenCharge {
@@ -355,6 +357,7 @@ function parseSubscription(raw: unknown): StorefrontSubscription | null {
         pending_plan: pendingName
             ? { name: pendingName, effective_at: str(pick(pending, 'effective_at')) }
             : null,
+        price_override_base_minor: num(pick(s, 'price_override_base_minor')),
     };
 }
 

@@ -73,6 +73,36 @@ export function aboveAutopayCeiling(
     return totalMinor > ceilingMinor;
 }
 
+/**
+ * The plan price this institute actually pays: a custom-deal override replaces the base, and the
+ * tax is re-derived at the same rate the server priced the plan at (same buyer state).
+ */
+export function effectivePrice(
+    price: PlanPrice,
+    overrideBaseMinor: number | null | undefined
+): PlanPrice {
+    if (
+        overrideBaseMinor === null ||
+        overrideBaseMinor === undefined ||
+        overrideBaseMinor === price.base_minor
+    ) {
+        return price;
+    }
+    const rateBps =
+        price.tax_rate_bps !== null && price.tax_rate_bps >= 0
+            ? price.tax_rate_bps
+            : price.base_minor > 0
+              ? (price.tax_minor / price.base_minor) * 10000
+              : 0;
+    const tax = Math.round((overrideBaseMinor * rateBps) / 10000);
+    return {
+        ...price,
+        base_minor: overrideBaseMinor,
+        tax_minor: tax,
+        total_minor: overrideBaseMinor + tax,
+    };
+}
+
 type T = (key: string, vars?: Record<string, unknown>) => string;
 
 /**

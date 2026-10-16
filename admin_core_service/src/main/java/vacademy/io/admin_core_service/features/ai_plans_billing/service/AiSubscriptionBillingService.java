@@ -342,7 +342,7 @@ public class AiSubscriptionBillingService {
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", Json.str(s, "id", "subscription_id"));
         for (String k : List.of("plan_id", "plan_version_id", "plan_name", "plan_key", "status", "source",
-                "period_start", "period_end", "renews_at", "end_at", "grace_until")) {
+                "period_start", "period_end", "renews_at", "end_at", "grace_until", "price_override_base_minor")) {
             v.put(k, Json.raw(s, k));
         }
         v.put("cancel_at_period_end", Json.bool(s, "cancel_at_period_end"));

@@ -1,6 +1,6 @@
 {
     "heading": "AI plan",
-    "description": "What your AI plan covers this period. Vacademy manages the plan; contact us to change it.",
+    "description": "What your AI plan covers this period. The plan is managed by {{brand}}; contact them to change it.",
     "loading": "Loading…",
     "none": "This institute has no AI plan. Every AI use is charged from credits.",
     "period": "Current period: {{start}} – {{end}}",

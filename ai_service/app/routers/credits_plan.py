@@ -21,7 +21,15 @@ cap, without saying which); null when the feature has no institute cap.
 A plan is shown to the tenant only while it changes their billing: a LIVE
 subscription with billing.plans.enabled on. A SHADOW subscription (or plans
 switched off platform-wide) bills exactly as before, so the tenant sees
-{plan: null}; platform staff see it anyway, flagged effective=false.
+{plan: null}; platform staff see it anyway, flagged effective=false. A paid
+plan (source PAYMENT, LIVE) stays effective with the switch off (the engine
+keeps applying it: payments critique #9), but only while its current period is
+paid; otherwise its benefits are paused (plan.payment_status says why).
+
+Paid plans (V590): admins (and staff) also get `billing`: source, the current
+period's payment status, next renewal, grace end, the open charge (amount,
+due date, payment link), a scheduled plan change and the autopay mandate.
+Feature labels use ai_billing_feature.tenant_label when set (F13).
 
 Read-only: no period row, wallet or counter is created here.
 """
@@ -153,9 +161,10 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
     if sub is None:
         return _empty()
     enabled = pa.plans_enabled()
+    paid_plan = str(sub.get("source") or "").upper() == "PAYMENT"
     started = sub["start_at"] is not None and _aware(sub["start_at"]) <= now
     ended = sub.get("end_at") is not None and _aware(sub["end_at"]) <= now
-    effective = enabled and sub["enforcement"] == "LIVE" and started and not ended
+    effective = (enabled or paid_plan) and sub["enforcement"] == "LIVE" and started and not ended
     if not effective and not is_staff:
         return _empty()
     sid = str(sub["id"])
@@ -183,6 +192,10 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
             "period_start": pa.iso(ps), "period_end": pa.iso(pe), "renews_at": pa.iso(pe) if renews else None,
             "end_at": pa.iso(end_at), "auto_renew": bool(sub.get("auto_renew")),
             "cancel_at_period_end": bool(sub.get("cancel_at_period_end"))}
+    if paid_plan:
+        pay = str((period or {}).get("payment_status") or "DUE").upper() if period is not None else "DUE"
+        plan["payment_status"] = pay
+        plan["benefits_paused"] = pay not in ("PAID", "WAIVED", "COMPLIMENTARY")
     if is_staff:
         plan["effective"] = effective
         plan["plans_enabled"] = enabled
@@ -195,12 +208,13 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
         credits, used = credits or 0.0, used or 0.0
         allowance = {"credits": credits, "used": used, "remaining": max(0.0, credits - used)}
 
-    items = pa.rows(db, "SELECT i.*, f.label, f.display_order, f.eligibility, f.locked FROM ai_plan_item i "
+    label_sql = _label_sql(db)
+    items = pa.rows(db, f"SELECT i.*, {label_sql} AS label, f.display_order, f.eligibility, f.locked FROM ai_plan_item i "
                         "JOIN ai_billing_feature f ON f.feature_key = i.feature_key "
                         "WHERE i.plan_version_id = CAST(:v AS UUID) AND f.is_active "
                         "ORDER BY f.display_order, i.feature_key", {"v": vid})
     overrides = {r["feature_key"]: r for r in pa.rows(
-        db, "SELECT o.*, f.label, f.display_order, f.eligibility, f.locked FROM ai_subscription_override o "
+        db, f"SELECT o.*, {label_sql} AS label, f.display_order, f.eligibility, f.locked FROM ai_subscription_override o "
             "JOIN ai_billing_feature f ON f.feature_key = o.feature_key "
             "WHERE o.subscription_id = CAST(:s AS UUID) AND o.is_active AND f.is_active", {"s": sid})}
     # an override with a mode and no plan item stands alone (the engine's rule; default model policy)
@@ -251,7 +265,48 @@ def plan_view(db: Session, institute_id: str, *, is_admin: bool, is_staff: bool,
         # the plan-wide internal cost cap, as a percentage only (never the USD figure)
         plan["overall_fair_use_pct"] = (_pct((counters.get(_counter_all_key(sid)) or {}).get("cost_usd"),
                                              sub.get("v_cost_cap")) if sub.get("v_cost_cap") is not None else None)
-    return {"plan": plan, "allowance": allowance, "features": features}
+    out = {"plan": plan, "allowance": allowance, "features": features}
+    if paid_plan and (is_admin or is_staff):
+        out["billing"] = _billing(db, institute_id, now)
+    return out
+
+
+def _label_sql(db: Session) -> str:
+    """The tenant-facing feature label: tenant_label (V590) when set."""
+    try:
+        from . import plans_billing_internal as pb
+        if pb.has_column(db, "ai_billing_feature", "tenant_label"):
+            return "COALESCE(f.tenant_label, f.label)"
+    except Exception:  # noqa: BLE001
+        logger.warning("tenant_label check failed", exc_info=True)
+        pa._rollback(db)  # noqa: SLF001
+    return "f.label"
+
+
+def _billing(db: Session, institute_id: str, now: datetime) -> Optional[Dict[str, Any]]:
+    """Paid-plan state for admins: never a USD figure, a cap or a vendor id."""
+    try:
+        from . import plans_billing_internal as pb
+        if not pb.billing_ready(db):
+            return None
+        s = pb.subscription_summary(db, institute_id, now)
+        if s is None:
+            return None
+        m = pb.latest_mandate(db, institute_id, s.get("subscription_id"))
+        oc = s.get("open_charge")
+        return {"source": s.get("source"), "status": s.get("status"), "renews_at": s.get("renews_at"),
+                "grace_until": s.get("grace_until"), "cancel_at_period_end": s.get("cancel_at_period_end"),
+                "pending_plan": s.get("pending_plan"),
+                "open_charge": {k: oc.get(k) for k in ("kind", "status", "due_at", "base_minor", "tax_minor",
+                                                       "total_minor", "currency", "payment_link_url",
+                                                       "link_expires_at")} if oc else None,
+                "autopay": {"status": m.get("status"), "method": m.get("method"),
+                            "max_amount_minor": int(m["max_amount_minor"]) if m.get("max_amount_minor") is not None
+                            else None} if m else None}
+    except Exception:  # noqa: BLE001
+        logger.warning("plan billing block failed for %s", institute_id, exc_info=True)
+        pa._rollback(db)  # noqa: SLF001
+        return None
 
 
 @router.get("/plan", summary="The institute's AI plan: what is included, fair use and allowance")

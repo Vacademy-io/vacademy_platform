@@ -188,7 +188,8 @@ describe('AiLimitsSection', () => {
         expect(screen.getAllByRole('button', { name: 'Edit limit' })).toHaveLength(1);
         expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
 
-        // Platform row: shown, but no actions.
+        // Platform row: shown, but no actions. No storefront answer (the default: storefront
+        // off) on a Vacademy-owned host (jsdom: localhost) = the copy from before plans existed.
         expect(screen.getByText('Set by Vacademy')).toBeInTheDocument();
         expect(screen.getByText('Plan fair use')).toBeInTheDocument();
 

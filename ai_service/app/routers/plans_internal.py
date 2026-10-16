@@ -18,6 +18,17 @@ the same guard as /internal/metering/v1):
                                              sets it on the old version's subscribers)
       Missed hours catch up (one period at a time, up to 120 per run).
 
+      Paid plans (source PAYMENT, V590) take a path of their own
+      (plans_billing_internal.roll_payment, payments critique #4): every
+      PENDING / ACTIVE / GRACE one is checked each run; the roll never creates
+      their periods (only a paid charge does), it creates the renewal CHARGE
+      7 days before the period end, moves an unpaid renewal to GRACE at the
+      period end and to EXPIRED after grace_days, cancels at the period end,
+      expires an unpaid checkout, and voids charges that can no longer be paid.
+      The report lists charges_created / charges_voided; admin_core's billing
+      job reads the charges to collect from GET /charges?needs_collection=true
+      (state, not this report, drives collection: critique #6).
+
 Idempotent and safe to run concurrently (two replicas, a retry): each
 subscription is handled in its own transaction under a transaction-scoped
 advisory lock (pg_advisory_xact_lock, fine behind pgbouncer transaction
@@ -39,6 +50,7 @@ from sqlalchemy.orm import Session
 from ..db import db_dependency
 from ..dependencies import require_internal_service_token
 from . import plans_admin as pa
+from . import plans_billing_internal as pb
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +88,13 @@ def _set(db: Session, sid: str, fields: Dict[str, Any]) -> Dict[str, Any]:
                       "WHERE id = CAST(:_sid AS UUID) RETURNING *", {**fields, "_actor": ACTOR, "_sid": sid})
 
 
-def _roll_one(db: Session, sid: str, now: datetime, dry_run: bool) -> List[str]:
+def _roll_one(db: Session, sid: str, now: datetime, dry_run: bool,
+              extra: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[str]:
     """Bring one subscription up to `now`. Runs inside the caller's transaction; returns what happened."""
+    head = pa.one(db, "SELECT institute_id, source FROM institute_ai_subscription WHERE id = CAST(:s AS UUID)",
+                  {"s": sid})
+    if head is not None and str(head.get("source") or "").upper() == "PAYMENT":
+        return pb.roll_payment(db, sid, head["institute_id"], now, dry_run, extra)
     pa.xact_lock(db, f"ai_subscription_roll:{sid}")
     sub = pa.one(db, "SELECT * FROM institute_ai_subscription WHERE id = CAST(:s AS UUID) FOR UPDATE", {"s": sid})
     if sub is None or sub["status"] in pa.TERMINAL_STATUSES:
@@ -237,28 +254,33 @@ def roll(db: Session, *, now: Optional[datetime] = None, institute_id: Optional[
          dry_run: bool = False) -> Dict[str, Any]:
     now = _aware(now) or datetime.now(UTC)
     report: Dict[str, Any] = {"ok": True, "now": now.isoformat(), "dry_run": dry_run, "checked": 0,
-                              "changed": [], "errors": [], "counts": {}}
+                              "changed": [], "errors": [], "counts": {}, "charges_created": [],
+                              "charges_voided": []}
     if not pa.tables_ready(db):
         report.update(ok=True, skipped="the AI plan tables are missing (V588 not applied)")
         return report
     params: Dict[str, Any] = {"lim": BATCH_LIMIT, "now": now}
-    sql = ("SELECT s.id FROM institute_ai_subscription s WHERE s.status IN ('SCHEDULED','TRIAL','ACTIVE','GRACE') "
+    sql = ("SELECT s.id FROM institute_ai_subscription s WHERE ((s.status IN ('SCHEDULED','TRIAL','ACTIVE','GRACE') "
            "AND (s.status <> 'SCHEDULED' OR s.start_at <= :now) ")
-    if institute_id:
-        sql += "AND s.institute_id = :i "
-        params["i"] = institute_id
     # only the ones with something due: no period row yet, the latest one over, end_at passed, GRACE,
     # or a pending plan change (applied once its period starts)
     sql += ("AND (s.status IN ('SCHEDULED','GRACE') OR (s.end_at IS NOT NULL AND s.end_at <= :now) "
             "OR s.pending_plan_version_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM ai_subscription_period p WHERE p.subscription_id = s.id "
-            "AND p.period_end > :now)) ORDER BY s.created_at LIMIT :lim")
+            "AND p.period_end > :now))) "
+            # paid plans: every open one (renewal charge at T-7, grace, checkout expiry; few rows)
+            "OR (s.source = 'PAYMENT' AND s.status IN ('PENDING','ACTIVE','GRACE'))) ")
+    if institute_id:
+        sql += "AND s.institute_id = :i "
+        params["i"] = institute_id
+    sql += "ORDER BY s.created_at LIMIT :lim"
     ids = [str(r["id"]) for r in pa.rows(db, sql, params)]
     pa._rollback(db)  # noqa: SLF001 - end the read transaction before the per-subscription ones
     touched: Dict[str, Optional[bool]] = {}
     for sid in ids:
         report["checked"] += 1
+        extra: Dict[str, List[Dict[str, Any]]] = {}
         try:
-            done = _roll_one(db, sid, now, dry_run)
+            done = _roll_one(db, sid, now, dry_run, extra)
             if dry_run:
                 pa._rollback(db)  # noqa: SLF001
             else:
@@ -269,6 +291,8 @@ def roll(db: Session, *, now: Optional[datetime] = None, institute_id: Optional[
             logger.warning("plans roll failed for %s: %s", sid, msg)
             report["errors"].append({"subscription_id": sid, "error": msg})
             continue
+        report["charges_created"].extend(extra.get("charges_created", []))
+        report["charges_voided"].extend(extra.get("charges_voided", []))
         if done:
             report["changed"].append({"subscription_id": sid, "actions": done})
             for a in done:

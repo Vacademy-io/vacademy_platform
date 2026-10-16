@@ -17,8 +17,8 @@
             "label": "Enforce",
             "help": "A member who reaches a hard limit is stopped until the period resets. Soft limits show a warning."
         },
-        "enforceLocked": "Enforce has to be enabled for your institute by Vacademy.",
-        "enforceLockedNote": "Enforce is locked for your institute. Use Preview to measure the impact; contact Vacademy support to unlock enforcement.",
+        "enforceLocked": "Enforce has to be enabled for your institute by {{brand}}.",
+        "enforceLockedNote": "Enforce is locked for your institute. Use Preview to measure the impact; contact {{brand}} to unlock enforcement.",
         "globallyPaused": "Enforcement is paused across the platform right now, so Enforce currently behaves like Preview.",
         "notify": "Email admins at the soft limit",
         "notifyHelp": "One email per limit per period when usage crosses the soft limit.",
@@ -53,9 +53,9 @@
         "empty": "No limits yet. Add one to cap AI usage for a role, a member or the whole institute."
     },
     "platform": {
-        "title": "Set by Vacademy",
+        "title": "Set by {{brand}}",
         "description": "Platform limits (for example a plan's fair-use cap) always apply and can't be changed here.",
-        "lockedTooltip": "Set by Vacademy. You can't edit or override this limit."
+        "lockedTooltip": "Set by {{brand}}. You can't edit or override this limit."
     },
     "table": {
         "appliesTo": "Applies to",
@@ -199,7 +199,7 @@
             "noLimit": "Set a warning level, a limit, or both."
         },
         "editNote": "Only the warning level and the limit can be changed. To change who or what this limit covers, remove it and add a new one.",
-        "roleHint": "A custom role has to be mapped to a role group by Vacademy before it can be limited; until then, limit its role group."
+        "roleHint": "A custom role has to be mapped to a role group by {{brand}} before it can be limited; until then, limit its role group."
     },
     "preview": {
         "loading": "Replaying the last 30 days…",

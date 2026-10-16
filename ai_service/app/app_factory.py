@@ -38,6 +38,7 @@ from .routers.metering_limits_admin import router as metering_limits_admin_route
 from .routers.metering_internal import router as metering_internal_router
 from .routers.plans_admin import router as plans_admin_router
 from .routers.plans_internal import router as plans_internal_router
+from .routers.plans_billing_internal import router as plans_billing_internal_router
 from .routers.credits_plan import router as credits_plan_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
@@ -342,6 +343,7 @@ def create_app() -> FastAPI:
     app.include_router(plans_admin_router, prefix=settings.api_base_path)
     app.include_router(credits_plan_router, prefix=settings.api_base_path)
     app.include_router(plans_internal_router, prefix=settings.api_base_path)
+    app.include_router(plans_billing_internal_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

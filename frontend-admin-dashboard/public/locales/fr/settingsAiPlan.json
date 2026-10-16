@@ -1,6 +1,6 @@
 {
     "heading": "Forfait IA",
-    "description": "Ce que couvre votre forfait IA sur cette période. Vacademy gère le forfait ; contactez-nous pour le modifier.",
+    "description": "Ce que couvre votre forfait IA sur cette période. Le forfait est géré par {{brand}} ; contactez-les pour le modifier.",
     "loading": "Chargement…",
     "none": "Cet établissement n'a pas de forfait IA. Chaque utilisation est facturée en crédits.",
     "period": "Période en cours : {{start}} – {{end}}",

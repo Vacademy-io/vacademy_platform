@@ -28,6 +28,19 @@ Super Admin — AI subscription plans (/super-admin/v1/plans/**), contract P-API
   Pricing tools (services/metering/plans.py)
     POST   /simulate                          {plan_version_id, institute_id, days}
     GET    /pnl?institute_id=&period=current|previous
+  Paid plans + storefront (V590; routers/plans_billing_internal.py holds the money logic)
+    POST   /subscriptions  source=PAYMENT     a PENDING subscription + its DUE first charge (needs
+                                              billing.subscriptions.payments.enabled); admin_core's
+                                              billing job sends the payment link (send_link)
+    GET    /subscriptions/{id}/billing        periods, charges, mandates and the billing events
+    POST   /subscriptions/{id}/charges/{cid}/send-link   queue a (new) payment link for an unpaid charge
+    PATCH  /plans/{id}/listing                listed, tagline, highlights, badge, sort_order, audience_mode
+                                              (brand words refused: tenant copy is white-label)
+    GET|PUT /plans/{id}/audience              institutes / segments a plan is offered to
+    GET|PUT /storefront/audience              institutes / segments the plans page is open to
+    PUT    /storefront/segments/{segment}     the institutes in a segment
+    GET    /storefront/institutes, PUT /storefront/institutes/{iid}   per-institute switch + brand mode
+    GET    /storefront/preview?institute_id=  what the institute would see
 
 Platform staff only (SUPER_ADMIN_USER_IDS, fail closed) as a ROUTER-level
 dependency. The actor always comes from the token. EVERY write needs a
@@ -66,6 +79,7 @@ from sqlalchemy.orm import Session
 from ..core.security import get_current_user
 from ..db import db_dependency
 from ..schemas.auth import CustomUserDetails
+from ..services.metering.billing_models import DEFAULT_SUBSCRIPTION_SAC_CODE
 from . import credits_limits as cl
 from .super_admin import _require_super_admin
 
@@ -85,10 +99,16 @@ VIOLATION_ACTIONS = ("CHARGE",)
 CAP_BASES = ("ACTOR", "SUBJECT")
 GRACE_BEHAVIOURS = ("INCLUDED", "CHARGED")
 ENFORCEMENTS = ("SHADOW", "LIVE")
-ASSIGN_SOURCES = ("MANUAL", "COMPLIMENTARY")      # PAYMENT arrives with phase 2
+ASSIGN_SOURCES = ("MANUAL", "COMPLIMENTARY")      # PAYMENT: see create_subscription (paid plans, V590)
 LIVE_STATUSES = ("TRIAL", "ACTIVE", "GRACE")
 OPEN_STATUSES = ("SCHEDULED",) + LIVE_STATUSES
 TERMINAL_STATUSES = ("EXPIRED", "CANCELLED")
+#: PENDING (V590): a paid plan waiting for its first payment (never live)
+PENDING_STATUS = "PENDING"
+#: words tenant-facing plan copy may not contain (white-label: owner decisions D1/D2)
+BRAND_WORDS = ("vacademy", "vidyayatan")
+SEGMENT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
+HIGHLIGHTS_MAX = 6
 #: Features the plan engine always charges (the voice-bot domain): never anything but ALWAYS_CHARGED.
 HARD_LOCKED_FEATURES = ("ai_calling", "telephony")
 ROLE_CLASSES = ("ADMIN", "TEACHER", "STAFF", "PARENT", "LEARNER", "SYSTEM", "API_KEY", "PUBLIC")
@@ -469,9 +489,23 @@ def xact_lock(db: Session, key: str) -> None:
 
 # ── output shapes ───────────────────────────────────────────────────────────
 
+def brand_words(*texts: Any) -> List[str]:
+    """The platform brand words found in tenant-facing text (case-insensitive)."""
+    found = set()
+    for t in texts:
+        if t is None:
+            continue
+        values = t if isinstance(t, (list, tuple)) else [t]
+        for v in values:
+            low = str(v or "").lower()
+            found |= {w for w in BRAND_WORDS if w in low}
+    return sorted(found)
+
+
 def feature_out(r: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "feature_key": r.get("feature_key"), "label": r.get("label"), "description": r.get("description"),
+        "feature_key": r.get("feature_key"), "label": r.get("label"), "tenant_label": r.get("tenant_label"),
+        "description": r.get("description"),
         "eligibility": r.get("eligibility"), "locked": bool(r.get("locked")),
         "display_order": r.get("display_order"), "is_active": bool(r.get("is_active", True)),
         "updated_by": r.get("updated_by"), "updated_at": iso(r.get("updated_at")),
@@ -512,10 +546,21 @@ def version_out(r: Dict[str, Any], items: Optional[List[Dict[str, Any]]] = None,
 
 
 def plan_out(r: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": str(r["id"]), "plan_key": r.get("plan_key"), "name": r.get("name"),
-            "description": r.get("description"), "is_active": bool(r.get("is_active", True)),
-            "created_by": r.get("created_by"), "created_at": iso(r.get("created_at")),
-            "updated_at": iso(r.get("updated_at"))}
+    out = {"id": str(r["id"]), "plan_key": r.get("plan_key"), "name": r.get("name"),
+           "description": r.get("description"), "is_active": bool(r.get("is_active", True)),
+           "created_by": r.get("created_by"), "created_at": iso(r.get("created_at")),
+           "updated_at": iso(r.get("updated_at"))}
+    if "listed" in r:          # V590 storefront listing (present once the migration ran)
+        hl = r.get("highlights")
+        if isinstance(hl, str):
+            try:
+                hl = json.loads(hl)
+            except ValueError:
+                hl = None
+        out["listing"] = {"listed": bool(r.get("listed")), "tagline": r.get("tagline"),
+                          "highlights": list(hl) if isinstance(hl, list) else [], "badge": r.get("badge"),
+                          "sort_order": r.get("sort_order"), "audience_mode": r.get("audience_mode")}
+    return out
 
 
 def sub_out(r: Dict[str, Any]) -> Dict[str, Any]:
@@ -786,6 +831,8 @@ def _db_error(exc: DBAPIError, what: str) -> HTTPException:
 
 class FeaturePatch(BaseModel):
     label: Optional[str] = Field(None, max_length=128)
+    #: V590: what tenants see instead of label (white-label copy, brand words refused)
+    tenant_label: Optional[str] = Field(None, max_length=128)
     description: Optional[str] = Field(None, max_length=4000)
     display_order: Optional[int] = Field(None, ge=0, le=100000)
     eligibility: Optional[str] = Field(None, max_length=16)
@@ -862,6 +909,8 @@ class SubscriptionCreate(BaseModel):
     source: str = Field("MANUAL", max_length=16)
     price_override_minor: Optional[int] = None
     reason: str = Field(..., max_length=2000)
+    #: source PAYMENT: have admin_core send the payment link (its billing job picks up the DUE charge)
+    send_link: bool = True
 
 
 class SubscriptionPatch(BaseModel):
@@ -947,6 +996,13 @@ def patch_feature(feature_key: str, body: FeaturePatch, db: Session = Depends(db
             raise HTTPException(status_code=422, detail="label cannot be empty")
     if "eligibility" in changes:
         changes["eligibility"] = _upper(changes["eligibility"], ELIGIBILITIES, "eligibility")
+    if "tenant_label" in changes:
+        from . import plans_billing_internal as pb
+        if not pb.has_column(db, "ai_billing_feature", "tenant_label"):
+            raise HTTPException(status_code=503, detail="tenant_label needs admin_core's Flyway V590 first")
+        changes["tenant_label"] = str(changes["tenant_label"]).strip() or None
+        if brand_words(changes["tenant_label"]):
+            raise HTTPException(status_code=422, detail="tenant_label is shown to institutes: no platform brand words")
     row = one(db, "SELECT * FROM ai_billing_feature WHERE feature_key = :k FOR UPDATE", {"k": feature_key})
     if row is None:
         _rollback(db)
@@ -1093,6 +1149,9 @@ def create_version(plan_ref: str, body: VersionCreate, db: Session = Depends(db_
     no = int(db.execute(text("SELECT COALESCE(max(version_no), 0) + 1 FROM ai_plan_version "
                              "WHERE plan_id = CAST(:p AS UUID)"), {"p": pid}).scalar() or 1)
     terms = _copy_terms(src)
+    # Owner default (2026-10-16): every NEW version carries SAC 998315, also when copied from a
+    # version that had another code (V588 seeded 998313); a DRAFT can still be PATCHed to another.
+    terms["sac_code"] = DEFAULT_SUBSCRIPTION_SAC_CODE
     vid = str(uuid.uuid4())
     cols = ["id", "plan_id", "version_no", "status", "supersedes_version_id", "created_by", "created_at",
             "updated_at"] + list(terms)
@@ -1275,6 +1334,10 @@ def publish_version(vid: str, body: ReasonBody, db: Session = Depends(db_depende
         warnings.append("the version has allowance credits but no ALLOWANCE item: the allowance is never used")
     if any(i["mode"] == "ALLOWANCE" for i in items) and Decimal(str(v.get("allowance_credits") or 0)) <= 0:
         warnings.append("ALLOWANCE items with 0 allowance credits: those features are always charged")
+    leaked = brand_words([i.get("display_cap_text") for i in items])
+    if leaked:
+        warnings.append("display_cap_text is shown to institutes and contains a platform brand word "
+                        f"({', '.join(leaked)}): white-labelled institutes would see it")
     if any(i["mode"] == "INCLUDED" for i in items) and v.get("internal_cost_cap_usd") is None and not any(
             i.get("inst_cost_usd_cap") is not None or i.get("inst_credits_cap") is not None
             or i.get("inst_units_cap") is not None for i in items if i["mode"] == "INCLUDED"):
@@ -1377,7 +1440,7 @@ def list_subscriptions(
     if status:
         sts = [x.strip().upper() for x in status.split(",") if x.strip()]
         for x in sts:
-            _upper(x, OPEN_STATUSES + TERMINAL_STATUSES, "status")
+            _upper(x, OPEN_STATUSES + (PENDING_STATUS,) + TERMINAL_STATUSES, "status")
         where.append("s.status = ANY(CAST(:st AS VARCHAR[]))")
         params["st"] = sts
     if plan_id:
@@ -1462,8 +1525,10 @@ def create_subscription(body: SubscriptionCreate, db: Session = Depends(db_depen
     iid = _institute(body.institute_id)
     enforcement = _upper(body.enforcement or "SHADOW", ENFORCEMENTS, "enforcement")
     source = str(body.source or "MANUAL").strip().upper()
+    if source == "PAYMENT":
+        return _assign_paid(db, body, actor, reason, iid)
     if source not in ASSIGN_SOURCES:
-        raise HTTPException(status_code=422, detail="source must be MANUAL or COMPLIMENTARY (payments come later)")
+        raise HTTPException(status_code=422, detail="source must be MANUAL, COMPLIMENTARY or PAYMENT")
     v = _published_version(db, body.plan_version_id, "plan_version_id")
     pm = _int(body.period_months if body.period_months is not None else (v.get("period_months") or 1),
               "period_months", 1, PERIOD_MONTHS_MAX)
@@ -1493,6 +1558,9 @@ def create_subscription(body: SubscriptionCreate, db: Session = Depends(db_depen
         xact_lock(db, f"ai_subscription:{iid}")
         other = one(db, "SELECT id, status FROM institute_ai_subscription WHERE institute_id = :i "
                         "AND status IN ('SCHEDULED','TRIAL','ACTIVE','GRACE') LIMIT 1", {"i": iid})
+        if other is None:       # a paid checkout waiting for its first payment (V590) also blocks
+            other = one(db, "SELECT id, status FROM institute_ai_subscription WHERE institute_id = :i "
+                            "AND status = 'PENDING' LIMIT 1", {"i": iid})
         if other is not None:
             _rollback(db)
             raise HTTPException(status_code=409, detail={
@@ -1558,10 +1626,16 @@ def patch_subscription(sid: str, body: SubscriptionPatch, db: Session = Depends(
         elif f == "pending_plan_version_id" and val is not None:
             val = str(_published_version(db, val, "pending_plan_version_id")["id"])
         ch[f] = val
+    paid = _lock_paid(db, sid)
     s = get_sub(db, sid, for_update=True)
     if s["status"] in TERMINAL_STATUSES:
         _rollback(db)
         raise HTTPException(status_code=409, detail=f"the subscription is {s['status']}: assign a new one instead")
+    if paid and (
+            ch.get("enforcement", "LIVE") != "LIVE" or "price_override_minor" in ch):
+        _rollback(db)
+        raise HTTPException(status_code=409, detail=(
+            "a paid plan is always LIVE and is priced by its charges: cancel it or change its plan instead"))
     if "end_at" in ch and ch["end_at"] is not None and ch["end_at"] <= max(
             s["start_at"] if s["start_at"].tzinfo else s["start_at"].replace(tzinfo=UTC), datetime.now(UTC)):
         _rollback(db)
@@ -1577,8 +1651,14 @@ def patch_subscription(sid: str, body: SubscriptionPatch, db: Session = Depends(
         return out
     uuid_cols = {"pending_plan_version_id"}
     sets = ", ".join((f"{k} = CAST(:{k} AS UUID)" if k in uuid_cols else f"{k} = :{k}") for k in real)
+    voided: List[Dict[str, Any]] = []
     try:
-        if real.get("auto_renew") is False or real.get("cancel_at_period_end") is True:
+        if paid:
+            if real.get("auto_renew") is False or real.get("cancel_at_period_end") is True:
+                voided = _void_paid_charges(db, s, actor, "NOT_RENEWING", future_only=True)
+            elif "pending_plan_version_id" in real:
+                voided = _void_paid_charges(db, s, actor, "REPRICED", future_only=True)
+        elif real.get("auto_renew") is False or real.get("cancel_at_period_end") is True:
             open_current_period_before_renewal_stops(db, s)
         new = one(db, f"UPDATE institute_ai_subscription SET {sets}, updated_by = :actor, updated_at = now() "
                       "WHERE id = CAST(:sid AS UUID) RETURNING *", {**real, "actor": actor, "sid": str(s["id"])})
@@ -1594,6 +1674,8 @@ def patch_subscription(sid: str, body: SubscriptionPatch, db: Session = Depends(
     out = sub_out(new)
     out["changed"] = sorted(real)
     out["plans_enabled"] = plans_enabled()
+    if voided:
+        out["voided_charges"] = voided
     note = _enforcement_note(new["enforcement"]) if "enforcement" in real else None
     if note:
         out["note"] = note
@@ -1606,19 +1688,24 @@ def cancel_subscription(sid: str, body: CancelBody, db: Session = Depends(db_dep
     require_tables(db)
     actor = actor_of(current_user) or "unknown"
     reason = need_reason(body.reason)
+    paid = _lock_paid(db, sid)
     s = get_sub(db, sid, for_update=True)
     if s["status"] in TERMINAL_STATUSES:
         _rollback(db)
         raise HTTPException(status_code=409, detail=f"the subscription is already {s['status']}")
-    immediate = bool(body.immediate) or s["status"] == "SCHEDULED"
+    immediate = bool(body.immediate) or s["status"] in ("SCHEDULED", PENDING_STATUS)
+    voided: List[Dict[str, Any]] = []
     try:
+        if paid:
+            voided = _void_paid_charges(db, s, actor, "CANCELLED", future_only=not immediate)
         if immediate:
             new = one(db, "UPDATE institute_ai_subscription SET status = 'CANCELLED', end_at = now(), "
                           "auto_renew = false, updated_by = :a, updated_at = now() WHERE id = CAST(:s AS UUID) "
                           "RETURNING *", {"a": actor, "s": str(s["id"])})
             etype = "CANCELLED"
         else:
-            open_current_period_before_renewal_stops(db, s)
+            if not paid:
+                open_current_period_before_renewal_stops(db, s)
             new = one(db, "UPDATE institute_ai_subscription SET cancel_at_period_end = true, updated_by = :a, "
                           "updated_at = now() WHERE id = CAST(:s AS UUID) RETURNING *", {"a": actor, "s": str(s["id"])})
             etype = "CANCEL_SCHEDULED"
@@ -1630,6 +1717,8 @@ def cancel_subscription(sid: str, body: CancelBody, db: Session = Depends(db_dep
     notify_engine(s["institute_id"], live=False if immediate else None)
     out = sub_out(new)
     out["immediate"] = immediate
+    if voided:
+        out["voided_charges"] = voided
     return out
 
 
@@ -1787,6 +1876,485 @@ def pnl(institute_id: Optional[str] = Query(None, max_length=64),
         out.setdefault("period", p)
         out.setdefault("institute_id", institute_id)
     return out
+
+
+
+# ── paid plans + storefront (V590) ──────────────────────────────────────────
+
+def _billing_module(db: Session):
+    """routers/plans_billing_internal (imported late: it imports this module),
+    503 while the V590 billing tables are missing."""
+    from . import plans_billing_internal as pb
+    if not pb.billing_ready(db):
+        raise HTTPException(status_code=503, detail=(
+            "the AI plan billing tables are missing: deploy admin_core (its Flyway migration V590) first"))
+    return pb
+
+
+def _assign_paid(db: Session, body: "SubscriptionCreate", actor: str, reason: str, iid: str) -> Dict[str, Any]:
+    """source PAYMENT (sales-led): a PENDING subscription, LIVE, starting when its
+    first charge is paid; no scheduled start, no end date, no period count."""
+    pb = _billing_module(db)
+    if not pb.payments_enabled():
+        raise HTTPException(status_code=409, detail=(
+            "paid plans are switched off (billing.subscriptions.payments.enabled = false)"))
+    if body.start_at is not None or body.end_at is not None or body.period_count is not None:
+        raise HTTPException(status_code=422, detail=(
+            "a paid plan starts when its first payment is received and renews while it is paid: "
+            "no start_at / end_at / period_count"))
+    if str(body.enforcement or "LIVE").strip().upper() != "LIVE" and "enforcement" in body.model_fields_set:
+        raise HTTPException(status_code=422, detail="a paid plan is always LIVE")
+    v = _published_version(db, body.plan_version_id, "plan_version_id")
+    if body.period_months is not None and int(body.period_months) != int(v.get("period_months") or 1):
+        raise HTTPException(status_code=422, detail="a paid plan bills the version's own period")
+    known = institute_exists(db, iid)
+    if known is False:
+        raise HTTPException(status_code=404, detail="institute not found")
+    try:
+        out = pb.do_checkout(db, pb.CheckoutBody(
+            institute_id=iid, plan_version_id=str(v["id"]), actor=actor, self_serve=False,
+            price_override_minor=body.price_override_minor, reason=reason))
+        if body.grace_days is not None:
+            grace = _int(body.grace_days, "grace_days", 0, GRACE_DAYS_MAX)
+            db.execute(text("UPDATE institute_ai_subscription SET grace_days = :g WHERE id = CAST(:s AS UUID)"),
+                       {"g": grace, "s": out["subscription_id"]})
+        if not body.auto_renew:
+            db.execute(text("UPDATE institute_ai_subscription SET auto_renew = false WHERE id = CAST(:s AS UUID)"),
+                       {"s": out["subscription_id"]})
+        if body.send_link:
+            db.execute(text("UPDATE ai_subscription_charge SET next_attempt_at = now(), updated_at = now() "
+                            "WHERE id = CAST(:c AS UUID)"), {"c": out["charge_id"]})
+    except HTTPException:
+        _rollback(db)
+        raise
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "subscription")
+    commit(db)
+    notify_engine(iid)
+    sub = get_sub(db, out["subscription_id"])
+    res = sub_out(sub)
+    fresh = one(db, "SELECT * FROM ai_subscription_charge WHERE id = CAST(:c AS UUID)", {"c": out["charge_id"]})
+    res.update(charge=pb.charge_out(fresh) if fresh else out["charge"], superseded=out["superseded"],
+               replayed=out["replayed"],
+               send_link=bool(body.send_link), plans_enabled=plans_enabled(),
+               note=("PENDING until the first payment: admin_core sends the payment link and the plan starts "
+                     "when it is paid" if body.send_link else
+                     "PENDING until the first payment: use send-link (or mark it paid offline) to collect it"))
+    if known is None:
+        res["warning"] = "could not check that the institute exists"
+    _rollback(db)
+    return res
+
+
+def _lock_paid(db: Session, sid: str) -> bool:
+    """For a paid plan (source PAYMENT): take the institute's subscription lock
+    BEFORE the row lock (the order /paid and the roll use). True = paid plan.
+    MANUAL / COMPLIMENTARY: nothing (exactly as before)."""
+    head = one(db, "SELECT institute_id, source FROM institute_ai_subscription WHERE id = CAST(:s AS UUID)",
+               {"s": valid_uuid(sid, "subscription")})
+    if head is None or str(head.get("source") or "").upper() != "PAYMENT":
+        return False
+    xact_lock(db, f"ai_subscription:{head['institute_id']}")
+    return True
+
+
+def _void_paid_charges(db: Session, sub: Dict[str, Any], actor: str, reason: str, *,
+                       future_only: bool) -> List[Dict[str, Any]]:
+    """A staff change of a paid plan: void its unpaid charges (all, or only the
+    renewal / upgrade ones when the current paid period runs on). The caller
+    holds the institute lock (_lock_paid)."""
+    from . import plans_billing_internal as pb
+    if not pb.billing_ready(db):
+        return []
+    charges = pb._open_charges(db, str(sub["id"]))  # noqa: SLF001
+    if future_only:
+        now = datetime.now(UTC)
+        charges = [c for c in charges if c.get("kind") == "PERIOD" and _tz(c["service_start"]) > now
+                   or c.get("kind") == "UPGRADE"]
+    return pb._void(db, sub, charges, reason, actor)  # noqa: SLF001
+
+
+@router.get("/subscriptions/{sid}/billing", summary="A paid plan's periods, charges, mandates and billing events")
+def subscription_billing(sid: str, db: Session = Depends(db_dependency)):
+    require_tables(db)
+    pb = _billing_module(db)
+    s = get_sub(db, sid)
+    sid = str(s["id"])
+    out = {"subscription": sub_out(s),
+           "periods": [period_out(r) for r in rows(db, "SELECT * FROM ai_subscription_period WHERE subscription_id = "
+                                                      "CAST(:s AS UUID) ORDER BY period_start DESC LIMIT 120", {"s": sid})],
+           "charges": pb.list_charges(db, subscription_id=sid, limit=500)["charges"],
+           "mandates": [pb._mandate_out(m) for m in rows(  # noqa: SLF001
+               db, "SELECT * FROM ai_subscription_mandate WHERE subscription_id = CAST(:s AS UUID) OR "
+                   "(subscription_id IS NULL AND institute_id = :i) ORDER BY created_at DESC LIMIT 20",
+               {"s": sid, "i": s["institute_id"]})],
+           "events": [event_out(r) for r in rows(
+               db, "SELECT * FROM ai_subscription_event WHERE subscription_id = CAST(:s AS UUID) AND event_type IN "
+                   "('CHECKOUT_CREATED','CHECKOUT_SUPERSEDED','CHECKOUT_EXPIRED','CHARGE_CREATED','CHARGE_VOIDED',"
+                   "'CHARGE_STATUS','CHARGE_REFUNDED','CHARGE_RESEND','ACTIVATED','RENEWAL_PAID','GRACE_STARTED',"
+                   "'GRACE_CLEARED','UPGRADE_QUOTED','UPGRADED','UPGRADE_REVERTED','PAYMENT_DUPLICATE','PAYMENT_LATE',"
+                   "'PAYMENT_AMOUNT_MISMATCH','CANCELLED','CANCEL_SCHEDULED','RESUMED','EXPIRED') "
+                   "ORDER BY created_at DESC LIMIT 300", {"s": sid})],
+           "payments_enabled": pb.payments_enabled(), "autopay_enabled": pb.autopay_enabled()}
+    _rollback(db)
+    return out
+
+
+@router.post("/subscriptions/{sid}/charges/{cid}/send-link",
+             summary="Queue a payment link for an unpaid charge (admin_core's billing job sends it)")
+def send_charge_link(sid: str, cid: str, body: ReasonBody, db: Session = Depends(db_dependency),
+                     current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    pb = _billing_module(db)
+    why = need_reason(body.reason)
+    actor = actor_of(current_user) or "unknown"
+    s = get_sub(db, sid)
+    xact_lock(db, f"ai_subscription:{s['institute_id']}")
+    ch = one(db, "SELECT * FROM ai_subscription_charge WHERE id = CAST(:c AS UUID) AND subscription_id = "
+                 "CAST(:s AS UUID) FOR UPDATE", {"c": valid_uuid(cid, "charge"), "s": str(s["id"])})
+    if ch is None:
+        _rollback(db)
+        raise HTTPException(status_code=404, detail="charge not found")
+    if ch["status"] not in ("DUE", "LINK_SENT", "FAILED", "DEBIT_SCHEDULED"):
+        _rollback(db)
+        raise HTTPException(status_code=409, detail=f"the charge is {ch['status']}: nothing to collect")
+    try:
+        new = one(db, "UPDATE ai_subscription_charge SET status = CASE WHEN status = 'DEBIT_SCHEDULED' THEN status "
+                      "ELSE 'DUE' END, next_attempt_at = now(), updated_at = now() WHERE id = CAST(:c AS UUID) "
+                      "RETURNING *", {"c": str(ch["id"])})
+        sub_event(db, str(s["id"]), s["institute_id"], "CHARGE_RESEND", {"charge_id": str(ch["id"]),
+                                                                         "status": ch["status"]},
+                  {"charge_id": str(ch["id"]), "status": new["status"]}, actor, why)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "charge")
+    commit(db)
+    return {"charge": pb.charge_out(new), "queued": True,
+            "note": "admin_core's billing job creates a fresh payment link (cancelling the old one) and emails it"}
+
+
+class ListingPatch(BaseModel):
+    listed: Optional[bool] = None
+    tagline: Optional[str] = Field(None, max_length=160)
+    highlights: Optional[List[str]] = None
+    badge: Optional[str] = Field(None, max_length=32)
+    sort_order: Optional[int] = Field(None, ge=0, le=100000)
+    audience_mode: Optional[str] = Field(None, max_length=10)
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class AudiencePut(BaseModel):
+    #: INCLUDE rules
+    institute_ids: List[str] = Field(default_factory=list, max_length=5000)
+    segments: List[str] = Field(default_factory=list, max_length=200)
+    #: EXCLUDE rules (always win)
+    exclude_institute_ids: List[str] = Field(default_factory=list, max_length=5000)
+    exclude_segments: List[str] = Field(default_factory=list, max_length=200)
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class SegmentPut(BaseModel):
+    institute_ids: List[str] = Field(default_factory=list, max_length=5000)
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class StorefrontInstitutePut(BaseModel):
+    storefront_enabled: Optional[bool] = None
+    brand_mode_override: Optional[str] = Field(None, max_length=10)
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+@router.patch("/plans/{plan_ref}/listing", summary="Storefront listing of a plan (white-label copy only)")
+def patch_listing(plan_ref: str, body: ListingPatch, db: Session = Depends(db_dependency),
+                  current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    _billing_module(db)
+    reason = need_reason(body.reason)
+    actor = actor_of(current_user)
+    given = body.model_fields_set - {"reason"}
+    if not given:
+        raise HTTPException(status_code=422, detail="nothing to change")
+    raw = body.model_dump()
+    ch: Dict[str, Any] = {}
+    for f in given:
+        val = raw.get(f)
+        if f == "listed":
+            if val is None:
+                raise HTTPException(status_code=422, detail="listed cannot be empty")
+            ch[f] = bool(val)
+        elif f in ("tagline", "badge"):
+            ch[f] = (str(val).strip() or None) if val is not None else None
+        elif f == "highlights":
+            hl = [str(x).strip() for x in (val or []) if str(x or "").strip()]
+            if len(hl) > HIGHLIGHTS_MAX or any(len(x) > 80 for x in hl):
+                raise HTTPException(status_code=422, detail=f"at most {HIGHLIGHTS_MAX} highlights of up to 80 characters")
+            ch[f] = json.dumps(hl)
+        elif f == "sort_order":
+            if val is None:
+                raise HTTPException(status_code=422, detail="sort_order cannot be empty")
+            ch[f] = int(val)
+        elif f == "audience_mode":
+            ch[f] = _upper(val, ("ALL", "ALLOWLIST", "SEGMENT"), "audience_mode")
+    leaked = brand_words(ch.get("tagline"), ch.get("badge"), json.loads(ch["highlights"]) if "highlights" in ch else None)
+    if leaked:
+        raise HTTPException(status_code=422, detail=(
+            f"listing copy is shown to institutes (white-label): remove {', '.join(leaked)}"))
+    plan = get_plan(db, plan_ref, for_update=True)
+    warnings = []
+    if ch.get("listed") or (plan.get("listed") and "listed" not in ch):
+        leaked = brand_words(plan.get("name"), plan.get("description"))
+        if leaked:
+            _rollback(db)
+            raise HTTPException(status_code=422, detail=(
+                f"the plan name / description is shown to institutes: remove {', '.join(leaked)} before listing"))
+        pub = one(db, "SELECT id, currency, price_minor FROM ai_plan_version WHERE plan_id = CAST(:p AS UUID) "
+                      "AND status = 'PUBLISHED' ORDER BY version_no DESC LIMIT 1", {"p": str(plan["id"])})
+        if pub is None:
+            warnings.append("no PUBLISHED version: the plan is not shown until one is published")
+        elif str(pub.get("currency") or "INR") != "INR":
+            warnings.append("the published version is not in INR: paid plans are sold in INR only")
+        else:
+            labels = rows(db, "SELECT i.display_cap_text, f.label" + (
+                ", f.tenant_label" if _has_tenant_label(db) else "") + " FROM ai_plan_item i JOIN ai_billing_feature "
+                "f ON f.feature_key = i.feature_key WHERE i.plan_version_id = CAST(:v AS UUID)", {"v": str(pub["id"])})
+            shown = [r.get("display_cap_text") for r in labels] + [r.get("tenant_label") or r.get("label") for r in labels]
+            leaked = brand_words(shown)
+            if leaked:
+                warnings.append("feature labels / cap texts of the published version contain "
+                                f"{', '.join(leaked)}: set the features' tenant_label (and cap texts in a new version)")
+    sets = ", ".join((f"{k} = CAST(:{k} AS JSONB)" if k == "highlights" else f"{k} = :{k}") for k in ch)
+    try:
+        new = one(db, f"UPDATE ai_plan SET {sets}, listing_updated_by = :_a, listing_updated_at = now(), "
+                      "updated_at = now() WHERE id = CAST(:p AS UUID) RETURNING *", {**ch, "p": str(plan["id"]), "_a": actor})
+        audit(db, "ai_plan", f"{plan['plan_key']}:listing", {k: jsonish(plan.get(k)) for k in ch},
+              {k: (json.loads(v) if k == "highlights" else v) for k, v in ch.items()}, reason, actor)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "plan listing")
+    commit(db)
+    out = plan_out(new)
+    out["warnings"] = warnings
+    return out
+
+
+def _has_tenant_label(db: Session) -> bool:
+    from . import plans_billing_internal as pb
+    return pb.has_column(db, "ai_billing_feature", "tenant_label")
+
+
+def _clean_ids(values: Iterable[Any], what: str) -> List[str]:
+    out: List[str] = []
+    for v in values:
+        x = str(v or "").strip()
+        if not x:
+            continue
+        if len(x) > 64:
+            raise HTTPException(status_code=422, detail=f"{what} must be at most 64 characters")
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _clean_segments(values: Iterable[Any]) -> List[str]:
+    out: List[str] = []
+    for v in values:
+        x = str(v or "").strip().lower()
+        if not x:
+            continue
+        if not SEGMENT_RE.match(x):
+            raise HTTPException(status_code=422, detail=f"segment {v!r}: a-z, 0-9, _ and -, up to 48 characters")
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _audience_rows(db: Session, plan_id: Optional[str]) -> Dict[str, Any]:
+    """The active ai_storefront_audience rules of a plan (or of the storefront: None)."""
+    plan_sql = "plan_id = CAST(:p AS UUID)" if plan_id else "plan_id IS NULL"
+    rs = rows(db, f"SELECT rule, institute_id, segment_key FROM ai_storefront_audience WHERE is_active AND {plan_sql} "
+                  "ORDER BY created_at, institute_id, segment_key", {"p": plan_id})
+    out: Dict[str, List[str]] = {"institute_ids": [], "segments": [], "exclude_institute_ids": [],
+                                 "exclude_segments": []}
+    for r in rs:
+        excl = str(r.get("rule") or "INCLUDE").upper() == "EXCLUDE"
+        if r.get("institute_id"):
+            out["exclude_institute_ids" if excl else "institute_ids"].append(r["institute_id"])
+        elif r.get("segment_key"):
+            out["exclude_segments" if excl else "segments"].append(r["segment_key"])
+    return out
+
+
+def _replace_audience(db: Session, plan_id: Optional[str], body: AudiencePut, actor: Optional[str],
+                      reason: str) -> None:
+    """Deactivate the current rules (kept as history) and write the new set."""
+    plan_sql = "plan_id = CAST(:p AS UUID)" if plan_id else "plan_id IS NULL"
+    db.execute(text(f"UPDATE ai_storefront_audience SET is_active = false WHERE is_active AND {plan_sql}"),
+               {"p": plan_id})
+    wanted = ([("INCLUDE", i, None) for i in _clean_ids(body.institute_ids, "institute_id")]
+              + [("INCLUDE", None, g) for g in _clean_segments(body.segments)]
+              + [("EXCLUDE", i, None) for i in _clean_ids(body.exclude_institute_ids, "institute_id")]
+              + [("EXCLUDE", None, g) for g in _clean_segments(body.exclude_segments)])
+    for rule, iid, seg in wanted:
+        db.execute(text("INSERT INTO ai_storefront_audience (id, plan_id, rule, institute_id, segment_key, is_active, "
+                        "reason, created_by, created_at) VALUES (CAST(:id AS UUID), CAST(:p AS UUID), :r, :i, :g, true, "
+                        ":why, :a, now())"),
+                   {"id": str(uuid.uuid4()), "p": plan_id, "r": rule, "i": iid, "g": seg, "why": reason,
+                    "a": actor or "unknown"})
+
+
+@router.get("/plans/{plan_ref}/audience", summary="Institutes and segments a plan is offered to")
+def get_plan_audience(plan_ref: str, db: Session = Depends(db_dependency)):
+    require_tables(db)
+    _billing_module(db)
+    plan = get_plan(db, plan_ref)
+    out = _audience_rows(db, str(plan["id"]))
+    out["audience_mode"] = plan.get("audience_mode")
+    return out
+
+
+@router.put("/plans/{plan_ref}/audience", summary="Replace the institutes / segments a plan is offered to")
+def put_plan_audience(plan_ref: str, body: AudiencePut, db: Session = Depends(db_dependency),
+                      current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    _billing_module(db)
+    reason = need_reason(body.reason)
+    actor = actor_of(current_user)
+    plan = get_plan(db, plan_ref, for_update=True)
+    old = _audience_rows(db, str(plan["id"]))
+    try:
+        _replace_audience(db, str(plan["id"]), body, actor, reason)
+        new = _audience_rows(db, str(plan["id"]))
+        audit(db, "ai_storefront_audience", f"plan:{plan['plan_key']}", old, new, reason, actor)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "audience")
+    commit(db)
+    return {**new, "audience_mode": plan.get("audience_mode")}
+
+
+@router.get("/storefront/audience", summary="Institutes and segments the plans page is open to (ALLOWLIST / SEGMENTS)")
+def get_storefront_audience(db: Session = Depends(db_dependency)):
+    require_tables(db)
+    pb = _billing_module(db)
+    out = _audience_rows(db, None)
+    segs: Dict[str, List[str]] = {}
+    for r in rows(db, "SELECT institute_id, segment_key FROM ai_institute_segment ORDER BY segment_key, institute_id"):
+        segs.setdefault(r["segment_key"], []).append(r["institute_id"])
+    out["segment_members"] = segs
+    out["mode"] = pb.storefront_mode()
+    return out
+
+
+@router.put("/storefront/audience", summary="Replace who the plans page is open to")
+def put_storefront_audience(body: AudiencePut, db: Session = Depends(db_dependency),
+                            current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    _billing_module(db)
+    reason = need_reason(body.reason)
+    actor = actor_of(current_user)
+    xact_lock(db, "ai_storefront_audience")
+    old = _audience_rows(db, None)
+    try:
+        _replace_audience(db, None, body, actor, reason)
+        new = _audience_rows(db, None)
+        audit(db, "ai_storefront_audience", "storefront", old, new, reason, actor)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "audience")
+    commit(db)
+    return new
+
+
+@router.put("/storefront/segments/{segment}", summary="Replace the institutes in a segment")
+def put_segment(segment: str, body: SegmentPut, db: Session = Depends(db_dependency),
+                current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    _billing_module(db)
+    reason = need_reason(body.reason)
+    actor = actor_of(current_user)
+    seg = _clean_segments([segment])
+    if not seg:
+        raise HTTPException(status_code=422, detail="segment is required")
+    seg_key = seg[0]
+    ids = _clean_ids(body.institute_ids, "institute_id")
+    xact_lock(db, f"ai_institute_segment:{seg_key}")
+    old = [r["institute_id"] for r in rows(db, "SELECT institute_id FROM ai_institute_segment WHERE segment_key = :g "
+                                                "ORDER BY institute_id", {"g": seg_key})]
+    try:
+        db.execute(text("DELETE FROM ai_institute_segment WHERE segment_key = :g"), {"g": seg_key})
+        for i in ids:
+            db.execute(text("INSERT INTO ai_institute_segment (institute_id, segment_key, created_by, created_at) "
+                            "VALUES (:i, :g, :a, now())"), {"i": i, "g": seg_key, "a": actor or "unknown"})
+        audit(db, "ai_storefront_audience", f"segment:{seg_key}", old, sorted(ids), reason, actor)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "segment")
+    commit(db)
+    return {"segment": seg_key, "institute_ids": sorted(ids)}
+
+
+@router.get("/storefront/institutes", summary="Per-institute storefront switches and brand-mode overrides")
+def list_storefront_institutes(institute_id: Optional[str] = Query(None, max_length=64),
+                               db: Session = Depends(db_dependency)):
+    require_tables(db)
+    _billing_module(db)
+    sql = "SELECT * FROM ai_storefront_institute"
+    params: Dict[str, Any] = {}
+    if institute_id:
+        sql += " WHERE institute_id = :i"
+        params["i"] = institute_id.strip()
+    rs = rows(db, sql + " ORDER BY updated_at DESC LIMIT 1000", params)
+    names = institute_names(db, [r["institute_id"] for r in rs])
+    return {"institutes": [{"institute_id": r["institute_id"], "institute_name": names.get(r["institute_id"]),
+                            "storefront_enabled": r.get("storefront_enabled"),
+                            "brand_mode_override": r.get("brand_mode_override"), "reason": r.get("reason"),
+                            "updated_by": r.get("updated_by"),
+                            "updated_at": iso(r.get("updated_at"))} for r in rs]}
+
+
+@router.put("/storefront/institutes/{institute_id}", summary="Switch the plans page on/off for one institute; "
+                                                             "override its brand mode")
+def put_storefront_institute(institute_id: str, body: StorefrontInstitutePut, db: Session = Depends(db_dependency),
+                             current_user: CustomUserDetails = Depends(get_current_user)):
+    require_tables(db)
+    _billing_module(db)
+    reason = need_reason(body.reason)
+    actor = actor_of(current_user)
+    iid = _institute(institute_id)
+    brand = body.brand_mode_override
+    if brand is not None:
+        brand = (str(brand).strip().upper() or None)
+        if brand is not None:
+            brand = _upper(brand, ("VACADEMY", "NEUTRAL"), "brand_mode_override")
+    old = one(db, "SELECT * FROM ai_storefront_institute WHERE institute_id = :i FOR UPDATE", {"i": iid})
+    try:
+        new = one(db, (
+            "INSERT INTO ai_storefront_institute (institute_id, brand_mode_override, storefront_enabled, reason, "
+            "updated_by, updated_at) VALUES (:i, :b, :e, :r, :a, now()) ON CONFLICT (institute_id) DO UPDATE SET "
+            "brand_mode_override = EXCLUDED.brand_mode_override, storefront_enabled = EXCLUDED.storefront_enabled, "
+            "reason = EXCLUDED.reason, updated_by = EXCLUDED.updated_by, updated_at = now() RETURNING *"),
+            {"i": iid, "b": brand, "e": body.storefront_enabled, "r": reason, "a": actor})
+        audit(db, "ai_storefront_institute", iid,
+              {k: (old or {}).get(k) for k in ("storefront_enabled", "brand_mode_override")},
+              {"storefront_enabled": body.storefront_enabled, "brand_mode_override": brand}, reason, actor)
+    except DBAPIError as exc:
+        _rollback(db)
+        raise _db_error(exc, "storefront institute")
+    commit(db)
+    return {"institute_id": iid, "storefront_enabled": new.get("storefront_enabled"),
+            "brand_mode_override": new.get("brand_mode_override"), "updated_at": iso(new.get("updated_at"))}
+
+
+@router.get("/storefront/preview", summary="What one institute's admins would see on the plans page")
+def storefront_preview(institute_id: str = Query(..., min_length=1, max_length=64),
+                       db: Session = Depends(db_dependency)):
+    require_tables(db)
+    pb = _billing_module(db)
+    try:
+        return pb.catalog(db, institute_id.strip(), preview=True)
+    finally:
+        _rollback(db)
 
 
 __all__ = ["router"]

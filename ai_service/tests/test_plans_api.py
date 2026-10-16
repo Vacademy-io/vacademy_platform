@@ -464,7 +464,9 @@ def test_subscription_lifecycle(env):
     draft = c.get(f"{SA}/plans/ai_pro", headers=staff()).json()["versions"][0]["id"]
     assert _assign(env, iid, draft).status_code == 422                      # DRAFT version
     assert _assign(env, "no-such-institute", vid).status_code == 404
-    assert _assign(env, iid, vid, source="PAYMENT").status_code == 422
+    # source PAYMENT (paid plans) needs the V590 billing tables, absent from this fixture: 503, nothing written
+    assert _assign(env, iid, vid, source="PAYMENT").status_code == 503
+    assert _assign(env, iid, vid, source="BARTER").status_code == 422
     assert _assign(env, iid, vid, enforcement="MAYBE").status_code == 422
     r = c.post(f"{SA}/subscriptions", json={"institute_id": iid, "plan_version_id": vid}, headers=staff())
     assert r.status_code == 422                                              # reason required

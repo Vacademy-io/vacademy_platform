@@ -1,6 +1,8 @@
 import { Sparkle, Warning } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { SeePlansButton, useStorefrontVisible } from './PlanEntryPoints';
 
 interface ToolCostConfirmDialogProps {
     open: boolean;
@@ -33,6 +35,8 @@ export function ToolCostConfirmDialog({
     confirmLabel = 'Continue',
 }: ToolCostConfirmDialogProps) {
     const notEnough = sufficient === false;
+    // Not enough credits and plans are on offer (admins, storefront on): link to them.
+    const storefront = useStorefrontVisible(getCurrentInstituteId(), open && notEnough);
 
     const footer = (
         <div className="flex w-full items-center justify-end gap-2">
@@ -102,6 +106,7 @@ export function ToolCostConfirmDialog({
                         </span>
                     </div>
                 )}
+                {notEnough && storefront && <SeePlansButton />}
             </div>
         </MyDialog>
     );

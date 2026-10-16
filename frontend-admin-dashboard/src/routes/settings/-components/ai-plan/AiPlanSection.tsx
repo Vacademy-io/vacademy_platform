@@ -3,7 +3,8 @@
  * plan in effect — AiSettings hides the tab otherwise). Read-only: what the
  * plan includes, what it pays from the monthly allowance, what still uses
  * credits, and how much of each fair-use cap is used this period. The plan is
- * assigned and changed by Vacademy; nothing here edits it.
+ * assigned and changed by the platform team; nothing here edits it. When the
+ * self-serve storefront is on, AiPlanBilling embeds this as "what's included".
  */
 import { useTranslation } from 'react-i18next';
 import { Coins, SealCheck, Wallet } from '@phosphor-icons/react';
@@ -12,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { formatDate, formatNumber } from '@/lib/formatters';
 import { getInstituteId } from '@/constants/helper';
+import { usePlatformBrand } from '@/lib/platform-brand';
 import {
     allowancePct,
     featuresByMode,
@@ -43,11 +45,14 @@ function barClass(pct: number): string {
 
 function FeatureRow({ feature }: { feature: TenantPlanFeature }) {
     const { t } = useTranslation('settingsAiPlan');
+    const brand = usePlatformBrand();
     const pct = feature.usage_pct;
     return (
         <li className="space-y-1.5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-neutral-800">{feature.label}</span>
+                <span className="text-sm font-medium text-neutral-800">
+                    {brand.scrubText(feature.label)}
+                </span>
                 <span
                     className={cn(
                         'rounded px-1.5 py-0.5 text-2xs font-semibold',
@@ -58,7 +63,9 @@ function FeatureRow({ feature }: { feature: TenantPlanFeature }) {
                 </span>
             </div>
             {feature.display_cap_text && (
-                <p className="text-caption text-neutral-500">{feature.display_cap_text}</p>
+                <p className="text-caption text-neutral-500">
+                    {brand.scrubText(feature.display_cap_text)}
+                </p>
             )}
             {feature.mode === 'INCLUDED' && pct !== null && (
                 <div className="space-y-1">
@@ -84,9 +91,10 @@ function FeatureRow({ feature }: { feature: TenantPlanFeature }) {
     );
 }
 
-export function AiPlanSection() {
+export function AiPlanSection({ embedded = false }: { embedded?: boolean } = {}) {
     const { t } = useTranslation('settingsAiPlan');
     const instituteId = getInstituteId() ?? '';
+    const brand = usePlatformBrand(instituteId);
     const { data, isLoading } = useAiPlanQuery(instituteId);
 
     if (isLoading) return <p className="text-sm text-neutral-500">{t('loading')}</p>;
@@ -105,18 +113,24 @@ export function AiPlanSection() {
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                    <SealCheck className="size-5 text-primary-500" weight="fill" />
-                    <h3 className="text-h3 font-semibold text-neutral-700">{t('heading')}</h3>
+            {embedded ? (
+                <h4 className="text-subtitle font-semibold text-neutral-800">{t('heading')}</h4>
+            ) : (
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <SealCheck className="size-5 text-primary-500" weight="fill" />
+                        <h3 className="text-h3 font-semibold text-neutral-700">{t('heading')}</h3>
+                    </div>
+                    <p className="text-body text-neutral-500">{t('description', brand.vars)}</p>
                 </div>
-                <p className="text-body text-neutral-500">{t('description')}</p>
-            </div>
+            )}
 
             <Card className="border-neutral-200 shadow-sm">
                 <CardHeader>
                     <div className="flex flex-wrap items-center gap-2">
-                        <CardTitle className="text-base">{data.plan.name}</CardTitle>
+                        <CardTitle className="text-base">
+                            {brand.scrubText(data.plan.name)}
+                        </CardTitle>
                         {data.plan.status === 'TRIAL' && (
                             <span className="rounded bg-info-50 px-1.5 py-0.5 text-2xs font-semibold text-info-700">
                                 {t('status.trial')}

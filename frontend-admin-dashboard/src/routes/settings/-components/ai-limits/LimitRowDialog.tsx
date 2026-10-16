@@ -5,6 +5,7 @@
  */
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePlatformBrand } from '@/lib/platform-brand';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Info } from '@phosphor-icons/react';
@@ -102,6 +103,7 @@ interface Props {
 
 export function LimitRowDialog({ instituteId, open, row, onOpenChange, onSaved }: Props) {
     const { t } = useTranslation('settingsAiLimits');
+    const brand = usePlatformBrand(instituteId);
     const [draft, setDraft] = useState<LimitDraft>(EMPTY_DRAFT);
     const [softText, setSoftText] = useState('');
     const [hardText, setHardText] = useState('');
@@ -375,7 +377,7 @@ export function LimitRowDialog({ instituteId, open, row, onOpenChange, onSaved }
                                     portal={false}
                                 />
                                 <p className="text-caption text-neutral-500">
-                                    {t('dialog.roleHint')}
+                                    {t('dialog.roleHint', brand.vars)}
                                 </p>
                             </>
                         )}

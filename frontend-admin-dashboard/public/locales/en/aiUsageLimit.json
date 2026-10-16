@@ -21,7 +21,7 @@
     },
     "setBy": {
         "INSTITUTE": "Your institute",
-        "PLATFORM": "Vacademy"
+        "PLATFORM": "{{brandTitle}}"
     },
     "scope": {
         "USER": "Your personal limit",
@@ -33,7 +33,7 @@
     },
     "hint": {
         "admin": "You can raise or remove this limit in Settings → AI → Limits.",
-        "adminPlatform": "This limit is set by Vacademy. Contact support to change it.",
+        "adminPlatform": "This limit is set by {{brand}}. Contact them to change it.",
         "member": "Try again after it resets, or ask your institute admin to raise the limit."
     },
     "actions": {

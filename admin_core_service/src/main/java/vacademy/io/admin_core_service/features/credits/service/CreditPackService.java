@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.credits.entity.CreditPackPrice;
 import vacademy.io.admin_core_service.features.credits.repository.CreditPackPriceRepository;
 import vacademy.io.admin_core_service.features.credits.repository.CreditPackRepository;
 import vacademy.io.admin_core_service.features.credits.util.CurrencyResolver;
+import vacademy.io.admin_core_service.features.credits.util.ReturnUrlPolicy;
 import vacademy.io.admin_core_service.features.credits.util.TaxResolver;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.payments.manager.RazorpayPaymentManager;
@@ -25,12 +26,16 @@ import vacademy.io.admin_core_service.features.platform_billing.entity.PlatformI
 import vacademy.io.admin_core_service.features.platform_billing.entity.PlatformPayment;
 import vacademy.io.admin_core_service.features.platform_billing.entity.PlatformPaymentConfig;
 import vacademy.io.admin_core_service.features.platform_billing.entity.PlatformPaymentItem;
+import vacademy.io.admin_core_service.features.platform_billing.enums.PlatformPaymentItemKind;
 import vacademy.io.admin_core_service.features.platform_billing.enums.PlatformPaymentResult;
 import vacademy.io.admin_core_service.features.platform_billing.enums.PlatformPaymentStatus;
+import vacademy.io.admin_core_service.features.platform_billing.enums.TaxHead;
 import vacademy.io.admin_core_service.features.platform_billing.repository.PlatformInvoiceRepository;
 import vacademy.io.admin_core_service.features.platform_billing.repository.PlatformPaymentItemRepository;
 import vacademy.io.admin_core_service.features.platform_billing.repository.PlatformPaymentRepository;
+import vacademy.io.admin_core_service.features.platform_billing.service.BrandModeService;
 import vacademy.io.admin_core_service.features.platform_billing.service.IndianStates;
+import vacademy.io.admin_core_service.features.platform_billing.service.PlatformBillingFlags;
 import vacademy.io.admin_core_service.features.platform_billing.service.PlatformInvoiceService;
 import vacademy.io.admin_core_service.features.platform_billing.service.PlatformPaymentConfigService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -42,6 +47,8 @@ import vacademy.io.common.payment.enums.PaymentType;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,7 +82,17 @@ public class CreditPackService {
     private final TaxResolver taxResolver;
     private final RazorpayPaymentManager razorpayManager;
     private final PlatformInvoiceService platformInvoiceService;
+    private final PlatformBillingProfileService billingProfileService;
+    private final ReturnUrlPolicy returnUrlPolicy;
+    private final PlatformBillingFlags billingFlags;
+    private final BrandModeService brandModeService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Credit-pack Payment Links expire after 48 h (F7): an abandoned top-up can no longer be paid
+     * days later, and the reconcile pass can close it as EXPIRED.
+     */
+    public static final Duration PACK_LINK_TTL = Duration.ofHours(48);
     /**
      * REQUIRES_NEW so each call gets its own short-lived TX, isolated from
      * any ambient TX the caller might have. We never want this inside a
@@ -95,6 +112,10 @@ public class CreditPackService {
             TaxResolver taxResolver,
             RazorpayPaymentManager razorpayManager,
             PlatformInvoiceService platformInvoiceService,
+            PlatformBillingProfileService billingProfileService,
+            ReturnUrlPolicy returnUrlPolicy,
+            PlatformBillingFlags billingFlags,
+            BrandModeService brandModeService,
             PlatformTransactionManager transactionManager) {
         this.packRepository = packRepository;
         this.priceRepository = priceRepository;
@@ -107,6 +128,10 @@ public class CreditPackService {
         this.taxResolver = taxResolver;
         this.razorpayManager = razorpayManager;
         this.platformInvoiceService = platformInvoiceService;
+        this.billingProfileService = billingProfileService;
+        this.returnUrlPolicy = returnUrlPolicy;
+        this.billingFlags = billingFlags;
+        this.brandModeService = brandModeService;
         this.txTemplate = new TransactionTemplate(transactionManager);
         this.txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -121,6 +146,8 @@ public class CreditPackService {
 
         String currency = currencyResolver.resolveCurrency(institute);
         String supplierStateCode = configService.load().getSupplierStateCode();
+        Institute taxBuyer = withBuyerState(institute,
+                billingProfileService.resolve(institute).stateCode());
 
         List<CreditPack> packs = packRepository.findByIsActiveTrueOrderByDisplayOrderAsc();
         List<CreditPackDTO> out = new ArrayList<>(packs.size());
@@ -139,7 +166,7 @@ public class CreditPackService {
             // If an admin later flips is_tax_inclusive, we'd back-derive base
             // here — out of scope until that flag is actually used.
             long baseMinor = price.getAmountMinor();
-            TaxBreakup tax = taxResolver.resolveTax(institute, currency, baseMinor, supplierStateCode);
+            TaxBreakup tax = taxResolver.resolveTax(taxBuyer, currency, baseMinor, supplierStateCode);
 
             int combinedTaxBps = tax.getCgstRateBps() + tax.getSgstRateBps() + tax.getIgstRateBps();
 
@@ -196,9 +223,11 @@ public class CreditPackService {
         Institute institute = instituteRepository.findById(instituteId)
                 .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
 
-        // Persist the buyer's GST identity BEFORE tax is computed so the
-        // CGST/SGST-vs-IGST split and the invoice snapshot both see it.
-        institute = saveBillingProfile(institute, buyerGstin, buyerStateCode);
+        // Persist the buyer's GST identity (platform_billing_profile, never the
+        // institutes row) BEFORE tax is computed, then freeze it on the order (F4).
+        billingProfileService.applyOrderFields(institute, buyerGstin, buyerStateCode,
+                buyer != null ? buyer.getId() : null);
+        PlatformBillingProfileService.BuyerIdentity buyerIdentity = billingProfileService.resolve(institute);
 
         CreditPack pack = packRepository.findById(packId)
                 .orElseThrow(() -> new VacademyException("Pack not found: " + packId));
@@ -213,9 +242,19 @@ public class CreditPackService {
                 .orElseThrow(() -> new VacademyException(
                         "No active price for pack " + pack.getCode() + " in " + currency));
 
+        if (CurrencyResolver.INR.equalsIgnoreCase(currency) && buyerIdentity.stateCode() == null
+                && billingFlags.buyerStateRequiredForPacks()) {
+            throw new TaxResolver.TaxException(TaxResolver.BUYER_STATE_REQUIRED,
+                    "Select your GST state before buying (place of supply, Circular 242/2024)");
+        }
+
         PlatformPaymentConfig config = configService.load();
+        // Legacy pack rule (unchanged amounts), fed the profile's state instead of institutes.state_code.
         TaxBreakup tax = taxResolver.resolveTax(
-                institute, currency, price.getAmountMinor(), config.getSupplierStateCode());
+                withBuyerState(institute, buyerIdentity.stateCode()), currency, price.getAmountMinor(),
+                config.getSupplierStateCode());
+        String brandMode = brandModeService.resolve(instituteId).name();
+        Instant linkExpiresAt = Instant.now().plus(PACK_LINK_TTL);
 
         // ── Phase B (TX1): persist initial order row + line item ──
         PlatformPayment payment = txTemplate.execute(status -> {
@@ -230,6 +269,16 @@ public class CreditPackService {
             p.setStatus(PlatformPaymentStatus.INITIATED);
             p.setPaymentStatus(PlatformPaymentResult.PAYMENT_PENDING);
             p.setPaymentSpecificData(toJson(snapshotForAudit(pack, price, tax)));
+            // Order-time snapshot: the invoice and any credit note read only these (critique #2).
+            p.setBuyerLegalName(buyerIdentity.legalName());
+            p.setBuyerGstin(buyerIdentity.gstin());
+            p.setBuyerStateCode(buyerIdentity.stateCode());
+            p.setBuyerAddress(buyerIdentity.address());
+            p.setPlaceOfSupply(tax.getPlaceOfSupply());
+            TaxHead head = TaxResolver.taxHeadOf(tax);
+            p.setTaxHead(head == null ? null : head.name());
+            p.setBrandMode(brandMode);
+            p.setLinkExpiresAt(linkExpiresAt);
             p = platformPaymentRepository.saveAndFlush(p);
 
             PlatformPaymentItem item = new PlatformPaymentItem();
@@ -243,6 +292,9 @@ public class CreditPackService {
             item.setTaxAmountMinor(tax.getTaxAmountMinor());
             item.setTotalAmountMinor(tax.getTotalAmountMinor());
             item.setHsnSacSnapshot(pack.getHsnSacCode());
+            item.setItemKind(PlatformPaymentItemKind.CREDIT_PACK);
+            item.setDescriptionSnapshot(pack.getName() + " — "
+                    + pack.getCredits().stripTrailingZeros().toPlainString() + " AI credits");
             platformPaymentItemRepository.save(item);
             return p;
         });
@@ -264,16 +316,20 @@ public class CreditPackService {
         // We append our platform_payment_id so the returning page can resume
         // status polling. Payment happens on Razorpay's domain (always allowed) —
         // this is what lets the top-up work on custom white-labelled admin domains.
+        // F8: only a Vacademy-owned host or one of this institute's own domains; anything
+        // else gets no callback (the buyer still pays, on Razorpay's confirmation page).
+        String allowedReturnUrl = returnUrlPolicy.sanitize(instituteId, returnUrl);
         String callbackUrl = null;
-        if (returnUrl != null && !returnUrl.isBlank()) {
-            callbackUrl = returnUrl + (returnUrl.contains("?") ? "&" : "?")
+        if (allowedReturnUrl != null) {
+            callbackUrl = allowedReturnUrl + (allowedReturnUrl.contains("?") ? "&" : "?")
                     + "topup_pp=" + payment.getId();
         }
 
         Map<String, Object> creds = configService.getRazorpayCredsMap();
         Map<String, Object> linkData;
         try {
-            linkData = razorpayManager.createPaymentLink(buyer, razorpayReq, creds, callbackUrl);
+            linkData = razorpayManager.createPaymentLink(buyer, razorpayReq, creds, callbackUrl,
+                    RazorpayPaymentManager.PaymentLinkOptions.expiringAt(linkExpiresAt));
         } catch (RuntimeException e) {
             // Razorpay rejected / timed out. Flip the row to FAILED so it
             // doesn't sit at INITIATED forever, then propagate so the caller
@@ -368,64 +424,37 @@ public class CreditPackService {
     public BillingProfileDTO getBillingProfile(String instituteId) {
         Institute institute = instituteRepository.findById(instituteId)
                 .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+        PlatformBillingProfileService.BuyerIdentity id = billingProfileService.resolve(institute);
+        boolean hasProfile = billingProfileService.find(instituteId) != null;
         return BillingProfileDTO.builder()
-                .legalName(institute.getInstituteName())
-                .gstin(institute.getGstin())
-                .stateCode(institute.getStateCode())
-                .stateName(IndianStates.nameFor(institute.getStateCode()))
-                .address(institute.getAddress())
+                .legalName(id.legalName() != null ? id.legalName() : institute.getInstituteName())
+                .gstin(id.gstin())
+                .stateCode(id.stateCode())
+                .stateName(IndianStates.nameFor(id.stateCode()))
+                // Before a profile exists this stays the raw institutes.address, as it always was.
+                .address(hasProfile ? id.address() : institute.getAddress())
+                .billingEmail(id.billingEmail())
                 .currency(currencyResolver.resolveCurrency(institute))
                 .build();
     }
 
     /**
-     * Validate + persist the buyer's GSTIN / state code onto the institute.
-     * Blank GSTIN with a state code = unregistered buyer in that state.
-     * Both blank = leave whatever is already stored untouched.
+     * Validate + persist the buyer's GSTIN / state code. Since V590 this writes
+     * {@code platform_billing_profile} only (never {@code institutes.gstin / state_code},
+     * which also drive the institute's own learner receipts). The institute is returned
+     * unchanged.
      */
     public Institute saveBillingProfile(Institute institute, String gstinRaw, String stateCodeRaw) {
-        String gstin = gstinRaw == null ? null : gstinRaw.trim().toUpperCase(Locale.ROOT);
-        String stateCode = stateCodeRaw == null ? null : stateCodeRaw.trim();
-        if ((gstin == null || gstin.isEmpty()) && (stateCode == null || stateCode.isEmpty())) {
-            return institute;
-        }
+        billingProfileService.applyOrderFields(institute, gstinRaw, stateCodeRaw, null);
+        return institute;
+    }
 
-        boolean changed = false;
-        if (gstin != null && !gstin.isEmpty()) {
-            if (!IndianStates.isValidGstin(gstin)) {
-                throw new VacademyException("Invalid GSTIN: " + gstin);
-            }
-            String gstinState = gstin.substring(0, 2);
-            if (stateCode != null && !stateCode.isEmpty() && !stateCode.equals(gstinState)) {
-                throw new VacademyException("State code " + stateCode
-                        + " does not match GSTIN state prefix " + gstinState);
-            }
-            stateCode = gstinState;
-            if (!gstin.equals(institute.getGstin())) {
-                institute.setGstin(gstin);
-                changed = true;
-            }
-        } else if (gstinRaw != null && institute.getGstin() != null) {
-            // Explicit empty string = buyer cleared their GSTIN (now unregistered).
-            institute.setGstin(null);
-            changed = true;
-        }
-
-        if (stateCode != null && !stateCode.isEmpty()) {
-            if (!IndianStates.isValidCode(stateCode)) {
-                throw new VacademyException("Invalid GST state code: " + stateCode);
-            }
-            if (!stateCode.equals(institute.getStateCode())) {
-                institute.setStateCode(stateCode);
-                String name = IndianStates.nameFor(stateCode);
-                if (name != null && (institute.getState() == null || institute.getState().isBlank())) {
-                    institute.setState(name);
-                }
-                changed = true;
-            }
-        }
-
-        return changed ? instituteRepository.save(institute) : institute;
+    /** A detached copy carrying only what the legacy pack tax rule reads (the buyer state). */
+    static Institute withBuyerState(Institute institute, String stateCode) {
+        Institute copy = new Institute();
+        copy.setId(institute == null ? null : institute.getId());
+        copy.setStateCode(stateCode);
+        return copy;
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -458,6 +487,10 @@ public class CreditPackService {
         }
         for (PlatformPayment p : settled) {
             if (invoiced.contains(p.getId())) continue;
+            // Never invoice a DUPLICATE / LATE payment (critique #7); subscription invoices are
+            // issued by their own pipeline, not on a page read.
+            if (!PlatformInvoiceService.isInvoiceable(p)) continue;
+            if (!allCreditPack(platformPaymentItemRepository.findByPlatformPaymentId(p.getId()))) continue;
             try {
                 PlatformInvoice generated = platformInvoiceService.generateInvoice(p.getId());
                 invoices.add(generated);
@@ -479,10 +512,7 @@ public class CreditPackService {
             BigDecimal credits = items.stream()
                     .map(PlatformPaymentItem::getCredits)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            String packName = items.isEmpty() ? "AI Credits"
-                    : packRepository.findById(items.get(0).getPackId())
-                            .map(CreditPack::getName)
-                            .orElse(items.get(0).getPackCodeSnapshot());
+            String packName = lineName(items);
             long tax = nz(inv.getCgstAmountMinor()) + nz(inv.getSgstAmountMinor()) + nz(inv.getIgstAmountMinor());
             out.add(PlatformInvoiceSummaryDTO.builder()
                     .invoiceId(inv.getId())
@@ -503,6 +533,36 @@ public class CreditPackService {
                     .build());
         }
         return out;
+    }
+
+    /**
+     * The name shown for an invoice row. Pack items read the live pack name as before; a
+     * pack-less item (AI_SUBSCRIPTION, pack_id NULL) uses its description snapshot (F2: this
+     * used to call findById(null) and 500 the whole list).
+     */
+    String lineName(List<PlatformPaymentItem> items) {
+        if (items == null || items.isEmpty()) {
+            return "AI Credits";
+        }
+        PlatformPaymentItem first = items.get(0);
+        if (first.getItemKind() == PlatformPaymentItemKind.AI_SUBSCRIPTION || first.getPackId() == null) {
+            if (first.getDescriptionSnapshot() != null && !first.getDescriptionSnapshot().isBlank()) {
+                return first.getDescriptionSnapshot();
+            }
+            return first.getPackCodeSnapshot() != null ? first.getPackCodeSnapshot() : "AI plan";
+        }
+        return packRepository.findById(first.getPackId())
+                .map(CreditPack::getName)
+                .orElse(first.getPackCodeSnapshot());
+    }
+
+    private static boolean allCreditPack(List<PlatformPaymentItem> items) {
+        for (PlatformPaymentItem i : items) {
+            if (i.getItemKind() == PlatformPaymentItemKind.AI_SUBSCRIPTION || i.getPackId() == null) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static long nz(Long v) {

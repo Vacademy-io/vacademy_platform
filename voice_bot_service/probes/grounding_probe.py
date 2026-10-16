@@ -20,7 +20,7 @@ OPEN = {"aaibuzz": "Hello, is this Rahul Sharma? I am calling from AAIBUZZ.",
         "solar": "Hello, kya main Rahul Sharma se baat kar rahi hoon? Main SunRay Energy se bol rahi hoon."}
 EDU = re.compile(r"\b(child|children|kids?|students?|schools?|class(es)?|courses?|learning|edtech|academic|tuition|"
                  r"exam|marks|syllabus|teacher)\b|बच्च|पढ़|क्लास|स्कूल|छात्र|एडटेक|कोर्स|लर्निंग|एकेडमिक|शिक्षा", re.I)
-BOOK = re.compile(r"\b(book|booking|schedule|slot)\b|बुक|\b\d{1,2}\s*(am|pm)\b|five pm|eleven am|शाम|कल सुबह|आज शाम", re.I)
+BOOK = re.compile(r"\b(book|booking|schedule|slot)\b|(?<!फेस)बुक|\b\d{1,2}\s*(am|pm)\b|five pm|eleven am|शाम|कल सुबह|आज शाम", re.I)
 SOLAR = re.compile(r"solar|सोलर|rooftop|रूफटॉप|survey|सर्वे|subsidy|सब्सिडी|panel|पैनल|bill|बिल", re.I)
 RUNS = int(os.environ.get("RUNS", "6"))
 

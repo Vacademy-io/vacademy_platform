@@ -34,6 +34,16 @@
     "loading": {
       "assessments": "Loading assessments...",
       "more": "Loading more..."
+    },
+    "folders": {
+      "title": "Your assessment folders",
+      "subtitle": "Open a folder to see its live, upcoming and past tests.",
+      "others": "Others",
+      "othersDescription": "Tests that are not in a folder",
+      "count_one": "{{count}} test",
+      "count_other": "{{count}} tests",
+      "back": "Back to folders",
+      "fallbackName": "Folder"
     }
   },
   "card": {

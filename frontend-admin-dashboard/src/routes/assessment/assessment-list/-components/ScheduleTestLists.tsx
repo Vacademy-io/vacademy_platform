@@ -8,6 +8,9 @@ import { useInstituteQuery } from '@/services/student-list-section/getInstituteD
 import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
 import { filterBySource } from '../-utils.ts/assessment-source';
+import { useAssessmentFolderLinks } from '@/services/assessment-folders';
+import { useAssessmentFolderUi } from './folders/assessment-folder-context';
+import { DraggableAssessment } from './folders/DraggableAssessment';
 
 const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
     tab,
@@ -32,6 +35,14 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
     // endpoint has no source parameter yet. Pagination stays on the server's
     // pages so the other pages are still reachable when this one filters to empty.
     const visibleContent = filterBySource(tab.data.content, sourceFilter);
+    // Folder of each card on this page (chip + drag source); only while folders are on.
+    const folderUi = useAssessmentFolderUi();
+    const { data: folderLinks } = useAssessmentFolderLinks(
+        selectedTab === tab.value ? visibleContent.map((item) => item.assessment_id) : [],
+        folderUi.enabled
+    );
+    const folderIdOf = (assessmentId: string) =>
+        folderLinks?.find((link) => link.assessment_id === assessmentId)?.folder_id ?? null;
     return (
         <TabsContent key={tab.value} value={tab.value}>
             {tab.data.content.length === 0 ? (
@@ -46,15 +57,35 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
                             {t('filters.source.emptyOnPage')}
                         </div>
                     )}
-                    {visibleContent.map((item, index) => (
-                        <ScheduleTestDetails
-                            key={item.assessment_id ?? index}
-                            scheduleTestContent={item}
-                            selectedTab={selectedTab}
-                            handleRefetchData={handleRefetchData}
-                            subjectNamesById={subjectNamesById}
-                        />
-                    ))}
+                    {visibleContent.map((item, index) => {
+                        const card = (
+                            <ScheduleTestDetails
+                                key={item.assessment_id ?? index}
+                                scheduleTestContent={item}
+                                selectedTab={selectedTab}
+                                handleRefetchData={handleRefetchData}
+                                subjectNamesById={subjectNamesById}
+                                // Only in "All assessments": inside a folder the chip would repeat its name.
+                                folderName={
+                                    folderUi.selectedKey === 'all'
+                                        ? folderUi.foldersById[folderIdOf(item.assessment_id) ?? '']
+                                              ?.name
+                                        : undefined
+                                }
+                            />
+                        );
+                        if (!folderUi.enabled) return card;
+                        return (
+                            <DraggableAssessment
+                                key={item.assessment_id ?? index}
+                                assessmentId={item.assessment_id}
+                                name={item.name}
+                                folderId={folderIdOf(item.assessment_id)}
+                            >
+                                {card}
+                            </DraggableAssessment>
+                        );
+                    })}
                     <MyPagination
                         currentPage={pageNo}
                         totalPages={Math.ceil(tab.data.total_pages)}

@@ -34,5 +34,9 @@ public class AdminAssessmentFilter {
      * created through the partner API, {@code DASHBOARD} for every other exam. Empty = all.
      */
     private List<String> sources = new ArrayList<>();
+    /** Optional: only assessments in this folder. */
+    private String folderId;
+    /** Optional: only assessments that are in no folder. */
+    private Boolean unfiledOnly;
     private Map<String, String> sortColumns = new HashMap<>();
 }

@@ -46,6 +46,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
             "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
             "AND (:checkSources IS NULL OR (CASE WHEN a.source = 'API' THEN 'API' ELSE 'DASHBOARD' END) IN :sources) " +
+            "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId)) " +
+            "AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 WHERE afm2.assessment_id = a.id)) " +
             "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -63,7 +65,9 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
                     "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
-                    "AND (:checkSources IS NULL OR (CASE WHEN a.source = 'API' THEN 'API' ELSE 'DASHBOARD' END) IN :sources)",
+                    "AND (:checkSources IS NULL OR (CASE WHEN a.source = 'API' THEN 'API' ELSE 'DASHBOARD' END) IN :sources) " +
+                    "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId)) " +
+                    "AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 WHERE afm2.assessment_id = a.id))",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
                                      @Param("checkBatches") Boolean checkBatches,
@@ -81,6 +85,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                      @Param("assessmentTypes") List<String> assessmentType,
                                      @Param("checkSources") Boolean checkSources,
                                      @Param("sources") List<String> sources,
+                                     @Param("folderId") String folderId,
+                                     @Param("unfiledOnly") Boolean unfiledOnly,
                                      Pageable pageable);
 
 
@@ -244,6 +250,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
+            "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm JOIN public.assessment_folder af ON af.id = afm.folder_id WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId AND af.status = 'ACTIVE')) AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 JOIN public.assessment_folder af2 ON af2.id = afm2.folder_id WHERE afm2.assessment_id = a.id AND af2.status = 'ACTIVE')) " +
             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
@@ -270,6 +277,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
+            "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm JOIN public.assessment_folder af ON af.id = afm.folder_id WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId AND af.status = 'ACTIVE')) AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 JOIN public.assessment_folder af2 ON af2.id = afm2.folder_id WHERE afm2.assessment_id = a.id AND af2.status = 'ACTIVE')) " +
             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
@@ -297,6 +305,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
+            "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm JOIN public.assessment_folder af ON af.id = afm.folder_id WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId AND af.status = 'ACTIVE')) AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 JOIN public.assessment_folder af2 ON af2.id = afm2.folder_id WHERE afm2.assessment_id = a.id AND af2.status = 'ACTIVE')) " +
                             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
@@ -322,6 +331,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
+            "AND (:folderId IS NULL OR EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm JOIN public.assessment_folder af ON af.id = afm.folder_id WHERE afm.assessment_id = a.id AND afm.folder_id = :folderId AND af.status = 'ACTIVE')) AND (:unfiledOnly IS NULL OR NOT EXISTS (SELECT 1 FROM public.assessment_folder_mapping afm2 JOIN public.assessment_folder af2 ON af2.id = afm2.folder_id WHERE afm2.assessment_id = a.id AND af2.status = 'ACTIVE')) " +
                             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
@@ -344,6 +354,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                       @Param("checkUserIds") Boolean checkUserIds,
                                       @Param("userIds") List<String> userIds,
                                       @Param("assessmentTypes") List<String> assessmentTypes,
+                                      @Param("folderId") String folderId,
+                                      @Param("unfiledOnly") Boolean unfiledOnly,
                                       Pageable pageable);
 
     @Query("SELECT a FROM Assessment a " +

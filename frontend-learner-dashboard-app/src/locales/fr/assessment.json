@@ -34,6 +34,17 @@
     "loading": {
       "assessments": "Chargement des évaluations...",
       "more": "Chargement en cours..."
+    },
+    "folders": {
+      "title": "Vos dossiers d’évaluations",
+      "subtitle": "Ouvrez un dossier pour voir ses tests en cours, à venir et passés.",
+      "others": "Autres",
+      "othersDescription": "Tests qui ne sont dans aucun dossier",
+      "count_one": "{{count}} test",
+      "count_many": "{{count}} tests",
+      "count_other": "{{count}} tests",
+      "back": "Retour aux dossiers",
+      "fallbackName": "Dossier"
     }
   },
   "card": {

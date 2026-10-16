@@ -152,6 +152,32 @@ const AssessmentSettings = () => {
                 </CardContent>
             </Card>
 
+            {/* Assessment folders (admin rail + learner folder cards) */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">{t('assessmentFolders.title')}</CardTitle>
+                    <CardDescription>{t('assessmentFolders.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between rounded-lg border p-4">
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                {t('assessmentFolders.enableLabel')}
+                            </Label>
+                            <p className="text-xs text-gray-500">
+                                {t('assessmentFolders.enableHint')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.assessmentFolders?.enabled === true}
+                            onCheckedChange={(checked) =>
+                                handleToggle('assessmentFolders', 'enabled', checked)
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Live test experience (tools, palette, mobile chrome) */}
             <ExamExperienceSettingsCard
                 settings={settings.examExperience ?? DEFAULT_ASSESSMENT_SETTINGS.examExperience}

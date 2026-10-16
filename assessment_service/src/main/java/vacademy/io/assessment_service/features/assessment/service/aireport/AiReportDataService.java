@@ -98,7 +98,7 @@ public class AiReportDataService {
 
         Structure structure = loadStructure(assessmentId);
         Map<String, StudentAnswer> answers = loadAnswers(attemptId);
-        ClassData klass = loadClass(assessmentId, instituteId, attemptId, userId, attempt.totalMarks());
+        ClassData klass = loadClass(assessmentId, instituteId, attemptId, userId, attempt.totalMarks(), attempt.timeSeconds());
 
         List<QuestionRow> questions = buildQuestionRows(structure, answers, klass);
         List<SectionRow> sections = buildSectionRows(structure, questions, klass);
@@ -331,8 +331,10 @@ public class AiReportDataService {
                      List<Double> others) {
     }
 
-    private ClassData loadClass(String assessmentId, String instituteId, String attemptId, String userId, Double ownMarks) {
+    private ClassData loadClass(String assessmentId, String instituteId, String attemptId, String userId, Double ownMarks,
+                                Long ownTime) {
         List<Double> others = new ArrayList<>();
+        List<double[]> otherPairs = new ArrayList<>(); // {marks, seconds (MAX_VALUE when unknown)}
         List<Long> times = new ArrayList<>();
         Map<String, QuestionStat> qStats = new HashMap<>();
         Map<String, SectionStat> sStats = new HashMap<>();
@@ -344,6 +346,7 @@ public class AiReportDataService {
                         if (userId.equals(rs.getString("user_id"))) return; // the student is added below, with THIS attempt
                         Double m = (Double) rs.getObject("total_marks", Double.class);
                         others.add(m == null ? 0.0 : m);
+                        otherPairs.add(new double[]{m == null ? 0.0 : m, t == null ? Double.MAX_VALUE : t});
                     }, assessmentId, instituteId);
 
             jdbcTemplate.query(LATEST_ATTEMPTS_CTE + """
@@ -376,10 +379,14 @@ public class AiReportDataService {
         double own = ownMarks == null ? 0.0 : ownMarks;
         List<Double> all = new ArrayList<>(others);
         all.add(own);
-        long above = others.stream().filter(m -> m > own).count();
-        long below = others.stream().filter(m -> m < own).count();
-        Integer rank = (int) above + 1;
-        Double percentile = others.isEmpty() ? null : 100.0 * below / all.size();
+        // Same rule as the rest of the platform (StudentAttemptRepository: DENSE_RANK over marks DESC,
+        // completion time ASC, nulls last), so the letter, charts, AI text and app all show one rank.
+        double ownT = ownTime == null ? Double.MAX_VALUE : ownTime;
+        long better = otherPairs.stream()
+                .filter(pr -> pr[0] > own || (pr[0] == own && pr[1] < ownT))
+                .map(pr -> pr[0] + "|" + pr[1]).distinct().count();
+        Integer rank = (int) better + 1;
+        Double percentile = others.isEmpty() ? null : 100.0 * (1 - (double) (rank - 1) / all.size());
         double avg = all.stream().mapToDouble(Double::doubleValue).average().orElse(own);
         double highest = all.stream().mapToDouble(Double::doubleValue).max().orElse(own);
         Long avgTime = times.isEmpty() ? null : Math.round(times.stream().mapToLong(Long::longValue).average().orElse(0));

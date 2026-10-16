@@ -15,7 +15,11 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
@@ -174,9 +178,27 @@ public class ApplicationSecurityConfig {
     @Autowired
     private CorsConfigurationSource corsConfigurationSource;
 
+    /**
+     * The public certificate verification document, which the learner portal
+     * shows in an iframe on the institute's own domain. Every other response
+     * keeps X-Frame-Options: DENY. The document sets its own CSP, which allows
+     * the framing and nothing else (see PublicCertificateVerificationController).
+     */
+    static final RequestMatcher VERIFICATION_DOCUMENT = request -> {
+        String uri = request.getRequestURI();
+        return uri != null
+                && uri.startsWith("/admin-core-service/open/v1/certificate/verify/")
+                && uri.endsWith("/document");
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.disable())
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                new NegatedRequestMatcher(VERIFICATION_DOCUMENT),
+                                new XFrameOptionsHeaderWriter(XFrameOptionsHeaderWriter.XFrameOptionsMode.DENY))))
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authz -> {

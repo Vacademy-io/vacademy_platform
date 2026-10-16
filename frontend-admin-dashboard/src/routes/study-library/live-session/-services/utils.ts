@@ -286,6 +286,12 @@ export interface LiveSessionReport {
     /** Exact seconds when the provider reports them (Vacademy Meet); null for Zoom. */
     providerTotalDurationSeconds?: number | null;
     feedbackDetails: string | null;
+    /** BATCH / USER = already in the institute; EXTERNAL_USER = signed up via the public form. */
+    sourceType?: string | null;
+    /** Batch the learner was scheduled through; null for guests and individually added learners. */
+    batchName?: string | null;
+    /** Form submit time (guests) or when the batch/learner was linked to the session. */
+    registeredAt?: string | number | null;
 }
 
 /** One instructor of a live session, as the detail endpoint returns them. */

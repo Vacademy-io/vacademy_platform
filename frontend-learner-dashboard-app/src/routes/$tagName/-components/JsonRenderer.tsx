@@ -239,7 +239,13 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     // Authored text in the visitor's language — the very same object as the
     // base props when there is no dictionary. Slot children are localized
     // when renderChild reaches them.
-    const props = localizeComponentProps(baseProps, dict);
+    const localizedProps = localizeComponentProps(baseProps, dict);
+    // Style-panel Background Color is painted on the wrapper, but these blocks
+    // paint their own opaque section (bg-catalogue-bg) on top of it and only
+    // honour props.backgroundColor — so the picked colour never showed. Hand
+    // it to the block when it has no colour of its own (mirror of the shell
+    // canvas adopting props.backgroundColor in ComponentStyleWrapper).
+    const props = withStyleBackground(type, localizedProps, component.style);
 
     switch (type) {
       case "header":
@@ -781,6 +787,28 @@ const isHexDark = (hex?: string): boolean => {
   const b = parseInt(raw.slice(4, 6), 16);
   // Rec. 601 relative luminance; < 0.55 reads as "dark".
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+};
+
+/** Blocks whose own section is opaque unless props.backgroundColor is set,
+ *  so a style-panel Background Color on the wrapper is never seen. Blocks
+ *  outside this list either let the wrapper show through already or give
+ *  props.backgroundColor extra meaning (hero drops its image, header and
+ *  footer have their own pickers) — they keep their current behaviour. */
+const STYLE_BG_TO_PROPS_TYPES = new Set([
+  'sectionHeading', 'faqSection', 'contactForm', 'announcementFeed',
+  'tabsAccordion', 'featureGrid', 'newsletterSignup', 'stepsProcess',
+]);
+
+/** Props with the style-panel Background Color handed to the block, when it
+ *  is a plain #rrggbb (what the picker writes, and what sectionText can read
+ *  for contrast) and the style paints no image or gradient over it. */
+const withStyleBackground = <P,>(type: string, props: P, style?: ComponentStyle): P => {
+  const styleBg = style?.backgroundColor;
+  if (!STYLE_BG_TO_PROPS_TYPES.has(type)) return props;
+  if (typeof styleBg !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(styleBg.trim())) return props;
+  if (style?.backgroundImage || style?.gradient || style?.backgroundLayers?.length) return props;
+  if ((props as { backgroundColor?: unknown } | undefined)?.backgroundColor) return props;
+  return { ...props, backgroundColor: styleBg.trim() };
 };
 
 /**

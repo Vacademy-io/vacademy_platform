@@ -935,6 +935,44 @@ export const isQuillContentEmpty = (content: string) => {
     return textOnly.length === 0;
 };
 
+/**
+ * The answers of a numeric question worth saving. An answer box the teacher left
+ * empty is null in the form; it must not reach the answer key. Every other value
+ * goes through untouched, exactly as before.
+ */
+export const usableNumericAnswers = (validAnswers?: unknown[] | null): number[] =>
+    (validAnswers ?? []).filter(
+        (answer) => answer !== null && answer !== undefined && answer !== ''
+    ) as number[];
+
+const hasNumericAnswer = (validAnswers?: unknown[] | null) =>
+    usableNumericAnswers(validAnswers).some((answer) => Number.isFinite(Number(answer)));
+
+/**
+ * Index of the first numeric question that would be saved with no answer, or -1.
+ * Saved like that, every learner's response to it is graded wrong.
+ *
+ * With `previous` (editing a saved paper) only questions that are new or whose
+ * answer the teacher changed count: a question already saved without an answer,
+ * and left alone, keeps saving exactly as it did.
+ */
+export const findNumericQuestionWithoutAnswer = (
+    questions: MyQuestion[] = [],
+    previous?: MyQuestion[]
+): number => {
+    const before = new Map((previous ?? []).map((question) => [question.questionId, question]));
+    return questions.findIndex((question) => {
+        if (question.questionType !== 'NUMERIC' && question.questionType !== 'CNUMERIC') {
+            return false;
+        }
+        if (hasNumericAnswer(question.validAnswers)) return false;
+        const saved = before.get(question.questionId);
+        return (
+            !saved || JSON.stringify(saved.validAnswers) !== JSON.stringify(question.validAnswers)
+        );
+    });
+};
+
 export function getEvaluationJSON(
     question: MyQuestion,
     correctOptionIds?: (string | null)[],
@@ -981,14 +1019,14 @@ export function getEvaluationJSON(
             return JSON.stringify({
                 type: 'NUMERIC',
                 data: {
-                    validAnswers,
+                    validAnswers: usableNumericAnswers(validAnswers),
                 },
             });
         case 'CNUMERIC':
             return JSON.stringify({
                 type: 'NUMERIC',
                 data: {
-                    validAnswers,
+                    validAnswers: usableNumericAnswers(validAnswers),
                 },
             });
         case 'ONE_WORD':

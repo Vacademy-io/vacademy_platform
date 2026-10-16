@@ -45,6 +45,7 @@
         "addTagFirst": "أضف وسمًا واحدًا على الأقل إلى هذا السؤال أولاً",
         "tagsApplied": "تم تطبيق {{tags}} على جميع {{questions}}",
         "updateSuccess": "تم تحديث ورقة الأسئلة بنجاح",
-        "incompleteQuestions": "بعض أسئلتك غير مكتملة أو تحتاج إلى انتباه!"
+        "incompleteQuestions": "بعض أسئلتك غير مكتملة أو تحتاج إلى انتباه!",
+        "numericAnswerMissing": "السؤال {{number}} يحتاج إلى إجابة صحيحة قبل الحفظ"
     }
 }

@@ -24,6 +24,7 @@ import {
     getIdBySubjectName,
     transformResponseDataToMyQuestionsSchema,
     getPPTViewTitle,
+    findNumericQuestionWithoutAnswer,
 } from '../-utils/helper';
 import {
     MyQuestion,
@@ -225,7 +226,7 @@ export function QuestionPaperTemplate({
                     isSelected: false,
                 },
             ],
-            validAnswers: [0],
+            validAnswers: [],
             subjectiveAnswerText: '',
             numericType: '',
             parentRichTextContent: null,
@@ -264,7 +265,29 @@ export function QuestionPaperTemplate({
         },
     });
 
+    // A numeric question saved without an answer grades every learner wrong, so stop
+    // on the first one and take the teacher to it. Only where the paper is known to be
+    // graded: surveys have no answer key, and the library and assignment editors do
+    // not say what the paper is for.
+    const stopOnMissingNumericAnswer = (
+        questions?: MyQuestionPaperFormInterface['questions'],
+        previous?: MyQuestionPaperFormInterface['questions']
+    ) => {
+        if (!examType || examType === 'SURVEY') return false;
+        const index = findNumericQuestionWithoutAnswer(questions, previous);
+        if (index === -1) return false;
+        setCurrentQuestionIndex(index);
+        toast.error(t('toasts.numericAnswerMissing', { number: index + 1 }), {
+            className: 'error-toast',
+            duration: 3000,
+        });
+        return true;
+    };
+
     const handleSaveClick = (values: MyQuestionPaperFormInterface) => {
+        if (stopOnMissingNumericAnswer(values.questions, previousQuestionPaperData?.questions)) {
+            return;
+        }
         const changedValues = {
             ...values,
             ...(values.yearClass !== 'N/A' && {
@@ -329,6 +352,7 @@ export function QuestionPaperTemplate({
 
     const handleTriggerForm = () => {
         form.trigger();
+        if (stopOnMissingNumericAnswer(form.getValues('questions') as MyQuestion[])) return;
 
         const errors = form.formState.errors;
         if (Object.values(errors).length > 0) {

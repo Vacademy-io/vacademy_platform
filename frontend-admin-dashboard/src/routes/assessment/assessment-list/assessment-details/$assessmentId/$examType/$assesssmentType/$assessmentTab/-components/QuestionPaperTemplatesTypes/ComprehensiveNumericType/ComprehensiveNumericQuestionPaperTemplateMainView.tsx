@@ -9,11 +9,14 @@ import SelectField from '@/components/design-system/select-field';
 import CustomInput from '@/components/design-system/custom-input';
 import { MainViewQuillEditor } from '@/components/quill/MainViewQuillEditor';
 import { QUESTION_TYPES, NUMERIC_TYPES } from '@/constants/dummy-data';
-import { MyInput } from '@/components/design-system/input';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SectionQuestionPaperFormProps } from '../../../-utils/assessment-question-paper';
 import { formatStructure } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    NumericAnswerInput,
+    answerSlots,
+} from '@/routes/assessment/question-papers/-components/NumericAnswerInput';
 
 export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
     form,
@@ -85,18 +88,6 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
             </div>
         );
     };
-
-    useEffect(() => {
-        const validAnswrs = form.getValues(
-            `sections.${selectedSectionIndex}.questions.${currentQuestionIndex}.validAnswers`
-        );
-        if (!validAnswrs) {
-            form.setValue(
-                `sections.${selectedSectionIndex}.questions.${currentQuestionIndex}.validAnswers`,
-                [0]
-            );
-        }
-    }, []);
 
     if (allQuestions.length === 0) {
         return (
@@ -238,44 +229,37 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
                         <FormItem className="w-full">
                             <FormControl>
                                 <div className="flex flex-row flex-wrap items-center gap-4">
-                                    {Array.isArray(field.value) &&
-                                        field.value.map((answer, index) => (
-                                            <div key={index} className="flex items-center gap-2">
-                                                {/* Input for each validAnswer */}
-                                                <MyInput
-                                                    input={answer.toString()}
-                                                    onChangeFunction={(e) => {
-                                                        const updatedAnswers = [
-                                                            ...(field.value ?? []),
-                                                        ];
-                                                        updatedAnswers[index] =
-                                                            parseFloat(e.target.value) || 0; // Ensure number
-                                                        field.onChange(updatedAnswers);
-                                                    }}
-                                                    inputType="number"
-                                                />
-                                                {/* Remove button for each answer */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        field.onChange(
-                                                            field.value?.filter(
-                                                                (_, i) => i !== index
-                                                            )
-                                                        );
-                                                    }}
-                                                >
-                                                    <X />
-                                                </button>
-                                            </div>
-                                        ))}
+                                    {answerSlots(field.value).map((answer, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            {/* Input for each validAnswer */}
+                                            <NumericAnswerInput
+                                                value={answer}
+                                                onChange={(value) => {
+                                                    const updatedAnswers = [...(field.value ?? [])];
+                                                    updatedAnswers[index] = value as number;
+                                                    field.onChange(updatedAnswers);
+                                                }}
+                                            />
+                                            {/* Remove button for each answer */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    field.onChange(
+                                                        field.value?.filter((_, i) => i !== index)
+                                                    );
+                                                }}
+                                            >
+                                                <X />
+                                            </button>
+                                        </div>
+                                    ))}
                                     {/* Add new answer */}
                                     <Button
                                         variant="outline"
                                         type="button"
                                         className="cursor-pointer"
                                         onClick={() => {
-                                            field.onChange([...(field.value || []), 0]);
+                                            field.onChange([...answerSlots(field.value), null]);
                                         }}
                                     >
                                         <Plus size={20} />

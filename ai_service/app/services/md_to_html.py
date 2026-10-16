@@ -69,13 +69,43 @@ def _parse_inline(text: str) -> str:
     return text
 
 
+def _display_math_end(lines: list[str], start: int) -> int | None:
+    """Index of the line that closes the display math opened at `start`, when
+    it does not close on its own line. MathPix writes a multi-line equation
+    ("\\begin{aligned} … \\end{aligned}") as "$$" / rows / "$$"; read line by
+    line, each row became a paragraph of raw LaTeX and the "$$" pair, split
+    across blocks, rendered nothing."""
+    line = lines[start]
+    if line.startswith("$$"):
+        if line.count("$$") % 2 == 0:
+            return None
+        close = "$$"
+    elif line.startswith("\\[") and "\\]" not in line:
+        close = "\\]"
+    else:
+        return None
+    for j in range(start + 1, len(lines)):
+        if close in lines[j]:
+            return j
+    return None
+
+
 def convert_markdown_to_html(markdown_text: str | None) -> str:
     if markdown_text is None:
         return ""
     html = [_HEAD]
-    for raw_line in markdown_text.splitlines():
-        line = raw_line.strip()
+    lines = [raw_line.strip() for raw_line in markdown_text.splitlines()]
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
         if not line:
+            continue
+        end = _display_math_end(lines, i - 1)
+        if end is not None:
+            body = "\n".join(l for l in lines[i - 1:end + 1] if l)
+            html.append(f'<div class="math-block">{body}</div>\n')
+            i = end + 1
             continue
         if line.startswith("##"):
             title = re.sub(r"^#+\s*", "", line)

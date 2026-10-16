@@ -85,6 +85,7 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
+import { useAutoScrollRail } from "../-utils/use-auto-scroll-rail";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
 // other page (and the logged-in app, which bundles this renderer) skips it.
@@ -1850,8 +1851,15 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout, gateAudienceId = '', gateTitle, gateAll = false,
+  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs,
 }) => {
+  // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
+  const railRef = React.useRef<HTMLDivElement>(null);
+  useAutoScrollRail(railRef, {
+    enabled: layout === 'carousel' && !!autoScroll,
+    intervalMs: autoScrollIntervalMs,
+    itemCount: features.length,
+  });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
   const cardClass =
@@ -1985,12 +1993,30 @@ const FeatureGridRenderer: React.FC<any> = ({
         <div className="catalogue-shell">
           {headerText && <h2 className={`mb-2 catalogue-h2 ${headLeft ? '' : 'text-center'} ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead mb-8 ${headLeft ? '' : 'catalogue-measure text-center'} ${txt.muted}`}>{subheading}</p>}
-          <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
+          {layout !== 'carousel' && (
+            <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
+              {features.map((f: any, i: number) => (
+                <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+              ))}
+            </div>
+          )}
+        </div>
+        {layout === 'carousel' && (
+          // Same full-bleed rail as the photo style: `columns` cards per view,
+          // the next one peeking in, swipe / snap native.
+          <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
             {features.map((f: any, i: number) => (
-              <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+              <div
+                key={i}
+                className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
+                // Width per card follows the authored column count — a computed value, not a token.
+                style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
+              >
+                <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+              </div>
             ))}
           </div>
-        </div>
+        )}
       </section>
     );
   }
@@ -2085,7 +2111,7 @@ const FeatureGridRenderer: React.FC<any> = ({
           // Full-bleed rail: the shell would clip the edge-to-edge scroll, and
           // scroll-padding (baked into catalogue-carousel-bleed) is what keeps
           // snap alignment honest against the gutter.
-          <div className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
+          <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
             {cards}
           </div>
         ) : (

@@ -4896,6 +4896,38 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 // Announcement Feed Editor
+/** Auto-advance for a horizontal card row (featureGrid / productPageOffer 'carousel'). */
+const AutoScrollControls = ({ props, updateProp }: { props: any; updateProp: (key: string, value: any) => void }) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    return (
+        <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">{t('autoScroll.label')}</Label>
+                <Switch checked={!!props.autoScroll} onCheckedChange={(c) => updateProp('autoScroll', c || undefined)} />
+            </div>
+            {props.autoScroll && (
+                <div className="flex items-center gap-2">
+                    <Input
+                        type="number"
+                        min={1.5}
+                        max={30}
+                        step={0.5}
+                        className="w-24"
+                        value={(props.autoScrollIntervalMs || 3000) / 1000}
+                        onChange={(e) => {
+                            // The live rail floors the interval at 1.5s.
+                            const s = Math.min(30, Math.max(1.5, Math.round((Number(e.target.value) || 3) * 2) / 2));
+                            updateProp('autoScrollIntervalMs', s * 1000);
+                        }}
+                    />
+                    <span className="text-caption text-gray-500">{t('autoScroll.seconds')}</span>
+                </div>
+            )}
+            <p className="text-caption text-gray-400">{t('autoScroll.hint')}</p>
+        </div>
+    );
+};
+
 /**
  * Blog section. Only the LOOK of the list is authored here — the posts
  * themselves are rows, not page JSON, written in the blog manager dialog
@@ -5561,6 +5593,8 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                         </p>
                     </div>
                 )}
+
+                {(props.layout || 'grid') === 'carousel' && <AutoScrollControls props={props} updateProp={updateProp} />}
 
                 <div className="flex items-center justify-between">
                     <Label className="text-xs">{t('productPageOffer.searchBox')}</Label>
@@ -7264,11 +7298,13 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
-                {props.style === 'photo' && (
+                {(props.style === 'photo' || props.style === 'resource') && (
                     <div className="mt-1 space-y-1">
-                        <p className="text-caption text-gray-400">
-                            {t('featureGrid.photoStyleHint')}
-                        </p>
+                        {props.style === 'photo' && (
+                            <p className="text-caption text-gray-400">
+                                {t('featureGrid.photoStyleHint')}
+                            </p>
+                        )}
                         <label className="flex items-center gap-2 text-caption text-gray-600">
                             <input
                                 type="checkbox"
@@ -7277,6 +7313,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                             />
                             {t('featureGrid.swipeableRow')}
                         </label>
+                        {props.layout === 'carousel' && <AutoScrollControls props={props} updateProp={updateProp} />}
                     </div>
                 )}
                 {props.style === 'panel' && (

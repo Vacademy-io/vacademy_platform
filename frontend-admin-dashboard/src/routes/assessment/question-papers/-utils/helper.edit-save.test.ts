@@ -6,7 +6,7 @@ vi.mock('@/lib/auth/sessionUtility', () => ({
 }));
 vi.mock('@/constants/helper', () => ({ getInstituteId: () => 'inst-1' }));
 
-import { convertQuestionsDataToResponse } from './helper';
+import { convertQuestionsDataToResponse, usableNumericAnswers } from './helper';
 import type { MyQuestion } from '@/types/assessments/question-paper-form';
 
 const blank = (n: number) => Array(n).fill({ id: '', name: '', isSelected: false });
@@ -127,5 +127,25 @@ describe('convertQuestionsDataToResponse (question-paper edit save)', () => {
         expect(payload!.id).toBeNull();
         expect(payload!.options.map((o) => o.preview_id)).toEqual([0, 1]);
         expect(evaluation(payload!).data.correctOptionIds).toEqual(['1']);
+    });
+});
+
+describe('numeric answers left empty in the editor', () => {
+    it('drops empty boxes from the saved answer key instead of saving null or 0', () => {
+        const [payload] = convertQuestionsDataToResponse(
+            [
+                question({
+                    questionType: 'NUMERIC',
+                    validAnswers: [275, null, 274.99] as unknown as number[],
+                }),
+            ],
+            'updated'
+        );
+        expect(JSON.parse(payload!.auto_evaluation_json).data.validAnswers).toEqual([275, 274.99]);
+    });
+
+    it('keeps 0 when 0 is the typed answer, and passes other values through untouched', () => {
+        expect(usableNumericAnswers([0])).toEqual([0]);
+        expect(usableNumericAnswers(['2.5', '', null, undefined])).toEqual(['2.5']);
     });
 });

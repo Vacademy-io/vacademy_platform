@@ -16,6 +16,7 @@ import { useState, useEffect } from 'react';
 import { useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
+import { NumericAnswerInput, answerSlots } from '../../NumericAnswerInput';
 
 export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
     form,
@@ -40,7 +41,7 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
         );
     }
 
-    const { control, getValues, trigger, watch, setValue } = form;
+    const { control, getValues, trigger, watch } = form;
 
     const numericType = watch(`questions.${currentQuestionIndex}.numericType`) || '';
     const validAnswers = watch(`questions.${currentQuestionIndex}.validAnswers`) || [0];
@@ -59,17 +60,6 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
     const allQuestions = getValues('questions') || [];
     const tags = getValues(`questions.${currentQuestionIndex}.tags`) || [];
     const level = getValues(`questions.${currentQuestionIndex}.level`) || '';
-
-    useEffect(() => {
-        try {
-            const validAnswers = getValues(`questions.${currentQuestionIndex}.validAnswers`);
-            if (!validAnswers) {
-                setValue(`questions.${currentQuestionIndex}.validAnswers`, [0]);
-            }
-        } catch (error) {
-            console.warn('Setting default valid answers failed:', error);
-        }
-    }, [currentQuestionIndex]);
 
     if (allQuestions.length === 0) {
         return (
@@ -206,45 +196,41 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
                         <FormItem className="w-full">
                             <FormControl>
                                 <div className="flex flex-row flex-wrap items-center gap-4">
-                                    {Array.isArray(field.value) &&
-                                        field.value.map((answer, index) => (
-                                            <div key={index} className="flex items-center gap-2">
-                                                {/* Input for each validAnswer */}
-                                                <Input
-                                                    type="number"
-                                                    value={answer.toString()}
-                                                    onChange={(e) => {
-                                                        const updatedAnswers = [
-                                                            ...(field.value ?? []),
-                                                        ];
-                                                        updatedAnswers[index] =
-                                                            parseFloat(e.target.value) || 0; // Ensure number
-                                                        field.onChange(updatedAnswers);
-                                                    }}
-                                                    className="w-20"
-                                                />
-                                                {/* Remove button for each answer */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        field.onChange(
-                                                            field.value?.filter(
-                                                                (_, i) => i !== index
-                                                            )
-                                                        );
-                                                    }}
-                                                >
-                                                    <X />
-                                                </button>
-                                            </div>
-                                        ))}
+                                    {answerSlots(field.value).map((answer, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            {/* Input for each validAnswer */}
+                                            <NumericAnswerInput
+                                                value={answer}
+                                                onChange={(value) => {
+                                                    const updatedAnswers = [
+                                                        ...(field.value ?? []),
+                                                    ];
+                                                    updatedAnswers[index] = value as number;
+                                                    field.onChange(updatedAnswers);
+                                                }}
+                                            />
+                                            {/* Remove button for each answer */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    field.onChange(
+                                                        field.value?.filter(
+                                                            (_, i) => i !== index
+                                                        )
+                                                    );
+                                                }}
+                                            >
+                                                <X />
+                                            </button>
+                                        </div>
+                                    ))}
                                     {/* Add new answer */}
                                     <Button
                                         variant="outline"
                                         type="button"
                                         className="cursor-pointer"
                                         onClick={() => {
-                                            field.onChange([...(field.value || []), 0]);
+                                            field.onChange([...answerSlots(field.value), null]);
                                         }}
                                     >
                                         <Plus size={20} />

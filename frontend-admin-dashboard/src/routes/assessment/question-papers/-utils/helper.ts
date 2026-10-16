@@ -935,6 +935,16 @@ export const isQuillContentEmpty = (content: string) => {
     return textOnly.length === 0;
 };
 
+/**
+ * The answers of a numeric question worth saving. An answer box the teacher left
+ * empty is null in the form; it must not reach the answer key. Every other value
+ * goes through untouched, exactly as before.
+ */
+export const usableNumericAnswers = (validAnswers?: unknown[] | null): number[] =>
+    (validAnswers ?? []).filter(
+        (answer) => answer !== null && answer !== undefined && answer !== ''
+    ) as number[];
+
 export function getEvaluationJSON(
     question: MyQuestion,
     correctOptionIds?: (string | null)[],
@@ -981,14 +991,14 @@ export function getEvaluationJSON(
             return JSON.stringify({
                 type: 'NUMERIC',
                 data: {
-                    validAnswers,
+                    validAnswers: usableNumericAnswers(validAnswers),
                 },
             });
         case 'CNUMERIC':
             return JSON.stringify({
                 type: 'NUMERIC',
                 data: {
-                    validAnswers,
+                    validAnswers: usableNumericAnswers(validAnswers),
                 },
             });
         case 'ONE_WORD':

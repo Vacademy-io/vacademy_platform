@@ -41,7 +41,15 @@ const SKIP_TAGS = new Set(['CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA']);
 function balanceBraces(tex: string): string {
     let depth = 0;
     let out = '';
-    for (const ch of tex) {
+    for (let i = 0; i < tex.length; i++) {
+        const ch = tex[i];
+        // `\{` / `\}` are literal braces (`\left\{ … \right.`), and `\\` is a
+        // row break whose second backslash must not escape the next brace.
+        if (ch === '\\') {
+            out += ch + (tex[i + 1] ?? '');
+            i++;
+            continue;
+        }
         if (ch === '{') {
             depth++;
         } else if (ch === '}') {

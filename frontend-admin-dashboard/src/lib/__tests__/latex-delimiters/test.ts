@@ -77,4 +77,14 @@ describe('renderLatexDelimiters', () => {
         expect(renderLatexDelimiters('')).toBe('');
         expect(renderLatexDelimiters(null)).toBe('');
     });
+
+    it('leaves escaped braces alone (\\left\\{ … \\right.)', () => {
+        const tex = String.raw`g(x)=\left\{\begin{array}{ll}k \sqrt{x+1}, & 0 \leq x \leq 3 \\ mx+2, & 3<x \leq 5\end{array}\right.`;
+        // As stored by the paper converter: "<" inside the formula is "&lt;".
+        const out = renderLatexDelimiters(
+            `<p>If the function, $${tex.replace('<', '&lt;')}$ is differentiable</p>`
+        );
+        expect(latexOf(out)).toEqual([`math-inline:${tex}`]);
+        expect(out).not.toContain('katex-error');
+    });
 });

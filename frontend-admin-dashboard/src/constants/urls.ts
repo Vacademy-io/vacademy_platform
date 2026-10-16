@@ -416,6 +416,10 @@ export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/fil
 export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
 
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+// Different phones and real emails the person behind a lead enquired with ("Other contact
+// details" on the lead Overview), e.g. a repeat that came in with a new phone or email.
+export const GET_LEAD_ENQUIRY_CONTACTS = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/enquiry-contacts`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
 export const SET_MANUAL_LEAD_SCORE = (responseId: string) =>

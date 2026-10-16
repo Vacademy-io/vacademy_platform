@@ -20,7 +20,9 @@
         "sampleCreated": "Sample template created — opening editor…",
         "generateSampleFailed": "Failed to generate sample template. Please try again.",
         "deleteSuccess": "Template deleted successfully!",
-        "deleteFailed": "Failed to delete template. Please try again."
+        "deleteFailed": "Failed to delete template. Please try again.",
+        "defaultSet": "Default template updated",
+        "defaultSetFailed": "Could not set the default template. Please try again."
     },
     "loading": "Loading templates…",
     "emptyState": {
@@ -39,8 +41,11 @@
         "actions": {
             "preview": "Preview",
             "edit": "Edit",
-            "delete": "Delete"
-        }
+            "delete": "Delete",
+            "setDefault": "Set as default"
+        },
+        "defaultBadge": "Default",
+        "defaultBadgeTitle": "Used for every new invoice"
     },
     "pagination": {
         "templateCount_one": "{{count}} template",

@@ -15,6 +15,9 @@ export interface CardResultInput {
   report_release_status?: string | null;
 }
 
+/** Result types whose report stays hidden until the admin presses Release Result. */
+const HELD_UNTIL_RELEASE_RESULT_TYPES = ["MANUAL", "NO_AUTO_RELEASE"];
+
 export const surveyCardState = (
   info: CardResultInput,
   isPast: boolean,
@@ -23,10 +26,11 @@ export const surveyCardState = (
   const isSurvey = info.play_mode === "SURVEY";
   const attempted = isPast && usedAttempts > 0;
   // PENDING = held for a teacher on any result type (an uploaded copy, or typed
-  // answers the AI is grading); MANUAL waits for RELEASED as before.
+  // answers the AI is grading); MANUAL and NO_AUTO_RELEASE (auto-marked, but the
+  // admin releases by hand) wait for RELEASED.
   const held =
     info.report_release_status === "PENDING" ||
-    (info.result_type === "MANUAL" &&
+    (HELD_UNTIL_RELEASE_RESULT_TYPES.includes(info.result_type ?? "") &&
       info.report_release_status !== "RELEASED");
 
   return {

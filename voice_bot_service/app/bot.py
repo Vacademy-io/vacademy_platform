@@ -88,6 +88,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         LLM_BRIDGE,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
+from .agent_domain import is_general_agent
 from .ambience import AmbienceDucker
 from .voice_eq import build_voice_eq, make_voice_eq_processor
 from .prosody import build_prosody_shaper, make_prosody_processor
@@ -200,17 +201,22 @@ def _child_word(text: str) -> str:
     return "your child"
 
 
-def fill_template_slots(text: str):
+def fill_template_slots(text: str, child_slots: bool = True):
     """(text, n): name-like slots become "the child" in the reply's language
     (Marathi takes the oblique मुला- before a postposition: "मुलाच्या"), any
-    other slot is dropped — anything but reading the bracket aloud."""
+    other slot is dropped — anything but reading the bracket aloud.
+
+    child_slots=False (a non-education agent, app/agent_domain): every slot is
+    dropped. "<name>" there is the person on the line or a customer, and "your
+    child" would put a child into a call about something else entirely — the
+    AAIBUZZ/IRPL failure (calls c43e9ce7, e6cb5f47, 2026-10-16) said aloud."""
     n = 0
 
     def _rep(m):
         nonlocal n
         n += 1
         slot = m.group(1).strip()
-        if "name" in slot or slot in ("child", "student", "beta", "bachcha"):
+        if child_slots and ("name" in slot or slot in ("child", "student", "beta", "bachcha")):
             return _child_word(text)
         return ""
     out = _TEMPLATE_SLOT_RE.sub(_rep, text)
@@ -2364,9 +2370,12 @@ class NoRepeatGate(FrameProcessor):
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
                  request_next_step=None, drop_stale_bridge=None, max_sentences=None,
                  max_chars=None, ending=None, primary_errored_since=None,
-                 caller_turn_pending=None):
+                 caller_turn_pending=None, child_slots=True):
         super().__init__()
         self._enabled = enabled or (lambda: True)
+        # False for a non-education agent: a copied "<name>" slot is dropped,
+        # never spoken as "your child" (fill_template_slots).
+        self._child_slots = child_slots
         # (t) -> did the waterfall's primary LLM error at or after t, with a
         # fallback to take the turn? Then an empty reply is the failure, not the
         # model saying nothing — the fallback's re-run answers it.
@@ -2951,7 +2960,7 @@ class NoRepeatGate(FrameProcessor):
                 if self._diag is not None:
                     self._diag.bump("alternatives_collapsed", alts)
         if "<" in text:
-            text, slots = fill_template_slots(text)
+            text, slots = fill_template_slots(text, self._child_slots)
             if slots:
                 logger.info("no-repeat: filled %d template slot(s) the model copied from "
                             "the prompt -> %r", slots, text.strip()[:60])
@@ -4374,6 +4383,10 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
 # a fixed, bot-authored line like the farewells and the handbacks.
 TRANSFER_FAIL_CLOSING = ("Mujhe abhi connect karne mein dikkat aa rahi hai — hamare "
                          "counsellor aapko jald call karenge. Dhanyavaad!")
+# The same line for a non-education agent (app/agent_domain): "counsellor" is
+# an education word, and promising one is what an edtech caller would say.
+TRANSFER_FAIL_CLOSING_GENERAL = ("Mujhe abhi connect karne mein dikkat aa rahi hai — "
+                                 "hamari team aapko jald call karegi. Dhanyavaad!")
 
 
 class SentinelGate(FrameProcessor):
@@ -5495,6 +5508,12 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     gender = _voice_gender(_agent_voice(agent) or _default_voice_for(agent))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
     now_line = _now_line(context)
+    # A non-education agent gets the same rules with industry-neutral examples
+    # plus grounding_rule; an education (or blank) agent's prompt stays byte-
+    # identical. AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16): a thin
+    # generic script, and the bot sold "learning programs for children" and
+    # booked a demo, both taken from the examples below. See app/agent_domain.
+    general = is_general_agent(agent)
 
     if gender == "female":
         gender_line = (
@@ -5590,7 +5609,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "1) NEVER repeat a sentence you have already said. If the caller asks the same thing "
         "again, your previous answer FAILED — do NOT say it again. Acknowledge briefly ('Sorry, "
         "main clearly bata deti hoon —') and answer the LITERAL question they asked, even if it is "
-        "outside your script. You may steer toward your goal (demo/next step) at most ONCE per "
+        "outside your script. You may steer toward "
+        + ("your next step" if general else "your goal (demo/next step)")
+        + " at most ONCE per "
         "topic; if they push again, ANSWER the question instead of steering.\n"
         "2) ANSWER direct questions directly FIRST, then invite the next step. Never stonewall or "
         "dodge (never say things like 'their strategy is different' to avoid answering). If you "
@@ -5617,6 +5638,41 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "already asked, and never repeat any sentence verbatim; if you must clarify, rephrase "
         "it in under 8 words."
     )
+    # GENERAL agents only (empty for education agents). AAIBUZZ/IRPL calls
+    # c43e9ce7, e6cb5f47 (2026-10-16): the script said "briefly explain why you
+    # are calling" and never said why, or what AAIBUZZ sells; the model made up
+    # an edtech company and booked a 5 PM demo. Its own "never invent prices,
+    # dates or facts" line did not stop it: a whole product is not a "fact" to
+    # a model. So this names exactly what may not be made up, and where it may
+    # come from. Unconditional for GENERAL agents in BOTH prompt shapes (an
+    # authored prompt does not get non_negotiable — see below). A booking page
+    # (agent.bookingEnabled, sent by admin_core) is the platform offering a
+    # meeting, so it lifts the meeting ban.
+    grounding_rule = ""
+    if general:
+        _offers_meeting = bool(agent.get("bookingEnabled"))
+        grounding_rule = (
+            "GROUNDING — NEVER INVENT YOUR BUSINESS (this overrides every example in these "
+            "rules): who your company is, what it sells or does, any product, service, offer, "
+            "price, fee, discount, date, timing, schedule or place, and the reason for this call "
+            "may come ONLY from your instructions above and from the details about this person "
+            "given in these rules (what they filled in, when and where they enquired). Never "
+            "guess what industry your company is in, and never make up a product, a programme, "
+            "a feature, a benefit or a customer story: if your instructions do not say it, you "
+            "do not know it. When you say why you are calling, give only the reason your "
+            "instructions or this person's enquiry details give. If the caller asks something "
+            "your instructions do not cover, say honestly, in the caller's language, that a "
+            "colleague will share those details with them — never fill the gap with a guess.\n"
+            "NEVER OFFER WHAT YOUR INSTRUCTIONS DO NOT OFFER: "
+            + ("you may offer to book a meeting with the team at a time the caller chooses; "
+               "never offer or book a demo, trial or visit unless your instructions above "
+               "offer one."
+               if _offers_meeting else
+               "never offer, propose or book a demo, meeting, appointment, visit, trial or a "
+               "time slot for a call back unless your instructions above offer one.")
+            + " If the caller asks you to call them back later, you may note the time they "
+            "give, as your instructions allow."
+        )
 
     prompt = _fill_placeholders(agent.get("systemPrompt") or "", context, sink=sink)
 
@@ -5636,7 +5692,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "Indian-language word the caller used, keep it romanized. ONE exception: if the "
             "caller has asked you to speak Hindi and your instructions let you switch, write "
             "every Hindi sentence in DEVANAGARI (हिंदी लिपि), keeping English business words in "
-            "English letters (demo, link, WhatsApp) — NEVER write Hindi in Latin letters like "
+            "English letters ("
+            + ("link, WhatsApp, plan" if general else "demo, link, WhatsApp")
+            + ") — NEVER write Hindi in Latin letters like "
             "'main aapko batati hoon'; the voice cannot pronounce romanized Hindi."
         )
     elif is_english:
@@ -5645,6 +5703,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "Indian-language word the caller used, keep it romanized in Latin letters — never "
             "switch to Devanagari or any Indic script."
         )
+    elif general:
+        # Same rule, without the demo booking as the worked example.
+        script_rule = (
+            "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+            "words in English letters (call, details, service, WhatsApp, offer, plan, confirm, link). "
+            "So write 'क्या अभी दो minute बात करना convenient रहेगा?' — NOT romanized 'kya abhi do "
+            "minute baat karna convenient rahega?'. NEVER write Hindi words in Latin letters."
+        )
     else:
         script_rule = (
             "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
@@ -5652,15 +5718,22 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
             "deti hoon'. NEVER write Hindi words in Latin letters."
         )
+    if not is_english:
         # Rumik reads Devanagari-transliterated English as gibberish — live call
         # 8e1e00ad: the model wrote 'लाइव क्लासेस' and the caller heard 'लव असेस'
         # (founder: "it pronounced many words poorly"). Sarvam bulbul handles
         # either script, so this stays Rumik-only to leave legacy agents alone.
         if _agent_tts_model(agent) == "rumik":
             script_rule += (
-                "\n- EVERY English-origin word — product and class names included — must be in "
-                "English letters, never Devanagari transliteration: write 'Live Classes', "
-                "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
+                "\n- EVERY English-origin word — product and "
+                + ("plan" if general else "class")
+                + " names included — must be in "
+                "English letters, never Devanagari transliteration: write "
+                + ("'Premium Plan', 'Service', 'Support Team' — NEVER 'प्रीमियम प्लान', 'सर्विस'."
+                   if general else
+                   "'Live Classes', 'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', "
+                   "'असेसमेंट'.")
+                + " Devanagari is "
                 "for Hindi words ONLY; if a word is English, spell it in English."
             )
 
@@ -5681,12 +5754,14 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             script_rule += (
                 "\n- SAY A RECURRING LINE THE SAME WAY EVERY TIME — same words, same "
                 "order, same spelling. Three things drift and must not:"
-                "\n  * the student's NAME is always in DEVANAGARI — रमन, never Raman; "
+                "\n  * the "
+                + ("person's" if general else "student's")
+                + " NAME is always in DEVANAGARI — रमन, never Raman; "
                 "आर्यन, never Aryan. In this conversation the name is a Hindi word, not an "
                 "English one."
-                "\n  * an English word is never in Devanagari — write 'class', never "
-                "'क्लास'."
-                "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
+                "\n  * an English word is never in Devanagari — write "
+                + ("'plan', never 'प्लान'." if general else "'class', never 'क्लास'.")
+                + "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
                 "Never add one to a line that does not already open with it."
             )
 
@@ -5712,13 +5787,31 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "score किया (never अंक प्राप्त किए). If a word would sound odd from a "
         "shopkeeper or a parent on a phone call, do not use it."
     )
+    if general and not is_english:
+        # The same lesson in a non-education agent's words: the list above is a
+        # counsellor's vocabulary (marks, fees, scholarship, parents) and it
+        # handed AAIBUZZ an education product to talk about (calls c43e9ce7,
+        # e6cb5f47, 2026-10-16). Everyday business words, same textbook traps.
+        plain_hindi_rule = (
+            "SPEAK PHONE HINDI, NOT TEXTBOOK HINDI. Use the words a real person says out "
+            "loud on a phone call. Where the everyday word IS English, use the English "
+            "word — that is how people actually speak; it is not a mistake. Say: details "
+            "(never विवरण), enquiry (never पूछताछ), process (never प्रक्रिया), tracking "
+            "(never निगरानी), problem/difficulty (never कठिनाई), structured (never "
+            "संरचित), suitable / सही रहेगा (never उपयुक्त), guidance (never मार्गदर्शन), "
+            "available (never उपलब्ध), payment (never भुगतान), charges (never शुल्क), "
+            "option (never विकल्प). If a word would sound odd from a shopkeeper or a "
+            "customer on a phone call, do not use it."
+        )
     # The caller HEARS every character — markdown becomes spoken garbage (a live call
     # read out its own bullet list). And a short first clause reaches the ear sooner
     # (TTS synthesizes the first chunk while the rest streams).
     plain_speech_rule = (
         "- Speak plain text only: NEVER output markdown — no *, #, bullets, numbered lists or "
         "headings. No stage directions or parentheticals. Only words meant to be heard.\n"
-        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute demo' (not "
+        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute "
+        + ("call" if general else "demo")
+        + "' (not "
         "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
         "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
@@ -5743,8 +5836,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "allowed at most one reply in five. The detail, and the one question if any, "
         "come in the sentences after it. When the caller has just ANSWERED you, that "
         "first sentence is your NEXT step — never their answer in other words "
-        "(\u2018It\u2019s all offline right now.\u2019, \u2018So you\u2019re only doing offline classes.\u2019 "
-        "are both wrong) and never a yes/no check of it."
+        + ("(\u2018It\u2019s all manual right now.\u2019, \u2018So you\u2019re only doing it by hand.\u2019 "
+           if general else
+           "(\u2018It\u2019s all offline right now.\u2019, \u2018So you\u2019re only doing offline classes.\u2019 ")
+        + "are both wrong) and never a yes/no check of it."
         if get_settings().fast_opener_enabled else
         "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
         "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
@@ -5770,6 +5865,8 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "what they just said; repeating it wastes their time and sounds like a machine "
         "reading a form. Simply USE the answer in your next line."
         + ("" if is_english else
+           " GALAT: ‘ओके, आप अभी Pune में हैं, तो आपको ये कब तक "
+           "चाहिए?’ SAHI: ‘आपको ये कब तक चाहिए?’" if general else
            " GALAT: ‘ओके, सुबोध अभी "
            "आठवीं क्लास में "
            "है, तो लास्ट exam में "
@@ -5778,8 +5875,12 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
            "marks आए थे?’")
         + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
         "and read a booked day and time back once. Everything else, never. Do not turn "
-        "their answer into a confirmation question either (\u2018No online classes at all "
-        "then?\u2019 after they said it is offline): one answer, one acknowledgment at most, "
+        "their answer into a confirmation question either "
+        + ("(\u2018Nothing online at all then?\u2019 after they said it is all offline)"
+           if general else
+           "(\u2018No online classes at all "
+           "then?\u2019 after they said it is offline)")
+        + ": one answer, one acknowledgment at most, "
         "then move on — if the answer means this is not for them, say so and close."
     )
     # Founder, 2026-09-08, after live-testing the yoga agent: "it's asking questions
@@ -5789,6 +5890,18 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # of assumption or reason reads as conversation. One clause only — cushions are
     # exactly the place models balloon a turn.
     warm_question_rule = (
+        # Same three cushions with no industry in them: the live-classes and
+        # members examples read as "this is an education/fitness business" to an
+        # agent whose script never says what it is (AAIBUZZ, 2026-10-16).
+        "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
+        "('How many people work with you?'). Cushion it with ONE short clause first, in one of "
+        "three ways, then ask: a soft everyday assumption ('You'd be handling most of this "
+        "yourself these days, I suppose — is that right?'); the reason you're asking ('Just so "
+        "I only tell you what's relevant — what matters most to you here?'); or their own last "
+        "answer ('Since you said timing is the main concern — what would suit you better?'). "
+        "ONE clause of cushion, ONE question, then stop. Direct is still fine for tiny "
+        "follow-ups ('And on weekends?')."
+        if general and get_settings().warm_questions_enabled else
         "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
         "('Do you take live classes?'). Cushion it with ONE short clause first, in one of "
         "three ways, then ask: a soft everyday assumption ('You'd be running your sessions "
@@ -5815,8 +5928,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     name_sanity_rule = (
         "- NEVER say 'Mr.' or 'Ms.' with nothing (or a non-name) after it, and never invent a "
         "surname. If you do NOT have the person's real name — it is blank, a placeholder, the "
-        "word 'hello', or looks like a company/program/list ('Robotics Programs for Schools', "
-        "'AI and Machine Learning') — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
+        "word 'hello', or looks like a company/program/list ("
+        + ("'Mumbai Leads March', 'Website Enquiries List'" if general else
+           "'Robotics Programs for Schools', "
+           "'AI and Machine Learning'")
+        + ") — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
         "produces a broken 'Mr. Hello' or a dangling 'Mr.'. Instead ask warmly 'May I know who "
         "I'm speaking with?' or confirm the organisation ('Am I speaking with someone from "
         "<org>?'). Only use 'Mr./Ms. <surname>' when you actually have a real surname."
@@ -5842,7 +5958,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "Break any long scripted passage into short turns (2-3 sentences), pausing for "
         "the caller between them."
     )
+    # GENERAL agents: the same drive, aimed at the next step the SCRIPT offers.
+    # The education version names a demo three times and gives a booking line
+    # to copy; AAIBUZZ, whose script offers no demo, proposed one five times and
+    # booked it (call e6cb5f47, 2026-10-16).
     goal_drive_rule = (
+        "- SELL WITH INTENT — you are a sharp, warm caller working toward the goal your "
+        "instructions set, NOT a passive form-filler. Tie what you say to something the caller "
+        "actually said (a need, what they use today, their size) and lead with ONE crisp benefit "
+        "your instructions give you, never a feature list.\n"
+        "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
+        "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
+        "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
+        "value + the next step your instructions offer. Example — if they say 'email me the "
+        "details', reply: 'Happy to — may I ask one quick thing first, so what reaches you "
+        "actually fits?' Make ONE genuine, specific attempt like this. Only if they still "
+        "decline do you take the email or a callback time gracefully and thank them.\n"
+        "- CLOSE CONCRETELY: a vague acknowledgment ('okay', 'thanks', 'theek hai') is NOT a "
+        "confirmation — when your instructions have you book a time, propose two specific "
+        "slots, get ONE explicitly confirmed (exact day + time), and confirm the contact channel "
+        "(read a number back digit by digit). Never announce a meeting or a call as scheduled "
+        "unless the caller named or accepted a specific day and time."
+    ) if general else (
         "- SELL WITH INTENT — you are a sharp, warm salesperson working toward a goal "
         "(usually a short demo or meeting), NOT a passive form-filler. Tie your pitch to "
         "something the caller actually said (a pain, a tool they already use, their size) "
@@ -5908,8 +6045,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     delivery_rule = (
         "- SPEAK, DON'T READ. Even, flat sentences sound like a machine reading a "
         "script. Give each reply ONE moment of emphasis: put '...' just before the "
-        "phrase that matters most ('You set your timings once... and every morning the "
-        "sessions just appear'), and when there is genuine warmth or good news, let ONE "
+        "phrase that matters most ("
+        + ("'The main thing... it is entirely your choice'" if general else
+           "'You set your timings once... and every morning the "
+           "sessions just appear'")
+        + "), and when there is genuine warmth or good news, let ONE "
         "sentence end with '!' — never more than one, never on a question. Vary the "
         "rhythm: a short sentence next to a longer one, not two of the same length. "
         "These marks are for your voice only: never end a reply with '...', never write "
@@ -5925,10 +6065,17 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # of defence.
     reply_shape_rule = (
         "- AFTER THE CALLER ANSWERS, YOUR FIRST SENTENCE IS NEVER THEIR ANSWER IN OTHER "
-        "WORDS. This overrides any example in the script above. Wrong, all heard on real "
-        "calls: \u2018Okay, so it\u2019s all offline right now.\u2019 / \u2018So you\u2019re not running any "
-        "online classes.\u2019 / \u2018You\u2019re maintaining an Excel sheet.\u2019 / \u2018Okay, so they do "
-        "UPI.\u2019 / \u2018No online classes at all then?\u2019 Right: go straight to the next "
+        "WORDS. This overrides any example in the script above. "
+        + ("Wrong, the shape heard on real calls: \u2018Okay, so it\u2019s all offline right "
+           "now.\u2019 / \u2018So you\u2019re not doing any of it online.\u2019 / \u2018You\u2019re "
+           "maintaining an Excel sheet.\u2019 / \u2018Okay, so they do UPI.\u2019 / \u2018Nothing "
+           "online at all then?\u2019"
+           if general else
+           "Wrong, all heard on real "
+           "calls: \u2018Okay, so it\u2019s all offline right now.\u2019 / \u2018So you\u2019re not running any "
+           "online classes.\u2019 / \u2018You\u2019re maintaining an Excel sheet.\u2019 / \u2018Okay, so they do "
+           "UPI.\u2019 / \u2018No online classes at all then?\u2019")
+        + " Right: go straight to the next "
         "question or the next useful fact, or close if their answer means this is not for "
         "them. If you need a beat, one word at most (\u2018Great.\u2019), never their words."
     )
@@ -5939,14 +6086,18 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
                 f"not interested, or says they do not need this: ONE short polite line and "
                 f"{END_MARKER} immediately — never a clarifying question, never one more pitch. "
                 f"The same when they say goodbye, 'I'll think about it', or that they have to go: "
-                f"thank them in one line and {END_MARKER} — do not offer a demo, a WhatsApp "
+                f"thank them in one line and {END_MARKER} — do not offer "
+                + ("a meeting" if general else "a demo")
+                + ", a WhatsApp "
                 f"overview or another call at that point.")
     human_line = (
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
         f"them and append {TRANSFER_MARKER}."
         if (context.get("handoff") or {}).get("enabled")
-        else f"- If the caller asks for a human, say a counsellor will call them right back, "
-             f"then append {END_MARKER}."
+        else f"- If the caller asks for a human, say "
+             + ("a colleague from the team will call them back" if general else
+                "a counsellor will call them right back")
+             + f", then append {END_MARKER}."
     )
     # Offers the admin attached to this agent's send rules. Built here so a rule is
     # self-contained: the admin writes the question once, on the rule, and never has to
@@ -6075,6 +6226,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "caller speaks first at the very START of the call, your FIRST reply IS your "
             "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
             non_negotiable if get_settings().safety_rules_for_authored else "",
+            grounding_rule,
             already_said_rule,
             now_line,
             greeting_rule,
@@ -6114,6 +6266,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        grounding_rule,
         already_said_rule,
         now_line,
         greeting_rule,
@@ -6397,6 +6550,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # LLM_BRIDGE_AFTER_SECS. Not "Hmm" (founder: "too much Hmm-ing") — a plain
     # human "hang on" that a slow model earns, never a thinking sound.
     bridge_line = "Just a second." if eng else "एक सेकंड।"
+    general_agent = is_general_agent(agent)
+    transfer_fail_closing = (TRANSFER_FAIL_CLOSING_GENERAL if general_agent
+                             else TRANSFER_FAIL_CLOSING)
 
     stt_bias = (agent.get("name") or "").strip() or None
     # `providers` (sim/timing.py): the timing simulator runs THIS pipeline —
@@ -6543,7 +6699,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         _opening_for_cache = ""
     _fixed_lines = {
         _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
-        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING, bridge_line,
+        idle_farewell, end_closing, transfer_fail_closing, bridge_line,
     }
     _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
@@ -7045,6 +7201,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         played_text=lambda: " ".join(
             t.get("text") or "" for t in outcome.transcript[-6:]
             if t.get("role") == "assistant"),
+        child_slots=not general_agent,
         diag=diag)
 
     def _fire_mid_call_send(key: str) -> None:
@@ -7063,6 +7220,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing,
+                            transfer_fail_closing=transfer_fail_closing,
                             on_send=_fire_mid_call_send, diag=diag)
 
     run_guard = RunGuard(llm_context,

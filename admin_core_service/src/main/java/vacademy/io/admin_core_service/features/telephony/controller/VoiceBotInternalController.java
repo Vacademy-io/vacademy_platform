@@ -147,7 +147,8 @@ public class VoiceBotInternalController {
         if (apiCall != null) {
             // The contact belongs to the client's CRM, not ours: there is no lead to send a
             // WhatsApp/email to or to book against, so the agent must not offer either.
-            agent.keySet().removeAll(List.of("sendArtefacts", "sendArtefactsMidCall", "sendOffers", "sendConditions"));
+            agent.keySet().removeAll(List.of("sendArtefacts", "sendArtefactsMidCall", "sendOffers", "sendConditions",
+                    "bookingEnabled"));
         }
 
         // Handoff targets: per-agent numbers win; else the institute's voicemail/
@@ -373,6 +374,14 @@ public class VoiceBotInternalController {
             // The admin's own trigger sentences, for the post-call analyser to judge.
             List<String> conditions = aiCallActionService.conditions(a);
             if (!conditions.isEmpty()) base.put("sendConditions", conditions);
+        }
+        // A linked booking page means the platform books a meeting the caller agrees to
+        // (AiCallOutcomeProcessor auto-book), so the agent may offer one. The bot reads this
+        // only for a NON-education agent, whose prompt otherwise forbids offering any meeting
+        // its script does not offer (AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47, 2026-10-16: a demo
+        // nobody offered, booked). Omitted when unset, so every other agent's map is unchanged.
+        if (a.getBookingPageId() != null && !a.getBookingPageId().isBlank()) {
+            base.put("bookingEnabled", true);
         }
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
         // V504: consumed by the bot's ProsodyShaper (app/prosody.py). Absent = the

@@ -34,14 +34,18 @@ import {
     useInvalidateAssessmentFolders,
     useMoveAssessmentsMutation,
 } from '@/services/assessment-folders';
-import { AssessmentFolderStrip } from './AssessmentFolderStrip';
+import {
+    FolderBreadcrumb,
+    FolderGrid,
+    FolderListHeader,
+    type FolderViewMode,
+} from './AssessmentFolderBrowser';
 import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 import {
     AssessmentFolderUi,
     AssessmentFolderUiContext,
     DRAG_TYPE_ASSESSMENT,
     DRAG_TYPE_FOLDER,
-    DROP_UNFILED_ID,
     MoveTarget,
 } from './assessment-folder-context';
 
@@ -50,25 +54,41 @@ export interface FolderListFilter {
     unfiled_only?: boolean;
 }
 
-/** Pointer-first so a card dropped on a small rail item lands where the cursor is. */
+const VIEW_STORAGE_KEY = 'assessmentFolderView';
+
+const readView = (): FolderViewMode => {
+    try {
+        return localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'folders';
+    } catch {
+        return 'folders';
+    }
+};
+
+/** Pointer-first so a card dropped on a folder tile lands where the cursor is. */
 const collision: CollisionDetection = (args) => {
     const hits = pointerWithin(args);
     return hits.length > 0 ? hits : rectIntersection(args);
 };
 
 /**
- * The assessment list with its folder rail. `folderKey` comes from the route
- * (`?folderId=`): 'all', 'unfiled' or a folder id, so every folder has its own
- * URL that a sidebar sub-tab can point at. The list remounts per folder (and after
- * a move that changes what the open folder holds) so its tabs, counts and pages
- * all reload for the new scope.
+ * The assessment list in folder structure. `folderKey` comes from the route
+ * (`?folderId=`): 'all', 'unfiled' or a folder id, so every folder has its own URL
+ * that a sidebar sub-tab can point at.
+ *
+ * - Top level, "Folders" view (default): folder cards, then the tests that are in
+ *   no folder in the usual tabs and cards. Drag a card onto a folder to move it.
+ * - Top level, "All tests" view: every assessment in one list, folder named on each card.
+ * - Inside a folder: a breadcrumb back to all folders, then that folder's tests.
+ *
+ * The list remounts per scope (and after a move that changes the open scope) so its
+ * tabs, counts and pages all reload.
  */
 export const AssessmentFolderWorkspace = ({
     folderKey,
     renderList,
 }: {
     folderKey: string;
-    /** `toolbar` (the folder strip) goes between the list's page header and its tabs. */
+    /** `toolbar` (folder cards / breadcrumb) goes between the list's page header and its tabs. */
     renderList: (props: {
         key: string;
         folderFilter: FolderListFilter;
@@ -87,6 +107,15 @@ export const AssessmentFolderWorkspace = ({
     const [deleteFolder, setDeleteFolder] = useState<AssessmentFolder | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [dragLabel, setDragLabel] = useState<string | null>(null);
+    const [view, setViewState] = useState<FolderViewMode>(readView);
+    const setView = (mode: FolderViewMode) => {
+        setViewState(mode);
+        try {
+            localStorage.setItem(VIEW_STORAGE_KEY, mode);
+        } catch {
+            // Private mode: the choice just isn't remembered.
+        }
+    };
     const suppressClickUntil = useRef(0);
     // Display Settings → Assessment Actions → Manage assessment folders (per role).
     const { canManageFolders } = useAssessmentActionVisibility();
@@ -131,10 +160,20 @@ export const AssessmentFolderWorkspace = ({
         [navigate]
     );
 
-    // A move only changes the open list when it adds to / takes from the open scope.
+    const atTop = effectiveKey === 'all';
+    const folderFilter: FolderListFilter =
+        effectiveKey === UNFILED_FOLDER_ID || (atTop && view === 'folders')
+            ? { unfiled_only: true }
+            : !atTop
+              ? { folder_id: effectiveKey }
+              : {};
+    const scoped = Boolean(folderFilter.folder_id || folderFilter.unfiled_only);
+
+    // A move only changes the open list when the list is scoped (to a folder or to
+    // "not in a folder"); the flat list just updates the card's folder name.
     const afterMove = useCallback(() => {
-        if (effectiveKey !== 'all') setListVersion((v) => v + 1);
-    }, [effectiveKey]);
+        if (scoped) setListVersion((v) => v + 1);
+    }, [scoped]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -177,12 +216,7 @@ export const AssessmentFolderWorkspace = ({
 
         if (data.type === DRAG_TYPE_ASSESSMENT) {
             const assessmentId = data.assessmentId as string;
-            const targetId =
-                over.id === DROP_UNFILED_ID
-                    ? null
-                    : foldersById[String(over.id)]
-                      ? String(over.id)
-                      : undefined;
+            const targetId = foldersById[String(over.id)] ? String(over.id) : undefined;
             if (targetId === undefined) return;
             try {
                 await moveMutation.mutateAsync({
@@ -237,21 +271,45 @@ export const AssessmentFolderWorkspace = ({
         () => ({
             enabled: true,
             canManage: canManageFolders,
+            // Cards are dragged onto folder tiles, which only the top-level Folders view shows.
+            dragEnabled: canManageFolders && atTop && view === 'folders',
+            // In the flat list, name each card's folder; elsewhere the scope already says it.
+            showFolderChip: atTop && view === 'list',
             selectedKey: effectiveKey,
             folders,
             foldersById,
             openMove: setMoveTarget,
             isClickSuppressed: () => Date.now() < suppressClickUntil.current,
         }),
-        [folders, foldersById, effectiveKey, canManageFolders]
+        [folders, foldersById, effectiveKey, canManageFolders, atTop, view]
     );
 
-    const folderFilter: FolderListFilter =
-        effectiveKey === UNFILED_FOLDER_ID
-            ? { unfiled_only: true }
-            : effectiveKey !== 'all'
-              ? { folder_id: effectiveKey }
-              : {};
+    const folderActions = {
+        onEdit: (folder: AssessmentFolder) => setFormFolder(folder),
+        onDelete: setDeleteFolder,
+        onCopyLink: copyLink,
+        canManage: canManageFolders,
+    };
+    const toolbar = !atTop ? (
+        <FolderBreadcrumb
+            folder={selectedFolder}
+            unfiled={effectiveKey === UNFILED_FOLDER_ID}
+            onBack={() => selectFolder('all')}
+            {...folderActions}
+        />
+    ) : view === 'folders' ? (
+        <FolderGrid
+            folders={orderedFolders}
+            loading={isLoading}
+            view={view}
+            onViewChange={setView}
+            onOpen={selectFolder}
+            onCreate={() => setFormFolder(null)}
+            {...folderActions}
+        />
+    ) : (
+        <FolderListHeader view={view} onViewChange={setView} />
+    );
 
     return (
         <AssessmentFolderUiContext.Provider value={ui}>
@@ -263,22 +321,9 @@ export const AssessmentFolderWorkspace = ({
                 onDragEnd={handleDragEnd}
             >
                 {renderList({
-                    key: `${effectiveKey}:${listVersion}`,
+                    key: `${effectiveKey}:${view}:${listVersion}`,
                     folderFilter,
-                    toolbar: (
-                        <AssessmentFolderStrip
-                            folders={orderedFolders}
-                            selectedKey={effectiveKey}
-                            selectedFolder={selectedFolder}
-                            loading={isLoading}
-                            onSelect={selectFolder}
-                            onCreate={() => setFormFolder(null)}
-                            onEdit={(folder) => setFormFolder(folder)}
-                            onDelete={setDeleteFolder}
-                            onCopyLink={copyLink}
-                            canManage={canManageFolders}
-                        />
-                    ),
+                    toolbar,
                 })}
                 <DragOverlay dropAnimation={null}>
                     {dragLabel ? (

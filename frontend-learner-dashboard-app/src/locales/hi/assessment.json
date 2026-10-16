@@ -43,7 +43,8 @@
       "count_one": "{{count}} टेस्ट",
       "count_other": "{{count}} टेस्ट",
       "back": "फ़ोल्डरों पर वापस जाएँ",
-      "fallbackName": "फ़ोल्डर"
+      "fallbackName": "फ़ोल्डर",
+      "otherTests": "अन्य टेस्ट"
     }
   },
   "card": {

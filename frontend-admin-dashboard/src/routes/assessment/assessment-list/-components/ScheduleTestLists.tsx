@@ -65,16 +65,16 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
                                 selectedTab={selectedTab}
                                 handleRefetchData={handleRefetchData}
                                 subjectNamesById={subjectNamesById}
-                                // Only in "All assessments": inside a folder the chip would repeat its name.
+                                // Only in the flat "All tests" view; in folder views the scope already names it.
                                 folderName={
-                                    folderUi.selectedKey === 'all'
+                                    folderUi.showFolderChip
                                         ? folderUi.foldersById[folderIdOf(item.assessment_id) ?? '']
                                               ?.name
                                         : undefined
                                 }
                             />
                         );
-                        if (!folderUi.enabled || !folderUi.canManage) return card;
+                        if (!folderUi.dragEnabled) return card;
                         return (
                             <DraggableAssessment
                                 key={item.assessment_id ?? index}

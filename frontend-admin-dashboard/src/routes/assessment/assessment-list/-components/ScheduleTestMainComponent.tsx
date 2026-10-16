@@ -104,7 +104,7 @@ export const ScheduleTestMainComponent = ({
     showBatchFilter?: boolean;
     /** Folder the list is scoped to; the workspace remounts this component when it changes. */
     folderFilter?: FolderListFilter;
-    /** Rendered between the filters and the cards (the assessment folder row). */
+    /** Rendered under the page header, above the tabs (assessment folder cards / breadcrumb). */
     toolbar?: React.ReactNode;
 }) => {
     const navigate = useNavigate();
@@ -617,6 +617,7 @@ export const ScheduleTestMainComponent = ({
                 <meta name="description" content={t('meta.helmetDescription')} />
             </Helmet>
             <ScheduleTestHeaderDescription isCourseOutline />
+            {toolbar}
             <div className="flex flex-col gap-4">
                 <Tabs value={selectedTab} onValueChange={handleTabChange}>
                     <ScheduleTestTabList
@@ -756,9 +757,6 @@ export const ScheduleTestMainComponent = ({
                             )}
                         </div>
                     </div>
-                    {/* Folder row sits right above the cards (tabs and filters keep their place),
-                        so a card has only a short way to travel when dragged onto a folder. */}
-                    {toolbar}
                     {scheduleTestTabsData.map((tab, index) => (
                         <ScheduleTestLists
                             key={index}

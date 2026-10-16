@@ -44,7 +44,8 @@
       "count_many": "{{count}} tests",
       "count_other": "{{count}} tests",
       "back": "Retour aux dossiers",
-      "fallbackName": "Dossier"
+      "fallbackName": "Dossier",
+      "otherTests": "Autres tests"
     }
   },
   "card": {

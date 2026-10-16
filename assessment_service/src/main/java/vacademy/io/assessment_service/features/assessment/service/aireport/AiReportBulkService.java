@@ -47,6 +47,7 @@ public class AiReportBulkService {
         public final String id = UUID.randomUUID().toString();
         public final String assessmentId;
         public final boolean dryRun;
+        public final boolean regenerateAll;
         public final AtomicInteger total = new AtomicInteger();
         public final AtomicInteger checked = new AtomicInteger();
         public final AtomicInteger alreadyHad = new AtomicInteger();
@@ -58,9 +59,10 @@ public class AiReportBulkService {
         public final Date startedAt = new Date();
         public volatile Date finishedAt;
 
-        Job(String assessmentId, boolean dryRun) {
+        Job(String assessmentId, boolean dryRun, boolean regenerateAll) {
             this.assessmentId = assessmentId;
             this.dryRun = dryRun;
+            this.regenerateAll = regenerateAll;
         }
 
         public Map<String, Object> view() {
@@ -68,6 +70,7 @@ public class AiReportBulkService {
             v.put("job_id", id);
             v.put("assessment_id", assessmentId);
             v.put("dry_run", dryRun);
+            v.put("mode", regenerateAll ? "ALL" : "MISSING");
             v.put("state", state);
             v.put("submitted_learners", total.get());
             v.put("checked", checked.get());
@@ -87,7 +90,13 @@ public class AiReportBulkService {
         return job == null ? null : job.view();
     }
 
-    public Map<String, Object> start(String assessmentId, String instituteId, boolean dryRun, int concurrency, Integer limit) {
+    /**
+     * @param regenerateAll false: only learners without an analysis. true: everyone, rebuilt
+     *                      from current data (fixes analyses written before marks/ranks settled).
+     * @param onlyAttemptIds when non-empty, only these attempts (to try one before the rest)
+     */
+    public Map<String, Object> start(String assessmentId, String instituteId, boolean dryRun, int concurrency, Integer limit,
+                                     boolean regenerateAll, Set<String> onlyAttemptIds) {
         Assessment assessment = assessments.findById(assessmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Assessment not found"));
         List<Map<String, Object>> rows = jdbc.queryForList("""
@@ -98,7 +107,10 @@ public class AiReportBulkService {
                     WHERE aur.assessment_id = ? AND aur.institute_id = ? AND sa.status = 'ENDED' AND aur.status = 'ACTIVE'
                 ) x WHERE x.rn = 1
                 """, assessmentId, instituteId);
-        Job job = new Job(assessmentId, dryRun);
+        if (onlyAttemptIds != null && !onlyAttemptIds.isEmpty()) {
+            rows = rows.stream().filter(r -> onlyAttemptIds.contains((String) r.get("attempt_id"))).toList();
+        }
+        Job job = new Job(assessmentId, dryRun, regenerateAll);
         job.total.set(rows.size());
         jobs.put(job.id, job);
 
@@ -134,11 +146,10 @@ public class AiReportBulkService {
     private void handle(Job job, Assessment assessment, String attemptId, String userId, AtomicInteger budget) {
         try {
             String existing = adminCore.getProcessedAIReport(userId, assessment.getId());
-            if (existing != null && !existing.isBlank()) {
-                job.alreadyHad.incrementAndGet();
-                return;
-            }
-            job.missing.incrementAndGet();
+            boolean has = existing != null && !existing.isBlank();
+            if (has) job.alreadyHad.incrementAndGet();
+            else job.missing.incrementAndGet();
+            if (has && !job.regenerateAll) return;
             if (job.dryRun || budget.decrementAndGet() < 0) return;
 
             StudentAttempt attempt = attempts.findById(attemptId).orElse(null);

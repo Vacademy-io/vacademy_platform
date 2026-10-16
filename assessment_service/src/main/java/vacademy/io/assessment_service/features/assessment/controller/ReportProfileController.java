@@ -158,10 +158,13 @@ public class ReportProfileController {
                                                                @RequestParam String instituteId, @RequestParam String assessmentId,
                                                                @RequestParam(defaultValue = "true") boolean dryRun,
                                                                @RequestParam(defaultValue = "4") int concurrency,
-                                                               @RequestParam(required = false) Integer limit) {
+                                                               @RequestParam(required = false) Integer limit,
+                                                               @RequestParam(defaultValue = "MISSING") String mode,
+                                                               @RequestParam(required = false) List<String> attemptIds) {
         staff(user, clientId, instituteId);
         access.requireAssessmentInInstitute(user, instituteId, assessmentId);
-        return ResponseEntity.ok(bulk.start(assessmentId, instituteId, dryRun, concurrency, limit));
+        return ResponseEntity.ok(bulk.start(assessmentId, instituteId, dryRun, concurrency, limit,
+                "ALL".equalsIgnoreCase(mode), attemptIds == null ? java.util.Set.of() : new java.util.HashSet<>(attemptIds)));
     }
 
     @GetMapping("/ai-reports/job")

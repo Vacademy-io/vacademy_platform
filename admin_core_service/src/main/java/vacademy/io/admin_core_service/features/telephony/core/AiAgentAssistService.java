@@ -526,47 +526,84 @@ public class AiAgentAssistService {
     /**
      * The advisory finding for a non-education script that never says what is offered and/or why
      * the person is called. Not a defect the model can fix — it could only invent the missing
-     * facts — so {@link #fixable} keeps it out of the repair pass.
+     * facts — so it is added only by the 4-argument lint, never by the 3-argument one that the
+     * repair pass ({@link #fixable}) uses.
      */
-    static final String GROUNDING_LINT_PREFIX = "The script never says ";
+    static final String GROUNDING_LINT_PREFIX = "The script may not say ";
 
-    /** A business stating what it sells: "we offer…", "X is a … company", "our products…", a price. */
+    /**
+     * Above this length the advisory stays quiet: a long script nearly always says what it sells,
+     * in words a keyword check cannot list, and a wrong warning teaches admins to ignore the lint.
+     * The incident script was 512 characters.
+     */
+    static final int GROUNDING_LINT_MAX_CHARS = 1500;
+
+    /**
+     * A business stating what it sells: "we offer…", "SolarCo installs…", "X, a fitness studio",
+     * "X is a … company", "we are Acko", "our products…", a price (₹, rs, rupees, lakh, crore), or
+     * the Hinglish/Hindi forms ("humari company loans deti hai", "Tata की गाड़ियाँ बेचता है").
+     * Widened after review (2026-10-16): the first cut missed 6 of 6 realistic grounded scripts.
+     */
     private static final Pattern STATES_OFFER = Pattern.compile(
             "\\bwe(?:'re| are)? (?:offer|provide|sell|supply|make|manufacture|build|run|deliver|help"
             + "|install|distribute|export|rent|lease|design|develop|manage|arrange|organi[sz]e)(?:s|ing)?\\b"
             + "|\\bwe(?:'re| are) (?:a|an|the|india's)\\b"
-            + "|\\b(?:is|are) (?:a|an|india's) [\\p{L}\\s&,-]{0,50}?(?:company|platform|provider|manufacturer"
-            + "|agency|firm|brand|business|store|shop|startup|dealer|distributor|clinic|hospital|developer"
-            + "|builder|consultancy|bank|insurer|app|software|service|services)\\b"
+            // "We are Acko insurance": a capitalised name after "we are" (case-sensitive here only).
+            + "|\\bwe(?:'re| are) (?-i:\\p{Lu})"
+            // Any subject: "SolarCo installs rooftop solar", "Sharma Motors sells Tata cars".
+            + "|\\b(?:sells|installs|offers|provides|supplies|manufactures|deals in|distributes|exports"
+            + "|imports|rents out|leases|delivers|operates|repairs|builds|designs|develops)\\b"
+            + "|(?:\\b(?:is|are)|,) (?:a|an|india's|the) [\\p{L}\\s&,-]{0,50}?(?:company|platform|provider"
+            + "|manufacturer|agency|firm|brand|business|store|shop|startup|dealer|dealership|distributor"
+            + "|clinic|hospital|developer|builder|consultancy|bank|insurer|app|software|service|services"
+            + "|studio|gym|salon|spa|restaurant|cafe|hotel|resort|showroom|lab|pharmacy|centre|center"
+            + "|outlet|chain|maker|supplier|retailer|wholesaler|exporter|importer|contractor|nbfc|lender)\\b"
             + "|\\bour (?:products?|services?|solutions?|platform|plans?|packages?|offers?|offerings?|range"
             + "|catalog(?:ue)?|projects?|properties|polic(?:y|ies)|app|software|machines?|menu|brands?)\\b"
             + "|[₹]\\s?\\d|\\brs\\.?\\s?\\d|\\d[\\d,]*\\s?(?:rupees|inr|/-)"
+            + "|\\d[\\d,.]*\\s?(?:lakhs?|lacs?|crores?)\\b"
             + "|(?:hum|ham)\\s.{0,60}?(?:dete|karte|bechte|banate)\\s?hain"
-            + "|\\b(?:hamara|hamari|hamare)\\s(?:product|service|plan|offer|package)"
+            + "|\\b(?:hamara|hamari|hamare|humara|humari|humare)\\s(?:company|product|service|plan|offer"
+            + "|package|brand)"
+            + "|\\b(?:deti|deta|dete|bechti|bechta|bechte|banati|banata|banate|(?:provide|offer|supply)"
+            + "\\s(?:karti|karta|karte))\\s(?:hai|hain)\\b"
             + "|हम\\s.{0,60}?(?:देते|करते|बेचते|बनाते|प्रदान करते)\\s?हैं"
-            + "|(?:हमारा|हमारी|हमारे)\\s(?:product|service|plan|offer|package|प्रोडक्ट|सर्विस|प्लान|ऑफ़र|ऑफर)"
-            + "|(?:रुपये|रुपए)",
-            Pattern.CASE_INSENSITIVE);
+            + "|(?:बेचता|बेचती|बेचते|बनाता|बनाती|बनाते|देता|देती|प्रदान करता|प्रदान करती)\\s?(?:है|हैं)"
+            + "|(?:हमारा|हमारी|हमारे)\\s(?:company|product|service|plan|offer|package|कंपनी|प्रोडक्ट|सर्विस"
+            + "|प्लान|ऑफ़र|ऑफर)"
+            + "|(?:रुपये|रुपए|लाख|करोड़)",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
-    /** A concrete reason for THIS call: their enquiry, a visit, an order, a renewal, a follow-up on something. */
+    /**
+     * A concrete reason for THIS call: their enquiry, a form, a visit, an order, a trial or test
+     * drive, a renewal or expiry, a follow-up on something.
+     */
     private static final Pattern STATES_REASON = Pattern.compile(
             "\\b(?:enquir|inquir)\\w*"
             + "|\\b(?:filled|submitted|signed up|registered|visited|downloaded|requested|booked|ordered"
             + "|purchased|bought|subscribed|applied|attended|responded|showed interest|expressed interest"
             + "|left (?:their|your|a) (?:number|details))\\b"
+            + "|\\b(?:took|taken|tried|used) (?:a|an|the|our|your|their)?\\s?(?:free )?(?:trial|test drive"
+            + "|demo|sample|quote|quotation)\\b|\\btest[- ]drove\\b"
             + "|\\bcalling (?:about|regarding|because|to (?:follow|confirm|remind|inform|tell|invite|update"
             + "|offer|share|check|introduce|let))\\b"
             + "|\\bfollow(?:ing)?[- ]?up (?:on|about|regarding|after)\\b"
             + "|\\b(?:reason for (?:the|this|your|our) call|purpose of (?:the|this|your|our) call)\\s*(?:is|:)"
-            + "|\\b(?:renewal|reminder|expir\\w*|overdue|abandoned cart|feedback on)\\b"
-            + "|(?:आपने|aapne)\\s.{0,60}?(?:enquiry|inquiry|इन्क्वायरी|पूछताछ|form|फ़ॉर्म|फॉर्म|visit|विज़िट|विजिट"
-            + "|register|रजिस्टर|download|order|ऑर्डर|book|बुक)"
+            + "|\\b(?:renewal|renewing|reminder|expir\\w*|overdue|abandoned cart|feedback on)\\b"
+            + "|(?:आपने|aapne|inhone|unhone|इन्होंने|उन्होंने)\\s.{0,60}?(?:enquiry|inquiry|इन्क्वायरी|पूछताछ"
+            + "|form|फ़ॉर्म|फॉर्म|visit|विज़िट|विजिट|register|रजिस्टर|download|order|ऑर्डर|book|बुक"
+            + "|test drive|trial)"
+            + "|(?:form|फ़ॉर्म|फॉर्म)\\s?(?:bhara|bhari|bhare|भरा|भरी|भरे)"
             + "|के (?:बारे|सिलसिले) में (?:कॉल|call)|ke (?:baare|silsile) mein call",
-            Pattern.CASE_INSENSITIVE);
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
-    /** Plain-language findings the admin sees next to the result. Never blocks anything. */
+    /**
+     * Plain-language findings the admin sees next to the result. Never blocks anything. Exactly
+     * the findings this method gave before the grounding advisory existed (the repair pass in
+     * {@link #fixable} uses it, and must never be asked to "fix" a missing offer by inventing one).
+     */
     static List<String> lint(String prompt, String openingLine, String language) {
-        return lint(prompt, openingLine, language, null);
+        return lintSpokenLines(prompt, openingLine, language);
     }
 
     /**
@@ -588,16 +625,18 @@ public class AiAgentAssistService {
      */
     static String groundingFinding(String prompt, String openingLine, AgentContext agent) {
         if (!AiAgentDomain.isGeneral(prompt, AiAgentDomain.fieldsOf(agent, openingLine))) return null;
+        if (prompt.length() > GROUNDING_LINT_MAX_CHARS) return null;
         String all = prompt + "\n" + (openingLine == null ? "" : openingLine);
         boolean offer = STATES_OFFER.matcher(all).find();
         boolean reason = STATES_REASON.matcher(all).find();
         if (offer && reason) return null;
         String missing = !offer && !reason ? "what you offer or why you are calling this person"
                 : !offer ? "what you offer" : "why you are calling this person";
-        return GROUNDING_LINT_PREFIX + missing + ". The agent cannot know it, and on live calls it "
-                + "has made it up (an invented product, a demo nobody offered). Add a sentence or two: "
-                + "what the business sells and why this person is being called (for example, they "
-                + "enquired, visited or ordered).";
+        // "may not": a keyword check can miss a sentence that does say it; the admin decides.
+        return GROUNDING_LINT_PREFIX + missing + ". If it does not, the agent cannot know it, and an "
+                + "agent in that position has made it up on live calls (an invented product, a demo "
+                + "nobody offered). Consider a sentence or two: what the business sells and why this "
+                + "person is being called (for example, they enquired, visited or ordered).";
     }
 
     private static List<String> lintSpokenLines(String prompt, String openingLine, String language) {
@@ -846,8 +885,6 @@ public class AiAgentAssistService {
                 : null;
         return lint(prompt, opening, agent.language()).stream()
                 .filter(f -> !f.startsWith("The prompt is "))
-                // Advisory only: a "fix" would have to invent the business's offer or reason.
-                .filter(f -> !f.startsWith(GROUNDING_LINT_PREFIX))
                 .toList();
     }
 

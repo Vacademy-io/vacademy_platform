@@ -225,3 +225,100 @@ async def test_post_call_analysis_names_a_team_member_for_a_general_agent(monkey
     assert "counsellor" not in general and "HUMAN team member" in general
     edu = await _analysis_prompt(monkeypatch, _agent("Call parents about live classes."))
     assert "HUMAN counsellor" in edu and "written for the counsellor" in edu
+
+
+# ── follow-up review fixes (2026-10-16) ───────────────────────────────────────
+
+def test_more_education_scripts_stay_education():
+    # Exam prep, degrees, "your son" — education without any of the first words.
+    for prompt in ("Invite them to our MBA Masterclass on Sunday.",
+                   "Aapke bete ke liye mock test series hai.",
+                   "आपकी बेटी की ट्रेनिंग के बारे में बात करें।",
+                   "B.Tech and MBBS aspirants: CUET and CLAT crash plans."):
+        assert agent_domain(_agent(prompt)) == EDUCATION, prompt
+    # Business words that only look like them.
+    assert agent_domain(_agent(_THIN_GENERAL + " Sign the NDA; try the beta version; MCA "
+                                               "filing.")) == GENERAL
+
+
+def test_grounding_gives_a_no_reason_fallback_and_wins_over_rule_one():
+    p = b.build_system_prompt(_ctx(_agent(_THIN_GENERAL)))
+    assert "the NON-NEGOTIABLE rules included" in p
+    assert "a fact about your business still comes only from GROUNDING below" in p
+    assert "If there is no reason to give, do not make one up" in p
+    assert "ask whether it is a good time to talk" in p
+    # The admin's own send offers are part of the script, not "offers it never made".
+    assert "unless your instructions above or THINGS YOU CAN SEND offer one" in p
+    assert "the reason for calling that your instructions give (see GROUNDING" in p
+
+
+def test_the_enquiry_is_a_reason_only_when_it_is_a_real_one():
+    real = b.build_system_prompt(_ctx(_agent(_THIN_GENERAL), leadEnquiry={
+        "sourceType": "WALK_IN", "dateKnown": True, "submittedAt": "2026-10-16T05:00:00Z"}))
+    assert "that this person enquired, exactly as the enquiry details in these rules say" in real
+    # A bulk import: source unknown, date unknown — the block's own "only if they ask" holds.
+    imported = b.build_system_prompt(_ctx(_agent(_THIN_GENERAL), leadEnquiry={
+        "sourceType": "BULK_IMPORT", "dateKnown": False}))
+    assert "never claim this person enquired" in imported
+    assert "exactly as the enquiry details in these rules say" not in imported
+
+
+def test_general_first_sentence_examples_carry_no_facts():
+    p = b.build_system_prompt(_ctx(_agent(_THIN_GENERAL)))
+    for fact in ("No charge at all", "Sunday ko hai", "shivir"):
+        assert fact not in p, fact
+    edu = b.build_system_prompt(_ctx(_agent("Call parents about live classes.")))
+    assert "No charge at all" in edu and "Sunday ko hai" in edu
+
+
+def test_enquiry_line_without_an_institute_name_says_company_for_general_only():
+    ctx = _ctx(_agent(_THIN_GENERAL), instituteName="",
+               leadEnquiry={"sourceType": "WEBSITE", "dateKnown": False})
+    assert "the company's website" in b._lead_enquiry_line(ctx, general=True)
+    assert "the institute's website" in b._lead_enquiry_line(ctx)
+    assert "the institute" not in b.build_system_prompt(ctx)
+
+
+def test_who_and_hold_cues_keep_the_education_text_byte_for_byte():
+    assert b.WHO_CUE == ("[They asked who is calling. FIRST sentence: your name and "
+                         "your institute. SECOND: one short line on why you called. "
+                         "Nothing before that — no filler, no question.]")
+    assert b.HOLD_FIRST_CUE == ("[A person has just come on the line after a recorded "
+                                "hold/queue message. They have NOT heard anything you said "
+                                "before. Answer what they say first, then introduce yourself "
+                                "briefly — your name, your institute and why you are calling.]")
+    for cue in (b.WHO_CUE_GENERAL, b.HOLD_FIRST_CUE_GENERAL):
+        assert education_hits(cue) == [], cue
+        assert "your company" in cue and "do not make one up" in cue
+
+
+async def test_a_general_agent_asked_who_is_calling_gets_the_company_cue(monkeypatch):
+    from tests.test_hold import _Clock, _Rec, _collector, _noop_super, _say
+    clock = _Clock(10_000.0)
+    monkeypatch.setattr(b, "time", clock)
+    monkeypatch.setattr(b.FrameProcessor, "process_frame", _noop_super)
+    for general, want in ((False, b.WHO_CUE), (True, b.WHO_CUE_GENERAL)):
+        rec = _Rec()
+        tc = _collector(rec)
+        tc._general_agent = general
+        await _say(tc, clock, 5.0, "Aap kaun bol rahi hain?")
+        assert want in rec.cues(), (general, rec.cues())
+    # An IVR took the call before the bot spoke (test_hold's call 9519f8c6 path):
+    # the person who comes on gets the introduction cue in the agent's shape.
+    for general, want in ((False, b.HOLD_FIRST_CUE), (True, b.HOLD_FIRST_CUE_GENERAL)):
+        rec = _Rec()
+        tc = _collector(rec, bot_spoke_once=False, machine=True)
+        tc._general_agent = general
+        await _say(tc, clock, 101.57, "Welcome to New Light Institute.")
+        await _say(tc, clock, 103.65, "Stay on the line.")
+        rec.clear()
+        await _say(tc, clock, 120.4, "Hello.")
+        assert rec.cues()[0] == want, (general, rec.cues())
+
+
+async def test_post_call_gist_examples_are_neutral_for_a_general_agent(monkeypatch):
+    general = await _analysis_prompt(monkeypatch, _agent(_THIN_GENERAL))
+    assert education_hits(general.split("Transcript:")[0]) == []
+    assert "yoga" not in general and "member count" not in general
+    edu = await _analysis_prompt(monkeypatch, _agent("Call parents about live classes."))
+    assert "a school reception, not a yoga trainer" in edu and "member count" in edu

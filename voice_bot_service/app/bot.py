@@ -129,6 +129,33 @@ HOLD_FIRST_CUE = ("[A person has just come on the line after a recorded hold/que
                   "They have NOT heard anything you said before. Answer what they say first, "
                   "then introduce yourself briefly — your name, your institute and why you "
                   "are calling.]")
+# The same cue for a non-education agent (app/agent_domain). "your institute"
+# tells a model with a thin script that it calls for a school or a coaching
+# centre, and "why you are calling" with no reason in the script is the gap the
+# AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16) filled with an invented
+# edtech product. Education agents keep HOLD_FIRST_CUE, byte for byte.
+HOLD_FIRST_CUE_GENERAL = ("[A person has just come on the line after a recorded hold/queue "
+                          "message. They have NOT heard anything you said before. Answer what "
+                          "they say first, then introduce yourself briefly — your name, your "
+                          "company as your instructions name it, and why you are calling, "
+                          "only as your instructions or their enquiry give it; if neither "
+                          "gives a reason, do not make one up — ask if it is a good time to "
+                          "talk.]")
+
+# Said to the model when the caller asks who is calling ("aap kaun bol rahi
+# ho?"), so the answer comes first (TranscriptCollector).
+WHO_CUE = ("[They asked who is calling. FIRST sentence: your name and "
+           "your institute. SECOND: one short line on why you called. "
+           "Nothing before that — no filler, no question.]")
+# Non-education agents: "your company", and the reason only from the script or
+# their enquiry — "who is calling?" is the moment the AAIBUZZ/IRPL bot (calls
+# c43e9ce7, e6cb5f47, 2026-10-16) has to say who it is and why, with a script
+# that says neither. Education agents keep WHO_CUE, byte for byte.
+WHO_CUE_GENERAL = ("[They asked who is calling. FIRST sentence: your name and your "
+                   "company, as your instructions name it. SECOND: one short line on why "
+                   "you called — only the reason your instructions or their enquiry give; "
+                   "if neither gives one, do not make one up, just ask if this is a good "
+                   "time to talk. Nothing before your name — no filler, no question.]")
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
@@ -371,9 +398,13 @@ class TranscriptCollector(FrameProcessor):
                  forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
                  voice_live=None, resay_opening=None, cut_after_voice_secs: float = 0.0,
                  ack_answer_window_secs: float = 3.0, bot_started_t=None,
-                 greet_skipped=None):
+                 greet_skipped=None, general_agent: bool = False):
         super().__init__()
         self._outcome = outcome
+        # A non-education agent (app/agent_domain): the who-is-calling and
+        # back-from-hold cues say "your company" and never ask for a reason the
+        # script does not give (WHO_CUE_GENERAL, HOLD_FIRST_CUE_GENERAL).
+        self._general_agent = general_agent
         # "voice" barge-in mode (config.barge_in_mode): 0 = off (onset mode).
         self._cut_after = cut_after_voice_secs
         self._ack_answer_window = ack_answer_window_secs
@@ -833,7 +864,8 @@ class TranscriptCollector(FrameProcessor):
                     # A hold that began before the bot had spoken (the IVR case):
                     # whatever we said went to the recording, so this person has
                     # heard nothing — "do not introduce yourself" would be wrong.
-                    cue = HOLD_FIRST_CUE if self._hold_unheard else HOLD_RESUME_CUE
+                    cue = ((HOLD_FIRST_CUE_GENERAL if self._general_agent else HOLD_FIRST_CUE)
+                           if self._hold_unheard else HOLD_RESUME_CUE)
                     if self._hold_unheard:
                         self._heard_since_screen = True     # the model introduces us now
                     await self.push_frame(LLMMessagesAppendFrame(
@@ -1484,9 +1516,8 @@ class TranscriptCollector(FrameProcessor):
                 logger.info("turn-gate: caller asked who is calling — answer first")
                 await self.push_frame(LLMMessagesAppendFrame(
                     messages=[{"role": "user", "content":
-                               "[They asked who is calling. FIRST sentence: your name and "
-                               "your institute. SECOND: one short line on why you called. "
-                               "Nothing before that — no filler, no question.]"}]), direction)
+                               WHO_CUE_GENERAL if self._general_agent else WHO_CUE}]),
+                    direction)
         if not forwarded:
             await self.push_frame(frame, direction)
 
@@ -5103,17 +5134,23 @@ def _ago(days: int) -> str:
     return f"about {round(days / 30)} months ago"
 
 
-def _lead_enquiry_line(context: Dict[str, Any]) -> str:
+def _lead_enquiry_line(context: Dict[str, Any], general: bool = False) -> str:
     """When and where the lead enquired, from admin_core's leadEnquiry block. Parents
     ask "मैंने कब form भरा?" / "कहाँ से number मिला?"; without this the model could only
     repeat a stock line (call 6313b454: three times, then "Not interested"). A date is
     given ONLY when admin_core marked it genuine (dateKnown): a bulk-imported lead's
     stamp is the import day, and stating it would be a false date. Empty when there is
-    no block."""
+    no block.
+
+    general=True (a non-education agent, app/agent_domain): a blank institute
+    name reads "the company", not "the institute" — that word alone tells a
+    thin-script model it calls for a school (AAIBUZZ/IRPL calls c43e9ce7,
+    e6cb5f47, 2026-10-16)."""
     enq = context.get("leadEnquiry")
     if not isinstance(enq, dict) or not enq:
         return ""
-    inst = str(context.get("instituteName") or "").strip() or "the institute"
+    inst = (str(context.get("instituteName") or "").strip()
+            or ("the company" if general else "the institute"))
     source = _ENQUIRY_SOURCES.get(str(enq.get("sourceType") or "").strip().upper(),
                                   "an enquiry form for {inst}").format(inst=inst)
     agent = context.get("agent") or {}
@@ -5592,9 +5629,13 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         intent_line = (
             "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
             "Never sound like you are answering their call. If they speak first (a 'hello'), your "
-            "FIRST reply is your full opening — never a bare greeting word back. Open with a clear "
-            "reason for calling, "
-            "introduce yourself and your company EXACTLY as your instructions specify (never invent "
+            "FIRST reply is your full opening — never a bare greeting word back. Open with "
+            # GENERAL: "a clear reason" with no reason in the script is the gap
+            # AAIBUZZ/IRPL calls c43e9ce7, e6cb5f47 (2026-10-16) filled with an
+            # invented product; the reason comes from GROUNDING's sources only.
+            + ("the reason for calling that your instructions give (see GROUNDING — never "
+               "make one up), " if general else "a clear reason for calling, ")
+            + "introduce yourself and your company EXACTLY as your instructions specify (never invent "
             "or alter the company name), lead the conversation confidently, and keep a warm, "
             "positive, forward-moving tone that gives them a reason to engage right now."
         )
@@ -5609,7 +5650,13 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "1) NEVER repeat a sentence you have already said. If the caller asks the same thing "
         "again, your previous answer FAILED — do NOT say it again. Acknowledge briefly ('Sorry, "
         "main clearly bata deti hoon —') and answer the LITERAL question they asked, even if it is "
-        "outside your script. You may steer toward "
+        "outside your script"
+        # GENERAL: "outside your script" must not read as leave to answer
+        # "what does your company do?" from general knowledge (AAIBUZZ/IRPL
+        # calls c43e9ce7, e6cb5f47, 2026-10-16).
+        + (" — but a fact about your business still comes only from GROUNDING below: if "
+           "your instructions do not give it, say a colleague will share it" if general else "")
+        + ". You may steer toward "
         + ("your next step" if general else "your goal (demo/next step)")
         + " at most ONCE per "
         "topic; if they push again, ANSWER the question instead of steering.\n"
@@ -5651,25 +5698,43 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     grounding_rule = ""
     if general:
         _offers_meeting = bool(agent.get("bookingEnabled"))
+        # The enquiry may be the stated reason only when it is a real one: a
+        # known source (_ENQUIRY_SOURCES) or a genuine date. A bulk-imported
+        # lead's block falls back to "an enquiry form for <inst>", which may
+        # not be true, so it stays "use this ONLY if they ask" (_lead_enquiry_line).
+        _enq = context.get("leadEnquiry")
+        _enquiry_is_reason = isinstance(_enq, dict) and bool(_enq) and (
+            _enq.get("dateKnown") is True
+            or str(_enq.get("sourceType") or "").strip().upper() in _ENQUIRY_SOURCES)
         grounding_rule = (
-            "GROUNDING — NEVER INVENT YOUR BUSINESS (this overrides every example in these "
-            "rules): who your company is, what it sells or does, any product, service, offer, "
-            "price, fee, discount, date, timing, schedule or place, and the reason for this call "
-            "may come ONLY from your instructions above and from the details about this person "
-            "given in these rules (what they filled in, when and where they enquired). Never "
-            "guess what industry your company is in, and never make up a product, a programme, "
-            "a feature, a benefit or a customer story: if your instructions do not say it, you "
-            "do not know it. When you say why you are calling, give only the reason your "
-            "instructions or this person's enquiry details give. If the caller asks something "
-            "your instructions do not cover, say honestly, in the caller's language, that a "
+            "GROUNDING — NEVER INVENT YOUR BUSINESS (this overrides every other rule and every "
+            "example in these rules, the NON-NEGOTIABLE rules included): who your company is, "
+            "what it sells or does, any product, service, offer, price, fee, discount, date, "
+            "timing, schedule or place, and the reason for this call may come ONLY from your "
+            "instructions above, from THINGS YOU CAN SEND (if these rules list any), and from "
+            "the details about this person given in these rules (what they filled in, when and "
+            "where they enquired). Today's date and time, as these rules give them, are real: "
+            "use them to settle a day. Never guess what industry your company is in, and never "
+            "make up a product, a programme, a feature, a benefit or a customer story: if your "
+            "instructions do not say it, you do not know it. If the caller asks something your "
+            "instructions do not cover, say honestly, in the caller's language, that a "
             "colleague will share those details with them — never fill the gap with a guess.\n"
+            "THE REASON FOR THIS CALL: give only the reason your instructions give"
+            + (", or, if they give none, that this person enquired, exactly as the enquiry "
+               "details in these rules say (you may say that without being asked)."
+               if _enquiry_is_reason else
+               ", and never claim this person enquired, filled a form or visited unless your "
+               "instructions say so.")
+            + " If there is no reason to give, do not make one up: say your name and the "
+            "company your instructions name, and ask whether it is a good time to talk.\n"
             "NEVER OFFER WHAT YOUR INSTRUCTIONS DO NOT OFFER: "
             + ("you may offer to book a meeting with the team at a time the caller chooses; "
-               "never offer or book a demo, trial or visit unless your instructions above "
-               "offer one."
+               "never offer or book a demo, trial or visit unless your instructions above or "
+               "THINGS YOU CAN SEND offer one."
                if _offers_meeting else
                "never offer, propose or book a demo, meeting, appointment, visit, trial or a "
-               "time slot for a call back unless your instructions above offer one.")
+               "time slot for a call back unless your instructions above or THINGS YOU CAN "
+               "SEND offer one.")
             + " If the caller asks you to call them back later, you may note the time they "
             "give, as your instructions allow."
         )
@@ -5829,9 +5894,17 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "- FIRST SENTENCE RULE: begin every reply with a COMPLETE sentence of at most "
         "FOUR words, ended with a full stop, then continue. It must carry SUBSTANCE — the "
         "direct answer, the key fact, or a real reaction — never a filler noise, a "
-        "greeting, or a restatement of what the caller said. Good: \u2018Haan, shivir mein "
-        "hi hai.\u2019 / \u2018Sunday ko hai.\u2019 / \u2018Bilkul possible hai.\u2019 / \u2018Fair point.\u2019 / "
-        "\u2018No charge at all.\u2019 Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
+        "greeting, or a restatement of what the caller said. Good: "
+        # GENERAL: the education examples are FACTS (where, which day, the
+        # price) a model with a thin script copies as its own — "No charge at
+        # all." is a price claim GROUNDING forbids. AAIBUZZ/IRPL calls c43e9ce7,
+        # e6cb5f47 (2026-10-16). Same shape, no facts.
+        + ("\u2018Haan, bilkul.\u2019 / \u2018Good question.\u2019 / \u2018Bilkul possible hai.\u2019 / "
+           "\u2018Fair point.\u2019 / \u2018Sahi baat hai.\u2019 " if general else
+           "\u2018Haan, shivir mein "
+           "hi hai.\u2019 / \u2018Sunday ko hai.\u2019 / \u2018Bilkul possible hai.\u2019 / \u2018Fair point.\u2019 / "
+           "\u2018No charge at all.\u2019 ")
+        + "Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
         "\u2018Right.\u2019 — callers heard constant Hmm-ing as robotic, so such noises are "
         "allowed at most one reply in five. The detail, and the one question if any, "
         "come in the sentences after it. When the caller has just ANSWERED you, that "
@@ -5845,8 +5918,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
         "\u2018Hmm\u2019, \u2018Achha\u2019, \u2018Theek hai\u2019, \u2018Okay\u2019, \u2018Right\u2019 or similar acknowledgment noises "
         "more than about one reply in five — callers heard constant Hmm-ing as robotic. "
-        "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
-        "Toh accommodation\u2026\u2019."
+        + ("Usually answer directly: \u2018Haan, ye bilkul ho sakta hai\u2019 beats \u2018Achha. "
+           "Toh ye\u2026\u2019." if general else
+           "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
+           "Toh accommodation\u2026\u2019.")
     )
     # Founder, 2026-08-12, on a live Shiksha Nation call: "every time the person
     # answers, the AI again says okay. It asked how many marks, the person said
@@ -6080,7 +6155,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "them. If you need a beat, one word at most (\u2018Great.\u2019), never their words."
     )
     fields_line = _lead_fields_line(context)
-    enquiry_line = _lead_enquiry_line(context)
+    enquiry_line = _lead_enquiry_line(context, general=general)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}. If the caller asks you to end the call, says they are "
                 f"not interested, or says they do not need this: ONE short polite line and "
@@ -7139,7 +7214,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      release_turn=lambda: settings.turn_release_on_absorb,
                                      noise_reask_wait_secs=settings.noise_reask_wait_secs,
                                      resay_opening=_resay_opening,
-                                     greet_skipped=lambda: _greet_skipped)
+                                     greet_skipped=lambda: _greet_skipped,
+                                     general_agent=general_agent)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     async def _ask_for_next_step(held: str, kind: str = "", attempt: int = 0):

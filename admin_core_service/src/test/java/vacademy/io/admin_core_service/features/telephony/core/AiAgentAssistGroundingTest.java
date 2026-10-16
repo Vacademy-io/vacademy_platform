@@ -62,6 +62,45 @@ class AiAgentAssistGroundingTest {
         assertNull(AiAgentAssistService.groundingFinding(hindi, OPENING, ACME));
     }
 
+    /**
+     * Realistic non-education scripts that DO say what they sell and why they call. The first cut
+     * of the check warned on all six (code review, 2026-10-16); a warning that is wrong this often
+     * teaches admins to ignore it.
+     */
+    @Test
+    void groundedNonEducationScriptsAreNotWarned() {
+        AiAgentAssistService.AgentContext neha = new AiAgentAssistService.AgentContext("Neha", "hinglish",
+                "Hello, main Neha bol rahi hoon.", null, List.of(), List.of());
+        String[] grounded = {
+            "You are Neha from SolarCo. SolarCo installs rooftop solar systems for homes in Pune. The lead "
+                    + "filled our Facebook form asking about solar. Ask about their monthly electricity bill.",
+            "You are Neha from SunHomes Realty. SunHomes sells 2 and 3 BHK flats in Wakad starting at 85 "
+                    + "lakh. This person enquired on 99acres about a flat. Ask budget and timeline.",
+            "Aap Neha hain, HDFC Home Loans se. Humari company home loans deti hai 8.5% par. Inhone website "
+                    + "par loan ke liye form bhara tha. Unse loan amount poochiye.",
+            "You are calling customers whose car insurance policy expires this month. We are Acko "
+                    + "insurance. Offer renewal at the same premium.",
+            "You represent GreenGym, a fitness studio in Baner. The person took a free trial last week. Ask "
+                    + "how it went and whether they want a monthly membership at 2,000 rupees.",
+            "आप Neha हैं, Sharma Motors से। Sharma Motors Tata की गाड़ियाँ बेचता है। इन्होंने test drive "
+                    + "के लिए form भरा था। पूछिए कौन सा model देख रहे हैं।",
+        };
+        for (String script : grounded) {
+            assertTrue(AiAgentDomain.isGeneral(script, AiAgentDomain.fieldsOf(neha, neha.openingLine())), script);
+            assertNull(AiAgentAssistService.groundingFinding(script, neha.openingLine(), neha), script);
+        }
+    }
+
+    @Test
+    void theWarningIsWordedAsAPossibilityAndSkipsLongScripts() {
+        String f = AiAgentAssistService.groundingFinding(THIN_GENERAL, OPENING, ACME);
+        assertTrue(f != null && f.startsWith("The script may not say "), f);
+        // A long script says what it sells in words no keyword list holds; stay quiet.
+        String longThin = THIN_GENERAL + " Keep a calm, friendly tone.".repeat(40);
+        assertTrue(longThin.length() > AiAgentAssistService.GROUNDING_LINT_MAX_CHARS);
+        assertNull(AiAgentAssistService.groundingFinding(longThin, OPENING, ACME));
+    }
+
     @Test
     void educationScriptsAreNeverWarnedAndTheirLintIsUnchanged() {
         // Thin, no offer, no reason — but education: today's findings exactly.
@@ -96,5 +135,12 @@ class AiAgentAssistGroundingTest {
         assertFalse(AiAgentDomain.isGeneral(""));
         assertFalse(AiAgentDomain.isGeneral(null, "anything"));
         assertTrue(AiAgentDomain.isGeneral(THIN_GENERAL, OPENING, null));
+        // Same additions as agent_domain.py: exam prep, degrees, "your son".
+        assertTrue(AiAgentDomain.hasEducationSignal("Our MBA Masterclass starts Monday"));
+        assertTrue(AiAgentDomain.hasEducationSignal("Aapke bete ke liye mock test series"));
+        assertTrue(AiAgentDomain.hasEducationSignal("आपके बेटे की ट्रेनिंग"));
+        assertFalse(AiAgentDomain.hasEducationSignal("Sign the NDA; try the beta version; MCA filing."));
+        // admin_core's own stand-in for a blank prompt is blank (legacy) on both sides.
+        assertFalse(AiAgentDomain.isGeneral("You are a friendly, concise phone assistant."));
     }
 }

@@ -55,6 +55,14 @@ EDUCATION_TERMS_LATIN = (
     r"lms", r"counsell?ors?", r"counsell?ing", r"ed-?tech", r"educat(?:ion|ional|ors?)",
     r"homework", r"semesters?", r"diplomas?", r"quiz(?:zes)?", r"training", r"trainers?",
     r"bootcamps?",
+    # Exam-prep and degree names, and a parent's "your son / your daughter" —
+    # education scripts that use none of the words above (code review of the
+    # AAIBUZZ/IRPL fix, 2026-10-16). Left out: bare "nda" (non-disclosure),
+    # "cat"/"gate", "mca" (Ministry of Corporate Affairs), "beta" ("beta
+    # version"), "webinar"/"workshop" (every B2B marketer runs them).
+    r"masterclass(?:es)?", r"mba", r"bba", r"bca", r"b\.?\s?tech", r"m\.?\s?tech", r"mbbs",
+    r"cuet", r"clat", r"test series", r"mock tests?", r"upskill(?:ing|s)?", r"bete", r"beti",
+    r"pathshala",
     r"padh(?:ai|aai|na|ne|te|ta|ti|o)", r"bach(?:cha|che|chon|chi)", r"bac(?:cha|che|chon)",
     r"vidyarthi", r"vidyalaya", r"chhatra", r"shiksha", r"kaksha", r"pariksha",
     r"gurukul",
@@ -72,6 +80,7 @@ EDUCATION_TERMS_INDIC = (
     "शिक्षक", "शैक्षणिक", "टीचर", "अध्यापक", "कोर्स", "सिलेबस", "पाठ्यक्रम", "अभ्यासक्रम",
     "अभिभावक", "माता-पिता", "पैरेंट", "पालक", "बैच", "इयत्ता", "छात्रवृत्ति", "स्कॉलरशिप",
     "लेक्चर", "ट्यूटर", "अकादमी", "एकेडमी", "लर्निंग", "सब्जेक्ट", "काउंसलर", "काउंसलिंग",
+    "बेटा", "बेटी", "बेटे", "बेटों", "ट्रेनिंग", "मास्टरक्लास", "टेस्ट सीरीज",
     # Gujarati, Bengali, Punjabi — the common few, for agents in those languages
     "શાળા", "વિદ્યાર્થી", "স্কুল", "ছাত্র", "ਸਕੂਲ", "ਵਿਦਿਆਰਥੀ",
 )

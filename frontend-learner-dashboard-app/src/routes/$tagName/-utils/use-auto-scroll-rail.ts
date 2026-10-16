@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 /** Fastest an authored rail may advance; quicker than this nobody can read a card. */
 export const AUTO_SCROLL_MIN_MS = 1500;
@@ -43,19 +43,24 @@ export const useAutoScrollRail = (
     if (!enabled || !el || typeof window === "undefined") return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
+    // Listen on the rail's wrapper, not just the track: the prev/next arrows
+    // sit beside the track, and a tick firing while the visitor clicks an
+    // arrow fights the click (a wrap back to the start undid it).
+    const root = el.parentElement ?? el;
     const enter = () => (hovered.current = true);
     const leave = () => (hovered.current = false);
     const focusIn = () => (focused.current = true);
     const focusOut = (e: FocusEvent) => {
-      if (!el.contains(e.relatedTarget as Node | null)) focused.current = false;
+      if (!root.contains(e.relatedTarget as Node | null)) focused.current = false;
     };
     const touch = () => (touchedAt.current = Date.now());
-    el.addEventListener("mouseenter", enter);
-    el.addEventListener("mouseleave", leave);
-    el.addEventListener("focusin", focusIn);
-    el.addEventListener("focusout", focusOut);
-    el.addEventListener("touchstart", touch, { passive: true });
-    el.addEventListener("wheel", touch, { passive: true });
+    root.addEventListener("mouseenter", enter);
+    root.addEventListener("mouseleave", leave);
+    root.addEventListener("focusin", focusIn);
+    root.addEventListener("focusout", focusOut);
+    root.addEventListener("pointerdown", touch, { passive: true });
+    root.addEventListener("touchstart", touch, { passive: true });
+    root.addEventListener("wheel", touch, { passive: true });
 
     const io =
       typeof IntersectionObserver !== "undefined"
@@ -80,12 +85,48 @@ export const useAutoScrollRail = (
     return () => {
       window.clearInterval(timer);
       io?.disconnect();
-      el.removeEventListener("mouseenter", enter);
-      el.removeEventListener("mouseleave", leave);
-      el.removeEventListener("focusin", focusIn);
-      el.removeEventListener("focusout", focusOut);
-      el.removeEventListener("touchstart", touch);
-      el.removeEventListener("wheel", touch);
+      root.removeEventListener("mouseenter", enter);
+      root.removeEventListener("mouseleave", leave);
+      root.removeEventListener("focusin", focusIn);
+      root.removeEventListener("focusout", focusOut);
+      root.removeEventListener("pointerdown", touch);
+      root.removeEventListener("touchstart", touch);
+      root.removeEventListener("wheel", touch);
     };
   }, [trackRef, enabled, intervalMs, itemCount]);
+};
+
+/**
+ * Prev/next arrows for a horizontal rail: whether each way has room to travel,
+ * and a scroll of just under one view (a sliver of the previous card stays in
+ * sight, which tells the visitor the row continues).
+ */
+export const useRailArrows = (trackRef: RefObject<HTMLElement | null>, { enabled, itemCount = 0 }: { enabled: boolean; itemCount?: number }) => {
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+  const sync = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 8);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+  }, [trackRef]);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!enabled || !el) return;
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [trackRef, enabled, itemCount, sync]);
+  const scrollByPage = useCallback(
+    (dir: number) => {
+      const el = trackRef.current;
+      if (el) el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: "smooth" });
+    },
+    [trackRef]
+  );
+  return { canPrev, canNext, scrollByPage };
 };

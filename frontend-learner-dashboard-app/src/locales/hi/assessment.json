@@ -133,7 +133,8 @@
       "viewAiReport": "AI रिपोर्ट देखें",
       "report": "रिपोर्ट",
       "opening": "खोला जा रहा है…",
-      "viewEvaluated": "मूल्यांकित प्रति देखें"
+      "viewEvaluated": "मूल्यांकित प्रति देखें",
+      "viewReport": "रिपोर्ट देखें"
     },
     "meta": {
       "marksLabel": "अंक",
@@ -155,6 +156,10 @@
       "title": "रिपोर्ट उपलब्ध नहीं है",
       "description": "हम अभी इस असेसमेंट के लिए AI रिपोर्ट तैयार नहीं कर सके।",
       "checkBack": "कृपया {{time}} के बाद फिर से जांचें।"
+    },
+    "tabs": {
+      "analysis": "एआई विश्लेषण",
+      "questions": "प्रश्न और अंक"
     }
   },
   "comparison": {

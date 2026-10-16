@@ -134,7 +134,8 @@
       "viewAiReport": "Voir le rapport IA",
       "report": "Rapport",
       "opening": "Ouverture…",
-      "viewEvaluated": "Voir la copie corrigée"
+      "viewEvaluated": "Voir la copie corrigée",
+      "viewReport": "Voir le rapport"
     },
     "meta": {
       "marksLabel": "points",
@@ -156,6 +157,10 @@
       "title": "Rapport non disponible",
       "description": "Nous n'avons pas pu générer le rapport IA pour cette évaluation pour le moment.",
       "checkBack": "Veuillez revérifier après {{time}}."
+    },
+    "tabs": {
+      "analysis": "Analyse IA",
+      "questions": "Questions et notes"
     }
   },
   "comparison": {

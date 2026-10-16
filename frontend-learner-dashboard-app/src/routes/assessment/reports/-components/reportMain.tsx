@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
 import { useTranslation } from "react-i18next";
 import { isReportableAttempt } from "../-utils/reportable-attempt";
+import { openStudentReport } from "@/services/student-report-routing";
 
 interface EvaluatedPreview {
   url: string;
@@ -111,30 +112,21 @@ const AssessmentReportList = ({
 
     fetchInstituteDetails();
   }, []);
-  const handleViewAIReport = (report: Report) => {
-    navigate({
-      to: `/assessment/reports/ai-report`,
-      search: {
+  // One report per attempt: the AI report once it exists, otherwise the normal report.
+  const [openingReportFor, setOpeningReportFor] = useState<string | null>(null);
+  const handleViewReport = async (report: Report) => {
+    setOpeningReportFor(report.attempt_id);
+    try {
+      await openStudentReport(navigate as never, {
         assessmentId: report.assessment_id,
         assessmentName: report.assessment_name,
         attemptId: report.attempt_id,
-      },
-    });
-  };
-
-  const handleViewComparison = (report: Report) => {
-    navigate({
-      to: `/assessment/reports/comparison`,
-      search: {
-        assessmentId: report.assessment_id,
-        attemptId: report.attempt_id,
-      },
-      state: {
-        report,
-        assessmentName: report.assessment_name,
         evaluationType: report.evaluation_type,
-      } as any,
-    });
+        state: { report },
+      });
+    } finally {
+      setOpeningReportFor(null);
+    }
   };
 
   // Open the evaluated copy for a manual report. Rendered in the shared in-app
@@ -375,22 +367,14 @@ const AssessmentReportList = ({
                 </div>
 
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                  {!isManualReport(report) && (
-                    <MyButton
-                      className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-                      onClick={() => handleViewAIReport(report)}
-                      disable={!released}
-                    >
-                      {t("reportList.button.viewAiReport")}
-                    </MyButton>
-                  )}
                   <MyButton
-                    buttonType="secondary"
                     className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-                    onClick={() => handleViewComparison(report)}
-                    disable={!released}
+                    onClick={() => handleViewReport(report)}
+                    disable={!released || openingReportFor === report.attempt_id}
                   >
-                    {t("reportList.button.report")}
+                    {openingReportFor === report.attempt_id
+                      ? t("reportList.button.opening")
+                      : t("reportList.button.viewReport")}
                   </MyButton>
                   {isManualReport(report) && (
                     <MyButton

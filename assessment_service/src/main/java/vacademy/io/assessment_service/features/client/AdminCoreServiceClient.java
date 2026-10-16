@@ -282,6 +282,34 @@ public class AdminCoreServiceClient {
         return null;
     }
 
+    /** Institute display name for report headers; null when it cannot be read. */
+    @Cacheable(value = "reportBranding", key = "'name:' + #instituteId", unless = "#result == null")
+    public String getInstituteName(String instituteId) {
+        Map<String, Object> institute = getInstituteInfo(instituteId);
+        return institute == null ? null : firstNonBlank(institute, "institute_name", "instituteName", "name");
+    }
+
+    /**
+     * The learner's enrollment number at this institute (from their batch enrolment), or
+     * null when they have none or admin_core cannot be reached. Shown on report headers.
+     */
+    public String getEnrollmentNumber(String userId, String instituteId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) return null;
+        try {
+            String route = "/admin-core-service/internal/learner/v1/enrollment-number?userId=" + userId
+                    + "&instituteId=" + instituteId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                return firstNonBlank(body, "enrollment_number", "enrollmentNumber");
+            }
+        } catch (Exception e) {
+            log.debug("Enrollment number unavailable for user {} at institute {}: {}", userId, instituteId, e.getMessage());
+        }
+        return null;
+    }
+
     private static String firstNonBlank(Map<String, Object> map, String... keys) {
         for (String key : keys) {
             Object value = map.get(key);

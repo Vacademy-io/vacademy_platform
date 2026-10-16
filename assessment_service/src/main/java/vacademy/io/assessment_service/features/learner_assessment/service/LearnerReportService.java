@@ -73,6 +73,19 @@ public class LearnerReportService {
     private vacademy.io.assessment_service.features.assessment.service.AiReportHtmlBuilder aiReportHtmlBuilder;
 
     @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportDataService aiReportDataService;
+
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportHtmlBuilderV2 aiReportHtmlBuilderV2;
+
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.aireport.AiReportFonts aiReportFonts;
+
+    /** Kill switch for the 2026-10 AI report redesign; false serves the previous layout. */
+    @org.springframework.beans.factory.annotation.Value("${assessment.ai-report.v2.enabled:true}")
+    private boolean aiReportV2Enabled;
+
+    @Autowired
     private vacademy.io.common.media.service.FileService fileService;
 
     @Autowired
@@ -741,6 +754,34 @@ public class LearnerReportService {
                     log.warn("Failed to resolve attemptId for AI report: {}", e.getMessage());
                 }
             }
+            if (resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
+                // The attempt id comes from the client: it must be this learner's own attempt,
+                // and a result still held for release must not be readable through this PDF.
+                validateOwnershipAndAccess(user.getUserId(), assessmentId, resolvedAttemptId);
+            }
+
+            if (aiReportV2Enabled && resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode ai = new com.fasterxml.jackson.databind.ObjectMapper().readTree(processedJson);
+                    var model = aiReportDataService.load(user.getUserId(), assessmentId, resolvedAttemptId, instituteId, ai, branding);
+                    String html = aiReportHtmlBuilderV2.build(model);
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    com.itextpdf.html2pdf.ConverterProperties props = new com.itextpdf.html2pdf.ConverterProperties();
+                    props.setFontProvider(aiReportFonts.newProvider());
+                    com.itextpdf.html2pdf.HtmlConverter.convertToPdf(html, out, props);
+                    return ResponseEntity.ok()
+                            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                                    "attachment; filename=ai-report-" + assessmentId + ".pdf")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                            .body(out.toByteArray());
+                } catch (VacademyException e) {
+                    throw e;
+                } catch (Exception e) {
+                    // Never leave a learner without a report: fall back to the previous layout.
+                    log.error("[ai-report] v2 render failed for attempt {}, serving the previous layout", resolvedAttemptId, e);
+                }
+            }
+
             if (resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
                 try {
                     comparison = self.buildComparisonData(user.getUserId(), assessmentId, resolvedAttemptId, instituteId);

@@ -490,6 +490,25 @@ Per-type display:
 
 Also rendered: `ResponseBreakdownComponent`, `MarksBreakdownComponent`, section-wise breakdown, PDF export (`EXPORT_ASSESSMENT_REPORT`), optional AI report at `/assessment/reports/ai-report/`. Survey assessments use a separate `SurveyReportDialog`.
 
+### 4.7 Student AI report PDF (redesign, 2026-10)
+
+`GET /assessment-service/assessment/learner/report/ai-pdf` renders through
+`features/assessment/service/aireport/` unless `assessment.ai-report.v2.enabled=false`;
+on any render error it falls back to the previous `AiReportHtmlBuilder`.
+
+| Piece | Role |
+|---|---|
+| `AiReportDataService` | All data in a few read-only queries. Max marks come from each question's `marking_json` (never `section.total_marks`, which is client-supplied and drifts). Class figures use each learner's latest ENDED attempt. Name from the registration; enrollment number and institute name from admin_core |
+| `AiReportHtmlBuilderV2` | Up to six A4 pages: result, class, topics + Bloom's, how the test was taken, mistakes, plan. Headlines are computed from the numbers; AI text fills only the narrative parts. Sections without data are left out |
+| `AiReportCharts` | Inline SVG charts (iText draws rect/line/polyline/polygon/path/circle/text) |
+| `ReportPalette` | Shades derived from the institute's primary/secondary colours, with contrast checks |
+| `AiReportFonts` | Bundled Baloo 2 + Mukta (`resources/fonts/report/`, see its README) |
+
+The endpoint now checks the attempt belongs to the caller and that its result is released
+(`validateOwnershipAndAccess`), like the other learner report endpoints. Other students
+appear only as counts; no names. Enrollment number: admin_core
+`GET /internal/learner/v1/enrollment-number`.
+
 ---
 
 ## 5. End-to-End Lifecycle Cheat Sheet

@@ -41,6 +41,10 @@ import {
     type FolderViewMode,
 } from './AssessmentFolderBrowser';
 import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
+import { useQuery } from '@tanstack/react-query';
+import { getInstituteId } from '@/constants/helper';
+import { ASSESSMENT_FOLDERS_QUERY_KEY } from '@/services/assessment-folders';
+import { getAssessmentListWithFilters } from '../../-services/assessment-services';
 import {
     AssessmentFolderUi,
     AssessmentFolderUiContext,
@@ -93,6 +97,8 @@ export const AssessmentFolderWorkspace = ({
         key: string;
         folderFilter: FolderListFilter;
         toolbar: React.ReactNode;
+        /** No tabs / filters / list: the Folders view when every test is in a folder. */
+        hideList: boolean;
     }) => React.ReactNode;
 }) => {
     const { t } = useTranslation('assessmentFolders');
@@ -168,6 +174,41 @@ export const AssessmentFolderWorkspace = ({
               ? { folder_id: effectiveKey }
               : {};
     const scoped = Boolean(folderFilter.folder_id || folderFilter.unfiled_only);
+
+    // How many tests (published or draft) are in no folder. Keyed under the folder
+    // queries so every move / create / delete refreshes it.
+    const instituteId = getInstituteId();
+    const { data: unfiledCount, isError: unfiledCountFailed } = useQuery({
+        queryKey: [...ASSESSMENT_FOLDERS_QUERY_KEY, 'unfiled-count', instituteId],
+        queryFn: async () => {
+            const page = await getAssessmentListWithFilters(0, 1, instituteId, {
+                name: '',
+                batch_ids: [],
+                subjects_ids: [],
+                tag_ids: [],
+                get_live_assessments: false,
+                get_passed_assessments: false,
+                get_upcoming_assessments: false,
+                institute_ids: instituteId ? [instituteId] : [],
+                assessment_statuses: [
+                    { id: '0', name: 'PUBLISHED' },
+                    { id: '1', name: 'DRAFT' },
+                ],
+                assessment_modes: [],
+                access_statuses: [],
+                evaluation_types: [],
+                unfiled_only: true,
+            });
+            return (page?.total_elements as number | undefined) ?? 0;
+        },
+        enabled: atTop && view === 'folders',
+        staleTime: 0,
+    });
+    // Folders view with every test in a folder: show the folders only — no empty
+    // "Not in a folder" tabs. Still loading counts as none, so the tabs never flash;
+    // a failed count shows them (fail open), so no test can be hidden by an error.
+    const hideUnfiled =
+        atTop && view === 'folders' && !unfiledCountFailed && !(unfiledCount && unfiledCount > 0);
 
     // A move only changes the open list when the list is scoped (to a folder or to
     // "not in a folder"); the flat list just updates the card's folder name.
@@ -301,6 +342,7 @@ export const AssessmentFolderWorkspace = ({
         <FolderGrid
             folders={orderedFolders}
             loading={isLoading}
+            showUnfiledHeading={!hideUnfiled}
             view={view}
             onViewChange={setView}
             onOpen={selectFolder}
@@ -324,6 +366,7 @@ export const AssessmentFolderWorkspace = ({
                     key: `${effectiveKey}:${view}:${listVersion}`,
                     folderFilter,
                     toolbar,
+                    hideList: hideUnfiled,
                 })}
                 <DragOverlay dropAnimation={null}>
                     {dragLabel ? (

@@ -97,13 +97,14 @@ Global flags live in `ai_platform_settings` and are edited in the super-admin po
 
 | Key | Default | What it does | Turning it on | Turning it off |
 |---|---|---|---|---|
-| `billing.plans.enabled` | existing | The plan engine switch (V588). | Required before any PAYMENT plan is sold. | Does **not** remove benefits from live PAYMENT subscriptions (critique #9). It still hides the storefront and stops new checkouts. |
+| `billing.plans.enabled` | `false` | The plan engine switch (V588). | Required before any PAYMENT plan is sold. | Does **not** remove benefits from live PAYMENT subscriptions (critique #9). It still hides the storefront and stops new checkouts. |
 | `billing.plans.roll.enabled` | `true` | The hourly `AiPlansRollJob`: renewals, charges, GRACE and EXPIRED. Now also selects PENDING rows. | Leave on. | Renewals, grace and expiry stop moving. The engine gate still blocks unpaid benefits. Use only in an incident. |
 | `billing.subscriptions.payments.enabled` | `false` | Master switch for `source=PAYMENT`: portal PAYMENT assignment, checkout, links, debits, the webhook's AI_SUBSCRIPTION branch acting on new money. | Section 6 step 3. | No new links or debits are created. Webhooks for payments already in flight are still honoured: a captured payment is always fulfilled or refunded, never dropped. |
 | `billing.autopay.enabled` | `false` | Offer UPI Autopay / card e-mandate at checkout (opt-in, default ON when the method supports it and the price is within ₹15,000 per debit), and let the renewal job charge active tokens. | Section 6 step 5, after Recurring Payments is live on the Razorpay account. | No new mandates and no new debits. Existing mandates stay registered, and renewals fall back to payment links. Already scheduled debits that Razorpay has notified may still go through; they are fulfilled normally. |
 | `billing.storefront.mode` | `OFF` | `OFF` / `ALLOWLIST` / `SEGMENTS` / `ALL`. Whether the tenant storefront exists for an institute. Every tenant endpoint returns 404 `STOREFRONT_OFF` otherwise. Sub-org institutes always get `STOREFRONT_OFF` (the parent buys). | Section 6 step 4. | Hides the storefront. It does not cancel subscriptions or stop renewals; those still go out by email. |
 | `billing.invoice.series_v2.enabled` | `false` | New 14-character numbers `VT/{FY}/I#####` for **all** new invoices (packs too) and `VT/{FY}/C#####` for credit notes. Subscriptions always use v2 and refuse to invoice without it. | Before the first subscription is sold, after the CA confirms the series (CA question 3). | New pack invoices go back to `INV-AICRED-*`. Don't flip back and forth inside a financial year: GSTR-1 Table 13 reports each series as a range. |
 | `billing.buyer_state.required` | `false` | Credit packs: require the buyer's state at checkout (Circular 242/2024). Subscriptions **always** require it, whatever this flag says. | When the top-up modal change is live; CA question 2. | Packs can be bought without a state again. The old place of supply rule applies; see CA question 2. |
+| `billing.packs.reconcile.enabled` | `false` | The hourly `CreditPackReconcileJob` (minute 47 UTC): reconciles credit-pack payment links whose webhook was lost. | When pack links are in use. | Lost pack webhooks are not picked up until a manual fulfil. |
 
 Per-institute switches (super-admin only; not in `setting_json`, which tenants can write):
 
@@ -124,7 +125,7 @@ Platform document identity (singleton `platform_payment_config`; set it in the p
 | `brand_logo_url` | NULL | VACADEMY mode: logo on the PDF and the Razorpay checkout where it can be controlled. |
 | `neutral_display_name` | `Vidyayatan Technologies` | NEUTRAL mode: the name shown on Razorpay checkout (`options.checkout.name`) and as the email sender name if `billing_from_name` is empty. |
 | `billing_support_email` | NULL | "Questions about this invoice" address in emails and the storefront. Must be a non-Vacademy address for NEUTRAL institutes to see it. Left out when NULL. |
-| `billing_from_name`, `billing_from_email` | NULL | Display name and address of the billing email sender for NEUTRAL institutes. **With both NULL, a NEUTRAL institute gets billing emails only if it has its own brand-free `UTILITY_EMAIL` sender**; otherwise every NEUTRAL invoice, credit-note, link, reminder and pre-debit email is **withheld** (Sentry warning "no neutral sender"), because notification_service would send it as "Vacademy Support". Documents stay in Plan & billing. An address on a Vacademy-owned domain never counts. Set both (non-Vacademy domain) before step 3 if any white-labelled institute is in the pilot. |
+| `billing_from_name`, `billing_from_email` | NULL | Display name and address of the billing email sender, used for NEUTRAL institutes too. Owner decision 2026-10-16: this platform sender **may** carry the Vacademy name and domain (for example "Billing · Vacademy"); only the subject and body of a NEUTRAL email must be brand-free. **With both NULL, a NEUTRAL institute gets billing emails only if it has its own brand-free `UTILITY_EMAIL` sender**; otherwise every NEUTRAL invoice, credit-note, link, reminder and pre-debit email is **withheld** (Sentry warning "no neutral sender"). Documents stay in Plan & billing. |
 
 ---
 
@@ -222,9 +223,9 @@ There is one platform webhook. Keep the existing one; don't create a second URL 
 | `token.rejected` | **add** | Mandate → REJECTED; the charge falls back to a payment link. |
 | `token.paused` | **add** | Mandate → PAUSED (UPI only); no debits are scheduled while paused. |
 | `token.cancelled` | **add** | Mandate → CANCELLED; renewals fall back to links. Sent only after NPCI confirms the cancellation. |
-| `payment_link.paid` | **add** | Link-level confirmation. The handler acks it and uses it for reconciliation; fulfilment still keys off `payment.captured`. |
+| `payment_link.paid` | **add** | Link-level confirmation. The handler only acknowledges it (no action); fulfilment keys off `payment.captured` / `order.paid`, and lost webhooks are caught by the billing job's reconcile pass. |
 | `payment.authorized` | already on, harmless | Acked. |
-| `invoice.paid` / `invoice.expired` | keep `invoice.paid`; **add** `invoice.expired` | A **registration link is a Razorpay invoice** (`POST /subscription_registration/auth_links`). Its authorisation payment can also pay the period's first charge, so a paid registration fires `invoice.paid` **and** `payment.captured`. Fulfilment keys off `payment.captured` (under the row lock), and `invoice.paid` must never be treated as a pack. `invoice.expired` = an unused registration link expired, so the mandate is EXPIRED and the charge falls back to a payment link. |
+| `invoice.paid` / `invoice.expired` | keep `invoice.paid`; **add** `invoice.expired` | A **registration link is a Razorpay invoice** (`POST /subscription_registration/auth_links`). Its authorisation payment can also pay the period's first charge, so a paid registration fires `invoice.paid` **and** `payment.captured`. Fulfilment keys off `payment.captured` (under the row lock), and `invoice.paid` must never be treated as a pack. `invoice.expired` = an unused registration link expired. The handler only acknowledges it; the billing job's reconcile pass marks the lapsed mandate and the charge falls back to a payment link. |
 
 Token events carry **only** the token entity (`contains: ["token"]`), with no `notes` and no `payment_type`. The handler routes them by `payload.token.entity.id` to `ai_subscription_mandate.token_id`. A token event that matches no mandate is acked and ignored, which happens to tokens created by the probe. Payload reference: https://razorpay.com/docs/payments/payment-gateway/s2s-integration/recurring-payments/upi/webhooks/
 
@@ -312,7 +313,7 @@ Do one step at a time. Each step has a check, and each can be rolled back by set
 - Canary:
   - register a UPI mandate on the internal institute with a ₹1 plan;
   - check that `token.confirmed` makes the mandate ACTIVE;
-  - let the renewal job schedule a debit, and check the 24 h pre-debit email, the debit, the invoice, and that the period is PAID;
+  - let the renewal job schedule a debit, and check the pre-debit email (sent from 72 h before the period start, at least 24 h before the debit), the debit, the invoice, and that the period is PAID;
   - cancel the mandate from the portal and check `token.cancelled` → CANCELLED.
 - Then force a debit failure with a test mandate in test mode and check that the payment link goes out immediately and GRACE follows if it stays unpaid.
 
@@ -521,8 +522,8 @@ The amount must equal the charge total.
 
 ### 10.5 Resend link and cancel mandate
 
-- **Resend link:** the portal queues it on ai_service (`POST /super-admin/v1/plans/subscriptions/{sid}/charges/{cid}/send-link`); admin_core's hourly billing job creates and emails the link. admin_core also has a direct `POST .../ai-plans-billing/institutes/{iid}/charges/{cid}/resend-link` that returns the URL at once (not wired in the portal). Either way it reuses the open link if it expires more than 1 h from now. Otherwise it cancels the old link and creates a new one, so there is only one payable link per charge.
-- **Cancel mandate:** portal → `POST .../ai-plans-billing/institutes/{iid}/mandates/{mid}/cancel {reason}`. admin_core calls Razorpay `PUT /customers/{cust}/tokens/{token}/cancel`. The mandate is CANCELLED when `token.cancelled` arrives, and later renewals go by payment link. The tenant can do the same from Plan & billing → Autopay → Cancel. Docs: https://razorpay.com/docs/api/payments/recurring-payments/upi/tokens/
+- **Send / resend link:** the portal records the request and reason on ai_service (`POST /super-admin/v1/plans/subscriptions/{sid}/charges/{cid}/send-link`, which also queues the charge for the hourly billing job), then calls admin_core `POST .../ai-plans-billing/institutes/{iid}/charges/{cid}/resend-link`, which creates the link at once, emails it and returns the URL to copy. The billing job also creates and emails links for staff-queued first charges. Either way it reuses the open link if it expires more than 1 h from now. Otherwise it cancels the old link and creates a new one, so there is only one payable link per charge.
+- **Cancel mandate:** portal → `POST .../ai-plans-billing/institutes/{iid}/mandates/{mid}/cancel {reason}`. admin_core calls Razorpay `PUT /customers/{cust}/tokens/{token}/cancel` for UPI, and `DELETE /customers/{cust}/tokens/{token}` for cards. The mandate is CANCELLED when `token.cancelled` arrives, and later renewals go by payment link. The tenant can do the same from Plan & billing → Autopay → Cancel. Docs: https://razorpay.com/docs/api/payments/recurring-payments/upi/tokens/
 
 ---
 

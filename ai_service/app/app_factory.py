@@ -95,6 +95,25 @@ logging.basicConfig(
 
 
 @asynccontextmanager
+def _warm_billing_indexes(logger: logging.Logger) -> None:
+    """Load the AI-plan subscription index and the usage-limits policy index once,
+    before the pod serves traffic. Both are otherwise loaded lazily in the
+    background, so a fresh pod's first requests saw empty sets: a plan-covered use
+    was charged to the wallet (the engine's fail-safe) until the first refresh
+    landed. A failure here only logs; the lazy refresh still runs as before."""
+    try:
+        from .services.metering import plans as _plans
+        if not _plans.refresh_index():
+            logger.warning("ai plans index warm-up did not load; lazy refresh will retry")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai plans index warm-up skipped: %s", exc)
+    try:
+        from .services.metering import limits as _limits
+        _limits.refresh_policy_index()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai limits index warm-up skipped: %s", exc)
+
+
 async def _lifespan(app: FastAPI):
     """Startup: ensure the ai_task schema exists (idempotent) and sweep any
     PROGRESS rows orphaned by a prior restart to FAILED."""
@@ -115,6 +134,7 @@ async def _lifespan(app: FastAPI):
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
+    _warm_billing_indexes(_logger)
     # Orphaned AI-video runs (deploy/crash killed the in-process pipeline
     # task): refund + mark FAILED so slides stop spinning forever. Sweeps at
     # startup and every 30 min (a crash's own orphans are younger than the TTL

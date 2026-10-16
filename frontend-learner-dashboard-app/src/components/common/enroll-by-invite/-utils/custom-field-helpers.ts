@@ -242,9 +242,12 @@ type DropdownOption = { _id: number; value: string; label: string; parent?: stri
  * a SelectItem that cannot be selected.
  */
 const normaliseOptions = (
-  raw: Array<{ id?: number; value?: string; name?: string; label?: string; parent?: unknown }>
+  raw: Array<string | { id?: number; value?: string; name?: string; label?: string; parent?: unknown }>
 ): DropdownOption[] =>
   raw
+    // Some writers (e.g. the MCP form editor) store {"options":["A","B"]} —
+    // plain strings, which used to resolve to no value and render an empty list.
+    .map((entry) => (typeof entry === "string" ? { value: entry.trim() } : entry))
     .map((option, index) => {
       const value = option.value ?? option.name;
       const parent = typeof option.parent === "string" ? option.parent.trim() : "";

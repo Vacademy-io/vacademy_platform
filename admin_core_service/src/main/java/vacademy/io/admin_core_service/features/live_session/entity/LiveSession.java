@@ -166,6 +166,14 @@ public class LiveSession {
     @Column(name = "allow_play_pause")
     private boolean allowPlayPause;
 
+    /**
+     * Only read while the institute has LIVE_SESSION_SETTING.attendanceOnlyMode
+     * on: TRUE shows this class to learners, FALSE/NULL keeps it attendance
+     * only. See LiveSessionAttendanceOnlyModeService.
+     */
+    @Column(name = "show_to_learners")
+    private Boolean showToLearners;
+
     private String timezone;
 
     @PrePersist

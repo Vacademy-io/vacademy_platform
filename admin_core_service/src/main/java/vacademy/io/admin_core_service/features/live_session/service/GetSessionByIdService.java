@@ -202,6 +202,7 @@ public class GetSessionByIdService {
         // Load BBB config from LiveSession entity if available
         if (first != null && first.getSessionId() != null) {
             liveSessionRepository.findById(first.getSessionId()).ifPresent(liveSession -> {
+                dto.setShowToLearners(liveSession.getShowToLearners());
                 if (liveSession.getBbbConfigJson() != null && !liveSession.getBbbConfigJson().isBlank()) {
                     try {
                         Map<String, Object> bbbCfg = new com.fasterxml.jackson.databind.ObjectMapper()

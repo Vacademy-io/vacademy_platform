@@ -181,8 +181,10 @@ public class LearnerReportService {
             // an online attempt whose written answers the AI is grading.
             return true;
         }
+        // NO_AUTO_RELEASE is auto-marked but released by hand, so it is held like MANUAL.
         return assessment != null
-                && ResultTypeEnum.MANUAL.name().equals(assessment.getResultType())
+                && (ResultTypeEnum.MANUAL.name().equals(assessment.getResultType())
+                        || "NO_AUTO_RELEASE".equals(assessment.getResultType()))
                 && !ReleaseResultStatusEnum.RELEASED.name().equals(attempt.getReportReleaseStatus());
     }
 

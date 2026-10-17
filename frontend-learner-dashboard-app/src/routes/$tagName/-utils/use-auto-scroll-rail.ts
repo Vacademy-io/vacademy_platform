@@ -21,6 +21,25 @@ export const RAIL_CLONE_PROPS = {
   inert: true,
 } as unknown as HTMLAttributes<HTMLElement>;
 
+/**
+ * Do the rail's own cards (not the loop copy, not a "+N more" tail marked
+ * data-rail-tail) overflow its visible width? Measured the same way whether
+ * or not the copy is rendered, so showing the copy can never flip the answer
+ * (a flip would re-render the rail in a loop at one exact width).
+ */
+const cardsOverflow = (el: HTMLElement): boolean => {
+  const cards = Array.from(el.children).filter(
+    (c) => !c.hasAttribute("data-rail-clone") && !c.hasAttribute("data-rail-tail"),
+  ) as HTMLElement[];
+  if (cards.length < 2) return false;
+  const first = cards[0];
+  const last = cards[cards.length - 1];
+  const span = last.offsetLeft + last.offsetWidth - first.offsetLeft;
+  const cs = window.getComputedStyle(el);
+  const view = el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  return span > view + 8;
+};
+
 /** Distance from the first card to the first cloned card = one full lap. */
 const loopPeriod = (el: HTMLElement): number => {
   const first = el.firstElementChild as HTMLElement | null;
@@ -75,18 +94,14 @@ export const useAutoScrollRail = (
   const reducedMotion = () =>
     typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-  // Loop only when the cards overflow the rail. Measured without the copy
-  // first, then — once it is rendered — as "one lap is wider than the view".
+  // Loop only when the rail's own cards overflow it (see cardsOverflow).
   useEffect(() => {
     const el = trackRef.current;
     if (!enabled || !loop || !el || reducedMotion()) {
       setLooping(false);
       return;
     }
-    const measure = () => {
-      const lap = loopPeriod(el);
-      setLooping(lap > 0 ? lap > el.clientWidth + 8 : el.scrollWidth - el.clientWidth > 8);
-    };
+    const measure = () => setLooping(cardsOverflow(el));
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);

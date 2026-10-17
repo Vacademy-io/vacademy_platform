@@ -1247,6 +1247,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 flexBasis: `calc((100% - ${(cols - 1) * 1.25}rem) / ${cols})`,
               } as React.CSSProperties
             }
+            data-rail-tail=""
             className="catalogue-card group flex min-w-reg-250 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-catalogue-lg border border-dashed border-catalogue-border p-6 text-center no-underline"
           >
             <span className="catalogue-h3 text-catalogue-brand-ink">+{railHidden}</span>

@@ -604,6 +604,9 @@
       "imageHint": "A ready-made picture replaces the drawn phone.",
       "imageAlt": "Picture description (for screen readers)",
       "buttonLink": "Button link",
+      "playStoreLink": "Google Play link",
+      "appStoreLink": "App Store link",
+      "storeLinksHint": "Add a store link to show Google Play / App Store badges in place of the button.",
       "urlKey": "Link key: ?{{id}}=… (fixed once set)",
       "urlKeyReserved": "The page already uses this key for something else, so the site hides this group. Change the id in \"Edit as JSON\".",
       "needsTag": "Add at least one tag: an option without tags is not shown."
@@ -948,6 +951,9 @@
     "phoneHeading": "Phone picture",
     "phoneShow": "Show a phone",
     "phoneHint": "A phone with your picture on its screen, beside the text.",
+    "playStoreLink": "Google Play link",
+    "appStoreLink": "App Store link",
+    "storeLinksHint": "Add a store link to show Google Play / App Store badges in place of the button.",
     "phoneImage": "Picture on the screen"
   },
   "pricingTable": {

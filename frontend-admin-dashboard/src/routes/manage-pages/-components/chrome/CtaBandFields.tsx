@@ -144,6 +144,8 @@ export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => 
     const mockup = obj(props.mockup);
     const hasMockup = props.mockup !== undefined && props.mockup !== null;
     const setMockup = (next: Props) => updateProp('mockup', { ...mockup, ...next });
+    // Google Play / App Store badges, shown on the site in place of the buttons.
+    const appLinks = obj(props.appLinks);
     const toggleMockup = (on: boolean) => {
         if (!on) lastMockup.current = props.mockup;
         updateProp('mockup', on ? lastMockup.current ?? { kind: 'phone' } : undefined);
@@ -226,6 +228,19 @@ export const CtaBandFields: FC<CtaBandFieldsProps> = ({ props, updateProp }) => 
                                     label={t('hero.altText')}
                                     value={mockup.alt}
                                     onChange={(v) => setMockup({ alt: v })}
+                                />
+                                <p className="text-caption text-neutral-500">{t('ctaBand.storeLinksHint')}</p>
+                                <TextField
+                                    label={t('ctaBand.playStoreLink')}
+                                    placeholder="https://play.google.com/store/apps/details?id=…"
+                                    value={appLinks.playStore}
+                                    onChange={(v) => updateProp('appLinks', { ...appLinks, playStore: v })}
+                                />
+                                <TextField
+                                    label={t('ctaBand.appStoreLink')}
+                                    placeholder="https://apps.apple.com/…"
+                                    value={appLinks.appStore}
+                                    onChange={(v) => updateProp('appLinks', { ...appLinks, appStore: v })}
                                 />
                             </>
                         )}

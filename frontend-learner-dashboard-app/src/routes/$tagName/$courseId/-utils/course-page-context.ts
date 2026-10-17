@@ -210,6 +210,15 @@ export const coursePageContext = (input: {
   };
 };
 
+/**
+ * The crumbs the course page shows between Home and the course. A course in a
+ * stream reads Home / stream / category: the Courses section's own crumb
+ * (e.g. "Knowledge Streams") would only repeat the page the stream link opens.
+ * A course in no stream keeps Home / Courses.
+ */
+export const coursePageTrail = (breadcrumb: readonly Crumb[]): Crumb[] =>
+  breadcrumb.length > 1 ? breadcrumb.slice(1) : [...breadcrumb];
+
 /** Formats read rather than watched: a "duration" there is a reading estimate, not worth a row. */
 const READING_FORMATS = new Set(["ebook", "e-book", "book", "pdf", "article", "articles", "document", "notes"]);
 

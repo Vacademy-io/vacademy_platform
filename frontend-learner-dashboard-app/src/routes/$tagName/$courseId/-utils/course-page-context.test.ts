@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CatalogStream } from "../../-components/components/catalog/catalog-streams";
 import {
   coursePageContext,
+  coursePageTrail,
   findCatalogSection,
   relatedCardStyle,
   showsDuration,
@@ -103,6 +104,28 @@ describe("coursePageContext", () => {
     expect(ctx.breadcrumb).toEqual([{ label: "All courses", route: "courses" }]);
     expect(ctx.related).toBeNull();
     expect(coursePageContext({ tags: null, globalSettings: null, streams: [], catalog: null }).breadcrumb).toEqual([]);
+  });
+});
+
+describe("coursePageTrail", () => {
+  const catalog = findCatalogSection(pages);
+  const trailOf = (tags: string[]) =>
+    coursePageTrail(coursePageContext({ tags, globalSettings: GS, streams: STREAMS, catalog }).breadcrumb);
+
+  it("reads stream then category, without the Courses section's crumb", () => {
+    expect(trailOf(["swasthya", "garbha-vigyan"])).toEqual([
+      { label: "Swasthya", route: "courses", search: { stream: "swasthya" } },
+      { label: "Garbha Vigyan", route: "courses", search: { stream: "swasthya", category: "garbha-vigyan" } },
+    ]);
+  });
+
+  it("stops at the stream when the course has no category", () => {
+    expect(trailOf(["swasthya"])).toEqual([{ label: "Swasthya", route: "courses", search: { stream: "swasthya" } }]);
+  });
+
+  it("keeps the Courses crumb for a course in no stream, and is empty without a Courses section", () => {
+    expect(trailOf(["anything"])).toEqual([{ label: "All courses", route: "courses" }]);
+    expect(coursePageTrail([])).toEqual([]);
   });
 });
 

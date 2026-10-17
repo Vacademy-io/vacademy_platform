@@ -32,6 +32,17 @@ export interface HeaderNavItemValue {
     enabled?: boolean;
     type?: 'link' | 'megaMenu' | 'dropdown';
     megaMenu?: MegaMenuConfig;
+    /** type 'dropdown': its links, each with at most one more level of children. */
+    children?: HeaderNavChildValue[];
+}
+
+/** A link inside a 'dropdown' nav item. */
+export interface HeaderNavChildValue {
+    label?: string;
+    route?: string;
+    openInSameTab?: boolean;
+    enabled?: boolean;
+    children?: HeaderNavChildValue[];
 }
 
 export type AuthLinkStyle = 'primary' | 'outline' | 'text';
@@ -211,9 +222,11 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
 /** The patch that turns a nav item into a mega menu (or back into a link). */
 export const navItemTypePatch = (
     item: HeaderNavItemValue,
-    type: 'link' | 'megaMenu'
+    type: 'link' | 'megaMenu' | 'dropdown'
 ): Partial<HeaderNavItemValue> =>
     type === 'megaMenu'
         ? // A config kept from an earlier switch comes back as it was.
           { type, megaMenu: item.megaMenu ?? { showLegend: true } }
-        : { type };
+        : type === 'dropdown'
+          ? { type, children: item.children ?? [] }
+          : { type };

@@ -3074,6 +3074,11 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     {t('header.megaMenuBadge', 'Mega menu')}
                                 </span>
                             )}
+                            {item.type === 'dropdown' && (
+                                <span className="shrink-0 rounded bg-primary-100 px-1.5 py-0.5 text-caption text-primary-500">
+                                    {t('header.dropdownBadge', 'Dropdown')}
+                                </span>
+                            )}
                             {item.enabled === false && (
                                 <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-caption text-gray-600">
                                     {t('header.hiddenBadge')}

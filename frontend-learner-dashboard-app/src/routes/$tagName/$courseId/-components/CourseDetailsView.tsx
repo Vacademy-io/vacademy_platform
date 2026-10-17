@@ -9,7 +9,7 @@ import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useSiteT } from "../../-utils/catalogue-locale";
 import type { CourseAuthor } from "../../-utils/course-authors";
 import type { CoursePageContext } from "../-utils/course-page-context";
-import { plainText } from "../-utils/course-page-context";
+import { coursePageTrail, plainText } from "../-utils/course-page-context";
 import { embedUrlOf, type CourseFaq, type PreviewVideo } from "../-utils/course-page-content";
 import type { CourseSeries, SeriesStep } from "../-hooks/use-course-series";
 import { AuthorAvatar } from "./AuthorAvatar";
@@ -367,8 +367,8 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
 
   const crumbs = [
     { key: "home", label: t("courseDetails.page.home", "Home"), href: RouteMatcher.pagePath(tagName) },
-    // Home / Courses / stream / course (the design leaves the category to the chips).
-    ...context.breadcrumb.slice(0, 2).map((c, i) => {
+    // Home / stream / category / course, or Home / Courses / course outside any stream.
+    ...coursePageTrail(context.breadcrumb).map((c, i) => {
       const query = c.search ? `?${new URLSearchParams(c.search).toString()}` : "";
       return {
         key: `${c.route}-${i}`,

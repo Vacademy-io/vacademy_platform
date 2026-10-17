@@ -28,15 +28,72 @@ public class ResultResendService {
     private final ResultNotificationService notifications;
     private final AiReportPdfService aiReportPdfService;
     private final FileService fileService;
+    private final vacademy.io.assessment_service.features.assessment.service.ReportPdfUploadService uploads;
+    private final vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager participants;
     private final Map<String, Map<String, Object>> jobs = new ConcurrentHashMap<>();
 
     public ResultResendService(JdbcTemplate jdbc, StudentAttemptRepository attempts, ResultNotificationService notifications,
-                               AiReportPdfService aiReportPdfService, FileService fileService) {
+                               AiReportPdfService aiReportPdfService, FileService fileService,
+                               vacademy.io.assessment_service.features.assessment.service.ReportPdfUploadService uploads,
+                               @org.springframework.context.annotation.Lazy
+                               vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager participants) {
         this.jdbc = jdbc;
         this.attempts = attempts;
         this.notifications = notifications;
         this.aiReportPdfService = aiReportPdfService;
         this.fileService = fileService;
+        this.uploads = uploads;
+        this.participants = participants;
+    }
+
+    /**
+     * Builds one attempt's report fresh and sends the result email / WhatsApp only to the
+     * given address and number (not the learner), so staff can see exactly what learners get.
+     *
+     * @param whatsappTemplate optional template name to try before it is bound (e.g. just approved)
+     */
+    public Map<String, Object> testSend(String assessmentId, String instituteId, String attemptId,
+                                        String email, String phone, String whatsappTemplate) throws Exception {
+        StudentAttempt real = attempts.findById(attemptId).orElseThrow(() -> new IllegalArgumentException("Attempt not found"));
+        var realReg = real.getRegistration();
+        if (realReg == null || realReg.getAssessment() == null || !assessmentId.equals(realReg.getAssessment().getId())) {
+            throw new IllegalArgumentException("Attempt is not part of this assessment");
+        }
+        var detail = participants.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+        var rendered = aiReportPdfService.renderWithVariables(realReg.getUserId(), assessmentId, attemptId, instituteId,
+                detail, null);
+        String fileId = uploads.upload(rendered.pdf(), "result_test_" + attemptId + ".pdf", "ASSESSMENT_REPORT_TEST", assessmentId);
+
+        // A detached copy addressed to the tester; nothing is saved.
+        var reg = new vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration();
+        reg.setUserId(realReg.getUserId());
+        reg.setParticipantName(realReg.getParticipantName());
+        reg.setUserEmail(email);
+        reg.setPhoneNumber(phone);
+        reg.setSource(realReg.getSource());
+        StudentAttempt copy = new StudentAttempt();
+        copy.setId(attemptId);
+        copy.setRegistration(reg);
+        copy.setReportPdfFileId(fileId);
+        List<ResultNotificationService.Item> items = List.of(new ResultNotificationService.Item(copy, rendered.pdf(), rendered.variables()));
+
+        ResultNotificationService.Templates t = notifications.resolve(instituteId, assessmentId);
+        if (whatsappTemplate != null && !whatsappTemplate.isBlank()) {
+            t = new ResultNotificationService.Templates(t.email(), Map.of("name", whatsappTemplate, "setting_json", "{\"language_code\":\"en\"}"));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("pdf_bytes", rendered.pdf().length);
+        out.put("email_template", t.email() == null ? "built-in" : t.email().get("name"));
+        out.put("whatsapp_template", t.whatsapp() == null ? null : t.whatsapp().get("name"));
+        if (email != null && !email.isBlank()) {
+            notifications.sendEmails(items, assessmentId, instituteId, t);
+            out.put("email_sent_to", email);
+        }
+        if (phone != null && !phone.isBlank()) {
+            out.put("whatsapp_accepted", notifications.sendWhatsApps(items, assessmentId, instituteId, t));
+        }
+        out.put("variables", rendered.variables());
+        return out;
     }
 
     public Map<String, Object> status(String jobId) {

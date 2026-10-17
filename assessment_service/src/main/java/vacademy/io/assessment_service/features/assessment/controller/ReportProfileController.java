@@ -220,6 +220,26 @@ public class ReportProfileController {
                 attemptIds == null ? java.util.Set.of() : new java.util.HashSet<>(attemptIds), dryRun));
     }
 
+    /** One attempt's result email / WhatsApp, built fresh and sent only to the given address and number. */
+    @PostMapping("/result-notification/test")
+    public ResponseEntity<Map<String, Object>> testResult(@RequestAttribute("user") CustomUserDetails user,
+                                                          @RequestHeader(value = "clientId", required = false) String clientId,
+                                                          @RequestParam String instituteId, @RequestParam String assessmentId,
+                                                          @RequestParam String attemptId,
+                                                          @RequestParam(required = false) String email,
+                                                          @RequestParam(required = false) String phone,
+                                                          @RequestParam(required = false) String whatsappTemplate) {
+        staff(user, clientId, instituteId);
+        access.requireAssessmentInInstitute(user, instituteId, assessmentId);
+        try {
+            return ResponseEntity.ok(resultResend.testSend(assessmentId, instituteId, attemptId, email, phone, whatsappTemplate));
+        } catch (IllegalArgumentException e) {
+            throw new VacademyException(e.getMessage());
+        } catch (Exception e) {
+            throw new VacademyException("Test send failed: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/result-notification/job")
     public ResponseEntity<Map<String, Object>> resendJob(@RequestAttribute("user") CustomUserDetails user,
                                                          @RequestHeader(value = "clientId", required = false) String clientId,

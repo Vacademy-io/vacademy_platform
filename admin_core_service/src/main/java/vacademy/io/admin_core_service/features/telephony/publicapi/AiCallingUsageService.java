@@ -193,6 +193,79 @@ public class AiCallingUsageService {
         out.put("timezone", zone.getId());
         out.put("totals", totals);
         out.put("days", days);
+        // Added in v1.2, after every v1.1 field so those stay byte-identical.
+        out.put("human_calls", humanUsage(p, from, to));
+        return out;
+    }
+
+    /**
+     * Human (counsellor) calls in the same range and day cut: source=api counts the calls
+     * placed through POST /v1/human-calls, source=all every outbound counsellor call. Only
+     * Vacademy Voice (PLIVO) talk time is charged to the wallet ("voice_call:{log}"); calls
+     * on the institute's own Exotel/Airtel account count with 0 credits.
+     */
+    private Map<String, Object> humanUsage(MapSqlParameterSource p, LocalDate from, LocalDate to) {
+        String sql = """
+                WITH logs AS (
+                    SELECT l.id, l.created_at, l.status, l.duration_seconds,
+                           (l.provider_type = 'PLIVO' AND l.status = 'COMPLETED'
+                                AND COALESCE(l.duration_seconds, 0) > 0 AND l.credits_billed_at IS NULL) AS unbilled
+                      FROM telephony_call_log l
+                     WHERE l.institute_id = :i
+                       AND l.created_at >= :start AND l.created_at < :end
+                       AND l.direction = 'OUTBOUND' AND l.counsellor_user_id IS NOT NULL
+                       AND l.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')
+                       AND (:apiOnly = FALSE OR EXISTS (SELECT 1 FROM human_call_api_call h WHERE h.call_log_id = l.id))
+                ), cost AS (
+                    SELECT logs.id AS log_id, SUM(ABS(t.amount)) AS credits
+                      FROM logs JOIN credit_transactions t
+                        ON t.external_reference_id = 'voice_call:' || logs.id AND t.institute_id = :i
+                       AND t.transaction_type = 'USAGE_DEDUCTION'
+                     GROUP BY logs.id
+                )
+                SELECT to_char((logs.created_at AT TIME ZONE 'UTC') AT TIME ZONE :tz, 'YYYY-MM-DD') AS day,
+                       COUNT(*) AS calls,
+                       COUNT(*) FILTER (WHERE logs.status = 'COMPLETED') AS connected,
+                       COALESCE(SUM(logs.duration_seconds) FILTER (WHERE logs.status = 'COMPLETED'), 0) AS seconds,
+                       COALESCE(SUM(cost.credits), 0) AS credits,
+                       COUNT(*) FILTER (WHERE logs.unbilled) AS unbilled
+                  FROM logs LEFT JOIN cost ON cost.log_id = logs.id
+                 GROUP BY 1
+                 ORDER BY 1
+                """;
+        Map<String, Map<String, Object>> byDay = new HashMap<>();
+        for (Map<String, Object> row : jdbc.queryForList(sql, p)) byDay.put((String) row.get("day"), row);
+        List<Map<String, Object>> days = new ArrayList<>();
+        long calls = 0, connected = 0, seconds = 0, unbilled = 0;
+        BigDecimal credits = BigDecimal.ZERO;
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            Map<String, Object> row = byDay.get(d.toString());
+            long c = row == null ? 0 : ((Number) row.get("calls")).longValue();
+            long cn = row == null ? 0 : ((Number) row.get("connected")).longValue();
+            long s = row == null ? 0 : ((Number) row.get("seconds")).longValue();
+            BigDecimal cr = row == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(row.get("credits")));
+            unbilled += row == null ? 0 : ((Number) row.get("unbilled")).longValue();
+            calls += c;
+            connected += cn;
+            seconds += s;
+            credits = credits.add(cr);
+            Map<String, Object> day = new LinkedHashMap<>();
+            day.put("date", d.toString());
+            day.put("calls", c);
+            day.put("connected", cn);
+            day.put("talk_seconds", s);
+            day.put("credits", round(cr));
+            days.add(day);
+        }
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("calls", calls);
+        totals.put("connected", connected);
+        totals.put("talk_seconds", seconds);
+        totals.put("credits", round(credits));
+        totals.put("calls_not_yet_billed", unbilled);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("totals", totals);
+        out.put("days", days);
         return out;
     }
 

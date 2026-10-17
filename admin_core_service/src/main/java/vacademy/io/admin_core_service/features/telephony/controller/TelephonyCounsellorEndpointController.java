@@ -44,7 +44,7 @@ public class TelephonyCounsellorEndpointController {
      *  on COUNSELLOR/COUNSELOR and on ADMIN vs "Admin" (role_id 1 is stored as
      *  "Admin" on several institutes), and users-of-status matches role name
      *  exactly. Querying the union is cheaper than being wrong on one institute. */
-    private static final List<String> ENDPOINT_ELIGIBLE_ROLES =
+    public static final List<String> ENDPOINT_ELIGIBLE_ROLES =
             List.of("COUNSELLOR", "COUNSELOR", "ADMIN", "Admin");
 
     @Autowired private TelephonyCounsellorEndpointRepository repo;

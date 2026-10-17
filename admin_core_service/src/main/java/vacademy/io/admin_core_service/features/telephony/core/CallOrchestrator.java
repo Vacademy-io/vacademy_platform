@@ -81,6 +81,27 @@ public class CallOrchestrator {
 
         // ── Phase 1: gather + persist (transactional, fast) ──────────────────
         Prepared p = tx.prepareAndPersist(instituteId, req, actor);
+        return dispatch(p);
+    }
+
+    /**
+     * Click-to-call for a counsellor named by id rather than by the request's principal —
+     * the public API's POST /v1/human-calls. Same phases as {@link #connect}: the voice
+     * credit gate, the INITIATED row, the provider dial outside any transaction, QUEUED.
+     * The caller has already checked that the counsellor and the lead (if any) belong to
+     * {@code instituteId}, and the number, hours and caps.
+     */
+    public ConnectCallResponseDTO connectForCounsellor(String instituteId, String counsellorUserId,
+                                                       CallLifecycleTxOps.DialTarget target) {
+        requireNonBlank(instituteId, "instituteId is required");
+        requireNonBlank(counsellorUserId, "counsellorUserId is required");
+        assertVoiceCreditsAvailable(instituteId);
+        Prepared p = tx.prepareAndPersistForCounsellor(instituteId, counsellorUserId, target);
+        return dispatch(p);
+    }
+
+    /** Phases 1b–3 of a click-to-call, shared by both entry points (moved verbatim). */
+    private ConnectCallResponseDTO dispatch(Prepared p) {
         circuitBreaker.assertAvailable(p.providerType());
 
         // ── Phase 2: external HTTP (no DB connection held) ───────────────────

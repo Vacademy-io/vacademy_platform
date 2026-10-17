@@ -108,6 +108,45 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId);
 
         /**
+         * Up to two live leads of this institute whose {@code parent_mobile} matches on the
+         * last 10 digits — {@code [audience_response.id, user_id]}. Two rows means the
+         * number is ambiguous: the public human-call API links a call to a lead only when
+         * exactly one matches, so it never files a call on the wrong person's timeline.
+         * Duplicates and soft-deleted (INACTIVE) leads are skipped.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<Object[]> findUpToTwoLiveLeadsByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /** Up to two live lead ids of this user in this institute (same filters as above). */
+        @Query(value = """
+                SELECT ar.id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id = :userId
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                  AND (ar.audience_status IS NULL OR ar.audience_status <> 'INACTIVE')
+                ORDER BY ar.created_at DESC
+                LIMIT 2
+                """, nativeQuery = true)
+        List<String> findUpToTwoLiveLeadIdsByInstituteAndUser(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
          * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
          * 10 digits. Opted-out leads count — someone who opted out and writes again is still a

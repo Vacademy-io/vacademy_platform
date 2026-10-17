@@ -85,6 +85,14 @@ public class AiCallService {
     private int globalMaxCallsPerDay;
 
     /**
+     * Minimum minutes between two AI calls to the same lead, for automation and bulk.
+     * 0 disables it. Deliberately far larger than the 30-second duplicate window, which
+     * exists to collapse an accidental double dispatch rather than to pace a lead's day.
+     */
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.min-recall-gap-minutes:60}")
+    private int minRecallGapMinutes;
+
+    /**
      * Striped per-lead locks so the dedup check + INITIATED insert are atomic for a
      * given lead WITHIN this replica (the duplicate dispatch originates on one replica
      * — same workflow run / scheduler tick / bulk pool). Bounded (no per-lead growth);
@@ -122,6 +130,21 @@ public class AiCallService {
      * True only when the institute can actually pay for a call. Fails CLOSED on
      * any error — see the call site.
      */
+    /**
+     * Whether a new AI call could be paid for right now — the same gate placeCall applies
+     * (and false when the gate is off is never returned: off means always affordable).
+     * The public API asks before queueing so a client hears "insufficient credits" at
+     * request time instead of finding a call parked in the queue.
+     */
+    public boolean canAffordCall(String instituteId) {
+        return !creditGateEnabled || hasAffordableCredits(instituteId);
+    }
+
+    /** Whether placing an AI call requires a positive balance (the kill switch is off). */
+    public boolean isCreditGateEnabled() {
+        return creditGateEnabled;
+    }
+
     private boolean hasAffordableCredits(String instituteId) {
         try {
             return creditClient.hasActiveCredits(instituteId);
@@ -168,7 +191,12 @@ public class AiCallService {
         // balance cannot be read, so an unreachable credits service stops calls
         // rather than letting unpriced ones through. A blocked call is
         // recoverable (top up and re-run); an unbilled one is not.
-        if (creditGateEnabled && !hasAffordableCredits(req.getInstituteId())) {
+        //
+        // A request that names the MOCK provider never dials and is never billed (the
+        // public API's test mode), so it passes: a new account must be able to test its
+        // integration before its first top-up.
+        boolean mockRequest = ProviderType.MOCK.equalsIgnoreCase(req.getProvider());
+        if (creditGateEnabled && !mockRequest && !hasAffordableCredits(req.getInstituteId())) {
             log.warn("AI call BLOCKED — no credits for institute {} (responseId={}, phone=***{})",
                     req.getInstituteId(), req.getResponseId(),
                     req.getPhoneNumber() == null ? "" :
@@ -279,6 +307,67 @@ public class AiCallService {
             }
         }
 
+        // MINIMUM GAP between two AI calls to the SAME lead.
+        //
+        // The only thing standing between a lead and two calls in a row was a 30-second
+        // duplicate window, whose job is collapsing an accidental double dispatch — not
+        // pacing a person's day. So a campaign call at 10:00 and a workflow retry at
+        // 10:02 both went out, and the lead answered twice in two minutes.
+        //
+        // Distinct from the daily cap below: that bounds how MANY calls a lead gets,
+        // this bounds how CLOSE together they are. Three calls are reasonable across a
+        // day and unreasonable inside five minutes.
+        //
+        // Manual keeps its exemption, as with every other throttle here: a person who
+        // clicks Call has just decided this lead should be rung now, and silently
+        // refusing them is the failure mode this guard set keeps producing.
+        if (!mock && trigger.enforcesPerLeadDailyCap() && minRecallGapMinutes > 0) {
+            java.sql.Timestamp since = java.sql.Timestamp.from(
+                    Instant.now().minus(Duration.ofMinutes(minRecallGapMinutes)));
+            if (callLogRepo.countOutboundToLeadSince(
+                    req.getInstituteId(), userId, provider, since) > 0) {
+                log.info("AI call skipped: lead {} was called within the last {} min",
+                        userId, minRecallGapMinutes);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_RECALL_GAP")
+                        .dispatched(false)
+                        .providerMessage("This lead was called very recently — leaving a gap "
+                                + "before calling again.")
+                        .build();
+            }
+        }
+
+        // PER-LEAD ceiling, rolling 24h. Distinct from the institute cap above: that
+        // one bounds total spend, this one stops a single lead being dialled over and
+        // over. It exists because the queue stretched a bulk run from minutes to hours
+        // — the campaign's own cooldown only looks back five minutes, so re-firing a
+        // run mid-flight re-enqueued every lead already called and rang them again.
+        // The setting was already there (maxCallsPerDayPerLead, default 3); only the
+        // CALL_AI workflow node ever honoured it, so bulk and automation had no
+        // per-lead ceiling at all.
+        //
+        // Skipped for a single manual click, exactly like the institute cap: a person
+        // asking for one call cannot fan out, and silently refusing them is the failure
+        // mode this whole guard set keeps producing.
+        if (!mock && trigger.enforcesPerLeadDailyCap()) {
+            int perLead = settings.getMaxCallsPerDayPerLead() > 0
+                    ? settings.getMaxCallsPerDayPerLead() : 3;
+            java.sql.Timestamp since = java.sql.Timestamp.from(
+                    Instant.now().minus(Duration.ofHours(24)));
+            long already = callLogRepo.countOutboundToLeadSince(
+                    req.getInstituteId(), userId, provider, since);
+            if (already >= perLead) {
+                log.info("AI call skipped: lead {} already had {} {} call(s) in the last 24h "
+                        + "(cap {})", userId, already, provider, perLead);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_LEAD_DAILY_CAP")
+                        .dispatched(false)
+                        .providerMessage("This lead has already been called the maximum number "
+                                + "of times today.")
+                        .build();
+            }
+        }
+
         // De-duplicate a near-simultaneous double dispatch for the SAME lead. Aavtaar
         // doesn't echo our correlation id, so two dials placed within milliseconds (the
         // CALL_AI node entered twice / a bulk run + the node) become two real calls — one
@@ -294,7 +383,9 @@ public class AiCallService {
             // ACCIDENTAL double dispatch, and a person clicking twice is asking for a
             // second call, not repeating themselves by mistake. Bulk keeps it — a
             // campaign overlapping a workflow node is precisely the accident it catches.
-            if (trigger.enforcesDuplicateWindow()
+            // MOCK (the public API's test mode) never dials, so there is no double dial to
+            // collapse: a developer repeating a test to the same number must get a call.
+            if (!mock && trigger.enforcesDuplicateWindow()
                     && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);

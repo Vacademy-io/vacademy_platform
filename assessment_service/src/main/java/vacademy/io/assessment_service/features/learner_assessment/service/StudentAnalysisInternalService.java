@@ -39,7 +39,7 @@ import java.util.Set;
  *   <li>Read-only — no writes anywhere.
  *   <li>Reuses existing {@link StudentAttemptRepository} queries and
  *       {@link LearnerReportService#buildComparisonData} — no duplicated query logic.
- *   <li>Comparison is capped at {@link #MAX_ASSESSMENTS_PER_REPORT} (default 25) to bound
+ *   <li>Comparison is capped at {@link #MAX_ASSESSMENTS_PER_REPORT} (default 50) to bound
  *       per-request work.  A truncation warning is logged so operators can tune the cap.
  *   <li>Per-assessment comparison failures are isolated: a single failure marks that entry
  *       with null comparison fields but never aborts the whole request.
@@ -51,10 +51,11 @@ public class StudentAnalysisInternalService {
 
     /**
      * Maximum number of assessments that will have full comparison data computed.
-     * The most recent N attempts are processed; older ones are silently omitted.
-     * Configurable via a constant here; could be externalised to application properties.
+     * The most recent N attempts (by exam date) are processed; older ones are silently omitted.
+     * 25 was too tight: a school term of weekly offline tests passes it (26 in a Sep 2026
+     * Elevate report), and the newest test was the one that got dropped.
      */
-    static final int MAX_ASSESSMENTS_PER_REPORT = 25;
+    static final int MAX_ASSESSMENTS_PER_REPORT = 50;
 
     /** Maximum cohort size accepted by the batch endpoint; larger requests are rejected with 400. */
     static final int MAX_BATCH_USERS = 500;

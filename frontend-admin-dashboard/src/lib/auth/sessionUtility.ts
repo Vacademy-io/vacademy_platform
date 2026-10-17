@@ -180,13 +180,8 @@ const generateSSOUrl = (targetDomain: string, redirectPath?: string): string | n
         ...(redirectPath && { redirect: redirectPath }),
     });
 
-    // Copy URL to clipboard for easy sharing
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        const fullUrl = `${baseUrl}?${params.toString()}`;
-        navigator.clipboard.writeText(fullUrl).catch((err) => {
-            console.warn('Failed to copy URL to clipboard:', err);
-        });
-    }
+    // Never put this URL on the clipboard: it carries live access + refresh tokens, and a
+    // clipboard is readable by other apps and survives into whatever gets pasted next.
     return `${baseUrl}?${params.toString()}`;
 };
 

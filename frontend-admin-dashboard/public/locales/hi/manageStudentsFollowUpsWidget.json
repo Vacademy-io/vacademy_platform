@@ -1,0 +1,20 @@
+{
+    "status": {
+        "pending": "लंबित",
+        "ongoing": "जारी",
+        "overdue": "अतिदेय",
+        "completed": "पूर्ण"
+    },
+    "card": {
+        "closedReason": "बंद किया गया: {{reason}}"
+    },
+    "widget": {
+        "title": "फ़ॉलो-अप",
+        "openCount_one": "{{count}} खुला",
+        "openCount_other": "{{count}} खुले"
+    },
+    "emptyState": {
+        "title": "कोई खुला फ़ॉलो-अप नहीं",
+        "description": "फ़ॉलो अप टैब का उपयोग करके नीचे एक शेड्यूल करें"
+    }
+}

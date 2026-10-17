@@ -8,6 +8,7 @@ import {
     DEFAULT_ASSESSMENT_SETTINGS,
     DEFAULT_REPORT_BRANDING,
     mergeExamExperience,
+    normalizeCommentPlacement,
 } from '@/types/assessment-settings';
 
 const SETTINGS_KEY = 'ASSESSMENT_SETTING';
@@ -40,6 +41,12 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
             roles: settings?.resultNotifications?.roles ?? {},
         },
         examExperience: mergeExamExperience(settings?.examExperience),
+        aiCopyCheck: {
+            commentPlacement: normalizeCommentPlacement(settings?.aiCopyCheck?.commentPlacement),
+        },
+        assessmentFolders: {
+            enabled: settings?.assessmentFolders?.enabled === true,
+        },
     };
 };
 

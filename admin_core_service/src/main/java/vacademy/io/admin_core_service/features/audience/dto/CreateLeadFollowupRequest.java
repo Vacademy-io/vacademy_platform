@@ -13,4 +13,8 @@ public class CreateLeadFollowupRequest {
     private String instituteId;
     private Timestamp scheduleTime;
     private String content;
+    /** Optional, and only offered when the institute has turned the fields on. */
+    private String studentResponse;
+    private String followUpMode;
+    private String nextAction;
 }

@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { CalendarCheck, Clock } from '@phosphor-icons/react';
 import {
     CompleteFollowUpPopover,
@@ -13,17 +16,21 @@ import { cn } from '@/lib/utils';
 // the Follow-ups page reuses the same component for its inline row action.
 export type { LeadFollowup };
 
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-    PENDING: { label: 'Pending', className: 'bg-blue-100 text-blue-700' },
-    ONGOING: { label: 'Ongoing', className: 'bg-amber-100 text-amber-700' },
-    OVERDUE: { label: 'Overdue', className: 'bg-red-100 text-red-700' },
-    COMPLETED: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
-};
+function buildStatusConfig(t: TFunction): Record<string, { label: string; className: string }> {
+    return {
+        PENDING: { label: t('status.pending'), className: 'bg-blue-100 text-blue-700' },
+        ONGOING: { label: t('status.ongoing'), className: 'bg-amber-100 text-amber-700' },
+        OVERDUE: { label: t('status.overdue'), className: 'bg-red-100 text-red-700' },
+        COMPLETED: { label: t('status.completed'), className: 'bg-emerald-100 text-emerald-700' },
+    };
+}
 
 // ── Follow-up Card ────────────────────────────────────────────────────────────
 
 function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: string }) {
-    const config = (STATUS_CONFIG[followup.status] ?? STATUS_CONFIG['PENDING'])!;
+    const { t } = useTranslation('manageStudentsFollowUpsWidget');
+    const statusConfig = useMemo(() => buildStatusConfig(t), [t]);
+    const config = (statusConfig[followup.status] ?? statusConfig['PENDING'])!;
 
     const formattedTime = followup.schedule_time
         ? format(new Date(followup.schedule_time), 'd MMM yyyy, h:mm a')
@@ -77,7 +84,7 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
 
             {followup.is_closed && followup.closer_reason && (
                 <p className="mt-1.5 text-xs italic text-neutral-400">
-                    Closed: {followup.closer_reason}
+                    {t('card.closedReason', { reason: followup.closer_reason })}
                 </p>
             )}
         </div>
@@ -92,6 +99,7 @@ interface FollowUpsWidgetProps {
 }
 
 export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetProps) {
+    const { t } = useTranslation('manageStudentsFollowUpsWidget');
     const { data: followups = [], isLoading } = useQuery({
         queryKey: ['lead-followups', audienceResponseId],
         queryFn: () => fetchLeadFollowups(audienceResponseId),
@@ -105,10 +113,10 @@ export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetP
         <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
                 <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-                <h4 className="text-sm font-semibold text-neutral-700">Follow-ups</h4>
+                <h4 className="text-sm font-semibold text-neutral-700">{t('widget.title')}</h4>
                 {open.length > 0 && (
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
-                        {open.length} open
+                        {t('widget.openCount', { count: open.length })}
                     </span>
                 )}
             </div>
@@ -118,9 +126,9 @@ export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetP
             {!isLoading && open.length === 0 && (
                 <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-5 text-center">
                     <CalendarCheck weight="fill" className="size-7 text-neutral-300" />
-                    <p className="text-xs font-medium text-neutral-500">No open follow-ups</p>
+                    <p className="text-xs font-medium text-neutral-500">{t('emptyState.title')}</p>
                     <p className="text-caption text-neutral-400">
-                        Schedule one below using the Follow Up tab
+                        {t('emptyState.description')}
                     </p>
                 </div>
             )}

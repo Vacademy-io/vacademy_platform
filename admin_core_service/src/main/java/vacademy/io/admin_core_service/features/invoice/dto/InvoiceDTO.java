@@ -28,6 +28,14 @@ public class InvoiceDTO {
     private LocalDateTime dueDate;
     private BigDecimal subtotal;
     private BigDecimal discountAmount;
+    /**
+     * Admin who gave the discount on this invoice — the admin who created an admin invoice
+     * with a discount, or the admin who discounted the enrollment the invoice bills.
+     * Admin API only: {@link #withoutInternalDiscountNotes()} strips it for learners/parents.
+     */
+    private String discountGrantedByUserId;
+    /** The granting admin's internal reason. Admin API only — never shown to learners. */
+    private String discountReason;
     private BigDecimal taxAmount;
     private BigDecimal totalAmount;
     private String currency;
@@ -57,6 +65,13 @@ public class InvoiceDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<InvoiceLineItemDTO> lineItems;
+
+    /** Copy for learner/parent-facing responses: drops the admin-only discount notes. */
+    public InvoiceDTO withoutInternalDiscountNotes() {
+        this.discountGrantedByUserId = null;
+        this.discountReason = null;
+        return this;
+    }
 }
 
 

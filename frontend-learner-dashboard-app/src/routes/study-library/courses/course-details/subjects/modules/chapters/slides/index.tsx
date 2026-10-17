@@ -406,20 +406,14 @@ function Slides() {
   // not on the slide rows — same source the course page reads.
   const dripSchedule = useCourseDripSchedule(courseId, resolvedSessionId);
   const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
-  // Anchors plus the first-item strictness flag, spread into every
-  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
-  // rest: institutes that have not turned this on keep today's behaviour.
+  // Day-1 anchors for day-wise rules, spread into every LearnerProgressData
+  // below.
   const dripAnchors = useMemo(
     () => ({
       enrollmentDate: dripSchedule.enrollmentDate,
       sessionStartDate: dripSchedule.sessionStartDate,
-      strictFirstItem: dripSchedule.applyConfiguredRules,
     }),
-    [
-      dripSchedule.enrollmentDate,
-      dripSchedule.sessionStartDate,
-      dripSchedule.applyConfiguredRules,
-    ],
+    [dripSchedule.enrollmentDate, dripSchedule.sessionStartDate],
   );
 
   const { condition: slideCondition } = useDripConditions(
@@ -552,7 +546,7 @@ function Slides() {
         source_type: "FEEDBACK",
         source_id: "",
         image_file_id: "",
-        description: "Provide feedback for this chapter",
+        description: `Provide feedback for this ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}`,
         status: "ACTIVE",
         slide_order: slides.length + 1,
         percentage_completed: 0,
@@ -1923,7 +1917,7 @@ function Slides() {
                   source_type: "FEEDBACK",
                   source_id: "",
                   image_file_id: "",
-                  description: "Provide feedback for this chapter",
+                  description: `Provide feedback for this ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}`,
                   status: "ACTIVE",
                   slide_order: slides?.length ? slides.length + 1 : 1,
                   percentage_completed: 0,

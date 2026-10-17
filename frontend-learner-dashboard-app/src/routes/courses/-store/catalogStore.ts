@@ -4,6 +4,10 @@ interface Instructor {
   id: string;
   full_name?: string;
   username?: string;
+  profile_pic_file_id?: string | null;
+  image_url?: string;
+  author_subtitle?: string;
+  author_description?: string;
 }
 
 interface Level {

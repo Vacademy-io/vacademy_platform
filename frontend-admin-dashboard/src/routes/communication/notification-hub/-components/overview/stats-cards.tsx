@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     PaperPlaneTilt,
     Eye,
@@ -28,6 +30,8 @@ interface Stat {
 }
 
 export function StatsCards({ overview, loading, onEmailStatClick }: Props) {
+    const { t, i18n } = useTranslation('communicationStatsCards');
+
     if (loading && !overview) {
         return (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -42,7 +46,7 @@ export function StatsCards({ overview, loading, onEmailStatClick }: Props) {
         return (
             <Card>
                 <CardContent className="py-6 text-center text-sm text-gray-500">
-                    Could not load notification stats.
+                    {t('couldNotLoad')}
                 </CardContent>
             </Card>
         );
@@ -56,56 +60,64 @@ export function StatsCards({ overview, loading, onEmailStatClick }: Props) {
         onEmailStatClick ? () => onEmailStatClick(eventType) : undefined;
 
     const emailStats: Stat[] = [
-        { label: 'Emails sent', value: email.sent, icon: <PaperPlaneTilt size={18} />, tone: 'default' },
-        { label: 'Delivered', value: email.delivered, icon: <CheckCircle size={18} />, tone: 'good', onClick: drill('DELIVERY') },
-        { label: 'Opened', value: email.opened, icon: <Eye size={18} />, tone: 'default', onClick: drill('OPEN') },
-        { label: 'Clicked', value: email.clicked, icon: <CursorClick size={18} />, tone: 'default', onClick: drill('CLICK') },
-        { label: 'Bounced', value: email.bounced, icon: <Warning size={18} />, tone: 'warn', onClick: drill('BOUNCE') },
-        { label: 'Inbound replies', value: email.inbound, icon: <ArrowFatDown size={18} />, tone: 'default' },
+        { label: t('emailStats.sent'), value: email.sent, icon: <PaperPlaneTilt size={18} />, tone: 'default' },
+        { label: t('emailStats.delivered'), value: email.delivered, icon: <CheckCircle size={18} />, tone: 'good', onClick: drill('DELIVERY') },
+        { label: t('emailStats.opened'), value: email.opened, icon: <Eye size={18} />, tone: 'default', onClick: drill('OPEN') },
+        { label: t('emailStats.clicked'), value: email.clicked, icon: <CursorClick size={18} />, tone: 'default', onClick: drill('CLICK') },
+        { label: t('emailStats.bounced'), value: email.bounced, icon: <Warning size={18} />, tone: 'warn', onClick: drill('BOUNCE') },
+        { label: t('emailStats.inbound'), value: email.inbound, icon: <ArrowFatDown size={18} />, tone: 'default' },
     ];
 
     const waStats: Stat[] = [
-        { label: 'WhatsApp out', value: wa.outgoing, icon: <PaperPlaneTilt size={18} />, tone: 'default' },
-        { label: 'WhatsApp in', value: wa.incoming, icon: <ArrowFatDown size={18} />, tone: 'default' },
+        { label: t('waStats.out'), value: wa.outgoing, icon: <PaperPlaneTilt size={18} />, tone: 'default' },
+        { label: t('waStats.in'), value: wa.incoming, icon: <ArrowFatDown size={18} />, tone: 'default' },
     ];
 
     return (
         <div className="space-y-4">
             <Section
-                title="Email"
+                title={t('sections.email')}
                 subtitle={
                     !email.configured
-                        ? 'No sender email configured for this institute.'
+                        ? t('emailSubtitle.notConfigured')
                         : email.inboundConfigured
-                          ? 'Sender + inbound inbox configured.'
-                          : 'Sender configured. Inbound replies not yet enabled.'
+                          ? t('emailSubtitle.fullyConfigured')
+                          : t('emailSubtitle.senderOnly')
                 }
                 stats={emailStats}
                 muted={!email.configured}
+                t={t}
+                locale={i18n.language}
             />
 
             <Section
-                title="WhatsApp"
+                title={t('sections.whatsapp')}
                 subtitle={
                     wa.configured
-                        ? 'WhatsApp business channel connected.'
-                        : 'No WhatsApp channel mapped to this institute.'
+                        ? t('waSubtitle.connected')
+                        : t('waSubtitle.notConfigured')
                 }
                 stats={waStats}
                 muted={!wa.configured}
+                t={t}
+                locale={i18n.language}
             />
 
             <div className="grid grid-cols-2 gap-3">
                 <StatCard
-                    label="Active batches"
+                    label={t('activeBatches')}
                     value={batches.active}
                     icon={<Stack size={18} />}
                     tone={batches.active > 0 ? 'good' : 'muted'}
+                    t={t}
+                    locale={i18n.language}
                 />
                 <StatCard
-                    label={`Batches completed (${overview.windowDays}d)`}
+                    label={t('batchesCompleted', { count: overview.windowDays })}
                     value={batches.completedInWindow}
                     icon={<CheckCircle size={18} />}
+                    t={t}
+                    locale={i18n.language}
                 />
             </div>
         </div>
@@ -117,11 +129,15 @@ function Section({
     subtitle,
     stats,
     muted,
+    t,
+    locale,
 }: {
     title: string;
     subtitle: string;
     stats: Stat[];
     muted?: boolean;
+    t: TFunction;
+    locale: string;
 }) {
     return (
         <div className={muted ? 'opacity-70' : ''}>
@@ -131,14 +147,22 @@ function Section({
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {stats.map((s) => (
-                    <StatCard key={s.label} {...s} />
+                    <StatCard key={s.label} {...s} t={t} locale={locale} />
                 ))}
             </div>
         </div>
     );
 }
 
-function StatCard({ label, value, icon, tone = 'default', onClick }: Stat) {
+function StatCard({
+    label,
+    value,
+    icon,
+    tone = 'default',
+    onClick,
+    t,
+    locale,
+}: Stat & { t: TFunction; locale: string }) {
     const toneClasses: Record<NonNullable<Stat['tone']>, string> = {
         default: 'text-gray-700',
         muted: 'text-gray-400',
@@ -152,7 +176,7 @@ function StatCard({ label, value, icon, tone = 'default', onClick }: Stat) {
                 <span className={toneClasses[tone]}>{icon}</span>
             </div>
             <div className={`mt-1 text-xl font-semibold ${toneClasses[tone]}`}>
-                {typeof value === 'number' ? value.toLocaleString() : value}
+                {typeof value === 'number' ? value.toLocaleString(locale) : value}
             </div>
         </>
     );
@@ -168,8 +192,8 @@ function StatCard({ label, value, icon, tone = 'default', onClick }: Stat) {
                 <button
                     type="button"
                     onClick={onClick}
-                    className="w-full text-left focus:outline-none"
-                    title={`View ${label.toLowerCase()}`}
+                    className="w-full text-start focus:outline-none"
+                    title={t('viewStat', { label: label.toLowerCase() })}
                 >
                     <CardContent className="p-3">{body}</CardContent>
                 </button>

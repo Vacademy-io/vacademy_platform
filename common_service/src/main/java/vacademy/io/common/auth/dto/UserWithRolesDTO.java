@@ -31,6 +31,8 @@ public class UserWithRolesDTO {
     private boolean isRootUser;
     private String password;
     private String profilePicFileId;
+    private String authorSubtitle;
+    private String authorDescription;
     private Set<UserRoleDTO> roles;
     private String status;
 
@@ -51,8 +53,9 @@ public class UserWithRolesDTO {
         this.gender = user.getGender();
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
+        this.authorSubtitle = user.getAuthorSubtitle();
+        this.authorDescription = user.getAuthorDescription();
         this.roles = user.getRoles().stream()
                 .map(UserRoleDTO::new).collect(Collectors.toSet());
     }
 }
-

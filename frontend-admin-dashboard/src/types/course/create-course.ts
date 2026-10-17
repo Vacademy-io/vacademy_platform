@@ -26,6 +26,8 @@ export interface Instructor {
     name: string;
     profilePicId?: string;
     roles?: string[];
+    authorSubtitle?: string;
+    authorDescription?: string;
 }
 
 // === Subject Details with optional modules ===

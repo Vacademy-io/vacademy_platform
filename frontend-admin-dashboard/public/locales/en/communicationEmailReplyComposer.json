@@ -1,0 +1,18 @@
+{
+    "reply": "Reply",
+    "dialogDescription": "Send a reply through one of your institute's configured senders.",
+    "loadingSenders": "Loading senders…",
+    "noSenderConfigured": "No configured sender for this institute. Add one in Settings → Notification Settings → Email Settings to enable replies.",
+    "from": "From",
+    "to": "To",
+    "subject": "Subject",
+    "optional": "(optional)",
+    "writeReplyPlaceholder": "Write a reply…",
+    "cancel": "Cancel",
+    "sending": "Sending…",
+    "sendReply": "Send reply",
+    "bodyEmpty": "Body cannot be empty",
+    "pickSender": "Pick a sender",
+    "replySent": "Reply sent",
+    "failedToSendReply": "Failed to send reply"
+}

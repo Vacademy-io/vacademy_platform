@@ -3,6 +3,8 @@ import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { AnnouncementService, type ModeType } from '@/services/announcement';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -50,14 +52,15 @@ export const Route = createLazyFileRoute('/announcement/schedule/')({
 type ViewType = 'week' | '3day' | 'day' | 'month';
 
 function AnnouncementSchedulePage() {
+    const { t } = useTranslation('announcementScheduleIndex');
     const { setNavHeading } = useNavHeadingStore();
     const { toast } = useToast();
     const navigate = useNavigate();
     const admin = isUserAdmin();
 
     useEffect(() => {
-        setNavHeading('Schedule Announcement');
-    }, [setNavHeading]);
+        setNavHeading(t('navHeading'));
+    }, [setNavHeading, t]);
 
     const [view, setView] = useState<ViewType>('week');
     const [modeFilter, setModeFilter] = useState<ModeType | 'ALL'>('ALL');
@@ -135,13 +138,13 @@ function AnnouncementSchedulePage() {
         setDeleting(true);
         try {
             await AnnouncementService.remove(deleteFor.id);
-            toast({ title: 'Scheduled announcement deleted' });
+            toast({ title: t('toast.deleted') });
             setDeleteFor(null);
             refetch();
         } catch (e) {
             toast({
-                title: 'Delete failed',
-                description: e instanceof Error ? e.message : 'Try again',
+                title: t('toast.deleteFailedTitle'),
+                description: e instanceof Error ? e.message : t('toast.deleteFailedFallback'),
                 variant: 'destructive',
             });
         } finally {
@@ -152,22 +155,22 @@ function AnnouncementSchedulePage() {
     const onApprove = async (a: Announcement) => {
         try {
             await AnnouncementService.approve(a.id, 'ADMIN');
-            toast({ title: 'Approved' });
+            toast({ title: t('toast.approved') });
             refetch();
         } catch (e) {
-            toast({ title: 'Approve failed', variant: 'destructive' });
+            toast({ title: t('toast.approveFailed'), variant: 'destructive' });
         }
     };
     const onReject = async () => {
         if (!rejectFor) return;
         try {
             await AnnouncementService.reject(rejectFor.id, 'ADMIN', rejectReason || '');
-            toast({ title: 'Rejected' });
+            toast({ title: t('toast.rejected') });
             setRejectReason('');
             setRejectFor(null);
             refetch();
         } catch (e) {
-            toast({ title: 'Reject failed', variant: 'destructive' });
+            toast({ title: t('toast.rejectFailed'), variant: 'destructive' });
         }
     };
 
@@ -228,26 +231,26 @@ function AnnouncementSchedulePage() {
 
     return (
         <div className="p-4">
-            <h2 className="mb-4 text-xl font-semibold">Schedule Announcements</h2>
+            <h2 className="mb-4 text-xl font-semibold">{t('pageHeading')}</h2>
 
             <div className="mb-3 flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                     <Button variant="secondary" onClick={goPrev}>
-                        Prev
+                        {t('nav.prev')}
                     </Button>
                     <Button variant="secondary" onClick={goToday}>
-                        Today
+                        {t('nav.today')}
                     </Button>
                     <Button variant="secondary" onClick={goNext}>
-                        Next
+                        {t('nav.next')}
                     </Button>
                 </div>
                 <Tabs value={view} onValueChange={(v) => setView(v as ViewType)}>
                     <TabsList>
-                        <TabsTrigger value="day">Day</TabsTrigger>
-                        <TabsTrigger value="3day">3-day</TabsTrigger>
-                        <TabsTrigger value="week">Week</TabsTrigger>
-                        <TabsTrigger value="month">Month</TabsTrigger>
+                        <TabsTrigger value="day">{t('tabs.day')}</TabsTrigger>
+                        <TabsTrigger value="3day">{t('tabs.threeDay')}</TabsTrigger>
+                        <TabsTrigger value="week">{t('tabs.week')}</TabsTrigger>
+                        <TabsTrigger value="month">{t('tabs.month')}</TabsTrigger>
                     </TabsList>
                 </Tabs>
                 <div className="text-lg font-medium">{formatMonthYear(startDate)}</div>
@@ -257,10 +260,10 @@ function AnnouncementSchedulePage() {
                         onValueChange={(v) => setModeFilter(v as ModeType | 'ALL')}
                     >
                         <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Mode filter" />
+                            <SelectValue placeholder={t('modeFilter.placeholder')} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ALL">All modes</SelectItem>
+                            <SelectItem value="ALL">{t('modeFilter.all')}</SelectItem>
                             <SelectItem value="SYSTEM_ALERT">SYSTEM_ALERT</SelectItem>
                             <SelectItem value="DASHBOARD_PIN">DASHBOARD_PIN</SelectItem>
                             <SelectItem value="APP_OVERLAY">APP_OVERLAY</SelectItem>
@@ -271,7 +274,7 @@ function AnnouncementSchedulePage() {
                             <SelectItem value="TASKS">TASKS</SelectItem>
                         </SelectContent>
                     </Select>
-                    <Button onClick={() => goToCreateAt(new Date())}>Schedule new</Button>
+                    <Button onClick={() => goToCreateAt(new Date())}>{t('scheduleNew')}</Button>
                 </div>
             </div>
 
@@ -305,20 +308,20 @@ function AnnouncementSchedulePage() {
             <Dialog open={!!rejectFor} onOpenChange={(open) => !open && setRejectFor(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Reject Announcement</DialogTitle>
+                        <DialogTitle>{t('rejectDialog.title')}</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-2">
                         <Textarea
-                            placeholder="Reason"
+                            placeholder={t('rejectDialog.reasonPlaceholder')}
                             value={rejectReason}
                             onChange={(e) => setRejectReason(e.target.value)}
                         />
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setRejectFor(null)}>
-                                Cancel
+                                {t('rejectDialog.cancel')}
                             </Button>
                             <Button variant="destructive" onClick={onReject}>
-                                Reject
+                                {t('rejectDialog.reject')}
                             </Button>
                         </div>
                     </div>
@@ -328,13 +331,15 @@ function AnnouncementSchedulePage() {
             <Dialog open={!!deleteFor} onOpenChange={(open) => !open && setDeleteFor(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Delete scheduled announcement?</DialogTitle>
+                        <DialogTitle>{t('deleteDialog.title')}</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-3">
                         <p className="text-sm text-neutral-700">
-                            This will permanently cancel and delete{' '}
-                            <span className="font-medium">{deleteFor?.title || 'this announcement'}</span>.
-                            It will not be delivered and cannot be restored.
+                            {t('deleteDialog.bodyPrefix')}{' '}
+                            <span className="font-medium">
+                                {deleteFor?.title || t('deleteDialog.defaultTitle')}
+                            </span>
+                            {t('deleteDialog.bodySuffix')}
                         </p>
                         <div className="flex justify-end gap-2">
                             <Button
@@ -342,10 +347,10 @@ function AnnouncementSchedulePage() {
                                 onClick={() => setDeleteFor(null)}
                                 disabled={deleting}
                             >
-                                Cancel
+                                {t('deleteDialog.cancel')}
                             </Button>
                             <Button variant="destructive" onClick={onDelete} disabled={deleting}>
-                                {deleting ? 'Deleting…' : 'Delete'}
+                                {deleting ? t('deleteDialog.deleting') : t('deleteDialog.delete')}
                             </Button>
                         </div>
                     </div>
@@ -381,18 +386,21 @@ function Agenda(props: {
         admin,
         loading,
     } = props;
+    const { t } = useTranslation('announcementScheduleIndex');
     return (
         <div className="grid gap-4">
-            <div className="text-sm text-neutral-600">Showing {formatRange(start, end)}</div>
+            <div className="text-sm text-neutral-600">
+                {t('showingRange', { range: formatRange(start, end) })}
+            </div>
             {loading ? (
-                <div className="text-sm">Loading…</div>
+                <div className="text-sm">{t('loading')}</div>
             ) : grouped.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 rounded border border-dashed py-12 text-center">
                     <div className="text-sm font-medium text-neutral-700">
-                        No scheduled announcements in this range
+                        {t('emptyState.title')}
                     </div>
                     <div className="text-xs text-neutral-500">
-                        Pick a different range, or schedule a new campaign.
+                        {t('emptyState.description')}
                     </div>
                     <Button
                         size="sm"
@@ -400,7 +408,7 @@ function Agenda(props: {
                         className="mt-2"
                         onClick={() => onCreate(atMidday(start))}
                     >
-                        Schedule new
+                        {t('scheduleNew')}
                     </Button>
                 </div>
             ) : (
@@ -413,7 +421,7 @@ function Agenda(props: {
                                 variant="secondary"
                                 onClick={() => onCreate(atMidday(date))}
                             >
-                                Schedule here
+                                {t('scheduleHere')}
                             </Button>
                         </div>
                         <div className="grid gap-2 p-2">
@@ -446,16 +454,26 @@ function MonthGrid(props: {
     admin: boolean;
 }) {
     const { start, events, onCreate } = props;
+    const { t } = useTranslation('announcementScheduleIndex');
     const { firstOfMonth, lastOfMonth } = useMemo(() => getMonthMeta(start), [start]);
     const byDay = useMemo(
         () => groupByDay(events, firstOfMonth, lastOfMonth),
         [events, firstOfMonth, lastOfMonth]
     );
     const cells = useMemo(() => buildMonthCells(firstOfMonth), [firstOfMonth]);
+    const weekdayLabels = [
+        t('weekdays.sun'),
+        t('weekdays.mon'),
+        t('weekdays.tue'),
+        t('weekdays.wed'),
+        t('weekdays.thu'),
+        t('weekdays.fri'),
+        t('weekdays.sat'),
+    ];
     return (
         <div className="grid gap-2">
             <div className="grid grid-cols-7 gap-2 text-xs text-neutral-500">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+                {weekdayLabels.map((d) => (
                     <div key={d} className="px-2">
                         {d}
                     </div>
@@ -490,7 +508,7 @@ function MonthGrid(props: {
                                 ))}
                                 {bucket && (bucket.items?.length ?? 0) > 3 && (
                                     <div className="text-xs text-neutral-500">
-                                        +{bucket.items.length - 3} more
+                                        {t('moreCount', { count: bucket.items.length - 3 })}
                                     </div>
                                 )}
                             </div>
@@ -519,6 +537,7 @@ function EventCard({
     canEdit: boolean;
     admin: boolean;
 }) {
+    const { t } = useTranslation('announcementScheduleIndex');
     const color = colorForAnnouncement(a);
     // Prefer external-channel badges (EMAIL / WHATSAPP / PUSH_NOTIFICATION) since those are
     // what the recipient actually experiences. Fall back to the in-app mode for announcements
@@ -527,7 +546,7 @@ function EventCard({
         a.mediumTypes && a.mediumTypes.length > 0
             ? a.mediumTypes
             : (a.modes || []).map((m) => m.modeType);
-    const timeLabel = formatScheduleTime(a.scheduling);
+    const timeLabel = formatScheduleTime(t, a.scheduling);
     return (
         <div className="flex items-start justify-between gap-3 rounded border p-3">
             <div className="flex-1">
@@ -552,26 +571,28 @@ function EventCard({
                         </Badge>
                     ))}
                 </div>
-                <div className="mt-1 text-xs text-neutral-500">{renderSchedule(a.scheduling)}</div>
+                <div className="mt-1 text-xs text-neutral-500">
+                    {renderSchedule(t, a.scheduling)}
+                </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
                 {canEdit && (
                     <Button size="sm" variant="secondary" onClick={() => onEdit(a)}>
-                        Edit
+                        {t('actions.edit')}
                     </Button>
                 )}
                 {canEdit && (
                     <Button size="sm" variant="destructive" onClick={() => onDelete(a)}>
-                        Delete
+                        {t('actions.delete')}
                     </Button>
                 )}
                 {a.status === 'PENDING_APPROVAL' && admin && (
                     <>
                         <Button size="sm" onClick={() => onApprove(a)}>
-                            Approve
+                            {t('actions.approve')}
                         </Button>
                         <Button size="sm" variant="destructive" onClick={() => onReject(a)}>
-                            Reject
+                            {t('actions.reject')}
                         </Button>
                     </>
                 )}
@@ -600,11 +621,13 @@ function statusPillClasses(status: string): string {
     }
 }
 
-function formatScheduleTime(s?: Announcement['scheduling']): string {
+function formatScheduleTime(t: TFunction, s?: Announcement['scheduling']): string {
     if (!s) return '';
-    if (s.scheduleType === 'IMMEDIATE') return 'Immediate';
+    if (s.scheduleType === 'IMMEDIATE') return t('schedule.immediate');
     if (s.scheduleType === 'RECURRING') {
-        return s.cronExpression ? `Recurring · ${s.cronExpression}` : 'Recurring';
+        return s.cronExpression
+            ? t('schedule.recurringWithCron', { cron: s.cronExpression })
+            : t('schedule.recurring');
     }
     // ONE_TIME — prefer just the local-formatted time, no awkward "→ -" tail
     if (!s.startDate) return '';
@@ -665,11 +688,13 @@ function formatRange(from: Date, to: Date) {
     return `${f} → ${t}`;
 }
 
-function renderSchedule(s?: Announcement['scheduling']) {
+function renderSchedule(t: TFunction, s?: Announcement['scheduling']) {
     if (!s) return '-';
     const tzSuffix = s.timezone ? ` · ${s.timezone}` : '';
     if (s.scheduleType === 'RECURRING') {
-        const cron = s.cronExpression ? `CRON ${s.cronExpression}` : 'Recurring';
+        const cron = s.cronExpression
+            ? t('schedule.cronWithLabel', { cron: s.cronExpression })
+            : t('schedule.recurring');
         return `${cron}${tzSuffix}`;
     }
     if (s.scheduleType === 'ONE_TIME') {
@@ -679,7 +704,7 @@ function renderSchedule(s?: Announcement['scheduling']) {
             ? `${fmt(s.startDate)} → ${fmt(s.endDate)}${tzSuffix}`
             : `${fmt(s.startDate)}${tzSuffix}`;
     }
-    return `Immediate${tzSuffix}`;
+    return `${t('schedule.immediate')}${tzSuffix}`;
 }
 
 function fmt(v?: string) {

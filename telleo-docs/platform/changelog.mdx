@@ -1,0 +1,32 @@
+---
+title: "Changelog"
+description: "Changes to the Telleo API."
+---
+
+<Update label="14 October 2026" description="v1.1.1">
+  - A batch retried with the same `Idempotency-Key` must be the same request (`409 idempotency_key_reused` otherwise) and returns the same accepted **and** rejected rows; a retry while the first request is still running gets `409 request_in_progress`. Batch keys are at most 251 characters.
+  - Variables named `name`, `lead_name` or a date/time word (`date`, `time`, `year`…) are accepted again, with a `warnings` entry; they never replace the built-in values.
+  - `calls_not_yet_billed` and `cost.billed` count only charges that will actually be made.
+</Update>
+
+<Update label="14 October 2026" description="v1.1">
+  - New: [`GET /v1/credits`](/platform/credits-and-usage) and [`GET /v1/usage`](/platform/credits-and-usage), and `cost` on every call.
+  - New: `outcome.call_quality`; calls that broke down on our side no longer report the contact as not interested.
+  - New: `Idempotency-Key` on `POST /v1/batches`; a batch row's own `agent_id` is honoured.
+  - `call.completed` now waits for the recording, so the webhook carries `recording_url`.
+  - Idempotency keys are honoured for 24 hours, and a replay must match the whole request, including `test`.
+  - Calls waiting for an agent that is turned off are canceled instead of dialled.
+  - Repeated test calls to the same number work; test calls are limited to 500 per 24 hours.
+  - Over-long `contact` fields and reserved variable names are rejected instead of being cut or ignored.
+  - Unknown endpoints and wrong methods return the standard error shape (404 / 405).
+</Update>
+
+<Update label="13 October 2026" description="v1">
+  First public version of the Telleo API at `https://api.telleo.ai/v1`.
+
+  - Calls: start, list, read, cancel; contact name and `variables` personalise the agent's script.
+  - Batches of up to 1,000 calls with per-row results.
+  - Outcomes: disposition, summary, answers, lead rating, callback, follow-up, meeting, transcript and recording.
+  - Signed webhooks (`call.completed`, `call.not_connected`) with retries.
+  - Idempotency keys, test mode, self-serve keys and webhook settings in the dashboard.
+</Update>

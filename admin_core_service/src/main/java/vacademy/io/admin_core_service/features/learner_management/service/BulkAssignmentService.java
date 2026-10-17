@@ -29,7 +29,15 @@ import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
 import vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
+import vacademy.io.admin_core_service.features.fee_management.dto.InstallmentScheduleDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.InstallmentSchedulePreviewDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
+import vacademy.io.admin_core_service.features.fee_management.enums.CpoScheduleMode;
+import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.InstallmentScheduleService;
+import vacademy.io.admin_core_service.features.fee_management.service.OneTimeInstallmentPlanProvisioner;
+import vacademy.io.admin_core_service.features.offline_payment.service.OfflinePaymentDetailsService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -46,6 +54,9 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
@@ -89,6 +100,11 @@ public class BulkAssignmentService {
     private final SubOrgAutoLinkService subOrgAutoLinkService;
     private final vacademy.io.admin_core_service.features.learner.service.LearnerCouponService learnerCouponService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
+    private final AdminDiscountService adminDiscountService;
+    // Provider, not a direct reference: this service is itself injected into the learner
+    // enroll services, and PaymentService's own graph reaches back toward them.
+    private final org.springframework.beans.factory.ObjectProvider<
+            vacademy.io.admin_core_service.features.payments.service.PaymentService> paymentServiceProvider;
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceService invoiceService;
     private final InstituteSettingService instituteSettingService;
@@ -103,10 +119,16 @@ public class BulkAssignmentService {
     private final FeeTypeRepository feeTypeRepository;
     private final AssignedFeeValueRepository assignedFeeValueRepository;
     private final AftInstallmentRepository aftInstallmentRepository;
+    private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
+    private final InstallmentScheduleService installmentScheduleService;
+    private final OneTimeInstallmentPlanProvisioner oneTimeInstallmentPlanProvisioner;
+    private final OfflinePaymentDetailsService offlinePaymentDetailsService;
     private final SubOrgService subOrgService;
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     // Used only to resolve a sub-org's own leader for the workflow context — see resolveSubOrgLeader.
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService leadConversionPolicyService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -273,6 +295,36 @@ public class BulkAssignmentService {
                 continue;
             }
 
+            // A learner-specific installment schedule: validate it once for the whole
+            // assignment and, for a one-time price, swap in the hidden installment plan.
+            if (scheduleOf(assignment) != null) {
+                try {
+                    config = prepareConfigForSchedule(assignment, config, request.getInstituteId(),
+                            adminUserId, dryRun);
+                } catch (Exception e) {
+                    log.warn("Installment schedule rejected for packageSession={}: {}",
+                            assignment.getPackageSessionId(), e.getMessage());
+                    for (String userId : allUserIds) {
+                        results.add(buildFailedResult(userId, userMap,
+                                assignment.getPackageSessionId(),
+                                "Installment schedule: " + e.getMessage()));
+                    }
+                    continue;
+                }
+            }
+
+            // How the payment was made: validated once per assignment, before anyone is
+            // enrolled, so a bad mode fails cleanly instead of leaving enrollments behind.
+            try {
+                resolveOfflinePaymentDetails(assignment, config, options, request.getInstituteId());
+            } catch (Exception e) {
+                for (String userId : allUserIds) {
+                    results.add(buildFailedResult(userId, userMap,
+                            assignment.getPackageSessionId(), "Payment details: " + e.getMessage()));
+                }
+                continue;
+            }
+
             for (String userId : allUserIds) {
                 BulkAssignResultItemDTO result = processAssignment(
                         userId, userMap, newUserDataMap, assignment, config,
@@ -312,10 +364,15 @@ public class BulkAssignmentService {
         // had a UserLeadProfile. Best-effort: failures must not affect the response.
         // Skipped on dry-run since no real enrollment happened.
         if (!dryRun && StringUtils.hasText(request.getInstituteId())) {
+            // Courses whose sessions appear in the successful rows, keyed by session, so the
+            // per-course conversion opt-out can be applied without a lookup per row.
+            Map<String, String> packageIdBySessionId = resolvePackageIdsForResults(results);
             Set<String> convertedUserIds = new HashSet<>();
             for (BulkAssignResultItemDTO r : results) {
                 if ("SUCCESS".equals(r.getStatus())
                         && StringUtils.hasText(r.getUserId())
+                        && leadConversionPolicyService.countsAsConversion(
+                                request.getInstituteId(), packageIdBySessionId.get(r.getPackageSessionId()))
                         && convertedUserIds.add(r.getUserId())) {
                     try {
                         boolean flipped = userLeadProfileService.markConvertedIfExists(
@@ -430,6 +487,10 @@ public class BulkAssignmentService {
                 .username(resolvedUsername)
                 .password(newUser.getPassword())
                 .gender(newUser.getGender())
+                // A username the admin typed wins over the institute's username strategy;
+                // the custom field values let that strategy use e.g. the roll number.
+                .usernameExplicit(StringUtils.hasText(newUser.getUsername()) ? Boolean.TRUE : null)
+                .usernameFieldValues(CustomFieldValueDTO.toValueMap(newUser.getCustomFieldValues()))
                 .roles(CollectionUtils.isEmpty(newUser.getRoles())
                         ? List.of("STUDENT")
                         : newUser.getRoles());
@@ -581,7 +642,7 @@ public class BulkAssignmentService {
                 // row for the same (user, package session) would trip
                 // uq_dest_pkg_inst_user_status where that index exists.
                 return handleReEnroll(mapping, userId, userEmail, config,
-                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment);
+                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment, options);
             }
 
             // Case C: No existing mapping → create new
@@ -617,9 +678,7 @@ public class BulkAssignmentService {
             AssignmentItemDTO assignment) {
 
         boolean isCpo = isCpoOption(config.getPaymentOption());
-        CpoTemplateSummary cpoSummary = isCpo
-                ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
-                : null;
+        CpoTemplateSummary cpoSummary = isCpo ? summarizeCpo(config, assignment) : null;
         String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
         Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
         CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
@@ -634,11 +693,13 @@ public class BulkAssignmentService {
                     .message(config.isAutoCreated()
                             ? "Will create with auto-generated free invite"
                             : null);
+            previewAdminDiscount(b, assignment, config, instituteId, userEmail, isCpo);
             if (isCpo && cpoSummary != null) {
                 b.cpoTotalAmount(cpoSummary.total.doubleValue())
                         .cpoInstallmentCount(cpoSummary.count)
                         .cpoInitialPaymentMode(cpoMode)
-                        .cpoInitialPaymentAmount(cpoAmount);
+                        .cpoInitialPaymentAmount(cpoAmount)
+                        .cpoSchedule(cpoSummary.preview());
             }
             return b.build();
         }
@@ -654,11 +715,15 @@ public class BulkAssignmentService {
         // is the canonical conversion event. Best-effort: a profile-write blip
         // shouldn't roll back the enrollment that just succeeded. Default
         // listing filters on the leads endpoints will hide CONVERTED leads.
-        try {
-            userLeadProfileService.markConverted(userId, instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to mark lead converted for userId={} instituteId={}: {}",
-                    userId, instituteId, e.getMessage());
+        // Skipped when this course opted out (free course / trial / lead magnet) —
+        // see LeadConversionPolicyService; defaults to converting.
+        if (countsAsConversion(instituteId, config)) {
+            try {
+                userLeadProfileService.markConverted(userId, instituteId);
+            } catch (Exception e) {
+                log.warn("Failed to mark lead converted for userId={} instituteId={}: {}",
+                        userId, instituteId, e.getMessage());
+            }
         }
 
         // Sub-org resolution for org-associated package sessions — identical to the
@@ -682,11 +747,15 @@ public class BulkAssignmentService {
         String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
+        // Discount the admin gives on this assignment (ONE_TIME / SUBSCRIPTION only).
+        AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
+                userEmail, adminUserId, isCpo);
+
         // Create UserPlan
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
                 config.getPaymentPlan(),
-                null, // no coupon discount for admin bulk
+                adminDiscount,
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null, // no payment initiation request
@@ -694,6 +763,7 @@ public class BulkAssignmentService {
                 userPlanSource,
                 createdSubOrgId,
                 null);
+        userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         String mappingId;
 
@@ -771,19 +841,36 @@ public class BulkAssignmentService {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     perUserPaymentDate, globalPaymentDate, transactionId,
-                    generateInvoiceOnManualEnroll);
+                    generateInvoiceOnManualEnroll, offlinePaymentDetailsFor(assignment, options));
         }
 
         // Create payment log if any payment date or transaction ID is provided.
         // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
         // (and uses the partial amount the admin specified instead of the full plan price).
-        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId))) {
+        vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlineDetails = options != null ? options.getPaymentDetails() : null;
+        // Details alone (the dialog preselects a mode) do not mean a payment was taken; a
+        // payment date, a transaction id, or a reference in the details does.
+        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)
+                || (offlineDetails != null && StringUtils.hasText(offlineDetails.getReference())))) {
             try {
-                Double amount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                Double grossAmount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                Double amount = adminDiscount != null
+                        ? CouponDiscountUtil.applyDiscount(grossAmount, adminDiscount)
+                        : grossAmount;
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
                         : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
+                // Validated up front when the run-wide date / transaction id asked for a payment;
+                // a payment date that only comes from a CSV column cannot carry a mode, so
+                // "require a mode" is not enforced for it.
+                OfflinePaymentDetailsService.Resolved paidVia = offlinePaymentDetailsService.resolve(
+                        instituteId, offlineDetails, transactionId,
+                        globalPaymentDate != null || StringUtils.hasText(transactionId));
+                offlinePaymentDetailsService.pinNumberingValue(instituteId,
+                        userPlan != null ? userPlan.getId() : null, userId, offlineDetails);
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
-                        : (globalPaymentDate != null ? globalPaymentDate : new Date());
+                        : globalPaymentDate != null ? globalPaymentDate
+                        : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
+                        : new Date();
 
                 String paymentLogId = paymentLogService.createPaymentLog(
                         userId,
@@ -794,6 +881,11 @@ public class BulkAssignmentService {
                         userPlan,
                         null,
                         paymentDate);
+
+                if (adminDiscount != null) {
+                    paymentServiceProvider.getObject()
+                            .recordFirstPaymentDiscountLineItem(paymentLogId, userPlan, grossAmount);
+                }
 
                 Map<String, Object> paymentSpecificData = new HashMap<>();
                 if (StringUtils.hasText(transactionId)) {
@@ -808,6 +900,21 @@ public class BulkAssignmentService {
                         vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                         vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                         vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+                offlinePaymentDetailsService.apply(paymentLogId, paidVia, adminUserId);
+
+                // Book the payment on the learner's account ledger as a charge raised and
+                // settled at once. Without it the plan (created ACTIVE, so never accrued) left
+                // the ledger empty and the side-view Account Summary fell back to the invoice
+                // list, showing the whole price as due with Total Paid 0. Same treatment as the
+                // CPO branch and subscription renewals; replay-safe per payment log.
+                if (amount != null && amount > 0) {
+                    userAccountLedgerService.recordSettledCharge(
+                            userId, instituteId,
+                            java.math.BigDecimal.valueOf(amount), currency,
+                            java.time.Instant.ofEpochMilli(paymentDate.getTime()).atZone(java.time.ZoneId.systemDefault()).toLocalDate(),
+                            "USER_PLAN", userPlan.getId(), paymentLogId,
+                            "Payment recorded at bulk enrollment");
+                }
 
                 // Generate invoice only when the institute opted in via
                 // INVOICE_SETTING.generateInvoiceOnManualEnroll AND the payment is not FREE.
@@ -836,12 +943,14 @@ public class BulkAssignmentService {
                 .userPlanId(userPlan.getId())
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
                 .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null);
+        applyDiscountAmounts(resultBuilder, config, adminDiscount);
         if (isCpo && cpoSummary != null) {
             resultBuilder
                     .cpoTotalAmount(cpoSummary.total.doubleValue())
                     .cpoInstallmentCount(cpoSummary.count)
                     .cpoInitialPaymentMode(cpoMode)
-                    .cpoInitialPaymentAmount(cpoAmount);
+                    .cpoInitialPaymentAmount(cpoAmount)
+                    .cpoSchedule(cpoSummary.preview());
         }
         return resultBuilder.build();
     }
@@ -858,12 +967,11 @@ public class BulkAssignmentService {
             String instituteId, boolean dryRun,
             UserDTO userDTO, StudentExtraDetails extraDetails,
             String adminUserId,
-            AssignmentItemDTO assignment) {
+            AssignmentItemDTO assignment,
+            BulkAssignOptionsDTO options) {
 
         boolean isCpo = isCpoOption(config.getPaymentOption());
-        CpoTemplateSummary cpoSummary = isCpo
-                ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
-                : null;
+        CpoTemplateSummary cpoSummary = isCpo ? summarizeCpo(config, assignment) : null;
         String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
         Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
         CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
@@ -876,11 +984,13 @@ public class BulkAssignmentService {
                     .enrollInviteIdUsed(config.getEnrollInvite().getId())
                     .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
                     .message("Will re-enroll from " + existingMapping.getStatus() + " status");
+            previewAdminDiscount(b, assignment, config, instituteId, userEmail, isCpo);
             if (isCpo && cpoSummary != null) {
                 b.cpoTotalAmount(cpoSummary.total.doubleValue())
                         .cpoInstallmentCount(cpoSummary.count)
                         .cpoInitialPaymentMode(cpoMode)
-                        .cpoInitialPaymentAmount(cpoAmount);
+                        .cpoInitialPaymentAmount(cpoAmount)
+                        .cpoSchedule(cpoSummary.preview());
             }
             return b.build();
         }
@@ -891,12 +1001,15 @@ public class BulkAssignmentService {
         authService.addRolesToUserInternal(userId, List.of("STUDENT"), instituteId);
 
         // Re-enrollment is also a conversion event — flip the lead profile to
-        // CONVERTED so this user falls out of the active leads list. Best-effort.
-        try {
-            userLeadProfileService.markConverted(userId, instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to mark lead converted (re-enroll) for userId={} instituteId={}: {}",
-                    userId, instituteId, e.getMessage());
+        // CONVERTED so this user falls out of the active leads list. Best-effort,
+        // and subject to the same per-course opt-out as a fresh enrollment.
+        if (countsAsConversion(instituteId, config)) {
+            try {
+                userLeadProfileService.markConverted(userId, instituteId);
+            } catch (Exception e) {
+                log.warn("Failed to mark lead converted (re-enroll) for userId={} instituteId={}: {}",
+                        userId, instituteId, e.getMessage());
+            }
         }
 
         // Sub-org resolution for org-associated PS — same contract as handleNewEnrollment.
@@ -910,11 +1023,14 @@ public class BulkAssignmentService {
         String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
+        AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
+                userEmail, adminUserId, isCpo);
+
         // Create new UserPlan (stacking is handled automatically by UserPlanService)
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
                 config.getPaymentPlan(),
-                null,
+                adminDiscount,
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null,
@@ -922,6 +1038,7 @@ public class BulkAssignmentService {
                 userPlanSource,
                 createdSubOrgId,
                 null);
+        userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         // Ensure Student record exists with extra details (same as manual flow)
         if (userDTO != null) {
@@ -970,8 +1087,8 @@ public class BulkAssignmentService {
         if (isCpo) {
             applyCpoEnrollmentSideEffects(
                     userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
-                    null, null, null,
-                    false);
+                    null, null, options != null ? options.getTransactionId() : null,
+                    false, offlinePaymentDetailsFor(assignment, options));
         }
 
         BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
@@ -983,12 +1100,14 @@ public class BulkAssignmentService {
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
                 .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
                 .message("Re-enrolled from " + existingMapping.getStatus() + " status");
+        applyDiscountAmounts(resultBuilder, config, adminDiscount);
         if (isCpo && cpoSummary != null) {
             resultBuilder
                     .cpoTotalAmount(cpoSummary.total.doubleValue())
                     .cpoInstallmentCount(cpoSummary.count)
                     .cpoInitialPaymentMode(cpoMode)
-                    .cpoInitialPaymentAmount(cpoAmount);
+                    .cpoInitialPaymentAmount(cpoAmount)
+                    .cpoSchedule(cpoSummary.preview());
         }
         return resultBuilder.build();
     }
@@ -1008,6 +1127,66 @@ public class BulkAssignmentService {
      * Re-enrollments pass a null NewUserDTO and rely on assignment-level fields only.
      * Returns null when the PS isn't org-associated (the common case).
      */
+    /**
+     * The admin discount for one learner of an assignment, or null. CPO plans carry
+     * their own per-learner discount (cpo_config), so an admin_discount there is an error.
+     */
+    private AppliedCouponDiscount resolveAdminDiscount(AssignmentItemDTO assignment,
+                                                       DefaultInviteResolver.ResolvedConfig config,
+                                                       String instituteId, String userEmail,
+                                                       String adminUserId, boolean isCpo) {
+        if (!AdminDiscountService.isRequested(assignment.getAdminDiscount())) {
+            return null;
+        }
+        if (isCpo) {
+            throw new VacademyException("Use the CPO discount for installment plans, not admin_discount");
+        }
+        return adminDiscountService.resolveForCharge(
+                assignment.getAdminDiscount(), instituteId, config.getPaymentPlan(), config.getPaymentOption(),
+                config.getPackageSession().getId(), config.getEnrollInvite().getId(), userEmail, adminUserId);
+    }
+
+    private UserPlan stampAdminDiscount(UserPlan userPlan, AppliedCouponDiscount discount, String adminUserId) {
+        if (discount == null) {
+            return userPlan;
+        }
+        adminDiscountService.stampGrantedBy(userPlan, discount, adminUserId);
+        // Keep this instance: outside a transaction save() returns a merged copy whose
+        // discount association is an uninitialized proxy, which the payment-log step reads.
+        userPlanService.save(userPlan);
+        return userPlan;
+    }
+
+    /** Dry run: validate the discount and show the net price without persisting anything. */
+    private void previewAdminDiscount(BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b,
+                                      AssignmentItemDTO assignment,
+                                      DefaultInviteResolver.ResolvedConfig config,
+                                      String instituteId, String userEmail, boolean isCpo) {
+        if (!AdminDiscountService.isRequested(assignment.getAdminDiscount())) {
+            return;
+        }
+        if (isCpo) {
+            throw new VacademyException("Use the CPO discount for installment plans, not admin_discount");
+        }
+        var preview = adminDiscountService.preview(assignment.getAdminDiscount(), instituteId,
+                config.getPaymentPlan() != null ? config.getPaymentPlan().getId() : null, null,
+                config.getPackageSession().getId(), config.getEnrollInvite().getId(), userEmail);
+        b.grossAmount(preview.getGrossAmount())
+                .discountAmount(preview.getDiscountAmount())
+                .netAmount(preview.getNetAmount());
+    }
+
+    private static void applyDiscountAmounts(BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b,
+                                             DefaultInviteResolver.ResolvedConfig config,
+                                             AppliedCouponDiscount discount) {
+        if (discount == null || config.getPaymentPlan() == null) {
+            return;
+        }
+        double gross = config.getPaymentPlan().getActualPrice();
+        double net = CouponDiscountUtil.applyDiscount(gross, discount);
+        b.grossAmount(gross).discountAmount(Math.round((gross - net) * 100.0) / 100.0).netAmount(net);
+    }
+
     private SubOrgResolution maybeResolveSubOrgForOrgAssociatedPackage(
             DefaultInviteResolver.ResolvedConfig config,
             NewUserDTO newUserData,
@@ -1172,6 +1351,57 @@ public class BulkAssignmentService {
     }
 
     /**
+     * packageSessionId → packageId for the successful rows, so the conversion opt-out can be
+     * resolved per course in one query rather than per result row. Sessions that don't resolve
+     * are simply absent; a null packageId makes the policy service fall back to the institute
+     * default (converting).
+     */
+    private Map<String, String> resolvePackageIdsForResults(List<BulkAssignResultItemDTO> results) {
+        List<String> sessionIds = results.stream()
+                .filter(r -> "SUCCESS".equals(r.getStatus()) && StringUtils.hasText(r.getPackageSessionId()))
+                .map(BulkAssignResultItemDTO::getPackageSessionId)
+                .distinct()
+                .collect(Collectors.toList());
+        if (sessionIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> bySession = new HashMap<>();
+            for (PackageSession ps : packageSessionService.findAllByIds(sessionIds)) {
+                if (ps.getPackageEntity() != null) {
+                    bySession.put(ps.getId(), ps.getPackageEntity().getId());
+                }
+            }
+            return bySession;
+        } catch (Exception e) {
+            log.warn("Could not resolve packages for bulk-assign conversion policy: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Does enrolling into the course behind this resolved config count as converting the lead?
+     *
+     * <p>Delegates to {@link vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService}
+     * (course setting → institute setting → true). Returns true when the package can't be
+     * resolved or the lookup throws, so an unreadable setting keeps today's behaviour rather
+     * than silently stopping conversions.</p>
+     */
+    private boolean countsAsConversion(String instituteId, DefaultInviteResolver.ResolvedConfig config) {
+        try {
+            PackageSession packageSession = config != null ? config.getPackageSession() : null;
+            String packageId = packageSession != null && packageSession.getPackageEntity() != null
+                    ? packageSession.getPackageEntity().getId()
+                    : null;
+            return leadConversionPolicyService.countsAsConversion(instituteId, packageId);
+        } catch (Exception e) {
+            log.warn("Could not resolve lead-conversion policy for institute {} — defaulting to converting: {}",
+                    instituteId, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
      * Fires SUB_ORG_MEMBER_ENROLLMENT with the exact context shape the /sub-org/v1/add-member route
      * publishes (member / packageSessionIds / subOrgAdmin / packageId), so workflows built for the
      * sub-org members page fire identically when the same person is enrolled from the admin
@@ -1195,10 +1425,21 @@ public class BulkAssignmentService {
             // email resolves to the wrong practice group, or to none at all.
             UserDTO subOrgLeader = resolveSubOrgLeader(subOrg, packageSession.getId());
 
+            // Same lmsEditExistingUser policy the batch path resolves (course → institute,
+            // defaults false), so the edit-user node behaves identically however a member is
+            // enrolled. Best-effort: a read failure leaves the existing LMS account untouched.
+            boolean mayEditExistingLmsUser = false;
+            try {
+                mayEditExistingLmsUser = lmsExistingUserEditPolicyService.mayEditExistingUser(
+                        instituteId, packageSession.getPackageEntity().getId());
+            } catch (Exception e) {
+                log.warn("Could not resolve lmsEditExistingUser for institute {} / package {} — defaulting to false: {}",
+                        instituteId, packageSession.getPackageEntity().getId(), e.getMessage());
+            }
             // Built centrally so this and /sub-org/v1/add-member publish an identical context —
             // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
             Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
-                    userDTO, subOrgLeader, enrolledBy, packageSession);
+                    userDTO, subOrgLeader, enrolledBy, packageSession, mayEditExistingLmsUser);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
@@ -1667,6 +1908,151 @@ public class BulkAssignmentService {
         return assignment.getCpoPaymentAmount();
     }
 
+    /** The assignment's own payment details, else the run-wide ones. */
+    private static vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlinePaymentDetailsFor(AssignmentItemDTO assignment, BulkAssignOptionsDTO options) {
+        if (assignment != null && assignment.getCpoConfig() != null && assignment.getCpoConfig().getPaymentDetails() != null) {
+            return assignment.getCpoConfig().getPaymentDetails();
+        }
+        return options != null ? options.getPaymentDetails() : null;
+    }
+
+    /**
+     * Validates how the payment was made for an assignment that records one: an offline
+     * payment on a fee plan, or a payment date / transaction id / details on any other plan.
+     * Throws with an admin-readable message; does nothing when no payment is recorded.
+     */
+    private void resolveOfflinePaymentDetails(AssignmentItemDTO assignment, DefaultInviteResolver.ResolvedConfig config,
+                                              BulkAssignOptionsDTO options, String instituteId) {
+        if (isCpoOption(config.getPaymentOption())) {
+            Double amount = "OFFLINE".equals(resolveCpoMode(assignment)) ? resolveCpoAmount(assignment) : null;
+            if (amount == null || amount <= 0) return;
+            String reference = assignment.getCpoConfig() != null && StringUtils.hasText(assignment.getCpoConfig().getPaymentReference())
+                    ? assignment.getCpoConfig().getPaymentReference()
+                    : options != null ? options.getTransactionId() : null;
+            offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetailsFor(assignment, options), reference);
+            offlinePaymentDetailsService.validateNumberingValue(instituteId, offlinePaymentDetailsFor(assignment, options));
+            return;
+        }
+        if (options != null && (options.getPaymentDate() != null || StringUtils.hasText(options.getTransactionId())
+                || (options.getPaymentDetails() != null && StringUtils.hasText(options.getPaymentDetails().getReference())))) {
+            offlinePaymentDetailsService.resolve(instituteId, options.getPaymentDetails(), options.getTransactionId());
+            offlinePaymentDetailsService.validateNumberingValue(instituteId, options.getPaymentDetails());
+        }
+    }
+
+    private static InstallmentScheduleDTO scheduleOf(AssignmentItemDTO assignment) {
+        return assignment != null && assignment.getCpoConfig() != null
+                ? assignment.getCpoConfig().getInstallmentSchedule()
+                : null;
+    }
+
+    /**
+     * Validates an assignment's installment schedule against its resolved plan and returns
+     * the config to enroll with.
+     *
+     * <ul>
+     *   <li>Fee plan (CPO, FIXED or FLEXIBLE): unchanged; the schedule replaces the template
+     *       for these learners only.</li>
+     *   <li>One-time price: the UserPlan goes on the hidden installment plan for that price
+     *       (see {@link OneTimeInstallmentPlanProvisioner}). The invite and the access days
+     *       already resolved from the course plan are kept. On a dry run nothing is created;
+     *       a transient stand-in carries the price into the preview.</li>
+     *   <li>Anything else: rejected.</li>
+     * </ul>
+     */
+    private DefaultInviteResolver.ResolvedConfig prepareConfigForSchedule(
+            AssignmentItemDTO assignment, DefaultInviteResolver.ResolvedConfig config,
+            String instituteId, String adminUserId, boolean dryRun) {
+        InstallmentScheduleDTO schedule = scheduleOf(assignment);
+        if (!CollectionUtils.isEmpty(assignment.getCpoConfig().getInstallmentOverrides())) {
+            throw new VacademyException(
+                    "Use either an installment schedule or per-installment changes, not both");
+        }
+        vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption option =
+                config.getPaymentOption();
+        String type = option != null ? option.getType() : null;
+
+        if (PaymentOptionType.CPO.name().equalsIgnoreCase(type)) {
+            String cpoId = option.getComplexPaymentOptionId();
+            ComplexPaymentOption cpo = StringUtils.hasText(cpoId)
+                    ? complexPaymentOptionRepository.findById(cpoId).orElse(null)
+                    : null;
+            if (cpo == null) {
+                throw new VacademyException("The invite's fee plan could not be found");
+            }
+            checkScheduleLength(schedule, installmentScheduleService.maxCountFor(cpo));
+            installmentScheduleService.preview(cpoId, null, schedule);
+            return config;
+        }
+
+        if (PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(type)) {
+            vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan plan = config.getPaymentPlan();
+            if (plan == null || plan.getActualPrice() <= 0) {
+                throw new VacademyException("This course is free, so there is nothing to split into installments");
+            }
+            if (dryRun) {
+                installmentScheduleService.preview(null, BigDecimal.valueOf(plan.getActualPrice()), schedule);
+                vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption standIn =
+                        new vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption();
+                standIn.setName(option.getName());
+                standIn.setType(PaymentOptionType.CPO.name());
+                standIn.setSource("INSTITUTE");
+                standIn.setSourceId(instituteId);
+                vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan standInPlan =
+                        new vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan();
+                standInPlan.setName(plan.getName());
+                standInPlan.setActualPrice(plan.getActualPrice());
+                standInPlan.setCurrency(plan.getCurrency());
+                standInPlan.setValidityInDays(plan.getValidityInDays());
+                return new DefaultInviteResolver.ResolvedConfig(config.getEnrollInvite(), standIn, standInPlan,
+                        config.getPackageSession(), config.getAccessDays(), config.isAutoCreated());
+            }
+            OneTimeInstallmentPlanProvisioner.ProvisionedPlan provisioned =
+                    oneTimeInstallmentPlanProvisioner.provision(option, plan, instituteId, adminUserId);
+            installmentScheduleService.preview(provisioned.cpo().getId(), null, schedule);
+            return new DefaultInviteResolver.ResolvedConfig(config.getEnrollInvite(),
+                    provisioned.mirrorOption(), provisioned.syntheticPlan(),
+                    config.getPackageSession(), config.getAccessDays(), config.isAutoCreated());
+        }
+
+        throw new VacademyException("Installment schedules work with fee plans and one-time prices, not "
+                + (type != null ? type : "this payment option"));
+    }
+
+    private static void checkScheduleLength(InstallmentScheduleDTO schedule, int max) {
+        int count = schedule.getRows() != null && !schedule.getRows().isEmpty()
+                ? schedule.getRows().size()
+                : (schedule.getCount() != null ? schedule.getCount() : 0);
+        if (count > max) {
+            throw new VacademyException("This fee plan allows at most " + max + " installments");
+        }
+    }
+
+    /**
+     * Summary for the result row. For an installment schedule (sent by the admin, or a
+     * FLEXIBLE plan's default) it comes from the same layout the bills are written from;
+     * otherwise from the plan's fixed template.
+     */
+    private CpoTemplateSummary summarizeCpo(DefaultInviteResolver.ResolvedConfig config, AssignmentItemDTO assignment) {
+        String cpoId = config.getPaymentOption().getComplexPaymentOptionId();
+        InstallmentScheduleDTO schedule = scheduleOf(assignment);
+        if (schedule == null && StringUtils.hasText(cpoId)) {
+            ComplexPaymentOption cpo = complexPaymentOptionRepository.findById(cpoId).orElse(null);
+            if (cpo != null && CpoScheduleMode.isFlexible(cpo.getScheduleMode())) {
+                schedule = installmentScheduleService.defaultScheduleFor(cpo, java.time.LocalDate.now());
+            }
+        }
+        if (schedule == null) {
+            return summarizeCpoFromTemplate(cpoId);
+        }
+        BigDecimal fallbackTotal = config.getPaymentPlan() != null
+                ? BigDecimal.valueOf(config.getPaymentPlan().getActualPrice())
+                : BigDecimal.ZERO;
+        InstallmentSchedulePreviewDTO preview = installmentScheduleService.preview(
+                StringUtils.hasText(cpoId) ? cpoId : null, fallbackTotal, schedule);
+        return new CpoTemplateSummary(preview.getTotalAmount(), preview.getBillCount(), preview);
+    }
+
     /** Total contract value + installment count, read from the CPO template (not from SFP rows). */
     private CpoTemplateSummary summarizeCpoFromTemplate(String cpoId) {
         if (!StringUtils.hasText(cpoId)) return CpoTemplateSummary.empty();
@@ -1718,7 +2104,8 @@ public class BulkAssignmentService {
             String cpoMode, Double cpoAmount,
             CpoEnrollmentConfigDTO cpoConfig, String adminUserId,
             Date perUserPaymentDate, Date globalPaymentDate, String transactionId,
-            boolean generateInvoiceOnManualEnroll) {
+            boolean generateInvoiceOnManualEnroll,
+            vacademy.io.admin_core_service.features.offline_payment.dto.OfflinePaymentDetailsDTO offlinePaymentDetails) {
 
         String cpoId = config.getPaymentOption().getComplexPaymentOptionId();
         if (!StringUtils.hasText(cpoId)) {
@@ -1729,9 +2116,19 @@ public class BulkAssignmentService {
 
         // 1. Always generate the installment schedule. Without this the learner can't
         //    see their dues and the FeeLedger has nothing to allocate against.
+        InstallmentScheduleDTO schedule = cpoConfig != null ? cpoConfig.getInstallmentSchedule() : null;
         try {
-            studentFeePaymentGenerationService.generateFeeBills(
-                    userPlan.getId(), cpoId, userId, instituteId);
+            if (schedule != null) {
+                // Learner-specific schedule chosen by the admin: bills come from the rule,
+                // not the template. Everything below (discount, offline payment) is unchanged.
+                installmentScheduleService.generateFromSchedule(
+                        userPlan.getId(), cpoId, userId, instituteId,
+                        config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency() : null,
+                        schedule);
+            } else {
+                studentFeePaymentGenerationService.generateFeeBills(
+                        userPlan.getId(), cpoId, userId, instituteId);
+            }
         } catch (Exception e) {
             log.error("Failed to generate fee bills (bulk-assign) for userPlan={}, cpo={}: {}",
                     userPlan.getId(), cpoId, e.getMessage(), e);
@@ -1764,8 +2161,16 @@ public class BulkAssignmentService {
         //    via FeeLedgerAllocationService.allocatePaymentForNewLog (same engine the
         //    learner pay-installments + admin allocate paths use).
         try {
+            String reference = cpoConfig != null && StringUtils.hasText(cpoConfig.getPaymentReference())
+                    ? cpoConfig.getPaymentReference() : transactionId;
+            OfflinePaymentDetailsService.Resolved paidVia =
+                    offlinePaymentDetailsService.resolve(instituteId, offlinePaymentDetails, reference);
+            offlinePaymentDetailsService.pinNumberingValue(instituteId,
+                    userPlan != null ? userPlan.getId() : null, userId, offlinePaymentDetails);
             Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
-                    : (globalPaymentDate != null ? globalPaymentDate : new Date());
+                    : globalPaymentDate != null ? globalPaymentDate
+                    : paidVia != null && paidVia.paymentDate() != null ? java.sql.Date.valueOf(paidVia.paymentDate())
+                    : new Date();
             String currency = config.getPaymentPlan() != null && config.getPaymentPlan().getCurrency() != null
                     ? config.getPaymentPlan().getCurrency()
                     : (config.getEnrollInvite() != null && config.getEnrollInvite().getCurrency() != null
@@ -1796,6 +2201,7 @@ public class BulkAssignmentService {
                     vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                     vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                     vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+            offlinePaymentDetailsService.apply(paymentLogId, paidVia, adminUserId);
 
             // Ledger credit for the money just taken. Without this the Account Summary
             // tiles (which read user_account_ledger via sumCredits) report Total Paid 0
@@ -1831,7 +2237,15 @@ public class BulkAssignmentService {
         }
     }
 
-    private record CpoTemplateSummary(BigDecimal total, int count) {
+    /**
+     * Total, bill count and (for an installment schedule) the rows that will be written.
+     * {@code preview} is null when the bills come from the plan's fixed template.
+     */
+    private record CpoTemplateSummary(BigDecimal total, int count, InstallmentSchedulePreviewDTO preview) {
+        CpoTemplateSummary(BigDecimal total, int count) {
+            this(total, count, null);
+        }
+
         static CpoTemplateSummary empty() {
             return new CpoTemplateSummary(BigDecimal.ZERO, 0);
         }

@@ -1,3 +1,4 @@
+import type { OfflinePaymentDetails } from '@/services/offline-payment-modes';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_INVOICES_BY_USER,
@@ -7,12 +8,14 @@ import {
     POST_ADMIN_CREATE_INVOICE,
     POST_ADMIN_PREVIEW_INVOICE,
     POST_REJECT_INVOICE,
+    DELETE_INVOICE,
     GET_USER_ACCOUNT_SUMMARY,
     GET_USER_ACCOUNT_LEDGER,
     POST_MARK_INVOICE_PAID_MANUAL,
     PUT_UPDATE_INVOICE,
     POST_INVOICES_BY_PAYMENT_LOGS,
 } from '@/constants/urls';
+import type { AdminDiscountRequest } from '@/services/admin-discounts';
 
 // Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
 // @JsonNaming(SnakeCaseStrategy) — item_type/unit_price, NOT itemType/unitPrice.
@@ -61,6 +64,10 @@ export interface InvoiceDTO {
     source_id?: string | null;
     /** Gateway payment link — present on ADMIN_MANUAL and USER_PLAN invoices when a payment option is configured. */
     payment_link?: string | null;
+    /** Admin who gave the discount on this invoice (admin invoice, or the discounted enrollment it bills). */
+    discount_granted_by_user_id?: string | null;
+    /** That admin's internal reason for the discount. Admin views only. */
+    discount_reason?: string | null;
 }
 
 export interface UserAccountLedgerEntryDTO {
@@ -68,6 +75,8 @@ export interface UserAccountLedgerEntryDTO {
     // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
     // | DEBIT_REVERSAL (obligation voided before any money moved — cancels the accrual out
     //   of total_accrued rather than counting as money received)
+    // | CREDIT_REVERSAL (a payment recorded by mistake was voided — takes it back out of
+    //   total_paid)
     event_type: string;
     amount: number;
     currency: string;
@@ -82,6 +91,10 @@ export interface UserAccountLedgerEntryDTO {
     gross_amount?: number | null;
     /** Discounted accruals only: the coupon/discount applied. */
     discount_amount?: number | null;
+    /** CREDIT_PAYMENT rows: status of the payment behind the credit (VOIDED once voided). */
+    payment_status?: string | null;
+    /** CREDIT_PAYMENT rows: how it was paid — MANUAL / OFFLINE ones can be voided. */
+    payment_vendor?: string | null;
 }
 
 export interface LedgerPageResponse {
@@ -153,7 +166,7 @@ export async function fetchUserAccountLedger(
 
 export async function markInvoicePaidManual(
     invoiceId: string,
-    body: { transaction_id?: string; notes?: string }
+    body: { transaction_id?: string; notes?: string; payment_details?: OfflinePaymentDetails | null }
 ): Promise<InvoiceDTO> {
     const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
         POST_MARK_INVOICE_PAID_MANUAL(invoiceId),
@@ -286,6 +299,22 @@ export async function rejectInvoice(
     return response.data;
 }
 
+/**
+ * PERMANENTLY deletes an invoice. Only offered when the viewer's role has Display Settings →
+ * Learner Management → "delete payments & invoices" on (off by default); the server checks the
+ * same setting and refuses otherwise, and refuses an invoice with a live payment against it.
+ */
+export async function deleteInvoicePermanently(
+    invoiceId: string,
+    instituteId: string
+): Promise<{ invoice_id: string; invoice_number: string }> {
+    const response = await authenticatedAxiosInstance.delete<{ invoice_id: string; invoice_number: string }>(
+        DELETE_INVOICE(invoiceId),
+        { params: { instituteId } }
+    );
+    return response.data;
+}
+
 // ─── Admin Invoice Creation ───────────────────────────────────────────────────
 
 export interface AdminInvoiceLineItemRequest {
@@ -315,6 +344,11 @@ export interface AdminCreateInvoiceRequest {
     tax_enabled?: boolean;
     /** Override the tax rate (percentage, e.g. 18) for this invoice only. Ignored when tax_enabled is false. */
     tax_rate_percent?: number;
+    /**
+     * Admin-granted discount, applied as a DISCOUNT line on the pre-tax subtotal. COUPON mode
+     * accepts institute-wide coupons only. apply_for_cycles is not used here.
+     */
+    admin_discount?: AdminDiscountRequest;
 }
 
 /** One editable/derived dynamic value discovered in the institute's invoice template. */

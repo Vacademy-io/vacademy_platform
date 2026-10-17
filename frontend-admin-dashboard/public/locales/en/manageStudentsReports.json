@@ -1,0 +1,40 @@
+{
+    "actionBar": {
+        "title": "{{label}} Reports",
+        "checkStatus": "Check Status",
+        "checking": "Checking..."
+    },
+    "status": {
+        "processing": "Processing",
+        "completed": "Completed",
+        "failed": "Failed"
+    },
+    "error": {
+        "title": "Couldn't load reports",
+        "hint": "Something went wrong while fetching reports. Please try again."
+    },
+    "empty": {
+        "title": "No reports yet",
+        "hint": "Generate a new report to analyze learner performance."
+    },
+    "card": {
+        "createdOn": "Created {{date}}",
+        "view": "View",
+        "loading": "Loading…",
+        "defaultTitle": "Analysis Report"
+    },
+    "pagination": {
+        "pageOf": "{{page}} / {{total}}"
+    },
+    "toast": {
+        "reportDataNotAvailable": "Report data is not available yet",
+        "loadDetailsFailed": "Failed to load report details",
+        "reportsCompleted_one": "{{count}} report completed successfully",
+        "reportsCompleted_other": "{{count}} reports completed successfully",
+        "reportsFailed_one": "{{count}} report failed",
+        "reportsFailed_other": "{{count}} reports failed",
+        "reportsPending_one": "{{count}} report is still processing",
+        "reportsPending_other": "{{count}} reports are still processing",
+        "checkStatusFailed": "Failed to check report statuses"
+    }
+}

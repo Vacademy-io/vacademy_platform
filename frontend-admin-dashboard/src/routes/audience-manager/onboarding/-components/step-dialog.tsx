@@ -1,21 +1,26 @@
 /**
  * StepDialog — add/edit an onboarding flow step (v1: FORM steps only).
  *
- * On edit, the step's attached fields are re-fetched via
- * GET .../common/custom-fields/feature-fields?type=ONBOARDING_STEP — the
- * step's own GET/PUT responses never echo `fields`. Per-field role_access
- * ISN'T independently fetchable from that endpoint either (see the gap noted
- * in onboarding-service.ts), so editing a step always re-defaults every
- * field's role access to ADMIN(view+edit)/STUDENT(view)/PARENT(none) and
- * relies on the admin re-confirming it — the PUT always resends the FULL
- * field + role_access list per the backend's "replace entirely" contract.
+ * On edit, a step's field rows are rebuilt from the step's OWN `fields`
+ * (fields_config — the authority for order / mandatory / hidden / role access),
+ * joined against GET .../common/custom-fields/feature-fields?type=ONBOARDING_STEP
+ * purely for each field's display name. The PUT always resends the FULL field +
+ * role_access list, per the backend's "replace entirely" contract, so anything
+ * not hydrated back into these rows would be destroyed on save.
+ *
+ * Role access isn't limited to ADMIN/STUDENT/PARENT: the grids take the institute's
+ * roles (`fetchOnboardingAssignableRoles`) so a step — or a single field on it — can
+ * be handed to a COUNSELLOR or any custom role, which is what lets a non-admin staff
+ * member actually work the step.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -32,22 +37,28 @@ import {
     fetchStepFields,
     fetchInstituteCustomFieldCatalog,
     defaultRoleAccess,
+    fetchOnboardingAssignableRoles,
+    onboardingAssignableRolesKey,
     onboardingStepFieldsKey,
     fetchPackageSessionPoolOptions,
     type OnboardingStepDTO,
     type OnboardingRoleAccess,
 } from '../-services/onboarding-service';
 
-const stepSchema = z.object({
-    step_name: z.string().min(1, 'Step name is required').max(150, 'Keep it under 150 characters'),
-    is_optional: z.boolean(),
-    grants_student_role: z.boolean(),
-    sends_login_credentials: z.boolean(),
-    create_student: z.boolean(),
-    skip_if_already_enrolled: z.boolean(),
-});
+const buildStepSchema = (t: TFunction) =>
+    z.object({
+        step_name: z
+            .string()
+            .min(1, t('schema.stepNameRequired'))
+            .max(150, t('schema.stepNameMaxLength')),
+        is_optional: z.boolean(),
+        grants_student_role: z.boolean(),
+        sends_login_credentials: z.boolean(),
+        create_student: z.boolean(),
+        skip_if_already_enrolled: z.boolean(),
+    });
 
-type StepForm = z.infer<typeof stepSchema>;
+type StepForm = z.infer<ReturnType<typeof buildStepSchema>>;
 
 interface StepDialogProps {
     instituteId: string;
@@ -70,8 +81,15 @@ export function StepDialog({
     nextStepOrder,
     onSaved,
 }: StepDialogProps) {
+    const { t } = useTranslation('audienceManagerStepDialog');
+    // Bound to the field-config-editor's own namespace: newFieldRowFromCatalog
+    // (imported from that module) needs its "Untitled field" fallback string,
+    // which that namespace owns, not this one.
+    const { t: tFieldConfigEditor } = useTranslation('audienceManagerStepFieldConfigEditor');
     const queryClient = useQueryClient();
     const isEditing = !!editingStep;
+
+    const stepSchema = useMemo(() => buildStepSchema(t), [t]);
 
     const form = useForm<StepForm>({
         resolver: zodResolver(stepSchema),
@@ -113,6 +131,17 @@ export function StepDialog({
         enabled: open && !!instituteId,
         staleTime: 60 * 1000,
     });
+
+    // Institute roles offered by the role-access grids' "Add role" picker, so a step can be
+    // handed to a COUNSELLOR (or any custom role) rather than only ADMIN/STUDENT/PARENT.
+    // A failure here just leaves the picker hidden -- the built-in three still work.
+    const rolesQuery = useQuery({
+        queryKey: onboardingAssignableRolesKey(instituteId),
+        queryFn: () => fetchOnboardingAssignableRoles(instituteId),
+        enabled: open && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+    const assignableRoles = rolesQuery.data ?? [];
 
     const existingFieldsQuery = useQuery({
         queryKey: editingStep ? onboardingStepFieldsKey(instituteId, editingStep.id) : ['onboarding-step-fields-noop'],
@@ -156,19 +185,51 @@ export function StepDialog({
     }, [open, editingStep?.id]);
 
     // Hydrate the field editor once the existing-fields fetch resolves.
+    //
+    // The step's OWN `fields` (fields_config) is the authority for order / mandatory / hidden /
+    // role access -- the feature-fields lookup only supplies display NAMES. Hydrating from that
+    // lookup instead, as this used to, silently reset a step's field config on every reopen:
+    // its `is_mandatory` and `individual_order` are catalog columns this domain never writes (so
+    // they always came back null -> every Mandatory toggle off, every field back in catalog
+    // order), and `is_hidden`/`role_access` aren't in that payload at all. Saving then wrote the
+    // reset values back over the real ones.
     useEffect(() => {
         if (!isEditing || !existingFieldsQuery.data) return;
-        setFieldRows(
-            existingFieldsQuery.data
+        const nameById = new Map(existingFieldsQuery.data.map((f) => [f.id, f]));
+        const configured = (editingStep?.fields ?? []).filter((f) => f.institute_custom_field_id);
+        const configuredIds = new Set(configured.map((f) => f.institute_custom_field_id));
+        // UNION, not either/or. fields_config is the authority for each field's settings, but a
+        // field can exist as an ACTIVE ONBOARDING_STEP mapping while being absent from
+        // fields_config — historic drift, from back when removing a field left its mapping
+        // ACTIVE and some saves dropped a field from fields_config without touching the mapping
+        // (this is how CustomInsti's "Book Tracking details" step showed TrackingId in the
+        // builder while the form rendered only Status and Vendor). Showing fields_config ALONE
+        // would quietly finish the job and delete such a field on the next save. Appending the
+        // orphans instead surfaces them, and saving writes them back into fields_config —
+        // repairing the step. A genuinely removed field can't come back this way: removal now
+        // soft-deletes the mapping (OnboardingStepService.deactivateMappingsNotIn), so it is no
+        // longer in this list at all.
+        const rows = [
+            ...configured
                 .slice()
-                .sort((a, b) => (a.individual_order ?? 0) - (b.individual_order ?? 0))
-                .map((f) => ({
-                    ...newFieldRowFromCatalog(f),
-                    is_mandatory: f.is_mandatory ?? false,
-                }))
+                .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
+                .map((f) => ({ config: f, catalog: nameById.get(f.institute_custom_field_id!) })),
+            ...existingFieldsQuery.data
+                .filter((f) => !configuredIds.has(f.id))
+                .map((f) => ({ config: undefined, catalog: f })),
+        ].filter((r) => r.catalog);
+        setFieldRows(
+            rows.map(({ config, catalog }) => ({
+                ...newFieldRowFromCatalog(catalog!, tFieldConfigEditor),
+                is_mandatory: config?.is_mandatory ?? false,
+                is_hidden: config?.is_hidden ?? false,
+                // Left undefined when the step never set one, so the field keeps INHERITING the
+                // step-level access rather than gaining an explicit override on next save.
+                role_access: config?.role_access ?? undefined,
+            }))
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [existingFieldsQuery.data, isEditing]);
+    }, [existingFieldsQuery.data, editingStep?.fields, isEditing]);
 
     const { mutate: save, isPending } = useMutation({
         mutationFn: (values: StepForm) => {
@@ -178,7 +239,14 @@ export function StepDialog({
                 field_order: index,
                 is_mandatory: row.is_mandatory,
                 is_hidden: row.is_hidden,
-                role_access: row.role_access ?? defaultRoleAccess(),
+                // Only ever send an explicit per-field override when the admin actually set one
+                // (RoleAccessGrid touched, or one round-tripped from fields_config). Stamping
+                // defaultRoleAccess() here -- which this used to do -- attached a STUDENT/PARENT
+                // can_edit=false override to EVERY field, overriding whatever the step's own
+                // Step Access grid said, so a step marked "Student: View + Edit" still blocked
+                // the student on all of its fields. Same reasoning as StepFieldConfigEditor's
+                // addNewField, which deliberately leaves role_access unset for the same reason.
+                role_access: row.role_access,
             }));
             const payload = {
                 step_order: editingStep?.step_order ?? nextStepOrder,
@@ -202,7 +270,7 @@ export function StepDialog({
                 : createOnboardingStep(instituteId, flowId, payload);
         },
         onSuccess: () => {
-            toast.success(isEditing ? 'Step updated' : 'Step added');
+            toast.success(isEditing ? t('toasts.stepUpdated') : t('toasts.stepAdded'));
             if (editingStep) {
                 queryClient.invalidateQueries({ queryKey: onboardingStepFieldsKey(instituteId, editingStep.id) });
             }
@@ -210,15 +278,13 @@ export function StepDialog({
             onSaved();
         },
         onError: () => {
-            toast.error('Could not save the step. Please try again.');
+            toast.error(t('toasts.saveError'));
         },
     });
 
     const onSubmit = (values: StepForm) => {
         if (hasPendingFieldSelection) {
-            toast.warning(
-                'You picked a field but haven’t clicked "Attach" yet — attach it (or clear the selection) before saving, or it will be lost.'
-            );
+            toast.warning(t('toasts.pendingFieldSelection'));
             return;
         }
         save(values);
@@ -229,7 +295,7 @@ export function StepDialog({
     const footer = (
         <div className="flex w-full items-center justify-end gap-2">
             <MyButton buttonType="secondary" scale="medium" onClick={() => onOpenChange(false)} disable={isPending}>
-                Cancel
+                {t('actions.cancel')}
             </MyButton>
             <MyButton
                 buttonType="primary"
@@ -237,7 +303,7 @@ export function StepDialog({
                 onClick={form.handleSubmit(onSubmit)}
                 disable={isPending || loadingFields}
             >
-                {isPending ? 'Saving…' : isEditing ? 'Save Step' : 'Add Step'}
+                {isPending ? t('actions.saving') : isEditing ? t('actions.saveStep') : t('actions.addStep')}
             </MyButton>
         </div>
     );
@@ -246,7 +312,7 @@ export function StepDialog({
         <MyDialog
             open={open}
             onOpenChange={onOpenChange}
-            heading={isEditing ? 'Edit Step' : 'Add Step'}
+            heading={isEditing ? t('heading.edit') : t('heading.add')}
             footer={footer}
             dialogWidth="max-w-2xl"
         >
@@ -257,11 +323,11 @@ export function StepDialog({
                         name="step_name"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Step name</FormLabel>
+                                <FormLabel>{t('fields.stepName.label')}</FormLabel>
                                 <FormControl>
                                     <MyInput
                                         inputType="text"
-                                        inputPlaceholder="e.g. Fill Enrollment Form"
+                                        inputPlaceholder={t('fields.stepName.placeholder')}
                                         input={field.value}
                                         onChangeFunction={field.onChange}
                                         required
@@ -275,7 +341,7 @@ export function StepDialog({
                     <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-optional" className="cursor-pointer text-body">
-                                Optional (skippable) step
+                                {t('switches.optional')}
                             </Label>
                             <Switch
                                 id="step-optional"
@@ -285,7 +351,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-grants-role" className="cursor-pointer text-body">
-                                Grant STUDENT role on completion
+                                {t('switches.grantsStudentRole')}
                             </Label>
                             <Switch
                                 id="step-grants-role"
@@ -297,7 +363,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-sends-creds" className="cursor-pointer text-body">
-                                Send login credentials on completion
+                                {t('switches.sendsLoginCredentials')}
                             </Label>
                             <Switch
                                 id="step-sends-creds"
@@ -309,7 +375,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-create-student" className="cursor-pointer text-body">
-                                Create a student from this form on completion
+                                {t('switches.createStudent')}
                             </Label>
                             <Switch
                                 id="step-create-student"
@@ -321,7 +387,7 @@ export function StepDialog({
                         </div>
                         {form.watch('create_student') && (
                             <FormItem>
-                                <FormLabel>Course(s) this step can enroll into</FormLabel>
+                                <FormLabel>{t('fields.coursePool.label')}</FormLabel>
                                 <FormControl>
                                     <MultiSelect
                                         options={poolOptions}
@@ -329,24 +395,21 @@ export function StepDialog({
                                         onChange={setPackageSessionIds}
                                         placeholder={
                                             poolOptionsQuery.isLoading
-                                                ? 'Loading courses…'
-                                                : 'Leave empty to let the admin pick any course…'
+                                                ? t('fields.coursePool.loadingPlaceholder')
+                                                : t('fields.coursePool.emptyPlaceholder')
                                         }
                                         disabled={poolOptionsQuery.isLoading}
                                     />
                                 </FormControl>
                                 <p className="text-caption text-neutral-500">
-                                    Leave empty and the completing admin picks any course at onboarding
-                                    time — the flow never needs rebuilding when a new course is added.
-                                    Select specific course(s) to restrict the choice to only those.
+                                    {t('fields.coursePool.helperText')}
                                 </p>
                             </FormItem>
                         )}
                         {form.watch('create_student') && (
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="step-skip-if-enrolled" className="cursor-pointer text-body">
-                                    Auto-complete this step if the student is already enrolled
-                                    in a course
+                                    {t('switches.skipIfAlreadyEnrolled')}
                                 </Label>
                                 <Switch
                                     id="step-skip-if-enrolled"
@@ -360,8 +423,12 @@ export function StepDialog({
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">Step access (who can view/edit this step)</Label>
-                        <RoleAccessGrid value={roleAccess} onChange={setRoleAccess} />
+                        <Label className="text-body font-medium text-neutral-800">{t('sections.stepAccess')}</Label>
+                        <RoleAccessGrid
+                            value={roleAccess}
+                            onChange={setRoleAccess}
+                            assignableRoles={assignableRoles}
+                        />
                     </div>
 
                     {isEditing && editingStep && (
@@ -373,13 +440,14 @@ export function StepDialog({
                     )}
 
                     <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">Form fields</Label>
+                        <Label className="text-body font-medium text-neutral-800">{t('sections.formFields')}</Label>
                         {loadingFields ? (
-                            <div className="text-caption text-neutral-500">Loading existing fields…</div>
+                            <div className="text-caption text-neutral-500">{t('sections.loadingFields')}</div>
                         ) : (
                             <StepFieldConfigEditor
                                 instituteId={instituteId}
                                 catalog={catalogQuery.data ?? []}
+                                assignableRoles={assignableRoles}
                                 value={fieldRows}
                                 onChange={setFieldRows}
                                 onPendingSelectionChange={setHasPendingFieldSelection}

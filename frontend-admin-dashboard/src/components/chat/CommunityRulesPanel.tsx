@@ -96,7 +96,7 @@ export function CommunityRulesPanel({
                         size="sm"
                         disabled={isAcknowledging}
                         onClick={onAcknowledge}
-                        className="bg-primary-500 hover:bg-primary-600"
+                        className="bg-primary-500 text-white hover:opacity-90"
                     >
                         {isAcknowledging ? (
                             <SpinnerGap size={14} className="animate-spin" />

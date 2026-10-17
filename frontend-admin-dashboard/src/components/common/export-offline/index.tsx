@@ -8,8 +8,11 @@ import { ExportHandler } from './preview/export-handler';
 import { ExportSettingsDialog } from './dialog/export-settings-dialog';
 import { ExportSettingsProvider, useExportSettings } from './contexts/export-settings-context';
 import { Toaster as Sonner } from 'sonner';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { getQuestionDataForSection } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import {
+    getFullQuestionsOfSections,
+    getQuestionDataForSection,
+} from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import { Question } from './types/question';
@@ -17,6 +20,8 @@ import { Trash2 } from 'lucide-react';
 // eslint-disable-next-line
 import { Instructions, Section, Steps } from "@/types/assessments/assessment-data-type";
 import { parseHtmlToString } from './utils/utils';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 function shuffleArray<T>(array: T[]): T[] {
     const newArray = [...array];
@@ -48,6 +53,23 @@ function PreviewWithSettings({
     const { data: questionData, isLoading } = useSuspenseQuery(
         getQuestionDataForSection({ assessmentId, sectionIds: sectionIds.join(',') })
     );
+    // The preview shape above has no explanation; the full DTOs do. Optional, so a
+    // failure here only drops explanations from the answer key.
+    const { data: fullQuestions } = useQuery({
+        queryKey: ['GET_FULL_QUESTIONS_OF_SECTIONS', assessmentId, sectionIds.join(',')],
+        queryFn: () =>
+            getFullQuestionsOfSections({ assessmentId, sectionIds: sectionIds.join(',') }),
+    });
+    const explanationById = useMemo(() => {
+        const map: Record<string, string> = {};
+        Object.values(fullQuestions ?? {})
+            .flat()
+            .forEach((q) => {
+                const content = q.explanation_text?.content || q.explanation_text_data?.content;
+                if (q.id && content) map[q.id] = content;
+            });
+        return map;
+    }, [fullQuestions]);
 
     // Determine padding based on settings
     const getPadding = () => {
@@ -71,11 +93,12 @@ function PreviewWithSettings({
             ),
             totalMarks: allSections.find((section) => section.id === sectionId)?.total_marks || 0,
             duration: allSections.find((section) => section.id === sectionId)?.duration || 0,
-            questions: settings.randomizeQuestions
+            questions: (settings.randomizeQuestions
                 ? shuffleArray(questions as Question[])
-                : (questions as Question[]),
+                : (questions as Question[])
+            ).map((q) => ({ ...q, explanation_text: explanationById[q.question_id] })),
         }));
-    }, [settings.randomizeQuestions]);
+    }, [settings.randomizeQuestions, explanationById]);
 
     // Generate paper sets
     const paperSets = useMemo(() => {
@@ -103,6 +126,11 @@ function PreviewWithSettings({
     };
 
     const currentPaperSet = paperSets[currentSetIndex];
+    const paperTitle = assessmentDetails[0]?.saved_data?.name;
+    const paperDuration = assessmentDetails[0]?.saved_data?.duration;
+    const paperInstructions =
+        assessmentDetails[0]?.saved_data?.instructions ??
+        assessmentDetails[1]?.saved_data?.instructions;
 
     const handleLetterheadUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -190,6 +218,16 @@ function PreviewWithSettings({
                         </div>
                     )}
                     <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                id="export-answer-key"
+                                checked={settings.exportSolutionKey}
+                                onCheckedChange={(checked) =>
+                                    updateSettings({ exportSolutionKey: checked })
+                                }
+                            />
+                            <Label htmlFor="export-answer-key">With answer key</Label>
+                        </div>
                         <input
                             type="file"
                             id="letterhead-upload"
@@ -224,6 +262,9 @@ function PreviewWithSettings({
                             // @ts-expect-error:Type 'undefined' is not assignable to type 'Section[]'.
                             sections={currentPaperSet?.sections}
                             settings={settings}
+                            title={paperTitle}
+                            durationMins={paperDuration}
+                            instructions={paperInstructions}
                             {...(paperSets.length > 1
                                 ? { setNumber: currentPaperSet?.setNumber }
                                 : {})}
@@ -245,7 +286,9 @@ function PreviewWithSettings({
                     sections={currentPaperSet?.sections ?? []}
                     settings={settings}
                     setNumber={currentPaperSet?.setNumber ?? 0}
-                    instructions={assessmentDetails[1]?.saved_data?.instructions}
+                    title={paperTitle}
+                    durationMins={paperDuration}
+                    instructions={paperInstructions}
                 />
             </div>
             <Sonner />

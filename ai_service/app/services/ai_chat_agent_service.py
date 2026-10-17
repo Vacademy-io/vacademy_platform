@@ -51,7 +51,7 @@ class _CachedKeyResolver:
     def __init__(self, keys: tuple):
         self._keys = keys
 
-    def resolve_keys(self, institute_id=None, user_id=None, request_model=None):
+    def resolve_keys(self, institute_id=None, user_id=None, request_model=None, **_ignored):
         return self._keys
 
 
@@ -97,7 +97,10 @@ class AiChatAgentService:
     def _resolve_keys(db: Session, institute_id: str, user_id: str) -> tuple:
         """Pre-resolve API keys using the given DB session."""
         return ApiKeyResolver(db).resolve_keys(
-            institute_id=institute_id, user_id=user_id
+            institute_id=institute_id,
+            user_id=user_id,
+            # Super-admin portal -> AI Settings -> "Chatbot model"
+            platform_default_key="chatbot.text.model",
         )
 
     @staticmethod
@@ -113,9 +116,16 @@ class AiChatAgentService:
         same answer quality. It is a no-op on gemini-2.5-flash, which already
         emits none. Every OTHER consumer of ChatLLMClient keeps reasoning.
         """
+        from .platform_settings_service import get_platform_setting
+
         return ChatLLMClient(
             _CachedKeyResolver(keys),
-            disable_reasoning=get_settings().llm_disable_reasoning,
+            disable_reasoning=bool(
+                get_platform_setting(
+                    "chatbot.llm.disable_reasoning",
+                    default=get_settings().llm_disable_reasoning,
+                )
+            ),
         )
 
     def _record_token_usage(
@@ -146,8 +156,14 @@ class AiChatAgentService:
                 if provider == "gemini":
                     api_provider = ApiProvider.GEMINI
 
+                from .ai_billing import UC, metering_kwargs, metering_user, supported_kwargs
+
+                # Usage-event attribution only (the learner chat agent is a
+                # learner-app surface); the charge and ledger row are unchanged.
+                meter = metering_kwargs(UC.LEARNER_ASSISTANT, metering_user(user_id, surface="LEARNER_APP"))
                 with self._get_db() as db:
-                    TokenUsageService(db).record_usage_and_deduct_credits(
+                    tus = TokenUsageService(db)
+                    tus.record_usage_and_deduct_credits(
                         api_provider=api_provider,
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
@@ -156,6 +172,7 @@ class AiChatAgentService:
                         institute_id=institute_id,
                         user_id=user_id,
                         model=model,
+                        **supported_kwargs(tus.record_usage_and_deduct_credits, meter),
                     )
                 logger.debug(f"Recorded usage for agent chat: {total_tokens} tokens")
         except Exception as e:
@@ -297,6 +314,15 @@ class AiChatAgentService:
                 raise ValueError(f"Session {session_id} not found")
             if session.status != "ACTIVE":
                 raise ValueError(f"Session {session_id} is not active")
+
+            # A voice call's topic lives in context_meta (voice_topic), but the
+            # learner app re-syncs context on route/slide changes with a payload
+            # that never carries it. A resync must not silently drop what the
+            # interview/test is about — it turned "parenting" into the French
+            # Revolution in production.
+            existing_meta = getattr(session, "context_meta", None) or {}
+            if existing_meta.get("voice_topic") and not (context_meta or {}).get("voice_topic"):
+                context_meta = {**(context_meta or {}), "voice_topic": existing_meta["voice_topic"]}
 
             success = session_repo.update_context(
                 session_id=session_id,

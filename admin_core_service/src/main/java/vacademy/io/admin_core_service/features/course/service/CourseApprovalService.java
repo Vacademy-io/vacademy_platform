@@ -33,6 +33,7 @@ import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStat
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
+import vacademy.io.admin_core_service.features.packages.service.PackagePageContentService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
@@ -82,6 +83,7 @@ public class CourseApprovalService {
     private final DefaultEnrollInviteService defaultEnrollInviteService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final EnrollInviteService enrollInviteService;
+    private final PackagePageContentService packagePageContentService;
     /**
      * Create a temporary copy of a published course for teacher editing
      */
@@ -103,6 +105,9 @@ public class CourseApprovalService {
 
         // Copy package-institute linkages
         copyPackageInstituteLinkages(originalPackage, tempPackage);
+
+        // Course page content (FAQs, mode) lives in its own table, not on the package row
+        packagePageContentService.copy(originalPackage.getId(), tempPackage.getId());
 
         appendAuditLog(tempPackage, "ADD", teacher.getUserId(),
                 "Created editable copy from original " + originalCourseId, null);
@@ -134,6 +139,42 @@ public class CourseApprovalService {
 
         log.info("Course {} submitted for review by teacher {}", courseId, teacher.getUserId());
         return "Course submitted for review successfully";
+    }
+
+    /**
+     * Teacher publishes their own DRAFT course directly, skipping the
+     * IN_REVIEW -> admin-approve step. Used when the role's display settings
+     * have "Require approval before publishing" switched off. Runs the same
+     * publish / merge logic as admin approval, with the teacher as the actor.
+     */
+    @Transactional
+    public String publishByTeacher(String courseId, CustomUserDetails teacher) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        if (!PackageStatusEnum.DRAFT.name().equals(course.getStatus())) {
+            throw new VacademyException("Only draft courses can be published");
+        }
+
+        if (!teacher.getUserId().equals(course.getCreatedByUserId())) {
+            throw new VacademyException("Only the course creator can publish this course");
+        }
+
+        validateCourseContent(course);
+        PackageInstitute packageInstitute = packageInstituteRepository.findTopByPackageEntity_IdOrderByCreatedAtDesc(courseId).orElse(null);
+        String result;
+        if (course.getOriginalCourseId() != null) {
+            // Editable copy of a published course - merge changes back
+            result = mergeChangesIntoOriginal(course, packageInstitute);
+            deleteTempCourse(course);
+        } else {
+            // Brand-new course - publish as active
+            result = publishNewCourse(course, packageInstitute);
+        }
+
+        log.info("Course {} published directly by teacher {}", courseId, teacher.getUserId());
+        appendAuditLog(course, "SELF_PUBLISH", teacher.getUserId(), "Published course without admin review", null);
+        return result;
     }
 
     /**
@@ -970,6 +1011,8 @@ public class CourseApprovalService {
         // Update original course with changes from temp course
         updatePackageFields(originalCourse, tempCourse);
         packageRepository.save(originalCourse);
+        // Course page content (FAQs, mode) is merged like the other package fields: temp wins
+        packagePageContentService.copy(tempCourse.getId(), originalCourse.getId());
 
         // Merge hierarchy changes (subjects, modules, chapters, slides)
         mergeHierarchyChanges(tempCourse, originalCourse);

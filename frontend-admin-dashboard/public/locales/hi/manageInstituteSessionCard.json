@@ -1,0 +1,14 @@
+{
+    "toast": {
+        "sessionEditedSuccess": "{{term}} सफलतापूर्वक संपादित किया गया",
+        "sessionEditFailed": "{{term}} संपादित करने में विफल"
+    },
+    "button": {
+        "saveChanges": "परिवर्तन सहेजें"
+    },
+    "card": {
+        "startDate": "आरंभ तिथि",
+        "editButton": "{{term}} संपादित करें",
+        "deleteButton": "{{term}} हटाएं"
+    }
+}

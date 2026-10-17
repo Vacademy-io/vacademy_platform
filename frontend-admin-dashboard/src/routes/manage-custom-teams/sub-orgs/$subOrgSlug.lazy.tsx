@@ -3,6 +3,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { Helmet } from 'react-helmet';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowsClockwise, PencilSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -10,6 +11,7 @@ import { MyButton } from '@/components/design-system/button';
 import { getSubOrgs, resyncSubOrgInvites } from '../-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { SubOrgAnalyticsPanel } from '@/routes/manage-suborg-teams/-components/sub-org-analytics-panel';
+import { SubOrgStatCards } from '@/routes/manage-suborg-teams/-components/sub-org-stat-cards';
 import {
     buildSubOrgSlug,
     resolveSubOrgBySlug,
@@ -60,6 +62,7 @@ function normaliseSubOrg(org: any, fallbackLabel: string): SubOrgItem | null {
  * the caller's single accessible sub-org.
  */
 function InstituteAdminSubOrgPage() {
+    const { t } = useTranslation('manageCustomTeamsSubOrgSlug');
     const { subOrgSlug } = useParams({
         from: '/manage-custom-teams/sub-orgs/$subOrgSlug',
     });
@@ -91,7 +94,7 @@ function InstituteAdminSubOrgPage() {
             ? rawSubOrgs
             : (rawSubOrgs as any)?.content || [];
         return list
-            .map((o: unknown) => normaliseSubOrg(o, `Untitled ${term}`))
+            .map((o: unknown) => normaliseSubOrg(o, t('untitled', { term })))
             .filter(Boolean) as SubOrgItem[];
     }, [rawSubOrgs, term]);
 
@@ -124,13 +127,18 @@ function InstituteAdminSubOrgPage() {
             const parts: string[] = [];
             if (data.created_count > 0) {
                 parts.push(
-                    `Re-synced ${data.created_count} invite(s) across ${data.package_session_count} course(s)`
+                    t('resync.createdSummary', {
+                        invites: t('resync.inviteCount', { count: data.created_count }),
+                        courses: t('resync.courseCount', {
+                            count: data.package_session_count,
+                        }),
+                    })
                 );
             }
             if (data.renamed_count > 0) {
-                parts.push(`renamed ${data.renamed_count} to match your naming settings`);
+                parts.push(t('resync.renamedSummary', { count: data.renamed_count }));
             }
-            toast.success(parts.length > 0 ? parts.join(' · ') : 'Already in sync — no changes needed');
+            toast.success(parts.length > 0 ? parts.join(' · ') : t('resync.alreadyInSync'));
             if (selectedSubOrg) {
                 queryClient.invalidateQueries({
                     queryKey: ['sub-org-scoped-invites', selectedSubOrg.id],
@@ -141,7 +149,7 @@ function InstituteAdminSubOrgPage() {
             }
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || 'Failed to re-sync invites');
+            toast.error(err?.response?.data?.message || t('resync.failed'));
         },
     });
 
@@ -150,57 +158,67 @@ function InstituteAdminSubOrgPage() {
             <Helmet>
                 <title>
                     {selectedSubOrg
-                        ? `${selectedSubOrg.name} — Manage ${termPlural}`
-                        : `Manage ${termPlural}`}
+                        ? t('helmet.titleWithName', {
+                              name: selectedSubOrg.name,
+                              termPlural,
+                          })
+                        : t('helmet.title', { termPlural })}
                 </title>
             </Helmet>
-            <div className="p-6">
+            <div className="p-5">
                 <SubOrgModuleGate>
-                <div className="mb-6 flex flex-col gap-3">
+                {/* Same header shape as the Manage <SubOrgs> list this page drills down
+                    from: title and subtitle on the left, the headline figures on the
+                    right. The two mutating actions move to their own right-aligned row
+                    below — the header's right slot now belongs to the cards. */}
+                <div className="mb-5 flex flex-col gap-3">
                     <Link
                         to="/manage-custom-teams"
                         className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                     >
                         <ArrowLeft className="h-3 w-3" />
-                        Back to {termPlural.toLowerCase()}
+                        {t('backToList', { termPlural: termPlural.toLowerCase() })}
                     </Link>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <h1 className="text-h2 font-bold text-neutral-900">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="max-w-md">
+                            <h1 className="text-3xl font-bold text-neutral-900">
                                 {selectedSubOrg?.name || term}
                             </h1>
-                            <p className="text-caption text-neutral-500">
+                            <p className="mt-1 text-sm text-neutral-500">
                                 {canEditConfig
-                                    ? `Manage this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`
-                                    : `View this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`}
+                                    ? t('subtitle.manage', { term: term.toLowerCase() })
+                                    : t('subtitle.view', { term: term.toLowerCase() })}
                             </p>
                         </div>
-                        {selectedSubOrg && canEditConfig && (
-                            <div className="flex shrink-0 items-center gap-2">
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={() => setEditOpen(true)}
-                                >
-                                    <PencilSimple className="size-4" />
-                                    Edit {term.toLowerCase()}
-                                </MyButton>
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    disable={resyncMutation.isPending}
-                                    onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
-                                >
-                                    <ArrowsClockwise
-                                        className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
-                                    />
-                                    {resyncMutation.isPending ? 'Re-syncing…' : 'Re-sync invites'}
-                                </MyButton>
-                            </div>
-                        )}
+                        {selectedSubOrg && <SubOrgStatCards subOrgId={selectedSubOrg.id} full />}
                     </div>
+                    {selectedSubOrg && canEditConfig && (
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setEditOpen(true)}
+                            >
+                                <PencilSimple className="size-4" />
+                                {t('editTerm', { term: term.toLowerCase() })}
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                disable={resyncMutation.isPending}
+                                onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
+                            >
+                                <ArrowsClockwise
+                                    className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
+                                />
+                                {resyncMutation.isPending
+                                    ? t('resync.inProgress')
+                                    : t('resync.action')}
+                            </MyButton>
+                        </div>
+                    )}
                 </div>
 
                 {isLoading ? (
@@ -208,9 +226,9 @@ function InstituteAdminSubOrgPage() {
                 ) : !selectedSubOrg ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
                         <p className="font-medium">
-                            Couldn&apos;t find a {term.toLowerCase()} matching this link.
+                            {t('notFound.message', { term: term.toLowerCase() })}
                         </p>
-                        <p className="text-sm">Going back to the list…</p>
+                        <p className="text-sm">{t('notFound.goingBack')}</p>
                     </div>
                 ) : (
                     <div className="space-y-6">
@@ -224,6 +242,7 @@ function InstituteAdminSubOrgPage() {
                         <SubOrgAnalyticsPanel
                             subOrgId={selectedSubOrg.id}
                             subOrgName={selectedSubOrg.name}
+                            variant="page"
                         />
                     </div>
                 )}

@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.institute.repository;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -14,6 +16,14 @@ import java.util.Optional;
 
 @Repository
 public interface InstituteRepository extends CrudRepository<Institute, String> {
+
+    /**
+     * Row lock on the institute, for read-compare-write of setting_json (super-admin
+     * display-settings write with a version check, setting restore). Call inside a transaction.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Institute i WHERE i.id = :id")
+    Optional<Institute> findByIdForUpdate(@Param("id") String id);
 
     @Query(value = "SELECT DISTINCT i.* " +
             "FROM staff s " +
@@ -128,6 +138,15 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
                    OR LOWER(i.email) LIKE LOWER(CONCAT('%', :search, '%')))
             """, nativeQuery = true)
     Long countAllInstitutes(@Param("search") String search);
+
+    /**
+     * Bulk id -> display name, for screens that list institutes they do not otherwise
+     * need to load. Deliberately a two-column projection: {@code institutes} carries
+     * {@code setting_json}, which is large, and fetching whole entities to read a name
+     * pulls every institute's settings blob across with it.
+     */
+    @Query(value = "SELECT i.id, i.name FROM institutes i WHERE i.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdAndNameByIds(@Param("ids") java.util.Collection<String> ids);
 
     @Query(value = "SELECT COUNT(*) FROM institutes", nativeQuery = true)
     Long countTotalInstitutes();
@@ -315,4 +334,19 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
               AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
             """, nativeQuery = true)
     Long countAllInstitutesFiltered(@Param("search") String search, @Param("leadTag") String leadTag);
+
+    /**
+     * Every custom live-class hostname currently configured, deduplicated.
+     *
+     * Consumed on each BBB pool-server start to rebuild that server's nginx
+     * server_name list and its certificate SAN set, so an institute added here
+     * becomes reachable on the next restore with no manual step.
+     */
+    @Query(value = """
+            SELECT DISTINCT i.live_session_base_url FROM institutes i
+            WHERE i.live_session_base_url IS NOT NULL
+              AND TRIM(i.live_session_base_url) <> ''
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<String> findDistinctLiveSessionBaseUrls();
 }

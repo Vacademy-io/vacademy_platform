@@ -63,13 +63,36 @@ export interface ExamExperienceSettings {
     };
 }
 
+/**
+ * AI copy checking template: INSIDE = the teacher's remarks written on the
+ * copy (the usual checked copy); OUTSIDE = marks on the copy, remarks in a
+ * "Teacher comments" panel beside it.
+ */
+export type CommentPlacement = 'INSIDE' | 'OUTSIDE';
+
+export interface AiCopyCheckSettings {
+    /** The template preselected when copies are sent for AI checking. */
+    commentPlacement: CommentPlacement;
+}
+
+/**
+ * Assessment folders: group assessments (e.g. an "English" folder) on the admin list
+ * and show them to learners as folder cards. Off = the flat list, as before.
+ * Read by the learner app too, so keep the shape in sync there.
+ */
+export interface AssessmentFolderSettings {
+    enabled: boolean;
+}
+
 export interface AssessmentSettingsData {
     offlineEntry: {
         enabled: boolean;
     };
+    assessmentFolders?: AssessmentFolderSettings;
     reportBranding: ReportBrandingSettings;
     resultNotifications: ResultNotificationSettings;
     examExperience: ExamExperienceSettings;
+    aiCopyCheck?: AiCopyCheckSettings;
 }
 
 /** Default: STUDENT/LEARNER receive results; every other role (incl. ADMIN) does not. */
@@ -130,7 +153,13 @@ export const DEFAULT_ASSESSMENT_SETTINGS: AssessmentSettingsData = {
         questionPalette: { ...DEFAULT_EXAM_EXPERIENCE.questionPalette },
         mobile: { ...DEFAULT_EXAM_EXPERIENCE.mobile },
     },
+    aiCopyCheck: { commentPlacement: 'INSIDE' },
+    assessmentFolders: { enabled: false },
 };
+
+/** The saved template, or INSIDE for anything missing or unknown. */
+export const normalizeCommentPlacement = (value: unknown): CommentPlacement =>
+    value === 'OUTSIDE' ? 'OUTSIDE' : 'INSIDE';
 
 /** Fill in any missing branch of a partially-saved `examExperience` object. */
 export const mergeExamExperience = (

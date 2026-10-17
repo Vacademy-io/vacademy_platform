@@ -10,8 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Check, Copy, Code2, Frame, Palette } from 'lucide-react';
+import { Check, Copy, Code, FrameCorners, Palette } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import createCampaignLink from '../../-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -32,19 +34,36 @@ interface EmbedCustomization {
     iframeHeight: string;
 }
 
-const DEFAULT_CUSTOMIZATION: EmbedCustomization = {
-    buttonText: 'Register Now',
-    buttonBgColor: '#6366f1',
-    buttonTextColor: '#ffffff',
+// Default colors for the user-customizable embed widget. They seed a native
+// <input type="color"> (which requires literal #rrggbb) and are baked into the generated
+// <style> block copied onto the customer's own site, so they can't reference our internal
+// --token CSS variables.
+const DEFAULT_BUTTON_BG_COLOR = '#6366f1'; // design-lint-ignore: portable literal color, see comment above
+const DEFAULT_BUTTON_TEXT_COLOR = '#ffffff'; // design-lint-ignore: portable literal color, see comment above
+
+const buildDefaultCustomization = (t: TFunction): EmbedCustomization => ({
+    buttonText: t('defaults.buttonText'),
+    buttonBgColor: DEFAULT_BUTTON_BG_COLOR,
+    buttonTextColor: DEFAULT_BUTTON_TEXT_COLOR,
     buttonBorderRadius: '8',
-    popupTitle: 'Registration Form',
+    popupTitle: t('defaults.popupTitle'),
     iframeWidth: '100%',
     iframeHeight: '600',
-};
+});
+
+// Static chrome colors for the generated embed-code <style> block below — this string is
+// copied onto external customer sites, so it must stay portable literal CSS rather than
+// referencing our internal --token CSS variables.
+const EMBED_MODAL_BORDER_COLOR = '#e5e7eb'; // design-lint-ignore: portable literal color, see comment above
+const EMBED_MODAL_TEXT_COLOR = '#111827'; // design-lint-ignore: portable literal color, see comment above
+const EMBED_MODAL_MUTED_TEXT_COLOR = '#6b7280'; // design-lint-ignore: portable literal color, see comment above
 
 export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogProps) => {
+    const { t } = useTranslation('audienceManagerEmbedCodeDialog');
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
-    const [customization, setCustomization] = useState<EmbedCustomization>(DEFAULT_CUSTOMIZATION);
+    const [customization, setCustomization] = useState<EmbedCustomization>(() =>
+        buildDefaultCustomization(t)
+    );
     const { instituteDetails } = useInstituteDetailsStore();
 
     const campaignId = campaign.id || campaign.campaign_id || campaign.audience_id || '';
@@ -56,10 +75,10 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
         try {
             await navigator.clipboard.writeText(text);
             setCopiedSection(section);
-            toast.success('Copied to clipboard!');
+            toast.success(t('toasts.copiedToClipboard'));
             setTimeout(() => setCopiedSection(null), 2000);
         } catch (error) {
-            toast.error('Failed to copy');
+            toast.error(t('toasts.copyFailed'));
         }
     };
 
@@ -107,7 +126,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
   }
   .vacademy-modal-header {
     padding: 16px 20px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid ${EMBED_MODAL_BORDER_COLOR};
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -115,7 +134,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
   .vacademy-modal-title {
     font-size: 18px;
     font-weight: 600;
-    color: #111827;
+    color: ${EMBED_MODAL_TEXT_COLOR};
     margin: 0;
   }
   .vacademy-modal-close {
@@ -123,12 +142,12 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #6b7280;
+    color: ${EMBED_MODAL_MUTED_TEXT_COLOR};
     padding: 0;
     line-height: 1;
   }
   .vacademy-modal-close:hover {
-    color: #111827;
+    color: ${EMBED_MODAL_TEXT_COLOR};
   }
   .vacademy-modal-body {
     height: 500px;
@@ -177,26 +196,24 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden sm:w-[90vw]">
+            <DialogContent className="w-dialog-xl max-h-dialog-tall overflow-hidden">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Code2 className="size-5" />
-                        Embed Code - {campaign.campaign_name}
+                        <Code className="size-5" />
+                        {t('dialogTitle', { campaignName: campaign.campaign_name })}
                     </DialogTitle>
-                    <DialogDescription>
-                        Embed this form on your website or any webpage to collect responses.
-                    </DialogDescription>
+                    <DialogDescription>{t('dialogDescription')}</DialogDescription>
                 </DialogHeader>
 
                 <Tabs defaultValue="button-popup" className="mt-4">
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="button-popup" className="flex items-center gap-2">
                             <Palette className="size-4" />
-                            Button + Popup
+                            {t('tabs.buttonPopup')}
                         </TabsTrigger>
                         <TabsTrigger value="iframe" className="flex items-center gap-2">
-                            <Frame className="size-4" />
-                            Direct Embed
+                            <FrameCorners className="size-4" />
+                            {t('tabs.directEmbed')}
                         </TabsTrigger>
                     </TabsList>
 
@@ -206,25 +223,29 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                             <div className="space-y-4 rounded-lg border bg-neutral-50 p-4">
                                 <h4 className="flex items-center gap-2 font-medium">
                                     <Palette className="size-4" />
-                                    Customize Button
+                                    {t('buttonPanel.heading')}
                                 </h4>
 
                                 <div className="space-y-3">
                                     <div>
-                                        <Label htmlFor="buttonText">Button Text</Label>
+                                        <Label htmlFor="buttonText">
+                                            {t('buttonPanel.buttonTextLabel')}
+                                        </Label>
                                         <Input
                                             id="buttonText"
                                             value={customization.buttonText}
                                             onChange={(e) =>
                                                 updateCustomization('buttonText', e.target.value)
                                             }
-                                            placeholder="Register Now"
+                                            placeholder={t('defaults.buttonText')}
                                         />
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <Label htmlFor="buttonBgColor">Background Color</Label>
+                                            <Label htmlFor="buttonBgColor">
+                                                {t('buttonPanel.bgColorLabel')}
+                                            </Label>
                                             <div className="flex gap-2">
                                                 <Input
                                                     id="buttonBgColor"
@@ -246,14 +267,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                                             e.target.value
                                                         )
                                                     }
-                                                    placeholder="#6366f1"
+                                                    placeholder="#6366f1" // design-lint-ignore: literal hex-format hint for a hex color input
                                                     className="flex-1"
                                                 />
                                             </div>
                                         </div>
 
                                         <div>
-                                            <Label htmlFor="buttonTextColor">Text Color</Label>
+                                            <Label htmlFor="buttonTextColor">
+                                                {t('buttonPanel.textColorLabel')}
+                                            </Label>
                                             <div className="flex gap-2">
                                                 <Input
                                                     id="buttonTextColor"
@@ -275,7 +298,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                                             e.target.value
                                                         )
                                                     }
-                                                    placeholder="#ffffff"
+                                                    placeholder="#ffffff" // design-lint-ignore: literal hex-format hint for a hex color input
                                                     className="flex-1"
                                                 />
                                             </div>
@@ -284,7 +307,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
 
                                     <div>
                                         <Label htmlFor="buttonBorderRadius">
-                                            Border Radius (px)
+                                            {t('buttonPanel.borderRadiusLabel')}
                                         </Label>
                                         <Input
                                             id="buttonBorderRadius"
@@ -301,14 +324,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="popupTitle">Popup Title</Label>
+                                        <Label htmlFor="popupTitle">
+                                            {t('buttonPanel.popupTitleLabel')}
+                                        </Label>
                                         <Input
                                             id="popupTitle"
                                             value={customization.popupTitle}
                                             onChange={(e) =>
                                                 updateCustomization('popupTitle', e.target.value)
                                             }
-                                            placeholder="Registration Form"
+                                            placeholder={t('defaults.popupTitle')}
                                         />
                                     </div>
                                 </div>
@@ -316,7 +341,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                 {/* Preview */}
                                 <div className="mt-4 rounded-lg border bg-white p-4">
                                     <p className="mb-2 text-xs font-medium text-neutral-500">
-                                        Preview
+                                        {t('buttonPanel.previewLabel')}
                                     </p>
                                     <button
                                         style={{
@@ -346,16 +371,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                     {copiedSection === 'button-popup' ? (
                                         <>
                                             <Check className="mr-2 size-4" />
-                                            Copied
+                                            {t('copyButton.copied')}
                                         </>
                                     ) : (
                                         <>
                                             <Copy className="mr-2 size-4" />
-                                            Copy
+                                            {t('copyButton.copy')}
                                         </>
                                     )}
                                 </Button>
-                                <pre className="max-h-[400px] overflow-auto rounded-lg bg-neutral-900 p-4 text-xs text-neutral-100">
+                                <pre className="max-h-96 overflow-auto rounded-lg bg-neutral-900 p-4 text-xs text-neutral-100">
                                     <code>{buttonPopupCode}</code>
                                 </pre>
                             </div>
@@ -367,14 +392,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                             {/* Customization Panel */}
                             <div className="space-y-4 rounded-lg border bg-neutral-50 p-4">
                                 <h4 className="flex items-center gap-2 font-medium">
-                                    <Frame className="size-4" />
-                                    Customize iFrame
+                                    <FrameCorners className="size-4" />
+                                    {t('iframePanel.heading')}
                                 </h4>
 
                                 <div className="space-y-3">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <Label htmlFor="iframeWidth">Width</Label>
+                                            <Label htmlFor="iframeWidth">
+                                                {t('iframePanel.widthLabel')}
+                                            </Label>
                                             <Input
                                                 id="iframeWidth"
                                                 value={customization.iframeWidth}
@@ -389,7 +416,9 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                         </div>
 
                                         <div>
-                                            <Label htmlFor="iframeHeight">Height (px)</Label>
+                                            <Label htmlFor="iframeHeight">
+                                                {t('iframePanel.heightLabel')}
+                                            </Label>
                                             <Input
                                                 id="iframeHeight"
                                                 value={customization.iframeHeight}
@@ -408,7 +437,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                 {/* Preview */}
                                 <div className="mt-4 rounded-lg border bg-white p-4">
                                     <p className="mb-2 text-xs font-medium text-neutral-500">
-                                        Preview (scaled)
+                                        {t('iframePanel.previewScaledLabel')}
                                     </p>
                                     <div
                                         className="overflow-hidden rounded border bg-neutral-100"
@@ -419,7 +448,7 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                     >
                                         <iframe
                                             src={formUrl}
-                                            title="Form Preview"
+                                            title={t('iframePanel.formPreviewTitle')}
                                             style={{
                                                 width: '200%',
                                                 height: '300px',
@@ -432,8 +461,8 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                 </div>
 
                                 <p className="text-xs text-neutral-500">
-                                    Tip: Use <code>100%</code> for responsive width, or specify
-                                    pixels like <code>600</code>.
+                                    {t('iframePanel.tipPrefix')} <code>100%</code>{' '}
+                                    {t('iframePanel.tipSuffix')} <code>600</code>.
                                 </p>
                             </div>
 
@@ -448,16 +477,16 @@ export const EmbedCodeDialog = ({ isOpen, onClose, campaign }: EmbedCodeDialogPr
                                     {copiedSection === 'iframe' ? (
                                         <>
                                             <Check className="mr-2 size-4" />
-                                            Copied
+                                            {t('copyButton.copied')}
                                         </>
                                     ) : (
                                         <>
                                             <Copy className="mr-2 size-4" />
-                                            Copy
+                                            {t('copyButton.copy')}
                                         </>
                                     )}
                                 </Button>
-                                <pre className="max-h-[400px] overflow-auto rounded-lg bg-neutral-900 p-4 text-xs text-neutral-100">
+                                <pre className="max-h-96 overflow-auto rounded-lg bg-neutral-900 p-4 text-xs text-neutral-100">
                                     <code>{iframeCode}</code>
                                 </pre>
                             </div>

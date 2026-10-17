@@ -610,6 +610,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'marks_per_question', qs.marks_per_question,
                                     'negative_marking', qs.negative_marking,
                                     'pass_percentage', qs.pass_percentage,
+                                    'partial_marking', qs.partial_marking,
                                     're_attempt_count', qs.re_attempt_count,
                                     'questions', COALESCE((
                                         SELECT json_agg(
@@ -1147,6 +1148,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'marks_per_question', qs.marks_per_question,
                             'negative_marking', qs.negative_marking,
                             'pass_percentage', qs.pass_percentage,
+                            'partial_marking', qs.partial_marking,
                             're_attempt_count', qs.re_attempt_count,
                             'questions', COALESCE((
                                                 SELECT json_agg(
@@ -1724,6 +1726,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'marks_per_question', qs.marks_per_question,
                             'negative_marking', qs.negative_marking,
                             'pass_percentage', qs.pass_percentage,
+                            'partial_marking', qs.partial_marking,
                             're_attempt_count', qs.re_attempt_count,
                             'questions', COALESCE((
                                                 SELECT json_agg(
@@ -2516,6 +2519,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'marks_per_question', qs.marks_per_question,
                                 'negative_marking', qs.negative_marking,
                                 'pass_percentage', qs.pass_percentage,
+                                'partial_marking', qs.partial_marking,
                                 're_attempt_count', qs.re_attempt_count,
                                 'questions', COALESCE((
                                     SELECT json_agg(
@@ -3188,6 +3192,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'marks_per_question', qs.marks_per_question,
                             'negative_marking', qs.negative_marking,
                             'pass_percentage', qs.pass_percentage,
+                            'partial_marking', qs.partial_marking,
                             're_attempt_count', qs.re_attempt_count,
                             'questions', COALESCE((
                                 SELECT json_agg(

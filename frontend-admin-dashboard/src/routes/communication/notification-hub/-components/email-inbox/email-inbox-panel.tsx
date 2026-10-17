@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ArrowClockwise,
     PaperPlaneTilt,
@@ -26,6 +27,7 @@ import {
     type EmailInboxFilters,
     type EmailMessage,
 } from '../../-services/email-inbox-api';
+import { isSystemMessage, isSystemSender, resolveOrigin } from '../../-utils/email-text';
 import { EmailConversationList } from './email-conversation-list';
 import { EmailThread } from './email-thread';
 import { EmailReplyComposer } from './email-reply-composer';
@@ -213,6 +215,12 @@ export function EmailInboxPanel() {
     }, [instituteId, searchQuery, filters]);
 
     const selectedConvo = conversations.find((c) => c.email === selectedEmail);
+    // A bounce daemon / postmaster thread: nothing a human will ever read a reply to. The row may
+    // be absent from the list (direction filter / search narrowed it away) or come from a backend
+    // that predates `system`, so the same sender rule the backend uses is applied here too.
+    const selectedIsSystem =
+        selectedConvo?.system ??
+        isSystemSender(selectedEmail ?? undefined, selectedConvo?.lastMessageSubject);
 
     const handleRefresh = () => {
         loadFirstPage();
@@ -265,8 +273,13 @@ export function EmailInboxPanel() {
                         loading={loadingMessages}
                         hasMore={hasMoreMessages}
                         onLoadOlder={handleLoadOlder}
-                        onReply={selectedEmail ? () => setReplyOpen(true) : undefined}
+                        onReply={
+                            selectedEmail && !selectedIsSystem
+                                ? () => setReplyOpen(true)
+                                : undefined
+                        }
                         onBack={() => setSelectedEmail(null)}
+                        system={selectedIsSystem}
                     />
                 </div>
             </div>
@@ -289,15 +302,25 @@ export function EmailInboxPanel() {
 }
 
 /**
- * Build "Re: <subject>" from the latest message in the thread that has a subject.
- * Avoids prefixing with "Re:" twice. Returns empty string when nothing useful is available.
+ * Build "Re: <subject>" for the composer. Prefers the subject the PERSON last wrote in (their
+ * latest non-bounce inbound message), then our own latest inbox reply, and only then any other
+ * outgoing subject — otherwise a campaign or OTP sent after their question would prefill
+ * "Re: <our campaign title>". Avoids prefixing with "Re:" twice; empty when nothing is usable.
  */
 function buildReplySubject(messages: EmailMessage[]): string {
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        const subj = msg?.subject?.trim();
-        if (subj) {
-            return /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+    const passes: ((msg: EmailMessage) => boolean)[] = [
+        (msg) => msg.direction === 'INCOMING' && !isSystemMessage(msg),
+        (msg) => msg.direction === 'OUTGOING' && resolveOrigin(msg) === 'INBOX_REPLY',
+        () => true,
+    ];
+    for (const matches of passes) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (!msg || !matches(msg)) continue;
+            const subj = msg.subject?.trim();
+            if (subj) {
+                return /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+            }
         }
     }
     return '';
@@ -318,15 +341,16 @@ function HeaderBar({
     onDirectionChange: (v: EmailDirectionFilter) => void;
     onRefresh: () => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     return (
         <header className="px-4 py-3 border-b bg-card shrink-0">
             <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-start gap-2.5 min-w-0">
                     <Tray size={20} className="text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-foreground">Email Inbox</h3>
+                        <h3 className="text-sm font-semibold text-foreground">{t('title')}</h3>
                         <p className="text-xs text-muted-foreground truncate">
-                            Conversations grouped by audience email, scoped to your configured senders
+                            {t('subtitle')}
                         </p>
                     </div>
                 </div>
@@ -335,7 +359,7 @@ function HeaderBar({
                     size="icon"
                     onClick={onRefresh}
                     className="h-8 w-8 shrink-0"
-                    title="Refresh"
+                    title={t('refresh')}
                 >
                     <ArrowClockwise size={16} />
                 </Button>
@@ -363,17 +387,18 @@ function SenderSelect({
     value: string;
     onChange: (v: string) => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     const empty = senders.length === 0;
     return (
         <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
-            <span className="text-xs text-muted-foreground shrink-0">Inbox for</span>
+            <span className="text-xs text-muted-foreground shrink-0">{t('inboxFor')}</span>
             <Select value={value} onValueChange={onChange} disabled={empty}>
                 <SelectTrigger className="h-8 text-xs w-full sm:w-[260px]">{/* design-lint-ignore: preserves original desktop sender-select width */}
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value={ALL_SENDERS} className="text-xs">
-                        {empty ? 'No senders configured' : `All senders (${senders.length})`}
+                        {empty ? t('noSendersConfigured') : t('allSenders', { count: senders.length })}
                     </SelectItem>
                     {senders.map((s) => (
                         <SelectItem key={s} value={s} className="text-xs">
@@ -393,12 +418,13 @@ function DirectionFilter({
     value: EmailDirectionFilter;
     onChange: (v: EmailDirectionFilter) => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     const options: { value: EmailDirectionFilter; label: string; icon: React.ReactNode }[] = [
-        { value: 'ALL', label: 'All', icon: null },
-        { value: 'SENT', label: 'Sent', icon: <PaperPlaneTilt size={12} weight="fill" /> },
+        { value: 'ALL', label: t('direction.all'), icon: null },
+        { value: 'SENT', label: t('direction.sent'), icon: <PaperPlaneTilt size={12} weight="fill" /> },
         {
             value: 'RECEIVED',
-            label: 'Received',
+            label: t('direction.received'),
             icon: <ArrowFatDown size={12} weight="fill" />,
         },
     ];

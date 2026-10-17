@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ProctoringConfigForm } from '@/types/assessments/proctoring';
 
 interface BasicInfoState {
     assessmentPreview?: {
@@ -9,6 +10,8 @@ interface BasicInfoState {
     durationDistribution?: string;
     evaluationType?: string;
     resultType?: string;
+    aiEvaluationEnabled?: boolean;
+    proctoring?: ProctoringConfigForm;
     raiseReattemptRequest?: boolean;
     raiseTimeIncreaseRequest?: boolean;
     status?: string;
@@ -35,6 +38,8 @@ const initialState: Omit<BasicInfoState, 'setBasicInfo' | 'getBasicInfo' | 'rese
     durationDistribution: undefined,
     evaluationType: undefined,
     resultType: undefined,
+    aiEvaluationEnabled: undefined,
+    proctoring: undefined,
     raiseReattemptRequest: undefined,
     raiseTimeIncreaseRequest: undefined,
     status: undefined,

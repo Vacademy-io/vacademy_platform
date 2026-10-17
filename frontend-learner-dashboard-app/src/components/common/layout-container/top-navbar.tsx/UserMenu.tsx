@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { SignOut, UserSwitch } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -21,19 +22,11 @@ import { cn, isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Student } from "@/types/user/user-detail";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 import {
-  HamBurgerSidebarItemsData,
+  getHamBurgerSidebarItemsData,
   stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
 } from "../sidebar/utils";
-
-/**
- * Friendlier menu labels for a compact dropdown; falls back to the
- * canonical hamburger item title when a route has no override.
- */
-const MENU_LABEL_OVERRIDES: Record<string, string> = {
-  "/user-profile": "Profile",
-};
 
 /**
  * Navbar avatar + account dropdown: THE identity surface of the shell.
@@ -41,6 +34,7 @@ const MENU_LABEL_OVERRIDES: Record<string, string> = {
  * /logout route flow (the route performs all token clearing).
  */
 export const UserMenu = ({ className }: { className?: string }) => {
+  const { t } = useTranslation("layoutCommonA");
   const navigate = useNavigate();
   const { permissions } = useStudentPermissions();
   // Any student may hop to the parent perspective when Guardian Settings allow
@@ -52,7 +46,9 @@ export const UserMenu = ({ className }: { className?: string }) => {
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(
     undefined,
   );
-  const [filteredItems, setFilteredItems] = useState(HamBurgerSidebarItemsData);
+  const [filteredItems, setFilteredItems] = useState(() =>
+    getHamBurgerSidebarItemsData(t),
+  );
   const offlineAvailable = useOfflineAvailable();
 
   // Institute-wide feature toggle (ONBOARDING_SETTING, same one the admin
@@ -70,7 +66,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
   useEffect(() => {
     if (isNullOrEmptyOrUndefined(permissions)) return;
     filterHamburgerMenuItemsWithPermissions(
-      HamBurgerSidebarItemsData,
+      getHamBurgerSidebarItemsData(t),
       permissions || {
         canViewProfile: false,
         canEditProfile: false,
@@ -138,6 +134,12 @@ export const UserMenu = ({ className }: { className?: string }) => {
     getTerminology(RoleTerms.Learner, SystemTerms.Learner);
   const displayEmail = studentData?.email || studentData?.username || "";
 
+  // Friendlier menu labels for a compact dropdown; falls back to the
+  // canonical hamburger item title when a route has no override.
+  const menuLabelOverrides: Record<string, string> = {
+    "/user-profile": t("userMenu.profileLabel"),
+  };
+
   // Account navigation items, minus the destructive ones which get their
   // own grouping below the separator.
   // Offline is native-only AND admin-gated, so its entry must disappear here
@@ -160,7 +162,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Open account menu"
+          aria-label={t("userMenu.openAccountMenu")}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-full",
             "transition-colors duration-200 hover:bg-primary-50 dark:hover:bg-neutral-700",
@@ -200,7 +202,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
             }}
           >
             <item.icon />
-            {MENU_LABEL_OVERRIDES[item.to ?? ""] ?? item.title}
+            {menuLabelOverrides[item.to ?? ""] ?? item.title}
           </DropdownMenuItem>
         ))}
 
@@ -209,7 +211,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => navigate({ to: parentPortalTarget as never })}>
               <UserSwitch />
-              Switch to parent portal
+              {t("userMenu.switchToParentPortal")}
             </DropdownMenuItem>
           </>
         )}
@@ -220,7 +222,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
           className="text-destructive focus:text-destructive"
         >
           <SignOut />
-          Log out
+          {t("common.logOut")}
         </DropdownMenuItem>
         {deleteAccountItem && (
           <DropdownMenuItem

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ListChecks, PaperPlaneTilt } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -49,6 +50,9 @@ const SECTION_ID: Record<FormSectionId, string> = {
 };
 
 function CreateAnnouncementPage() {
+    const { t } = useTranslation('announcementCreateIndex');
+    const { t: tValidation } = useTranslation('announcementValidation');
+    const { t: tPayload } = useTranslation('announcementPayload');
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
     const draft = useAnnouncementDraft();
@@ -61,8 +65,8 @@ function CreateAnnouncementPage() {
     const [reviewOpen, setReviewOpen] = useState(false);
 
     useEffect(() => {
-        setNavHeading('Create Announcement');
-    }, [setNavHeading]);
+        setNavHeading(t('navHeading'));
+    }, [setNavHeading, t]);
 
     const batchNoun = getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase();
     const batchNounPlural = getTerminologyPlural(
@@ -120,7 +124,10 @@ function CreateAnnouncementPage() {
         ]
     );
 
-    const validation = useMemo(() => validateAll(validationInput), [validationInput]);
+    const validation = useMemo(
+        () => validateAll(tValidation, validationInput),
+        [tValidation, validationInput]
+    );
 
     const errors = useMemo<FieldErrors>(
         () => ({ ...mergeErrors(validation), ...serverErrors }),
@@ -192,9 +199,7 @@ function CreateAnnouncementPage() {
                     definition.id !== 'review' && validation[definition.id].blockers.length > 0
             );
             if (firstBroken) scrollToSection(firstBroken.id);
-            toast.error(
-                `Fix ${blockers.length} ${blockers.length === 1 ? 'issue' : 'issues'} before creating this announcement.`
-            );
+            toast.error(t('fixIssues', { count: blockers.length }));
             return;
         }
 
@@ -227,12 +232,12 @@ function CreateAnnouncementPage() {
             await AnnouncementService.create(payload);
             toast.success(
                 draft.scheduleType === 'IMMEDIATE'
-                    ? 'Announcement created and queued for delivery.'
-                    : 'Announcement scheduled.'
+                    ? t('toast.createdImmediate')
+                    : t('toast.scheduled')
             );
             navigate({ to: '/announcement/history' });
         } catch (err) {
-            const failure = interpretApiError(err);
+            const failure = interpretApiError(tPayload, err);
             setServerErrors(failure.fieldErrors);
             toast.error(failure.message);
             if (failure.section) scrollToSection(failure.section);
@@ -271,7 +276,7 @@ function CreateAnnouncementPage() {
                 onEditSection={scrollToSection}
             />
             <div className="space-y-2">
-                <h3 className="text-subtitle font-semibold">How it will look</h3>
+                <h3 className="text-subtitle font-semibold">{t('sections.howItWillLook')}</h3>
                 <PreviewPanel
                     title={draft.title}
                     previewText={draft.previewText}
@@ -422,27 +427,27 @@ function CreateAnnouncementPage() {
                         disable={submitting}
                     >
                         <ListChecks className="mr-1 size-4" />
-                        Review &amp; preview
+                        {t('actions.reviewAndPreview')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         onClick={handleCreate}
                         disable={submitting}
-                        loadingText="Creating…"
+                        loadingText={t('actions.creating')}
                     >
                         <PaperPlaneTilt className="mr-1 size-4" />
                         {submitting
-                            ? 'Creating…'
+                            ? t('actions.creating')
                             : draft.scheduleType === 'IMMEDIATE'
-                              ? 'Create and send'
-                              : 'Schedule announcement'}
+                              ? t('actions.createAndSend')
+                              : t('actions.scheduleAnnouncement')}
                     </MyButton>
                 </div>
             </div>
 
             <MyDialog
-                heading="Review & preview"
+                heading={t('dialog.reviewHeading')}
                 open={reviewOpen}
                 onOpenChange={setReviewOpen}
                 dialogWidth="max-w-4xl"
@@ -453,7 +458,7 @@ function CreateAnnouncementPage() {
                             scale="medium"
                             onClick={() => setReviewOpen(false)}
                         >
-                            Keep editing
+                            {t('actions.keepEditing')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
@@ -465,8 +470,8 @@ function CreateAnnouncementPage() {
                             }}
                         >
                             {draft.scheduleType === 'IMMEDIATE'
-                                ? 'Create and send'
-                                : 'Schedule announcement'}
+                                ? t('actions.createAndSend')
+                                : t('actions.scheduleAnnouncement')}
                         </MyButton>
                     </>
                 }

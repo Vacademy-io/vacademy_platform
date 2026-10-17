@@ -1,0 +1,18 @@
+{
+    "title": "Engagement Engines",
+    "subtitle": "Per-objective AI copilots that decide who to message, when, and with what.",
+    "actions": {
+        "taskInbox": "Task inbox",
+        "newEngine": "New engine",
+        "createFirstEngine": "Create your first engine"
+    },
+    "error": "Could not load engines. Please refresh.",
+    "empty": {
+        "title": "No engines yet",
+        "description": "Create an engine for one objective — like re-engaging dormant {{term}} or a 14-day challenge. It drafts every message for you to review before sending."
+    },
+    "card": {
+        "noChannels": "No channels enabled",
+        "cadence": "every {{hours}}h"
+    }
+}

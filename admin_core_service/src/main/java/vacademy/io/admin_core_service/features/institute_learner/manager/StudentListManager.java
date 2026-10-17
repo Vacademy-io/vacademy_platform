@@ -58,6 +58,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 public class StudentListManager {
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+
+    @Autowired
     InternalClientUtils internalClientUtils;
 
     @Autowired
@@ -65,6 +68,9 @@ public class StudentListManager {
 
     @Autowired
     vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
+    vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
 
     @Autowired
     StudentSessionRepository studentSessionRepository;
@@ -373,12 +379,45 @@ public class StudentListManager {
             if (typedResolution.shortCircuitsToEmpty()) {
                 return ResponseEntity.ok(AllStudentV2Response.builder()
                         .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
-                        .totalElements(0L).totalPages(0).last(true).build());
+                        .totalElements(0L).totalPages(0).last(true)
+                        .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                        .build());
             }
             studentListFilter.setCfTypedMatchedUserIds(
                     typedResolution.matchedIds == null ? null : new ArrayList<>(typedResolution.matchedIds));
             studentListFilter.setCfTypedExcludedUserIds(
                     typedResolution.excludedIds == null ? null : new ArrayList<>(typedResolution.excludedIds));
+        }
+        // Campaign (UTM) filter: resolve touches → user ids and fold them into
+        // the same matched / excluded user-id sets the typed custom-field
+        // filters use, so it rides the existing custom-repo path unchanged.
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(studentListFilter.getUtmFilters())) {
+            String utmInstituteId = (studentListFilter.getInstituteIds() != null
+                    && !studentListFilter.getInstituteIds().isEmpty())
+                    ? studentListFilter.getInstituteIds().get(0) : null;
+            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                    existing = new vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution(
+                            studentListFilter.getCfTypedMatchedUserIds() == null ? null
+                                    : new java.util.HashSet<>(studentListFilter.getCfTypedMatchedUserIds()),
+                            studentListFilter.getCfTypedExcludedUserIds() == null ? null
+                                    : new java.util.HashSet<>(studentListFilter.getCfTypedExcludedUserIds()));
+            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                    combined = existing.and(utmListFilterResolver.resolve(
+                            studentListFilter.getUtmFilters(),
+                            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.USER,
+                            utmInstituteId));
+            if (combined.shortCircuitsToEmpty()) {
+                return ResponseEntity.ok(AllStudentV2Response.builder()
+                        .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
+                        .totalElements(0L).totalPages(0).last(true)
+                        .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                        .build());
+            }
+            studentListFilter.setCfTypedMatchedUserIds(
+                    combined.matchedIds == null ? null : new ArrayList<>(combined.matchedIds));
+            studentListFilter.setCfTypedExcludedUserIds(
+                    combined.excludedIds == null ? null : new ArrayList<>(combined.excludedIds));
         }
         boolean hasTypedCustomFieldFilters =
                 (studentListFilter.getCfTypedMatchedUserIds() != null && !studentListFilter.getCfTypedMatchedUserIds().isEmpty())
@@ -420,6 +459,7 @@ public class StudentListManager {
                 && CollectionUtils.isEmpty(studentListFilter.getLevelIds())
                 && CollectionUtils.isEmpty(studentListFilter.getSubOrgUserTypes())
                 && !hasSubOrgFilter
+                && CollectionUtils.isEmpty(studentListFilter.getMembershipTypes())
                 && studentListFilter.getStartDate() == null
                 && studentListFilter.getEndDate() == null;
 
@@ -437,6 +477,7 @@ public class StudentListManager {
                 studentListFilter.getLevelIds(),
                 studentListFilter.getSubOrgIds(),
                 studentListFilter.getSubOrgUserTypes(),
+                studentListFilter.getMembershipTypes(),
                 studentListFilter.getStartDate(),
                 studentListFilter.getEndDate(),
                 studentListFilter.getAudienceIds(),
@@ -448,7 +489,9 @@ public class StudentListManager {
         if (pagedUserIds.isEmpty()) {
             return ResponseEntity.ok(AllStudentV2Response.builder()
                     .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
-                    .totalElements(0L).totalPages(0).last(true).build());
+                    .totalElements(0L).totalPages(0).last(true)
+                    .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                    .build());
         }
 
         // Slim enrichment: skip user_plan/payment_log/enroll_invite joins and the
@@ -518,6 +561,7 @@ public class StudentListManager {
                 .totalElements(totalElements)
                 .totalPages(totalPages)
                 .last(pageNo >= totalPages - 1)
+                .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
                 .build());
     }
 
@@ -633,6 +677,68 @@ public class StudentListManager {
         return null;
     }
 
+    /**
+     * TRIAL / PAID / null from user_plan.is_trial. Null means the learner has no plan at
+     * all, which is not the same as paying -- the badge stays off rather than guessing.
+     */
+    /**
+     * True when the institute has a live invite configuring a trial. Parsed in Java after a
+     * LIKE prefilter; an unreadable settings blob is skipped rather than allowed to decide
+     * that an institute runs no trials, or to fail the list.
+     */
+    private boolean membershipTypesAvailable(List<String> instituteIds) {
+        if (CollectionUtils.isEmpty(instituteIds)) {
+            return false;
+        }
+        for (String instituteId : instituteIds) {
+            try {
+                for (String settingJson : enrollInviteRepository.findTrialBearingSettingJson(instituteId)) {
+                    if (settingJson == null || settingJson.isBlank()) continue;
+                    try {
+                        if (new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingJson)
+                                .path("setting").path("AUTOPAY_SETTING").path("TRIAL_DAYS").asInt(0) > 0) {
+                            return true;
+                        }
+                    } catch (Exception ignored) {
+                        // malformed invite; try the next
+                    }
+                }
+            } catch (Exception ignored) {
+                // availability is a display hint; never fail the list over it
+            }
+        }
+        return false;
+    }
+
+    private static String membershipTypeOf(Boolean isTrial, String planEndDate) {
+        if (isTrial == null) {
+            return null;
+        }
+        if (!Boolean.TRUE.equals(isTrial)) {
+            return "PAID";
+        }
+        // A trial that has run out is not a trial member any more, and calling it one put
+        // learners whose trial ended weeks ago next to people currently in theirs. It is
+        // also not PAID -- they never paid. TRIAL_ENDED is the third, honest state.
+        return hasPassed(planEndDate) ? "TRIAL_ENDED" : "TRIAL";
+    }
+
+    /** True when the timestamp is in the past. Unparseable or absent reads as still running. */
+    private static boolean hasPassed(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) {
+            return false;
+        }
+        try {
+            String normalised = timestamp.trim().replace(' ', 'T');
+            if (normalised.length() > 19) {
+                normalised = normalised.substring(0, 19);
+            }
+            return java.time.LocalDateTime.parse(normalised).isBefore(java.time.LocalDateTime.now());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
         List<StudentV2DTO> dtos = new ArrayList<>();
         ObjectMapper mapper = new ObjectMapper();
@@ -653,6 +759,15 @@ public class StudentListManager {
 
             dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
             dto.setGender(p.getGender());
+            // Defensive: this mapper is fed by several projections, and a Spring Data
+            // interface projection throws when a getter has no matching result column. A list
+            // that cannot show a badge must still show the learner.
+            try {
+                dto.setEnrolledDate(p.getEnrolledDate());
+                dto.setMembershipType(membershipTypeOf(p.getIsTrial(), p.getPlanEndDate()));
+            } catch (Exception e) {
+                dto.setMembershipType(null);
+            }
             dto.setFathersName(p.getFathersName());
             dto.setMothersName(p.getMothersName());
             dto.setParentsMobileNumber(p.getParentsMobileNumber());

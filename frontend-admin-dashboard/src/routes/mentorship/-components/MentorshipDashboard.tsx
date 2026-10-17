@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowRight,
     CalendarBlank,
@@ -31,6 +33,7 @@ import { MentorAvatar } from './MentorAvatar';
  * screen is computed from one of those two; nothing here is decorative filler.
  */
 export function MentorshipDashboard({ instituteId }: { instituteId: string | undefined }) {
+    const { t } = useTranslation('mentorshipDashboard');
     const { data, isLoading, isError, refetch } = useMentorDashboard(instituteId);
     const upcoming = useMentorSessions(instituteId, { lifecycle: 'UPCOMING' });
 
@@ -39,7 +42,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
             <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                 <div className="flex items-center gap-2">
                     <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                    <p className="text-body text-danger-600">Couldn&apos;t load mentorship data.</p>
+                    <p className="text-body text-danger-600">{t('loadError')}</p>
                 </div>
                 <MyButton
                     type="button"
@@ -47,7 +50,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
                     scale="small"
                     onClick={() => refetch()}
                 >
-                    Retry
+                    {t('retry')}
                 </MyButton>
             </div>
         );
@@ -66,34 +69,38 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
         <div className="flex flex-col gap-5">
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Kpi
-                    label="Mentors"
+                    label={t('kpi.mentors.label')}
                     value={data?.total_mentors}
-                    hint="On your team"
+                    hint={t('kpi.mentors.hint')}
                     icon={UsersThree}
                     tone="primary"
                     loading={isLoading}
                 />
                 <Kpi
-                    label="Students mentored"
+                    label={t('kpi.studentsMentored.label')}
                     value={data?.distinct_mentees}
-                    hint={`${data?.total_active_assignments ?? 0} active pairings`}
+                    hint={t('kpi.studentsMentored.hint', {
+                        count: data?.total_active_assignments ?? 0,
+                    })}
                     icon={GraduationCap}
                     tone="info"
                     loading={isLoading}
                 />
                 <Kpi
-                    label="Sessions ahead"
+                    label={t('kpi.sessionsAhead.label')}
                     value={data?.upcoming_sessions}
-                    hint="Next 7 days"
+                    hint={t('kpi.sessionsAhead.hint')}
                     icon={CalendarBlank}
                     tone="warning"
                     loading={isLoading}
                 />
                 <Kpi
-                    label="Average rating"
+                    label={t('kpi.averageRating.label')}
                     value={avgRating == null ? undefined : avgRating.toFixed(1)}
                     hint={
-                        rated.length > 0 ? `From ${rated.length} rated mentors` : 'No ratings yet'
+                        rated.length > 0
+                            ? t('kpi.averageRating.hintRated', { count: rated.length })
+                            : t('kpi.averageRating.hintNone')
                     }
                     icon={Star}
                     tone="success"
@@ -174,36 +181,37 @@ function Kpi({
 }
 
 /** Status slices. Colour is never the only cue — every slice is labelled and counted. */
-const OUTCOMES = [
-    {
-        key: 'completed',
-        label: 'Completed',
-        icon: CheckCircle,
-        bar: 'bg-success-500',
-        dot: 'text-success-500',
-    },
-    {
-        key: 'noShow',
-        label: 'No-shows',
-        icon: UserMinus,
-        bar: 'bg-danger-500',
-        dot: 'text-danger-500',
-    },
-    {
-        key: 'cancelled',
-        label: 'Cancelled',
-        icon: XCircle,
-        bar: 'bg-neutral-400',
-        dot: 'text-neutral-400',
-    },
-    {
-        key: 'awaiting',
-        label: 'Awaiting review',
-        icon: Clock,
-        bar: 'bg-warning-500',
-        dot: 'text-warning-500',
-    },
-] as const;
+const buildOutcomes = (t: TFunction) =>
+    [
+        {
+            key: 'completed',
+            label: t('outcomes.completed'),
+            icon: CheckCircle,
+            bar: 'bg-success-500',
+            dot: 'text-success-500',
+        },
+        {
+            key: 'noShow',
+            label: t('outcomes.noShows'),
+            icon: UserMinus,
+            bar: 'bg-danger-500',
+            dot: 'text-danger-500',
+        },
+        {
+            key: 'cancelled',
+            label: t('outcomes.cancelled'),
+            icon: XCircle,
+            bar: 'bg-neutral-400',
+            dot: 'text-neutral-400',
+        },
+        {
+            key: 'awaiting',
+            label: t('outcomes.awaitingReview'),
+            icon: Clock,
+            bar: 'bg-warning-500',
+            dot: 'text-warning-500',
+        },
+    ] as const;
 
 function OutcomesCard({
     data,
@@ -217,6 +225,8 @@ function OutcomesCard({
     } | null;
     loading: boolean;
 }) {
+    const { t } = useTranslation('mentorshipDashboard');
+    const OUTCOMES = buildOutcomes(t);
     const counts: Record<string, number> = {
         completed: data?.completed_sessions ?? 0,
         noShow: data?.no_show_sessions ?? 0,
@@ -227,17 +237,15 @@ function OutcomesCard({
 
     return (
         <SectionCard
-            title="Session outcomes"
-            subtitle="All-time session summary"
+            title={t('outcomes.cardTitle')}
+            subtitle={t('outcomes.cardSubtitle')}
             to="/mentorship/sessions"
-            linkLabel="View all sessions"
+            linkLabel={t('viewAllSessions')}
         >
             {loading ? (
                 <Skeleton className="h-24 w-full" />
             ) : total === 0 ? (
-                <p className="py-4 text-caption text-neutral-400">
-                    No sessions yet. Outcomes appear here once mentors record them.
-                </p>
+                <p className="py-4 text-caption text-neutral-400">{t('outcomes.empty')}</p>
             ) : (
                 <>
                     {/* One stacked bar, 2px gaps so segments stay separable without borders. */}
@@ -291,6 +299,7 @@ function WorkloadCard({
     sessions: MentorSessionDTO[];
     loading: boolean;
 }) {
+    const { t } = useTranslation('mentorshipDashboard');
     // Upcoming load per mentor, straight off the sessions already fetched for
     // "Coming up" — no extra request, and it's what "busy" actually means.
     const upcomingByMentor = sessions.reduce<Record<string, number>>((acc, s) => {
@@ -305,15 +314,15 @@ function WorkloadCard({
 
     return (
         <SectionCard
-            title="Mentor workload"
-            subtitle="Students per mentor"
+            title={t('workload.cardTitle')}
+            subtitle={t('workload.cardSubtitle')}
             to="/mentorship/mentors"
-            linkLabel="View all mentors"
+            linkLabel={t('viewAllMentors')}
         >
             {loading ? (
                 <Skeleton className="h-24 w-full" />
             ) : busiest.length === 0 ? (
-                <p className="py-4 text-caption text-neutral-400">No mentors yet.</p>
+                <p className="py-4 text-caption text-neutral-400">{t('workload.empty')}</p>
             ) : (
                 <ul className="flex flex-col gap-3">
                     {busiest.map((m) => {
@@ -331,7 +340,7 @@ function WorkloadCard({
                                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="truncate text-caption font-medium text-neutral-700">
-                                            {m.display_name || m.name || 'Mentor'}
+                                            {m.display_name || m.name || t('mentorFallback')}
                                         </span>
                                         <span
                                             className={cn(
@@ -339,8 +348,11 @@ function WorkloadCard({
                                                 full ? 'text-danger-600' : 'text-neutral-500'
                                             )}
                                         >
-                                            {count} / {cap ?? '∞'}
-                                            {full ? ' · full' : ''}
+                                            {t('workload.countOfCap', {
+                                                count,
+                                                cap: cap ?? '∞',
+                                            })}
+                                            {full ? t('workload.fullSuffix') : ''}
                                         </span>
                                     </div>
                                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
@@ -365,8 +377,10 @@ function WorkloadCard({
                                         />
                                     </div>
                                     <span className="text-caption text-neutral-400">
-                                        {m.title || 'Mentor'} ·{' '}
-                                        {ahead === 0 ? 'no upcoming' : `${ahead} upcoming`}
+                                        {m.title || t('mentorFallback')} ·{' '}
+                                        {ahead === 0
+                                            ? t('workload.noUpcoming')
+                                            : t('workload.upcomingCount', { count: ahead })}
                                     </span>
                                 </div>
                             </li>
@@ -392,48 +406,45 @@ function AttentionCard({
     awaitingReview: number;
     loading: boolean;
 }) {
+    const { t } = useTranslation('mentorshipDashboard');
     const items = [
         {
             key: 'requests',
             icon: TrayArrowDown,
             count: pendingRequests,
-            title: 'Learner requests waiting',
-            detail:
-                pendingRequests === 1
-                    ? '1 learner is waiting to be paired with a mentor'
-                    : `${pendingRequests} learners are waiting to be paired with a mentor`,
+            title: t('attention.requestsTitle'),
+            detail: t('attention.requestsDetail', { count: pendingRequests }),
             to: '/mentorship/requests',
-            cta: 'Review requests',
+            cta: t('attention.reviewRequests'),
         },
         {
             key: 'awaiting',
             icon: Clock,
             count: awaitingReview,
-            title: 'Sessions awaiting review',
-            detail:
-                awaitingReview === 1
-                    ? '1 session needs its outcome recorded'
-                    : `${awaitingReview} sessions need their outcome recorded`,
+            title: t('attention.awaitingTitle'),
+            detail: t('attention.awaitingDetail', { count: awaitingReview }),
             to: '/mentorship/sessions',
-            cta: 'Review sessions',
+            cta: t('attention.reviewSessions'),
         },
     ].filter((a) => a.count > 0);
 
     return (
         <SectionCard
-            title="Needs attention"
-            subtitle="Things waiting on you"
+            title={t('attention.cardTitle')}
+            subtitle={t('attention.cardSubtitle')}
             to="/mentorship/sessions"
-            linkLabel="View all sessions"
+            linkLabel={t('viewAllSessions')}
         >
             {loading ? (
                 <Skeleton className="h-24 w-full" />
             ) : items.length === 0 ? (
                 <div className="flex flex-col items-center gap-1.5 py-6 text-center">
                     <CheckCircle size={28} weight="duotone" className="text-success-500" />
-                    <p className="text-caption font-medium text-neutral-700">All caught up</p>
+                    <p className="text-caption font-medium text-neutral-700">
+                        {t('attention.allCaughtUp')}
+                    </p>
                     <p className="text-caption text-neutral-400">
-                        No pending requests and every session is recorded.
+                        {t('attention.allCaughtUpDescription')}
                     </p>
                 </div>
             ) : (
@@ -473,18 +484,22 @@ function AttentionCard({
 }
 
 function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loading: boolean }) {
+    const { t: tFormat, i18n } = useTranslation('mentorshipFormatSessionTimeUtils');
+    const { t } = useTranslation('mentorshipDashboard');
     return (
         <Card className="flex flex-col gap-3 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
                     <span className="text-body font-semibold text-neutral-700">
-                        Upcoming sessions
+                        {t('upcoming.cardTitle')}
                     </span>
-                    <span className="text-caption text-neutral-400">Next 5 sessions</span>
+                    <span className="text-caption text-neutral-400">
+                        {t('upcoming.cardSubtitle')}
+                    </span>
                 </div>
                 <Link to="/mentorship/sessions">
                     <MyButton type="button" buttonType="secondary" scale="small">
-                        View all sessions
+                        {t('viewAllSessions')}
                     </MyButton>
                 </Link>
             </div>
@@ -497,7 +512,7 @@ function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loa
                 </div>
             ) : sessions.length === 0 ? (
                 <p className="flex items-center gap-1.5 py-6 text-caption text-neutral-400">
-                    <CalendarBlank size={14} /> Nothing booked yet.
+                    <CalendarBlank size={14} /> {t('upcoming.empty')}
                 </p>
             ) : (
                 <ul className="flex flex-col gap-2">
@@ -511,17 +526,20 @@ function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loa
                                     {dayOfMonth(s.scheduled_start_utc)}
                                 </span>
                                 <span className="text-caption font-medium leading-none tracking-wide text-neutral-400">
-                                    {shortMonth(s.scheduled_start_utc)}
+                                    {shortMonth(s.scheduled_start_utc, i18n.language)}
                                 </span>
                             </span>
                             <span className="flex min-w-0 flex-1 flex-col">
                                 <span className="truncate text-body text-neutral-700">
-                                    {s.mentor_name || 'Mentor'} &rarr; {s.student_name || 'Learner'}
+                                    {s.mentor_name || t('mentorFallback')} &rarr;{' '}
+                                    {s.student_name || t('learnerFallback')}
                                 </span>
                                 <span className="text-caption text-neutral-400">
-                                    {relativeDay(s.scheduled_start_utc)} ·{' '}
-                                    {timeOfDay(s.scheduled_start_utc)}
-                                    {s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}
+                                    {relativeDay(s.scheduled_start_utc, tFormat, i18n.language)} ·{' '}
+                                    {timeOfDay(s.scheduled_start_utc, i18n.language)}
+                                    {s.duration_minutes
+                                        ? ` · ${t('upcoming.durationMinutes', { count: s.duration_minutes })}`
+                                        : ''}
                                 </span>
                             </span>
                         </li>

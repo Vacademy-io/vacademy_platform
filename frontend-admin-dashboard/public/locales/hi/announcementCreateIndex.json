@@ -1,0 +1,22 @@
+{
+    "navHeading": "घोषणा बनाएं",
+    "fixIssues_one": "यह घोषणा बनाने से पहले {{count}} समस्या ठीक करें।",
+    "fixIssues_other": "यह घोषणा बनाने से पहले {{count}} समस्याएं ठीक करें।",
+    "toast": {
+        "createdImmediate": "घोषणा बना दी गई है और डिलीवरी के लिए कतार में है।",
+        "scheduled": "घोषणा शेड्यूल कर दी गई है।"
+    },
+    "sections": {
+        "howItWillLook": "यह कैसी दिखेगी"
+    },
+    "actions": {
+        "reviewAndPreview": "समीक्षा और पूर्वावलोकन",
+        "keepEditing": "संपादन जारी रखें",
+        "createAndSend": "बनाएं और भेजें",
+        "scheduleAnnouncement": "घोषणा शेड्यूल करें",
+        "creating": "बनाया जा रहा है…"
+    },
+    "dialog": {
+        "reviewHeading": "समीक्षा और पूर्वावलोकन"
+    }
+}

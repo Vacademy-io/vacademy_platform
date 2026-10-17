@@ -636,6 +636,27 @@ def _caption_from_page_text(page_text: str) -> Optional[str]:
 # URL / YouTube / raw text
 # ---------------------------------------------------------------------------
 
+def assert_public_http_url(url: str) -> None:
+    """Refuse anything that is not a public http(s) URL.
+
+    Same SSRF rule the scraper applies (no private / loopback / link-local
+    targets), surfaced as ValueError so a background ingest records a readable
+    failure instead of leaking an HTTPException out of a job.
+    """
+    from urllib.parse import urlparse
+
+    from fastapi import HTTPException
+
+    from ..scraper_service import ScraperService
+
+    if urlparse(url).scheme not in ("http", "https"):
+        raise ValueError("PDF URLs must be http(s)")
+    try:
+        ScraperService()._validate_url(url)  # noqa: SLF001 — the one shared SSRF gate
+    except HTTPException as exc:
+        raise ValueError(str(exc.detail)) from exc
+
+
 async def parse_url(url: str) -> ParsedDocument:
     """Scrape a web page into a single-page document.
 
@@ -709,9 +730,16 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
         preferred = [language_hint] if language_hint else []
         preferred += ["en", "hi"]
         try:
-            listing = YouTubeTranscriptApi.list_transcripts(video_id)
+            # youtube-transcript-api 1.x: instance API; older: static list_transcripts.
+            if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+                listing = YouTubeTranscriptApi.list_transcripts(video_id)
+            else:
+                listing = YouTubeTranscriptApi().list(video_id)
         except Exception as exc:  # noqa: BLE001
-            raise ValueError(f"Could not read captions for that video: {exc}") from exc
+            name = type(exc).__name__
+            if "block" in name.lower() or "block" in str(exc).lower():
+                raise ValueError("YouTube blocks caption requests from this server's IP") from exc
+            raise ValueError(f"Could not read captions for that video: {str(exc)[:200]}") from exc
 
         transcript = None
         try:
@@ -727,11 +755,12 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
                     break
         if transcript is None:
             raise ValueError("That video has no captions, so there is no transcript to ingest")
-        return " ".join(
-            (seg.get("text") or "").strip()
-            for seg in transcript.fetch()
-            if (seg.get("text") or "").strip()
-        )
+
+        def _text(seg: Any) -> str:
+            # 1.x yields FetchedTranscriptSnippet objects; older versions dicts.
+            return str((seg.get("text") if isinstance(seg, dict) else getattr(seg, "text", "")) or "").strip()
+
+        return " ".join(t for t in (_text(seg) for seg in transcript.fetch()) if t)
 
     # The library is synchronous and does network I/O — keep it off the event loop.
     text_out = (await asyncio.to_thread(_fetch)).strip()

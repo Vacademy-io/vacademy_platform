@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Helmet } from 'react-helmet';
 import { MyButton } from '@/components/design-system/button';
@@ -81,6 +82,7 @@ function RegistrationListPageInner({
     setIsSidebarOpen: (open: boolean) => void;
     setSelectedApplicantId: (id: string | null) => void;
 }) {
+    const { t } = useTranslation('admissionsRegistrationListPage');
     const { setSelectedStudent } = useStudentSidebar();
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
@@ -121,11 +123,27 @@ function RegistrationListPageInner({
 
     // Status options for filter
     const statusOptions: MyFilterOption[] = [
-        { id: 'PENDING', name: 'Pending' },
-        { id: 'ADMISSION_COMPLETED', name: 'Completed' },
-        { id: 'REJECTED', name: 'Rejected' },
-        { id: 'ADMITTED', name: 'Admitted' },
+        { id: 'PENDING', name: t('status.pending') },
+        { id: 'ADMISSION_COMPLETED', name: t('status.admissionCompleted') },
+        { id: 'REJECTED', name: t('status.rejected') },
+        { id: 'ADMITTED', name: t('status.admitted') },
     ];
+
+    // Map a raw backend registration-status enum to its translated display
+    // label. Falls back to the raw value for any status the catalog doesn't
+    // yet cover, so an unmapped enum never crashes the render.
+    const STATUS_LABEL_KEYS: Record<string, string> = {
+        SUBMITTED: 'status.submitted',
+        ADMITTED: 'status.admitted',
+        APPROVED: 'status.approved',
+        PENDING: 'status.pending',
+        REJECTED: 'status.rejected',
+        ADMISSION_COMPLETED: 'status.admissionCompleted',
+    };
+    const getStatusLabel = (status: string): string => {
+        const key = STATUS_LABEL_KEYS[status];
+        return key ? t(key) : status;
+    };
 
     // Fetch applicants with filters
     const { data: applicantsData, isLoading } = useQuery({
@@ -165,13 +183,13 @@ function RegistrationListPageInner({
     useEffect(() => {
         setNavHeading(
             <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold">Application Management</span>
+                <span className="text-lg font-semibold">{t('navHeading')}</span>
                 <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600">
                     {totalElements}
                 </span>
             </div>
         );
-    }, [setNavHeading, totalElements]);
+    }, [setNavHeading, totalElements, t]);
 
     const handleNewRegistration = () => {
         setShowRegistrationTypeModal(true);
@@ -194,7 +212,7 @@ function RegistrationListPageInner({
     const handleSelectEnquiry = (enquiryData: EnquiryDetailsResponse) => {
         // Guard: should not reach here (button is disabled in modal), but double-check
         if (enquiryData.overall_status === 'APPLICATION' || enquiryData.overall_status === 'ADMISSION') {
-            toast.warning('This enquiry has already been converted to an application.');
+            toast.warning(t('toast.enquiryAlreadyConverted'));
             return;
         }
 
@@ -217,7 +235,7 @@ function RegistrationListPageInner({
     return (
         <div className="flex h-full w-full min-w-0 flex-1 flex-col">
             <Helmet>
-                <title>Applications - Admissions</title>
+                <title>{t('pageTitle')}</title>
             </Helmet>
 
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -226,7 +244,7 @@ function RegistrationListPageInner({
                         <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                         <input
                             type="text"
-                            placeholder="Search by tracking ID, name..."
+                            placeholder={t('search.placeholder')}
                             className="h-8 w-64 rounded-md border border-neutral-300 pl-10 pr-4 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -234,14 +252,14 @@ function RegistrationListPageInner({
                     </div>
 
                     <ScheduleTestFilters
-                        label="Class"
+                        label={t('filters.classLabel')}
                         data={packageSessionOptions}
                         selectedItems={selectedPackageSessions}
                         onSelectionChange={setSelectedPackageSessions}
                     />
 
                     <ScheduleTestFilters
-                        label="Status"
+                        label={t('filters.statusLabel')}
                         data={statusOptions}
                         selectedItems={selectedStatuses}
                         onSelectionChange={setSelectedStatuses}
@@ -254,8 +272,8 @@ function RegistrationListPageInner({
                         onValueChange={setSelectedSessionId}
                         defaultValue={sessions[0]?.id}
                     >
-                        <SelectTrigger className="h-10 w-[100px]">
-                            <SelectValue placeholder="Select Session" />
+                        <SelectTrigger className="h-10 w-24">
+                            <SelectValue placeholder={t('session.placeholder')} />
                         </SelectTrigger>
                         <SelectContent>
                             {sessions.map((session) => (
@@ -272,14 +290,14 @@ function RegistrationListPageInner({
                         disabled={!selectedSessionId}
                     >
                         <Plus className="mr-2 size-4" />
-                        New Application
+                        {t('buttons.newApplication')}
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         onClick={() => setIsBulkImportOpen(true)}
                         disabled={!selectedSessionId}
                     >
-                        Bulk Import
+                        {t('buttons.bulkImport')}
                     </MyButton>
                 </div>
             </div>
@@ -287,20 +305,20 @@ function RegistrationListPageInner({
             <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white shadow-sm">
                 {isLoading ? (
                     <div className="flex items-center justify-center p-12">
-                        <div className="text-neutral-500">Loading applications...</div>
+                        <div className="text-neutral-500">{t('table.loading')}</div>
                     </div>
                 ) : applicants.length === 0 ? (
                     <div className="flex items-center justify-center p-12">
                         <div className="text-center">
-                            <p className="text-neutral-500">No applications found</p>
-                            <p className="text-sm text-neutral-400">Try adjusting your filters</p>
+                            <p className="text-neutral-500">{t('table.empty.title')}</p>
+                            <p className="text-sm text-neutral-400">{t('table.empty.subtitle')}</p>
                             <div className="mt-4 flex justify-center">
                                 <MyButton
                                     buttonType="secondary"
                                     onClick={() => setIsBulkImportOpen(true)}
                                     disabled={!selectedSessionId}
                                 >
-                                    Bulk Import
+                                    {t('buttons.bulkImport')}
                                 </MyButton>
                             </div>
                         </div>
@@ -309,14 +327,14 @@ function RegistrationListPageInner({
                     <table className="w-full text-left text-sm text-neutral-600">
                         <thead className="bg-neutral-50 text-xs font-semibold uppercase text-neutral-500">
                             <tr>
-                                <th className="px-6 py-3">Tracking ID</th>
-                                <th className="px-6 py-3">Student Name</th>
-                                <th className="px-6 py-3">Class</th>
-                                <th className="px-6 py-3">Parent Name</th>
-                                <th className="px-6 py-3">Mobile</th>
-                                <th className="px-6 py-3">Date</th>
-                                <th className="px-6 py-3">Status</th>
-                                <th className="px-6 py-3 text-right">Actions</th>
+                                <th className="px-6 py-3">{t('table.headers.trackingId')}</th>
+                                <th className="px-6 py-3">{t('table.headers.studentName')}</th>
+                                <th className="px-6 py-3">{t('table.headers.class')}</th>
+                                <th className="px-6 py-3">{t('table.headers.parentName')}</th>
+                                <th className="px-6 py-3">{t('table.headers.mobile')}</th>
+                                <th className="px-6 py-3">{t('table.headers.date')}</th>
+                                <th className="px-6 py-3">{t('table.headers.status')}</th>
+                                <th className="px-6 py-3 text-end">{t('table.headers.actions')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-200">
@@ -359,7 +377,7 @@ function RegistrationListPageInner({
                                                                 : 'bg-neutral-100 text-neutral-800'
                                                 }`}
                                         >
-                                            {applicant.overall_status}
+                                            {getStatusLabel(applicant.overall_status)}
                                         </span>
                                     </td>
                                     <td className="whitespace-nowrap px-6 py-4 text-right">
@@ -376,8 +394,11 @@ function RegistrationListPageInner({
 
             <div className="mt-4 flex items-center justify-between text-xs text-neutral-500">
                 <span>
-                    Showing {pageNo * pageSize + 1} to{' '}
-                    {Math.min((pageNo + 1) * pageSize, totalElements)} of {totalElements} entries
+                    {t('pagination.showing', {
+                        from: pageNo * pageSize + 1,
+                        to: Math.min((pageNo + 1) * pageSize, totalElements),
+                        count: totalElements,
+                    })}
                 </span>
                 <div className="flex gap-2">
                     <button
@@ -385,14 +406,14 @@ function RegistrationListPageInner({
                         disabled={pageNo === 0}
                         onClick={() => setPageNo((p) => Math.max(0, p - 1))}
                     >
-                        Previous
+                        {t('buttons.previous')}
                     </button>
                     <button
                         className="rounded border border-neutral-300 px-2 py-1 disabled:opacity-50"
                         disabled={pageNo >= totalPages - 1}
                         onClick={() => setPageNo((p) => Math.min(totalPages - 1, p + 1))}
                     >
-                        Next
+                        {t('buttons.next')}
                     </button>
                 </div>
             </div>
@@ -403,7 +424,7 @@ function RegistrationListPageInner({
                     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-neutral-900">
-                                Choose Application Type
+                                {t('modal.title')}
                             </h2>
                             <button
                                 onClick={() => setShowRegistrationTypeModal(false)}
@@ -414,7 +435,7 @@ function RegistrationListPageInner({
                         </div>
 
                         <p className="mb-6 text-sm text-neutral-600">
-                            Select how you would like to create a new application
+                            {t('modal.subtitle')}
                         </p>
 
                         <div className="space-y-3">
@@ -427,10 +448,10 @@ function RegistrationListPageInner({
                                 </div>
                                 <div>
                                     <h3 className="font-medium text-neutral-900">
-                                        New Application
+                                        {t('modal.newApplication.title')}
                                     </h3>
                                     <p className="text-sm text-neutral-600">
-                                        Start a fresh application form
+                                        {t('modal.newApplication.description')}
                                     </p>
                                 </div>
                             </button>
@@ -443,9 +464,9 @@ function RegistrationListPageInner({
                                     <FileText className="size-6 text-blue-600" />
                                 </div>
                                 <div>
-                                    <h3 className="font-medium text-neutral-900">From Enquiry</h3>
+                                    <h3 className="font-medium text-neutral-900">{t('modal.fromEnquiry.title')}</h3>
                                     <p className="text-sm text-neutral-600">
-                                        Create application from existing enquiry
+                                        {t('modal.fromEnquiry.description')}
                                     </p>
                                 </div>
                             </button>
@@ -487,7 +508,7 @@ export function RegistrationListPage() {
                     setIsSidebarOpen={setIsSidebarOpen}
                     setSelectedApplicantId={setSelectedApplicantId}
                 />
-                <StudentSidebar applicantId={selectedApplicantId ?? undefined} className="z-[60]" />
+                <StudentSidebar applicantId={selectedApplicantId ?? undefined} className="z-50" />
             </SidebarProvider>
         </StudentSidebarProvider>
     );

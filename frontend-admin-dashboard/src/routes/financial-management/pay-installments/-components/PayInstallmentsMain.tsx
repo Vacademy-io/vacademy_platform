@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
 import { AllocatePaymentResponse } from '@/services/manage-finances';
 import { StudentSearchStep } from './StudentSearchStep';
@@ -8,14 +10,18 @@ import { PaymentSuccessStep } from './PaymentSuccessStep';
 
 type WizardStep = 'search' | 'select' | 'payment' | 'success';
 
-const STEPS: { key: WizardStep; label: string }[] = [
-    { key: 'search', label: 'Search Student' },
-    { key: 'select', label: 'Select Installments' },
-    { key: 'payment', label: 'Payment Details' },
-    { key: 'success', label: 'Done' },
-];
+function buildSteps(t: TFunction): { key: WizardStep; label: string }[] {
+    return [
+        { key: 'search', label: t('steps.searchStudent') },
+        { key: 'select', label: t('steps.selectInstallments') },
+        { key: 'payment', label: t('steps.paymentDetails') },
+        { key: 'success', label: t('steps.done') },
+    ];
+}
 
 export function PayInstallmentsMain() {
+    const { t } = useTranslation('financialManagementPayInstallmentsMain');
+    const STEPS = buildSteps(t);
     const [step, setStep] = useState<WizardStep>('search');
     const [selectedStudent, setSelectedStudent] = useState<StudentFeePaymentRowDTO | null>(null);
     const [selectedDues, setSelectedDues] = useState<StudentFeeDueDTO[]>([]);

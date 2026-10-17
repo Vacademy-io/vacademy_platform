@@ -12,8 +12,11 @@ import {
   ImageSquare,
   SpinnerGap,
   Microphone,
+  ArrowsOutSimple,
+  ArrowsInSimple,
 } from "@phosphor-icons/react";
 import { Link, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,7 +37,11 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -48,7 +55,16 @@ import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
 
+/** The subset of session modes the call screen handles. */
+type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
+
 export const ChatbotSidePanel: React.FC = () => {
+  const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
+  const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
     isOpen,
@@ -74,7 +90,11 @@ export const ChatbotSidePanel: React.FC = () => {
     activeToolCall,
     streamingContent,
     isStreaming,
+    reconnectStream,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
@@ -82,9 +102,16 @@ export const ChatbotSidePanel: React.FC = () => {
     voiceLanguage,
   } = useChatbotContext();
 
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
+
   const {
     panelWidth,
     setPanelWidth,
+    viewMode,
+    toggleViewMode,
     setIsOpen: setStorePanelOpen,
   } = useChatbotPanelStore();
 
@@ -211,9 +238,11 @@ export const ChatbotSidePanel: React.FC = () => {
   return (
     <div
       ref={panelRef}
-      style={{ width: panelWidth }}
+      // In the popup the wrapper decides the width; docked keeps the drag-resized width.
+      style={viewMode === "popup" ? undefined : { width: panelWidth }}
       className={cn(
-        "h-full flex flex-col bg-background/95 backdrop-blur-sm border-s border-border/50 relative shrink-0 shadow-xl",
+        "h-full flex flex-col bg-background/95 backdrop-blur-sm relative shrink-0 shadow-xl",
+        viewMode === "popup" ? "w-full" : "border-s border-border/50",
         isDragOver && "ring-2 ring-inset ring-primary/50"
       )}
       onDrop={handleDrop}
@@ -228,6 +257,7 @@ export const ChatbotSidePanel: React.FC = () => {
           "absolute start-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
           "hover:bg-primary/20 transition-colors",
           isResizing && "bg-primary/30",
+          viewMode === "popup" && "hidden",
         )}
       >
         <div className="absolute start-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ms-1.5 opacity-0 hover:opacity-100 transition-opacity">
@@ -267,7 +297,7 @@ export const ChatbotSidePanel: React.FC = () => {
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
             onClick={startNewChat}
-            title="Start new chat"
+            title={t("common.startNewChat")}
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
@@ -275,27 +305,42 @@ export const ChatbotSidePanel: React.FC = () => {
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+            onClick={toggleViewMode}
+            title={viewMode === "popup" ? t("common.dockView") : t("common.popupView")}
+          >
+            {viewMode === "popup" ? (
+              <ArrowsInSimple className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowsOutSimple className="h-3.5 w-3.5" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
             onClick={closeSession}
-            title="Close session"
+            title={t("common.closeSession")}
           >
             <Trash className="h-3.5 w-3.5" />
           </Button>
-          <Link to="/ai-settings">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-              title="AI Gear"
-            >
-              <Gear className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+          {showAiSettingsShortcut && (
+            <Link to="/ai-settings">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                title={t("common.aiGear")}
+              >
+                <Gear className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          )}
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-destructive/80 hover:text-destructive-foreground"
             onClick={handleClose}
-            title="Close panel"
+            title={t("common.closePanel")}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -304,13 +349,13 @@ export const ChatbotSidePanel: React.FC = () => {
 
       {/* Messages Area */}
       <CardContent className="flex-1 min-h-0 p-0 overflow-hidden bg-gradient-to-b from-muted/20 to-background">
-        <ScrollArea className="h-full px-2.5 py-2">
+        <ScrollArea className="h-full px-2 py-2 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
           <div className="flex flex-col space-y-2.5">
             {isInitializing && messages.length === 0 && (
               <div className="w-full bg-muted/40 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 text-center">
                 <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span>Initializing...</span>
+                  <span>{t("sidePanel.initializing")}</span>
                 </div>
               </div>
             )}
@@ -389,14 +434,14 @@ export const ChatbotSidePanel: React.FC = () => {
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex w-full max-w-pct-92",
+                    "flex w-full",
                     msg.role === "user"
-                      ? "ms-auto justify-end"
-                      : "me-auto justify-start",
+                      ? "ms-auto max-w-pct-92 justify-end"
+                      : "me-auto max-w-full justify-start",
                   )}
                 >
                   {msg.role === "assistant" && (
-                    <Avatar className="h-6 w-6 me-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
+                    <Avatar className="h-6 w-6 me-1 mt-0.5 shrink-0 ring-1 ring-border/40">
                       {avatarUrl ? (
                         <AvatarImage
                           src={avatarUrl}
@@ -411,10 +456,10 @@ export const ChatbotSidePanel: React.FC = () => {
                       </AvatarFallback>
                     </Avatar>
                   )}
-                  <div className="flex items-end gap-1">
+                  <div className="flex min-w-0 max-w-full items-end gap-1">
                     <div
                       className={cn(
-                        "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
+                        "min-w-0 max-w-full overflow-hidden rounded-xl px-2.5 py-1.5 text-caption leading-relaxed [overflow-wrap:anywhere]",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-ee-sm shadow-sm"
                           : "bg-card text-card-foreground rounded-es-sm shadow-sm ring-1 ring-border/30",
@@ -423,18 +468,18 @@ export const ChatbotSidePanel: React.FC = () => {
                       {msg.role === "user" ? (
                         <div>
                           {msg.attachments?.filter(a => a.type === 'image').map((att, i) => (
-                            <img key={i} src={att.url} alt="attached" className="max-w-48 max-h-36 rounded-lg mb-1" />
+                            <img key={i} src={att.url} alt={t("common.attachedImageAlt")} className="max-w-48 max-h-36 rounded-lg mb-1" />
                           ))}
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       ) : (
-                        <div className="max-w-none group relative">
+                        <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-4 [&_ul]:ps-4 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                           <button
                             className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() =>
                               handleCopyMessage(msg.content, msg.id)
                             }
-                            title="Copy"
+                            title={t("common.copy")}
                           >
                             {copiedMessageId === msg.id ? (
                               <Check className="size-3 text-green-500" />
@@ -447,19 +492,19 @@ export const ChatbotSidePanel: React.FC = () => {
                             components={{
                               h1: ({ ...props }) => (
                                 <h1
-                                  className="text-2xl font-bold mt-4 mb-3"
+                                  className="text-base font-bold mt-3 mb-1.5"
                                   {...props}
                                 />
                               ),
                               h2: ({ ...props }) => (
                                 <h2
-                                  className="text-xl font-bold mt-3 mb-2"
+                                  className="text-sm font-bold mt-2.5 mb-1"
                                   {...props}
                                 />
                               ),
                               h3: ({ ...props }) => (
                                 <h3
-                                  className="text-lg font-semibold mt-3 mb-2"
+                                  className="text-sm font-semibold mt-2 mb-1"
                                   {...props}
                                 />
                               ),
@@ -499,7 +544,7 @@ export const ChatbotSidePanel: React.FC = () => {
                                   >{children}</code>
                                 ) : (
                                   <code
-                                    className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                    className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                     {...rest}
                                   >{children}</code>
                                 );
@@ -582,7 +627,7 @@ export const ChatbotSidePanel: React.FC = () => {
                     {aiStatus === "generating_quiz" ? (
                       <span className="text-caption text-muted-foreground flex items-center gap-1.5">
                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                        Generating...
+                        {t("sidePanel.generating")}
                       </span>
                     ) : (
                       <>
@@ -605,26 +650,23 @@ export const ChatbotSidePanel: React.FC = () => {
             {isCreditsExhausted && (
               <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-2 text-center">
                 <p className="text-xs text-amber-800">
-                  Your OpenRouter credits have been exhausted. Please recharge your credits to continue.
+                  {t("sidePanel.creditsExhaustedShort")}
                 </p>
               </div>
             )}
 
             {hasError && !isCreditsExhausted && (
               <div className="w-full bg-destructive/10 border border-destructive/30 rounded-lg px-2.5 py-2 text-center space-y-1">
-                <p className="text-xs text-destructive">Something went wrong.</p>
+                <p className="text-xs text-destructive">{t("sidePanel.errorTitle")}</p>
                 <div className="flex gap-2 justify-center">
                   <button
-                    onClick={() => {
-                      const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                      if (lastUserMsg) sendMessage(lastUserMsg.content);
-                    }}
+                    onClick={reconnectStream}
                     className="text-xs text-primary underline"
                   >
-                    Retry
+                    {t("common.retry")}
                   </button>
                   <button onClick={startNewChat} className="text-xs text-muted-foreground underline">
-                    New chat
+                    {t("common.newChat")}
                   </button>
                 </div>
               </div>
@@ -633,7 +675,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {isSessionClosed && (
               <div className="w-full bg-muted/40 border border-border/50 rounded-lg px-2.5 py-1.5 text-center">
                 <p className="text-xs text-muted-foreground">
-                  Session ended. Start a new chat.
+                  {t("sidePanel.sessionEnded")}
                 </p>
               </div>
             )}
@@ -649,7 +691,7 @@ export const ChatbotSidePanel: React.FC = () => {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-primary">
             <ImageSquare className="h-8 w-8" />
-            <span className="text-sm font-medium">Drop image here</span>
+            <span className="text-sm font-medium">{t("common.dropImageHere")}</span>
           </div>
         </div>
       )}
@@ -673,13 +715,13 @@ export const ChatbotSidePanel: React.FC = () => {
             {/* Voice mode chip */}
             {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
               <button
-                onClick={() => setShowVoiceSelector(true)}
+                onClick={startVoiceCall}
                 disabled={isLoading || !sessionId}
-                title="Start a voice conversation"
+                title={t("common.startVoiceConversation")}
                 className="inline-flex items-center h-6 px-2.5 text-caption font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
               >
                 <Microphone className="h-3 w-3 me-1" />
-                Voice Chat
+                {t("common.voiceChatLabel")}
               </button>
             )}
           </div>
@@ -692,7 +734,7 @@ export const ChatbotSidePanel: React.FC = () => {
           <div className="flex gap-1.5 w-full px-1 py-1">
             {pendingAttachments.map((att, i) => (
               <div key={i} className="relative size-10 rounded border overflow-hidden">
-                <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                <img src={att.previewUrl || att.url} alt={att.name || t("common.attachmentAlt")} className="size-full object-cover" />
                 {!att.url && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                     <SpinnerGap className="h-3 w-3 text-white animate-spin" />
@@ -762,8 +804,8 @@ export const ChatbotSidePanel: React.FC = () => {
 
         {/* LaTeX preview */}
         {inputValue.includes('$') && (
-          <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-            <span className="text-muted-foreground text-caption block mb-0.5">Preview:</span>
+          <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto space-y-0.5">
+            <span className="text-muted-foreground text-caption block">{t("common.preview")}</span>
             <ReactMarkdown
               remarkPlugins={[remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -776,7 +818,7 @@ export const ChatbotSidePanel: React.FC = () => {
         {/* Unified Input Box */}
         <div className="w-full flex items-end gap-1 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
           <textarea
-            placeholder="Ask a question... ($ for math)"
+            placeholder={t("sidePanel.inputPlaceholder")}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -796,7 +838,7 @@ export const ChatbotSidePanel: React.FC = () => {
               showLatexHelper ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
             onClick={() => setShowLatexHelper(prev => !prev)}
-            title="Math symbols"
+            title={t("common.mathSymbols")}
           >
             <Sigma className="h-3.5 w-3.5" />
           </button>
@@ -804,7 +846,7 @@ export const ChatbotSidePanel: React.FC = () => {
             className="h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             onClick={() => fileInputRef.current?.click()}
             disabled={!sessionId || isLoading || isUploadingImage}
-            title="Attach image"
+            title={t("sidePanel.attachImageTitle")}
           >
             {isUploadingImage ? (
               <SpinnerGap className="h-3.5 w-3.5 animate-spin" />
@@ -850,17 +892,20 @@ export const ChatbotSidePanel: React.FC = () => {
             enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
+          defaultTopic={suggestedVoiceTopic()}
+          defaultLanguage={voiceLanguage}
         />
       )}
 
       {voiceMode && sessionId && (
         <VoiceModePanel
           sessionId={sessionId}
-          mode={voiceMode as any}
+          mode={voiceMode as VoiceCallMode}
           language={voiceLanguage}
-          voice="shubh"
+          voice={chatbotSettings.voice_settings?.default_voice || "shubh"}
           onClose={exitVoiceMode}
           chatbotSettings={chatbotSettings}
+          topic={voiceTopic}
         />
       )}
     </div>

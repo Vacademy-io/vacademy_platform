@@ -1,0 +1,153 @@
+{
+    "status": {
+        "paid": "Paid",
+        "partialPaid": "Partially Paid",
+        "overdue": "Overdue",
+        "waived": "Waived"
+    },
+    "row": {
+        "updateSuccessToast": "Installment updated",
+        "updateErrorToast": "Update failed",
+        "discountOptionNone": "none",
+        "discountOptionPercentage": "%",
+        "discountOptionFlat": "₹",
+        "reasonPlaceholder": "Reason",
+        "save": "Save",
+        "split": "Split",
+        "splitTitle": "Move part of the unpaid amount to a new installment with its own date"
+    },
+    "cpoDiscount": {
+        "heading": "Discount",
+        "typeLabel": "Type",
+        "discountOptionNone": "none",
+        "discountOptionPercentage": "% of total",
+        "discountOptionFlat": "flat ₹ off",
+        "valueLabel": "Value",
+        "reasonLabel": "Reason",
+        "reasonPlaceholder": "e.g. Sibling discount",
+        "removeSuccessToast": "CPO discount removed",
+        "applySuccessToast": "CPO discount applied",
+        "applyErrorToast": "Failed to apply CPO discount",
+        "applying": "Applying…",
+        "apply": "Apply",
+        "remove": "Remove",
+        "currentSummary": "Now: {{amount}} off · {{how}}",
+        "howLabel": "Take the discount off",
+        "previewError": "Could not work out this discount",
+        "customOff": "Amount off installment {{n}}",
+        "paidRow": "paid",
+        "paidRowKeeps": "−{{amount}} kept",
+        "totalOff": "Total off: {{amount}}",
+        "capped": "(you entered {{requested}}; only what is still unpaid can come off)"
+    },
+    "offlinePayment": {
+        "amountRequiredError": "Enter a positive amount",
+        "recordedSuccessToast": "Recorded {{amount}} offline payment",
+        "recordErrorToast": "Payment record failed",
+        "addPaymentButton": "+ Add Payment",
+        "heading": "Add Payment",
+        "amountLabel": "Amount (₹)",
+        "nextDue": "Next installment {{amount}}",
+        "allDues": "All dues {{amount}}",
+        "dateLabel": "Date",
+        "referenceLabel": "Reference",
+        "referencePlaceholder": "cheque #, UPI ref…",
+        "generateInvoiceLabel": "Generate invoice",
+        "saving": "Saving…",
+        "saveAndAllocate": "Save & FIFO-allocate",
+        "cancel": "Cancel"
+    },
+    "card": {
+        "installmentCount_one": "{{count}} installment",
+        "installmentCount_other": "{{count}} installments",
+        "net": "Net {{amount}}",
+        "paid": "Paid {{amount}}",
+        "outstanding": "Outstanding {{amount}}",
+        "loadingInstallments": "Loading installments…",
+        "loadInstallmentsError": "Could not load installments.",
+        "tableHeaders": {
+            "index": "#",
+            "startDate": "Start Date",
+            "dueDate": "Due Date",
+            "default": "Default",
+            "amount": "Amount",
+            "discount": "Discount",
+            "paid": "Paid",
+            "status": "Status"
+        }
+    },
+    "loadingPlans": "Loading CPO plans…",
+    "loadPlansError": "Could not load CPO plans.",
+    "split": {
+        "heading": "New installment from the unpaid {{unpaid}}",
+        "hint": "The plan total stays the same — only when this part falls due changes.",
+        "amountLabel": "Amount to move",
+        "startDateLabel": "Start date",
+        "dueDateLabel": "Due date",
+        "save": "Create installment",
+        "saving": "Saving…",
+        "cancel": "Cancel",
+        "amountError": "Enter an amount above 0 and up to {{unpaid}}",
+        "dueDateError": "Pick a due date for the new installment",
+        "successToast": "New installment of {{amount}} due {{date}} added",
+        "errorToast": "Could not split this installment"
+    },
+    "item": {
+        "due": "Due {{date}}",
+        "paid": "Paid {{amount}}",
+        "left": "{{amount}} left",
+        "overpaid": "Overpaid {{amount}}",
+        "planDiscount": "Plan discount −{{amount}}",
+        "ownDiscount": "Discount −{{amount}}",
+        "was": "Before discounts {{amount}}",
+        "recordPayment": "Record payment",
+        "edit": "Edit"
+    },
+    "pay": {
+        "heading": "Record payment · installment {{n}}",
+        "coversEarlier_one": "Payments clear the oldest dues first, so this also covers 1 earlier installment.",
+        "coversEarlier_other": "Payments clear the oldest dues first, so this also covers {{count}} earlier installments.",
+        "submit": "Record {{amount}}",
+        "anyAmountNote": "Any amount; it clears the oldest dues first."
+    },
+    "edit": {
+        "startDate": "Start date",
+        "dueDate": "Due date",
+        "amount": "Amount",
+        "amountHint": "Leave blank to use the plan amount ({{amount}}).",
+        "discount": "Discount on this installment",
+        "reason": "Reason"
+    },
+    "allocation": {
+        "UNPAID_PROPORTIONAL": {
+            "label": "Unpaid installments, in proportion",
+            "short": "spread over unpaid installments",
+            "hint": "Each unpaid installment gets a share in proportion to what is still owed on it. Paid installments are not touched."
+        },
+        "UNPAID_EQUAL": {
+            "label": "Unpaid installments, equally",
+            "short": "equal on unpaid installments",
+            "hint": "The same amount comes off each unpaid installment."
+        },
+        "LAST_FIRST": {
+            "label": "From the last installment",
+            "short": "from the last installment",
+            "hint": "Comes off the last installment first, then the one before it, until it is used up."
+        },
+        "NEXT_FIRST": {
+            "label": "From the next installment",
+            "short": "from the next installment",
+            "hint": "Comes off the next installment due first, then the one after it."
+        },
+        "CUSTOM": {
+            "label": "Custom amount per installment",
+            "short": "custom amounts",
+            "hint": "Type how much comes off each unpaid installment. The discount is their total."
+        },
+        "ALL_PROPORTIONAL": {
+            "label": "All installments, including paid ones",
+            "short": "spread over all installments",
+            "hint": "The original way: every installment, paid or not, takes a share. A paid installment can end up overpaid."
+        }
+    }
+}

@@ -6,9 +6,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useChatbotContext } from "./useChatbotContext";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 
 export const ChatbotTrigger: React.FC = () => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();
 

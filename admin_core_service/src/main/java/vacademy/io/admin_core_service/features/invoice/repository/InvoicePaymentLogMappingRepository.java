@@ -29,6 +29,14 @@ public interface InvoicePaymentLogMappingRepository extends JpaRepository<Invoic
 
     Optional<InvoicePaymentLogMapping> findFirstByPaymentLogId(String paymentLogId);
 
+    List<InvoicePaymentLogMapping> findAllByPaymentLogId(String paymentLogId);
+
+    /**
+     * One lookup for a whole installment ledger. Walking it a payment at a time issued a query
+     * per ledger row, and a learner paying in instalments has one row per part-payment.
+     */
+    List<InvoicePaymentLogMapping> findAllByPaymentLogIdIn(Collection<String> paymentLogIds);
+
     /**
      * Bulk (payment log -> invoice) lookup for a page of the Manage Payments table.
      *

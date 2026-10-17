@@ -8,7 +8,10 @@ import {
     format,
     startOfMonth,
     startOfWeek,
+    type Locale,
 } from 'date-fns';
+import { ar, enUS, fr, hi } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
 import { ArrowRight, Browsers, CalendarBlank, ListBullets, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -22,6 +25,8 @@ import { MeetingsCalendar } from '../-components/meetings-calendar';
 import { WeekNavigator, weekBoundsFor } from '../-components/week-navigator';
 import { CreateBookingDialog } from '../-components/create-booking-dialog';
 import { BookingPagesManagerDialog } from '../-components/booking-pages-manager-dialog';
+
+const DATE_FNS_LOCALES: Record<string, Locale> = { en: enUS, ar, fr, hi };
 
 export const Route = createLazyFileRoute('/meetings/my-schedule/')({
     component: MyScheduleRoute,
@@ -38,10 +43,12 @@ function MyScheduleRoute() {
 type ScheduleView = 'list' | 'calendar';
 
 function MySchedulePage() {
+    const { t, i18n } = useTranslation('meetingsMyScheduleIndexLazy');
+    const dateFnsLocale = DATE_FNS_LOCALES[i18n.language] ?? enUS;
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">My Schedule</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const instituteId = getInstituteId();
     const [view, setView] = useState<ScheduleView>('list');
@@ -93,8 +100,8 @@ function MySchedulePage() {
         <div className="flex w-full flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-semibold text-neutral-900">My Schedule</h1>
-                    <p className="mt-0.5 text-sm text-neutral-500">Meetings where you are the host</p>
+                    <h1 className="text-2xl font-semibold text-neutral-900">{t('heading')}</h1>
+                    <p className="mt-0.5 text-sm text-neutral-500">{t('subtitle')}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     {/* List / Calendar toggle */}
@@ -109,7 +116,7 @@ function MySchedulePage() {
                                     : 'text-neutral-500 hover:text-neutral-700'
                             )}
                         >
-                            <ListBullets size={14} /> List
+                            <ListBullets size={14} /> {t('viewList')}
                         </button>
                         <button
                             type="button"
@@ -121,7 +128,7 @@ function MySchedulePage() {
                                     : 'text-neutral-500 hover:text-neutral-700'
                             )}
                         >
-                            <CalendarBlank size={14} /> Calendar
+                            <CalendarBlank size={14} /> {t('viewCalendar')}
                         </button>
                     </div>
                     <MyButton
@@ -129,11 +136,11 @@ function MySchedulePage() {
                         buttonType="secondary"
                         scale="medium"
                         className="sm:min-w-0"
-                        title="Create and manage your booking pages"
+                        title={t('bookingPagesTitle')}
                         onClick={() => setManagerOpen(true)}
                     >
                         <Browsers className="mr-1.5 size-4" />
-                        Booking Pages
+                        {t('bookingPages')}
                     </MyButton>
                     <MyButton
                         type="button"
@@ -143,7 +150,7 @@ function MySchedulePage() {
                         onClick={() => setCreateOpen(true)}
                     >
                         <Plus className="mr-1.5 size-4" />
-                        New Meeting
+                        {t('newMeeting')}
                     </MyButton>
                 </div>
             </div>
@@ -155,8 +162,8 @@ function MySchedulePage() {
                         bookings={bookings ?? []}
                         isLoading={isLoading}
                         error={error}
-                        emptyTitle="No meetings this week"
-                        emptyDescription="Schedule a meeting or share your booking link to fill your calendar."
+                        emptyTitle={t('emptyTitle')}
+                        emptyDescription={t('emptyDescription')}
                         emptyExtra={
                             nextUpcoming ? (
                                 <button
@@ -167,11 +174,12 @@ function MySchedulePage() {
                                     className="mt-2 flex items-center gap-2 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-caption text-primary-700 transition-colors hover:bg-primary-100"
                                 >
                                     <span>
-                                        Next meeting:{' '}
+                                        {t('nextMeetingLabel')}{' '}
                                         <span className="font-semibold">
                                             {format(
                                                 parseUtc(nextUpcoming.scheduled_start_utc),
-                                                'EEE, d MMM · h:mm a'
+                                                'EEE, d MMM · h:mm a',
+                                                { locale: dateFnsLocale }
                                             )}
                                         </span>
                                         {nextUpcoming.invitee_name
@@ -179,7 +187,7 @@ function MySchedulePage() {
                                             : ''}
                                     </span>
                                     <span className="flex items-center gap-1 font-medium">
-                                        Go to that week <ArrowRight size={14} />
+                                        {t('goToThatWeek')} <ArrowRight size={14} />
                                     </span>
                                 </button>
                             ) : undefined

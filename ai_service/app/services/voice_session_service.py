@@ -14,6 +14,8 @@ from ..repositories.chat_message_repository import ChatMessageRepository
 from ..services.context_resolver_service import ContextResolverService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
+from ..services.token_usage_service import TokenUsageService
+from ..models.ai_token_usage import ApiProvider, RequestType
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +40,161 @@ class VoiceSessionService:
         self.session_repo = ChatSessionRepository(db_session)
         self.message_repo = ChatMessageRepository(db_session)
 
+    def record_voice_media_usage(
+        self,
+        kind: str,
+        institute_id: str,
+        user_id: str,
+        session_id: str,
+        language: str,
+        characters: int,
+        detail: Optional[str] = None,
+        provider: str = "sarvam",
+    ) -> None:
+        """
+        Attribute Sarvam STT/TTS spend to the institute that caused it.
+
+        Voice used to be the one AI surface that cost real money per turn and
+        left no usage row behind. Provider stays "google_tts" — that is the
+        value the api_provider CHECK constraint allows for premium TTS, and
+        tts_provider carries the real vendor (see V225).
+        """
+        try:
+            TokenUsageService(self.db).record_usage(
+                api_provider=ApiProvider.GOOGLE_TTS,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
+                institute_id=institute_id,
+                user_id=user_id,
+                model=(
+                    {"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural"}.get(
+                        provider, provider
+                    )
+                    if kind == "tts"
+                    else "sarvam:saaras-v3"
+                ),
+                request_id=session_id,
+                tts_provider=provider if kind == "tts" else "sarvam",
+                character_count=max(characters, 0),
+                metadata={"surface": "voice_call", "language": language, "detail": detail},
+            )
+        except Exception:
+            # Metering must never take a call down.
+            logger.exception(f"Failed to record voice usage for session {session_id}")
+
+    async def _prepare_turn(
+        self,
+        session_id: str,
+        user_id: str,
+        institute_id: str,
+    ) -> tuple:
+        """Resolve everything a turn needs: (session_mode, system_prompt, temperature)."""
+        session = self.session_repo.get_session_by_id(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        session_mode = getattr(session, "session_mode", "text") or "text"
+        context = await self.context_resolver.resolve_context(
+            context_type=session.context_type or "general",
+            context_meta=session.context_meta or {},
+            user_id=user_id,
+            institute_id=institute_id,
+        )
+        ai_settings = self.institute_settings.get_ai_settings(institute_id)
+        system_prompt = self._build_voice_system_prompt(
+            mode=session_mode,
+            institute_rules=self.institute_settings.format_rules_for_prompt(ai_settings),
+            context=context,
+            user_id=user_id,
+            institute_id=institute_id,
+        )
+        user_name = (context.get("user_details", {}) or {}).get("name") or ""
+        return session_mode, system_prompt, self.institute_settings.get_temperature(ai_settings), user_name
+
+    async def generate_opening_turn(
+        self,
+        session_id: str,
+        user_id: str,
+        institute_id: str,
+        model: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Produce the line the agent speaks the moment the student joins the call,
+        so nobody has to type or tap to get the conversation started.
+
+        Returns None when the session already has conversation — a reconnect
+        mid-call must not replay a greeting over the top of it.
+        """
+        if self.message_repo.get_conversation_history(session_id, limit=1):
+            return None
+
+        session_mode, system_prompt, temperature, user_name = await self._prepare_turn(
+            session_id, user_id, institute_id
+        )
+
+        # Spoken aloud, so a guessed name or a literal "[Student's name]" is
+        # worse than no name. Only ask for one when we actually have it.
+        known_name = user_name.strip() and user_name.strip().lower() not in ("student", "learner", "user")
+        greet = "Greet them by name" if known_name else "Greet them warmly without using a name (you do not know it — never guess or use a placeholder)"
+
+        if session_mode == "voice_interview":
+            opening_instruction = (
+                f"The student has just joined the interview call. {greet} in one short "
+                "sentence, say what the interview is about, then immediately ask your first question."
+            )
+        elif session_mode == "voice_oral_test":
+            opening_instruction = (
+                f"The student has just joined the oral test call. {greet} in one short "
+                "sentence, say what the test covers, then immediately ask your first question."
+            )
+        else:
+            opening_instruction = (
+                f"The student has just joined the voice call. {greet} in one short "
+                "sentence and ask what they would like help with. Keep it to two sentences."
+            )
+
+        llm_response = await self.llm_client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"[SYSTEM] {opening_instruction}"},
+            ],
+            temperature=temperature,
+            max_tokens=150,
+            institute_id=institute_id,
+            user_id=user_id,
+            model=model,
+        )
+
+        ai_text = (llm_response.get("content") or "").strip()
+        if not ai_text:
+            return None
+
+        # Only the spoken line is stored: the instruction above is scaffolding,
+        # and keeping it in history would leak into later turns.
+        assistant_message = self.message_repo.create_message(
+            session_id=session_id,
+            message_type="assistant",
+            content=ai_text,
+            metadata={
+                "source": "voice_llm",
+                "turn": "opening",
+                "provider": llm_response.get("provider"),
+                "model": llm_response.get("model"),
+            },
+        )
+        self.session_repo.update_last_active(session_id)
+
+        return {"ai_text": ai_text, "message_id": assistant_message.id}
+
     async def process_voice_turn(
         self,
         session_id: str,
         transcript: str,
         user_id: str,
         institute_id: str,
+        model: Optional[str] = None,
     ) -> dict:
         """
         Process a single voice conversation turn.
@@ -65,32 +216,9 @@ class VoiceSessionService:
             metadata={"source": "voice_stt"},
         )
 
-        # 2. Get session for mode and context
-        session = self.session_repo.get_session_by_id(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        session_mode = getattr(session, "session_mode", "text") or "text"
-        context_type = session.context_type or "general"
-        context_meta = session.context_meta or {}
-
-        # 3. Resolve context
-        context = await self.context_resolver.resolve_context(
-            context_type=context_type,
-            context_meta=context_meta,
-            user_id=user_id,
-            institute_id=institute_id,
-        )
-
-        # 4. Build system prompt
-        ai_settings = self.institute_settings.get_ai_settings(institute_id)
-        institute_rules = self.institute_settings.format_rules_for_prompt(ai_settings)
-        system_prompt = self._build_voice_system_prompt(
-            mode=session_mode,
-            institute_rules=institute_rules,
-            context=context,
-            user_id=user_id,
-            institute_id=institute_id,
+        # 2-4. Session mode, resolved context and the mode-specific prompt
+        _session_mode, system_prompt, temperature, _user_name = await self._prepare_turn(
+            session_id, user_id, institute_id
         )
 
         # 5. Conversation history (last 10 messages)
@@ -101,13 +229,13 @@ class VoiceSessionService:
             messages.append({"role": role, "content": msg.content})
 
         # 6. Call LLM
-        temperature = self.institute_settings.get_temperature(ai_settings)
         llm_response = await self.llm_client.chat_completion(
             messages=messages,
             temperature=temperature,
             max_tokens=300,  # short responses for voice
             institute_id=institute_id,
             user_id=user_id,
+            model=model,  # platform "voice call model" when set; else the chatbot model
         )
 
         ai_text = llm_response.get("content", "")

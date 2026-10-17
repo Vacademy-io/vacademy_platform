@@ -1,0 +1,3280 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Telleo API",
+    "version": "1.0.0",
+    "description": "Start AI phone calls from your own systems and get each call's outcome back."
+  },
+  "servers": [
+    {
+      "url": "https://api.telleo.ai/v1"
+    }
+  ],
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Calls"
+    },
+    {
+      "name": "Batches"
+    },
+    {
+      "name": "Agents"
+    },
+    {
+      "name": "Credits"
+    },
+    {
+      "name": "Webhook"
+    }
+  ],
+  "paths": {
+    "/calls": {
+      "post": {
+        "summary": "Start a call",
+        "description": "Queues a call to one number and dials it as soon as a line is free and calling hours allow. Returns the call at once (usually `queued` or `dialing`); the outcome arrives on your webhook, or poll `GET /calls/{id}`.\n\nScope: `calls:write`.",
+        "tags": [
+          "Calls"
+        ],
+        "responses": {
+          "201": {
+            "description": "The call was created.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                },
+                "example": {
+                  "id": "call_6f1d2c9a8b7e4f3a2d1c0b9a",
+                  "object": "call",
+                  "status": "queued",
+                  "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                  "phone_number": "+919876543210",
+                  "contact": {
+                    "name": "Asha Verma",
+                    "email": "asha@example.com",
+                    "external_id": "lead-8812"
+                  },
+                  "variables": {
+                    "course": "NEET 2027",
+                    "city": "Indore"
+                  },
+                  "metadata": {
+                    "crm_owner": "u_42"
+                  },
+                  "batch_id": null,
+                  "test": false,
+                  "duration_seconds": null,
+                  "created_at": "2026-10-13T09:30:02Z",
+                  "dialed_at": null,
+                  "ended_at": null,
+                  "recording_url": null,
+                  "recording_expires_at": null,
+                  "outcome": null
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replay: a call with this `Idempotency-Key` already exists and is returned unchanged (`idempotent_replay: true`).",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "phone_number must be in E.164 format, e.g. +919876543210.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Your account is out of calling credits.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_credits": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_credits",
+                        "message": "This account is out of AI calling credits. Top up to place calls.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the scope this request needs.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This key does not have the calls:write scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The agent does not exist.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea33d2-… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The call conflicts with an existing one or the agent cannot call out.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "call_already_queued": {
+                    "value": {
+                      "error": {
+                        "code": "call_already_queued",
+                        "message": "This number already has a call waiting for a line.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "idempotency_key_reused": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_key_reused",
+                        "message": "This Idempotency-Key was used for a different request.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_disabled": {
+                    "value": {
+                      "error": {
+                        "code": "agent_disabled",
+                        "message": "Agent 17ea33d2-… is turned off.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_inbound_only": {
+                    "value": {
+                      "error": {
+                        "code": "agent_inbound_only",
+                        "message": "Agent 17ea33d2-… only answers incoming calls.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "createCall",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "description": "Any unique string per attempt, e.g. `lead-8812-1`. Retrying with the same key and the same body returns the first call instead of calling twice; a different body is refused (409). Honoured for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCall"
+              },
+              "example": {
+                "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                "phone_number": "+919876543210",
+                "contact": {
+                  "name": "Asha Verma",
+                  "external_id": "lead-8812"
+                },
+                "variables": {
+                  "course": "NEET 2027"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List calls",
+        "description": "Your calls, newest first. Filter by batch, by your `external_id`, or by creation time; page with `starting_after`.\n\nScope: `calls:read`.",
+        "tags": [
+          "Calls"
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of calls.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "listCalls",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "external_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Calls for one of your records."
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO-8601 instant, e.g. `2026-10-13T09:00:00Z`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "The `id` of the last call on the previous page."
+          }
+        ]
+      }
+    },
+    "/calls/{id}": {
+      "get": {
+        "summary": "Get a call",
+        "description": "The call's current status and, once it has ended, its duration, recording and outcome.\n\nScope: `calls:read`.",
+        "tags": [
+          "Calls"
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                },
+                "example": {
+                  "id": "call_6f1d2c9a8b7e4f3a2d1c0b9a",
+                  "object": "call",
+                  "status": "completed",
+                  "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                  "phone_number": "+919876543210",
+                  "contact": {
+                    "name": "Asha Verma",
+                    "email": "asha@example.com",
+                    "external_id": "lead-8812"
+                  },
+                  "variables": {
+                    "course": "NEET 2027",
+                    "city": "Indore"
+                  },
+                  "metadata": {
+                    "crm_owner": "u_42"
+                  },
+                  "batch_id": null,
+                  "test": false,
+                  "duration_seconds": 142,
+                  "created_at": "2026-10-13T09:30:02Z",
+                  "dialed_at": "2026-10-13T09:30:03Z",
+                  "ended_at": "2026-10-13T09:32:31Z",
+                  "recording_url": "https://media.example-cdn.com/recordings/abc.mp3?X-Amz-Signature=…",
+                  "recording_expires_at": "2026-10-14T09:40:00Z",
+                  "cost": {
+                    "credits": 12.5,
+                    "billed": true
+                  },
+                  "outcome": {
+                    "call_quality": "ok",
+                    "disposition": "Interested",
+                    "summary": "Asha wants the NEET 2027 weekend batch and asked for the fee structure on WhatsApp.",
+                    "answers": {
+                      "Which course are you interested in?": "NEET 2027",
+                      "Preferred batch timing?": "Weekends"
+                    },
+                    "lead_rating": 8,
+                    "callback_requested": true,
+                    "callback_time_text": "tomorrow after 6 pm",
+                    "follow_up": "CALL",
+                    "follow_up_note": "Send the fee structure; call back tomorrow evening.",
+                    "meeting": {
+                      "requested": true,
+                      "at": "2026-10-14T18:00:00+05:30",
+                      "time_text": "tomorrow after 6 pm",
+                      "type": "call"
+                    },
+                    "transcript": [
+                      {
+                        "speaker": "agent",
+                        "text": "Hi Asha, this is Riya from Shiksha Academy. Is this a good time?"
+                      },
+                      {
+                        "speaker": "contact",
+                        "text": "Yes, tell me."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No call with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Call not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCall",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/calls/{id}/cancel": {
+      "post": {
+        "summary": "Cancel a call",
+        "description": "Cancels a call that is still `queued`. A call that is already dialling or finished cannot be canceled.\n\nScope: `calls:write`.",
+        "tags": [
+          "Calls"
+        ],
+        "responses": {
+          "200": {
+            "description": "The canceled call.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No call with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Call not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the scope this request needs.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This key does not have the calls:write scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The call is no longer waiting.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "call_not_cancelable": {
+                    "value": {
+                      "error": {
+                        "code": "call_not_cancelable",
+                        "message": "Only a call that is still waiting can be canceled; this one is completed.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cancelCall",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/batches": {
+      "post": {
+        "summary": "Start a batch",
+        "description": "Queues up to 1,000 calls in one request. Each row is checked on its own: valid rows are queued, invalid rows come back in `rejected` with the row's `index`. Batch calls are dialled as lines free up, behind single calls.\n\nScope: `calls:write`.",
+        "tags": [
+          "Batches"
+        ],
+        "responses": {
+          "201": {
+            "description": "The batch was created.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCreated"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replay: a batch with this `Idempotency-Key` already exists; the first response's calls and rejected rows are returned (`idempotent_replay: true`) and nothing is placed.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The batch itself is not valid (no rows, more than 1,000 rows, unknown agent, an Idempotency-Key over 251 characters).",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "A batch holds at most 1000 calls; split it.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Idempotency-Key was used for a different batch, or its first request is still running.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "With `request_in_progress`: seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "idempotency_key_reused": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_key_reused",
+                        "message": "This Idempotency-Key was already used for a different batch.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "request_in_progress": {
+                    "value": {
+                      "error": {
+                        "code": "request_in_progress",
+                        "message": "A request with this Idempotency-Key is still being processed. Retry in 30 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Out of credits.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_credits": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_credits",
+                        "message": "This account is out of AI calling credits. Top up to place calls.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the scope this request needs.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This key does not have the calls:write scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The agent does not exist.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent … in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "createBatch",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 251
+            },
+            "description": "Retrying the same request with the same key returns the first response (200, `idempotent_replay: true`) instead of queueing the calls again; a different request is refused (409 `idempotency_key_reused`), and a retry while the first request is still running gets 409 `request_in_progress`. At most 251 characters. Honoured for 24 hours."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatch"
+              },
+              "example": {
+                "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                "calls": [
+                  {
+                    "phone_number": "+919876543210",
+                    "contact": {
+                      "name": "Asha Verma",
+                      "external_id": "lead-8812"
+                    },
+                    "variables": {
+                      "course": "NEET 2027"
+                    }
+                  },
+                  {
+                    "phone_number": "+919812345678",
+                    "contact": {
+                      "name": "Rohan Das",
+                      "external_id": "lead-8813"
+                    },
+                    "variables": {
+                      "course": "JEE 2027"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/batches/{id}": {
+      "get": {
+        "summary": "Get a batch",
+        "description": "Progress of a batch: how many calls are in each status. List its calls with `GET /calls?batch_id=`.\n\nScope: `calls:read`.",
+        "tags": [
+          "Batches"
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No batch with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Batch not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getBatch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/agents": {
+      "get": {
+        "summary": "List agents",
+        "description": "The agents you can name as `agent_id`: every agent that is turned on and can call out. Each lists the placeholders its script uses, so you know which `variables` to send.\n\nScope: `calls:read`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Your agents.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "listAgents"
+      }
+    },
+    "/credits": {
+      "get": {
+        "summary": "Get credit balance",
+        "description": "Your account's credit balance, whether new real calls are accepted, and how many calls are waiting. Read straight from your wallet; charges for a call are made shortly after it ends.\n\nScope: `calls:read`.",
+        "tags": [
+          "Credits"
+        ],
+        "responses": {
+          "200": {
+            "description": "Your balance.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credits"
+                },
+                "example": {
+                  "object": "credits",
+                  "balance": 1834.25,
+                  "low_balance_threshold": 10.0,
+                  "low_balance": false,
+                  "can_place_calls": true,
+                  "calls_waiting": 42,
+                  "updated_at": "2026-10-14T05:12:40Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCredits"
+      }
+    },
+    "/usage": {
+      "get": {
+        "summary": "Get usage",
+        "description": "Calls, connected calls, talk time and credits charged per day. Credits come from your account's ledger; test calls are not included.\n\nScope: `calls:read`.",
+        "tags": [
+          "Credits"
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage per day.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Usage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A parameter is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "A usage range is at most 92 days.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getUsage",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "First day, `YYYY-MM-DD`. Default: 6 days before `to`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Last day (included). Default: today. At most 92 days after `from`."
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "UTC"
+            },
+            "description": "IANA zone the days are cut in, e.g. `Asia/Kolkata`."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api",
+                "all"
+              ],
+              "default": "api"
+            },
+            "description": "`api`: calls placed through the API. `all`: every AI call on your account."
+          }
+        ]
+      }
+    },
+    "/webhook": {
+      "get": {
+        "summary": "Get the webhook",
+        "description": "Your webhook endpoint. The secret itself is not returned; `secret_hint` shows its ends.\n\nScope: `webhooks:manage`.",
+        "tags": [
+          "Webhook"
+        ],
+        "responses": {
+          "200": {
+            "description": "The webhook.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No webhook with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Webhook not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getWebhook"
+      },
+      "put": {
+        "summary": "Set the webhook",
+        "description": "Sets the one HTTPS endpoint that receives `call.completed` and `call.not_connected`. The first time, the response includes the signing `secret`; changing the URL later keeps the secret.\n\nScope: `webhooks:manage`.",
+        "tags": [
+          "Webhook"
+        ],
+        "responses": {
+          "200": {
+            "description": "The webhook (with `secret` when it was just created).",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The URL is not allowed.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "url must use https.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "setWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://crm.example.com/telleo/webhook"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove the webhook",
+        "description": "Stops sending events. Calls stay readable through the API.\n\nScope: `webhooks:manage`.",
+        "tags": [
+          "Webhook"
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No webhook with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Webhook not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteWebhook"
+      }
+    },
+    "/webhook/rotate-secret": {
+      "post": {
+        "summary": "Rotate the signing secret",
+        "description": "Replaces the signing secret and returns the new one once. Deliveries are signed with the new secret straight away, so update your server first or accept both secrets for a few minutes.\n\nScope: `webhooks:manage`.",
+        "tags": [
+          "Webhook"
+        ],
+        "responses": {
+          "200": {
+            "description": "The webhook with its new `secret`.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No webhook with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Webhook not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "rotateWebhookSecret"
+      }
+    },
+    "/webhook/test": {
+      "post": {
+        "summary": "Send a test event",
+        "description": "Sends a signed `webhook.test` event to your endpoint now and tells you what it answered.\n\nScope: `webhooks:manage`.",
+        "tags": [
+          "Webhook"
+        ],
+        "responses": {
+          "200": {
+            "description": "What your endpoint answered.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookTest"
+                },
+                "example": {
+                  "delivered": true,
+                  "status_code": 200
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No webhook with this id belongs to your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "error": {
+                        "code": "not_found",
+                        "message": "Webhook not found.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "testWebhook"
+      }
+    }
+  },
+  "webhooks": {
+    "call.completed": {
+      "post": {
+        "summary": "call.completed",
+        "description": "Sent once when a connected call is final, with its outcome. Verify `Telleo-Signature` before trusting it, answer 2xx within 10 seconds, and ignore an `id` you have already processed.",
+        "parameters": [
+          {
+            "name": "Telleo-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "t=1760348000,v1=5b0c…"
+          },
+          {
+            "name": "Telleo-Event-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Telleo-Event-Type",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event"
+              },
+              "example": {
+                "id": "evt_6f1d2c9a8b7e4f3a2d1c0b9a",
+                "object": "event",
+                "type": "call.completed",
+                "created_at": "2026-10-13T09:33:05Z",
+                "data": {
+                  "id": "call_6f1d2c9a8b7e4f3a2d1c0b9a",
+                  "object": "call",
+                  "status": "completed",
+                  "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                  "phone_number": "+919876543210",
+                  "contact": {
+                    "name": "Asha Verma",
+                    "email": "asha@example.com",
+                    "external_id": "lead-8812"
+                  },
+                  "variables": {
+                    "course": "NEET 2027",
+                    "city": "Indore"
+                  },
+                  "metadata": {
+                    "crm_owner": "u_42"
+                  },
+                  "batch_id": null,
+                  "test": false,
+                  "duration_seconds": 142,
+                  "created_at": "2026-10-13T09:30:02Z",
+                  "dialed_at": "2026-10-13T09:30:03Z",
+                  "ended_at": "2026-10-13T09:32:31Z",
+                  "recording_url": "https://media.example-cdn.com/recordings/abc.mp3?X-Amz-Signature=…",
+                  "recording_expires_at": "2026-10-14T09:40:00Z",
+                  "cost": {
+                    "credits": 12.5,
+                    "billed": true
+                  },
+                  "outcome": {
+                    "call_quality": "ok",
+                    "disposition": "Interested",
+                    "summary": "Asha wants the NEET 2027 weekend batch and asked for the fee structure on WhatsApp.",
+                    "answers": {
+                      "Which course are you interested in?": "NEET 2027",
+                      "Preferred batch timing?": "Weekends"
+                    },
+                    "lead_rating": 8,
+                    "callback_requested": true,
+                    "callback_time_text": "tomorrow after 6 pm",
+                    "follow_up": "CALL",
+                    "follow_up_note": "Send the fee structure; call back tomorrow evening.",
+                    "meeting": {
+                      "requested": true,
+                      "at": "2026-10-14T18:00:00+05:30",
+                      "time_text": "tomorrow after 6 pm",
+                      "type": "call"
+                    },
+                    "transcript": [
+                      {
+                        "speaker": "agent",
+                        "text": "Hi Asha, this is Riya from Shiksha Academy. Is this a good time?"
+                      },
+                      {
+                        "speaker": "contact",
+                        "text": "Yes, tell me."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the event."
+          }
+        }
+      }
+    },
+    "call.not_connected": {
+      "post": {
+        "summary": "call.not_connected",
+        "description": "Sent once when a call ends without connecting: `no_answer`, `busy`, `failed`, `canceled` or `expired` (see `data.status` and `data.status_reason`).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the event."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Your AI calling API key (`vak_call_…`). `Authorization: Bearer <key>` also works."
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Unique id of this request. Quote it to support."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable code. Branch on this, not on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A sentence you can log or show to an operator."
+              },
+              "request_id": {
+                "type": "string",
+                "description": "Quote this when you contact support."
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Extra context, e.g. `errors: [{field, message}]` for validation errors or `call_id` for conflicts."
+              }
+            }
+          }
+        }
+      },
+      "Contact": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120,
+            "description": "How the agent addresses the person. Fills `{{name}}` in the agent's script."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255,
+            "description": "Your own id for this person or lead (CRM record id). Echoed back and filterable on `GET /calls`."
+          }
+        }
+      },
+      "CallInput": {
+        "type": "object",
+        "required": [
+          "phone_number"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent that makes the call. Required on `POST /calls`; on a batch row it overrides the batch's `agent_id`. List yours with `GET /agents`."
+          },
+          "phone_number": {
+            "type": "string",
+            "description": "E.164, e.g. `+919876543210`. Spaces, dashes, dots and brackets are ignored; a leading `00` is read as `+`.",
+            "example": "+919876543210"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "variables": {
+            "type": "object",
+            "maxProperties": 50,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "Values for the `{{placeholders}}` in the agent's script. Keys: a letter, then letters, digits, `_` or spaces, at most 40 characters. Values: text, number or boolean, at most 500 characters. A key named like a built-in placeholder (`name`, `lead_name`, `date`, `time`, `year`…) is kept but never replaces the built-in value; the response then carries a `reserved_variable` warning.",
+            "example": {
+              "course": "NEET 2027",
+              "city": "Indore"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Anything you want back on the call and its webhook (at most 8 KB as JSON). The agent never sees it.",
+            "example": {
+              "crm_owner": "u_42"
+            }
+          }
+        }
+      },
+      "CreateCall": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CallInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "agent_id"
+            ],
+            "properties": {
+              "test": {
+                "type": "boolean",
+                "default": false,
+                "description": "Simulate the call: no phone rings and nothing is billed. It completes at once with a sample outcome and fires your webhook."
+              }
+            }
+          }
+        ]
+      },
+      "Outcome": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "What the AI took from the conversation. `null` until it has been processed (usually within a minute of the call ending), and for calls that did not connect.",
+        "properties": {
+          "call_quality": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "description": "`failed` when the call broke down on our side; then `disposition` is `Incomplete` and `lead_rating` is null. Call the contact again rather than changing their stage."
+          },
+          "disposition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's label for how the call went, from the dispositions configured on the agent (e.g. Interested, Not interested, Call back later)."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Each of the agent's extraction questions and the answer given."
+          },
+          "lead_rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 10,
+            "description": "The AI's 1–10 score of the contact's interest; `null` when it could not tell."
+          },
+          "callback_requested": {
+            "type": "boolean"
+          },
+          "callback_time_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the contact asked to be called back, in their words (e.g. `tomorrow after 6 pm`)."
+          },
+          "follow_up": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "CALL",
+              "CALL_LATER",
+              "SKIP",
+              null
+            ],
+            "description": "Whether a person should call this contact: `CALL` (now), `CALL_LATER` or `SKIP`. `null` when not assessed; never read `null` as `CALL`."
+          },
+          "follow_up_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One sentence on why, for the person deciding whether to call (at most 240 characters)."
+          },
+          "meeting": {
+            "type": "object",
+            "description": "A meeting, demo, visit or callback the contact AGREED to at a specific day or time. `requested` is false when no time was agreed.",
+            "properties": {
+              "requested": {
+                "type": "boolean"
+              },
+              "at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ISO-8601 with offset, resolved from what was said, e.g. `2026-10-14T18:00:00+05:30`."
+              },
+              "time_text": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The contact's own words, e.g. `tomorrow 6 pm`."
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "`demo`, `visit`, `call` or `meeting`."
+              }
+            }
+          },
+          "transcript": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "speaker": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "contact"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Call": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "call_6f1d2c9a8b7e4f3a2d1c0b9a"
+          },
+          "object": {
+            "type": "string",
+            "const": "call"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "dialing",
+              "in_progress",
+              "completed",
+              "no_answer",
+              "busy",
+              "failed",
+              "canceled",
+              "expired"
+            ]
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "Why a call is waiting or did not happen, in plain words. Present only when there is one."
+          },
+          "scheduled_for": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present while a queued call is held until a later time (outside calling hours, a recall gap, the daily limit)."
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "phone_number": {
+            "type": "string"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "variables": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "batch_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "test": {
+            "type": "boolean"
+          },
+          "duration_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dialed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "recording_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A temporary link to the recording. Fetch the call again for a fresh link after `recording_expires_at`."
+          },
+          "recording_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cost": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "What the call cost, once it has ended. `null` while it is still running.",
+            "properties": {
+              "credits": {
+                "type": "number",
+                "description": "Credits charged. 0 for test calls and calls that did not connect."
+              },
+              "billed": {
+                "type": "boolean",
+                "description": "false while a charge for this call is still to be made (call minutes, then AI minutes once the outcome is processed), usually a few minutes after it ends."
+              }
+            }
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "description": "Only on `POST /calls`: `true` when this is the call created by an earlier request with the same `Idempotency-Key`."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "description": "Only on `POST /calls`, and only when there is something to say. The call was created either way."
+          }
+        }
+      },
+      "Warning": {
+        "type": "object",
+        "description": "Something in the request that was accepted but may not do what you expect.",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "variables.date"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "reserved_variable"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "example": "{{date}} in the agent's script is always filled with the current date and time; this value does not replace it. The agent receives it only as information about the contact."
+          }
+        }
+      },
+      "CallList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Call"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateBatch": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "calls"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Default agent for every row."
+          },
+          "test": {
+            "type": "boolean",
+            "default": false
+          },
+          "calls": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/components/schemas/CallInput"
+            }
+          }
+        }
+      },
+      "BatchCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "batch_2b9e0c1d4f6a8e7c5b3a1d0f"
+          },
+          "object": {
+            "type": "string",
+            "const": "batch"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "test": {
+            "type": "boolean"
+          },
+          "accepted_count": {
+            "type": "integer"
+          },
+          "rejected_count": {
+            "type": "integer"
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "phone_number": {
+                  "type": "string"
+                },
+                "external_id": {
+                  "type": "string"
+                },
+                "agent_id": {
+                  "type": "string",
+                  "description": "Only when the row named an agent other than the batch's."
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Warning"
+                  }
+                }
+              }
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "phone_number": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "invalid_request",
+                    "duplicate_in_batch",
+                    "call_already_queued",
+                    "call_failed",
+                    "call_not_placed",
+                    "agent_not_found",
+                    "agent_disabled",
+                    "agent_inbound_only"
+                  ],
+                  "description": "`call_not_placed` only in a replay: the first request with this `Idempotency-Key` did not place the row; send it again in a new batch."
+                },
+                "message": {
+                  "type": "string"
+                },
+                "call_id": {
+                  "type": "string",
+                  "description": "For `call_already_queued`: the call already waiting for this number."
+                }
+              }
+            }
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "description": "`true` when this is the batch created by an earlier request with the same `Idempotency-Key`."
+          }
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "batch"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "test": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "finished": {
+            "type": "integer",
+            "description": "Calls in a final status."
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Calls per status.",
+            "example": {
+              "completed": 412,
+              "no_answer": 160,
+              "queued": 300,
+              "busy": 28
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "agent"
+          },
+          "name": {
+            "type": "string"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "hi-IN"
+          },
+          "uses_contact_name": {
+            "type": "boolean",
+            "description": "The script says the contact's name: send `contact.name`."
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Placeholders the script uses that you should send in `variables`.",
+            "example": [
+              "course",
+              "city"
+            ]
+          }
+        }
+      },
+      "AgentList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Credits": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "credits"
+          },
+          "balance": {
+            "type": "number",
+            "example": 1834.25
+          },
+          "low_balance_threshold": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "low_balance": {
+            "type": "boolean"
+          },
+          "can_place_calls": {
+            "type": "boolean",
+            "description": "false when new real calls would be refused with 402."
+          },
+          "calls_waiting": {
+            "type": "integer",
+            "description": "Calls queued and not yet dialled (API and dashboard)."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "UsageDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-10-01"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "connected": {
+            "type": "integer"
+          },
+          "talk_seconds": {
+            "type": "integer"
+          },
+          "credits": {
+            "type": "number"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "usage"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "all"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "connected": {
+                "type": "integer"
+              },
+              "talk_seconds": {
+                "type": "integer"
+              },
+              "credits": {
+                "type": "number"
+              },
+              "calls_not_yet_billed": {
+                "type": "integer",
+                "description": "Calls with a charge still to be made (call minutes, or AI minutes once the outcome is processed). Calls that are never charged are not counted."
+              }
+            }
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            }
+          }
+        }
+      },
+      "Webhook": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "webhook"
+          },
+          "url": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "call.completed",
+              "call.not_connected"
+            ]
+          },
+          "secret": {
+            "type": "string",
+            "description": "The signing secret. Returned only when the endpoint is first set and when the secret is rotated. Store it.",
+            "example": "whsec_3f9a…"
+          },
+          "secret_hint": {
+            "type": "string",
+            "description": "First and last characters of the secret, on reads.",
+            "example": "whsec_…9c1d"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WebhookTest": {
+        "type": "object",
+        "properties": {
+          "delivered": {
+            "type": "boolean"
+          },
+          "status_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Same on every retry of this event. Use it to ignore duplicates.",
+            "example": "evt_6f1d2c9a8b7e4f3a2d1c0b9a"
+          },
+          "object": {
+            "type": "string",
+            "const": "event"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "call.completed",
+              "call.not_connected",
+              "webhook.test"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Call"
+          }
+        }
+      }
+    }
+  }
+}

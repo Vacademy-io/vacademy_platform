@@ -3,20 +3,15 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { ChatCircle, Sparkle, Question, BookOpen } from "@phosphor-icons/react";
 import { useLocation } from "@tanstack/react-router";
 import { Capacitor } from "@capacitor/core";
+import { useTranslation } from "react-i18next";
 import { useChatbotContext } from "./useChatbotContext";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { useQuizActiveStore } from "@/stores/study-library/quiz-active-store";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import type { FabPosition, FabSide } from "@/stores/chatbot/useChatbotPanelStore";
 import { cn } from "@/lib/utils";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion } from "framer-motion";
-
-const ROTATING_MESSAGES = [
-  { text: "Any doubts?", icon: Question },
-  { text: "Learn something new?", icon: Sparkle },
-  { text: "Practice questions?", icon: BookOpen },
-];
 
 // Fallbacks when the institute hasn't configured launcher_settings
 const DEFAULT_NUDGE_INTERVAL_S = 120; // reveal the pill once every 2 minutes
@@ -31,8 +26,16 @@ const isValidFabPosition = (p: FabPosition | null): p is FabPosition =>
   !!p && (p.side === "left" || p.side === "right") && typeof p.yRatio === "number";
 
 export const ChatbotFloatingButton = () => {
+  const avatarUrl = useChatbotAvatarUrl();
+  const { t } = useTranslation("chatFeatureB");
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();
+
+  const ROTATING_MESSAGES = [
+    { text: t("floatingButton.nudgeMessages.doubts"), icon: Question },
+    { text: t("floatingButton.nudgeMessages.learnSomething"), icon: Sparkle },
+    { text: t("floatingButton.nudgeMessages.practice"), icon: BookOpen },
+  ];
 
   // Admin-configurable launcher behavior (all default-on / previous behavior)
   const launcher = chatbotSettings.launcher_settings ?? {};
@@ -194,6 +197,11 @@ export const ChatbotFloatingButton = () => {
     return null;
   }
 
+  // The Live AI Tutor is its own conversation: no second assistant on screen.
+  if (location.pathname.includes("/course-details/tutor")) {
+    return null;
+  }
+
   // Hide the floating button when the panel is open
   if (isOpen) {
     return null;
@@ -290,7 +298,7 @@ export const ChatbotFloatingButton = () => {
             onMouseLeave={() => setIsHovered(false)}
             onPointerDown={handlePointerDown}
             onClick={handleClick}
-            title={isDraggable ? "Tap to chat • Drag to move" : "Tap to chat"}
+            title={isDraggable ? t("floatingButton.tooltip.draggable") : t("floatingButton.tooltip.tapOnly")}
             className={cn(
               // touch-none stops a touch-drag from scrolling the page underneath;
               // select-none stops the iOS long-press text-selection/callout

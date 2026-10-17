@@ -1,0 +1,47 @@
+{
+    "feeType": {
+        "installmentCount_one": "{{count}} किस्त",
+        "installmentCount_other": "{{count}} किस्तें",
+        "refundable": "वापसी योग्य",
+        "penalty": "जुर्माना {{percent}}%",
+        "loadingInstallments": "किस्तें लोड हो रही हैं...",
+        "columns": {
+            "number": "#",
+            "amount": "राशि",
+            "startDate": "प्रारंभ तिथि",
+            "endDate": "समाप्ति तिथि",
+            "dueDate": "देय तिथि",
+            "status": "स्थिति"
+        },
+        "total": "कुल",
+        "noSchedule": "कोई किस्त अनुसूची नहीं — एकमुश्त भुगतान {{amount}}"
+    },
+    "package": {
+        "totalLabel": "कुल <b>{{amount}}</b>",
+        "feeTypeCount_one": "{{count}} शुल्क प्रकार",
+        "feeTypeCount_other": "{{count}} शुल्क प्रकार"
+    },
+    "header": {
+        "title": "शुल्क योजना",
+        "subtitle": "शुल्क प्रकार और किस्त अनुसूचियों के साथ शुल्क योजनाएं प्रबंधित करें।"
+    },
+    "filters": {
+        "allClasses": "सभी कक्षाएं"
+    },
+    "actions": {
+        "createPlan": "योजना बनाएं"
+    },
+    "loading": "शुल्क योजनाएं लोड हो रही हैं...",
+    "error": {
+        "prefix": "शुल्क योजना लोड करने में विफल।",
+        "genericMessage": "कृपया पुनः प्रयास करें।"
+    },
+    "empty": {
+        "title": "कोई शुल्क योजना नहीं मिली।",
+        "hint": "पहली योजना जोड़ने के लिए <b>{{createPlan}}</b> पर क्लिक करें।"
+    },
+    "summary": {
+        "packageCount_one": "{{count}} पैकेज दिखाया जा रहा है",
+        "packageCount_other": "{{count}} पैकेज दिखाए जा रहे हैं"
+    }
+}

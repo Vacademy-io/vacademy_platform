@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.study_library.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.admin_core_service.features.packages.dto.ComingSoonDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -99,6 +100,9 @@ public class StudyLibraryService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.packages.service.PackagePageContentService packagePageContentService;
 
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
@@ -645,6 +649,20 @@ public class StudyLibraryService {
                     dto.getCourse().setPercentageCompleted(maxPercentage);
                 }
             }
+        }
+
+        // Public details page swaps Enroll for "Notify me" while the course is Coming Soon.
+        ComingSoonDTO comingSoon = ComingSoonDTO.fromCourseSetting(packageEntity.getCourseSetting(), objectMapper);
+        result.forEach(dto -> dto.setComingSoon(comingSoon));
+
+        // Course page content (FAQs, mode): one primary-key lookup, single-course reads only.
+        if (!result.isEmpty()) {
+            String coursePageJson = packagePageContentService.getContentJson(packageEntity.getId());
+            result.forEach(dto -> {
+                if (dto.getCourse() != null) {
+                    dto.getCourse().setCoursePageJson(coursePageJson);
+                }
+            });
         }
 
         return result;

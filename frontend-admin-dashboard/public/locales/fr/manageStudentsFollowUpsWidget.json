@@ -1,0 +1,21 @@
+{
+    "status": {
+        "pending": "En attente",
+        "ongoing": "En cours",
+        "overdue": "En retard",
+        "completed": "Terminé"
+    },
+    "card": {
+        "closedReason": "Clôturé : {{reason}}"
+    },
+    "widget": {
+        "title": "Relances",
+        "openCount_one": "{{count}} ouverte",
+        "openCount_many": "{{count}} ouvertes",
+        "openCount_other": "{{count}} ouvertes"
+    },
+    "emptyState": {
+        "title": "Aucune relance ouverte",
+        "description": "Planifiez-en une ci-dessous via l'onglet Relance"
+    }
+}

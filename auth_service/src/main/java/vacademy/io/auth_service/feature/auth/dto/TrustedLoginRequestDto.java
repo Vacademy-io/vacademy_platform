@@ -23,4 +23,6 @@ import lombok.NoArgsConstructor;
 public class TrustedLoginRequestDto {
     private String username;
     private String instituteId;
+    /** Login code from the link's ?lc= (optional). When present it alone decides. */
+    private String code;
 }

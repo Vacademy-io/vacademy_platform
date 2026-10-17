@@ -1,0 +1,232 @@
+{
+    "common": {
+        "startNewChat": "Start new chat",
+        "closeSession": "Close session",
+        "aiGear": "AI Gear",
+        "closePanel": "Close panel",
+        "mathSymbols": "Math symbols",
+        "preview": "Preview:",
+        "retry": "Retry",
+        "newChat": "New chat",
+        "dropImageHere": "Drop image here",
+        "voiceChatLabel": "Voice Call",
+        "startVoiceConversation": "Start a voice call",
+        "creditsExhausted": "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+        "attachmentAlt": "attachment",
+        "attachedImageAlt": "attached",
+        "copy": "Copy",
+        "popupView": "Open as popup",
+        "dockView": "Dock to the side"
+    },
+    "voiceModeLabels": {
+        "interview": "Mock Interview",
+        "doubt": "Doubt Discussion",
+        "oralTest": "Oral Test",
+        "sessionFallback": "Session"
+    },
+    "floatingButton": {
+        "nudgeMessages": {
+            "doubts": "Any doubts?",
+            "learnSomething": "Learn something new?",
+            "practice": "Practice questions?"
+        },
+        "tooltip": {
+            "draggable": "Tap to chat • Drag to move",
+            "tapOnly": "Tap to chat"
+        }
+    },
+    "panel": {
+        "offlineNotice": "You're offline. Messages will be sent when you reconnect.",
+        "initializing": "Initialising chat...",
+        "generatingQuiz": "Generating quiz...",
+        "errorTitle": "Something went wrong",
+        "sessionEnded": "This chat has ended",
+        "queuedTooltip": "Queued - will send when online",
+        "copyMessage": "Copy message",
+        "attachImageTitle": "Attach image (math photos auto-detected)",
+        "fullscreen": "Fullscreen",
+        "exitFullscreen": "Exit fullscreen",
+        "inputPlaceholder": "Type message... (use $ for math)"
+    },
+    "sidePanel": {
+        "initializing": "Initializing...",
+        "generating": "Generating...",
+        "creditsExhaustedShort": "Your OpenRouter credits have been exhausted. Please recharge your credits to continue.",
+        "errorTitle": "Something went wrong.",
+        "sessionEnded": "Session ended. Start a new chat.",
+        "attachImageTitle": "Attach image",
+        "inputPlaceholder": "Ask a question... ($ for math)"
+    },
+    "widget": {
+        "assistantSubtitle": "{{instituteName}} AI Assistant",
+        "error": "An error occurred, please start new",
+        "inputPlaceholder": "Type your message...",
+        "chatButtonAlt": "Chat",
+        "context": {
+            "title": "Context Used:",
+            "route": "Route:",
+            "courseId": "{{course}} ID:",
+            "slideId": "{{slide}} ID:",
+            "moduleId": "{{module}} ID:"
+        }
+    },
+    "micButton": {
+        "transcribing": "Transcribing...",
+        "stopRecording": "Stop recording",
+        "voiceToText": "Voice to text"
+    },
+    "quickActions": {
+        "explainThis": {
+            "label": "Explain this",
+            "prompt": "Explain what's on this {{slide}} in simple terms"
+        },
+        "quizMe": {
+            "label": "Quiz me",
+            "prompt": "Quiz me on "
+        },
+        "summarize": {
+            "label": "Summarize",
+            "prompt": "Give me a brief summary of this {{slide}}"
+        },
+        "courseOverview": {
+            "label": "{{course}} overview",
+            "prompt": "Give me an overview of this {{course}}"
+        },
+        "learningPath": {
+            "label": "Learning path",
+            "prompt": "What's the recommended learning path for this {{course}}?"
+        },
+        "prerequisites": {
+            "label": "Prerequisites",
+            "prompt": "What are the prerequisites for this {{course}}?"
+        },
+        "hint": {
+            "label": "Hint",
+            "prompt": "Give me a hint for this question without revealing the answer"
+        },
+        "explainConcept": {
+            "label": "Explain concept",
+            "prompt": "Explain the concept being tested in this question"
+        },
+        "helpMeLearn": {
+            "label": "Help me learn",
+            "prompt": "Help me learn about "
+        },
+        "askDoubt": {
+            "label": "Ask a doubt",
+            "prompt": "I have a question about "
+        },
+        "practice": {
+            "label": "Practice"
+        }
+    },
+    "quiz": {
+        "questionLabel": "Q{{number}}",
+        "answeredCount": "{{answered}} of {{total}} answered",
+        "previous": "Previous",
+        "next": "Next",
+        "submitQuiz": "Submit Quiz",
+        "submitted": "Submitted"
+    },
+    "quizFeedback": {
+        "passed": "Quiz Passed! 🎉",
+        "keepPracticing": "Keep Practicing!",
+        "completedIn": "Completed in {{minutes}}m {{seconds}}s",
+        "recommendations": "Recommendations",
+        "hideDetails": "Hide Question Details",
+        "showDetails": "Show Question Details",
+        "questionNumber": "Question {{number}}",
+        "yourAnswer": "Your answer: ",
+        "notAnswered": "Not answered",
+        "correctAnswer": "Correct answer: ",
+        "explanation": "Explanation: "
+    },
+    "sessionScorecard": {
+        "summaryTitle": "{{mode}} Summary",
+        "score": "Score",
+        "strengths": "Strengths",
+        "areasToImprove": "Areas to Improve",
+        "feedback": "Feedback",
+        "close": "Close",
+        "startNewSession": "Start New Session"
+    },
+    "toolIndicator": {
+        "checkingProgress": "Checking your learning progress...",
+        "reviewingPerformance": "Reviewing your performance data...",
+        "searchingResources": "Searching for related content...",
+        "searchingCourseMaterials": "Searching your {{course}} materials...",
+        "workingOnIt": "Working on it..."
+    },
+    "voiceAvatar": {
+        "ready": "Ready",
+        "listening": "Listening...",
+        "thinking": "Thinking...",
+        "speaking": "Speaking..."
+    },
+    "voiceModePanel": {
+        "unmute": "Unmute microphone",
+        "mute": "Mute microphone",
+        "end": "End call",
+        "hintIdle": "Tap the mic when you're ready to talk",
+        "hintListening": "Listening… just pause when you're done",
+        "hintProcessing": "Thinking…",
+        "hintSpeaking": "Tap the mic to jump in",
+        "muted": "Microphone off — unmute to keep talking",
+        "talk": "Talk",
+        "connecting": "Connecting…",
+        "reconnecting": "Reconnecting…",
+        "noticeNoSpeech": "I didn't catch that — try again",
+        "noticeError": "Something went wrong. Tap the mic to try again.",
+        "noticeMic": "I can't reach your microphone. Check permissions and tap the mic.",
+        "topicPrefix": "On {{topic}}"
+    },
+    "voiceModeSelector": {
+        "title": "Voice Call",
+        "subtitle": "Pick how you'd like to talk",
+        "modeInterviewLabel": "Take my Interview",
+        "modeInterviewDescription": "Practice with a mock interview on your current topic",
+        "modeDoubtLabel": "Discuss your Doubt",
+        "modeDoubtDescription": "Talk through your doubts with voice interaction",
+        "modeOralTestLabel": "Take Oral Test",
+        "modeOralTestDescription": "Test your knowledge with verbal Q&A",
+        "topicLabelInterview": "Interview Topic",
+        "topicLabelOralTest": "Test Topic",
+        "topicLabelDoubt": "What's your doubt about?",
+        "topicPlaceholderInterview": "e.g., Data Structures, React, Machine Learning",
+        "topicPlaceholderOralTest": "e.g., Photosynthesis, Newton's Laws, Algebra",
+        "topicPlaceholderDoubt": "e.g., I'm confused about recursion",
+        "topicHelperOptional": "Optional — or just start talking",
+        "topicHelperRecommended": "Recommended — helps generate better questions",
+        "languageLabel": "Language",
+        "languageEn": "English",
+        "languageHi": "Hindi",
+        "languageBn": "Bengali",
+        "languageTa": "Tamil",
+        "languageTe": "Telugu",
+        "languageKn": "Kannada",
+        "languageMl": "Malayalam",
+        "languageMr": "Marathi",
+        "languageGu": "Gujarati",
+        "languagePa": "Punjabi",
+        "languageOr": "Odia",
+        "cancel": "Cancel",
+        "start": "Start call",
+        "topicHelperEditable": "From what you're studying — edit if you'd rather talk about something else"
+    },
+    "latexToolbar": {
+        "groupArithmetic": "Arithmetic",
+        "groupRelations": "Relations",
+        "groupCalculus": "Calculus",
+        "groupGreek": "Greek",
+        "groupOther": "Other"
+    },
+    "useChatbot": {
+        "initErrorNetwork": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting to the server. Please check your network connection.",
+        "initErrorNotFound": "Hi! I'm {{assistantName}}, your AI assistant. The AI service endpoint was not found. Please check the configuration.",
+        "initErrorAuth": "Hi! I'm {{assistantName}}, your AI assistant. Authentication failed. Please try logging in again.",
+        "initErrorGeneric": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting right now (Error: {{errorMessage}}). How can I help you?",
+        "initErrorFallback": "Hi! I'm {{assistantName}}, your AI assistant. I'm having trouble connecting right now. How can I help you?",
+        "processingFailed": "I'm sorry, I encountered an error while processing your request. Please try again.",
+        "quizSubmitFailed": "I'm sorry, I couldn't submit your quiz. Please try again."
+    }
+}

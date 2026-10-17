@@ -1396,7 +1396,10 @@
     "iconColor": "आइकन कलर",
     "speed": "स्क्रॉल स्पीड",
     "direction": "स्क्रॉल दिशा",
-    "pauseOnHover": "होवर पर रोकें"
+    "pauseOnHover": "होवर पर रोकें",
+    "itemLink": "लिंक (पेज, सेक्शन या URL)",
+    "linkedTo": "{{link}} खोलता है",
+    "removeLink": "लिंक हटाएँ"
   },
     "autoScroll": {
         "label": "अपने-आप स्क्रॉल",

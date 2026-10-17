@@ -1536,17 +1536,32 @@ const MarqueeRenderer: React.FC<any> = ({
         aria-hidden={part > 0 || copy > 0 || undefined}
         className="flex shrink-0 items-center"
       >
-        {list.map((item: any, i: number) => (
-          <span
-            key={i}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`}
-          >
-            {(item.icon || defaultIcon) && (
-              <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
-            )}
-            {item.text}
-          </span>
-        ))}
+        {list.map((item: any, i: number) => {
+          const itemClass = `flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`;
+          const content = (
+            <>
+              {(item.icon || defaultIcon) && (
+                <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
+              )}
+              {item.text}
+            </>
+          );
+          // A linked item opens a page, scrolls to a #section or opens an
+          // external URL (CatalogueLink). Only the first copy is tabbable — the
+          // loop copies are aria-hidden duplicates.
+          return item.link ? (
+            <CatalogueLink
+              key={i}
+              to={item.link}
+              tabIndex={part > 0 || copy > 0 ? -1 : undefined}
+              className={`${itemClass} underline-offset-4 hover:underline focus-visible:underline`}
+            >
+              {content}
+            </CatalogueLink>
+          ) : (
+            <span key={i} className={itemClass}>{content}</span>
+          );
+        })}
       </div>
     ));
   return (

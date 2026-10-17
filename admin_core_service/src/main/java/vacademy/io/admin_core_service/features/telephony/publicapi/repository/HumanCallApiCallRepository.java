@@ -56,9 +56,9 @@ public interface HumanCallApiCallRepository extends JpaRepository<HumanCallApiCa
             SELECT h.* FROM human_call_api_call h
               LEFT JOIN telephony_call_log l ON l.id = h.call_log_id
              WHERE h.institute_id = :instituteId
-               AND (:counsellorId IS NULL OR h.counsellor_user_id = :counsellorId)
-               AND (:phone IS NULL OR h.phone_number = :phone)
-               AND (:externalId IS NULL OR h.external_id = :externalId)
+               AND (CAST(:counsellorId AS text) IS NULL OR h.counsellor_user_id = CAST(:counsellorId AS text))
+               AND (CAST(:phone AS text) IS NULL OR h.phone_number = CAST(:phone AS text))
+               AND (CAST(:externalId AS text) IS NULL OR h.external_id = CAST(:externalId AS text))
                AND (CAST(:after AS timestamptz) IS NULL OR h.created_at >= CAST(:after AS timestamptz))
                AND (CAST(:before AS timestamptz) IS NULL OR h.created_at < CAST(:before AS timestamptz))
                AND (CAST(:status AS text) IS NULL OR (""" + PUBLIC_STATUS_SQL + """

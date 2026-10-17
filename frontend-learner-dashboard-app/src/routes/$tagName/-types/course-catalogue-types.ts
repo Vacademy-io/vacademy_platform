@@ -364,8 +364,20 @@ export interface HeaderNavItem {
   openInSameTab?: boolean;
   /** `false` hides the item without losing it; absent = visible. */
   enabled?: boolean;
-  type?: "link" | "megaMenu";
+  type?: "link" | "megaMenu" | "dropdown";
   megaMenu?: HeaderMegaMenuConfig;
+  /** type "dropdown": the links it opens; a link may hold one more level of children. */
+  children?: HeaderNavChild[];
+}
+
+/** A link inside a "dropdown" nav item (Exams → SSC → CGL). */
+export interface HeaderNavChild {
+  label: string;
+  /** Page route, "blog/<slug>" or a full URL; empty on a pure group. */
+  route?: string;
+  openInSameTab?: boolean;
+  enabled?: boolean;
+  children?: HeaderNavChild[];
 }
 
 /** Look of a header auth/CTA button. Absent = the original rule (first filled, the rest outlined). */

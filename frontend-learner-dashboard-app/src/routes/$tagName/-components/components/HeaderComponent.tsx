@@ -34,6 +34,8 @@ import { MegaMenuNavItem } from "../header/MegaMenuNavItem";
 import { MobileMegaMenu } from "../header/MobileMegaMenu";
 import { HeaderSearch } from "../header/HeaderSearch";
 import { HeaderLanguageSwitcher } from "../header/HeaderLanguageSwitcher";
+import { DesktopNavDropdown, MobileNavDropdown } from "./header/NavDropdown";
+import { dropdownHasActive } from "./header/nav-dropdown";
 import {
   DESKTOP_AUTH_CLASSES,
   MOBILE_AUTH_CLASSES,
@@ -483,6 +485,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
         return;
       }
 
+      // A sub-address of one of this site's pages ("blog/ssc-cgl" — an
+      // article on the blog page). The loose page match below would collapse
+      // it to the page itself ("blog".includes), dropping the article, so go
+      // straight to the full address when its first segment is a real page.
+      const subPath = route.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+      const firstSegment = subPath.split(/[/?#]/)[0].toLowerCase();
+      if (
+        subPath.includes("/") &&
+        catalogueData?.pages?.some((page) => RouteMatcher.normalizeRoute(page.route || "") === firstSegment)
+      ) {
+        void siteNavigate(RouteMatcher.pagePath(effectiveTagName, subPath));
+        return;
+      }
+
       // If catalogueData is available, try to match the route with pages
       if (catalogueData && catalogueData.pages) {
         const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
@@ -755,6 +771,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   }
                   const isActive = isActiveRoute(base.route);
                   const openInSameTab = base.openInSameTab === true || String(base.openInSameTab) === "true";
+                  if (base.type === "dropdown" && Array.isArray(base.children) && base.children.length > 0) {
+                    const ddActive = isActive || dropdownHasActive(base.children, isActiveRoute);
+                    return (
+                      <DesktopNavDropdown
+                        key={index}
+                        label={item.label}
+                        items={base.children}
+                        active={ddActive}
+                        onNavigate={handleNavigation}
+                        buttonClassName={chrome.editorialNav ? editorialNavItemClasses(ddActive) : `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(ddActive, activeStyle)}`}
+                      />
+                    );
+                  }
                   return (
                     <button
                       key={index}
@@ -959,6 +988,18 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         }
                         const isActive = isActiveRoute(base.route);
                         const openInSameTab = base.openInSameTab === true || String(base.openInSameTab) === "true";
+                        if (base.type === "dropdown" && Array.isArray(base.children) && base.children.length > 0) {
+                          return (
+                            <MobileNavDropdown
+                              key={index}
+                              label={item.label}
+                              items={base.children}
+                              itemClassName={mobileNavItemClass}
+                              onNavigate={handleNavigation}
+                              onDone={() => setIsMobileMenuOpen(false)}
+                            />
+                          );
+                        }
                         return (
                           <button
                             key={index}
@@ -1144,6 +1185,18 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     }
                     const isActive = isActiveRoute(base.route);
                     const openInSameTab = base.openInSameTab === true || String(base.openInSameTab) === "true";
+                    if (base.type === "dropdown" && Array.isArray(base.children) && base.children.length > 0) {
+                      return (
+                        <MobileNavDropdown
+                          key={index}
+                          label={item.label}
+                          items={base.children}
+                          itemClassName={mobileNavItemClass}
+                          onNavigate={handleNavigation}
+                          onDone={() => setIsMobileMenuOpen(false)}
+                        />
+                      );
+                    }
                     return (
                       <button
                         key={index}

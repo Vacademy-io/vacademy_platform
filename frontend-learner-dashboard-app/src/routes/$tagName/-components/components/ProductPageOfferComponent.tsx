@@ -57,7 +57,7 @@ import {
   useSiteCart,
   useSiteCartNotifier,
 } from "../site-cart/use-site-cart";
-import { useAutoScrollRail } from "../../-utils/use-auto-scroll-rail";
+import { RAIL_CLONE_PROPS, useAutoScrollRail } from "../../-utils/use-auto-scroll-rail";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -781,10 +781,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCarousel, visible.length, cols]);
 
-  useAutoScrollRail(trackRef, {
+  const { looping } = useAutoScrollRail(trackRef, {
     enabled: isCarousel && !!autoScroll,
     intervalMs: autoScrollIntervalMs,
     itemCount: visible.length,
+    loop: true,
   });
 
   // A horizontal rail IS the app pattern, so unless the admin chose otherwise
@@ -1225,9 +1226,15 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         aria-label={title || coursesTerm}
       >
         {cards}
+        {/* Endless ring: a second lap of the same cards (see useAutoScrollRail). */}
+        {looping &&
+          cards.map((card, i) =>
+            React.isValidElement(card) ? React.cloneElement(card, { key: `loop-${i}`, ...RAIL_CLONE_PROPS }) : null,
+          )}
         {/* Tail card — states plainly how many courses the rail is not
-            showing, rather than silently truncating the list. */}
-        {railHidden > 0 && productPageCode && (
+            showing, rather than silently truncating the list. A looping rail
+            has no end for it to sit at. */}
+        {!looping && railHidden > 0 && productPageCode && (
           <Link
             to="/product-pages/$productPageCode"
             params={{ productPageCode }}

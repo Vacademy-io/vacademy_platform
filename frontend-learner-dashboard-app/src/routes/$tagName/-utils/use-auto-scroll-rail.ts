@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type RefObject } from "react";
 
 /** Fastest an authored rail may advance; quicker than this nobody can read a card. */
 export const AUTO_SCROLL_MIN_MS = 1500;
@@ -10,8 +10,36 @@ export const resolveAutoScrollInterval = (raw: unknown): number => {
 };
 
 /**
+ * Attributes for the second copy of a looping rail's cards: marked so the hook
+ * can find where the copy starts, and kept out of screen readers and keyboard
+ * focus (the visitor already met these cards once). `inert` is a React 19
+ * prop the installed React 18 types do not list yet, hence the cast.
+ */
+export const RAIL_CLONE_PROPS = {
+  "data-rail-clone": "",
+  "aria-hidden": true,
+  inert: true,
+} as unknown as HTMLAttributes<HTMLElement>;
+
+/** Distance from the first card to the first cloned card = one full lap. */
+const loopPeriod = (el: HTMLElement): number => {
+  const first = el.firstElementChild as HTMLElement | null;
+  const clone = el.querySelector<HTMLElement>(":scope > [data-rail-clone]");
+  return first && clone && clone !== first ? clone.offsetLeft - first.offsetLeft : 0;
+};
+
+/** Move without animation: the two laps look identical, so the visitor sees nothing. */
+const jumpTo = (el: HTMLElement, left: number) => el.scrollTo({ left, behavior: "instant" as ScrollBehavior });
+
+/**
  * Advances a horizontal scroll rail (an `overflow-x-auto` flex row of cards)
  * by one card every `intervalMs`, and wraps back to the first card at the end.
+ *
+ * With `loop`, the rail never rewinds: the caller renders its cards twice
+ * (the second copy with RAIL_CLONE_PROPS) while `looping` is true, and on
+ * reaching the copy the rail is silently moved back one lap, so the row reads
+ * as an endless 12 → 1 → 2 ring. `looping` is only true when the cards do not
+ * all fit — duplicating a row that fits would show every card twice.
  *
  * It only moves the rail's own scroll position, so swipe, the arrows and
  * snap points keep working as before. It holds still while the visitor is
@@ -26,22 +54,48 @@ export const useAutoScrollRail = (
     enabled,
     intervalMs,
     itemCount = 0,
+    loop = false,
   }: {
     enabled: boolean;
     intervalMs?: number;
     /** Re-attach when the cards change — the rail often mounts after its data loads. */
     itemCount?: number;
+    /** Endless ring instead of rewinding (see above). */
+    loop?: boolean;
   }
-) => {
+): { looping: boolean } => {
   const hovered = useRef(false);
   const focused = useRef(false);
   const touchedAt = useRef(0);
   const onScreen = useRef(true);
+  const [looping, setLooping] = useState(false);
+  const loopingRef = useRef(false);
+  loopingRef.current = looping;
+
+  const reducedMotion = () =>
+    typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  // Loop only when the cards overflow the rail. Measured without the copy
+  // first, then — once it is rendered — as "one lap is wider than the view".
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!enabled || !loop || !el || reducedMotion()) {
+      setLooping(false);
+      return;
+    }
+    const measure = () => {
+      const lap = loopPeriod(el);
+      setLooping(lap > 0 ? lap > el.clientWidth + 8 : el.scrollWidth - el.clientWidth > 8);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [trackRef, enabled, loop, itemCount, looping]);
 
   useEffect(() => {
     const el = trackRef.current;
     if (!enabled || !el || typeof window === "undefined") return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (reducedMotion()) return;
 
     // Listen on the rail's wrapper, not just the track: the prev/next arrows
     // sit beside the track, and a tick firing while the visitor clicks an
@@ -68,6 +122,19 @@ export const useAutoScrollRail = (
         : null;
     io?.observe(el);
 
+    // A swipe or arrow click can carry the rail into the copy too: once it
+    // settles there, move it back one lap so it never reaches a hard end.
+    let settle: number | undefined;
+    const onScroll = () => {
+      if (!loopingRef.current) return;
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        const lap = loopPeriod(el);
+        if (lap > 0 && el.scrollLeft >= lap - 2) jumpTo(el, el.scrollLeft - lap);
+      }, 160);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+
     const tick = () => {
       if (hovered.current || focused.current || !onScreen.current || document.hidden) return;
       if (Date.now() - touchedAt.current < 4000) return;
@@ -76,6 +143,12 @@ export const useAutoScrollRail = (
       const second = first?.nextElementSibling as HTMLElement | null;
       // One card = the distance between two neighbouring cards (width + gap).
       const step = first && second ? second.offsetLeft - first.offsetLeft : el.clientWidth;
+      const lap = loopingRef.current ? loopPeriod(el) : 0;
+      if (lap > 0) {
+        if (el.scrollLeft >= lap - 2) jumpTo(el, el.scrollLeft - lap);
+        el.scrollBy({ left: step, behavior: "smooth" });
+        return;
+      }
       const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 8;
       if (atEnd) el.scrollTo({ left: 0, behavior: "smooth" });
       else el.scrollBy({ left: step, behavior: "smooth" });
@@ -84,6 +157,8 @@ export const useAutoScrollRail = (
 
     return () => {
       window.clearInterval(timer);
+      window.clearTimeout(settle);
+      el.removeEventListener("scroll", onScroll);
       io?.disconnect();
       root.removeEventListener("mouseenter", enter);
       root.removeEventListener("mouseleave", leave);
@@ -94,6 +169,8 @@ export const useAutoScrollRail = (
       root.removeEventListener("wheel", touch);
     };
   }, [trackRef, enabled, intervalMs, itemCount]);
+
+  return { looping };
 };
 
 /**

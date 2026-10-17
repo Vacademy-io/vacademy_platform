@@ -97,7 +97,7 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
-import { useAutoScrollRail, useRailArrows } from "../-utils/use-auto-scroll-rail";
+import { RAIL_CLONE_PROPS, useAutoScrollRail, useRailArrows } from "../-utils/use-auto-scroll-rail";
 import { useCatalogueSearchParams } from "../-utils/catalogue-url-state";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
@@ -1963,11 +1963,17 @@ const FeatureGridRenderer: React.FC<any> = ({
 }) => {
   // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
   const railRef = React.useRef<HTMLDivElement>(null);
-  useAutoScrollRail(railRef, {
+  const { looping } = useAutoScrollRail(railRef, {
     enabled: layout === 'carousel' && !!autoScroll,
     intervalMs: autoScrollIntervalMs,
     itemCount: features.length,
+    loop: true,
   });
+  // Endless ring: a second lap of the same slides (see useAutoScrollRail).
+  const loopCopy = (slides: React.ReactNode[]) =>
+    looping
+      ? slides.map((s, i) => (React.isValidElement(s) ? React.cloneElement(s, { key: `loop-${i}`, ...RAIL_CLONE_PROPS }) : null))
+      : null;
   const arrows = useRailArrows(railRef, { enabled: layout === 'carousel', itemCount: features.length });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
@@ -2126,16 +2132,24 @@ const FeatureGridRenderer: React.FC<any> = ({
           // the next one peeking in, swipe / snap native.
           <div className="relative">
             <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
-              {features.map((f: any, i: number) => (
-                <div
-                  key={i}
-                  className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
-                  // Width per card follows the authored column count — a computed value, not a token.
-                  style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
-                >
-                  <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
-                </div>
-              ))}
+              {(() => {
+                const slides = features.map((f: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
+                    // Width per card follows the authored column count — a computed value, not a token.
+                    style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
+                  >
+                    <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+                  </div>
+                ));
+                return (
+                  <>
+                    {slides}
+                    {loopCopy(slides)}
+                  </>
+                );
+              })()}
             </div>
             <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>
@@ -2237,6 +2251,7 @@ const FeatureGridRenderer: React.FC<any> = ({
           <div className="relative">
             <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
               {cards}
+              {loopCopy(cards)}
             </div>
             <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>

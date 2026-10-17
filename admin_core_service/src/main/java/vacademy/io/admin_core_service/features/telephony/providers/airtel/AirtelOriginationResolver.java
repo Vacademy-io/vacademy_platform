@@ -50,6 +50,7 @@ public class AirtelOriginationResolver implements OutboundOriginationResolver {
         TelephonyCounsellorEndpoint ep = endpointRepo
                 .findByCounsellorUserIdAndProviderType(callerUserId, ProviderType.AIRTEL)
                 .filter(e -> Boolean.TRUE.equals(e.getEnabled()))
+                .filter(e -> sameInstitute(e, instituteId))
                 .orElse(null);
         if (ep == null) return Optional.of(NO_ENDPOINT);
         if (ep.getExtension() == null || ep.getExtension().isBlank()) {
@@ -63,6 +64,7 @@ public class AirtelOriginationResolver implements OutboundOriginationResolver {
         TelephonyCounsellorEndpoint ep = endpointRepo
                 .findByCounsellorUserIdAndProviderType(ctx.getCounsellorUserId(), ProviderType.AIRTEL)
                 .filter(e -> Boolean.TRUE.equals(e.getEnabled()))
+                .filter(e -> sameInstitute(e, ctx.getInstituteId()))
                 .orElseThrow(() -> new VacademyException(NO_ENDPOINT));
         if (ep.getExtension() == null || ep.getExtension().isBlank()) {
             throw new VacademyException(NO_EXTENSION);
@@ -72,5 +74,14 @@ public class AirtelOriginationResolver implements OutboundOriginationResolver {
                 .callerId(ep.getDid())   // lead sees the counsellor's DID (may be null)
                 .providerNumberId(null)  // no pool
                 .build();
+    }
+
+    /**
+     * The extension must be one THIS institute mapped. The row is unique per user, so a
+     * person on staff at two institutes has one row; dialling from the other institute's
+     * extension would bill that institute's Airtel account and file the CDR under it.
+     */
+    private static boolean sameInstitute(TelephonyCounsellorEndpoint e, String instituteId) {
+        return instituteId != null && instituteId.equals(e.getInstituteId());
     }
 }

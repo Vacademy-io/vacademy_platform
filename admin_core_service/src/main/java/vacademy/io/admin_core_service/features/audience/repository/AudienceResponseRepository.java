@@ -92,6 +92,22 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10);
 
         /**
+         * Does this lead (audience_response) belong to a campaign of this institute? The
+         * telephony click-to-call loads a lead by the id the browser sends; without this a
+         * counsellor of one institute could dial (and file a call under) another
+         * institute's lead by its UUID.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE ar.id = :responseId
+                  AND a.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
          * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
          * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
          * 10 digits. Opted-out leads count — someone who opted out and writes again is still a

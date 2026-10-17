@@ -154,6 +154,12 @@ public class CallLifecycleTxOps {
         if (req.getResponseId() != null && !req.getResponseId().isBlank()) {
             AudienceResponse lead = audienceResponseRepo.findById(req.getResponseId())
                     .orElseThrow(() -> new VacademyException("Lead not found"));
+            // The lead must be one of THIS institute's: the id comes from the browser, and
+            // the caller is only proven to belong to {@code instituteId}. Same message as a
+            // missing lead, so a foreign id reveals nothing about whether it exists.
+            if (!audienceResponseRepo.isLeadInInstitute(lead.getId(), instituteId)) {
+                throw new VacademyException("Lead not found");
+            }
             String phone = firstNonBlank(lead.getParentMobile(),
                     userMobileResolver.findMobile(lead.getUserId()).orElse(null));
             return new Subject(lead.getId(), lead.getUserId(), phone);

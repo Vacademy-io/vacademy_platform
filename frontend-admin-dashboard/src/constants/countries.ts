@@ -275,16 +275,15 @@ export const countryName = (code: string, locale: string): string =>
 export const currencyName = (code: string, locale: string): string =>
     displayName(code, 'currency', locale);
 
-/** Flag emoji for an ISO-3166 alpha-2 code (regional indicator symbols). */
-export const countryFlag = (code: string): string =>
-    code.length === 2
-        ? String.fromCodePoint(
-              ...code
-                  .toUpperCase()
-                  .split('')
-                  .map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
-          )
-        : '';
+/** Short names people type instead of the full country name. */
+const COUNTRY_ALIASES: Record<string, string[]> = {
+    US: ['USA', 'America'],
+    GB: ['UK', 'Britain', 'England'],
+    AE: ['UAE', 'Dubai'],
+};
+
+/** Search words for a country besides its name: the code (e.g. "NP") and common aliases. */
+export const countryKeywords = (code: string): string[] => [code, ...(COUNTRY_ALIASES[code] ?? [])];
 
 /** The country's own currency, e.g. NP → NPR. */
 export const currencyOfCountry = (code: string): string | undefined =>

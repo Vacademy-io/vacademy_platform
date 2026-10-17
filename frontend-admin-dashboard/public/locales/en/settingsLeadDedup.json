@@ -111,6 +111,10 @@
                 "label": "Show a Duplicate badge in lead tables",
                 "hint": "Duplicate enquiries show a Duplicate badge next to the lead name."
             },
+            "duplicatesTabOnly": {
+                "label": "Show duplicates only in Duplicate Leads",
+                "hint": "Duplicate enquiries are listed only on the Duplicate Leads tab. All Leads and the other lead lists show the lead once, with a Duplicate badge. Turn off to keep the lists as they are."
+            },
             "tier": {
                 "label": "Set {{tier}} to",
                 "hint": "The lead's {{tier}} changes to this when the person enquires again.",

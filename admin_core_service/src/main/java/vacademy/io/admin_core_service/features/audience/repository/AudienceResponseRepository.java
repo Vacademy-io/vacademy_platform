@@ -2481,6 +2481,28 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         """, nativeQuery = true)
         List<ResponseContactRow> findContactOfResponse(@Param("responseId") String responseId);
 
+        /**
+         * How many live duplicate enquiries point at each of these leads, so a lead list that
+         * hides duplicates can still badge the lead they repeat. Leads with none are absent.
+         */
+        @Query(value = """
+                            SELECT ar.primary_response_id AS "primaryResponseId",
+                                   COUNT(*)               AS "duplicateCount"
+                            FROM audience_response ar
+                            WHERE ar.primary_response_id IN (:responseIds)
+                            AND ar.is_duplicate = TRUE
+                            AND ar.audience_status = 'ACTIVE'
+                            GROUP BY ar.primary_response_id
+                        """, nativeQuery = true)
+        List<DuplicateCountRow> countActiveDuplicatesOf(@Param("responseIds") List<String> responseIds);
+
+        /** Projection for {@link #countActiveDuplicatesOf}; aliases are quoted camelCase. */
+        interface DuplicateCountRow {
+                String getPrimaryResponseId();
+
+                Long getDuplicateCount();
+        }
+
         /** Projection for {@link #findContactOfResponse}; aliases are quoted camelCase. */
         interface ResponseContactRow {
                 String getPhone();

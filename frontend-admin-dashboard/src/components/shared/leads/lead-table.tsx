@@ -286,8 +286,10 @@ export function LeadTable({
     const tierCatalog = useLeadTiers();
     const tierOptions = useLeadTierOptions();
     const terminology = useLeadTerminology();
-    // Lead Settings → Deduplication → repeat lead → "Duplicate badge" switch.
-    const showDuplicateBadge = useLeadDedupSettings().settings.repeatLead.reattempt.showBadge;
+    // Lead Settings → Deduplication → repeat lead → "Duplicate badge" switch, or "Show
+    // duplicates only in Duplicate Leads", which badges the lead a hidden duplicate repeats.
+    const dedupReattempt = useLeadDedupSettings().settings.repeatLead.reattempt;
+    const showDuplicateBadge = dedupReattempt.showBadge || dedupReattempt.duplicatesTabOnly;
 
     // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
     // AND a response id (that's the selection key, and what delete targets). response_id is the
@@ -337,7 +339,11 @@ export function LeadTable({
                                 {truncateName(vm.name)}
                             </button>
                             {showDuplicateBadge && (
-                                <DuplicateBadge isDuplicate={vm.isDuplicate} className="shrink-0" />
+                                <DuplicateBadge
+                                    isDuplicate={vm.isDuplicate}
+                                    duplicateCount={vm.duplicateCount}
+                                    className="shrink-0"
+                                />
                             )}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">

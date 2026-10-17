@@ -30,7 +30,7 @@ export interface HeaderNavItemValue {
     route?: string;
     openInSameTab?: boolean;
     enabled?: boolean;
-    type?: 'link' | 'megaMenu';
+    type?: 'link' | 'megaMenu' | 'dropdown';
     megaMenu?: MegaMenuConfig;
 }
 
@@ -88,7 +88,8 @@ export const keepMegaMenuItems = <T extends object>(
 ): T[] => {
     const out = [...fromPages];
     (Array.isArray(current) ? current : []).forEach((item: T, index: number) => {
-        if ((item as { type?: unknown } | null)?.type === 'megaMenu') {
+        const type = (item as { type?: unknown } | null)?.type;
+        if (type === 'megaMenu' || type === 'dropdown') {
             out.splice(Math.min(index, out.length), 0, item);
         }
     });
@@ -159,13 +160,13 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
         // The site's header always reads "home" as the home page.
         return homeAliases.has(key) || key.toLowerCase() === 'home' ? 'homepage' : key;
     };
+    // Mega menus and dropdowns are menus, not page links: sync leaves them where they are.
+    const isMenu = (item: T) => item?.type === 'megaMenu' || item?.type === 'dropdown';
     const isPageLink = (item: T) =>
-        item?.type !== 'megaMenu' &&
-        isPlainPageRoute(item?.route) &&
-        allPageKeys.has(itemKey(item));
+        !isMenu(item) && isPlainPageRoute(item?.route) && allPageKeys.has(itemKey(item));
     // A visible link to a page that no longer exists.
     const isStalePageLink = (item: T) => {
-        if (item?.type === 'megaMenu' || item?.enabled === false || !isPlainPageRoute(item?.route)) {
+        if (isMenu(item) || item?.enabled === false || !isPlainPageRoute(item?.route)) {
             return false;
         }
         const key = itemKey(item);

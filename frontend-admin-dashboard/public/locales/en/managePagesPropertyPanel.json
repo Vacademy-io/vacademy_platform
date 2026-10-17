@@ -1400,7 +1400,10 @@
     "iconColor": "Icon Color",
     "speed": "Scroll Speed",
     "direction": "Scroll Direction",
-    "pauseOnHover": "Pause on hover"
+    "pauseOnHover": "Pause on hover",
+    "itemLink": "Link (page, section or URL)",
+    "linkedTo": "Opens {{link}}",
+    "removeLink": "Remove link"
   },
     "autoScroll": {
         "label": "Auto-scroll",

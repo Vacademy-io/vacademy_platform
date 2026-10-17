@@ -1403,7 +1403,10 @@
     "iconColor": "Couleur de l'icône",
     "speed": "Vitesse de défilement",
     "direction": "Sens de défilement",
-    "pauseOnHover": "Pause au survol"
+    "pauseOnHover": "Pause au survol",
+    "itemLink": "Lien (page, section ou URL)",
+    "linkedTo": "Ouvre {{link}}",
+    "removeLink": "Supprimer le lien"
   },
     "autoScroll": {
         "label": "Défilement automatique",

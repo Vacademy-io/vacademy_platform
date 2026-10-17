@@ -32,6 +32,7 @@ import {
     Eye,
     EyeSlash,
     BracketsCurly,
+    LinkSimple,
 } from '@phosphor-icons/react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
@@ -7822,14 +7823,19 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
 const MarqueeEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
-    const items: Array<{ icon?: string; text?: string }> = Array.isArray(props.items) ? props.items : [];
+    const items: Array<{ icon?: string; text?: string; link?: string }> = Array.isArray(props.items) ? props.items : [];
+    // The item whose link picker is open; the row stays compact otherwise.
+    const [linkOpen, setLinkOpen] = useState<number | null>(null);
 
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
     const addItem = () => updateProp('items', [...items, { icon: props.defaultIcon ?? '', text: t('marquee.newItem') }]);
-    const deleteItem = (i: number) => updateProp('items', items.filter((_, idx) => idx !== i));
-    const updateItem = (i: number, field: 'icon' | 'text', value: string) => {
+    const deleteItem = (i: number) => {
+        setLinkOpen(null);
+        updateProp('items', items.filter((_, idx) => idx !== i));
+    };
+    const updateItem = (i: number, field: 'icon' | 'text' | 'link', value: string) => {
         const updated = [...items];
         updated[i] = { ...updated[i], [field]: value };
         updateProp('items', updated);
@@ -7839,6 +7845,8 @@ const MarqueeEditor = ({ component, pageId, updateComponent }: any) => {
         if (j < 0 || j >= items.length) return;
         const updated = [...items];
         [updated[i], updated[j]] = [updated[j]!, updated[i]!];
+        if (linkOpen === i) setLinkOpen(j);
+        else if (linkOpen === j) setLinkOpen(i);
         updateProp('items', updated);
     };
 
@@ -7851,23 +7859,52 @@ const MarqueeEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
                 <div className="space-y-2">
                     {items.map((item, i) => (
-                        <div key={i} className="flex items-center gap-1">
-                            <Input
-                                value={item.icon ?? ''}
-                                onChange={(e) => updateItem(i, 'icon', e.target.value)}
-                                placeholder={props.defaultIcon || '⭐'}
-                                aria-label={t('marquee.iconLabel')}
-                                className="w-12 shrink-0 px-1 text-center"
-                            />
-                            <Input
-                                value={item.text ?? ''}
-                                onChange={(e) => updateItem(i, 'text', e.target.value)}
-                                placeholder={t('marquee.itemTextPlaceholder')}
-                                className="flex-1"
-                            />
-                            <Button variant="ghost" size="sm" onClick={() => moveItem(i, -1)} disabled={i === 0} className="size-6 p-0" aria-label={t('actions.moveUp')}><ChevronUp className="size-3" /></Button>
-                            <Button variant="ghost" size="sm" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} className="size-6 p-0" aria-label={t('actions.moveDown')}><ChevronDown className="size-3" /></Button>
-                            <Button variant="ghost" size="sm" onClick={() => deleteItem(i)} className="size-6 p-0 text-red-600" aria-label={t('actions.delete')}><Trash2 className="size-3" /></Button>
+                        <div key={i} className="space-y-2">
+                            <div className="flex items-center gap-1">
+                                <Input
+                                    value={item.icon ?? ''}
+                                    onChange={(e) => updateItem(i, 'icon', e.target.value)}
+                                    placeholder={props.defaultIcon || '⭐'}
+                                    aria-label={t('marquee.iconLabel')}
+                                    className="w-12 shrink-0 px-1 text-center"
+                                />
+                                <Input
+                                    value={item.text ?? ''}
+                                    onChange={(e) => updateItem(i, 'text', e.target.value)}
+                                    placeholder={t('marquee.itemTextPlaceholder')}
+                                    className="flex-1"
+                                />
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setLinkOpen(linkOpen === i ? null : i)}
+                                    className={`size-6 p-0 ${item.link ? 'text-blue-600' : ''}`}
+                                    aria-label={t('marquee.itemLink')}
+                                    aria-expanded={linkOpen === i}
+                                    title={item.link ? t('marquee.linkedTo', { link: item.link }) : t('marquee.itemLink')}
+                                >
+                                    <LinkSimple className="size-3" weight={item.link ? 'bold' : 'regular'} />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => moveItem(i, -1)} disabled={i === 0} className="size-6 p-0" aria-label={t('actions.moveUp')}><ChevronUp className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} className="size-6 p-0" aria-label={t('actions.moveDown')}><ChevronDown className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteItem(i)} className="size-6 p-0 text-red-600" aria-label={t('actions.delete')}><Trash2 className="size-3" /></Button>
+                            </div>
+                            {linkOpen === i && (
+                                <div className="rounded border border-gray-200 p-2">
+                                    {/* Page, a section on this page (#anchor) or an external URL;
+                                        stored as item.link and opened by the site's CatalogueLink. */}
+                                    <LinkPicker
+                                        label={t('marquee.itemLink')}
+                                        value={item.link ?? ''}
+                                        onChange={(v) => updateItem(i, 'link', v)}
+                                    />
+                                    {item.link && (
+                                        <Button variant="ghost" size="sm" onClick={() => updateItem(i, 'link', '')} className="mt-1 h-6 text-xs text-red-600">
+                                            {t('marquee.removeLink')}
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     ))}
                     {items.length === 0 && <p className="text-caption text-gray-500">{t('marquee.noItems')}</p>}

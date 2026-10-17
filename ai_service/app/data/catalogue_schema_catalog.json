@@ -1015,7 +1015,7 @@
         "iconColor": "#facc15",
         "fontSize": "sm"
       },
-      "capabilities": "A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, image, label}. speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for this component only."
+      "capabilities": "A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, link, image, label}. link (optional) makes the item clickable: a page slug, \"#anchorId\" of a section on the page, or a full URL. speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for this component only."
     },
     {
       "type": "productPageOffer",

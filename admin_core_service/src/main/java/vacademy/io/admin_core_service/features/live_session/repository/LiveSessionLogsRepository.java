@@ -7,7 +7,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
 
+import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +25,40 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
     default Optional<LiveSessionLogs> findExistingAttendanceRecord(String scheduleId, String userSourceId) {
         List<LiveSessionLogs> records = findAllAttendanceRecords(scheduleId, userSourceId);
         return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
+    }
+
+    /**
+     * Learner-days with a PRESENT live class in this institute, for the streak bonus.
+     * The day is the class's meeting_date, not when attendance was written: provider
+     * attendance can land many hours after the class and must not move it to the next day.
+     */
+    @Query(value = """
+            SELECT DISTINCT lsl.user_source_id AS userId, ss.meeting_date AS activityDate
+            FROM live_session_logs lsl
+            JOIN live_session ls ON ls.id = lsl.session_id
+            JOIN session_schedules ss ON ss.id = lsl.schedule_id
+            WHERE ls.institute_id = :instituteId
+              AND lsl.log_type = 'ATTENDANCE_RECORDED'
+              AND lsl.status = 'PRESENT'
+              AND lsl.user_source_type = 'USER'
+              AND ss.meeting_date BETWEEN :fromDate AND :toDate
+              AND ls.status IS DISTINCT FROM 'DELETED'
+              AND ss.status IS DISTINCT FROM 'DELETED'
+              AND lsl.user_source_id IN (
+                  SELECT DISTINCT ssigm.user_id
+                  FROM student_session_institute_group_mapping ssigm
+                  WHERE ssigm.institute_id = :instituteId
+                    AND ssigm.status IN (:learnerStatuses)
+              )
+            """, nativeQuery = true)
+    List<PresentDayProjection> findPresentDaysForInstitute(@Param("instituteId") String instituteId,
+                                                           @Param("fromDate") LocalDate fromDate,
+                                                           @Param("toDate") LocalDate toDate,
+                                                           @Param("learnerStatuses") List<String> learnerStatuses);
+
+    interface PresentDayProjection {
+        String getUserId();
+        Date getActivityDate();
     }
 
     /*

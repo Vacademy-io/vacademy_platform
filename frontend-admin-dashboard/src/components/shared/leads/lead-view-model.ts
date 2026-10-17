@@ -44,6 +44,8 @@ export interface LeadCardVM {
     leadStatus?: string | null;
     /** This enquiry repeats an existing lead (audience_response.is_duplicate). */
     isDuplicate?: boolean | null;
+    /** Live duplicate enquiries that repeat this lead (recent-leads list only). */
+    duplicateCount?: number | null;
     /** Has an open priority follow-up (opened for a reattempt); the Follow-ups page lists it first. */
     followUpPriority?: boolean | null;
     // ── TAT / follow-up SLA (visual only; computed on the backend) ───────────
@@ -278,6 +280,7 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         responseId: lead.response_id,
         leadStatus: lead.lead_status,
         isDuplicate: lead.is_duplicate,
+        duplicateCount: lead.duplicate_count,
         followUpPriority: lead.follow_up_priority,
         tatOverdue: lead.tat_overdue,
         tatDueSoon: lead.tat_due_soon,

@@ -511,6 +511,21 @@ public class LeadDeduplicationService {
                 && settings.repeatLead().alsoMatchEmail();
     }
 
+    /**
+     * Lead Settings → repeat lead → "Show duplicates only in Duplicate Leads": lead lists hide
+     * duplicate enquiries unless their route asks for them, and badge the lead they repeat.
+     * False (lists unchanged) unless dedup is on with "Allow & reassign".
+     */
+    public boolean duplicatesTabOnly(String instituteId) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        return settings != null
+                && settings.enabled()
+                && settings.action() == LeadDedupSettingService.DedupAction.ALLOW_REASSIGN
+                && settings.repeatLead() != null
+                && settings.repeatLead().reattempt() != null
+                && settings.repeatLead().reattempt().duplicatesTabOnly();
+    }
+
     /** Whether another lead in the dedup scope has this email; false for a blank email. */
     private boolean emailExists(LeadDedupSettingService.DedupSettings settings, String instituteId,
             String audienceId, String email, String excludeResponseId) {

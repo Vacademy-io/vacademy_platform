@@ -25,6 +25,10 @@ export const DesktopNavDropdown: React.FC<{
 }> = ({ label, items, active, buttonClassName, onNavigate }) => {
   const [open, setOpen] = useState(false);
   const [group, setGroup] = useState<number | null>(null);
+  // Not enough room on the right for the panel and its second column (the
+  // item sits near the end of the bar on a laptop screen): anchor the panel
+  // to the item's right edge and open the second column to the left instead.
+  const [flip, setFlip] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<number | undefined>(undefined);
   const list = visible(items);
@@ -49,8 +53,15 @@ export const DesktopNavDropdown: React.FC<{
     if (!open) setGroup(null);
   }, [open]);
 
+  const decideSide = () => {
+    const rect = root.current?.getBoundingClientRect();
+    // Two columns of min-w-56 (14rem) plus a little air.
+    const needed = 2 * 14 * 16 + 16;
+    setFlip(!!rect && rect.left + needed > window.innerWidth);
+  };
   const enter = () => {
     window.clearTimeout(closeTimer.current);
+    if (!open) decideSide();
     setOpen(true);
   };
   // A short grace period so moving the pointer from the label to the panel
@@ -75,14 +86,17 @@ export const DesktopNavDropdown: React.FC<{
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) decideSide();
+          setOpen((o) => !o);
+        }}
         className={`inline-flex items-center gap-1 ${buttonClassName}`}
       >
         {label}
         <CaretDown size={12} weight="bold" aria-hidden="true" className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && list.length > 0 && (
-        <div className="absolute start-0 top-full z-catalogue-dropdown flex pt-2">
+        <div className={`absolute top-full z-catalogue-dropdown flex pt-2 ${flip ? "end-0 flex-row-reverse" : "start-0"}`}>
           <div
             role="menu"
             className="min-w-56 overflow-hidden rounded-b-catalogue-md border-t-2 border-primary-500 bg-catalogue-bg-elevated py-2 shadow-xl"
@@ -101,7 +115,7 @@ export const DesktopNavDropdown: React.FC<{
                   className={`${rowCls} ${group === i ? "text-primary-500" : ""}`}
                 >
                   <span>{c.label}</span>
-                  <CaretRight size={12} weight="bold" aria-hidden="true" />
+                  <CaretRight size={12} weight="bold" aria-hidden="true" className={flip ? "rotate-180" : ""} />
                 </button>
               ) : (
                 <button
@@ -120,7 +134,7 @@ export const DesktopNavDropdown: React.FC<{
           {sub.length > 0 && (
             <div
               role="menu"
-              className="ms-px min-w-56 overflow-hidden rounded-b-catalogue-md border-t-2 border-primary-500 bg-catalogue-bg-elevated py-2 shadow-xl"
+              className={`min-w-56 overflow-hidden rounded-b-catalogue-md border-t-2 border-primary-500 bg-catalogue-bg-elevated py-2 shadow-xl ${flip ? "me-px" : "ms-px"}`}
             >
               {sub.map((c, j) => (
                 <button key={j} type="button" role="menuitem" onClick={() => go(c)} className={rowCls}>

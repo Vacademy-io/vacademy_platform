@@ -200,7 +200,7 @@ public class CallLifecycleTxOps {
             // The lead must be one of THIS institute's: the id comes from the browser, and
             // the caller is only proven to belong to {@code instituteId}. Same message as a
             // missing lead, so a foreign id reveals nothing about whether it exists.
-            if (!audienceResponseRepo.isLeadInInstitute(lead.getId(), instituteId)) {
+            if (!leadBelongsTo(lead, instituteId)) {
                 throw new VacademyException("Lead not found");
             }
             String phone = firstNonBlank(lead.getParentMobile(),
@@ -222,6 +222,20 @@ public class CallLifecycleTxOps {
                 .findLatestResponseIdForUserInInstitute(instituteId, userId, PageRequest.of(0, 1))
                 .stream().findFirst().orElse(null);
         return new Subject(responseId, userId, userMobileResolver.findMobile(userId).orElse(null));
+    }
+
+    /**
+     * A campaign lead belongs to its campaign's institute; an admission / application lead
+     * (no campaign, audience_id NULL) to the institute of its application stage. Anything
+     * else — another institute's lead, or a campaign-less lead with no application — is not
+     * this institute's.
+     */
+    private boolean leadBelongsTo(AudienceResponse lead, String instituteId) {
+        if (lead.getAudienceId() != null) {
+            return audienceResponseRepo.isLeadInInstitute(lead.getId(), instituteId);
+        }
+        return lead.getApplicantId() != null
+                && audienceResponseRepo.isApplicantLeadInInstitute(lead.getId(), instituteId);
     }
 
     /**
@@ -249,6 +263,21 @@ public class CallLifecycleTxOps {
     public void markFailedAfterDispatch(String callLogId, String reason) {
         TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);
         if (row == null) return;
+        row.setStatus(CallStatus.FAILED.name());
+        row.setTerminationReason(reason);
+        callLogRepo.save(row);
+    }
+
+    /**
+     * FAILED only if the provider was never reached (still INITIATED): for a dispatch that
+     * stopped before the HTTP call (circuit breaker open), whose row would otherwise look
+     * live for the public API's busy / in-progress checks. A row the initiate failure
+     * already marked, or a webhook already moved, is left alone.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markFailedIfNotDispatched(String callLogId, String reason) {
+        TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);
+        if (row == null || !CallStatus.INITIATED.name().equals(row.getStatus())) return;
         row.setStatus(CallStatus.FAILED.name());
         row.setTerminationReason(reason);
         callLogRepo.save(row);

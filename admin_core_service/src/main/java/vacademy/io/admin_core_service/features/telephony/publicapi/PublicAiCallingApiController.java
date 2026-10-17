@@ -114,10 +114,12 @@ public class PublicAiCallingApiController {
     }
 
     // ── Human calls (counsellor click-to-call) ───────────────────────────────────
+    // Own scopes (human_calls:read / human_calls:write), never granted by default: a key
+    // that places AI calls must not be able to ring staff phones or list staff.
 
     @GetMapping("/counsellors")
     public ResponseEntity<Map<String, Object>> counsellors(HttpServletRequest http) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
         return ok(http, HttpStatus.OK, humanCalls.listCounsellors(p));
     }
 
@@ -125,7 +127,7 @@ public class PublicAiCallingApiController {
     public ResponseEntity<Map<String, Object>> createHumanCall(HttpServletRequest http,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody(required = false) HumanCallBody body) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_WRITE);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_WRITE);
         if (body == null) throw AiCallingApiException.invalid("Send a JSON body with counsellor_id and phone_number.");
         Map<String, Object> out = humanCalls.createHumanCall(p, body.toInput(), idempotencyKey);
         boolean replay = Boolean.TRUE.equals(out.get("idempotent_replay"));
@@ -142,28 +144,28 @@ public class PublicAiCallingApiController {
             @RequestParam(value = "created_before", required = false) String createdBefore,
             @RequestParam(value = "limit", required = false, defaultValue = "25") int limit,
             @RequestParam(value = "starting_after", required = false) String startingAfter) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
         return ok(http, HttpStatus.OK, humanCalls.listHumanCalls(p, counsellorId, status, phoneNumber, externalId,
                 instant(createdAfter, "created_after"), instant(createdBefore, "created_before"), limit, startingAfter));
     }
 
     @GetMapping("/human-calls/{id}")
     public ResponseEntity<Map<String, Object>> getHumanCall(HttpServletRequest http, @PathVariable String id) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
         return ok(http, HttpStatus.OK, humanCalls.getHumanCall(p, id));
     }
 
     @PostMapping("/human-calls/{id}/disposition")
     public ResponseEntity<Map<String, Object>> setDisposition(HttpServletRequest http, @PathVariable String id,
             @RequestBody(required = false) DispositionBody body) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_WRITE);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_WRITE);
         if (body == null) throw AiCallingApiException.invalid("Send a JSON body with key.");
         return ok(http, HttpStatus.OK, humanCalls.setDisposition(p, id, body.key, body.notes));
     }
 
     @GetMapping("/dispositions")
     public ResponseEntity<Map<String, Object>> dispositions(HttpServletRequest http) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
+        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
         return ok(http, HttpStatus.OK, humanCalls.listDispositions(p));
     }
 

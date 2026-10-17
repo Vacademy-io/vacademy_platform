@@ -123,8 +123,10 @@ class AiCallingUsageServiceTest {
         assertEquals(4L, human.get("connected"));
         assertEquals(600L, human.get("talk_seconds"));
         assertEquals(10.0, human.get("credits"));
+        // Placed calls only: uploaded recordings (provider MANUAL) are not human calls placed.
         verify(jdbc).queryForList(argThatSqlMentions("l.counsellor_user_id IS NOT NULL",
-                "'voice_call:' || logs.id"), any(MapSqlParameterSource.class));
+                "l.provider_type IN ('PLIVO', 'EXOTEL', 'AIRTEL')", "'voice_call:' || logs.id"),
+                any(MapSqlParameterSource.class));
     }
 
     private static String argThatSqlMentions(String... parts) {

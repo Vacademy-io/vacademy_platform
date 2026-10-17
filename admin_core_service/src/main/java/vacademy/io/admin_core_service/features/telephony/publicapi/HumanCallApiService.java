@@ -38,8 +38,8 @@ import java.util.*;
 /**
  * Human (counsellor) click-to-call through the public API: POST /v1/human-calls rings a
  * registered counsellor's phone and connects them to the number, on the institute's own
- * PRIMARY calling provider, exactly as the dashboard's Call button does
- * ({@link CallOrchestrator#connectForCounsellor}). Also the counsellor list, the call
+ * PRIMARY calling provider, exactly as the dashboard's Call button does (the checks and
+ * the call rows in {@link HumanCallReservation}, then {@link CallOrchestrator#dispatchPrepared}). Also the counsellor list, the call
  * list and read, dispositions.
  *
  * <p>Why a separate resource from /v1/calls: an AI call waits in the AI queue for a line
@@ -66,6 +66,10 @@ public class HumanCallApiService {
     static final String OUT_OF_CREDITS = "This account is out of calling credits. Top up to place calls.";
     static final String NO_MOBILE = "This counsellor has no mobile number on their profile. Their phone rings first, "
             + "so add one to their profile.";
+    static final String BAD_MOBILE = "This counsellor's mobile number is not a valid phone number. Fix it on their "
+            + "profile, with the country code.";
+    static final String BAD_PROVIDER_NUMBER = "The calling provider rejected a phone number on this call. The contact's "
+            + "number was valid, so check the counsellor's mobile number on their profile (with the country code).";
     static final String NO_EXTENSION = "No Airtel extension is mapped to this counsellor. Map one under Settings → Calling.";
     static final String NOT_CONFIGURED = "Calling is not set up for this account. Connect a calling provider under "
             + "Settings → Calling.";
@@ -75,7 +79,9 @@ public class HumanCallApiService {
     private final HumanCallApiCallRepository callRepository;
     private final HumanCallViews views;
     private final HumanCallGuards guards;
+    private final HumanCallReservation reservation;
     private final CallOrchestrator orchestrator;
+    private final CallLifecycleTxOps callTx;
     private final TelephonyConfigCache configCache;
     private final TelephonyProviderRegistry registry;
     private final AuthService authService;
@@ -161,7 +167,9 @@ public class HumanCallApiService {
     String blockedReason(String instituteId, String provider, Counsellor c) {
         if (provider == null) return NOT_CONFIGURED;
         if (ProviderType.EXOTEL.equals(provider) || ProviderType.PLIVO.equals(provider)) {
-            return c.mobile() == null ? NO_MOBILE : null;
+            if (c.mobile() == null) return NO_MOBILE;
+            int digits = c.mobile().replaceAll("[^0-9]", "").length();
+            return digits < 10 || digits > 15 ? BAD_MOBILE : null;
         }
         try {
             Optional<String> reason = registry.originationResolver(provider).callerBlockedReason(instituteId, c.id());
@@ -214,12 +222,15 @@ public class HumanCallApiService {
             throw new AiCallingApiException(HttpStatus.UNPROCESSABLE_ENTITY, "counsellor_cannot_call", blocked,
                     Map.of("counsellor_id", counsellor.id(), "reason", blocked));
         }
-        Instant now = Instant.now();
-        guards.requireCallingHours(instituteId, now);
-        guards.requireCounsellorFree(instituteId, counsellor.id(), provider);
-        guards.requireNumberAllowed(instituteId, v.phone(), now, guards.perNumberDailyCap(instituteId));
-
+        guards.requireCallingHours(instituteId, Instant.now());
         LeadLink lead = linkLead(instituteId, v.phone());
+        try {
+            // Before the reservation: an HTTP read of the wallet must not run under its locks.
+            orchestrator.assertCanDial(instituteId);
+        } catch (RuntimeException e) {
+            throw dialError(e);
+        }
+
         HumanCallApiCall call = HumanCallApiCall.builder()
                 .id(AiCallingApiService.newId(ID_PREFIX))
                 .instituteId(instituteId)
@@ -238,8 +249,17 @@ public class HumanCallApiService {
                 .webhookAttempts(0)
                 .analysisWebhookAttempts(0)
                 .build();
+        String pseudoUser = AiCallingApiService.contactUserId(instituteId, v.phone());
+        CallLifecycleTxOps.DialTarget target = lead != null
+                ? new CallLifecycleTxOps.DialTarget(lead.responseId(),
+                        lead.userId() != null ? lead.userId() : pseudoUser, v.phone(), null, null)
+                : new CallLifecycleTxOps.DialTarget(null, pseudoUser, v.phone(),
+                        CallSubjectType.API_CONTACT.name(), call.getId());
+
+        HumanCallReservation.Reserved reserved;
         try {
-            call = detach(callRepository.saveAndFlush(call));
+            reserved = reservation.reserve(call, provider, guards.perNumberDailyCap(instituteId), target,
+                    lead == null ? null : lead.responseId());
         } catch (DataIntegrityViolationException race) {
             // A concurrent request with the same Idempotency-Key won the insert.
             if (idem != null) {
@@ -247,24 +267,28 @@ public class HumanCallApiService {
                         .map(prior -> replay(prior, in)).orElseThrow(() -> race);
             }
             throw race;
-        }
-
-        String pseudoUser = AiCallingApiService.contactUserId(instituteId, v.phone());
-        CallLifecycleTxOps.DialTarget target = lead != null
-                ? new CallLifecycleTxOps.DialTarget(lead.responseId(),
-                        lead.userId() != null ? lead.userId() : pseudoUser, v.phone(), null, null)
-                : new CallLifecycleTxOps.DialTarget(null, pseudoUser, v.phone(),
-                        CallSubjectType.API_CONTACT.name(), call.getId());
-        ConnectCallResponseDTO dialed;
-        try {
-            dialed = orchestrator.connectForCounsellor(instituteId, counsellor.id(), target);
+        } catch (AiCallingApiException e) {
+            throw e;
         } catch (RuntimeException e) {
-            // Nothing is ringing (or the provider refused it): drop the row so a retry with
-            // the same Idempotency-Key places the call instead of replaying a dead one.
+            // Origination refused (no mobile, no number...): the whole reservation rolled back.
+            throw dialError(e);
+        }
+        if (reserved.prior() != null) return replay(reserved.prior(), in);
+        detach(reserved.call());
+
+        try {
+            orchestrator.dispatchPrepared(reserved.prepared());
+        } catch (RuntimeException e) {
+            // Nothing is ringing: close the call row if the provider was never reached, and
+            // drop the API row so a retry with the same Idempotency-Key places the call.
+            try {
+                callTx.markFailedIfNotDispatched(reserved.prepared().callLogId(), "dispatch_failed");
+            } catch (RuntimeException ignored) {
+                log.warn("human-call-api: could not close call log {}", reserved.prepared().callLogId());
+            }
             safeDelete(call);
             throw dialError(e);
         }
-        callRepository.setDialed(call.getId(), dialed.getCallLogId(), provider, lead == null ? null : lead.responseId());
         return views.view(callRepository.findById(call.getId()).orElse(call));
     }
 
@@ -290,6 +314,18 @@ public class HumanCallApiService {
             if (lower.contains("extension")) {
                 return new AiCallingApiException(HttpStatus.UNPROCESSABLE_ENTITY, "counsellor_cannot_call", NO_EXTENSION,
                         Map.of("reason", NO_EXTENSION));
+            }
+            // The contact's number, refused by our own pre-dial check (CallLifecycleTxOps).
+            if (lower.contains("no phone on file") || lower.contains("phone number format not supported")) {
+                return new AiCallingApiException(HttpStatus.UNPROCESSABLE_ENTITY, "invalid_request",
+                        "phone_number is not a number this account's calling provider can dial.",
+                        Map.of("errors", List.of(err("phone_number", "Not a dialable number."))));
+            }
+            // The provider refused a number's format. The contact's number reached it as
+            // validated E.164, so the one left to blame is the counsellor's mobile.
+            if (lower.contains("format rejected")) {
+                return new AiCallingApiException(HttpStatus.UNPROCESSABLE_ENTITY, "counsellor_cannot_call",
+                        BAD_PROVIDER_NUMBER, Map.of("reason", BAD_PROVIDER_NUMBER));
             }
             if (lower.contains("number is configured") || lower.contains("calling number")) {
                 return new AiCallingApiException(HttpStatus.UNPROCESSABLE_ENTITY, "telephony_not_configured",
@@ -361,31 +397,20 @@ public class HumanCallApiService {
                 .orElseThrow(() -> AiCallingApiException.notFound("Human call " + id));
     }
 
-    /** Public status → the telephony_call_log statuses behind it. */
-    static final Map<String, List<String>> STATUS_FILTER = Map.of(
-            "queued", List.of("INITIATED", "QUEUED"),
-            "ringing_counsellor", List.of("COUNSELLOR_RINGING"),
-            "connecting", List.of("COUNSELLOR_ANSWERED"),
-            "in_progress", List.of("IN_PROGRESS"),
-            "completed", List.of("COMPLETED"),
-            "no_answer", List.of("NO_ANSWER"),
-            "busy", List.of("BUSY"),
-            "failed", List.of("FAILED"),
-            "canceled", List.of("CANCELLED"));
+    /** The statuses GET /human-calls?status= accepts: exactly those the object reports. */
+    static final Set<String> STATUSES = Set.of("queued", "ringing_counsellor", "connecting", "in_progress",
+            "completed", "no_answer", "busy", "failed", "canceled");
 
     public Map<String, Object> listHumanCalls(AiCallingApiAuth.Principal p, String counsellorId, String status,
                                               String phoneNumber, String externalId, Instant createdAfter,
                                               Instant createdBefore, int limit, String startingAfter) {
         int lim = Math.max(1, Math.min(100, limit <= 0 ? 25 : limit));
-        String statuses = null;
-        boolean orNotDialed = false;
+        String publicStatus = null;
         if (status != null && !status.isBlank()) {
-            List<String> s = STATUS_FILTER.get(status.trim().toLowerCase(Locale.ROOT));
-            if (s == null) {
-                throw AiCallingApiException.invalid("status must be one of " + new TreeSet<>(STATUS_FILTER.keySet()) + ".");
+            publicStatus = status.trim().toLowerCase(Locale.ROOT);
+            if (!STATUSES.contains(publicStatus)) {
+                throw AiCallingApiException.invalid("status must be one of " + new TreeSet<>(STATUSES) + ".");
             }
-            statuses = String.join(",", s);
-            orNotDialed = "queued".equals(status.trim().toLowerCase(Locale.ROOT));
         }
         String phone = null;
         if (phoneNumber != null && !phoneNumber.isBlank()) {
@@ -400,8 +425,14 @@ public class HumanCallApiService {
             beforeTs = cursor.getCreatedAt();
             beforeId = cursor.getId();
         }
+        // The same cut-offs HumanCallViews.state() applies, so the filter matches what each
+        // returned object says (telephony_call_log.created_at is naive UTC).
+        Instant now = Instant.now();
         List<HumanCallApiCall> rows = callRepository.page(p.instituteId(), blankToNull(counsellorId), phone,
-                blankToNull(externalId), createdAfter, createdBefore, statuses, orNotDialed, beforeTs, beforeId, lim + 1);
+                blankToNull(externalId), createdAfter, createdBefore, publicStatus,
+                now.minus(HumanCallViews.CREATING_GRACE),
+                naiveUtc(now.minus(HumanCallViews.STUCK_AFTER)), naiveUtc(now.minus(HumanCallViews.STUCK_AFTER_AIRTEL)),
+                beforeTs, beforeId, lim + 1);
         boolean hasMore = rows.size() > lim;
         List<Map<String, Object>> data = new ArrayList<>();
         for (HumanCallApiCall c : rows.subList(0, Math.min(lim, rows.size()))) data.add(views.view(c));
@@ -611,6 +642,10 @@ public class HumanCallApiService {
         m.put("field", field);
         m.put("message", message);
         return m;
+    }
+
+    private static java.sql.Timestamp naiveUtc(Instant i) {
+        return java.sql.Timestamp.valueOf(java.time.LocalDateTime.ofInstant(i, java.time.ZoneOffset.UTC));
     }
 
     static String blankToNull(String s) {

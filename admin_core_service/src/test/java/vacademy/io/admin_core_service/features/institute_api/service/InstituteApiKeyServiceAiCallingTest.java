@@ -70,6 +70,17 @@ class InstituteApiKeyServiceAiCallingTest {
     }
 
     @Test
+    void humanCallScopesAreOnlyGrantedWhenNamed() {
+        // A default key (and every key issued before v1.2) cannot ring staff or list them.
+        InstituteApiKey row = issue(List.of("calls:read", "calls:write", "webhooks:manage",
+                "human_calls:read", "human_calls:write"));
+        assertArrayEquals(new String[]{"calls:read", "calls:write", "webhooks:manage", "human_calls:read",
+                "human_calls:write"}, row.getScopes());
+        assertFalse(InstituteApiKeyService.AI_CALLING_SCOPES.contains("human_calls:write"));
+        assertFalse(InstituteApiKeyService.AI_CALLING_SCOPES.contains("human_calls:read"));
+    }
+
+    @Test
     void scopesCanBeNarrowed() {
         InstituteApiKey row = issue(List.of("calls:read"));
         assertArrayEquals(new String[]{"calls:read"}, row.getScopes());

@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -46,6 +47,7 @@ class CallLifecycleLeadOwnershipTest {
         when(resolver.resolve(any())).thenReturn(OriginationPlan.builder().from("+919800000001").callerId("0801").build());
         AudienceResponse lead = new AudienceResponse();
         lead.setId("lead-1");
+        lead.setAudienceId("campaign-1");
         lead.setUserId("lead-user");
         lead.setParentMobile("+919876543210");
         when(leads.findById("lead-1")).thenReturn(Optional.of(lead));
@@ -73,6 +75,60 @@ class CallLifecycleLeadOwnershipTest {
                 () -> tx.prepareAndPersist("inst-1", req(), counsellor()));
         assertEquals("Lead not found", e.getMessage());
         verifyNoInteractions(logs, resolver);
+    }
+
+    private AudienceResponse admissionLead(String applicantId) {
+        // Admission / application leads have no campaign (audience_id NULL).
+        AudienceResponse lead = new AudienceResponse();
+        lead.setId("lead-2");
+        lead.setUserId("parent-user");
+        lead.setParentMobile("+919811111111");
+        lead.setApplicantId(applicantId);
+        when(leads.findById("lead-2")).thenReturn(Optional.of(lead));
+        return lead;
+    }
+
+    private static ConnectCallRequestDTO reqFor(String responseId) {
+        ConnectCallRequestDTO r = new ConnectCallRequestDTO();
+        r.setInstituteId("inst-1");
+        r.setResponseId(responseId);
+        return r;
+    }
+
+    @Test
+    void anAdmissionLeadOfThisInstituteIsDialled() {
+        admissionLead("7b1d0c2e-1111-2222-3333-444455556666");
+        when(leads.isApplicantLeadInInstitute("lead-2", "inst-1")).thenReturn(true);
+        CallOrchestrator.Prepared p = tx.prepareAndPersist("inst-1", reqFor("lead-2"), counsellor());
+        assertEquals("lead-2", p.responseId());
+        assertEquals("+919811111111", p.bridge().getTo());
+        verify(leads, never()).isLeadInInstitute(anyString(), anyString());
+    }
+
+    @Test
+    void anotherInstitutesAdmissionLeadIsNotFound() {
+        admissionLead("7b1d0c2e-1111-2222-3333-444455556666");
+        when(leads.isApplicantLeadInInstitute("lead-2", "inst-1")).thenReturn(false);
+        VacademyException e = assertThrows(VacademyException.class,
+                () -> tx.prepareAndPersist("inst-1", reqFor("lead-2"), counsellor()));
+        assertEquals("Lead not found", e.getMessage());
+        verifyNoInteractions(logs, resolver);
+    }
+
+    @Test
+    void aCampaignLessLeadWithNoApplicationIsNotFound() {
+        admissionLead(null);
+        assertThrows(VacademyException.class, () -> tx.prepareAndPersist("inst-1", reqFor("lead-2"), counsellor()));
+        verify(leads, never()).isApplicantLeadInInstitute(anyString(), anyString());
+        verifyNoInteractions(logs, resolver);
+    }
+
+    @Test
+    void aCampaignLeadIsNeverAcceptedThroughAnApplication() {
+        // Only the campaign decides for a lead that has one, even if an application says otherwise.
+        when(leads.isLeadInInstitute("lead-1", "inst-1")).thenReturn(false);
+        when(leads.isApplicantLeadInInstitute("lead-1", "inst-1")).thenReturn(true);
+        assertThrows(VacademyException.class, () -> tx.prepareAndPersist("inst-1", req(), counsellor()));
     }
 
     @Test

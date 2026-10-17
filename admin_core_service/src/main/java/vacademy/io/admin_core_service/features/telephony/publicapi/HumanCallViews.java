@@ -63,6 +63,11 @@ public class HumanCallViews {
     static final Duration RECORDING_WAIT = Duration.ofMinutes(10);
     static final Duration RECORDING_WAIT_AIRTEL = Duration.ofMinutes(60);
     static final String NO_RESULT = "No final status was received for this call.";
+    /**
+     * ai_service/app/services/call_intelligence_poller.py MAX_ATTEMPTS: a FAILED
+     * call_intelligence row with fewer claims than this is re-armed (after 30 minutes).
+     */
+    static final int CI_MAX_ATTEMPTS = 4;
     static final String NOT_PLACED = "The call could not be placed.";
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -110,8 +115,7 @@ public class HumanCallViews {
             case "CANCELLED" -> new State("canceled", true, null, null, l, terminalSeenAt);
             default -> {
                 Instant dialed = l.getCreatedAt() == null ? null : l.getCreatedAt().toInstant();
-                Duration stuck = ProviderType.AIRTEL.equals(l.getProviderType()) ? STUCK_AFTER_AIRTEL : STUCK_AFTER;
-                if (dialed != null && dialed.plus(stuck).isBefore(now)) {
+                if (dialed != null && dialed.plus(stuckAfter(l.getProviderType())).isBefore(now)) {
                     yield new State("failed", true, NO_RESULT, null, l, terminalSeenAt);
                 }
                 yield new State(liveStatus(ls), false, null, null, l, terminalSeenAt);
@@ -119,13 +123,29 @@ public class HumanCallViews {
         };
     }
 
+    /**
+     * telephony_call_log status → public status, for a call still running. Anything else
+     * not terminal (INITIATED, QUEUED, unknown) is "queued". HumanCallApiCallRepository.page
+     * repeats this mapping in SQL for the status filter; HumanCallViewsTest checks the two agree.
+     */
+    static final Map<String, String> LIVE_STATUS = Map.of(
+            "COUNSELLOR_RINGING", "ringing_counsellor",
+            "COUNSELLOR_ANSWERED", "connecting",
+            "IN_PROGRESS", "in_progress");
+    /** telephony_call_log terminal status → public status (same SQL mirror as above). */
+    static final Map<String, String> TERMINAL_STATUS = Map.of(
+            "COMPLETED", "completed",
+            "NO_ANSWER", "no_answer",
+            "BUSY", "busy",
+            "FAILED", "failed",
+            "CANCELLED", "canceled");
+
     static String liveStatus(String callLogStatus) {
-        return switch (callLogStatus == null ? "" : callLogStatus) {
-            case "COUNSELLOR_RINGING" -> "ringing_counsellor";
-            case "COUNSELLOR_ANSWERED" -> "connecting";
-            case "IN_PROGRESS" -> "in_progress";
-            default -> "queued";
-        };
+        return LIVE_STATUS.getOrDefault(callLogStatus == null ? "" : callLogStatus, "queued");
+    }
+
+    static Duration stuckAfter(String providerType) {
+        return ProviderType.AIRTEL.equals(providerType) ? STUCK_AFTER_AIRTEL : STUCK_AFTER;
     }
 
     /** A connected call is final once its recording is in, recording is off, or the wait ran out. */
@@ -353,9 +373,18 @@ public class HumanCallViews {
                     a.put("completed_at", ci.getCompletedAt() == null ? null : ci.getCompletedAt().toInstant().toString());
                 }
                 case "FAILED", "SKIPPED" -> {
-                    a.put("status", "failed");
-                    a.put("reason", ci.getSkipReason() != null ? ci.getSkipReason().toLowerCase(Locale.ROOT)
-                            : "analysis_error");
+                    // ai_service re-arms a FAILED row until it has been claimed
+                    // CI_MAX_ATTEMPTS times, so until then it is a retry in waiting, not a
+                    // verdict: reporting it failed fired analysis_ready, and the analysis
+                    // then completed (and was billed) with no event. SKIPPED is final.
+                    int attempts = ci.getAttempts() == null ? 0 : ci.getAttempts();
+                    if ("FAILED".equals(st) && attempts < CI_MAX_ATTEMPTS) {
+                        a.put("status", "pending");
+                    } else {
+                        a.put("status", "failed");
+                        a.put("reason", ci.getSkipReason() != null ? ci.getSkipReason().toLowerCase(Locale.ROOT)
+                                : "analysis_error");
+                    }
                 }
                 default -> a.put("status", "pending");
             }

@@ -108,6 +108,35 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId);
 
         /**
+         * Does this campaign-less lead belong to this institute through its application?
+         * Admission / application leads are created with audience_id NULL (ApplicantService,
+         * AdmissionService), so {@link #isLeadInInstitute} cannot place them; their institute
+         * is the one owning the applicant's current application stage
+         * (audience_response.applicant_id → applicant.application_stage_id →
+         * application_stage.institute_id, the same rule ApplicantRepository filters by).
+         * applicant / application_stage ids are UUIDs and the referencing columns VARCHAR: a
+         * value that is not a UUID joins nothing instead of failing the cast, and a UUID one
+         * uses the primary keys.
+         */
+        @Query(value = """
+                SELECT COUNT(*) > 0
+                FROM audience_response ar
+                JOIN applicant ap ON ap.id = CASE
+                        WHEN length(ar.applicant_id) = 36
+                         AND ar.applicant_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ar.applicant_id AS uuid) END
+                JOIN application_stage s ON s.id = CASE
+                        WHEN length(ap.application_stage_id) = 36
+                         AND ap.application_stage_id ~* '^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$'
+                        THEN CAST(ap.application_stage_id AS uuid) END
+                WHERE ar.id = :responseId
+                  AND ar.audience_id IS NULL
+                  AND s.institute_id = :instituteId
+                """, nativeQuery = true)
+        boolean isApplicantLeadInInstitute(@Param("responseId") String responseId,
+                        @Param("instituteId") String instituteId);
+
+        /**
          * Up to two live leads of this institute whose {@code parent_mobile} matches on the
          * last 10 digits — {@code [audience_response.id, user_id]}. Two rows means the
          * number is ambiguous: the public human-call API links a call to a lead only when

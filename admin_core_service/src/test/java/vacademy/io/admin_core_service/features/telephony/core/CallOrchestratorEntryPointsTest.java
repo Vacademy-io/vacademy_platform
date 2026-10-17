@@ -31,7 +31,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * The dashboard's click-to-call and the public API's counsellor call share one dial path.
- * The refactor that added {@link CallOrchestrator#connectForCounsellor} must leave the
+ * The refactor that added the API path ({@link CallOrchestrator#assertCanDial}, {@link CallOrchestrator#dispatchPrepared}) must leave the
  * dashboard's {@link CallOrchestrator#connect} exactly as it was: the same INITIATED row
  * (no subject type), the same origination context, the same bridge request, the same
  * response. The API path differs only in who the counsellor is and the subject it files.
@@ -47,9 +47,10 @@ class CallOrchestratorEntryPointsTest {
     private final OutboundCallInitiator initiator = mock(OutboundCallInitiator.class);
     private final CreditClient credits = mock(CreditClient.class);
     private final CallOrchestrator orchestrator = new CallOrchestrator();
+    private final CallLifecycleTxOps tx;
 
     CallOrchestratorEntryPointsTest() {
-        CallLifecycleTxOps tx = new CallLifecycleTxOps();
+        tx = new CallLifecycleTxOps();
         ReflectionTestUtils.setField(tx, "callLogRepo", logs);
         ReflectionTestUtils.setField(tx, "audienceResponseRepo", leads);
         ReflectionTestUtils.setField(tx, "registry", registry);
@@ -82,6 +83,7 @@ class CallOrchestratorEntryPointsTest {
 
         AudienceResponse lead = new AudienceResponse();
         lead.setId("resp-1");
+        lead.setAudienceId("campaign-1");
         lead.setUserId("lead-user");
         lead.setParentMobile("+919876543210");
         when(leads.findById("resp-1")).thenReturn(Optional.of(lead));
@@ -142,9 +144,16 @@ class CallOrchestratorEntryPointsTest {
         assertTrue(resp.isRealtimeEvents());
     }
 
+    /** The API's sequence: credit gate, reserve (the tx part), then dispatch outside it. */
+    private ConnectCallResponseDTO apiCall(String counsellor, CallLifecycleTxOps.DialTarget target) {
+        orchestrator.assertCanDial("inst-1");
+        CallOrchestrator.Prepared p = tx.prepareAndPersistForCounsellor("inst-1", counsellor, target);
+        return orchestrator.dispatchPrepared(p);
+    }
+
     @Test
     void theApiPathNamesTheCounsellorAndFilesAnApiContact() {
-        ConnectCallResponseDTO resp = orchestrator.connectForCounsellor("inst-1", "c-7",
+        ConnectCallResponseDTO resp = apiCall("c-7",
                 new CallLifecycleTxOps.DialTarget(null, "pseudo-user", "+919876543210", "API_CONTACT", "hcall_1"));
         TelephonyCallLog row = insertedRow();
         assertEquals("c-7", row.getCounsellorUserId());
@@ -158,14 +167,41 @@ class CallOrchestratorEntryPointsTest {
     }
 
     @Test
+    void theProviderDialIsNeverInsideATransaction() throws Exception {
+        // The API reserves the call under advisory locks in a transaction; the HTTP dial must
+        // run after that commits, so neither the orchestrator's dial nor its gate is transactional.
+        for (String name : new String[]{"dispatchPrepared", "assertCanDial", "connect"}) {
+            for (java.lang.reflect.Method m : CallOrchestrator.class.getMethods()) {
+                if (m.getName().equals(name)) {
+                    assertNull(m.getAnnotation(org.springframework.transaction.annotation.Transactional.class), name);
+                }
+            }
+        }
+        assertNull(CallOrchestrator.class.getAnnotation(org.springframework.transaction.annotation.Transactional.class));
+        assertNotNull(CallLifecycleTxOps.class.getMethod("prepareAndPersistForCounsellor", String.class, String.class,
+                CallLifecycleTxOps.DialTarget.class).getAnnotation(org.springframework.transaction.annotation.Transactional.class));
+    }
+
+    @Test
+    void aDispatchStoppedBeforeTheProviderClosesItsRow() {
+        TelephonyCallLog initiated = TelephonyCallLog.builder().id("log-x").status("INITIATED").build();
+        when(logs.findById("log-x")).thenReturn(Optional.of(initiated));
+        tx.markFailedIfNotDispatched("log-x", "dispatch_failed");
+        assertEquals("FAILED", initiated.getStatus());
+        TelephonyCallLog answered = TelephonyCallLog.builder().id("log-y").status("IN_PROGRESS").build();
+        when(logs.findById("log-y")).thenReturn(Optional.of(answered));
+        tx.markFailedIfNotDispatched("log-y", "dispatch_failed");
+        assertEquals("IN_PROGRESS", answered.getStatus());
+    }
+
+    @Test
     void bothPathsShareTheVoiceCreditGate() {
         when(credits.readBalance("inst-1")).thenReturn(Optional.of(0.0));
         ConnectCallRequestDTO req = new ConnectCallRequestDTO();
         req.setInstituteId("inst-1");
         req.setResponseId("resp-1");
         assertThrows(ConflictException.class, () -> orchestrator.connect(req, counsellor()));
-        assertThrows(ConflictException.class, () -> orchestrator.connectForCounsellor("inst-1", "c-7",
-                new CallLifecycleTxOps.DialTarget(null, "u", "+919876543210", "API_CONTACT", "hcall_1")));
+        assertThrows(ConflictException.class, () -> orchestrator.assertCanDial("inst-1"));
         verifyNoInteractions(initiator);
         verify(logs, never()).save(any());
     }

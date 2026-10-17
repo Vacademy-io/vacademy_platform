@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class HumanCallRoutesTest {
 
     private static final AiCallingApiAuth.Principal P =
-            new AiCallingApiAuth.Principal("inst-1", "key-1", List.of("calls:read", "calls:write"));
+            new AiCallingApiAuth.Principal("inst-1", "key-1", List.of("human_calls:read", "human_calls:write"));
 
     private final List<String> scopes = new ArrayList<>();
     private final AiCallingApiAuth auth = mock(AiCallingApiAuth.class);
@@ -56,7 +56,9 @@ class HumanCallRoutesTest {
         controller.setDisposition(r, "hcall_1", d);
         controller.dispositions(r);
         controller.counsellors(r);
-        assertEquals(List.of("calls:write", "calls:read", "calls:read", "calls:write", "calls:read", "calls:read"), scopes);
+        // Human calls have their own scopes: calls:read / calls:write alone never reach them.
+        assertEquals(List.of("human_calls:write", "human_calls:read", "human_calls:read", "human_calls:write",
+                "human_calls:read", "human_calls:read"), scopes);
     }
 
     @Test
@@ -68,7 +70,7 @@ class HumanCallRoutesTest {
 
     @Test
     void aMissingScopeStopsTheRequestBeforeTheService() {
-        when(auth.authenticate(any(), eq("calls:write"))).thenThrow(new AiCallingApiException(HttpStatus.FORBIDDEN,
+        when(auth.authenticate(any(), eq("human_calls:write"))).thenThrow(new AiCallingApiException(HttpStatus.FORBIDDEN,
                 "insufficient_scope", "no"));
         assertThrows(AiCallingApiException.class, () -> controller.createHumanCall(new MockHttpServletRequest(), null,
                 new PublicAiCallingApiController.HumanCallBody()));

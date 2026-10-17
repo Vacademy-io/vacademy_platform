@@ -200,7 +200,10 @@ public class AiCallingUsageService {
 
     /**
      * Human (counsellor) calls in the same range and day cut: source=api counts the calls
-     * placed through POST /v1/human-calls, source=all every outbound counsellor call. Only
+     * placed through POST /v1/human-calls, source=all every outbound counsellor call placed
+     * on a telephony provider (PLIVO, EXOTEL, AIRTEL: the dashboard's Call button, the API,
+     * and Airtel calls imported from the counsellor's extension). MANUAL rows are uploads
+     * of calls made off the platform, never placed here, so they are not counted. Only
      * Vacademy Voice (PLIVO) talk time is charged to the wallet ("voice_call:{log}"); calls
      * on the institute's own Exotel/Airtel account count with 0 credits.
      */
@@ -214,7 +217,7 @@ public class AiCallingUsageService {
                      WHERE l.institute_id = :i
                        AND l.created_at >= :start AND l.created_at < :end
                        AND l.direction = 'OUTBOUND' AND l.counsellor_user_id IS NOT NULL
-                       AND l.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')
+                       AND l.provider_type IN ('PLIVO', 'EXOTEL', 'AIRTEL')
                        AND (:apiOnly = FALSE OR EXISTS (SELECT 1 FROM human_call_api_call h WHERE h.call_log_id = l.id))
                 ), cost AS (
                     SELECT logs.id AS log_id, SUM(ABS(t.amount)) AS credits

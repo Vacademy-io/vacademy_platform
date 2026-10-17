@@ -38,7 +38,9 @@ class HumanCallApiServiceTest {
     private HumanCallApiCallRepository calls;
     private HumanCallViews views;
     private HumanCallGuards guards;
+    private HumanCallReservation reservation;
     private CallOrchestrator orchestrator;
+    private CallLifecycleTxOps callTx;
     private TelephonyConfigCache cache;
     private TelephonyProviderRegistry registry;
     private AuthService auth;
@@ -51,19 +53,22 @@ class HumanCallApiServiceTest {
         calls = mock(HumanCallApiCallRepository.class);
         views = mock(HumanCallViews.class);
         guards = mock(HumanCallGuards.class);
+        reservation = mock(HumanCallReservation.class);
         orchestrator = mock(CallOrchestrator.class);
+        callTx = mock(CallLifecycleTxOps.class);
         cache = mock(TelephonyConfigCache.class);
         registry = mock(TelephonyProviderRegistry.class);
         auth = mock(AuthService.class);
         leads = mock(AudienceResponseRepository.class);
         dispositions = mock(CallDispositionService.class);
-        service = new HumanCallApiService(calls, views, guards, orchestrator, cache, registry, auth, leads,
-                dispositions, mock(LeadStatusRepository.class));
+        service = new HumanCallApiService(calls, views, guards, reservation, orchestrator, callTx, cache, registry,
+                auth, leads, dispositions, mock(LeadStatusRepository.class));
         provider("EXOTEL");
         when(auth.getActiveUsersByRoles(eq("inst-1"), anyList())).thenReturn(List.of(
                 user("c-1", "Priya Sharma", "priya@school.in", "+919800000001"),
                 user("c-2", "No Phone", "nophone@school.in", null)));
-        when(calls.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(reservation.reserve(any(), anyString(), anyInt(), any(), any())).thenAnswer(i -> new HumanCallReservation.Reserved(
+                i.getArgument(0), prepared("log-1"), null));
         when(calls.findById(anyString())).thenReturn(Optional.empty());
         when(views.view(any(HumanCallApiCall.class))).thenAnswer(i -> new LinkedHashMap<>(Map.of("id",
                 ((HumanCallApiCall) i.getArgument(0)).getId())));
@@ -71,7 +76,23 @@ class HumanCallApiServiceTest {
         when(leads.findUpToTwoLiveLeadsByInstituteAndPhoneLast10(anyString(), anyString())).thenReturn(List.of());
         when(auth.getUserByMobile(anyString())).thenReturn(Optional.empty());
         ConnectCallResponseDTO dialed = ConnectCallResponseDTO.builder().callLogId("log-1").status("QUEUED").build();
-        when(orchestrator.connectForCounsellor(anyString(), anyString(), any())).thenReturn(dialed);
+        when(orchestrator.dispatchPrepared(any())).thenReturn(dialed);
+    }
+
+    private static CallOrchestrator.Prepared prepared(String callLogId) {
+        return new CallOrchestrator.Prepared(callLogId, "EXOTEL", null, null, null, null);
+    }
+
+    private HumanCallApiCall reservedRow() {
+        ArgumentCaptor<HumanCallApiCall> row = ArgumentCaptor.forClass(HumanCallApiCall.class);
+        verify(reservation).reserve(row.capture(), anyString(), anyInt(), any(), any());
+        return row.getValue();
+    }
+
+    private CallLifecycleTxOps.DialTarget reservedTarget() {
+        ArgumentCaptor<CallLifecycleTxOps.DialTarget> t = ArgumentCaptor.forClass(CallLifecycleTxOps.DialTarget.class);
+        verify(reservation).reserve(any(), anyString(), anyInt(), t.capture(), any());
+        return t.getValue();
     }
 
     private void provider(String type) {
@@ -132,8 +153,7 @@ class HumanCallApiServiceTest {
         AiCallingApiException e = apiError(() -> service.createHumanCall(P, input("c-9", "+919876543210"), null));
         assertEquals(HttpStatus.NOT_FOUND, e.getStatus());
         assertEquals("counsellor_not_found", e.getCode());
-        verifyNoInteractions(orchestrator);
-        verify(calls, never()).saveAndFlush(any());
+        verifyNoInteractions(orchestrator, reservation);
     }
 
     @Test
@@ -197,15 +217,37 @@ class HumanCallApiServiceTest {
                 .when(guards).requireCallingHours(eq("inst-1"), any());
         AiCallingApiException e = apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), null));
         assertEquals("outside_calling_hours", e.getCode());
-        verify(calls, never()).saveAndFlush(any());
-        verifyNoInteractions(orchestrator);
+        verifyNoInteractions(orchestrator, reservation);
     }
 
     @Test
-    void theNumberGuardsRunWithTheAiPerNumberCap() {
+    void theCallIsReservedThenDialledOutsideTheReservation() {
         service.createHumanCall(P, input("c-1", "+919876543210"), null);
-        verify(guards).requireCounsellorFree("inst-1", "c-1", "EXOTEL");
-        verify(guards).requireNumberAllowed(eq("inst-1"), eq("+919876543210"), any(), eq(3));
+        var order = inOrder(orchestrator, reservation);
+        order.verify(orchestrator).assertCanDial("inst-1");
+        order.verify(reservation).reserve(any(), eq("EXOTEL"), eq(3), any(), isNull());
+        order.verify(orchestrator).dispatchPrepared(any());
+        // The live-call guards run inside the reservation (under its locks), not before it.
+        verify(guards, never()).requireCounsellorFree(any(), any(), any());
+        verify(guards, never()).requireNumberAllowed(any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void aGuardRefusalInTheReservationDialsNothing() {
+        when(reservation.reserve(any(), anyString(), anyInt(), any(), any()))
+                .thenThrow(new AiCallingApiException(HttpStatus.CONFLICT, "counsellor_busy", "busy"));
+        assertEquals("counsellor_busy",
+                apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), null)).getCode());
+        verify(orchestrator, never()).dispatchPrepared(any());
+    }
+
+    @Test
+    void aRetryThatWaitedOnTheLockGetsTheFirstCall() {
+        when(reservation.reserve(any(), anyString(), anyInt(), any(), any())).thenReturn(
+                new HumanCallReservation.Reserved(null, null, prior("log-1", Instant.now().minusSeconds(1))));
+        Map<String, Object> out = service.createHumanCall(P, input("c-1", "+919876543210"), "k-1");
+        assertEquals(true, out.get("idempotent_replay"));
+        verify(orchestrator, never()).dispatchPrepared(any());
     }
 
     // ── Create, lead link, dial ──────────────────────────────────────────────────
@@ -213,17 +255,15 @@ class HumanCallApiServiceTest {
     @Test
     void anUnknownNumberIsDialledAsAnApiContact() {
         service.createHumanCall(P, input("c-1", "+919876543210"), null);
-        ArgumentCaptor<HumanCallApiCall> row = ArgumentCaptor.forClass(HumanCallApiCall.class);
-        verify(calls).saveAndFlush(row.capture());
-        assertTrue(row.getValue().getId().matches("^hcall_[0-9a-f]{24}$"));
-        assertEquals("Priya Sharma", row.getValue().getCounsellorName());
-        ArgumentCaptor<CallLifecycleTxOps.DialTarget> target = ArgumentCaptor.forClass(CallLifecycleTxOps.DialTarget.class);
-        verify(orchestrator).connectForCounsellor(eq("inst-1"), eq("c-1"), target.capture());
-        assertEquals("API_CONTACT", target.getValue().subjectType());
-        assertEquals(row.getValue().getId(), target.getValue().subjectId());
-        assertNull(target.getValue().responseId());
-        assertEquals(AiCallingApiService.contactUserId("inst-1", "+919876543210"), target.getValue().userId());
-        verify(calls).setDialed(row.getValue().getId(), "log-1", "EXOTEL", null);
+        HumanCallApiCall row = reservedRow();
+        assertTrue(row.getId().matches("^hcall_[0-9a-f]{24}$"));
+        assertEquals("Priya Sharma", row.getCounsellorName());
+        assertEquals("c-1", row.getCounsellorUserId());
+        CallLifecycleTxOps.DialTarget target = reservedTarget();
+        assertEquals("API_CONTACT", target.subjectType());
+        assertEquals(row.getId(), target.subjectId());
+        assertNull(target.responseId());
+        assertEquals(AiCallingApiService.contactUserId("inst-1", "+919876543210"), target.userId());
     }
 
     @Test
@@ -231,12 +271,11 @@ class HumanCallApiServiceTest {
         when(leads.findUpToTwoLiveLeadsByInstituteAndPhoneLast10("inst-1", "9876543210"))
                 .thenReturn(List.<Object[]>of(new Object[]{"resp-1", "lead-user-1"}));
         service.createHumanCall(P, input("c-1", "+919876543210"), null);
-        ArgumentCaptor<CallLifecycleTxOps.DialTarget> target = ArgumentCaptor.forClass(CallLifecycleTxOps.DialTarget.class);
-        verify(orchestrator).connectForCounsellor(eq("inst-1"), eq("c-1"), target.capture());
-        assertEquals("resp-1", target.getValue().responseId());
-        assertEquals("lead-user-1", target.getValue().userId());
-        assertNull(target.getValue().subjectType(), "a lead call is stored like the dashboard's");
-        verify(calls).setDialed(anyString(), eq("log-1"), eq("EXOTEL"), eq("resp-1"));
+        CallLifecycleTxOps.DialTarget target = reservedTarget();
+        assertEquals("resp-1", target.responseId());
+        assertEquals("lead-user-1", target.userId());
+        assertNull(target.subjectType(), "a lead call is stored like the dashboard's");
+        verify(reservation).reserve(any(), anyString(), anyInt(), any(), eq("resp-1"));
     }
 
     @Test
@@ -261,13 +300,32 @@ class HumanCallApiServiceTest {
     }
 
     @Test
-    void aFailedDialLeavesNoRowAndMapsTheError() {
-        when(orchestrator.connectForCounsellor(anyString(), anyString(), any()))
-                .thenThrow(new ConflictException("Your institute has run out of AI credits. Please top up to continue calling."));
+    void outOfCreditsIsRefusedBeforeAnythingIsReserved() {
+        doThrow(new ConflictException("Your institute has run out of AI credits. Please top up to continue calling."))
+                .when(orchestrator).assertCanDial("inst-1");
         AiCallingApiException e = apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), "k-1"));
         assertEquals(HttpStatus.PAYMENT_REQUIRED, e.getStatus());
         assertEquals("insufficient_credits", e.getCode());
+        verifyNoInteractions(reservation);
+    }
+
+    @Test
+    void aFailedDialClosesTheCallRowAndDropsTheApiRow() {
+        when(orchestrator.dispatchPrepared(any()))
+                .thenThrow(new VacademyException("Calling provider is temporarily unavailable. Try again in a moment."));
+        AiCallingApiException e = apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), "k-1"));
+        assertEquals("provider_unavailable", e.getCode());
+        verify(callTx).markFailedIfNotDispatched("log-1", "dispatch_failed");
         verify(calls).deleteById(startsWith("hcall_"));
+    }
+
+    @Test
+    void anOriginationRefusalInTheReservationIsMapped() {
+        when(reservation.reserve(any(), anyString(), anyInt(), any(), any()))
+                .thenThrow(new VacademyException("Add a verified mobile number in your profile before placing calls"));
+        assertEquals("counsellor_cannot_call",
+                apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), null)).getCode());
+        verify(orchestrator, never()).dispatchPrepared(any());
     }
 
     @Test
@@ -278,6 +336,16 @@ class HumanCallApiServiceTest {
                 new VacademyException("Calling is not configured for this institute")).getCode());
         assertEquals("provider_unavailable", HumanCallApiService.dialError(
                 new VacademyException("Calling provider is temporarily unavailable. Try again in a moment.")).getCode());
+        AiCallingApiException contact = HumanCallApiService.dialError(new VacademyException("Phone number format not supported"));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, contact.getStatus());
+        assertEquals("invalid_request", contact.getCode());
+        assertEquals("invalid_request", HumanCallApiService.dialError(
+                new VacademyException("This contact has no phone on file")).getCode());
+        AiCallingApiException counsellorNumber = HumanCallApiService.dialError(new VacademyException(
+                "Phone number format rejected by the provider. Check the From/To fields."));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, counsellorNumber.getStatus());
+        assertEquals("counsellor_cannot_call", counsellorNumber.getCode());
+        assertEquals("conflict", HumanCallApiService.dialError(new ConflictException("Something else")).getCode());
         AiCallingApiException other = HumanCallApiService.dialError(new VacademyException("Exotel balance is low"));
         assertEquals(HttpStatus.BAD_GATEWAY, other.getStatus());
         assertEquals("dial_failed", other.getCode());
@@ -299,7 +367,7 @@ class HumanCallApiServiceTest {
         Map<String, Object> out = service.createHumanCall(P, input("c-1", "+91 98765 43210"), " k-1 ");
         assertEquals(true, out.get("idempotent_replay"));
         assertEquals("hcall_abc", out.get("id"));
-        verifyNoInteractions(orchestrator);
+        verifyNoInteractions(orchestrator, reservation);
     }
 
     @Test
@@ -324,7 +392,7 @@ class HumanCallApiServiceTest {
             assertEquals(HttpStatus.CONFLICT, e.getStatus());
             assertEquals("idempotency_key_reused", e.getCode());
         }
-        verifyNoInteractions(orchestrator);
+        verifyNoInteractions(orchestrator, reservation);
     }
 
     @Test
@@ -341,10 +409,11 @@ class HumanCallApiServiceTest {
         when(calls.findByInstituteIdAndIdempotencyKey("inst-1", "k-1"))
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(prior(null, Instant.now())));
-        when(calls.saveAndFlush(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException("dup"));
+        when(reservation.reserve(any(), anyString(), anyInt(), any(), any()))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("dup"));
         AiCallingApiException e = apiError(() -> service.createHumanCall(P, input("c-1", "+919876543210"), "k-1"));
         assertEquals("request_in_progress", e.getCode());
-        verifyNoInteractions(orchestrator);
+        verify(orchestrator, never()).dispatchPrepared(any());
     }
 
     @Test
@@ -353,7 +422,7 @@ class HumanCallApiServiceTest {
                 .thenReturn(Optional.of(prior("log-1", Instant.now().minus(Duration.ofHours(25)))));
         service.createHumanCall(P, input("c-1", "+919876543299"), "k-1");
         verify(calls).clearIdempotencyKeysBefore(any());
-        verify(orchestrator).connectForCounsellor(anyString(), anyString(), any());
+        verify(orchestrator).dispatchPrepared(any());
     }
 
     // ── Dispositions ─────────────────────────────────────────────────────────────
@@ -398,14 +467,28 @@ class HumanCallApiServiceTest {
     // ── List filters ─────────────────────────────────────────────────────────────
 
     @Test
-    void listFiltersMapToCallLogStatuses() {
-        when(calls.page(anyString(), any(), any(), any(), any(), any(), any(), anyBoolean(), any(), any(), anyInt()))
+    void theStatusFilterIsThePublicStatusWithTheViewsCutOffs() {
+        when(calls.page(anyString(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of());
-        service.listHumanCalls(P, "c-1", "queued", "+91 98765 43210", null, null, null, 500, null);
-        verify(calls).page("inst-1", "c-1", "+919876543210", null, null, null, "INITIATED,QUEUED", true, null, null, 101);
-        service.listHumanCalls(P, null, "no_answer", null, null, null, null, 10, null);
-        verify(calls).page("inst-1", null, null, null, null, null, "NO_ANSWER", false, null, null, 11);
+        Instant before = Instant.now();
+        service.listHumanCalls(P, "c-1", "failed", "+91 98765 43210", null, null, null, 500, null);
+        ArgumentCaptor<Instant> creatingSince = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<java.sql.Timestamp> stuck = ArgumentCaptor.forClass(java.sql.Timestamp.class);
+        ArgumentCaptor<java.sql.Timestamp> airtelStuck = ArgumentCaptor.forClass(java.sql.Timestamp.class);
+        verify(calls).page(eq("inst-1"), eq("c-1"), eq("+919876543210"), isNull(), isNull(), isNull(), eq("failed"),
+                creatingSince.capture(), stuck.capture(), airtelStuck.capture(), isNull(), isNull(), eq(101));
+        assertFalse(creatingSince.getValue().isAfter(before.minus(HumanCallViews.CREATING_GRACE).plusSeconds(5)));
+        Instant stuckAt = stuck.getValue().toLocalDateTime().toInstant(java.time.ZoneOffset.UTC);
+        assertTrue(Duration.between(stuckAt, before).minus(HumanCallViews.STUCK_AFTER).abs().getSeconds() < 5);
+        Instant airtelAt = airtelStuck.getValue().toLocalDateTime().toInstant(java.time.ZoneOffset.UTC);
+        assertTrue(Duration.between(airtelAt, before).minus(HumanCallViews.STUCK_AFTER_AIRTEL).abs().getSeconds() < 5);
         assertEquals("invalid_request", apiError(() -> service.listHumanCalls(P, null, "ringing", null, null, null,
                 null, 10, null)).getCode());
+    }
+
+    @Test
+    void aCounsellorMobileThatIsNotAPhoneNumberCannotCall() {
+        HumanCallApiService.Counsellor c = new HumanCallApiService.Counsellor("c-3", "X", null, "12345", List.of());
+        assertEquals(HumanCallApiService.BAD_MOBILE, service.blockedReason("inst-1", "PLIVO", c));
     }
 }

@@ -173,7 +173,10 @@
                 "expiryInPast": "Choisissez une date postérieure à aujourd'hui.",
                 "generic": "Vérifiez le formulaire et réessayez."
             },
-            "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée."
+            "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée.",
+            "humanCallsLabel": "Peut appeler les conseillers (appels humains)",
+            "humanCallsHint": "Permet à cette clé de lister les noms et e-mails de vos conseillers et de les mettre en relation avec des contacts par téléphone (human_calls:read, human_calls:write). Une clé ne peut pas être modifiée ensuite.",
+            "humanCallsBadge": "Appels humains"
         },
         "agents": {
             "title": "Identifiants d'agent",

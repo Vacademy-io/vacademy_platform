@@ -226,6 +226,15 @@ class HumanCallViewsTest {
         assertEquals(7.5, a.get("counsellor_rating"));
         assertTrue(HumanCallViews.analysisFinal(a));
 
+        // FAILED is a retry in waiting until ai_service has claimed it CI_MAX_ATTEMPTS times.
+        ci.setStatus("FAILED");
+        ci.setAttempts(1);
+        assertEquals(Map.of("status", "pending"), HumanCallViews.analysis(asked, done, ci, Instant.now()));
+        assertFalse(HumanCallViews.analysisFinal(HumanCallViews.analysis(asked, done, ci, Instant.now())));
+        ci.setAttempts(HumanCallViews.CI_MAX_ATTEMPTS);
+        assertEquals(Map.of("status", "failed", "reason", "analysis_error"),
+                HumanCallViews.analysis(asked, done, ci, Instant.now()));
+        ci.setAttempts(1);
         ci.setStatus("SKIPPED");
         ci.setSkipReason("INSUFFICIENT_CREDITS");
         assertEquals(Map.of("status", "failed", "reason", "insufficient_credits"),
@@ -236,5 +245,25 @@ class HumanCallViewsTest {
         TelephonyCallLog noRec = TelephonyCallLog.builder().id("log-1").status("COMPLETED").build();
         HumanCallViews.State unrecorded = new HumanCallViews.State("completed", true, null, null, noRec, Instant.now());
         assertEquals("no_recording", HumanCallViews.analysis(asked, unrecorded, null, Instant.now()).get("reason"));
+    }
+
+    @Test
+    void theListFiltersSqlMirrorsTheViewsMapping() {
+        String sql = HumanCallApiCallRepository.PUBLIC_STATUS_SQL.replaceAll("\\s+", " ");
+        java.util.Map<String, String> all = new java.util.HashMap<>(HumanCallViews.TERMINAL_STATUS);
+        all.putAll(HumanCallViews.LIVE_STATUS);
+        for (Map.Entry<String, String> e : all.entrySet()) {
+            assertTrue(sql.contains("WHEN l.status = '" + e.getKey() + "' THEN '" + e.getValue() + "'"), e.getKey());
+        }
+        // Terminal statuses are decided before the stuck cut-off, live ones after it, and
+        // anything unknown is queued — as in state().
+        int stuck = sql.indexOf("l.created_at <");
+        for (String terminal : HumanCallViews.TERMINAL_STATUS.keySet()) {
+            assertTrue(sql.indexOf("'" + terminal + "'") < stuck, terminal);
+        }
+        for (String live : HumanCallViews.LIVE_STATUS.keySet()) assertTrue(sql.indexOf("'" + live + "'") > stuck, live);
+        assertTrue(sql.contains("WHEN l.id IS NULL THEN CASE WHEN h.created_at >= CAST(:creatingSince AS timestamptz) THEN 'queued' ELSE 'failed' END"));
+        assertTrue(sql.contains("ELSE 'queued' END"));
+        assertTrue(sql.contains("l.provider_type = 'AIRTEL' THEN CAST(:airtelStuckBefore AS timestamp)"));
     }
 }

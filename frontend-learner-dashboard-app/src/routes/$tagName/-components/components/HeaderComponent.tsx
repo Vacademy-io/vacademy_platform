@@ -485,20 +485,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
         return;
       }
 
-      // A sub-address of one of this site's pages ("blog/ssc-cgl" — an
-      // article on the blog page). The loose page match below would collapse
-      // it to the page itself ("blog".includes), dropping the article, so go
-      // straight to the full address when its first segment is a real page.
-      const subPath = route.trim().replace(/^\/+/, "").replace(/\/+$/, "");
-      const firstSegment = subPath.split(/[/?#]/)[0].toLowerCase();
-      if (
-        subPath.includes("/") &&
-        catalogueData?.pages?.some((page) => RouteMatcher.normalizeRoute(page.route || "") === firstSegment)
-      ) {
-        void siteNavigate(RouteMatcher.pagePath(effectiveTagName, subPath));
-        return;
-      }
-
       // If catalogueData is available, try to match the route with pages
       if (catalogueData && catalogueData.pages) {
         const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
@@ -531,6 +517,27 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
       // Navigate to the route as-is (for custom internal routes)
       void siteNavigate(route);
+    };
+
+    /**
+     * Links inside a "dropdown" nav item. Those are often a sub-address of one
+     * of this site's pages ("blog/ssc-cgl" — an article on the blog page),
+     * which the loose page match in handleNavigation would collapse to the
+     * page itself ("blog".includes), dropping the article. Scoped to dropdown
+     * links so every existing nav item keeps resolving exactly as before.
+     */
+    const handleDropdownNavigation = (route: string, label: string, openInSameTab?: boolean | string) => {
+      const subPath = route.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+      const firstSegment = subPath.split(/[/?#]/)[0].toLowerCase();
+      if (
+        !RouteMatcher.isExternalLink(route) &&
+        subPath.includes("/") &&
+        catalogueData?.pages?.some((page) => RouteMatcher.normalizeRoute(page.route || "") === firstSegment)
+      ) {
+        void siteNavigate(RouteMatcher.pagePath(effectiveTagName, subPath));
+        return;
+      }
+      handleNavigation(route, label, openInSameTab);
     };
 
 
@@ -779,7 +786,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         label={item.label}
                         items={base.children}
                         active={ddActive}
-                        onNavigate={handleNavigation}
+                        onNavigate={handleDropdownNavigation}
                         buttonClassName={chrome.editorialNav ? editorialNavItemClasses(ddActive) : `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(ddActive, activeStyle)}`}
                       />
                     );
@@ -995,7 +1002,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               label={item.label}
                               items={base.children}
                               itemClassName={mobileNavItemClass}
-                              onNavigate={handleNavigation}
+                              onNavigate={handleDropdownNavigation}
                               onDone={() => setIsMobileMenuOpen(false)}
                             />
                           );
@@ -1192,7 +1199,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           label={item.label}
                           items={base.children}
                           itemClassName={mobileNavItemClass}
-                          onNavigate={handleNavigation}
+                          onNavigate={handleDropdownNavigation}
                           onDone={() => setIsMobileMenuOpen(false)}
                         />
                       );

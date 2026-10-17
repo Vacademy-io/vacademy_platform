@@ -36,17 +36,29 @@ Errors use standard HTTP status codes and always return this body:
 | 403 | `product_not_enabled` | This key is not an AI calling key. |
 | 404 | `not_found` | No call, batch or webhook with this id in your account, or no such endpoint. |
 | 404 | `agent_not_found` | Check `agent_id` against `GET /v1/agents`. |
+| 404 | `counsellor_not_found` | Check `counsellor_id` / `counsellor_email` against `GET /v1/counsellors`. |
 | 405 | `method_not_allowed` | Wrong HTTP method for this path. |
 | 409 | `call_already_queued` | The number already has a waiting call (`details.call_id`). Usually safe to ignore. |
 | 409 | `idempotency_key_reused` | This `Idempotency-Key` was used with a different body. Use a new key for a new call or batch. |
-| 409 | `request_in_progress` | A batch with this `Idempotency-Key` is still being created. Wait the seconds in `Retry-After`, then retry with the same key. |
+| 409 | `request_in_progress` | A batch or human call with this `Idempotency-Key` is still being created. Wait the seconds in `Retry-After`, then retry with the same key. |
 | 409 | `call_not_cancelable` | The call is past `queued`. |
 | 409 | `agent_disabled` | Turn the agent on in the dashboard, or use another one. |
 | 409 | `agent_inbound_only` | This agent only answers calls. Use an outbound agent. |
+| 409 | `counsellor_busy` | The counsellor is on a call. Retry when it ends. |
+| 409 | `call_in_progress` | A call to this number is already ringing or in progress. |
+| 409 | `call_not_dialed` | This human call was never placed, so it cannot take a disposition. |
+| 422 | `counsellor_cannot_call` | The counsellor is not set up for your calling provider; `details.reason` says what to fix. |
+| 422 | `telephony_not_configured` | Connect a calling provider (or a caller ID number) under *Settings → Calling*. |
+| 422 | `outside_calling_hours` | Retry at `details.next_allowed_at`. Human calls are never queued. |
+| 422 | `contact_daily_limit_reached` | This number had the maximum calls for 24 hours. |
+| 422 | `contact_called_recently` | This number had a connected call within the last hour; retry after `Retry-After` seconds. |
+| 422 | `unknown_disposition` | Use a key from `GET /v1/dispositions`. |
 | 429 | `rate_limited` | Wait the seconds in `Retry-After`, then retry. |
 | 429 | `test_limit_reached` | More than 500 test calls in 24 hours. |
 | 500 | `internal_error` | Retry with backoff. If it persists, contact us with the `request_id`. |
+| 502 | `dial_failed` | Your calling provider refused the call; the message says why. Nothing rang. |
 | 503 | `auth_unavailable` | Keys could not be checked for a moment. Retry shortly. |
+| 503 | `provider_unavailable` / `temporarily_unavailable` | Your calling provider or our user directory is briefly unavailable. Retry after `Retry-After`. |
 
 ## Retrying safely
 

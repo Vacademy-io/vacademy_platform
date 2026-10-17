@@ -57,6 +57,7 @@
             "group": "Concepts",
             "pages": [
               "concepts/calls",
+              "concepts/human-calls",
               "concepts/agents-and-variables",
               "concepts/outcomes",
               "concepts/queue-and-limits",
@@ -75,6 +76,7 @@
             "group": "Guides",
             "pages": [
               "guides/crm-integration",
+              "guides/click-to-call",
               "guides/website-forms",
               "guides/no-code",
               "guides/bulk-calling",

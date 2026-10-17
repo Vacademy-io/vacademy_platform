@@ -7,7 +7,7 @@ what it promises. The client-facing guide lives at https://docs.telleo.ai (Mintl
   ingress rewrites this to `/admin-core-service/open/ai-calling/v1/...` on admin_core.
 - **Code:**
   - `admin_core_service/.../telephony/publicapi/` (controller, service, views, webhooks, auth)
-  - migration `V572__Ai_calling_public_api_v1.sql`
+  - migration `V572__Ai_calling_public_api_v1.sql`; human calls (v1.2, §10): `V594__Human_call_public_api.sql`
 
 ## 1. What a client can do
 
@@ -323,3 +323,119 @@ in admin_core, so a setter was flushed as a whole-row UPDATE over the finaliser'
 Not changed (noted): legacy `vak_live_` keys still authenticate; DNS-rebinding between
 validation and send is not pinned; the bot still describes API variables as "from the form
 they filled" (voice-bot change, separate deploy).
+
+## 10. v1.2 (2026-10-17): human (counsellor) click-to-call
+
+The API can ring one of the institute's own counsellors and connect them to a number,
+on the institute's PRIMARY provider (PLIVO "Vacademy Voice", EXOTEL or AIRTEL). It is a
+separate resource, `/v1/human-calls`, and deliberately NOT a mode of `/v1/calls`: the
+pre-v1 `mode: CLICK_TO_CALL` (§8) dialled as MANUAL and skipped every guard. Here every
+guard an API caller needs runs up front, and a call that cannot go out now is refused
+(an immediate call cannot wait in a queue).
+
+**Code:** `publicapi/HumanCallApiService` (create/list/get/disposition/counsellors),
+`HumanCallViews` (object + finality), `HumanCallGuards` (hours, caps, live calls),
+`HumanCallWebhookService` (finaliser + delivery), entity `HumanCallApiCall` (table
+`human_call_api_call`, V594). Dial path: `CallOrchestrator.connectForCounsellor` →
+`CallLifecycleTxOps.prepareAndPersistForCounsellor`, which share the dashboard's
+`persist` / `dispatch` code moved verbatim out of `connect` / `prepareAndPersist`
+(dashboard behaviour pinned by `CallOrchestratorEntryPointsTest`).
+
+### Endpoints
+
+| Route | Scope | |
+|---|---|---|
+| `GET /v1/counsellors` | calls:read | ACTIVE users with COUNSELLOR/COUNSELOR/ADMIN in the institute (auth_service users-of-status, the same set as the extension picker) with `can_call` / `blocked_reason`. No phone numbers. |
+| `POST /v1/human-calls` | calls:write | `counsellor_id` xor `counsellor_email`, `phone_number`, `contact`, `metadata`, `analyze`. 201 human_call. |
+| `GET /v1/human-calls` | calls:read | Keyset pagination like `/calls`; filters `counsellor_id`, `status` (the call log's last status), `phone_number`, `external_id`, `created_after`, `created_before`. |
+| `GET /v1/human-calls/{id}` | calls:read | |
+| `POST /v1/human-calls/{id}/disposition` | calls:write | `{key, notes}` → `CallDispositionService.applyDisposition` (institute-checked; may move a linked lead's status). `dispositioned_by` = `"api:" + keyId without hyphens` (the column is VARCHAR(36)). |
+| `GET /v1/dispositions` | calls:read | The institute's catalog (seeded on first use), `changes_lead_status`, target `lead_status`. |
+
+### Create: checks, in order
+
+1. Idempotency-Key (24 h, full-request compare incl. `analyze`; the counsellor compares by
+   whichever selector was sent): same → 200 replay; different → 409 `idempotency_key_reused`;
+   first request still dialling (row has no call log, < 2 min) → 409 `request_in_progress`
+   (Retry-After 5), also on the concurrent-insert race.
+2. Validation (E.164, contact limits, 8 KB metadata — the AI API's rules) → 400.
+3. PRIMARY provider enabled and not AI-only → else 422 `telephony_not_configured`.
+4. Counsellor in the eligible list → else 404 `counsellor_not_found` (another institute's
+   user is simply not in the list).
+5. Readiness: Exotel/Plivo need a mobile on the user record (read from the list, no extra
+   auth call); Airtel asks `AirtelOriginationResolver.callerBlockedReason` (now
+   institute-filtered) → 422 `counsellor_cannot_call` with `details.reason`.
+6. `HumanCallGuards`:
+   - calling hours = the AI calling shifts exactly as the AI queue evaluates them
+     (`CallingWindowUtil`) AND VOICE_CALLING_SETTING.compliance's window (start 9 /
+     cutoff 21 in its timezone, on by default) → 422 `outside_calling_hours` +
+     `next_allowed_at`. NOTE: the compliance block was not enforced anywhere before
+     (AI queue included); it is enforced only here.
+   - counsellor already on a live call (non-terminal row < 45 min; skipped on Airtel, whose
+     rows stay QUEUED until the CDR import) → 409 `counsellor_busy`.
+   - the number already live → 409 `call_in_progress`; ≥ `maxCallsPerDayPerLead`
+     (AI setting, default 3) outbound calls placed (not FAILED/CANCELLED) to the number in
+     24 h, AI and human, any provider → 422 `contact_daily_limit_reached`; a CONNECTED call
+     started within `telephony.ai.min-recall-gap-minutes` (60) → 422
+     `contact_called_recently` + Retry-After. Unlike the AI queue, a missed call does not
+     start the gap (a counsellor retrying a missed call is normal, and for most providers
+     we cannot tell which leg missed).
+   - No DND/NCPR scrub: there is no registry in the platform (the AI queue has none either;
+     `compliance.dndScrubEnabled` is not wired anywhere).
+7. Lead link: exactly one live (non-duplicate, non-INACTIVE) lead of the institute with the
+   number (parent_mobile last 10), else the auth user with that mobile having exactly one
+   lead here → the call row gets `response_id` + the lead's user (subject type NULL, as on
+   the dashboard), shows on the lead timeline and dispositions can move the lead. Otherwise
+   `API_CONTACT` with subject_id = `hcall_…` and the AI API's pseudo user id.
+8. Insert the API row, then `connectForCounsellor`: the voice credit gate (fails open, as on
+   the dashboard; PLIVO only) → 402; provider refusals → 422/502/503. Any failure deletes
+   the API row so the same Idempotency-Key can retry.
+
+### Object and finality
+
+`object: "human_call"`. Status from the call log: INITIATED/QUEUED → queued,
+COUNSELLOR_RINGING → ringing_counsellor, COUNSELLOR_ANSWERED → connecting, IN_PROGRESS →
+in_progress, then completed / no_answer / busy / failed / canceled. `status_updates`:
+PLIVO realtime, EXOTEL final_only, AIRTEL delayed. Final: terminal, and for completed once
+the recording is in (or recording off, or 10 min; 60 on Airtel). No end after 2 h (Airtel
+24 h) → failed "No final status was received". `no_answer_by` only from an unambiguous
+provider report (Exotel `Status` vs `DialCallStatus`; Plivo `DialBLeg*`), else null.
+`cost`: PLIVO voice leg from the ledger (`voice_call:{log}`); Exotel/Airtel
+`{0, billed:true, note:"billed_by_provider"}`. GET never mutates the entity (OSIV); the only
+write is the targeted `terminal_seen_at` fill.
+
+### Analysis
+
+`analyze: true` → once the call is COMPLETED with a recording, the finaliser calls
+`CallIntelligenceEnqueueService.enqueueRequested`: like `triggerManual` it skips the
+source toggles and min duration, and additionally the institute's CRM Intelligence master
+switch (off by default — `triggerManual` would return DISABLED). It never resets an
+existing row (the recording flow may already have queued and be running it). ai_service
+charges 0.15 credits per recorded minute (credit_pricing `call_intelligence`). The
+`analysis` block reads `call_intelligence` (summary, short_update, call_type,
+inferred_goal, generic_status → `outcome`, lead_sentiment → `sentiment`,
+conversion_likelihood, ratings, credits).
+
+### Webhooks
+
+Same endpoint (`ai_call_webhook`), signing, retries, SSRF checks and per-institute
+fairness; `AiCallingWebhookService.deliver` sends. Own scheduled passes
+(`HumanCallApiFinalize` 15 s, `HumanCallApiWebhooks` 5 s), ShedLocks and a 4-thread pool,
+so human-call traffic never delays AI events. Events: `human_call.completed` /
+`human_call.not_connected` (id `evt_hc_…`, outbox = final_* / webhook_* columns) and, for
+`analyze` calls that connected, `human_call.analysis_ready` (id `evt_hca_…`, outbox =
+analysis_* columns) once the analysis is completed or failed.
+
+### Usage
+
+`/v1/usage` appends `human_calls {totals, days}` after the v1.1 fields (unchanged):
+outbound counsellor calls on non-AI providers; `source=api` = rows in human_call_api_call.
+
+### Security fixes shipped alongside (separate commit)
+
+`/v1/telephony/calls/connect`, `/calls/options`, `GET /calls`, `GET /calls/{id}/recording`
+and every `/v1/telephony/counsellor-endpoints` route now require staff of the institute
+(`requireInstituteStaff`); `resolveSubject` refuses another institute's lead; an endpoint
+upsert can no longer move another institute's row; Airtel origination only uses the dialling
+institute's extension.
+

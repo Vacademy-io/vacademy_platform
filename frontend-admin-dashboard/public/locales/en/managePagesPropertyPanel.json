@@ -1414,6 +1414,9 @@
     "autoScroll": {
         "label": "Auto-scroll",
         "seconds": "seconds per card",
-        "hint": "Moves one card at a time and pauses while the visitor hovers, taps or tabs into the row."
+        "hint": "Moves one card at a time and pauses while the visitor hovers, taps or tabs into the row.",
+        "loop": "Endless loop",
+        "loopOnHint": "The row keeps going round: after the last card comes the first again.",
+        "loopOffHint": "At the last card the row scrolls back to the first."
     }
 }

@@ -4924,7 +4924,15 @@ const AutoScrollControls = ({ props, updateProp }: { props: any; updateProp: (ke
                     <span className="text-caption text-gray-500">{t('autoScroll.seconds')}</span>
                 </div>
             )}
-            <p className="text-caption text-gray-400">{t('autoScroll.hint')}</p>
+            {props.autoScroll && (
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">{t('autoScroll.loop')}</Label>
+                    <Switch checked={!!props.autoScrollLoop} onCheckedChange={(c) => updateProp('autoScrollLoop', c || undefined)} />
+                </div>
+            )}
+            <p className="text-caption text-gray-400">
+                {t('autoScroll.hint')} {props.autoScroll && t(props.autoScrollLoop ? 'autoScroll.loopOnHint' : 'autoScroll.loopOffHint')}
+            </p>
         </div>
     );
 };

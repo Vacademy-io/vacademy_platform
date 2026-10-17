@@ -16,6 +16,7 @@ import { getAssessmentSettings, saveAssessmentSettings } from '@/services/assess
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import ReportBrandingSettingsSection from './ReportBrandingSettings';
 import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard';
+import ResultNotificationTemplatesCard from './ResultNotificationTemplatesCard';
 import ExamExperienceSettingsCard from './ExamExperienceSettingsCard';
 import { CommentPlacementPicker } from '@/components/common/ai-copy-check/CommentPlacementPicker';
 
@@ -218,6 +219,9 @@ const AssessmentSettings = () => {
                     setHasChanges(true);
                 }}
             />
+
+            {/* Result email / WhatsApp templates (saved on change, not with the form) */}
+            <ResultNotificationTemplatesCard />
 
             {/* Report Branding Section */}
             <div>

@@ -156,6 +156,8 @@ interface ProductPageOfferProps {
   /** 'carousel' only: advance the rail one card every autoScrollIntervalMs (min 1.5s), pausing while in use. */
   autoScroll?: boolean;
   autoScrollIntervalMs?: number;
+  /** With autoScroll: an endless ring instead of rewinding to the first card at the end. */
+  autoScrollLoop?: boolean;
   scrollMaxHeight?: number;
   backgroundColor?: string;
   /**
@@ -378,6 +380,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   scrollable = false,
   autoScroll = false,
   autoScrollIntervalMs,
+  autoScrollLoop = false,
   scrollMaxHeight = 640,
   backgroundColor,
   embedded = false,
@@ -785,7 +788,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     enabled: isCarousel && !!autoScroll,
     intervalMs: autoScrollIntervalMs,
     itemCount: visible.length,
-    loop: true,
+    loop: !!autoScrollLoop,
   });
 
   // A horizontal rail IS the app pattern, so unless the admin chose otherwise

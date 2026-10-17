@@ -1959,7 +1959,7 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs, filterParam,
+  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs, autoScrollLoop = false, filterParam,
 }) => {
   // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
   const railRef = React.useRef<HTMLDivElement>(null);
@@ -1967,7 +1967,7 @@ const FeatureGridRenderer: React.FC<any> = ({
     enabled: layout === 'carousel' && !!autoScroll,
     intervalMs: autoScrollIntervalMs,
     itemCount: features.length,
-    loop: true,
+    loop: !!autoScrollLoop,
   });
   // Endless ring: a second lap of the same slides (see useAutoScrollRail).
   const loopCopy = (slides: React.ReactNode[]) =>

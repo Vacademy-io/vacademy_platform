@@ -1,5 +1,5 @@
 import React from "react";
-import { AppleLogo, GooglePlayLogo } from "@phosphor-icons/react";
+import { AppleLogo } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,7 +42,23 @@ export const resolveAppStoreLinks = (raw: unknown): AppStoreLinks | null => {
 const BADGE =
   "flex min-w-[168px] items-center gap-3 rounded-[10px] border border-white/25 bg-black px-4 py-2.5 text-start text-white transition hover:border-white/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"; // design-lint-ignore: store badge 10px radius, black face
 const SMALL = "block text-[11px] leading-4"; // design-lint-ignore: store badge caption 11/16
-const LARGE = "block text-[18px] font-semibold leading-6"; // design-lint-ignore: store badge name 18/24
+const LARGE = "block text-[18px] font-medium leading-6"; // design-lint-ignore: store badge name 18/24
+
+/** Google Play's four brand colours, as on its official badge (a brand mark, not an icon-set glyph). */
+const PLAY_GREEN = "#34A853"; // design-lint-ignore: Google Play brand colour
+const PLAY_BLUE = "#4285F4"; // design-lint-ignore: Google Play brand colour
+const PLAY_YELLOW = "#FBBC04"; // design-lint-ignore: Google Play brand colour
+const PLAY_RED = "#EA4335"; // design-lint-ignore: Google Play brand colour
+
+/** The coloured Google Play triangle. */
+const GooglePlayMark: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M3.6 2.2 13.4 12 3.6 21.8c-.4-.3-.6-.8-.6-1.3V3.5c0-.5.2-1 .6-1.3Z" fill={PLAY_GREEN} />
+    <path d="M3.6 2.2c.5-.4 1.2-.4 1.8-.1l11.3 6.5-3.3 3.4L3.6 2.2Z" fill={PLAY_BLUE} />
+    <path d="M3.6 21.8 13.4 12l3.3 3.4-11.3 6.5c-.6.3-1.3.3-1.8-.1Z" fill={PLAY_YELLOW} />
+    <path d="m16.7 8.6 3.6 2.1c1 .6 1 2 0 2.6l-3.6 2.1-3.3-3.4 3.3-3.4Z" fill={PLAY_RED} />
+  </svg>
+);
 
 const Badge: React.FC<{ href: string; caption: string; name: string; icon: React.ReactNode; className?: string }> = ({
   href,
@@ -81,7 +97,7 @@ export const AppStoreBadges: React.FC<{
         href={links.playStore}
         caption="GET IT ON"
         name="Google Play"
-        icon={<GooglePlayLogo size={26} weight="fill" />}
+        icon={<GooglePlayMark size={28} />}
         className={stacked ? "w-full" : undefined}
       />
     )}

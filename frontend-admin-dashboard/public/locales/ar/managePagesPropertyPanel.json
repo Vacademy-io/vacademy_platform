@@ -1424,7 +1424,10 @@
     "iconColor": "لون الأيقونة",
     "speed": "سرعة التمرير",
     "direction": "اتجاه التمرير",
-    "pauseOnHover": "إيقاف عند التمرير فوقه"
+    "pauseOnHover": "إيقاف عند التمرير فوقه",
+    "itemLink": "رابط (صفحة أو قسم أو URL)",
+    "linkedTo": "يفتح {{link}}",
+    "removeLink": "إزالة الرابط"
   },
     "autoScroll": {
         "label": "تمرير تلقائي",

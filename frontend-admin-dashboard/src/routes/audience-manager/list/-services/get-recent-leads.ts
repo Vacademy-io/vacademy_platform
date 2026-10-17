@@ -43,6 +43,8 @@ export interface RecentLeadDetail {
     tat_due_overridden?: boolean | null;
     /** This enquiry repeats an existing lead (flagged by repeat-lead handling). */
     is_duplicate?: boolean | null;
+    /** Live duplicate enquiries that repeat this lead; absent when there are none. */
+    duplicate_count?: number | null;
     /** Open priority follow-up (opened for a reattempt). */
     follow_up_priority?: boolean | null;
     /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */

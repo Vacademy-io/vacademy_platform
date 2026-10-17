@@ -42,6 +42,8 @@ import java.util.List;
  *       "markDuplicate": false,       // flag the new enquiry as a duplicate of the lead it repeats
  *       "duplicateOpenOnly": true,    // ...only while that lead is open (not converted / LOST);
  *                                     // a repeat of a closed lead comes in as a new lead
+ *       "duplicatesTabOnly": false,   // duplicates only on the Duplicate Leads tab; other lists
+ *                                     // show the lead once, badged (route duplicates= still wins)
  *       "journeyEntry": false,        // write a "Reattempt" entry in that lead's journey
  *       "notifyOwner": false,         // bell to the lead's counsellor
  *       "showBadge": false,           // "Duplicate" badge next to the name in lead tables (FE only)
@@ -100,18 +102,27 @@ public class LeadDedupSettingService {
      * showBadge} is read by the admin UI only, to badge duplicate enquiries in the lead tables.
      * {@code duplicateOpenOnly} (default on) limits {@code markDuplicate} to repeats of a lead
      * that is still open — not converted and not LOST — so a closed lead's repeat counts as a
-     * new lead.
+     * new lead. {@code duplicatesTabOnly} (default off) keeps duplicate enquiries out of every
+     * lead list whose route does not ask for them, so they show only on the Duplicate Leads
+     * tab, and badges the lead they repeat instead. Off = lists behave exactly as before.
      */
     public record ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
-            boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly) {
+            boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly,
+            boolean duplicatesTabOnly) {
 
         public static final ReattemptSettings OFF =
-                new ReattemptSettings(false, false, false, false, false, null, true);
+                new ReattemptSettings(false, false, false, false, false, null, true, false);
+
+        /** {@code duplicatesTabOnly} off, its default. */
+        public ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
+                boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly) {
+            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, duplicateOpenOnly, false);
+        }
 
         /** {@code duplicateOpenOnly} on, its default. */
         public ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
                 boolean showBadge, boolean followUp, String tier) {
-            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, true);
+            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, true, false);
         }
 
         public ReattemptSettings {
@@ -320,6 +331,7 @@ public class LeadDedupSettingService {
                 node.path("showBadge").asBoolean(false),
                 node.path("followUp").asBoolean(false),
                 node.path("tier").isTextual() ? node.path("tier").asText() : null,
-                node.path("duplicateOpenOnly").asBoolean(true));
+                node.path("duplicateOpenOnly").asBoolean(true),
+                node.path("duplicatesTabOnly").asBoolean(false));
     }
 }

@@ -3573,6 +3573,13 @@ public class AudienceService {
                 || filterDTO.getAudienceId().isBlank();
         if (crossAudience && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
+            // The route's duplicates= wins. With none, "Show duplicates only in Duplicate
+            // Leads" (Lead Settings) hides them here; off = no filter, as before.
+            String duplicateFilter = normalizeDuplicateFilter(filterDTO.getDuplicateFilter());
+            if (duplicateFilter == null
+                    && leadDeduplicationService.duplicatesTabOnly(filterDTO.getInstituteId())) {
+                duplicateFilter = "EXCLUDE";
+            }
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
                     filterDTO.getLeadStatusId(),
@@ -3580,7 +3587,7 @@ public class AudienceService {
                     filterDTO.getFollowUpPending(),
                     filterDTO.getFollowUpFrom(),
                     filterDTO.getFollowUpTo(),
-                    normalizeDuplicateFilter(filterDTO.getDuplicateFilter()),
+                    duplicateFilter,
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -3823,6 +3830,16 @@ public class AudienceService {
                 .filter(f -> Boolean.TRUE.equals(f.getIsPriority()))
                 .map(LeadFollowup::getAudienceResponseId)
                 .collect(Collectors.toSet());
+        // Live duplicates per lead, only with "Show duplicates only in Duplicate Leads" on: the
+        // lists hide duplicates then, so the lead they repeat carries the badge instead.
+        final Map<String, Integer> duplicateCountByResponseId = responseIds.isEmpty()
+                || !leadDeduplicationService.duplicatesTabOnly(instituteId) ? Collections.emptyMap()
+                : audienceResponseRepository.countActiveDuplicatesOf(responseIds).stream()
+                        .filter(r -> r.getPrimaryResponseId() != null && r.getDuplicateCount() != null)
+                        .collect(Collectors.toMap(
+                                AudienceResponseRepository.DuplicateCountRow::getPrimaryResponseId,
+                                r -> r.getDuplicateCount().intValue(),
+                                (a, b) -> a));
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
@@ -4020,6 +4037,7 @@ public class AudienceService {
                     .customFieldMetadata(customFieldMetadata)
                     .isDuplicate(response.getIsDuplicate())
                     .primaryResponseId(response.getPrimaryResponseId())
+                    .duplicateCount(duplicateCountByResponseId.get(response.getId()))
                     .followUpPriority(priorityFollowupResponseIds.contains(response.getId()))
                     .overallStatus(response.getOverallStatus())
                     .conversionStatus(response.getConversionStatus())

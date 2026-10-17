@@ -30,6 +30,8 @@ import {
   usePreferredPhoneCountries,
 } from "@/hooks/use-preferred-phone-countries";
 import {
+  CaretLeft,
+  CaretRight,
   GraduationCap,
   Train,
   Bank,
@@ -95,7 +97,7 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
-import { useAutoScrollRail } from "../-utils/use-auto-scroll-rail";
+import { useAutoScrollRail, useRailArrows } from "../-utils/use-auto-scroll-rail";
 import { useCatalogueSearchParams } from "../-utils/catalogue-url-state";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
@@ -865,6 +867,31 @@ const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
 };
 
 /**
+ * Prev/next arrows over a full-bleed card rail (featureGrid 'carousel'), the
+ * same affordance the product-page rail has. Hidden until there is somewhere
+ * to go; swipe and snap stay the primary way to move on touch screens.
+ */
+const RailArrows: React.FC<{ canPrev: boolean; canNext: boolean; onMove: (dir: number) => void }> = ({ canPrev, canNext, onMove }) => {
+  const { t } = useTranslation("coursePlayerB");
+  const cls =
+    "catalogue-btn catalogue-btn-secondary absolute top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg catalogue-btn-icon shadow-lg md:inline-flex";
+  return (
+    <>
+      {canPrev && (
+        <button type="button" onClick={() => onMove(-1)} aria-label={t("common.previousSlide")} className={`${cls} left-3`}>
+          <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+      {canNext && (
+        <button type="button" onClick={() => onMove(1)} aria-label={t("common.nextSlide")} className={`${cls} right-3`}>
+          <CaretRight className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+    </>
+  );
+};
+
+/**
  * featureGrid style 'categoryTiles': a row of icon tiles that filter the page.
  * Each tile writes `?<filterParam>=<value>` (a tile with no value clears it =
  * "All"), and the sections below opt in with visibleWhen rules on that param.
@@ -1509,17 +1536,32 @@ const MarqueeRenderer: React.FC<any> = ({
         aria-hidden={part > 0 || copy > 0 || undefined}
         className="flex shrink-0 items-center"
       >
-        {list.map((item: any, i: number) => (
-          <span
-            key={i}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`}
-          >
-            {(item.icon || defaultIcon) && (
-              <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
-            )}
-            {item.text}
-          </span>
-        ))}
+        {list.map((item: any, i: number) => {
+          const itemClass = `flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`;
+          const content = (
+            <>
+              {(item.icon || defaultIcon) && (
+                <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
+              )}
+              {item.text}
+            </>
+          );
+          // A linked item opens a page, scrolls to a #section or opens an
+          // external URL (CatalogueLink). Only the first copy is tabbable — the
+          // loop copies are aria-hidden duplicates.
+          return item.link ? (
+            <CatalogueLink
+              key={i}
+              to={item.link}
+              tabIndex={part > 0 || copy > 0 ? -1 : undefined}
+              className={`${itemClass} underline-offset-4 hover:underline focus-visible:underline`}
+            >
+              {content}
+            </CatalogueLink>
+          ) : (
+            <span key={i} className={itemClass}>{content}</span>
+          );
+        })}
       </div>
     ));
   return (
@@ -1926,6 +1968,7 @@ const FeatureGridRenderer: React.FC<any> = ({
     intervalMs: autoScrollIntervalMs,
     itemCount: features.length,
   });
+  const arrows = useRailArrows(railRef, { enabled: layout === 'carousel', itemCount: features.length });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
   if (style === 'categoryTiles') {
@@ -2081,17 +2124,20 @@ const FeatureGridRenderer: React.FC<any> = ({
         {layout === 'carousel' && (
           // Same full-bleed rail as the photo style: `columns` cards per view,
           // the next one peeking in, swipe / snap native.
-          <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
-            {features.map((f: any, i: number) => (
-              <div
-                key={i}
-                className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
-                // Width per card follows the authored column count — a computed value, not a token.
-                style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
-              >
-                <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
-              </div>
-            ))}
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
+              {features.map((f: any, i: number) => (
+                <div
+                  key={i}
+                  className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
+                  // Width per card follows the authored column count — a computed value, not a token.
+                  style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
+                >
+                  <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+                </div>
+              ))}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>
         )}
       </section>
@@ -2188,8 +2234,11 @@ const FeatureGridRenderer: React.FC<any> = ({
           // Full-bleed rail: the shell would clip the edge-to-edge scroll, and
           // scroll-padding (baked into catalogue-carousel-bleed) is what keeps
           // snap alignment honest against the gutter.
-          <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
-            {cards}
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
+              {cards}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>
         ) : (
           <div className="catalogue-shell">

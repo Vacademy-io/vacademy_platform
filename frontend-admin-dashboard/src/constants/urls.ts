@@ -928,6 +928,7 @@ export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operati
 // bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
 export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
 export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
+export const RESULT_NOTIFICATION_TEMPLATE = `${BASE_URL}/admin-core-service/assessment-result-notification/v1/template`;
 // Password reset: mails the learner a link to CHOOSE a new password rather than
 // mailing the one they already have. `/link` returns that link both filled in for
 // one learner and with a {username} placeholder for third-party integrators.

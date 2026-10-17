@@ -75,6 +75,7 @@ const REATTEMPT_SWITCHES: ReattemptSwitchKey[] = [
     'notifyOwner',
     'followUp',
     'showBadge',
+    'duplicatesTabOnly',
 ];
 
 /** Select value for "leave the tier as it is" (Radix Select can't use an empty value). */

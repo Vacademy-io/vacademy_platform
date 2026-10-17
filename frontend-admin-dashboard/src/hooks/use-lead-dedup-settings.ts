@@ -52,6 +52,11 @@ export interface ReattemptSettings {
     tier: string | null;
     /** markDuplicate only while the earlier lead is open (not converted / LOST). Default on. */
     duplicateOpenOnly: boolean;
+    /**
+     * Duplicates show only on the Duplicate Leads tab; the other lead lists show the lead
+     * once, badged. Off = lists unchanged. A route's own duplicates= still wins.
+     */
+    duplicatesTabOnly: boolean;
 }
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup.repeatLead (backend contract). */
@@ -113,6 +118,7 @@ export const REATTEMPT_SETTINGS_DEFAULTS: ReattemptSettings = {
     followUp: false,
     tier: null,
     duplicateOpenOnly: true,
+    duplicatesTabOnly: false,
 };
 
 export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
@@ -168,6 +174,7 @@ function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined):
                     ? subtree.reattempt.tier.trim()
                     : null,
             duplicateOpenOnly: subtree?.reattempt?.duplicateOpenOnly !== false,
+            duplicatesTabOnly: subtree?.reattempt?.duplicatesTabOnly === true,
         },
     };
 }

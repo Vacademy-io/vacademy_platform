@@ -3074,6 +3074,11 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     {t('header.megaMenuBadge', 'Mega menu')}
                                 </span>
                             )}
+                            {item.type === 'dropdown' && (
+                                <span className="shrink-0 rounded bg-primary-100 px-1.5 py-0.5 text-caption text-primary-500">
+                                    {t('header.dropdownBadge', 'Dropdown')}
+                                </span>
+                            )}
                             {item.enabled === false && (
                                 <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-caption text-gray-600">
                                     {t('header.hiddenBadge')}
@@ -4924,7 +4929,15 @@ const AutoScrollControls = ({ props, updateProp }: { props: any; updateProp: (ke
                     <span className="text-caption text-gray-500">{t('autoScroll.seconds')}</span>
                 </div>
             )}
-            <p className="text-caption text-gray-400">{t('autoScroll.hint')}</p>
+            {props.autoScroll && (
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">{t('autoScroll.loop')}</Label>
+                    <Switch checked={!!props.autoScrollLoop} onCheckedChange={(c) => updateProp('autoScrollLoop', c || undefined)} />
+                </div>
+            )}
+            <p className="text-caption text-gray-400">
+                {t('autoScroll.hint')} {props.autoScroll && t(props.autoScrollLoop ? 'autoScroll.loopOnHint' : 'autoScroll.loopOffHint')}
+            </p>
         </div>
     );
 };

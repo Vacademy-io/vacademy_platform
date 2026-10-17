@@ -57,7 +57,7 @@ import {
   useSiteCart,
   useSiteCartNotifier,
 } from "../site-cart/use-site-cart";
-import { useAutoScrollRail } from "../../-utils/use-auto-scroll-rail";
+import { RAIL_CLONE_PROPS, useAutoScrollRail } from "../../-utils/use-auto-scroll-rail";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -156,6 +156,8 @@ interface ProductPageOfferProps {
   /** 'carousel' only: advance the rail one card every autoScrollIntervalMs (min 1.5s), pausing while in use. */
   autoScroll?: boolean;
   autoScrollIntervalMs?: number;
+  /** With autoScroll: an endless ring instead of rewinding to the first card at the end. */
+  autoScrollLoop?: boolean;
   scrollMaxHeight?: number;
   backgroundColor?: string;
   /**
@@ -378,6 +380,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   scrollable = false,
   autoScroll = false,
   autoScrollIntervalMs,
+  autoScrollLoop = false,
   scrollMaxHeight = 640,
   backgroundColor,
   embedded = false,
@@ -781,10 +784,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCarousel, visible.length, cols]);
 
-  useAutoScrollRail(trackRef, {
+  const { looping } = useAutoScrollRail(trackRef, {
     enabled: isCarousel && !!autoScroll,
     intervalMs: autoScrollIntervalMs,
     itemCount: visible.length,
+    loop: !!autoScrollLoop,
   });
 
   // A horizontal rail IS the app pattern, so unless the admin chose otherwise
@@ -1225,9 +1229,15 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         aria-label={title || coursesTerm}
       >
         {cards}
+        {/* Endless ring: a second lap of the same cards (see useAutoScrollRail). */}
+        {looping &&
+          cards.map((card, i) =>
+            React.isValidElement(card) ? React.cloneElement(card, { key: `loop-${i}`, ...RAIL_CLONE_PROPS }) : null,
+          )}
         {/* Tail card — states plainly how many courses the rail is not
-            showing, rather than silently truncating the list. */}
-        {railHidden > 0 && productPageCode && (
+            showing, rather than silently truncating the list. A looping rail
+            has no end for it to sit at. */}
+        {!looping && railHidden > 0 && productPageCode && (
           <Link
             to="/product-pages/$productPageCode"
             params={{ productPageCode }}
@@ -1237,6 +1247,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 flexBasis: `calc((100% - ${(cols - 1) * 1.25}rem) / ${cols})`,
               } as React.CSSProperties
             }
+            data-rail-tail=""
             className="catalogue-card group flex min-w-reg-250 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-catalogue-lg border border-dashed border-catalogue-border p-6 text-center no-underline"
           >
             <span className="catalogue-h3 text-catalogue-brand-ink">+{railHidden}</span>

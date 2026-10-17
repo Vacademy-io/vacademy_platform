@@ -1417,6 +1417,9 @@
     "autoScroll": {
         "label": "Défilement automatique",
         "seconds": "secondes par carte",
-        "hint": "Avance d’une carte à la fois et se met en pause quand le visiteur survole, touche ou parcourt la rangée au clavier."
+        "hint": "Avance d’une carte à la fois et se met en pause quand le visiteur survole, touche ou parcourt la rangée au clavier.",
+        "loop": "Boucle continue",
+        "loopOnHint": "La rangée tourne en continu : après la dernière carte revient la première.",
+        "loopOffHint": "À la dernière carte, la rangée revient à la première."
     }
 }

@@ -30,8 +30,19 @@ export interface HeaderNavItemValue {
     route?: string;
     openInSameTab?: boolean;
     enabled?: boolean;
-    type?: 'link' | 'megaMenu';
+    type?: 'link' | 'megaMenu' | 'dropdown';
     megaMenu?: MegaMenuConfig;
+    /** type 'dropdown': its links, each with at most one more level of children. */
+    children?: HeaderNavChildValue[];
+}
+
+/** A link inside a 'dropdown' nav item. */
+export interface HeaderNavChildValue {
+    label?: string;
+    route?: string;
+    openInSameTab?: boolean;
+    enabled?: boolean;
+    children?: HeaderNavChildValue[];
 }
 
 export type AuthLinkStyle = 'primary' | 'outline' | 'text';
@@ -88,7 +99,8 @@ export const keepMegaMenuItems = <T extends object>(
 ): T[] => {
     const out = [...fromPages];
     (Array.isArray(current) ? current : []).forEach((item: T, index: number) => {
-        if ((item as { type?: unknown } | null)?.type === 'megaMenu') {
+        const type = (item as { type?: unknown } | null)?.type;
+        if (type === 'megaMenu' || type === 'dropdown') {
             out.splice(Math.min(index, out.length), 0, item);
         }
     });
@@ -159,13 +171,13 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
         // The site's header always reads "home" as the home page.
         return homeAliases.has(key) || key.toLowerCase() === 'home' ? 'homepage' : key;
     };
+    // Mega menus and dropdowns are menus, not page links: sync leaves them where they are.
+    const isMenu = (item: T) => item?.type === 'megaMenu' || item?.type === 'dropdown';
     const isPageLink = (item: T) =>
-        item?.type !== 'megaMenu' &&
-        isPlainPageRoute(item?.route) &&
-        allPageKeys.has(itemKey(item));
+        !isMenu(item) && isPlainPageRoute(item?.route) && allPageKeys.has(itemKey(item));
     // A visible link to a page that no longer exists.
     const isStalePageLink = (item: T) => {
-        if (item?.type === 'megaMenu' || item?.enabled === false || !isPlainPageRoute(item?.route)) {
+        if (isMenu(item) || item?.enabled === false || !isPlainPageRoute(item?.route)) {
             return false;
         }
         const key = itemKey(item);
@@ -210,9 +222,11 @@ export const syncNavWithPages = <T extends HeaderNavItemValue>(
 /** The patch that turns a nav item into a mega menu (or back into a link). */
 export const navItemTypePatch = (
     item: HeaderNavItemValue,
-    type: 'link' | 'megaMenu'
+    type: 'link' | 'megaMenu' | 'dropdown'
 ): Partial<HeaderNavItemValue> =>
     type === 'megaMenu'
         ? // A config kept from an earlier switch comes back as it was.
           { type, megaMenu: item.megaMenu ?? { showLegend: true } }
-        : { type };
+        : type === 'dropdown'
+          ? { type, children: item.children ?? [] }
+          : { type };

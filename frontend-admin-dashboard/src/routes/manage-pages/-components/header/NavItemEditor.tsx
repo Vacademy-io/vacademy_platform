@@ -1,5 +1,6 @@
 import { HeaderChoice } from './HeaderEditorFields';
 import { MegaMenuEditor } from './MegaMenuEditor';
+import { NavDropdownEditor } from './NavDropdownEditor';
 import { navItemTypePatch, type HeaderNavItemValue } from './header-editor-utils';
 
 /**
@@ -15,17 +16,25 @@ export const NavItemEditor = ({
     onPatch: (patch: Partial<HeaderNavItemValue>) => void;
 }) => {
     const isMega = item.type === 'megaMenu';
+    const isDropdown = item.type === 'dropdown';
     return (
         <div className="space-y-3 border-t border-neutral-200 pt-2">
             <HeaderChoice
                 label="Opens"
-                value={isMega ? 'megaMenu' : 'link'}
+                value={isMega ? 'megaMenu' : isDropdown ? 'dropdown' : 'link'}
                 options={[
                     { value: 'link', label: 'Its link' },
+                    { value: 'dropdown', label: 'Dropdown' },
                     { value: 'megaMenu', label: 'Mega menu' },
                 ]}
                 onChange={(type) => onPatch(navItemTypePatch(item, type))}
             />
+            {isDropdown && (
+                <NavDropdownEditor
+                    value={item.children || []}
+                    onChange={(children) => onPatch({ children })}
+                />
+            )}
             {isMega && (
                 <MegaMenuEditor
                     value={item.megaMenu || {}}

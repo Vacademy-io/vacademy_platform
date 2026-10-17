@@ -282,6 +282,26 @@ public class AdminCoreServiceClient {
         return null;
     }
 
+    /**
+     * The result-release template for this assessment on one channel (EMAIL / WHATSAPP):
+     * assessment binding, else institute, else DEFAULT. Null when none applies or admin_core
+     * cannot be reached; keys: template_id, name, type, subject, content, setting_json, level.
+     */
+    public Map<String, Object> resolveResultTemplate(String instituteId, String assessmentId, String channel) {
+        try {
+            String route = "/admin-core-service/internal/v1/assessment-result-notification/resolve?institute_id=" + instituteId
+                    + (StringUtils.hasText(assessmentId) ? "&assessment_id=" + assessmentId : "") + "&template_type=" + channel;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(response.getBody(), Map.class);
+            }
+        } catch (Exception e) {
+            log.warn("Result template lookup failed for assessment {} ({}): {}", assessmentId, channel, e.getMessage());
+        }
+        return null;
+    }
+
     /** Institute display name for report headers; null when it cannot be read. */
     @Cacheable(value = "reportBranding", key = "'name:' + #instituteId", unless = "#result == null")
     public String getInstituteName(String instituteId) {

@@ -47,6 +47,10 @@ public class ReportProfileController {
     private ReportPdfRenderService reportPdfRenderService;
     @Autowired
     private LearnerReportService learnerReportService;
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.notification.ResultResendService resultResend;
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.notification.ResultNotificationService resultNotifications;
 
     private void staff(CustomUserDetails user, String clientId, String instituteId) {
         access.requireActiveInstitute(clientId, instituteId);
@@ -174,6 +178,55 @@ public class ReportProfileController {
         staff(user, clientId, instituteId);
         Map<String, Object> v = bulk.status(jobId);
         if (v == null) throw new VacademyException("Job not found (jobs live in one pod's memory; retry if it was restarted)");
+        return ResponseEntity.ok(v);
+    }
+
+    /** Which email / WhatsApp template a release of this assessment would use (and at which level). */
+    @GetMapping("/result-notification/templates")
+    public ResponseEntity<Map<String, Object>> resultTemplates(@RequestAttribute("user") CustomUserDetails user,
+                                                               @RequestHeader(value = "clientId", required = false) String clientId,
+                                                               @RequestParam String instituteId, @RequestParam String assessmentId) {
+        staff(user, clientId, instituteId);
+        access.requireAssessmentInInstitute(user, instituteId, assessmentId);
+        var t = resultNotifications.resolve(instituteId, assessmentId);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("email", t.email() == null ? Map.of("name", "built-in", "level", "CODE") : summary(t.email()));
+        out.put("whatsapp", t.whatsapp() == null ? null : summary(t.whatsapp()));
+        return ResponseEntity.ok(out);
+    }
+
+    private static Map<String, Object> summary(Map<String, Object> t) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        for (String k : new String[]{"template_id", "name", "subject", "level"}) m.put(k, t.get(k));
+        return m;
+    }
+
+    /**
+     * Sends the result email and/or WhatsApp again to released attempts (stored PDF). dryRun
+     * (default) only counts and shows which templates apply.
+     */
+    @PostMapping("/result-notification/send")
+    public ResponseEntity<Map<String, Object>> resendResults(@RequestAttribute("user") CustomUserDetails user,
+                                                             @RequestHeader(value = "clientId", required = false) String clientId,
+                                                             @RequestParam String instituteId, @RequestParam String assessmentId,
+                                                             @RequestParam(defaultValue = "false") boolean email,
+                                                             @RequestParam(defaultValue = "false") boolean whatsapp,
+                                                             @RequestParam(defaultValue = "true") boolean dryRun,
+                                                             @RequestParam(required = false) List<String> attemptIds) {
+        staff(user, clientId, instituteId);
+        access.requireAssessmentInInstitute(user, instituteId, assessmentId);
+        if (!email && !whatsapp) throw new VacademyException("Choose email and/or whatsapp");
+        return ResponseEntity.ok(resultResend.start(assessmentId, instituteId, email, whatsapp,
+                attemptIds == null ? java.util.Set.of() : new java.util.HashSet<>(attemptIds), dryRun));
+    }
+
+    @GetMapping("/result-notification/job")
+    public ResponseEntity<Map<String, Object>> resendJob(@RequestAttribute("user") CustomUserDetails user,
+                                                         @RequestHeader(value = "clientId", required = false) String clientId,
+                                                         @RequestParam String instituteId, @RequestParam String jobId) {
+        staff(user, clientId, instituteId);
+        Map<String, Object> v = resultResend.status(jobId);
+        if (v == null) throw new VacademyException("Job not found (jobs live in one pod's memory)");
         return ResponseEntity.ok(v);
     }
 }

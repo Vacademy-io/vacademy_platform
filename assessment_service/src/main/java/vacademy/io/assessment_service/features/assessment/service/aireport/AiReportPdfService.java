@@ -11,6 +11,7 @@ import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Map;
 
 /**
  * One student, one report: the AI report once admin_core has produced it, otherwise the
@@ -99,16 +100,67 @@ public class AiReportPdfService {
             if (normal == null) throw new IllegalStateException("No AI report for attempt " + attemptId);
             core = normal.render();
         }
+        lastModel.set(model);
+        lastProfile.set(profile);
         if (!wrap) return core;
         try {
             if (model == null) {
                 model = dataService.load(userId, assessmentId, attemptId, instituteId, null, branding(instituteId), detail);
+                lastModel.set(model);
             }
             return composer.compose(profile, model, core);
         } catch (Exception e) {
             log.error("[report-profile] could not add profile {} pages for attempt {}; serving the report alone",
                     profile.id(), attemptId, e);
             return core;
+        }
+    }
+
+    // The model and profile of the last render on this thread, so notification variables can be
+    // built without loading the data twice.
+    private final ThreadLocal<AiReportModel> lastModel = new ThreadLocal<>();
+    private final ThreadLocal<ReportProfileService.Profile> lastProfile = new ThreadLocal<>();
+
+    /** A rendered report together with the values its notifications fill in. */
+    public record Rendered(byte[] pdf, Map<String, String> variables) {
+    }
+
+    /** {@link #renderStudentReport} plus the per-student values for the result email / WhatsApp. */
+    public Rendered renderWithVariables(String userId, String assessmentId, String attemptId, String instituteId,
+                                        StudentReportOverallDetailDto detail, NormalReport normal) throws Exception {
+        lastModel.remove();
+        lastProfile.remove();
+        try {
+            byte[] pdf = renderStudentReport(userId, assessmentId, attemptId, instituteId, detail, null, normal);
+            return new Rendered(pdf, variables(userId, assessmentId, attemptId, instituteId, detail, lastModel.get(), lastProfile.get()));
+        } finally {
+            lastModel.remove();
+            lastProfile.remove();
+        }
+    }
+
+    /**
+     * The values a result notification can use for one attempt: the same ones report-profile
+     * templates use (student_name, score, rank, scholarship_percent, ...), as plain strings.
+     * Never throws; an empty map means "only the generic placeholders".
+     */
+    public Map<String, String> variables(String userId, String assessmentId, String attemptId, String instituteId,
+                                         StudentReportOverallDetailDto detail, AiReportModel model,
+                                         ReportProfileService.Profile profile) {
+        try {
+            if (profile == null) profile = profileService.resolve(assessmentId, instituteId);
+            if (model == null) {
+                model = dataService.load(userId, assessmentId, attemptId, instituteId, null, branding(instituteId), detail);
+            }
+            Map<String, String> out = new java.util.LinkedHashMap<>();
+            composer.context(model, profile).forEach((k, v) -> {
+                if (v instanceof String str && !"qr_svg".equals(k)) out.put(k, str);
+            });
+            out.put("learner_name", out.getOrDefault("student_name", ""));
+            return out;
+        } catch (Exception e) {
+            log.warn("[result-notify] variables unavailable for attempt {}: {}", attemptId, e.getMessage());
+            return new java.util.HashMap<>();
         }
     }
 

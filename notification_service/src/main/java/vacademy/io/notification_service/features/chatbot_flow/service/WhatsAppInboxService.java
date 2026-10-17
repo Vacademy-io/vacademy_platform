@@ -146,12 +146,23 @@ public class WhatsAppInboxService {
                                                 ChatbotEscalation escalation,
                                                 long unreadCount, long failedCount) {
         boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
+        String preview = templateRenderer.displayBody(nl, instituteId, templateCache);
+        String lastKind = null;
+        if (lastFromLearner) {
+            // "[sticker]" / "[reaction: 👍]" / blank → a kind the list can label properly.
+            InboundWhatsAppMessage in = InboundWhatsAppMessage.parse(nl.getMessagePayload(), objectMapper);
+            if (in != null && STRUCTURED_KINDS.contains(in.kind())) {
+                lastKind = in.kind();
+                preview = in.isReaction() ? in.emoji() : in.text();
+            }
+        }
         return InboxConversationDTO.builder()
                 .phone(nl.getChannelId())
                 .senderName(nl.getSenderName())
                 .userId(nl.getUserId())
-                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
+                .lastMessage(truncate(preview, 60))
                 .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
+                .lastMessageKind(lastKind)
                 .lastMessageTime(nl.getNotificationDate())
                 .lastMessageStatus(lastFromLearner ? null : lastMessageStatus(nl))
                 .unreadCount(unreadCount)
@@ -204,6 +215,18 @@ public class WhatsAppInboxService {
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
         WhatsAppMessageOriginResolver.Cache originCache = originResolver != null ? originResolver.newCache() : null;
 
+        // What each learner message really was, read from the provider's raw JSON on the row: the
+        // stored body is only a summary ("[sticker]", "[reaction: 👍]") or, on the Meta and WATI
+        // webhook paths, nothing at all — which drew an empty bubble.
+        Map<String, InboundWhatsAppMessage> inbound = new HashMap<>();
+        for (NotificationLog nl : logs) {
+            if (isOutgoing(nl)) continue;
+            InboundWhatsAppMessage parsed = InboundWhatsAppMessage.parse(nl.getMessagePayload(), objectMapper);
+            if (parsed != null) inbound.put(nl.getId(), parsed);
+        }
+        Map<String, NotificationLog> reactionTargets = loadReactionTargets(instituteId, inbound.values());
+        Map<String, String> recoveredReasons = recoverFailureReasons(phone, logs);
+
         return logs.stream().map(nl -> {
             WhatsAppTemplateRenderer.Rendered rm = templateRenderer.render(nl, instituteId, templateCache);
             // When we can rebuild the real template text, show it; otherwise fall back to the
@@ -217,9 +240,8 @@ public class WhatsAppInboxService {
 
             // Free-form media sent from the Inbox: the URL rides on message_payload, so a photo the
             // admin sent renders as a photo when the thread is reloaded, not as its caption alone.
-            // Outgoing only — an incoming row's payload is the provider's raw webhook JSON, which we
-            // do not own the shape of, and incoming media is not parsed anywhere yet.
-            boolean outgoing = nl.getNotificationType().contains("OUTGOING");
+            // Learner media is described by `in` below and fetched through the media endpoint.
+            boolean outgoing = isOutgoing(nl);
             MediaMeta media = (rm == null && outgoing) ? readMediaMeta(nl.getMessagePayload()) : null;
 
             // What the SEND said (rm/failure) vs. what the PROVIDER later did (delivery_status,
@@ -232,7 +254,7 @@ public class WhatsAppInboxService {
             String sendTimeError = rm != null ? rm.error : (failure != null ? failure.error : null);
             boolean providerReported = nl.getDeliveryStatus() != null;
 
-            return InboxMessageDTO.builder()
+            InboxMessageDTO.InboxMessageDTOBuilder dto = InboxMessageDTO.builder()
                     .id(nl.getId())
                     .body(body)
                     .direction(outgoing ? "OUTGOING" : "INCOMING")
@@ -241,9 +263,10 @@ public class WhatsAppInboxService {
                     .senderName(nl.getSenderName())
                     .status(nl.getNotificationType())
                     .templateName(rm != null ? rm.templateName : null)
+                    .templateCategory(rm != null ? rm.category : null)
                     .provider(rm != null ? rm.provider : null)
                     .deliveryStatus(providerReported ? nl.getDeliveryStatus() : sendTimeStatus)
-                    .error(providerReported ? deliveryFailureReason(nl) : sendTimeError)
+                    .error(providerReported ? deliveryFailureReason(nl, recoveredReasons) : sendTimeError)
                     .headerType(rm != null ? rm.headerType : null)
                     .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
                     .buttons(rm != null ? rm.buttons : null)
@@ -251,20 +274,166 @@ public class WhatsAppInboxService {
                     .attemptedType(failure != null ? failure.attemptedType : null)
                     .mediaType(media != null ? media.type() : null)
                     .mediaUrl(media != null ? media.url() : null)
-                    .mediaFilename(media != null ? media.filename() : null)
-                    .build();
+                    .mediaFilename(media != null ? media.filename() : null);
+
+            InboundWhatsAppMessage in = inbound.get(nl.getId());
+            if (in != null) applyInbound(dto, nl, in, reactionTargets, instituteId, templateCache);
+            return dto.build();
         }).collect(Collectors.toList());
+    }
+
+    private static boolean isOutgoing(NotificationLog nl) {
+        return nl.getNotificationType() != null && nl.getNotificationType().contains("OUTGOING");
+    }
+
+    /** Kinds the Inbox draws from structured fields, so the stored "[sticker]"-style body is dropped. */
+    private static final Set<String> STRUCTURED_KINDS = Set.of(
+            "image", "video", "audio", "voice", "sticker", "document", "location", "contacts",
+            InboundWhatsAppMessage.KIND_REACTION);
+
+    /** Fills the DTO from what the learner actually sent. */
+    private void applyInbound(InboxMessageDTO.InboxMessageDTOBuilder dto, NotificationLog nl,
+                              InboundWhatsAppMessage in, Map<String, NotificationLog> reactionTargets,
+                              String instituteId,
+                              Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache) {
+        dto.messageKind(in.kind());
+
+        if (in.isOwnTemplateEvent()) {
+            // WATI's report of OUR template send, logged as incoming: draw it as ours.
+            dto.direction("OUTGOING").senderName(null);
+            if (InboundWhatsAppMessage.KIND_TEMPLATE_FAILED.equals(in.kind())) {
+                dto.deliveryStatus(WhatsAppSendFailureService.FAILED_STATUS)
+                        .error(failureReason(in.failedCode(), in.failedDetail()))
+                        .attemptedType("template");
+            }
+            return;
+        }
+
+        if (in.text() != null) {
+            dto.body(in.text());
+        } else if (STRUCTURED_KINDS.contains(in.kind())) {
+            dto.body(null);
+        }
+
+        if (in.hasMedia()) {
+            dto.mediaType(in.kind())
+                    .mediaFilename(in.filename())
+                    .mediaFetchable(true);
+        }
+        if (in.isReaction()) {
+            dto.reactionEmoji(in.emoji() != null ? in.emoji() : "");
+            NotificationLog target = in.reactedToProviderId() != null
+                    ? reactionTargets.get(in.reactedToProviderId()) : null;
+            if (target != null) {
+                dto.reactedToMessageId(target.getId())
+                        .reactedToPreview(truncate(templateRenderer.displayBody(target, instituteId, templateCache), 80));
+            }
+        }
+        if (in.latitude() != null || in.locationName() != null || in.locationAddress() != null) {
+            dto.latitude(in.latitude())
+                    .longitude(in.longitude())
+                    .locationName(in.locationName())
+                    .locationAddress(in.locationAddress());
+        }
+        if (!in.contactNames().isEmpty()) dto.contactNames(in.contactNames());
+    }
+
+    /** Our messages the learner reacted to on this page, keyed by provider message id. */
+    private Map<String, NotificationLog> loadReactionTargets(String instituteId,
+                                                             Collection<InboundWhatsAppMessage> inbound) {
+        String[] ids = inbound.stream()
+                .filter(InboundWhatsAppMessage::isReaction)
+                .map(InboundWhatsAppMessage::reactedToProviderId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toArray(String[]::new);
+        if (ids.length == 0) return Map.of();
+        try {
+            Map<String, NotificationLog> out = new HashMap<>();
+            for (NotificationLog t : notificationLogRepository.findOutgoingBySourceIds(instituteId, ids)) {
+                out.putIfAbsent(t.getSourceId(), t);
+            }
+            return out;
+        } catch (Exception e) {
+            // A reaction without its target still renders — as a standalone "reacted 👍" line.
+            log.warn("Could not load reaction targets: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** "Error: Message undeliverable (code=131026)" — the body the Com.bot path writes. */
+    private static final java.util.regex.Pattern FAILED_EVENT_BODY =
+            java.util.regex.Pattern.compile("^Error:\\s*(.*?)\\s*\\(code=([^)]*)\\)\\s*$", java.util.regex.Pattern.DOTALL);
+
+    /**
+     * Reasons for FAILED messages whose own row lost them, keyed by provider message id.
+     * <p>
+     * WhatsApp's "failed" webhook can arrive before the send has written its row (a bulk send
+     * answered in ~1s). The status path then has nothing to stamp, and the send-side backfill later
+     * marks the row FAILED from the status events — which carry the reason only in their body —
+     * so the row ends up FAILED with no code and no message, and the Inbox could only say "Not
+     * delivered". The reason is still on the failure event; read it from there.
+     */
+    private Map<String, String> recoverFailureReasons(String phone, List<NotificationLog> logs) {
+        String[] ids = logs.stream()
+                .filter(nl -> "FAILED".equals(nl.getDeliveryStatus())
+                        && isBlank(nl.getDeliveryErrorCode()) && isBlank(nl.getDeliveryErrorMessage())
+                        && !isBlank(nl.getSourceId()))
+                .map(NotificationLog::getSourceId)
+                .distinct()
+                .toArray(String[]::new);
+        if (ids.length == 0) return Map.of();
+        Map<String, String> out = new HashMap<>();
+        try {
+            for (Object[] row : notificationLogRepository.findFailureEventsBySourceIds(phone, ids)) {
+                String sourceId = (String) row[0];
+                if (out.containsKey(sourceId)) continue;
+                String reason = failureReason((String) row[2], (String) row[3]);
+                if (reason == null) reason = reasonFromEventBody((String) row[1]);
+                if (reason != null) out.put(sourceId, reason);
+            }
+        } catch (Exception e) {
+            log.warn("Could not recover failure reasons for {}: {}", phone, e.getMessage());
+        }
+        return out;
+    }
+
+    static String reasonFromEventBody(String body) {
+        if (body == null) return null;
+        java.util.regex.Matcher m = FAILED_EVENT_BODY.matcher(body.trim());
+        if (!m.matches()) return null;
+        String message = m.group(1);
+        String code = m.group(2);
+        if ("Unknown error".equalsIgnoreCase(message)) message = null;
+        if ("null".equalsIgnoreCase(code)) code = null;
+        return failureReason(code, message);
+    }
+
+    /** "Message undeliverable (131026)"; just the code or just the message when that is all there is. */
+    private static String failureReason(String code, String message) {
+        boolean hasCode = !isBlank(code);
+        boolean hasMessage = !isBlank(message);
+        if (hasMessage && hasCode) return message.trim() + " (" + code.trim() + ")";
+        if (hasMessage) return message.trim();
+        if (hasCode) return "(" + code.trim() + ")";
+        return null;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /**
      * Reason line for a message the provider rejected after accepting it, e.g.
      * "Business eligibility payment issue (131042)". Null for any other delivery status — a
-     * delivered or read message has nothing to explain.
+     * delivered or read message has nothing to explain — and null when WhatsApp gave no reason
+     * anywhere we can find, so the UI says that instead of "Not delivered" twice.
      */
-    private String deliveryFailureReason(NotificationLog nl) {
+    private String deliveryFailureReason(NotificationLog nl, Map<String, String> recoveredReasons) {
         if (!"FAILED".equals(nl.getDeliveryStatus())) return null;
-        String reason = nl.getDeliveryErrorMessage() != null ? nl.getDeliveryErrorMessage() : "Not delivered";
-        return nl.getDeliveryErrorCode() != null ? reason + " (" + nl.getDeliveryErrorCode() + ")" : reason;
+        String reason = failureReason(nl.getDeliveryErrorCode(), nl.getDeliveryErrorMessage());
+        if (reason == null && nl.getSourceId() != null) reason = recoveredReasons.get(nl.getSourceId());
+        return reason;
     }
 
     /** The FAILED marker {@code WhatsAppSendFailureService} writes on non-template sends. */

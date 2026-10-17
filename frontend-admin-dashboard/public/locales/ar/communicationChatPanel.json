@@ -40,5 +40,39 @@
         "workflowUnnamed": "أُرسلت بواسطة سير عمل",
         "chatbotFlow": "أُرسلت بواسطة تدفق روبوت المحادثة «{{name}}»",
         "chatbotFlowUnnamed": "أُرسلت بواسطة تدفق روبوت محادثة"
+    },
+    "templateCategory": {
+        "MARKETING": "تسويق",
+        "UTILITY": "خدمي",
+        "AUTHENTICATION": "مصادقة"
+    },
+    "noFailureReason": "لم يذكر واتساب سببًا لعدم تسليم هذه الرسالة.",
+    "inbound": {
+        "kind": {
+            "image": "صورة",
+            "video": "فيديو",
+            "audio": "صوت",
+            "voice": "رسالة صوتية",
+            "sticker": "ملصق",
+            "document": "مستند",
+            "location": "موقع",
+            "contacts": "بطاقة جهة اتصال",
+            "reaction": "تفاعل",
+            "unsupported": "نوع رسالة لا يشاركه واتساب مع تطبيقات الأعمال",
+            "form_response": "رد على نموذج",
+            "other": "مرفق"
+        },
+        "mediaError": {
+            "expired": "لم يعد هذا الملف متاحًا على واتساب — يُحتفظ بالوسائط لمدة 30 يومًا تقريبًا.",
+            "tooLarge": "هذا الملف أكبر من أن يُعرض هنا.",
+            "notConfigured": "واتساب غير مُعدّ لهذه المؤسسة، لذا لا يمكن جلب الملف.",
+            "failed": "تعذّر تحميل هذا الملف من واتساب."
+        },
+        "loading": "جارٍ تحميل {{kind}}…",
+        "openInMaps": "فتح في خرائط Google",
+        "unnamedContact": "جهة اتصال بلا اسم",
+        "reactedTo": "تفاعل بـ {{emoji}} على «{{preview}}»",
+        "reactedToMessage": "تفاعل بـ {{emoji}} على رسالة",
+        "reactionRemoved": "أزال تفاعلًا"
     }
 }

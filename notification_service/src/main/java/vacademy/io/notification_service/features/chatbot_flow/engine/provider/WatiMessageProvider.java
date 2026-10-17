@@ -418,6 +418,19 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         }
     }
 
+    /**
+     * Base URL + token for reading this institute's inbound WhatsApp media (the institute's WATI tenant).
+     * Null when the institute has no usable configuration.
+     */
+    public ProviderMediaCredentials mediaCredentials(String instituteId) {
+        WatiConfig config = resolveConfig(instituteId);
+        if (config == null || config.apiUrl == null || config.apiUrl.isBlank()
+                || config.apiKey == null || config.apiKey.isBlank()) {
+            return null;
+        }
+        return new ProviderMediaCredentials(config.apiUrl, config.apiKey);
+    }
+
     private WatiConfig resolveConfig(String instituteId) {
         // Check cache first
         CachedConfig cached = configCache.get(instituteId);

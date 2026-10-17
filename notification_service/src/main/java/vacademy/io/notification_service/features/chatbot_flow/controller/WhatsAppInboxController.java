@@ -2,6 +2,10 @@ package vacademy.io.notification_service.features.chatbot_flow.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.chatbot_flow.dto.EscalationDTO;
@@ -10,8 +14,11 @@ import vacademy.io.notification_service.features.chatbot_flow.dto.InboxMessageDT
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxSendRequest;
 import vacademy.io.notification_service.features.chatbot_flow.dto.SessionWindowDTO;
 import vacademy.io.notification_service.features.chatbot_flow.service.ChatbotEscalationService;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppInboundMediaService;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppInboxService;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +30,7 @@ public class WhatsAppInboxController {
 
     private final WhatsAppInboxService inboxService;
     private final ChatbotEscalationService escalationService;
+    private final WhatsAppInboundMediaService inboundMediaService;
 
     /**
      * @param filter UNANSWERED — only conversations where the learner spoke last and nobody has
@@ -48,6 +56,27 @@ public class WhatsAppInboxController {
             @RequestParam(defaultValue = "50") int limit) {
         List<InboxMessageDTO> messages = inboxService.getMessages(phone, instituteId, cursor, limit);
         return ResponseEntity.ok(messages);
+    }
+
+    /**
+     * The photo, sticker, voice note, video or document a learner sent, fetched from WhatsApp/WATI
+     * with the institute's token. 404: no attachment; 410: WhatsApp no longer keeps it (~30 days);
+     * 409: WhatsApp not configured; 413: too large to preview; 502: provider did not answer.
+     */
+    @GetMapping("/messages/{messageId}/media")
+    public ResponseEntity<byte[]> getInboundMedia(
+            @PathVariable String messageId,
+            @RequestParam String instituteId) {
+        WhatsAppInboundMediaService.MediaFile file = inboundMediaService.fetch(messageId, instituteId);
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .contentType(mediaTypeOf(file.contentType()))
+                // A learner's file never changes, but it is personal: browser cache only.
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePrivate());
+        if (file.filename() != null) {
+            response.header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                    .filename(file.filename(), StandardCharsets.UTF_8).build().toString());
+        }
+        return response.body(file.bytes());
     }
 
     @GetMapping("/conversations/search")
@@ -119,6 +148,14 @@ public class WhatsAppInboxController {
         boolean resolved = escalationService.resolveById(escalationId, resolvedBy);
         if (!resolved) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("id", escalationId, "status", "RESOLVED"));
+    }
+
+    private static MediaType mediaTypeOf(String contentType) {
+        try {
+            return MediaType.parseMediaType(contentType);
+        } catch (Exception e) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 
     private static boolean isBlank(String value) {

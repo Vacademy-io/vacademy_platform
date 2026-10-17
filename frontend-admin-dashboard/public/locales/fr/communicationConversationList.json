@@ -40,5 +40,18 @@
         "crmSaveFailed": "Le chatbot n'a pas pu enregistrer ce prospect dans le CRM",
         "withLeadMessage": "{{why}}\n\nSon message : {{message}}",
         "withAnswers": "{{why}}\n\nSes réponses :\n{{message}}"
+    },
+    "lastKind": {
+        "image": "Photo",
+        "video": "Vidéo",
+        "audio": "Audio",
+        "voice": "Message vocal",
+        "sticker": "Autocollant",
+        "document": "Document",
+        "location": "Position",
+        "contacts": "Fiche contact",
+        "other": "Pièce jointe",
+        "reaction": "A réagi {{emoji}}",
+        "reactionRemoved": "A retiré une réaction"
     }
 }

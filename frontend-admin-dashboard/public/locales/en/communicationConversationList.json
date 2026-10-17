@@ -38,5 +38,18 @@
         "crmSaveFailed": "The chatbot couldn't save this lead to the CRM",
         "withLeadMessage": "{{why}}\n\nTheir message: {{message}}",
         "withAnswers": "{{why}}\n\nTheir answers:\n{{message}}"
+    },
+    "lastKind": {
+        "image": "Photo",
+        "video": "Video",
+        "audio": "Audio",
+        "voice": "Voice message",
+        "sticker": "Sticker",
+        "document": "Document",
+        "location": "Location",
+        "contacts": "Contact card",
+        "other": "Attachment",
+        "reaction": "Reacted {{emoji}}",
+        "reactionRemoved": "Removed a reaction"
     }
 }

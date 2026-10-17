@@ -240,6 +240,12 @@ public class CombotWebhookService {
         fail.setBody("Error: " + errorMessage + " (code=" + errorCode + ")");
         fail.setSourceId(messageId);
         fail.setNotificationDate(Instant.now());
+        // The reason also goes in the delivery columns, not only the body: when this webhook beats
+        // the send to its own row, the send-side backfill copies the verdict from these event rows
+        // later, and it reads the columns — a reason left only in the body was lost there.
+        fail.setDeliveryStatus("FAILED");
+        fail.setDeliveryErrorCode(truncateTo(errorCode, 50));
+        fail.setDeliveryErrorMessage(truncateTo(errorMessage, 500));
 
         originalOpt.ifPresent(original -> {
             fail.setSource(original.getId());
@@ -1267,5 +1273,9 @@ public class CombotWebhookService {
             msg = errorDetail.get("details");
         }
         return msg != null ? msg.toString() : "Unknown error";
+    }
+
+    private static String truncateTo(String value, int max) {
+        return value == null || value.length() <= max ? value : value.substring(0, max);
     }
 }

@@ -28,6 +28,32 @@ function buildFilters(t: TFunction): Array<{ key: InboxFilter; label: string; ti
     ];
 }
 
+/**
+ * The row's last line. A learner's sticker, photo, voice note or reaction carries no text, so it is
+ * named ("Photo: caption", "Reacted 👍") instead of showing "[sticker]" or nothing.
+ */
+function lastMessagePreview(c: InboxConversation, t: TFunction): string {
+    const kind = c.lastMessageKind;
+    if (!kind) return c.lastMessage || '';
+    if (kind === 'reaction') {
+        return c.lastMessage
+            ? t('lastKind.reaction', { emoji: c.lastMessage })
+            : t('lastKind.reactionRemoved');
+    }
+    const known = [
+        'image',
+        'video',
+        'audio',
+        'voice',
+        'sticker',
+        'document',
+        'location',
+        'contacts',
+    ];
+    const label = t(`lastKind.${known.includes(kind) ? kind : 'other'}`);
+    return c.lastMessage ? `${label}: ${c.lastMessage}` : label;
+}
+
 export function ConversationList({ onLoadMore, onRetry }: Props) {
     const { t } = useTranslation('communicationConversationList');
     const conversations = useInboxStore((s) => s.conversations);
@@ -185,7 +211,7 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                                         className="mr-1"
                                     />
                                 )}
-                                {c.lastMessage || ''}
+                                {lastMessagePreview(c, t)}
                             </p>
                         </button>
                     ))

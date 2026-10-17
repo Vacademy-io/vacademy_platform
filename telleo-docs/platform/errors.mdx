@@ -32,7 +32,7 @@ Errors use standard HTTP status codes and always return this body:
 | 401 | `missing_api_key` | Send the key in `X-API-Key`. |
 | 401 | `invalid_api_key` | The key is wrong, revoked or expired. Check it in the dashboard. |
 | 402 | `insufficient_credits` | Top up. Already queued calls resume by themselves. |
-| 403 | `insufficient_scope` | The key cannot make this request. |
+| 403 | `insufficient_scope` | The key cannot make this request (`details.required_scope` names the scope). Human calls need a key created with the human-call scopes; see [Authentication](/authentication#scopes). |
 | 403 | `product_not_enabled` | This key is not an AI calling key. |
 | 404 | `not_found` | No call, batch or webhook with this id in your account, or no such endpoint. |
 | 404 | `agent_not_found` | Check `agent_id` against `GET /v1/agents`. |
@@ -47,7 +47,9 @@ Errors use standard HTTP status codes and always return this body:
 | 409 | `counsellor_busy` | The counsellor is on a call. Retry when it ends. |
 | 409 | `call_in_progress` | A call to this number is already ringing or in progress. |
 | 409 | `call_not_dialed` | This human call was never placed, so it cannot take a disposition. |
-| 422 | `counsellor_cannot_call` | The counsellor is not set up for your calling provider; `details.reason` says what to fix. |
+| 409 | `conflict` | A conflict without a more specific code; the message says what. Fix the cause before retrying. |
+| 422 | `counsellor_cannot_call` | The counsellor is not set up for your calling provider (no or invalid mobile number, no Airtel extension); `details.reason` says what to fix. |
+| 422 | `invalid_request` | On `POST /human-calls`: your calling provider cannot dial this `phone_number`. |
 | 422 | `telephony_not_configured` | Connect a calling provider (or a caller ID number) under *Settings → Calling*. |
 | 422 | `outside_calling_hours` | Retry at `details.next_allowed_at`. Human calls are never queued. |
 | 422 | `contact_daily_limit_reached` | This number had the maximum calls for 24 hours. |

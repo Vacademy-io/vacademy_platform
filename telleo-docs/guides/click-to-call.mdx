@@ -5,7 +5,7 @@ description: "Add a Call button to your own CRM that rings your counsellor and c
 
 This guide adds a **Call** button to your own CRM or app. When a counsellor clicks it, their phone rings; when they answer, Telleo dials the lead and connects them. The call, its recording and its outcome come back to your CRM. Read [Human calls](/concepts/human-calls) for how it works.
 
-**You need:** an API key with `calls:write` and `calls:read` ([Getting API access](/getting-api-access)), a calling provider connected under *Settings → Calling*, and counsellors who can call (`can_call: true`).
+**You need:** an API key created with **Can ring counsellors (human calls)** ticked, which gives it `human_calls:read` and `human_calls:write` ([Authentication](/authentication#scopes)); a calling provider connected under *Settings → Calling*; and counsellors who can call (`can_call: true`).
 
 <Steps>
   <Step title="Match your users to Telleo counsellors">

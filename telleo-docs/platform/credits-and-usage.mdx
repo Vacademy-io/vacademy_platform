@@ -65,7 +65,7 @@ curl "https://api.telleo.ai/v1/usage?from=2026-10-01&to=2026-10-14&timezone=Asia
 - `calls` counts dial attempts; `connected` counts calls that were answered; `talk_seconds` is the total length of connected calls.
 - `credits` is what was actually charged for those calls, read from your account's ledger. Calls are listed on the day they were placed.
 - Test calls are not included.
-- `human_calls` has the same figures for [human calls](/concepts/human-calls): with `source=api` the calls placed through `POST /v1/human-calls`, with `source=all` every outbound counsellor call. Only Vacademy Voice talk time is charged to your credits; calls on your own Exotel or Airtel account count with `0` credits. AI analysis of human calls is charged separately and is not in these figures.
+- `human_calls` has the same figures for [human calls](/concepts/human-calls): with `source=api` the calls placed through `POST /v1/human-calls`, with `source=all` every outbound counsellor call placed on Vacademy Voice, Exotel or Airtel (from the API, the dashboard's Call button, or an Airtel extension). Recordings of calls made elsewhere and uploaded to Telleo are not counted. Only Vacademy Voice talk time is charged to your credits; calls on your own Exotel or Airtel account count with `0` credits. AI analysis of human calls is charged separately and is not in these figures.
 - Charges are made shortly after a call ends. `calls_not_yet_billed` counts calls with a charge still to be made: the call minutes of a connected call, or the AI minutes once its outcome has been processed. Their `credits` arrive within minutes. Calls that are never charged (for example on your own telephony provider's minutes) are not counted.
 
 ## Cost of one call

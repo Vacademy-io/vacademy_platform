@@ -345,12 +345,12 @@ guard an API caller needs runs up front, and a call that cannot go out now is re
 
 | Route | Scope | |
 |---|---|---|
-| `GET /v1/counsellors` | calls:read | ACTIVE users with COUNSELLOR/COUNSELOR/ADMIN in the institute (auth_service users-of-status, the same set as the extension picker) with `can_call` / `blocked_reason`. No phone numbers. |
-| `POST /v1/human-calls` | calls:write | `counsellor_id` xor `counsellor_email`, `phone_number`, `contact`, `metadata`, `analyze`. 201 human_call. |
-| `GET /v1/human-calls` | calls:read | Keyset pagination like `/calls`; filters `counsellor_id`, `status` (the call log's last status), `phone_number`, `external_id`, `created_after`, `created_before`. |
-| `GET /v1/human-calls/{id}` | calls:read | |
-| `POST /v1/human-calls/{id}/disposition` | calls:write | `{key, notes}` → `CallDispositionService.applyDisposition` (institute-checked; may move a linked lead's status). `dispositioned_by` = `"api:" + keyId without hyphens` (the column is VARCHAR(36)). |
-| `GET /v1/dispositions` | calls:read | The institute's catalog (seeded on first use), `changes_lead_status`, target `lead_status`. |
+| `GET /v1/counsellors` | human_calls:read | ACTIVE users with COUNSELLOR/COUNSELOR/ADMIN in the institute (auth_service users-of-status, the same set as the extension picker) with `can_call` / `blocked_reason`. No phone numbers. |
+| `POST /v1/human-calls` | human_calls:write | `counsellor_id` xor `counsellor_email`, `phone_number`, `contact`, `metadata`, `analyze`. 201 human_call. |
+| `GET /v1/human-calls` | human_calls:read | Keyset pagination like `/calls`; filters `counsellor_id`, `status` (the call log's last status), `phone_number`, `external_id`, `created_after`, `created_before`. |
+| `GET /v1/human-calls/{id}` | human_calls:read | |
+| `POST /v1/human-calls/{id}/disposition` | human_calls:write | `{key, notes}` → `CallDispositionService.applyDisposition` (institute-checked; may move a linked lead's status). `dispositioned_by` = `"api:" + keyId without hyphens` (the column is VARCHAR(36)). |
+| `GET /v1/dispositions` | human_calls:read | The institute's catalog (seeded on first use), `changes_lead_status`, target `lead_status`. |
 
 ### Create: checks, in order
 
@@ -438,4 +438,45 @@ and every `/v1/telephony/counsellor-endpoints` route now require staff of the in
 (`requireInstituteStaff`); `resolveSubject` refuses another institute's lead; an endpoint
 upsert can no longer move another institute's row; Airtel origination only uses the dialling
 institute's extension.
+
+### v1.2 review fixes (2026-10-17)
+
+- **Scopes.** Human calls need `human_calls:read` / `human_calls:write`
+  (`InstituteApiKeyService.AI_CALLING_ALLOWED_SCOPES`). They are NOT in the default set
+  (`AI_CALLING_SCOPES`, what a key gets when created without scopes), so no existing key —
+  and no legacy `vak_live_` key, which is treated as having the default set — can ring staff
+  or list them. The Settings → AI calling key dialog has a "Can ring counsellors (human
+  calls)" box (off by default) that sends all five scopes. Keys cannot be edited after
+  creation (there is no update endpoint); an admin creates a new key and revokes the old.
+- **Order of checks** (the docs table matches): validation → telephony_not_configured →
+  counsellor_not_found → counsellor_cannot_call (now also a mobile that is not 10–15 digits)
+  → outside_calling_hours → credits (`CallOrchestrator.assertCanDial`, outside any
+  transaction) → `HumanCallReservation.reserve` → `CallOrchestrator.dispatchPrepared`.
+- **Double-click race.** `HumanCallReservation.reserve` is one transaction:
+  `pg_advisory_xact_lock(hashtext('human-call:counsellor:<inst>:<user>'))`, then
+  `…:number:<inst>:<last10>` (always in that order, so no deadlock), an Idempotency-Key
+  re-check (a retry that waited on the lock gets the first call), counsellor_busy /
+  call_in_progress / caps, the API row, the INITIATED call-log row
+  (`prepareAndPersistForCounsellor` joins the transaction) and `setDialed`. Commit releases
+  the locks; the provider dial runs afterwards, outside. A dispatch that never reached the
+  provider (circuit breaker) is closed with `markFailedIfNotDispatched`, so it does not look
+  live. The dashboard's Call button takes no lock.
+- **Analysis retries.** A `call_intelligence` FAILED row with attempts < 4 (ai_service
+  `call_intelligence_poller.MAX_ATTEMPTS`) is reported `pending`, and `analysis_ready`
+  waits; FAILED at 4 attempts, or SKIPPED, is final.
+- **Status filter.** `GET /v1/human-calls?status=` filters on the public status, computed in
+  SQL (`HumanCallApiCallRepository.PUBLIC_STATUS_SQL`) with the same cut-offs as
+  `HumanCallViews.state()` (2-minute creating grace, 2 h / Airtel 24 h stuck limit), so a
+  row the object reports `failed` matches `status=failed`.
+- **Number errors.** Our own "no phone on file" / "format not supported" → 422
+  `invalid_request` (the contact's number); a provider "format rejected" → 422
+  `counsellor_cannot_call` (the contact's number was valid E.164, so the counsellor's mobile).
+- **Usage.** `human_calls` counts only PLIVO / EXOTEL / AIRTEL rows (MANUAL uploads are not
+  calls placed). source=api: rows in human_call_api_call; source=all: every outbound
+  counsellor call on those providers.
+- **Lead ownership (dashboard /connect).** A campaign lead must be in a campaign of the
+  institute; a campaign-less admission/application lead (audience_id NULL) must have an
+  applicant whose current application stage belongs to the institute
+  (`AudienceResponseRepository.isApplicantLeadInInstitute`). The human-call API's lead
+  linking still only matches campaign leads.
 

@@ -2293,7 +2293,7 @@
     "/counsellors": {
       "get": {
         "summary": "List counsellors",
-        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are never returned.\n\nScope: `calls:read`.",
+        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are never returned.\n\nScope: `human_calls:read`.",
         "tags": [
           "Human calls"
         ],
@@ -2309,6 +2309,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CounsellorList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the human-call scope this request needs. Keys only have human_calls:read / human_calls:write when created with them.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the human_calls:write scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2413,7 +2439,7 @@
     "/human-calls": {
       "post": {
         "summary": "Start a human call",
-        "description": "Rings the counsellor's phone and, when they answer, dials `phone_number` and connects them, on your account's calling provider. Every check runs first; a call that cannot go out now is refused, never queued.\n\nScope: `calls:write`.",
+        "description": "Rings the counsellor's phone and, when they answer, dials `phone_number` and connects them, on your account's calling provider. Every check runs first; a call that cannot go out now is refused, never queued.\n\nScope: `human_calls:write`.",
         "tags": [
           "Human calls"
         ],
@@ -2535,7 +2561,7 @@
             }
           },
           "403": {
-            "description": "The key lacks the scope this request needs.",
+            "description": "The key lacks the human-call scope this request needs. Keys only have human_calls:read / human_calls:write when created with them.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/RequestId"
@@ -2551,7 +2577,7 @@
                     "value": {
                       "error": {
                         "code": "insufficient_scope",
-                        "message": "This key does not have the calls:write scope.",
+                        "message": "This API key does not have the human_calls:write scope.",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -2649,6 +2675,15 @@
                         "request_id": "req_8f2c1a7e"
                       }
                     }
+                  },
+                  "conflict": {
+                    "value": {
+                      "error": {
+                        "code": "conflict",
+                        "message": "A conflict without a more specific code; the message says what.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
                   }
                 }
               }
@@ -2708,6 +2743,15 @@
                       "error": {
                         "code": "contact_called_recently",
                         "message": "This number had a call in the last 60 minutes.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "phone_number is not a number this account's calling provider can dial.",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -2874,7 +2918,7 @@
       },
       "get": {
         "summary": "List human calls",
-        "description": "Your human calls, newest first. Filter by counsellor, status, number, your `external_id` or creation time; page with `starting_after`.\n\nScope: `calls:read`.",
+        "description": "Your human calls, newest first. Filter by counsellor, status, number, your `external_id` or creation time; page with `starting_after`.\n\nScope: `human_calls:read`.",
         "tags": [
           "Human calls"
         ],
@@ -3071,7 +3115,7 @@
     "/human-calls/{id}": {
       "get": {
         "summary": "Get a human call",
-        "description": "The call's status and, once it has ended, its times, recording, disposition, analysis and cost.\n\nScope: `calls:read`.",
+        "description": "The call's status and, once it has ended, its times, recording, disposition, analysis and cost.\n\nScope: `human_calls:read`.",
         "tags": [
           "Human calls"
         ],
@@ -3256,7 +3300,7 @@
     "/human-calls/{id}/disposition": {
       "post": {
         "summary": "Set a disposition",
-        "description": "Records the call's outcome, as a counsellor does in the dashboard. When the call is filed on a lead and the disposition maps to a lead stage, the lead moves to it.\n\nScope: `calls:write`.",
+        "description": "Records the call's outcome, as a counsellor does in the dashboard. When the call is filed on a lead and the disposition maps to a lead stage, the lead moves to it.\n\nScope: `human_calls:write`.",
         "tags": [
           "Human calls"
         ],
@@ -3277,7 +3321,7 @@
             }
           },
           "403": {
-            "description": "The key lacks the scope this request needs.",
+            "description": "The key lacks the human-call scope this request needs. Keys only have human_calls:read / human_calls:write when created with them.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/RequestId"
@@ -3293,7 +3337,7 @@
                     "value": {
                       "error": {
                         "code": "insufficient_scope",
-                        "message": "This key does not have the calls:write scope.",
+                        "message": "This API key does not have the human_calls:write scope.",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -3489,7 +3533,7 @@
     "/dispositions": {
       "get": {
         "summary": "List dispositions",
-        "description": "Your account's call outcomes (the dashboard's list), and whether each moves a linked lead's stage.\n\nScope: `calls:read`.",
+        "description": "Your account's call outcomes (the dashboard's list), and whether each moves a linked lead's stage.\n\nScope: `human_calls:read`.",
         "tags": [
           "Human calls"
         ],
@@ -4627,7 +4671,7 @@
           },
           "human_calls": {
             "type": "object",
-            "description": "Human (counsellor) calls in the same range: with `source=api` those placed through `POST /human-calls`, with `source=all` every outbound counsellor call. Only Vacademy Voice talk time is charged.",
+            "description": "Human (counsellor) calls in the same range: with `source=api` those placed through `POST /human-calls`, with `source=all` every outbound counsellor call placed on Vacademy Voice, Exotel or Airtel (uploaded recordings of calls made elsewhere are not counted). Only Vacademy Voice talk time is charged.",
             "properties": {
               "totals": {
                 "type": "object",
@@ -4861,7 +4905,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "With `failed`: `not_connected`, `no_recording`, `insufficient_credits`, `empty_transcript`, `analysis_error`…"
+            "description": "With `failed`: `not_connected`, `no_recording`, `insufficient_credits`, `empty_transcript`, `analysis_error`… A temporary error is retried (up to 4 attempts) and stays `pending` meanwhile."
           },
           "summary": {
             "type": [

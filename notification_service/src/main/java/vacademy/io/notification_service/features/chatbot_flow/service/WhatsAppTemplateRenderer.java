@@ -54,6 +54,8 @@ public class WhatsAppTemplateRenderer {
         /** Rebuilt message text, or {@code null} when the template is no longer on file. */
         public String body;
         public String templateName;
+        /** Meta's category for the template (MARKETING / UTILITY / AUTHENTICATION), when on file. */
+        public String category;
         public String provider;
         /** SUCCESS or FAILED — whether the provider accepted the send. */
         public String deliveryStatus;
@@ -128,6 +130,7 @@ public class WhatsAppTemplateRenderer {
             }
 
             if (tmpl != null) {
+                rm.category = blankToNull(tmpl.getCategory());
                 rm.body = composeMessage(tmpl, bodyParams, headerParams);
                 rm.buttons = parseButtons(tmpl.getButtonsConfig(), asStringMap(payload.get("buttonParams")));
             }
@@ -299,6 +302,10 @@ public class WhatsAppTemplateRenderer {
 
     private boolean isNotBlank(String s) {
         return s != null && !s.isBlank();
+    }
+
+    private String blankToNull(String s) {
+        return isNotBlank(s) ? s.trim().toUpperCase() : null;
     }
 
     private boolean isMediaHeader(String headerType) {

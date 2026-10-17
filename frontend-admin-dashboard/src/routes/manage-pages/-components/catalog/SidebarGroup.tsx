@@ -68,6 +68,8 @@ export const SidebarGroup = ({
     const promo = sidebar?.promo ? objectOf(sidebar.promo) : null;
     const setPromo = (next: Props) => setSidebar({ promo: { ...promo, ...next } });
     const button = objectOf(promo?.button);
+    // Google Play / App Store badges, shown on the site in place of the button.
+    const appLinks = objectOf(promo?.appLinks);
 
     return (
         <DesignGroup
@@ -206,6 +208,19 @@ export const SidebarGroup = ({
                         label={t('catalogDesign.sidebar.buttonLink')}
                         value={textOf(button.target)}
                         onChange={(v) => setPromo({ button: { ...button, target: v } })}
+                    />
+                    <TextField
+                        label={t('catalogDesign.sidebar.playStoreLink')}
+                        hint={t('catalogDesign.sidebar.storeLinksHint')}
+                        placeholder="https://play.google.com/store/apps/details?id=…"
+                        value={textOf(appLinks.playStore)}
+                        onChange={(v) => setPromo({ appLinks: { ...appLinks, playStore: v } })}
+                    />
+                    <TextField
+                        label={t('catalogDesign.sidebar.appStoreLink')}
+                        placeholder="https://apps.apple.com/…"
+                        value={textOf(appLinks.appStore)}
+                        onChange={(v) => setPromo({ appLinks: { ...appLinks, appStore: v } })}
                     />
                 </>
             )}

@@ -605,6 +605,9 @@
       "imageHint": "تحل الصورة الجاهزة محل الهاتف المرسوم.",
       "imageAlt": "وصف الصورة (لقارئات الشاشة)",
       "buttonLink": "رابط الزر",
+      "playStoreLink": "رابط Google Play",
+      "appStoreLink": "رابط App Store",
+      "storeLinksHint": "أضف رابط متجر لعرض شارات Google Play / App Store بدلاً من الزر.",
       "urlKey": "مفتاح الرابط: ?{{id}}=… (ثابت بعد تعيينه)",
       "urlKeyReserved": "تستخدم الصفحة هذا المفتاح لشيء آخر، لذا يخفي الموقع هذه المجموعة. غيّر المعرّف في «تعديل بصيغة JSON».",
       "needsTag": "أضف وسمًا واحدًا على الأقل: الخيار بلا وسوم لا يظهر."
@@ -948,6 +951,9 @@
     "phoneHeading": "صورة الهاتف",
     "phoneShow": "إظهار هاتف",
     "phoneHint": "هاتف تظهر صورتك على شاشته بجانب النص.",
+    "playStoreLink": "رابط Google Play",
+    "appStoreLink": "رابط App Store",
+    "storeLinksHint": "أضف رابط متجر لعرض شارات Google Play / App Store بدلاً من الزر.",
     "phoneImage": "الصورة على الشاشة"
   },
   "pricingTable": {

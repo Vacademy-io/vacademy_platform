@@ -601,6 +601,9 @@
       "imageHint": "तैयार चित्र बनाए गए फ़ोन की जगह दिखता है।",
       "imageAlt": "चित्र का विवरण (स्क्रीन रीडर के लिए)",
       "buttonLink": "बटन का लिंक",
+      "playStoreLink": "Google Play लिंक",
+      "appStoreLink": "App Store लिंक",
+      "storeLinksHint": "बटन की जगह Google Play / App Store बैज दिखाने के लिए स्टोर लिंक जोड़ें।",
       "urlKey": "लिंक कुंजी: ?{{id}}=… (एक बार तय होने पर नहीं बदलती)",
       "urlKeyReserved": "पेज यह कुंजी पहले से किसी और काम में लेता है, इसलिए साइट यह समूह छिपा देती है। \"JSON के रूप में बदलें\" में आईडी बदलें।",
       "needsTag": "कम से कम एक टैग जोड़ें: बिना टैग वाला विकल्प नहीं दिखता।"
@@ -944,6 +947,9 @@
     "phoneHeading": "फ़ोन की तस्वीर",
     "phoneShow": "फ़ोन दिखाएँ",
     "phoneHint": "टेक्स्ट के बगल में फ़ोन, जिसकी स्क्रीन पर आपकी तस्वीर हो।",
+    "playStoreLink": "Google Play लिंक",
+    "appStoreLink": "App Store लिंक",
+    "storeLinksHint": "बटन की जगह Google Play / App Store बैज दिखाने के लिए स्टोर लिंक जोड़ें।",
     "phoneImage": "स्क्रीन पर तस्वीर"
   },
   "pricingTable": {

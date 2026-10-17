@@ -602,6 +602,9 @@
       "imageHint": "Une image prête remplace le téléphone dessiné.",
       "imageAlt": "Description de l'image (lecteurs d'écran)",
       "buttonLink": "Lien du bouton",
+      "playStoreLink": "Lien Google Play",
+      "appStoreLink": "Lien App Store",
+      "storeLinksHint": "Ajoutez un lien de store pour afficher les badges Google Play / App Store à la place du bouton.",
       "urlKey": "Clé de lien : ?{{id}}=… (fixe une fois définie)",
       "urlKeyReserved": "La page utilise déjà cette clé pour autre chose, le site masque donc ce groupe. Changez l'identifiant dans « Modifier en JSON ».",
       "needsTag": "Ajoutez au moins une étiquette : une option sans étiquette n'est pas affichée."
@@ -945,6 +948,9 @@
     "phoneHeading": "Image de téléphone",
     "phoneShow": "Afficher un téléphone",
     "phoneHint": "Un téléphone avec votre image à l'écran, à côté du texte.",
+    "playStoreLink": "Lien Google Play",
+    "appStoreLink": "Lien App Store",
+    "storeLinksHint": "Ajoutez un lien de store pour afficher les badges Google Play / App Store à la place du bouton.",
     "phoneImage": "Image à l'écran"
   },
   "pricingTable": {

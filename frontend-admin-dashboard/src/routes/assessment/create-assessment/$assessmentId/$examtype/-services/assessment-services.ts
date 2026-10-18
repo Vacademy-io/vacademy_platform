@@ -215,6 +215,8 @@ export const handlePostStep1Data = async (
         // Queue an AI evaluation when a learner submits. Metered per graded
         // question, so it is only ever sent as an explicit true/false.
         ai_evaluation_enabled: data.aiEvaluationEnabled ?? false,
+        // OMR sheet (pen & paper) mode: answered on a printed bubble sheet, read by OMRChecker.
+        has_omr_mode: data.omrMode ?? false,
         // Always sent as a full object: tier NONE clears the stored config, so a
         // save from this build can never leave a stale tier behind.
         proctoring_config: proctoringWireFromForm(data.proctoring ?? DEFAULT_PROCTORING_FORM),

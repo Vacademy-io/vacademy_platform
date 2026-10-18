@@ -15,6 +15,8 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.omr.service.OmrPaperLoader;
+import vacademy.io.assessment_service.features.assessment.omr.service.OmrSetService;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
@@ -25,6 +27,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.RandomGenerator;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -45,6 +48,9 @@ public class AssessmentBasicDetailsManager {
 
     @Autowired
     vacademy.io.assessment_service.features.proctoring.service.ProctoringConfigService proctoringConfigService;
+
+    @Autowired
+    OmrPaperLoader omrPaperLoader;
 
     public ResponseEntity<AssessmentSaveResponseDto> saveBasicAssessmentDetails(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
@@ -257,6 +263,14 @@ public class AssessmentBasicDetailsManager {
 
         // Todo: Verify Assessment Details based on type
         Assessment assessment = assessmentOptional.get();
+        // An OMR paper must fit on a bubble sheet: single-correct MCQs with 2-5 options,
+        // at most 200 of them. Refused here rather than when the sheets are printed.
+        if (Boolean.TRUE.equals(assessment.getOmrMode())) {
+            List<String> omrIssues = OmrSetService.paperIssues(omrPaperLoader.load(assessmentId));
+            if (!omrIssues.isEmpty()) {
+                throw new VacademyException("This OMR assessment cannot be published yet: " + String.join(". ", omrIssues));
+            }
+        }
         // Publish is idempotent — the endpoint can be hit again on an already-published
         // assessment. Only an actual DRAFT -> PUBLISHED transition should notify anyone,
         // otherwise a re-publish re-blasts every registered learner.

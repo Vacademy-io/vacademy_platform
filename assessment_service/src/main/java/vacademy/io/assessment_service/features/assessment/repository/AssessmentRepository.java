@@ -397,4 +397,13 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     @Query(value = "UPDATE assessment SET copy_comment_placement = :placement WHERE id = :assessmentId",
             nativeQuery = true)
     int updateCopyCommentPlacement(@Param("assessmentId") String assessmentId, @Param("placement") String placement);
+
+    /**
+     * Store the OMR settings on their own, without rewriting the rest of the row. Clears
+     * the persistence context so a later read in the same transaction sees the new value.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE assessment SET omr_config = CAST(:config AS jsonb) WHERE id = :assessmentId",
+            nativeQuery = true)
+    int updateOmrConfig(@Param("assessmentId") String assessmentId, @Param("config") String config);
 }

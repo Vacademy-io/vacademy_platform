@@ -14,6 +14,7 @@ import vacademy.io.assessment_service.features.assessment.dto.batch_pending.Enro
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.BatchEnrollmentRow;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -333,6 +334,56 @@ public class AdminCoreServiceClient {
                     instituteId, batchIds.size(), e.getMessage());
         }
         return List.of();
+    }
+
+    /** One (learner, batch) enrolment and the institute enrollment number recorded on it. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record EnrollmentNumberRow(
+            @com.fasterxml.jackson.annotation.JsonProperty("user_id") String userId,
+            @com.fasterxml.jackson.annotation.JsonProperty("package_session_id") String packageSessionId,
+            @com.fasterxml.jackson.annotation.JsonProperty("institute_enrollment_number") String instituteEnrollmentNumber) {
+    }
+
+    /** admin_core refuses more users than this in one enrollment-number lookup. */
+    private static final int ENROLLMENT_NUMBER_CHUNK = 2000;
+
+    /**
+     * The institute enrollment number on every ACTIVE enrolment of these learners (OMR
+     * roll numbers). Unlike the lookups above this does NOT swallow failures: an empty
+     * answer would read as "nobody has a roll number" and block every OMR download, or
+     * worse, match no scanned sheet, so the caller must see that admin_core was down.
+     */
+    public List<EnrollmentNumberRow> getEnrollmentNumbers(String instituteId, List<String> userIds) {
+        if (instituteId == null || instituteId.isBlank() || userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        List<EnrollmentNumberRow> out = new ArrayList<>();
+        for (int from = 0; from < userIds.size(); from += ENROLLMENT_NUMBER_CHUNK) {
+            List<String> chunk = new ArrayList<>(userIds.subList(from, Math.min(userIds.size(), from + ENROLLMENT_NUMBER_CHUNK)));
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("user_ids", chunk);
+            body.put("statuses", List.of("ACTIVE"));
+            try {
+                ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                        clientName, "POST", adminCoreServiceBaseUrl,
+                        "/admin-core-service/internal/learner/v1/enrollment-numbers", body);
+                if (response.getStatusCode() != HttpStatus.OK) {
+                    throw new VacademyException("admin-core answered " + response.getStatusCode());
+                }
+                if (StringUtils.hasText(response.getBody())) {
+                    out.addAll(objectMapper.readValue(response.getBody(), new TypeReference<List<EnrollmentNumberRow>>() {
+                    }));
+                }
+            } catch (VacademyException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Enrollment-number lookup failed for institute {} ({} users): {}",
+                        instituteId, chunk.size(), e.getMessage());
+                throw new VacademyException("Could not load the learners' enrollment numbers right now; please try again.");
+            }
+        }
+        return out;
     }
 
     /** admin_core refuses more batches than this in one enrolment lookup. */

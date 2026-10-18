@@ -203,8 +203,12 @@ public class StudentAttemptService {
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
         }
 
-        // Auto-release result based on assessment's result_type
-        boolean justReleased = !isManualEvaluation && !heldForAi && autoReleaseResultIfApplicable(attempt);
+        // Auto-release result based on assessment's result_type. An OMR-mode assessment
+        // is never auto-released: its scanned sheets are reviewed (faint marks, double
+        // bubbles, a mis-bubbled roll number) and the admin releases them.
+        boolean heldForOmrReview = isOmrModeAssessment(attempt);
+        boolean justReleased = !isManualEvaluation && !heldForAi && !heldForOmrReview
+                && autoReleaseResultIfApplicable(attempt);
 
         StudentAttempt saved = studentAttemptRepository.save(attempt);
         if (endedByThisCall && endSource != null) {
@@ -221,6 +225,16 @@ public class StudentAttemptService {
             return typedAnswerEvaluation.awaitsAiGrading(attempt, attempt.getRegistration().getAssessment());
         } catch (Exception e) {
             log.error("Failed to resolve AI grading for attempt {}: {}", attempt.getId(), e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isOmrModeAssessment(StudentAttempt attempt) {
+        try {
+            Assessment assessment = attempt.getRegistration().getAssessment();
+            return assessment != null && Boolean.TRUE.equals(assessment.getOmrMode());
+        } catch (Exception e) {
+            log.error("Failed to resolve OMR mode for attempt {}: {}", attempt.getId(), e.getMessage());
             return false;
         }
     }

@@ -80,6 +80,10 @@
         "aiEvaluation": {
             "label": "Evaluate submissions with AI",
             "description": "Grade each submission automatically when it is submitted. Uses institute credits per question graded; a teacher still reviews and releases the result."
+        },
+        "omrMode": {
+            "label": "OMR sheet (pen & paper) mode",
+            "description": "Students answer on a printed OMR sheet. Only single-correct MCQs (2–5 options, up to 200 questions). Each learner's roll number is their enrollment number. Results stay held until you release them."
         }
     },
     "unusedFields": {

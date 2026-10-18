@@ -54,6 +54,8 @@ export const BasicInfoFormSchema = z.object({
     resultType: z.string().min(1, 'Choose how results are evaluated'),
     // Automatic AI evaluation on submit. Off by default: it spends institute credits.
     aiEvaluationEnabled: z.boolean().default(false),
+    // Pen-and-paper exam answered on a printed OMR sheet (single-correct MCQs only).
+    omrMode: z.boolean().default(false),
     // Proctoring tier + knobs. NONE by default: the camera is only ever asked
     // for because someone chose a tier.
     proctoring: z

@@ -771,6 +771,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             JOIN assessment_user_registration aur ON aur.id = sa.registration_id
             JOIN assessment a ON a.id = aur.assessment_id
             WHERE a.result_type = 'AUTO_AFTER_ASSESSMENT_END'
+            AND COALESCE(a.omr_mode, false) = false
             AND CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time
             AND sa.status = 'ENDED'
             AND sa.result_status = 'COMPLETED'

@@ -5,6 +5,7 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash, GraduationCap } from '@phosphor-icons/react';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { LeadDrawerPanel } from '@/components/shared/leads/lead-drawer-panel';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -499,6 +500,9 @@ export const StudentSidebar = ({
                             email={selectedStudent?.email}
                             phone={selectedStudent?.mobile_number}
                         />
+
+                        {/* Lead panel — only for a lead row opened from a leads page. */}
+                        <LeadDrawerPanel responseId={leadResponseId} />
 
                         {/* Sub Organization and Roles Badges */}
                         {(selectedStudent?.sub_org_name ||

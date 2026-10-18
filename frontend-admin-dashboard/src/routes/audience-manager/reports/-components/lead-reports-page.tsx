@@ -17,30 +17,13 @@
  *
  * Every tab is read-only; this page never writes anything.
  */
+import { ReportsRail } from './ReportsRail';
+import { ReportScope } from './ReportScope';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import {
-    AddressBook,
-    ArrowsClockwise,
-    ArrowsLeftRight,
-    CalendarCheck,
-    ChartLineUp,
-    CurrencyCircleDollar,
-    Funnel,
-    ListChecks,
-    Megaphone,
-    Phone,
-    Stack,
-    Table,
-    Tag,
-    TrendUp,
-    User,
-    Users,
-    UsersThree,
-    Sparkle,
-} from '@phosphor-icons/react';
+import { ArrowsClockwise, Megaphone, User } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -51,7 +34,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -315,6 +298,9 @@ export function LeadReportsPage() {
                     value={counsellorUserId}
                     onChange={setCounsellorUserId}
                 />
+                <div className="w-full border-t border-neutral-100 pt-3">
+                    <ReportScope tab={activeTab} listApplies={campaignApplies} />
+                </div>
             </div>
 
             {!instituteId && (
@@ -324,77 +310,13 @@ export function LeadReportsPage() {
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
-                <TabsList className="grid h-auto w-full max-w-6xl grid-cols-3 sm:grid-cols-5 lg:grid-cols-7">
-                    <TabsTrigger value="overview" className="gap-1.5">
-                        <ChartLineUp size={14} weight="bold" />
-                        {t('tabs.overview')}
-                    </TabsTrigger>
-                    <TabsTrigger value="sources" className="gap-1.5">
-                        <Megaphone size={14} weight="bold" />
-                        {t('tabs.sources')}
-                    </TabsTrigger>
-                    {/* Always listed, even before Campaign Links (UTM) are switched on —
-                        the tab itself explains how to enable them. A hidden tab is not
-                        discoverable, and this is the one place the feature is explained. */}
-                    <TabsTrigger value="utm" className="gap-1.5">
-                        <Tag size={14} weight="bold" />
-                        {t('tabs.utm')}
-                    </TabsTrigger>
-                    <TabsTrigger value="funnel" className="gap-1.5">
-                        <Funnel size={14} weight="bold" />
-                        {t('tabs.funnel')}
-                    </TabsTrigger>
-                    <TabsTrigger value="dispositions" className="gap-1.5">
-                        <ArrowsLeftRight size={14} weight="bold" />
-                        {t('tabs.dispositions')}
-                    </TabsTrigger>
-                    <TabsTrigger value="calling" className="gap-1.5">
-                        <Phone size={14} weight="bold" />
-                        {t('tabs.calling')}
-                    </TabsTrigger>
-                    <TabsTrigger value="lead-calls" className="gap-1.5">
-                        <AddressBook size={14} weight="bold" />
-                        {t('tabs.leadCalls')}
-                    </TabsTrigger>
-                    {callIntelligenceEnabled && (
-                        <TabsTrigger value="call-intelligence" className="gap-1.5">
-                            <Sparkle size={14} weight="bold" />
-                            {t('tabs.callIntelligence')}
-                        </TabsTrigger>
-                    )}
-                    <TabsTrigger value="activity" className="gap-1.5">
-                        <ListChecks size={14} weight="bold" />
-                        {t('tabs.activity')}
-                    </TabsTrigger>
-                    <TabsTrigger value="followups" className="gap-1.5">
-                        <CalendarCheck size={14} weight="bold" />
-                        {t('tabs.followups')}
-                    </TabsTrigger>
-                    <TabsTrigger value="counsellors" className="gap-1.5">
-                        <Users size={14} weight="bold" />
-                        {t('tabs.counsellors')}
-                    </TabsTrigger>
-                    <TabsTrigger value="manager" className="gap-1.5">
-                        <UsersThree size={14} weight="bold" />
-                        {t('tabs.manager')}
-                    </TabsTrigger>
-                    <TabsTrigger value="revenue" className="gap-1.5">
-                        <CurrencyCircleDollar size={14} weight="bold" />
-                        {t('tabs.revenue')}
-                    </TabsTrigger>
-                    <TabsTrigger value="cohort" className="gap-1.5">
-                        <Stack size={14} weight="bold" />
-                        {t('tabs.cohort')}
-                    </TabsTrigger>
-                    <TabsTrigger value="forecast" className="gap-1.5">
-                        <TrendUp size={14} weight="bold" />
-                        {t('tabs.forecast')}
-                    </TabsTrigger>
-                    <TabsTrigger value="custom" className="gap-1.5">
-                        <Table size={14} weight="bold" />
-                        {t('tabs.custom')}
-                    </TabsTrigger>
-                </TabsList>
+                <div className="grid gap-6 lg:grid-cols-12">
+                    <ReportsRail
+                        active={activeTab}
+                        onSelect={setActiveTab}
+                        showIntelligence={!!callIntelligenceEnabled}
+                    />
+                    <div className="min-w-0 lg:col-span-9">
 
                 <TabsContent value="overview">
                     <OverviewTab {...tabProps} />
@@ -452,6 +374,8 @@ export function LeadReportsPage() {
                 <TabsContent value="custom">
                     <CustomReportTab {...tabProps} />
                 </TabsContent>
+                    </div>
+                </div>
             </Tabs>
         </div>
     );

@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { RangeSegment } from './RangeSegment';
+import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
+import { RecentLeadsEnhancedHeader } from './RecentLeadsEnhancedHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { parseLockedParams, searchSignature } from './pinned-filters';
@@ -113,7 +116,6 @@ import {
     WORKED_WINDOW_CUSTOM,
 } from '@/components/shared/leads/worked-window-filter';
 import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
-import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
@@ -127,7 +129,6 @@ import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/d
 import {
     ArrowCounterClockwise,
     ArrowsLeftRight,
-    CaretDown,
     CircleNotch,
     Tag,
     Trash,
@@ -978,6 +979,8 @@ const RecentLeadsContent = ({
         }),
         [setSelectedStudent, updateTier, placeCall, showAiButton, t]
     );
+    // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
+    useRegisterLeadDrawerSource({ vms: vms, profiles: leadProfiles, actions, showOps, showScore });
 
     // The backend mirrors a per-response status change onto the user's profile
     // conversion_status, so the side-view agrees. Invalidate the profile/batch caches too
@@ -1681,6 +1684,78 @@ const RecentLeadsContent = ({
     // (one I2CAN tab pins nine statuses). They stay applied, they just stop shouting.
     const visibleChips = chips.filter((c) => !(c.param && isLocked(c.param)));
 
+    // Bulk actions: shown as inline buttons.
+    const bulkItems = [
+        {
+            label: t('bulk.assignLeads'),
+            value: 'assign',
+            icon: <UserPlus className="size-4" />,
+        },
+        {
+            label: t('bulk.unassignLeads'),
+            value: 'unassign',
+            icon: <UserMinus className="size-4" />,
+        },
+        // Not admin-gated, unlike delete/move below:
+        // changing status is a counsellor's normal daily
+        // action and the single-row chip already allows it.
+        {
+            label: t('bulk.changeStatus'),
+            value: 'status',
+            icon: <Tag className="size-4" />,
+        },
+        // Delete/restore are admin-only, matching the endpoints'
+        // own check. In the deleted-leads view the only sensible
+        // action is putting them back.
+        ...(canDeleteLeads
+            ? [
+                  showDeleted
+                      ? {
+                            label: t('bulk.restoreLeads'),
+                            value: 'restore',
+                            icon: <ArrowCounterClockwise className="size-4 text-primary-600" />,
+                        }
+                      : {
+                            label: t('bulk.deleteLeads'),
+                            value: 'delete',
+                            icon: <Trash className="size-4 text-danger-600" />,
+                        },
+              ]
+            : []),
+        // Moving a deleted lead is refused server-side (restore it
+        // first), so the action is hidden in the deleted view
+        // rather than offered and then skipped.
+        ...(canDeleteLeads && !showDeleted
+            ? [
+                  {
+                      label: t('bulk.moveLeads'),
+                      value: 'migrate',
+                      icon: <ArrowsLeftRight className="size-4" />,
+                  },
+              ]
+            : []),
+    ];
+    const onBulkSelect = (value: string) => {
+        if (value === 'status') {
+            setBulkStatusOpen(true);
+            return;
+        }
+        if (value === 'migrate') {
+            setBulkMigrateOpen(true);
+            return;
+        }
+        if (value === 'delete') {
+            setBulkDeleteOpen(true);
+            return;
+        }
+        if (value === 'restore') {
+            restoreMutation.mutate();
+            return;
+        }
+        setBulkActionMode(value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN');
+        setBulkAssignOpen(true);
+    };
+
     return (
         <div className="flex w-full flex-col gap-4">
             {/* Heading — while a (re)filtered query is in flight there is no count yet;
@@ -1715,6 +1790,10 @@ const RecentLeadsContent = ({
                     </MyButton>
                 )}
             </div>
+
+            {/* Summary header. Not on a
+                pinned sidebar sub-tab or the deleted view: those carry their own filter. */}
+            {!lockRef.current && !showDeleted && <RecentLeadsEnhancedHeader />}
 
             {/* Toolbar — left filters, right actions (search lives in its own row below) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1895,23 +1974,12 @@ const RecentLeadsContent = ({
                         onChange={setUtmFilter}
                     />
                     <ManageListFiltersLink surface="LEADS" />
-                    <Select
+                    <RangeSegment
                         value={rangeDays}
-                        onValueChange={setDateRange}
+                        options={dateRangeOptions.map((o) => o.value)}
+                        onChange={setDateRange}
                         disabled={isLocked('range')}
-                    >
-                        <SelectTrigger className="h-10 w-40">
-                            <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {dateRangeOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    />
                     {rangeDays === CUSTOM_DATE_VALUE && (
                         <Popover open={customOpen} onOpenChange={setCustomOpen}>
                             <PopoverTrigger asChild>
@@ -2119,89 +2187,17 @@ const RecentLeadsContent = ({
                                 >
                                     {t('bulk.clear')}
                                 </MyButton>
-                                <MyDropdown
-                                    dropdownList={[
-                                        {
-                                            label: t('bulk.assignLeads'),
-                                            value: 'assign',
-                                            icon: <UserPlus className="size-4" />,
-                                        },
-                                        {
-                                            label: t('bulk.unassignLeads'),
-                                            value: 'unassign',
-                                            icon: <UserMinus className="size-4" />,
-                                        },
-                                        // Not admin-gated, unlike delete/move below:
-                                        // changing status is a counsellor's normal daily
-                                        // action and the single-row chip already allows it.
-                                        {
-                                            label: t('bulk.changeStatus'),
-                                            value: 'status',
-                                            icon: <Tag className="size-4" />,
-                                        },
-                                        // Delete/restore are admin-only, matching the endpoints'
-                                        // own check. In the deleted-leads view the only sensible
-                                        // action is putting them back.
-                                        ...(canDeleteLeads
-                                            ? [
-                                                  showDeleted
-                                                      ? {
-                                                            label: t('bulk.restoreLeads'),
-                                                            value: 'restore',
-                                                            icon: (
-                                                                <ArrowCounterClockwise className="size-4 text-primary-600" />
-                                                            ),
-                                                        }
-                                                      : {
-                                                            label: t('bulk.deleteLeads'),
-                                                            value: 'delete',
-                                                            icon: (
-                                                                <Trash className="size-4 text-danger-600" />
-                                                            ),
-                                                        },
-                                              ]
-                                            : []),
-                                        // Moving a deleted lead is refused server-side (restore it
-                                        // first), so the action is hidden in the deleted view
-                                        // rather than offered and then skipped.
-                                        ...(canDeleteLeads && !showDeleted
-                                            ? [
-                                                  {
-                                                      label: t('bulk.moveLeads'),
-                                                      value: 'migrate',
-                                                      icon: <ArrowsLeftRight className="size-4" />,
-                                                  },
-                                              ]
-                                            : []),
-                                    ]}
-                                    onSelect={(value) => {
-                                        if (value === 'status') {
-                                            setBulkStatusOpen(true);
-                                            return;
-                                        }
-                                        if (value === 'migrate') {
-                                            setBulkMigrateOpen(true);
-                                            return;
-                                        }
-                                        if (value === 'delete') {
-                                            setBulkDeleteOpen(true);
-                                            return;
-                                        }
-                                        if (value === 'restore') {
-                                            restoreMutation.mutate();
-                                            return;
-                                        }
-                                        setBulkActionMode(
-                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
-                                        );
-                                        setBulkAssignOpen(true);
-                                    }}
-                                >
-                                    <MyButton buttonType="primary" scale="small">
-                                        {t('bulk.actionsButton')}
-                                        <CaretDown className="size-3.5" />
+                                {bulkItems.map((item) => (
+                                    <MyButton
+                                        key={item.value}
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => onBulkSelect(item.value)}
+                                    >
+                                        {item.icon}
+                                        {item.label}
                                     </MyButton>
-                                </MyDropdown>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -2220,7 +2216,6 @@ const RecentLeadsContent = ({
                             showScore={showScore}
                             isLoading={isLoading}
                             actions={actions}
-                            alwaysShowActions
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
                             columnOrder={columnOrder}

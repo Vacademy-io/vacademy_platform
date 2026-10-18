@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { TagsEnhancedHeader } from './-components/TagsEnhancedHeader';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useEffect, useState, useCallback } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -296,6 +297,15 @@ function RouteComponent() {
                     </MyButton>
                 )}
             </div>
+
+            {/* Summary header. */}
+            {!loading && (
+                <TagsEnhancedHeader
+                    instituteTags={instituteTags}
+                    defaultTags={defaultTags}
+                    counts={counts}
+                />
+            )}
 
             {/* Create tag card */}
             <div className="rounded-xl border border-neutral-200 bg-white p-5">

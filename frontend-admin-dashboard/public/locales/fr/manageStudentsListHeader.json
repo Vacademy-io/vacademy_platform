@@ -4,7 +4,8 @@
         "counts": {
             "total": "Total",
             "active": "Actifs",
-            "inactive": "Inactifs"
+            "inactive": "Inactifs",
+            "invited": "Invités"
         },
         "actions": {
             "invite": "Inviter",

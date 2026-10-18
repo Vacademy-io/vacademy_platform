@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LeadBoardEnhancedStrip } from './LeadBoardEnhancedStrip';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -399,6 +400,17 @@ const LeadBoardContent = () => {
         ]
     );
 
+    // The summary strip above the board pushes it down; take its height off the board so
+    // the columns still end at the bottom of the screen (no second page scroll).
+    const stripRef = useRef<HTMLDivElement>(null);
+    const [stripHeight, setStripHeight] = useState(0);
+    useEffect(() => {
+        const el = stripRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(() => setStripHeight(el.offsetHeight));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
     const invalidateKeys = [['lead-board'], ['recent-leads'], ['lead-profiles-batch']];
     const updateTier = useUpdateLeadTier({ invalidateKeys });
     const placeCall = usePlaceCall({ invalidateKeys });
@@ -827,6 +839,16 @@ const LeadBoardContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
+                    {/* Board summary strip; its height is taken off the board below. */}
+                    <div ref={stripRef} className="flow-root">
+                        {!statusesLoading && visibleStatuses.length > 0 && (
+                            <LeadBoardEnhancedStrip
+                                statuses={visibleStatuses}
+                                scopeId={instituteId ?? ''}
+                                basePayload={basePayload}
+                            />
+                        )}
+                    </div>
                     {statusesLoading ? (
                         <div className="flex items-center gap-2 py-16 text-sm text-neutral-500">
                             <CircleNotch className="size-5 animate-spin text-neutral-400" />
@@ -849,7 +871,7 @@ const LeadBoardContent = () => {
                             // Viewport-relative height (no spacing token exists for it): the
                             // board fills the space below the toolbar so each column scrolls
                             // internally — required for per-column infinite scroll.
-                            style={{ height: 'calc(100vh - 330px)' }}
+                            style={{ height: `calc(100vh - ${330 + stripHeight}px)` }} // design-lint-ignore: viewport height minus the strip
                         >
                             <LeadStatusBoard
                                 statuses={visibleStatuses}

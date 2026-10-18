@@ -1,4 +1,6 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { EnginesStatusCounts } from './-components/EnginesStatusCounts';
+import { EngagementTasksStrip } from '@/components/shared/crm-enhance/group-summary-strips';
 import { Helmet } from 'react-helmet';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -110,6 +112,11 @@ function EngagementEnginesPage() {
                         </MyButton>
                     </div>
                 </div>
+
+                {!isLoading && !isError && (
+                    <EnginesStatusCounts statuses={(engines ?? []).map((e) => e.status)} />
+                )}
+                <EngagementTasksStrip />
 
                 {isLoading && (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

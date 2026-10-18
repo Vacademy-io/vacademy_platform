@@ -1,4 +1,5 @@
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
+import { BatchesEnhancedCounts } from './BatchesEnhancedCounts';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BatchSection } from './batch-section';
@@ -184,6 +185,11 @@ export const ManageBatches = () => {
 
             {hasCourses ? (
                 <>
+                    <BatchesEnhancedCounts
+                        courses={sessionCourses}
+                        status={filters.status}
+                        onStatus={(status) => setFilters({ ...filters, status })}
+                    />
                     <BatchesToolbar
                         filters={filters}
                         onChange={setFilters}

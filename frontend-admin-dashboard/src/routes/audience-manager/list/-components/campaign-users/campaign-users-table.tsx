@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -121,6 +122,8 @@ import { usePoolForAudience } from '@/services/counselor-pool';
 import { UsersThree, Tag } from '@phosphor-icons/react';
 import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 import { FreebieDownloadsPanel } from '@/components/shared/freebies/FreebieDownloadsPanel';
+import { LeadListLeadsEnhancedHeader } from './LeadListLeadsEnhancedHeader';
+import { ListShareBar } from './ListShareBar';
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
@@ -627,6 +630,8 @@ const CampaignUsersContent = ({
         }),
         [setSelectedStudent, updateTier]
     );
+    // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
+    useRegisterLeadDrawerSource({ vms: vms, profiles: leadProfiles, actions, showOps, showScore });
     const handleStatusUpdated = () => {
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
         queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
@@ -1174,6 +1179,10 @@ const CampaignUsersContent = ({
                     </Button>
                 )}
             </div>
+
+            {/* Summary header. */}
+            {campaignId && <ListShareBar campaignId={campaignId} />}
+            {campaignId && !isOptOut && <LeadListLeadsEnhancedHeader audienceId={campaignId} />}
 
             {/* Which freebies this list's leads took from the website. Renders nothing
                 for lists that never gated a resource. */}

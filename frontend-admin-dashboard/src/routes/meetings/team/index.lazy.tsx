@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { MeetingsWeekCounts } from '../-components/MeetingsWeekCounts';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { addWeeks } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -123,6 +124,7 @@ function TeamMeetingsPage() {
                 )}
             </div>
 
+            <MeetingsWeekCounts bookings={canViewTeam ? filteredBookings : undefined} />
             <WeekNavigator weekStart={start} onChange={handleWeekChange} />
 
             <MeetingsList

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SessionsEnhancedCounts } from './SessionsEnhancedCounts';
 import { useTranslation } from 'react-i18next';
 import SessionHeader from './sessionHeader';
 import { useSessionData } from '@/services/study-library/session-management/getSessionData';
@@ -36,6 +37,7 @@ export function SessionsPage() {
     return (
         <div>
             <SessionHeader></SessionHeader>
+            <SessionsEnhancedCounts sessions={sessionData} />
             <div className="my-6 flex flex-col gap-4 text-neutral-600 sm:my-10 sm:gap-6">
                 {sessionData?.length ? (
                     sessionData?.map((session, idx) => <SessionCard key={idx} data={session} />)

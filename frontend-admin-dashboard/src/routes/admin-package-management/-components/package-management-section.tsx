@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { PackageStatusCounts } from './PackageStatusCounts';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -101,6 +102,7 @@ export function PackageManagementSection() {
     return (
         <ErrorBoundary>
             <section className="animate-fadeIn flex max-w-full flex-col gap-3 overflow-visible">
+                <PackageStatusCounts />
                 <div className="flex flex-col gap-3">
                     <PackageFilters
                         summaryData={summaryData}

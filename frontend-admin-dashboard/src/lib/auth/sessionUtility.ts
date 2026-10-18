@@ -280,7 +280,8 @@ const LOGOUT_PRESERVE_KEYS = [
 ];
 // Key PREFIXES whose entries also survive logout — per-surface layout choices
 // such as the leads "Manage Column" show/hide (crm-lead-columns:<surface>).
-const LOGOUT_PRESERVE_PREFIXES = ['crm-lead-columns:'];
+// `crm-saved-views:` = a person's saved Recent Leads filter views, keyed by institute + user.
+const LOGOUT_PRESERVE_PREFIXES = ['crm-lead-columns:', 'crm-saved-views:'];
 
 // Expire every cookie visible to this document on the current host AND every
 // parent domain (so legacy `.vacademy.io`-scoped cookies are removed too).

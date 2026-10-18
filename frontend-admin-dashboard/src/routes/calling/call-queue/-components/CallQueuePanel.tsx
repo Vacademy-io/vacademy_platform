@@ -150,6 +150,15 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
     });
 
     const summary = summaryQuery.data;
+    // A count on each status filter, from the summary this panel
+    // already polls. "Active" has no single honest number, so it stays bare.
+    const queueCount = (key: QueueFilter): number | undefined => {
+        if (!summary) return undefined;
+        if (key === 'QUEUED') return summary.queued;
+        if (key === 'LIVE') return summary.inFlight;
+        if (key === 'ACTIVE') return undefined;
+        return summary.byStatus?.[key];
+    };
     const rows = itemsQuery.data?.content ?? [];
     const totalPages = itemsQuery.data?.totalPages ?? 0;
 
@@ -203,6 +212,11 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                             )}
                         >
                             {f.label}
+                            {queueCount(f.key) !== undefined && (
+                                <span className="ml-1.5 tabular-nums opacity-80">
+                                    {queueCount(f.key)}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>

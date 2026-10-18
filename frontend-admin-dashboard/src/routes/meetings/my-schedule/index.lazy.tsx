@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { MeetingsWeekCounts } from '../-components/MeetingsWeekCounts';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import {
     addDays,
@@ -154,6 +155,8 @@ function MySchedulePage() {
                     </MyButton>
                 </div>
             </div>
+
+            <MeetingsWeekCounts bookings={bookings} />
 
             {view === 'list' ? (
                 <>

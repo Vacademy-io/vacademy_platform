@@ -1,4 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { FollowUpsAgenda } from './FollowUpsAgenda';
+import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
+import { FollowUpsEnhancedHeader } from './FollowUpsEnhancedHeader';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -168,6 +171,9 @@ export const FollowUpsPage = () => {
 
 const FollowUpsContent = () => {
     const { t } = useTranslation('audienceManagerFollowUpsPage');
+    const { t: tAgenda } = useTranslation('crmPages');
+    // Agenda is a client-side view of the list data.
+    const [agenda, setAgenda] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -594,6 +600,14 @@ const FollowUpsContent = () => {
         }),
         [setSelectedStudent, updateTier, isAdmin, placeCall, t]
     );
+    // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
+    useRegisterLeadDrawerSource({
+        vms: sortedVms,
+        profiles: leadProfiles,
+        actions,
+        showOps,
+        showScore,
+    });
 
     // Inline "Mark complete" row action — the close flow for the follow-up the
     // row represents. Rows are leads (one row can carry several open
@@ -689,6 +703,15 @@ const FollowUpsContent = () => {
             <LeadEmptyState
                 title={t('errors.loadFailedTitle')}
                 description={t('errors.loadFailedDescription')}
+            />
+        );
+    } else if (agenda) {
+        viewBody = (
+            <FollowUpsAgenda
+                vms={sortedVms}
+                profiles={leadProfiles}
+                onOpen={actions.onOpenDetails}
+                rowActions={extraColumns}
             />
         );
     } else {
@@ -871,12 +894,18 @@ const FollowUpsContent = () => {
                 locked={bucketLocked}
             />
 
+            {/* Summary header. */}
+            <FollowUpsEnhancedHeader allowed={isAdmin || isScopedCounsellor} />
+
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <Tabs
-                    value={view}
-                    onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+                    value={agenda && view === 'list' ? 'agenda' : view}
+                    onValueChange={(v) => {
+                        setAgenda(v === 'agenda');
+                        setView(v === 'calendar' ? 'calendar' : 'list');
+                    }}
                     className={bucket === 'completed' ? 'invisible' : undefined}
                 >
                     <TabsList className="h-11 gap-1 rounded-xl border border-neutral-200 bg-card p-1">
@@ -893,6 +922,13 @@ const FollowUpsContent = () => {
                         >
                             <CalendarBlank className="size-4" />
                             {t('tabs.calendar')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="agenda"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <ListBullets className="size-4" />
+                            {tAgenda('followUps.agenda.tab')}
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>

@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { TemplatesEnhancedCounts } from './TemplatesEnhancedCounts';
 import { useTranslation } from 'react-i18next';
 import {
     Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle,
@@ -224,6 +225,9 @@ export function TemplateListPage() {
                     </div>
                 </div>
             )}
+
+            {/* Status counts. */}
+            <TemplatesEnhancedCounts statuses={templates.map((x) => x.status ?? 'DRAFT')} />
 
             {/* Channel filter tabs */}
             <div className="flex gap-1 mb-3">

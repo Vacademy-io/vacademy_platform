@@ -1,4 +1,5 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { AutomationRunsStrip } from '@/components/shared/crm-enhance/group-summary-strips';
 import { useEffect, useState } from 'react';
 import {
     getWorkflowsByStatusQuery,
@@ -53,6 +54,19 @@ export function WorkflowListPage() {
         )
     );
 
+    // A count on each status button. Same request as the "All"
+    // view (shared cache), so it costs at most one call and only when switched on.
+    const allWorkflows = useQuery({
+        ...getWorkflowsByStatusQuery(instituteDetails?.id || '', WORKFLOW_STATUSES),
+        enabled: !!instituteDetails?.id,
+    });
+    const statusCount = (status: StatusFilter) => {
+        if (!allWorkflows.data) return null;
+        const list = allWorkflows.data as Workflow[];
+        const n = status ? list.filter((w) => w.status === status).length : list.length;
+        return <span className="ml-1.5 tabular-nums opacity-80">{n}</span>;
+    };
+
     useEffect(() => {
         setNavHeading(
             <div className="flex w-full items-center justify-between">
@@ -106,6 +120,8 @@ export function WorkflowListPage() {
 
     return (
         <div className="container mx-auto p-6">
+            {/* Admins: last 30 days of runs, from the Automation Dashboard. */}
+            <AutomationRunsStrip className="mb-6" />
             {/* Header Section */}
             <div className="mb-8 flex flex-col gap-6">
                 <div className="flex items-center justify-between">
@@ -154,6 +170,7 @@ export function WorkflowListPage() {
                                 onClick={() => setSelectedStatus(null)}
                             >
                                 {t('all')}
+                                {statusCount(null)}
                             </Button>
                             {WORKFLOW_STATUSES.map((status) => (
                                 <Button
@@ -163,6 +180,7 @@ export function WorkflowListPage() {
                                     onClick={() => setSelectedStatus(status)}
                                 >
                                     {STATUS_LABELS[status]}
+                                    {statusCount(status)}
                                 </Button>
                             ))}
                         </div>

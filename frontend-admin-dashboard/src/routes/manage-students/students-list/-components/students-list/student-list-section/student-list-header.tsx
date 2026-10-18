@@ -186,6 +186,7 @@ export const StudentListHeader = ({
     total,
     active,
     inactive,
+    invited,
     countsLoading,
 }: {
     currentSession?: DropdownItemType;
@@ -195,6 +196,7 @@ export const StudentListHeader = ({
     total?: number;
     active?: number;
     inactive?: number;
+    invited?: number;
     countsLoading?: boolean;
 }) => {
     const { t } = useTranslation('manageStudentsListHeader');
@@ -363,6 +365,14 @@ export const StudentListHeader = ({
                                 tone="inactive"
                                 isCompact={isCompact}
                             />
+                            {invited !== undefined && (
+                                <CountBadge
+                                    label={t('header.counts.invited', { defaultValue: 'Invited' })}
+                                    value={invited}
+                                    tone="invited"
+                                    isCompact={isCompact}
+                                />
+                            )}
                         </div>
                     ))}
             </div>

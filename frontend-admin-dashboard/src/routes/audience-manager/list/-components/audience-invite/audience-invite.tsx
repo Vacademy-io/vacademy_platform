@@ -1,4 +1,5 @@
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
+import { ListCardStats } from './ListCardStats';
 import { usePaginationState } from '@/hooks/pagination';
 import { Button } from '@/components/ui/button';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
@@ -642,6 +643,7 @@ export const AudienceInvite = () => {
                                                 {campaign.description}
                                             </p>
                                         )}
+                                        <ListCardStats audienceId={campaignId} />
                                         <div
                                             className="mt-auto min-w-0 pt-1"
                                             onClick={(e) => e.stopPropagation()}

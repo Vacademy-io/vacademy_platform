@@ -18,6 +18,7 @@
  * Read-only. No new endpoints: current + previous windows are two calls each and
  * the deltas are computed here.
  */
+import { SkillRadarCard } from './SkillRadarCard';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -559,6 +560,9 @@ function TeamInsights({
                     </div>
                 )}
             </div>
+
+            {/* team skill profile radar, this period vs the previous one. */}
+            <SkillRadarCard instituteId={instituteId} current={current} previous={previous} />
 
             {/* Whole-team qualitative coaching (weakest skills, themes, objections) */}
             <TeamCoachingSection

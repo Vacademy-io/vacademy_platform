@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SessionStatsCounts } from './-components/SessionStatsCounts';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { CalendarPlus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +39,7 @@ function MentorSessionsRoute() {
                         <CalendarPlus size={18} /> {t('scheduleButtonLabel')}
                     </MyButton>
                 </MentorshipPageHeader>
+                <SessionStatsCounts instituteId={instituteId} />
                 <MentorSessionsPanel instituteId={instituteId} />
 
                 <ScheduleSessionDialog

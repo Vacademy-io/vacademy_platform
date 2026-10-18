@@ -1,4 +1,7 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { useQueries } from '@tanstack/react-query';
+import { getInstituteId } from '@/constants/helper';
+import { listTasks } from '../-services';
 import { Helmet } from 'react-helmet';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +59,18 @@ function TaskInboxPage() {
         return m;
     }, [engines]);
 
+    // A count on each filter chip — the same task list request
+    // with one row, only when switched on.
+    const instituteId = getInstituteId() || '';
+    const counts = useQueries({
+        queries: FILTERS.map((f) => ({
+            queryKey: ['engagementTasks', instituteId, f.statuses, 0, 1],
+            queryFn: () => listTasks(instituteId, f.statuses, 0, 1),
+            enabled: !!instituteId,
+            staleTime: 60 * 1000,
+        })),
+    });
+
     const action = useTaskAction();
     const tasks = data?.content ?? [];
 
@@ -101,6 +116,11 @@ function TaskInboxPage() {
                             )}
                         >
                             {f.label}
+                            {counts[i]?.data && (
+                                <span className="ml-1.5 tabular-nums opacity-80">
+                                    {counts[i]?.data?.totalElements ?? 0}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>

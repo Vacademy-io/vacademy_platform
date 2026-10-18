@@ -59,6 +59,7 @@ import {
     getEffectiveInstituteLogoFileId,
     getValidSelectedSubOrgId,
     getSelectedSubOrgLinkageType,
+    isCallerSubOrgAdmin,
 } from '@/lib/auth/facultyAccessUtils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
@@ -115,6 +116,9 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // a re-run caused by roleDisplay loading on the same page.
     const lastSyncedRouteRef = useRef<string | null>(null);
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    // True once this role's display settings are known (or failed to load), so the
+    // published sidebar is the role's real one, not the defaults.
+    const [roleDisplayResolved, setRoleDisplayResolved] = useState(false);
     const [mainInstituteLogoUrl, setMainInstituteLogoUrl] = useState<string>('');
 
     // Subscribe to naming-settings changes so the sidebar re-renders with
@@ -222,10 +226,12 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
+            setRoleDisplayResolved(true);
         } else {
             getDisplaySettings(roleKey)
                 .then(setRoleDisplay)
-                .catch(() => setRoleDisplay(null));
+                .catch(() => setRoleDisplay(null))
+                .finally(() => setRoleDisplayResolved(true));
         }
     }, []);
 
@@ -431,7 +437,20 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         });
     })();
     // Then the institute's plan. In LEGACY this returns roleSidebarItems itself.
-    const finalSidebarItems = filterSidebarByEntitlement(roleSidebarItems, entitlement);
+    const entitledItems = filterSidebarByEntitlement(roleSidebarItems, entitlement);
+    // The LMS Dashboard holds the learning cards that the CRM Dashboard took off the
+    // home page, so it exists only where the home page is the CRM Dashboard: people
+    // who can see Leads (sub-org admins keep their own dashboard). Everyone else keeps
+    // their dashboard as before.
+    // It always heads the LMS section: a role whose sidebar order was saved before the
+    // tab existed would otherwise rank it after every saved tab.
+    const finalSidebarItems =
+        !isCallerSubOrgAdmin() && entitledItems.some((item) => item.id === 'leads' && !item.locked)
+            ? [
+                  ...entitledItems.filter((item) => item.id === 'lms-dashboard'),
+                  ...entitledItems.filter((item) => item.id !== 'lms-dashboard'),
+              ]
+            : entitledItems.filter((item) => item.id !== 'lms-dashboard');
     // MANAGED: the rail categories with anything left to show (the rail draws only
     // these). A string so the category sync below re-runs only when it changes.
     const availableCategoriesKey = entitlement.managed
@@ -534,10 +553,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             instituteId: data.id,
             items: finalSidebarItems,
             sidebarCategories: roleDisplay?.sidebarCategories ?? null,
+            settingsReady: roleDisplayResolved,
         });
         // finalSidebarItems/roleDisplay are captured through the signatures.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [navSignature, categoriesSignature, data?.id, setNavSnapshot]);
+    }, [navSignature, categoriesSignature, roleDisplayResolved, data?.id, setNavSnapshot]);
 
     // Browser tab title leads with the section ("All Leads · I2CAN"), so several
     // tabs open on lists that share one page can still be told apart.

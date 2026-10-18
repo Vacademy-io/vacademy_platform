@@ -7,6 +7,7 @@ import { CollectionPipelineChart } from './CollectionPipelineChart';
 import { CollectionRateGauge } from './CollectionRateGauge';
 import { ClassWiseCollectionTable } from './ClassWiseCollectionTable';
 import { PaymentModeInsights } from './PaymentModeInsights';
+import { CollectionEnhanced } from './CollectionEnhanced';
 
 /**
  * CollectionDashboardMain
@@ -32,6 +33,7 @@ export default function CollectionDashboardMain() {
         pieData,
         collectionRate,
         gaugeData,
+        dashboardData,
         refetch
     } = useCollectionDashboard();
 
@@ -74,6 +76,9 @@ export default function CollectionDashboardMain() {
                 <>
                     {/* Summary Overview */}
                     <CollectionSummaryCards cards={summaryCards} />
+
+                    {/* Enhanced. */}
+                    {dashboardData && <CollectionEnhanced data={dashboardData} />}
 
                     {/* Charts Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-auto lg:h-[400px]">

@@ -1,4 +1,5 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
+import { AnnouncementCounts } from './-components/AnnouncementCounts';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useMemo, useState } from 'react';
@@ -420,6 +421,16 @@ function AnnouncementHistoryPage() {
                     {t('createAnnouncement')}
                 </MyButton>
             </div>
+
+            {/* Status counts. */}
+            <AnnouncementCounts
+                status={view === 'all' ? status : undefined}
+                onStatus={(next) => {
+                    setView('all');
+                    setStatus(next);
+                    setPage(0);
+                }}
+            />
 
             <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
                 <Tabs

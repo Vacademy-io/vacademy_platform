@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SubOrgPlanCounts } from './sub-orgs/-components/SubOrgPlanCounts';
 import { useTranslation } from 'react-i18next';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -63,6 +64,8 @@ function ManageCustomTeams() {
                     </div>
                     <SubOrgSummaryCards />
                 </div>
+
+                <SubOrgPlanCounts />
 
                 <SubOrgModuleGate>
                     <Tabs value={selectedTab} onValueChange={setSelectedTab}>

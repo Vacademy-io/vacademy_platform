@@ -5,6 +5,7 @@
  * each one sounds like, and the create/edit flow. Saving here also registers the
  * agent as a campaign server-side, so workflows and the IVR can pick it by name.
  */
+import { AiAgentsEnhancedHeader } from './-components/AiAgentsEnhancedHeader';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createLazyFileRoute, Link } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
@@ -352,6 +353,9 @@ function AiAgentsPage() {
                         </MyButton>
                     </div>
                 </div>
+
+                {/* Summary header. */}
+                <AiAgentsEnhancedHeader total={agents.length} active={activeCount} />
 
                 {!agentsQuery.isLoading && !agentsQuery.isError && agents.length > 0 && (
                     <div className="flex flex-wrap items-center gap-3">

@@ -4,7 +4,8 @@
         "counts": {
             "total": "कुल",
             "active": "सक्रिय",
-            "inactive": "निष्क्रिय"
+            "inactive": "निष्क्रिय",
+            "invited": "आमंत्रित"
         },
         "actions": {
             "invite": "आमंत्रित करें",

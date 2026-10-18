@@ -173,6 +173,8 @@ final class CrmDashboardSql {
                                                     AND lf.schedule_time IS NOT NULL AND lf.schedule_time < :now)) AS overdue
             FROM vis v
             GROUP BY v.audience_id
+            ORDER BY leads DESC
+            LIMIT 500
             """;
 
     /** Leads per list per day over the last 14 days (for the card sparklines). */
@@ -181,6 +183,7 @@ final class CrmDashboardSql {
             FROM vis v
             WHERE v.submitted_at >= :todayStart - INTERVAL '13 days'
             GROUP BY 1, 2
+            LIMIT 7000
             """;
 
     /**

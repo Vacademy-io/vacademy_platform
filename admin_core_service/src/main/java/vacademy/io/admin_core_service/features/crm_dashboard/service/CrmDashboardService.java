@@ -70,6 +70,8 @@ public class CrmDashboardService {
     /** Previous-period comparison only for ranges up to this length (keeps the scan bounded). */
     static final int MAX_COMPARE_DAYS = 92;
     static final Duration CACHE_TTL = Duration.ofMinutes(3);
+    /** Same freshness the counsellor role list already accepts (CounsellorScopeService). */
+    static final Duration SCOPE_TTL = Duration.ofSeconds(60);
     private static final String STATEMENT_TIMEOUT = "SET LOCAL statement_timeout = '8s'";
 
     static final List<String> ALL_BLOCKS = List.of(
@@ -83,6 +85,12 @@ public class CrmDashboardService {
     private final AudienceService audienceService;
     private final LeadFollowupService leadFollowupService;
     private final AuthService authService;
+
+    /** Resolved lead scope per institute + user + authorities, for {@link #SCOPE_TTL}. */
+    private final Cache<String, LeadVisibility> scopeCache = Caffeine.newBuilder()
+            .expireAfterWrite(SCOPE_TTL)
+            .maximumSize(5_000)
+            .build();
 
     private final Cache<String, Object> cache = Caffeine.newBuilder()
             .expireAfterWrite(CACHE_TTL)
@@ -109,7 +117,10 @@ public class CrmDashboardService {
     public CrmDashboardResponseDTO getDashboard(CrmDashboardRequestDTO req, CustomUserDetails user) {
         String instituteId = req.getInstituteId();
         Window w = resolveWindow(req);
-        LeadVisibility vis = readOnlyTx.execute(s -> leadVisibilityResolver.resolve(user, instituteId));
+        // The caller's lead scope, reused for a minute: every enhanced page header asks for
+        // it, and resolving it for a scoped counsellor walks their team tree over HTTP.
+        LeadVisibility vis = scopeCache.get(scopeKey(instituteId, user),
+                k -> readOnlyTx.execute(s -> leadVisibilityResolver.resolve(user, instituteId)));
         Scope scope = toScope(vis, instituteId, user, trimToNull(req.getTeamId()),
                 trimToNull(req.getAudienceId()));
 
@@ -489,6 +500,22 @@ public class CrmDashboardService {
         return out;
     }
 
+    static String scopeKey(String instituteId, CustomUserDetails user) {
+        java.util.TreeSet<String> auth = new java.util.TreeSet<>();
+        if (user.getAuthorities() != null) {
+            user.getAuthorities().forEach(a -> {
+                if (a != null && a.getAuthority() != null) auth.add(a.getAuthority());
+            });
+        }
+        return instituteId + "|" + user.getUserId() + "|" + String.join(",", auth);
+    }
+
+    static final long NOW_BUCKET_SECONDS = 300;
+
+    static long nowBucket(Window w) {
+        return w.now().getEpochSecond() / NOW_BUCKET_SECONDS;
+    }
+
     /** Pool shifts store the weekday as MON..SUN; today in the caller's zone. */
     static String todayDow(Window w) {
         return w.now().atZone(w.tz()).getDayOfWeek().name().substring(0, 3);
@@ -497,9 +524,11 @@ public class CrmDashboardService {
     private String cacheKey(String instituteId, Scope scope, String block, Window w) {
         String base = instituteId + "|" + scope.cacheIdentity() + "|" + block + "|" + w.tz().getId();
         return switch (block) {
-            case "followups" -> base + "|" + w.now() + "|" + w.todayEnd();
+            // "Now"-relative blocks share one entry per 5-minute bucket, so a page opened by
+            // many people in the same scope is computed once (numbers at most 5 min old).
+            case "followups" -> base + "|" + nowBucket(w) + "|" + w.todayEnd();
             case "quality", "shifts" -> base + "|" + w.todayStart();
-            case "views", "list_stats" -> base + "|" + w.now() + "|" + w.todayStart();
+            case "views", "list_stats" -> base + "|" + nowBucket(w) + "|" + w.todayStart();
             default -> base + "|" + w.from() + "|" + w.to();
         };
     }

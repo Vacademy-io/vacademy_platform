@@ -137,4 +137,36 @@ class CrmDashboardServiceTest {
         req.setTo("2026-10-16T20:00:00Z");
         assertEquals("SAT", CrmDashboardService.todayDow(service.resolveWindow(req)));
     }
+
+    @Test
+    @DisplayName("Requests a few minutes apart share one cache bucket for now-relative blocks")
+    void nowBucketGroupsFiveMinutes() {
+        CrmDashboardRequestDTO a = new CrmDashboardRequestDTO();
+        a.setNow("2026-10-17T10:01:00Z");
+        CrmDashboardRequestDTO b = new CrmDashboardRequestDTO();
+        b.setNow("2026-10-17T10:04:00Z");
+        CrmDashboardRequestDTO c = new CrmDashboardRequestDTO();
+        c.setNow("2026-10-17T10:06:00Z");
+        long ba = CrmDashboardService.nowBucket(service.resolveWindow(a));
+        assertEquals(ba, CrmDashboardService.nowBucket(service.resolveWindow(b)));
+        assertFalse(ba == CrmDashboardService.nowBucket(service.resolveWindow(c)));
+    }
+
+    @Test
+    @DisplayName("The cached lead scope is keyed by institute, user and authorities")
+    void scopeKeySeparatesRoleChanges() {
+        CustomUserDetails admin = mock(CustomUserDetails.class);
+        when(admin.getUserId()).thenReturn("u-1");
+        org.mockito.Mockito.doReturn(List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ADMIN")))
+                .when(admin).getAuthorities();
+        CustomUserDetails counsellor = mock(CustomUserDetails.class);
+        when(counsellor.getUserId()).thenReturn("u-1");
+        org.mockito.Mockito.doReturn(List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("COUNSELLOR")))
+                .when(counsellor).getAuthorities();
+        assertFalse(CrmDashboardService.scopeKey(INSTITUTE, admin)
+                .equals(CrmDashboardService.scopeKey(INSTITUTE, counsellor)));
+        assertFalse(CrmDashboardService.scopeKey(INSTITUTE, admin)
+                .equals(CrmDashboardService.scopeKey("other-institute", admin)));
+        assertEquals(CrmDashboardService.scopeKey(INSTITUTE, admin), CrmDashboardService.scopeKey(INSTITUTE, admin));
+    }
 }

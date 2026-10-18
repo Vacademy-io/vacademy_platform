@@ -107,6 +107,16 @@ public class OnboardingInstanceController {
                 onboardingInstanceService.searchInstances(instituteId, flowId, status, pageNo, pageSize));
     }
 
+    /** Instance counts per status (and ALL) for the dashboard cards, in one cheap query. */
+    @GetMapping("/dashboard/status-counts")
+    public ResponseEntity<java.util.Map<String, Long>> dashboardStatusCounts(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "flowId", required = false) String flowId) {
+        requireInstituteAccess(userDetails, instituteId);
+        return ResponseEntity.ok(onboardingInstanceService.statusCounts(instituteId, flowId));
+    }
+
     /** Institute membership + staff, then a grant somewhere in this flow. ADMIN always passes. */
     private void requireFlowAccess(CustomUserDetails userDetails, String instituteId, String flowId) {
         instituteAccessValidator.requireStaffAccess(userDetails, instituteId);

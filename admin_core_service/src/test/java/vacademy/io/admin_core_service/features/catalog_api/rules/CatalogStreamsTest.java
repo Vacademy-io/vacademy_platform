@@ -12,6 +12,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Cases from catalog-streams.test.ts (and folder-library-service / header-links rules). */
 class CatalogStreamsTest {
 
+    /** The real course tags of a list, without level keys. */
+    private static List<String> real(List<String> tags) {
+        return tags.stream().filter(t -> !LevelKeys.isLevelKey(t)).toList();
+    }
+
+
     static FolderNode folder(String id, String title, String subtitle, String slug, String courseTag, boolean comingSoon,
                              String audienceId, FolderNode... children) {
         return new FolderNode(id, "FOLDER", title, subtitle, null, slug, courseTag, null, null, null, null, comingSoon,
@@ -49,7 +55,7 @@ class CatalogStreamsTest {
     void collectsTheStreamsOwnTagPlusEveryFolderTagBelow() {
         Stream s = CatalogStreams.streamsFromFolderTree(TREE).get(0);
         assertEquals("shiksha", s.tag());
-        assertEquals(new TreeSet<>(List.of("sanskrit", "shiksha", "vedic-advanced", "vedic-maths")), new TreeSet<>(s.tags()));
+        assertEquals(new TreeSet<>(List.of("sanskrit", "shiksha", "vedic-advanced", "vedic-maths")), new TreeSet<>(real(s.tags())));
     }
 
     @Test
@@ -59,7 +65,7 @@ class CatalogStreamsTest {
         assertEquals("वैदिक गणित", s.categories().get(0).title());
         assertTrue(s.categories().get(1).comingSoon());
         assertEquals("aud-1", s.categories().get(1).audienceId());
-        assertEquals(new TreeSet<>(List.of("vedic-advanced", "vedic-maths")), new TreeSet<>(s.categories().get(0).tags()));
+        assertEquals(new TreeSet<>(List.of("vedic-advanced", "vedic-maths")), new TreeSet<>(real(s.categories().get(0).tags())));
         assertEquals(List.of(), CatalogStreams.streamsFromFolderTree(null));
         assertEquals(List.of(), CatalogStreams.folderTagSet(page("x")));
     }
@@ -77,7 +83,7 @@ class CatalogStreamsTest {
         List<Stream> streams = CatalogStreams.streamsFromTagItems(List.of(
                 new CatalogStreams.StreamItem("A", "a", "A", "https://cdn.example.com/a.png"),
                 new CatalogStreams.StreamItem("B", "b", "b", "javascript:alert(1)")));
-        assertEquals(List.of("a"), streams.get(0).tags());
+        assertEquals(List.of("a", "level:a"), streams.get(0).tags());
         assertEquals("https://cdn.example.com/a.png", streams.get(0).imageUrl());
         assertNull(streams.get(1).imageUrl());
         assertNull(CatalogStreams.safeImageSrc("//evil.example/x.png"));
@@ -100,7 +106,8 @@ class CatalogStreamsTest {
         assertEquals(List.of("shastra", "bharat", "shiksha", "swasthya", "dharma", "kala"),
                 streams.stream().map(Stream::slug).toList());
         Stream dharma = streams.get(4);
-        assertEquals(List.of("dharma", "vedic-parenting"), dharma.tags());
+        assertEquals(List.of("dharma", "vedic-parenting"), real(dharma.tags()));
+        assertTrue(dharma.tags().containsAll(List.of("level:vedic-parenting", "level:holistic-parenting")));
         assertEquals("#82b74b", dharma.accentColor());
         Set<String> ebookTags = new HashSet<>(CourseFormats.rowTags("english,dharma,vedic-parenting,format-ebook,for-parents", null));
         assertEquals("dharma", CatalogStreams.streamOf(ebookTags, streams).slug());

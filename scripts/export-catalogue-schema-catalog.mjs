@@ -183,7 +183,8 @@ const CAPABILITIES = {
         'Use it for a swipeable row of photos or videos; it carries no per-item button, so for cards that need ' +
         'a CTA use featureGrid with per-feature image + link.',
     marquee:
-        'A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, image, label}. ' +
+        'A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, link, image, label}. ' +
+        'link (optional) makes the item clickable: a page slug, "#anchorId" of a section on the page, or a full URL. ' +
         'speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for ' +
         'this component only.',
     tabsAccordion:

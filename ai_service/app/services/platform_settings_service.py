@@ -563,6 +563,94 @@ if "billing.plans.roll.enabled" not in SETTING_SPECS:
         default=lambda: True,
     )
 
+# Paid AI plans (payments design 2026-10-16). Every one defaults to OFF / dark;
+# admin_core reads these directly from ai_platform_settings too.
+if "billing.subscriptions.payments.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.subscriptions.payments.enabled"] = SettingSpec(
+        key="billing.subscriptions.payments.enabled",
+        group="rollout",
+        label="AI plans: take payments for subscriptions",
+        description=(
+            "Off (default) = AI plans are assigned by the platform team only (manual or complimentary), "
+            "as before. On = plans can be sold: a paid checkout or a paid assignment creates a "
+            "subscription that starts when its first payment is received, renews only when paid, and "
+            "pauses its benefits (AI use charged from credits) while a renewal is unpaid. Institutes "
+            "already paying keep their plan benefits even if the plans switch is turned off."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.autopay.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.autopay.enabled"] = SettingSpec(
+        key="billing.autopay.enabled",
+        group="rollout",
+        label="AI plans: autopay (UPI Autopay / card mandate)",
+        description=(
+            "Off (default) = every renewal is paid with a payment link. On = checkout offers to set up "
+            "autopay (on by default where the payment method supports it) and renewals up to Rs 15,000 "
+            "are debited automatically after a 24-hour notice; a failed debit falls back to a payment link."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.storefront.mode" not in SETTING_SPECS:
+    SETTING_SPECS["billing.storefront.mode"] = SettingSpec(
+        key="billing.storefront.mode",
+        group="rollout",
+        label="AI plans: who sees the plans page",
+        description=(
+            "OFF (default) = no institute sees the AI plans page. ALLOWLIST = only institutes the platform "
+            "team allowed one by one. SEGMENTS = those plus institutes in an allowed segment. ALL = every "
+            "institute admin (an institute switched off one by one never sees it)."
+        ),
+        type="enum",
+        options=("OFF", "ALLOWLIST", "SEGMENTS", "ALL"),
+        default=lambda: "OFF",
+    )
+
+if "billing.invoice.series_v2.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.invoice.series_v2.enabled"] = SettingSpec(
+        key="billing.invoice.series_v2.enabled",
+        group="rollout",
+        label="Billing: new invoice numbers (VT/FY/I#####)",
+        description=(
+            "Off (default) = credit-pack invoices keep today's numbers. On = new invoices are numbered "
+            "VT/{financial year}/I##### and credit notes VT/{financial year}/C##### (financial year in "
+            "India time). Subscription invoices always use the new series."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.buyer_state.required" not in SETTING_SPECS:
+    SETTING_SPECS["billing.buyer_state.required"] = SettingSpec(
+        key="billing.buyer_state.required",
+        group="rollout",
+        label="Billing: buyer state required for credit packs",
+        description=(
+            "Off (default) = buying credits works as before. On = the buyer's state must be given before "
+            "buying credits (place of supply for GST). Subscriptions always need it."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
+if "billing.packs.reconcile.enabled" not in SETTING_SPECS:
+    SETTING_SPECS["billing.packs.reconcile.enabled"] = SettingSpec(
+        key="billing.packs.reconcile.enabled",
+        group="rollout",
+        label="Billing: hourly check of unpaid credit-pack links",
+        description=(
+            "Off (default) = unpaid credit-pack payments are only settled by the Razorpay webhook, as before. "
+            "On = once an hour, unpaid credit-pack payment links older than 30 minutes are checked with "
+            "Razorpay: a paid link gets its credits (a lost webhook), an expired one is closed."
+        ),
+        type="bool",
+        default=lambda: False,
+    )
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",

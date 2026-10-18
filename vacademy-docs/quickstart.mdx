@@ -36,7 +36,7 @@ Server-side requests (no `Origin` header) work without verifying a website. You 
 ```ts lib/vacademy.ts
 const BASE = 'https://api.vacademy.ai/catalog/v1';
 
-export type Language = { code: string; label: string };
+export type Language = { code: string; label: string; chip: string };
 export type Format = { key: string; label: string };
 export type Place = { slug: string; label: string };
 export type Availability = 'available' | 'coming_soon' | 'not_started' | 'closed';
@@ -46,12 +46,17 @@ export type VariantPrice = {
   currency: string | null;
   is_free: boolean;
 };
-export type Price = VariantPrice & { varies: boolean };
+export type Price = VariantPrice & { varies: boolean; min_amount: number; max_amount: number };
+export type Sort = 'newest' | 'oldest' | 'price_asc' | 'price_desc' | 'rating' | 'title' | 'title_desc' | 'popular';
+export type Badge = 'bestseller' | 'popular' | 'new' | 'free';
 
 export type Variant = {
   package_session_id: string;
   enroll_invite_id: string | null;
+  title: string | null;
   level: string | null;
+  session_id: string | null;
+  session_name: string | null;
   language: Language | null;
   url: string | null;
   availability: Availability;
@@ -63,6 +68,7 @@ export type CourseSummary = {
   title: string;
   subtitle: string | null;
   image_url: string | null;
+  images: { preview_url: string | null; banner_url: string | null; thumbnail_url: string | null };
   url: string | null;
   formats: Format[];
   stream: Place | null;
@@ -76,6 +82,18 @@ export type CourseSummary = {
   instructors: { name: string; image_url: string | null }[];
   rating: number | null;
   created_at: string | null;
+  badges: Badge[];
+  popularity_rank: number | null;
+  duration_minutes: number | null;
+  available_slots: number | null;
+  max_seats: number | null;
+  package_type: string | null;
+  coming_soon: {
+    launch_date: string | null;
+    button_text: string | null;
+    ribbon_text: string | null;
+    notify_campaign_id: string | null;
+  } | null;
   variants: Variant[];
 };
 
@@ -103,6 +121,66 @@ export type CourseDetail = CourseSummary & {
 
 export type Page<T> = { data: T[]; page: number; page_size: number; total: number; has_more: boolean };
 
+type Count<K extends string> = { [k in K]: string } & { label: string; count: number };
+export type Facets = {
+  streams: Count<'slug'>[];
+  categories: Count<'slug'>[];
+  formats: Count<'key'>[];
+  languages: Count<'code'>[];
+  levels: Count<'key'>[];
+  sessions: Count<'id'>[];
+  instructors: Count<'key'>[];
+  tags: Count<'key'>[];
+  badges: Count<'key'>[];
+  price: { free: number; paid: number; under: { max: number; count: number }[] };
+  custom: Record<string, Record<string, number>>;
+};
+export type CourseList = Page<CourseSummary> & { facets?: Facets };
+
+export type Catalog = {
+  default_sort: Sort;
+  sort_options: Sort[];
+  show_filter_counts: boolean;
+  quick_filters: {
+    id: string;
+    label: string;
+    kind: 'popular' | 'new' | 'bestseller' | 'free' | 'language' | 'price_max';
+    value: string | number | null;
+    params: Record<string, string | number>;
+  }[];
+  price_filter: { enabled: boolean; label: string | null; show_free: boolean; max_options: number[] };
+  language_filter: { enabled: boolean; label: string | null };
+  category_filter: {
+    enabled: boolean;
+    label: string | null;
+    scope: 'stream' | 'all';
+    label_mode: 'title' | 'subtitle' | 'both';
+    sort: 'folder' | 'count';
+    hide_coming_soon: boolean;
+    visible_count: number | null;
+    show_all_label: string | null;
+  };
+  badges: { enabled: boolean; types: Badge[]; new_days: number; bestseller_top: number; max: number };
+  custom_filters: {
+    id: string;
+    label: string | null;
+    source: 'course_formats' | null;
+    options: { id: string; label: string }[];
+    show_counts: boolean;
+    show_empty: boolean;
+    visible_count: number | null;
+  }[];
+  popular_searches: {
+    label: string;
+    kind: 'search' | 'stream' | 'quick_filter' | 'route';
+    search: string | null;
+    stream: string | null;
+    category: string | null;
+    quick_filter: string | null;
+    route: string | null;
+  }[];
+};
+
 export type Site = {
   institute: { id: string; name: string | null; logo_url: string | null };
   course_base_url: string | null;
@@ -110,6 +188,7 @@ export type Site = {
   formats: Format[];
   currency: string | null;
   price_visible: boolean;
+  catalog: Catalog;
 };
 
 export type Category = {
@@ -119,8 +198,10 @@ export type Category = {
   image_url: string | null;
   coming_soon: boolean;
   course_count: number;
+  accent_color: string | null;
+  notify_campaign_id: string | null;
 };
-export type Stream = Category & { accent_color: string | null; categories: Category[] };
+export type Stream = Category & { tag: string | null; categories: Category[] };
 
 export type LearningPathSummary = {
   code: string;
@@ -138,15 +219,25 @@ export type LearningPath = {
 
 export type CourseQuery = {
   q?: string;
+  // comma lists: OR within a parameter, AND across parameters
   stream?: string;
   category?: string;
   format?: string;
   language?: string;
   tag?: string;
+  level?: string;
+  instructor?: string;
+  session?: string;
+  badge?: string;
+  custom?: string; // "<group id>:<option id>,…"
+  price?: 'free' | 'paid';
+  price_min?: number;
+  price_max?: number;
   availability?: Availability;
   page?: number;
   page_size?: number;
-  sort?: 'newest' | 'title' | 'price_asc' | 'price_desc';
+  sort?: Sort;
+  facets?: boolean;
 };
 
 export class VacademyError extends Error {
@@ -160,7 +251,7 @@ export class VacademyError extends Error {
   }
 }
 
-type Query = Record<string, string | number | undefined>;
+type Query = Record<string, string | number | boolean | undefined>;
 
 async function api<T>(path: string, query: Query = {}): Promise<T> {
   const url = new URL(BASE + path);
@@ -185,7 +276,7 @@ async function api<T>(path: string, query: Query = {}): Promise<T> {
 
 export const vacademy = {
   site: () => api<Site>('/site'),
-  courses: (q: CourseQuery = {}) => api<Page<CourseSummary>>('/courses', q),
+  courses: (q: CourseQuery = {}) => api<CourseList>('/courses', q),
   course: (id: string, language?: string) =>
     api<CourseDetail>(`/courses/${encodeURIComponent(id)}`, { language }),
   streams: () => api<{ source: 'folder_library' | 'tags' | null; streams: Stream[] }>('/streams'),
@@ -202,8 +293,7 @@ export function priceLabel(c: CourseSummary): string | null {
   if (c.availability === 'closed') return 'Enrolment closed';
   if (!c.price) return 'See price'; // the institute hides prices
   if (c.price.is_free) return 'Free';
-  const onSale = c.variants.filter((v) => v.availability === 'available' && v.price).map((v) => v.price!.amount);
-  const amount = c.price.varies && onSale.length ? Math.min(...onSale) : c.price.amount;
+  const amount = c.price.varies ? c.price.min_amount : c.price.amount;
   const money = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: c.price.currency ?? 'INR',
@@ -281,6 +371,56 @@ Each card links to `course.url`, the course's page on the hosted catalogue site,
 <Tip>
 To use `next/image` instead of `<img>`, allow the image host in `next.config.ts` under `images.remotePatterns`. Read the host from a real `image_url`.
 </Tip>
+
+### Filters, sorting and facets
+
+`GET /courses` takes the hosted catalogue's filters as comma lists, eight sorts, and `facets=true` for live counts per option. A filter bar with language chips, a "Free" toggle and the site's own sort menu, all as plain links:
+
+```tsx app/courses/filters.tsx
+import Link from 'next/link';
+import { vacademy, type Sort } from '@/lib/vacademy';
+
+type Params = { stream?: string; language?: string; price?: 'free'; sort?: Sort };
+
+const SORT_LABELS: Record<Sort, string> = {
+  newest: 'Newest', oldest: 'Oldest', price_asc: 'Price: low to high', price_desc: 'Price: high to low',
+  rating: 'Rating', title: 'Name A–Z', title_desc: 'Name Z–A', popular: 'Popular',
+};
+
+export async function FilteredCourses({ params }: { params: Params }) {
+  const { catalog, languages } = await vacademy.site();
+  const sort = params.sort ?? catalog.default_sort; // the API itself defaults to newest
+  const courses = await vacademy.courses({ ...params, sort, facets: true, page_size: 24 });
+  const href = (p: Partial<Params>) => `/courses?${new URLSearchParams({ ...params, ...p } as Record<string, string>)}`;
+  const counts = courses.facets!;
+
+  return (
+    <>
+      <nav aria-label="Language">
+        {counts.languages.map((l) => (
+          <Link key={l.code} href={href({ language: l.code })} aria-current={params.language === l.code || undefined}>
+            {languages.find((x) => x.code === l.code)?.chip ?? l.label} ({l.count})
+          </Link>
+        ))}
+        {counts.price.free > 0 && <Link href={href({ price: 'free' })}>Free ({counts.price.free})</Link>}
+      </nav>
+      <nav aria-label="Sort">
+        {catalog.sort_options.map((s) => (
+          <Link key={s} href={href({ sort: s })} aria-current={s === sort || undefined}>
+            {SORT_LABELS[s]}
+          </Link>
+        ))}
+      </nav>
+      <p>{courses.total} courses</p>
+      {/* render courses.data with <CourseCard> as above */}
+    </>
+  );
+}
+```
+
+- Each facet group is counted against the visitor's **other** filters, so the language chips keep their counts after one is picked.
+- `language=hi&price=free` means a free **Hindi** version: version-level filters must all hold on the same version.
+- `catalog` mirrors the hosted site's Courses settings (sort menu, quick filters, badges, custom filter groups). See [Courses](/concepts/courses#listing-filtering-and-sorting) for every parameter.
 
 ## 4. Choose where course pages live
 

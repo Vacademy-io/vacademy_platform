@@ -41,6 +41,7 @@ import {
 import { surveyCardState } from "../-utils/survey-card-state";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { openStudentReport } from "@/services/student-report-routing";
 
 // Backend date strings (assessment list API) have no timezone marker but are
 // stored in UTC. Appending "Z" makes Date() interpret them as UTC so the
@@ -98,6 +99,7 @@ export const AssessmentCard = ({
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [openingReport, setOpeningReport] = useState(false);
   const [showSurveyConfirmDialog, setShowSurveyConfirmDialog] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
@@ -335,47 +337,29 @@ export const AssessmentCard = ({
 
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
               {canShowReport && (
-                <>
-                  <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate({
-                        to: `/assessment/reports/comparison`,
-                        search: {
-                          assessmentId: assessmentInfo.assessment_id,
-                          attemptId: assessmentInfo.last_attempt_id ?? "",
-                        },
-                        state: {
-                          assessmentName: assessmentInfo.name,
-                        } as any,
+                <MyButton
+                  buttonType="secondary"
+                  scale="medium"
+                  className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                  disable={openingReport}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    // One report: the AI report once it exists, otherwise the normal one.
+                    setOpeningReport(true);
+                    try {
+                      await openStudentReport(navigate as never, {
+                        assessmentId: assessmentInfo.assessment_id,
+                        assessmentName: assessmentInfo.name ?? "",
+                        attemptId: assessmentInfo.last_attempt_id ?? "",
+                        evaluationType: isManualEvaluation ? "MANUAL" : undefined,
                       });
-                    }}
-                  >
-                    {t("card.button.showReport")}
-                  </MyButton>
-                  {!isManualEvaluation && (
-                  <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate({
-                        to: `/assessment/reports/ai-report`,
-                        search: {
-                          assessmentId: assessmentInfo.assessment_id,
-                          assessmentName: assessmentInfo.name ?? "",
-                        },
-                      });
-                    }}
-                  >
-                    {t("card.button.showAiReport")}
-                  </MyButton>
-                  )}
-                </>
+                    } finally {
+                      setOpeningReport(false);
+                    }
+                  }}
+                >
+                  {t("card.button.showReport")}
+                </MyButton>
               )}
               {resultsPending && (
                 <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warning-200 bg-warning-50 px-2.5 py-1 text-caption font-medium text-warning-700">

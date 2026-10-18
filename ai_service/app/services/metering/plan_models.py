@@ -51,11 +51,31 @@ MODEL_POLICIES = ("ANY", "DEFAULT_CHAIN", "ALLOWLIST", "MAX_PRICE")
 MODEL_VIOLATION_ACTIONS = ("CHARGE", "BLOCK")
 OVER_CAP_ACTIONS = ("CHARGE", "BLOCK")
 USER_CAP_BASES = ("ACTOR", "SUBJECT")
-SUBSCRIPTION_STATUSES = ("SCHEDULED", "TRIAL", "ACTIVE", "GRACE", "EXPIRED", "CANCELLED")
+#: PENDING (V590, paid plans): a checkout / PAYMENT assignment waiting for its first
+#: payment. Never live (outside ux_ias_live), never gives benefits; becomes ACTIVE
+#: when its first PERIOD charge is paid, EXPIRED when the checkout lapses unpaid.
+SUBSCRIPTION_STATUSES = ("SCHEDULED", "PENDING", "TRIAL", "ACTIVE", "GRACE", "EXPIRED", "CANCELLED")
 LIVE_STATUSES = ("TRIAL", "ACTIVE", "GRACE")          # = ux_ias_live
 ENFORCEMENTS = ("SHADOW", "LIVE")
 SOURCES = ("MANUAL", "COMPLIMENTARY", "PAYMENT")
-PAYMENT_STATUSES = ("DUE", "PAID", "COMPLIMENTARY", "WAIVED")
+#: REFUNDED (V590): a PAYMENT period whose charge was refunded in full (no benefits)
+PAYMENT_STATUSES = ("DUE", "PAID", "COMPLIMENTARY", "WAIVED", "REFUNDED")
+#: period payment statuses that give plan benefits to a source=PAYMENT subscription
+PAID_PERIOD_STATUSES = ("PAID", "WAIVED", "COMPLIMENTARY")
+
+# ── paid plans (V590 ai_subscription_charge / ai_subscription_mandate) ───────
+CHARGE_KINDS = ("PERIOD", "UPGRADE")
+CHARGE_STATUSES = ("DUE", "LINK_SENT", "DEBIT_SCHEDULED", "PAID", "FAILED", "VOID", "REFUNDED",
+                   "PARTIALLY_REFUNDED")
+#: a charge that is still owed (collectable: a link, a mandate debit or a retry)
+CHARGE_OPEN_STATUSES = ("DUE", "LINK_SENT", "DEBIT_SCHEDULED", "FAILED")
+#: a charge that was paid (whatever happened to the money afterwards)
+CHARGE_PAID_STATUSES = ("PAID", "REFUNDED", "PARTIALLY_REFUNDED")
+MANDATE_STATUSES = ("PENDING", "ACTIVE", "PAUSED", "CANCELLED", "REJECTED", "EXPIRED")
+MANDATE_METHODS = ("UPI", "CARD", "EMANDATE")
+STOREFRONT_MODES = ("OFF", "ALLOWLIST", "SEGMENTS", "ALL")
+AUDIENCE_MODES = ("ALL", "ALLOWLIST", "SEGMENT")
+BRAND_MODES = ("VACADEMY", "NEUTRAL")
 #: role classes usable in ai_plan_item.roles_included (V586 ai_role_class_map + system kinds)
 ROLE_CLASSES = ("ADMIN", "TEACHER", "STAFF", "PARENT", "LEARNER", "SYSTEM", "API_KEY", "PUBLIC")
 #: features the voice-bot domain owns: always charged and locked (d_plans §3.6)
@@ -351,6 +371,8 @@ __all__ = [
     "OVERRIDE_TABLE", "SUB_EVENT_TABLE", "PLAN_TABLES", "CATALOG_FEATURE_TABLE", "catalog_link_metadata",
     "ELIGIBILITIES", "VERSION_STATUSES", "GRACE_BEHAVIOURS", "ITEM_MODES", "MODEL_POLICIES",
     "MODEL_VIOLATION_ACTIONS", "OVER_CAP_ACTIONS", "USER_CAP_BASES", "SUBSCRIPTION_STATUSES", "LIVE_STATUSES",
-    "ENFORCEMENTS", "SOURCES", "PAYMENT_STATUSES", "ROLE_CLASSES", "LOCKED_ALWAYS_CHARGED", "UNMAPPED_FEATURE",
+    "ENFORCEMENTS", "SOURCES", "PAYMENT_STATUSES", "PAID_PERIOD_STATUSES", "CHARGE_KINDS", "CHARGE_STATUSES",
+    "CHARGE_OPEN_STATUSES", "CHARGE_PAID_STATUSES", "MANDATE_STATUSES", "MANDATE_METHODS", "STOREFRONT_MODES",
+    "AUDIENCE_MODES", "BRAND_MODES", "ROLE_CLASSES", "LOCKED_ALWAYS_CHARGED", "UNMAPPED_FEATURE",
     "TOOL_FEATURE_OVERRIDES", "PLAN_COUNTER_PERIOD", "DEFAULT_SAC_CODE", "plan_counter_key",
 ]

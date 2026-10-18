@@ -233,6 +233,7 @@
     }
   },
   "options": {
+    "categoryTiles": "Tuiles de catégorie",
     "default": "Par défaut",
     "ocean": "Océan",
     "forest": "Forêt",
@@ -359,7 +360,8 @@
     "imageBlock": "Image",
     "buttonBlock": "Bouton",
     "newsletterSignup": "Inscription newsletter",
-    "stepsProcess": "Étapes/Processus"
+    "stepsProcess": "Étapes/Processus",
+    "marquee": "Bandeau défilant"
   },
   "columnLayout": {
     "layoutSettings": "Paramètres de mise en page",
@@ -600,6 +602,9 @@
       "imageHint": "Une image prête remplace le téléphone dessiné.",
       "imageAlt": "Description de l'image (lecteurs d'écran)",
       "buttonLink": "Lien du bouton",
+      "playStoreLink": "Lien Google Play",
+      "appStoreLink": "Lien App Store",
+      "storeLinksHint": "Ajoutez un lien de store pour afficher les badges Google Play / App Store à la place du bouton.",
       "urlKey": "Clé de lien : ?{{id}}=… (fixe une fois définie)",
       "urlKeyReserved": "La page utilise déjà cette clé pour autre chose, le site masque donc ce groupe. Changez l'identifiant dans « Modifier en JSON ».",
       "needsTag": "Ajoutez au moins une étiquette : une option sans étiquette n'est pas affichée."
@@ -783,7 +788,7 @@
     "variantPrimary": "Principal",
     "variantSecondary": "Secondaire",
     "removeButton": "Retirer le bouton",
-    "actionNavigate": "Naviguer",
+    "actionNavigate": "Naviguer (page, section ou lien)",
     "actionOpenLeadCollection": "Ouvrir le formulaire de leads (ancien)",
     "actionOpenCampaignForm": "Ouvrir le formulaire de campagne (fenêtre)",
     "targetRoutePlaceholder": "Route / URL cible",
@@ -803,7 +808,10 @@
     "carouselImages": "Images du carrousel",
     "carouselImagesHint": "Ajoutez 2 images ou plus pour transformer le média du héros en carrousel automatique. Avec une seule image, elle reste fixe ; sans aucune, l'image de droite ci-dessus est utilisée.",
     "slideN": "Diapositive {{n}}",
-    "eyebrowStyleRule": "Filet (trait avant le texte)"
+    "eyebrowStyleRule": "Filet (trait avant le texte)",
+    "mainButton": "Bouton principal",
+    "onClick": "Au clic",
+    "navigateTo": "Aller vers"
   },
   "heroEditorial": {
     "style": "Design",
@@ -940,6 +948,9 @@
     "phoneHeading": "Image de téléphone",
     "phoneShow": "Afficher un téléphone",
     "phoneHint": "Un téléphone avec votre image à l'écran, à côté du texte.",
+    "playStoreLink": "Lien Google Play",
+    "appStoreLink": "Lien App Store",
+    "storeLinksHint": "Ajoutez un lien de store pour afficher les badges Google Play / App Store à la place du bouton.",
     "phoneImage": "Image à l'écran"
   },
   "pricingTable": {
@@ -1229,6 +1240,9 @@
     "autoFromTitle": "auto depuis le titre"
   },
   "featureGrid": {
+    "categoryParam": "Clé de filtre dans l’URL",
+    "categoryParamHint": "Chaque tuile définit ?{key}=<sa valeur> (une tuile sans valeur affiche tout). Ajoutez aux sections en dessous une règle de visibilité sur la même clé pour ne les montrer que pour cette catégorie.",
+    "categoryValuePlaceholder": "Valeur du filtre, ex. ssc (vide = Tout)",
     "defaults": {
       "title": "Nouvelle fonctionnalité",
       "description": "Description ici"
@@ -1337,6 +1351,10 @@
     "columns": "Colonnes",
     "pageSize": "Articles par page",
     "pageSizeHelp": "Les articles plus anciens sont accessibles via Plus récents / Plus anciens.",
+    "viewMoreRoute": "Page « Voir plus »",
+    "viewMoreRouteHelp": "Remplissez pour un aperçu court (par ex. sur l’accueil) : pas de pagination, un bouton vers cette page, et les articles s’y ouvrent. Indiquez la route de la page du blog complet, par ex. blog.",
+    "viewMoreLabel": "Texte du bouton",
+    "viewMoreLabelPlaceholder": "Voir plus",
     "category": "Afficher uniquement cette catégorie",
     "allCategories": "Toutes les catégories",
     "categoryHelp": "Limitez la section à une catégorie, par ex. une page Actualités et une page Conseils séparée.",
@@ -1371,5 +1389,37 @@
     "keptTitle": "Nouvelle version appliquée",
     "keptSettings": "{{count}} paramètres absents de cette version ont été conservés. Annulez pour revenir en arrière, ou utilisez « Modifier en JSON » pour les voir.",
     "keepsNote": "Conserve aussi {{count}} paramètres absents de cette version : {{names}}"
-  }
+  },
+  "marquee": {
+    "itemsCount": "Éléments du bandeau ({{count}})",
+    "newItem": "Nouvelle annonce",
+    "iconLabel": "Icône",
+    "itemTextPlaceholder": "Texte de l'annonce",
+    "noItems": "Aucun élément — ajoutez-en un pour afficher le bandeau.",
+    "defaultIcon": "Icône par défaut",
+    "defaultIconHint": "Affichée avant les éléments sans icône propre. Laissez vide pour aucune.",
+    "textSize": "Taille du texte",
+    "size": {
+      "xs": "Très petit (12px)",
+      "sm": "Petit (14px)",
+      "base": "Moyen (16px)",
+      "lg": "Grand (18px)",
+      "xl": "Très grand (20px)"
+    },
+    "iconColor": "Couleur de l'icône",
+    "speed": "Vitesse de défilement",
+    "direction": "Sens de défilement",
+    "pauseOnHover": "Pause au survol",
+    "itemLink": "Lien (page, section ou URL)",
+    "linkedTo": "Ouvre {{link}}",
+    "removeLink": "Supprimer le lien"
+  },
+    "autoScroll": {
+        "label": "Défilement automatique",
+        "seconds": "secondes par carte",
+        "hint": "Avance d’une carte à la fois et se met en pause quand le visiteur survole, touche ou parcourt la rangée au clavier.",
+        "loop": "Boucle continue",
+        "loopOnHint": "La rangée tourne en continu : après la dernière carte revient la première.",
+        "loopOffHint": "À la dernière carte, la rangée revient à la première."
+    }
 }

@@ -38,7 +38,9 @@ import {
 import { AiUsageSection } from './ai-usage/AiUsageSection';
 import { AiLimitsSection } from './ai-limits/AiLimitsSection';
 import { AiPlanSection } from './ai-plan/AiPlanSection';
+import { AiPlanBilling } from './ai-plan/AiPlanBilling';
 import { isPlanInEffect, useAiPlanQuery } from '@/components/common/ai-credits/aiPlan';
+import { useStorefrontQuery } from '@/services/ai-plans/storefront';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
@@ -132,7 +134,11 @@ import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 import { noAutofillProps } from '@/lib/no-autofill';
 
 const LIMITS_SECTION_ID = 'grp-limits';
-/** Shown only to admins of an institute with an AI plan in effect (no plan = no change here). */
+/**
+ * Shown only to admins of an institute with an AI plan in effect, or — as
+ * "Plan & billing" — when the self-serve storefront is on for the institute.
+ * Neither = no change here.
+ */
 const PLAN_SECTION_ID = 'grp-plan';
 
 /** `?aiSection=grp-limits` deep-links a tab (the usage-limit modal links here). */
@@ -147,7 +153,8 @@ const readAiSectionParam = (): string | undefined => {
 const getAiSettingsSections = (
     t: (key: string) => string,
     showLimits: boolean,
-    showPlan = false
+    showPlan = false,
+    planLabel?: string
 ): SettingsSectionGroup[] => [
     {
         sections: [
@@ -163,7 +170,9 @@ const getAiSettingsSections = (
             ...(showLimits
                 ? [{ id: LIMITS_SECTION_ID, label: t('sections.limits'), icon: Gauge }]
                 : []),
-            ...(showPlan ? [{ id: PLAN_SECTION_ID, label: t('sections.plan'), icon: SealCheck }] : []),
+            ...(showPlan
+                ? [{ id: PLAN_SECTION_ID, label: planLabel ?? t('sections.plan'), icon: SealCheck }]
+                : []),
         ],
     },
 ];
@@ -173,8 +182,17 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const instituteIdForLimits = getInstituteId();
     const showLimits = isAdminForInstitute(instituteIdForLimits);
     const aiPlanQuery = useAiPlanQuery(instituteIdForLimits, showLimits);
-    const showPlan = showLimits && isPlanInEffect(aiPlanQuery.data);
-    const AI_SETTINGS_SECTIONS = getAiSettingsSections(t, showLimits, showPlan);
+    // Self-serve plans: visible only when the facade answers for this admin.
+    const storefrontQuery = useStorefrontQuery(instituteIdForLimits, showLimits);
+    const { t: tPlans } = useTranslation('aiPlans');
+    const storefrontVisible = showLimits && !!storefrontQuery.data;
+    const showPlan = showLimits && (isPlanInEffect(aiPlanQuery.data) || storefrontVisible);
+    const AI_SETTINGS_SECTIONS = getAiSettingsSections(
+        t,
+        showLimits,
+        showPlan,
+        storefrontVisible ? tPlans('tab') : undefined
+    );
     const [initialSection] = useState(readAiSectionParam);
     const watermarkPositions = buildWatermarkPositions(t);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -625,7 +643,14 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             description={t('page.description')}
             maxWidth="max-w-7xl"
         >
-            <SettingsSectionsLayout groups={AI_SETTINGS_SECTIONS} defaultActiveId={initialSection}>
+            <SettingsSectionsLayout
+                // The plan tab appears only after its queries resolve; re-mount once
+                // when it does so a ?aiSection=grp-plan deep link (e.g. the return
+                // from a plan payment) still opens it. Other visits are unaffected.
+                key={initialSection === PLAN_SECTION_ID && showPlan ? 'plan-ready' : 'default'}
+                groups={AI_SETTINGS_SECTIONS}
+                defaultActiveId={initialSection}
+            >
                 <section id="grp-providers" className="space-y-6">
                     {/* AI Configuration Card */}
                     <Card className="border-indigo-100 shadow-sm">
@@ -2063,7 +2088,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
 
                 {showPlan && (
                     <section id={PLAN_SECTION_ID} className="space-y-6">
-                        <AiPlanSection />
+                        {storefrontVisible ? <AiPlanBilling /> : <AiPlanSection />}
                     </section>
                 )}
             </SettingsSectionsLayout>

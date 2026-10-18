@@ -9,7 +9,14 @@
 import { useEffect, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut, Clock, Gauge, HandPalm, ShieldCheck } from '@phosphor-icons/react';
+import {
+    ArrowSquareOut,
+    Clock,
+    Gauge,
+    HandPalm,
+    SealCheck,
+    ShieldCheck,
+} from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -22,6 +29,9 @@ import { MyButton } from '@/components/design-system/button';
 import { formatDateTime, formatNumber, formatRelative } from '@/lib/formatters';
 import { getInstituteId } from '@/constants/helper';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { usePlatformBrand } from '@/lib/platform-brand';
+import { PLANS_SETTINGS_PATH } from '@/services/ai-plans/storefront';
+import { useStorefrontProbe } from '@/components/common/ai-credits/PlanEntryPoints';
 import {
     AI_LIMITS_SETTINGS_PATH,
     prettifyUseCase,
@@ -68,7 +78,18 @@ function resetInstant(body: AiUsageLimitBody): Date | null {
 
 function AiUsageLimitDialogHost() {
     const { t } = useTranslation('aiUsageLimit');
+    const { t: tPlans } = useTranslation('aiPlans');
     const [body, setBody] = useState<AiUsageLimitBody | null>(current);
+    const instituteId = (() => {
+        try {
+            return getInstituteId() ?? null;
+        } catch {
+            return null;
+        }
+    })();
+    const brand = usePlatformBrand(instituteId);
+    // A plan's fair-use cap was hit: admins may see plans (storefront on only).
+    const storefront = useStorefrontProbe(instituteId, body?.period === 'PLAN_PERIOD');
 
     useEffect(() => {
         const l: Listener = (b) => setBody(b);
@@ -154,7 +175,7 @@ function AiUsageLimitDialogHost() {
                             {t('fields.setBy')}
                         </dt>
                         <dd className="text-end font-medium text-neutral-800">
-                            {t(`setBy.${setByKey}`)}
+                            {t(`setBy.${setByKey}`, brand.vars)}
                             <span className="block text-xs font-normal text-neutral-500">
                                 {t(`scope.${scopeKey}`)}
                             </span>
@@ -165,12 +186,21 @@ function AiUsageLimitDialogHost() {
                 <p className="text-xs text-neutral-500">
                     {isAdmin
                         ? setByKey === 'PLATFORM'
-                            ? t('hint.adminPlatform')
+                            ? t('hint.adminPlatform', brand.vars)
                             : t('hint.admin')
                         : t('hint.member')}
                 </p>
 
                 <DialogFooter className="gap-2 sm:gap-2">
+                    {isAdmin && storefront && periodKey === 'PLAN_PERIOD' && (
+                        <a
+                            href={PLANS_SETTINGS_PATH}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                        >
+                            <SealCheck className="size-4" />
+                            {tPlans('entry.seePlans')}
+                        </a>
+                    )}
                     {isAdmin && setByKey === 'INSTITUTE' && (
                         <a
                             href={AI_LIMITS_SETTINGS_PATH}

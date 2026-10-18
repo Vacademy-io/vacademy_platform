@@ -24,6 +24,10 @@ export interface TenantPlanFeature {
     /** True when any model is included (model policy ANY). */
     any_model: boolean;
     included_models: string[];
+    /** Role classes the inclusion is limited to; null = everyone. */
+    roles_included: string[] | null;
+    /** Tool keys billed as this feature (for cost previews). */
+    tool_keys: string[];
 }
 
 export interface TenantPlan {
@@ -39,6 +43,8 @@ export interface TenantPlan {
          * effect (Shadow, not started, global switch off). False = hide.
          */
         effective: boolean | null;
+        /** Paid plan whose current period is unpaid: benefits are paused, AI use is charged. */
+        benefits_paused: boolean;
     };
     allowance: { credits: number; used: number; remaining: number };
     features: TenantPlanFeature[];
@@ -82,7 +88,15 @@ export function normalizeTenantPlan(raw: unknown): TenantPlan | null {
                 usage_pct: pct === null ? null : Math.min(100, Math.max(0, pct)),
                 any_model: o.any_model === true,
                 included_models: Array.isArray(o.included_models)
-                    ? o.included_models.filter((m): m is string => typeof m === 'string' && m !== '')
+                    ? o.included_models.filter(
+                          (m): m is string => typeof m === 'string' && m !== ''
+                      )
+                    : [],
+                roles_included: Array.isArray(o.roles_included)
+                    ? o.roles_included.filter((m): m is string => typeof m === 'string' && m !== '')
+                    : null,
+                tool_keys: Array.isArray(o.tool_keys)
+                    ? o.tool_keys.filter((m): m is string => typeof m === 'string' && m !== '')
                     : [],
             };
         })
@@ -96,6 +110,7 @@ export function normalizeTenantPlan(raw: unknown): TenantPlan | null {
             enforcement: str(plan.enforcement) ?? 'SHADOW',
             status: str(plan.status) ?? '',
             effective: typeof plan.effective === 'boolean' ? plan.effective : null,
+            benefits_paused: plan.benefits_paused === true,
         },
         allowance: {
             credits,
@@ -115,6 +130,52 @@ export function isPlanInEffect(p: TenantPlan | null | undefined): p is TenantPla
         p.plan.effective !== false &&
         LIVE_STATUSES.includes(p.plan.status)
     );
+}
+
+/** How the institute's AI plan pays for one priced action. */
+export interface PlanCoverage {
+    /** INCLUDED: free under the plan; ALLOWANCE: from the monthly allowance; SPLIT: allowance then wallet. */
+    mode: 'INCLUDED' | 'ALLOWANCE' | 'SPLIT';
+    /** Credits the wallet is expected to pay (0 unless SPLIT). */
+    walletCredits: number;
+    planName: string;
+}
+
+/**
+ * What the plan is expected to do with an action priced at `credits` for `toolKey`, or null
+ * when the wallet pays as usual (no plan in effect, benefits paused, tool not in the plan,
+ * charged, fair-use cap reached, role-limited inclusion, allowance used up). An estimate only:
+ * the server decides at charge time (a model the user picked themselves is charged, for one).
+ */
+export function planCoverageForTool(
+    plan: TenantPlan | null | undefined,
+    toolKey: string,
+    credits: number | null
+): PlanCoverage | null {
+    if (!isPlanInEffect(plan) || plan.plan.benefits_paused || credits == null || credits <= 0)
+        return null;
+    const feature = plan.features.find((f) => f.tool_keys.includes(toolKey));
+    if (!feature) return null;
+    if (feature.mode === 'INCLUDED') {
+        if (feature.roles_included && feature.roles_included.length > 0) return null;
+        if (feature.usage_pct != null && feature.usage_pct >= 100) return null;
+        return { mode: 'INCLUDED', walletCredits: 0, planName: plan.plan.name };
+    }
+    if (feature.mode === 'ALLOWANCE') {
+        const left = plan.allowance.remaining;
+        if (left <= 0) return null;
+        if (left >= credits)
+            return { mode: 'ALLOWANCE', walletCredits: 0, planName: plan.plan.name };
+        return { mode: 'SPLIT', walletCredits: credits - left, planName: plan.plan.name };
+    }
+    return null;
+}
+
+/** One short line for a cost preview: "Included in your AI plan", "From your plan allowance"... */
+export function coverageLabel(c: PlanCoverage): string {
+    if (c.mode === 'INCLUDED') return 'Included in your AI plan';
+    if (c.mode === 'ALLOWANCE') return 'From your plan allowance';
+    return `Allowance, then ${Math.ceil(c.walletCredits)} credits from your balance`;
 }
 
 /** Allowance used as 0-100, or null when the plan has no allowance. */

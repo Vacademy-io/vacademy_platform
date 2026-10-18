@@ -14,6 +14,10 @@ import {
   streamsFromFolderTree,
   streamsFromTagItems,
 } from "./catalog-streams";
+import { buildCatalogCards } from "./catalog-cards";
+
+/** The real course tags of a list, without level keys. */
+const real = (tags: string[]) => tags.filter((t) => !t.startsWith("level:")).sort();
 
 const folder = (id: string, extra: Partial<PublicFolderNode> = {}, children: PublicFolderNode[] = []): PublicFolderNode => ({
   id,
@@ -49,7 +53,7 @@ describe("streamsFromFolderTree", () => {
 
   it("collects the stream's own tag plus every folder tag below it", () => {
     expect(streams[0].tag).toBe("shiksha");
-    expect(streams[0].tags.sort()).toEqual(["sanskrit", "shiksha", "vedic-advanced", "vedic-maths"]);
+    expect(real(streams[0].tags)).toEqual(["sanskrit", "shiksha", "vedic-advanced", "vedic-maths"]);
   });
 
   it("makes direct sub-folders categories, de-duplicated by slug", () => {
@@ -57,7 +61,7 @@ describe("streamsFromFolderTree", () => {
       ["vedic-maths", "वैदिक गणित", "Vedic Maths", false],
       ["sanskrit", "संस्कृत", "Sanskrit", true],
     ]);
-    expect(streams[0].categories[0].tags.sort()).toEqual(["vedic-advanced", "vedic-maths"]);
+    expect(real(streams[0].categories[0].tags)).toEqual(["vedic-advanced", "vedic-maths"]);
     expect(streams[0].categories[1].audienceId).toBe("aud-1");
   });
 
@@ -79,7 +83,7 @@ describe("streamsFromTagItems", () => {
         title: "Shiksha",
         subtitle: "",
         tag: "shiksha",
-        tags: ["shiksha"],
+        tags: ["shiksha", "level:shiksha"],
         comingSoon: false,
         audienceId: null,
         imageUrl: null,
@@ -200,5 +204,63 @@ describe("streamTabId", () => {
     // A stream whose key is literally "all" never takes the All tab's id.
     expect(streamTabId(":r1:", "all")).not.toBe(streamTabId(":r1:", null));
     expect(streamTabId(":r1:", "a b/c")).toBe(":r1:-tab-s-a_b_c");
+  });
+});
+
+describe("level keys: a course levelled like a stream or category belongs to it", () => {
+  // Brahm Varchas, 2026-10-16: courses carry only format tags and name their
+  // category in the level ("Vedic Parenting", "History", "India of temples").
+  const BV: PublicFolderNode[] = [
+    folder("dharma", { title: "धर्म | संस्कृति", subtitle: "Virtue | Civilisation", slug: "dharma" }, [
+      folder("vp", { title: "वैदिक पेरेंटिंग", subtitle: "Holistic Parenting", course_tag: "vedic-parenting" }),
+    ]),
+    folder("bharat", { title: "भारत परिक्रमा", subtitle: "Orbiting Bharat", slug: "bharat" }, [
+      folder("mandir", { title: "मंदिरों का भारत", subtitle: "India of temples", course_tag: "mandir" }),
+      folder("itihas", { title: "इतिहास", subtitle: "History", course_tag: "itihas" }),
+    ]),
+  ];
+  const streams = streamsFromFolderTree(BV);
+  type Row = Parameters<typeof buildCatalogCards>[0][number];
+  const row = (id: string, level: string, tags = "ebook"): Row =>
+    ({
+      id,
+      package_id: id,
+      package_session_id: `ps-${id}`,
+      level_name: level,
+      comma_separeted_tags: tags,
+    }) as unknown as Row;
+  const cards = buildCatalogCards(
+    [
+      row("a", "Vedic Parenting"), // = the category's course tag
+      row("b", "India of temples"), // = the category's subtitle
+      row("c", "History"), // = the category's subtitle
+      row("d", "Ramayan"), // names nothing
+      row("e", "default", "vedic-parenting"), // placeholder level, real tag still counts
+    ],
+    { grouping: false, languages: [] },
+  );
+
+  it("counts courses into streams by level name, next to tags", () => {
+    const { bySlug } = countCardsByStream(cards, streams);
+    expect(bySlug.get("dharma")).toBe(2); // a (level) + e (tag)
+    expect(bySlug.get("bharat")).toBe(2); // b + c
+  });
+
+  it("puts a course in the category its level names", () => {
+    const has = (catSlug: string, card: (typeof cards)[number]) =>
+      streams.flatMap((s) => s.categories).find((c) => c.id === catSlug)!.tags.some((t) => card.tagSet.has(t));
+    expect(has("mandir", cards[1])).toBe(true);
+    expect(has("itihas", cards[1])).toBe(false);
+    expect(has("itihas", cards[2])).toBe(true);
+  });
+
+  it("never matches a level key to a real tag, nor a placeholder level", () => {
+    const { bySlug } = countCardsByStream(
+      buildCatalogCards([row("x", "Ramayan", "level:history")], { grouping: false, languages: [] }),
+      streams,
+    );
+    // A literal "level:history" tag is not the History category's level key.
+    expect(bySlug.get("bharat")).toBe(0);
+    expect(cards[4].tagSet.has("level:default")).toBe(false);
   });
 });

@@ -27,7 +27,7 @@ Error responses carry `Cache-Control: no-store`.
 
 | HTTP | Code | `details` | What to do |
 |---|---|---|---|
-| 400 | `invalid_request` | `param` | Fix the parameter or field it names: a non-numeric `page`, `page_size` outside 1-100, an unknown `sort` or `availability`, an invalid enquiry field. Also returned for malformed JSON. |
+| 400 | `invalid_request` | `param` | Fix the parameter or field it names: a non-numeric `page`, `page_size` outside 1-100, an unknown `sort`, `availability`, `badge` or `price`, a negative or non-numeric `price_min` / `price_max`, a `custom` token without a colon, a `facets` value other than true/false, an invalid enquiry field. Also returned for malformed JSON. |
 | 415 | `invalid_request` | | Send `POST /leads` with `Content-Type: application/json`. |
 | 401 | `missing_api_key` | | Send the key in `X-API-Key` (or `Authorization: Bearer`). |
 | 401 | `invalid_api_key` | | Not a `vak_pub_` key, or unknown, revoked or expired. Check it in the dashboard. |

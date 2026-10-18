@@ -14,7 +14,7 @@
         "currenciesLabel": "Currencies to price automatically",
         "currenciesHelp": "For each currency you pick, every plan gets a price converted from its normal price at today's exchange rate and rounded to a clean amount (for example ₹999 becomes $11.99). Learners in every country that uses that currency pay it.",
         "currenciesPlaceholder": "Search and pick currencies, e.g. US Dollar",
-        "noCurrencies": "No currency picked yet: only countries you set a fixed price for (in step 2) will see a different price.",
+        "noCurrencies": "No currency picked yet, so only countries you give a fixed price will see a different price.",
         "ratesFetched": "Exchange rates updated {{date}}",
         "ratesNever": "Exchange rates have not been fetched yet",
         "gatewayNote": "Learners are only charged in a currency your payment gateway accepts. PhonePe and Cashfree take INR only, and eWay takes AUD and NZD. Razorpay needs international payments switched on in your Razorpay account."

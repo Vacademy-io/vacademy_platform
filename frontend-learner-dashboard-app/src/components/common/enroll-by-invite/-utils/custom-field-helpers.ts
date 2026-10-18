@@ -120,7 +120,11 @@ export const getFieldRenderType = (
  * - New object format: { options?, defaultValue?, allowedFileTypes?, maxSizeMB?, min?, max?, minDate?, maxDate? }
  */
 export interface CustomFieldFullConfig {
-  options?: Array<{ id: number; value: string; label: string }>;
+  options?: Array<{ id: number; value: string; label: string; parent?: string }>;
+  // Dependent dropdown: the field_key of the dropdown this one follows. Each
+  // option's `parent` names the parent value it belongs to; an option with no
+  // `parent` shows for every parent value.
+  parentFieldKey?: string;
   defaultValue?: string;
   allowedFileTypes?: string[];
   maxSizeMB?: number;
@@ -229,7 +233,7 @@ export const getFieldDefaultValue = (
   return parsed?.defaultValue ?? "";
 };
 
-type DropdownOption = { _id: number; value: string; label: string };
+type DropdownOption = { _id: number; value: string; label: string; parent?: string };
 
 /**
  * Admin writes two variants of the same option config: {id,value,label} and
@@ -238,15 +242,20 @@ type DropdownOption = { _id: number; value: string; label: string };
  * a SelectItem that cannot be selected.
  */
 const normaliseOptions = (
-  raw: Array<{ id?: number; value?: string; name?: string; label?: string }>
+  raw: Array<string | { id?: number; value?: string; name?: string; label?: string; parent?: unknown }>
 ): DropdownOption[] =>
   raw
+    // Some writers (e.g. the MCP form editor) store {"options":["A","B"]} —
+    // plain strings, which used to resolve to no value and render an empty list.
+    .map((entry) => (typeof entry === "string" ? { value: entry.trim() } : entry))
     .map((option, index) => {
       const value = option.value ?? option.name;
+      const parent = typeof option.parent === "string" ? option.parent.trim() : "";
       return {
         _id: option.id ?? index + 1,
         value: value as string,
         label: option.label ?? (value as string),
+        ...(parent ? { parent } : {}),
       };
     })
     .filter((option) => option.value !== undefined && option.value !== "");
@@ -471,4 +480,61 @@ export const getInputType = (
   if (renderType === FieldRenderType.PHONE) return "tel";
   if (renderType === FieldRenderType.DATE) return "date";
   return "text";
+};
+
+/**
+ * Dependent (cascading) dropdowns, e.g. Course → Query: where a field stands
+ * given the values the visitor has picked so far.
+ * - independent: not a dependent field — render as before.
+ * - waiting: the parent has no value yet — show the field disabled.
+ * - empty: the parent's value has no options here — hide it and skip "required".
+ * - ready: render with exactly these options.
+ */
+export type DependentFieldState =
+  | { kind: "independent" }
+  | { kind: "waiting"; parentFieldKey: string }
+  | { kind: "empty"; parentFieldKey: string }
+  | { kind: "ready"; parentFieldKey: string; options: DropdownOption[] };
+
+export const getParentFieldKey = (config?: string | null): string | null => {
+  const key = parseFieldConfig(config)?.parentFieldKey;
+  return typeof key === "string" && key.trim() ? key.trim() : null;
+};
+
+export const resolveDependentField = (
+  config: string | null | undefined,
+  parentValueOf: (fieldKey: string) => string | undefined
+): DependentFieldState => {
+  const parentFieldKey = getParentFieldKey(config);
+  if (!parentFieldKey) return { kind: "independent" };
+  const parentValue = (parentValueOf(parentFieldKey) ?? "").trim();
+  if (!parentValue) return { kind: "waiting", parentFieldKey };
+  const options = parseDropdownOptions(config || "").filter(
+    (option) => !option.parent || option.parent === parentValue
+  );
+  return options.length
+    ? { kind: "ready", parentFieldKey, options }
+    : { kind: "empty", parentFieldKey };
+};
+
+/**
+ * Keys of every field that follows `changedKey`, directly or through another
+ * dependent field — their values are stale once the parent changes.
+ */
+export const dependentFieldKeys = (
+  changedKey: string,
+  fields: Array<{ key: string; config?: string | null }>
+): string[] => {
+  const out: string[] = [];
+  const queue = [changedKey];
+  while (queue.length) {
+    const parent = queue.shift()!;
+    for (const field of fields) {
+      if (field.key !== changedKey && !out.includes(field.key) && getParentFieldKey(field.config) === parent) {
+        out.push(field.key);
+        queue.push(field.key);
+      }
+    }
+  }
+  return out;
 };

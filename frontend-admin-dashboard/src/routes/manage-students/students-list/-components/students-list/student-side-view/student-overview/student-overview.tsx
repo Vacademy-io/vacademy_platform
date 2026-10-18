@@ -30,6 +30,7 @@ import { EditStudentDetails } from './EditStudentDetails';
 import { EditLeadDetails } from './EditLeadDetails';
 import { StudentAttribution } from '../student-attribution/student-attribution';
 import { OverviewRemarks } from './overview-remarks';
+import { OverviewOtherContacts } from './overview-other-contacts';
 
 /**
  * Overview tab — intentionally simple: a clean stack of label/value section
@@ -330,6 +331,18 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 })
             ) : (
                 <ProfileEmpty icon={User} title={t('empty.noOverviewData')} />
+            )}
+
+            {/* Other phones / emails this lead's person enquired with (leads only;
+                renders nothing when there are none). */}
+            {leadResponseId && (
+                <OverviewOtherContacts
+                    responseId={leadResponseId}
+                    mainPhone={studentDetails?.mobile_number || selectedStudent?.mobile_number}
+                    mainEmail={studentDetails?.email || selectedStudent?.email}
+                    copiedField={copiedField}
+                    onCopy={handleCopy}
+                />
             )}
 
             {/* Custom field groups */}

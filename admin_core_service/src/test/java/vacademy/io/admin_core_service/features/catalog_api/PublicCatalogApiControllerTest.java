@@ -54,6 +54,36 @@ class PublicCatalogApiControllerTest {
     }
 
     @Test
+    void passesTheDiscoveryParametersThrough() throws Exception {
+        when(auth.authenticate(any(), eq(CatalogApiAuth.SCOPE_READ))).thenReturn(READER);
+        when(service.courses(eq("inst-1"), any())).thenReturn(Map.of("data", List.of(), "total", 0));
+        mvc.perform(get("/admin-core-service/open/catalog/v1/courses").param("stream", "dharma,shastra")
+                        .param("level", "eBook").param("instructor", "Abhishek").param("session", "s-1")
+                        .param("badge", "new,free").param("price", "paid").param("price_min", "100")
+                        .param("price_max", "500").param("custom", "for:parents").param("facets", "true")
+                        .param("sort", "popular"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "public, max-age=60"));
+        verify(service).courses(eq("inst-1"), argThat(q -> "dharma,shastra".equals(q.stream())
+                && "eBook".equals(q.level()) && "Abhishek".equals(q.instructor()) && "s-1".equals(q.session())
+                && "new,free".equals(q.badge()) && "paid".equals(q.price()) && "100".equals(q.priceMin())
+                && "500".equals(q.priceMax()) && "for:parents".equals(q.custom()) && q.facets()
+                && "popular".equals(q.sort())));
+    }
+
+    @Test
+    void facetsDefaultsOffAndRejectsNonBooleans() throws Exception {
+        when(auth.authenticate(any(), eq(CatalogApiAuth.SCOPE_READ))).thenReturn(READER);
+        when(service.courses(eq("inst-1"), any())).thenReturn(Map.of("data", List.of(), "total", 0));
+        mvc.perform(get("/admin-core-service/open/catalog/v1/courses")).andExpect(status().isOk());
+        verify(service).courses(eq("inst-1"), argThat(q -> !q.facets() && q.level() == null && q.custom() == null));
+        mvc.perform(get("/admin-core-service/open/catalog/v1/courses").param("facets", "yes"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("invalid_request"))
+                .andExpect(jsonPath("$.error.details.param").value("facets"));
+    }
+
+    @Test
     void authErrorsUseTheEnvelope() throws Exception {
         when(auth.authenticate(any(), any())).thenThrow(new CatalogApiException(HttpStatus.UNAUTHORIZED,
                 "missing_api_key", "Send your catalogue API key in X-API-Key."));

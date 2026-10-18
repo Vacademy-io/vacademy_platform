@@ -36,10 +36,14 @@ import java.util.List;
  *                                     // phone whose lead another counsellor owns
  *     "blockOpenLeadManualAdd": false, // a counsellor cannot add by hand a lead (dedup field)
  *                                     // that is still open — not converted, not LOST
+ *     "alsoMatchEmail": false,        // field = PHONE: a new enquiry whose phone matches no
+ *                                     // lead still counts as a repeat when its email does
  *     "reattempt": {                  // what a repeat enquiry leaves behind; all off by default
  *       "markDuplicate": false,       // flag the new enquiry as a duplicate of the lead it repeats
  *       "duplicateOpenOnly": true,    // ...only while that lead is open (not converted / LOST);
  *                                     // a repeat of a closed lead comes in as a new lead
+ *       "duplicatesTabOnly": false,   // duplicates only on the Duplicate Leads tab; other lists
+ *                                     // show the lead once, badged (route duplicates= still wins)
  *       "journeyEntry": false,        // write a "Reattempt" entry in that lead's journey
  *       "notifyOwner": false,         // bell to the lead's counsellor
  *       "showBadge": false,           // "Duplicate" badge next to the name in lead tables (FE only)
@@ -98,18 +102,27 @@ public class LeadDedupSettingService {
      * showBadge} is read by the admin UI only, to badge duplicate enquiries in the lead tables.
      * {@code duplicateOpenOnly} (default on) limits {@code markDuplicate} to repeats of a lead
      * that is still open — not converted and not LOST — so a closed lead's repeat counts as a
-     * new lead.
+     * new lead. {@code duplicatesTabOnly} (default off) keeps duplicate enquiries out of every
+     * lead list whose route does not ask for them, so they show only on the Duplicate Leads
+     * tab, and badges the lead they repeat instead. Off = lists behave exactly as before.
      */
     public record ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
-            boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly) {
+            boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly,
+            boolean duplicatesTabOnly) {
 
         public static final ReattemptSettings OFF =
-                new ReattemptSettings(false, false, false, false, false, null, true);
+                new ReattemptSettings(false, false, false, false, false, null, true, false);
+
+        /** {@code duplicatesTabOnly} off, its default. */
+        public ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
+                boolean showBadge, boolean followUp, String tier, boolean duplicateOpenOnly) {
+            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, duplicateOpenOnly, false);
+        }
 
         /** {@code duplicateOpenOnly} on, its default. */
         public ReattemptSettings(boolean markDuplicate, boolean journeyEntry, boolean notifyOwner,
                 boolean showBadge, boolean followUp, String tier) {
-            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, true);
+            this(markDuplicate, journeyEntry, notifyOwner, showBadge, followUp, tier, true, false);
         }
 
         public ReattemptSettings {
@@ -123,15 +136,28 @@ public class LeadDedupSettingService {
     }
 
     /**
-     * {@code samePersonByPhone} and {@code blockOwnedManualAdd} only act when the dedup field
-     * is PHONE; both default to off, which keeps the behaviour from before they existed.
+     * {@code samePersonByPhone}, {@code blockOwnedManualAdd} and {@code alsoMatchEmail} only
+     * act when the dedup field is PHONE; all default to off, which keeps the behaviour from
+     * before they existed. {@code alsoMatchEmail}: auth_service already treats one email as
+     * one person, so a repeat that brings a new phone (e.g. a Google form prefilled from the
+     * Google account) joins that person, and without this it would arrive as a second,
+     * unflagged lead.
      */
     public record RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
             String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
-            boolean blockOwnedManualAdd, ReattemptSettings reattempt, boolean blockOpenLeadManualAdd) {
+            boolean blockOwnedManualAdd, ReattemptSettings reattempt, boolean blockOpenLeadManualAdd,
+            boolean alsoMatchEmail) {
 
         public RepeatLeadSettings {
             if (reattempt == null) reattempt = ReattemptSettings.OFF;
+        }
+
+        /** {@code alsoMatchEmail} off. */
+        public RepeatLeadSettings(CounsellorMode counsellorMode, String specificCounsellorId,
+                String specificCounsellorName, StatusMode statusMode, boolean samePersonByPhone,
+                boolean blockOwnedManualAdd, ReattemptSettings reattempt, boolean blockOpenLeadManualAdd) {
+            this(counsellorMode, specificCounsellorId, specificCounsellorName, statusMode, samePersonByPhone,
+                    blockOwnedManualAdd, reattempt, blockOpenLeadManualAdd, false);
         }
 
         /** {@code blockOpenLeadManualAdd} off. */
@@ -292,7 +318,8 @@ public class LeadDedupSettingService {
                 node.path("samePersonByPhone").asBoolean(false),
                 node.path("blockOwnedManualAdd").asBoolean(false),
                 parseReattempt(node.path("reattempt")),
-                node.path("blockOpenLeadManualAdd").asBoolean(false));
+                node.path("blockOpenLeadManualAdd").asBoolean(false),
+                node.path("alsoMatchEmail").asBoolean(false));
     }
 
     private ReattemptSettings parseReattempt(JsonNode node) {
@@ -304,6 +331,7 @@ public class LeadDedupSettingService {
                 node.path("showBadge").asBoolean(false),
                 node.path("followUp").asBoolean(false),
                 node.path("tier").isTextual() ? node.path("tier").asText() : null,
-                node.path("duplicateOpenOnly").asBoolean(true));
+                node.path("duplicateOpenOnly").asBoolean(true),
+                node.path("duplicatesTabOnly").asBoolean(false));
     }
 }

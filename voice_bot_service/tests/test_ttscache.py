@@ -696,7 +696,10 @@ def _prompt_for(mode, language="hinglish"):
         pytest.skip("%-d strftime is glibc-only; this asserts in CI")
     from app import bot
     agent = {"id": "a1", "name": "T", "language": language, "voice": "mrunal",
-             "tts_model": "smallest_pro", "systemPrompt": "SCRIPT BODY",
+             # An education script: the consistency rule's examples (रमन, क्लास)
+             # are education words, and a non-education agent gets neutral ones
+             # (app/agent_domain; tests/test_agent_grounding.py).
+             "tts_model": "smallest_pro", "systemPrompt": "SCRIPT BODY about live classes",
              "openingLine": "नमस्ते जी।", "speech_cache_mode": mode}
     return bot.build_system_prompt({"agent": agent, "instituteName": "X",
                                     "direction": "OUTBOUND", "leadName": "P"})

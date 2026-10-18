@@ -222,6 +222,7 @@ export function GenerateCodingQuestionDialog({
                 <ToolCostBadge
                     credits={cost.credits}
                     sufficient={cost.sufficient}
+                    coverage={cost.coverage}
                     loading={cost.isLoading}
                     className="mr-auto"
                 />

@@ -68,6 +68,10 @@
                 "resetClosedToNew": "Reset to New only if converted or discarded"
             }
         },
+        "alsoMatchEmail": {
+            "label": "Also match on email",
+            "hint": "An enquiry with a new phone number still counts as a repeat when its email matches an existing lead (e.g. a Google form prefilled with another number)."
+        },
         "samePersonByPhone": {
             "label": "Treat the same phone as the same person",
             "hint": "A repeat enquiry with a new email joins the existing lead and keeps its counsellor, instead of becoming a second lead."
@@ -106,6 +110,10 @@
             "showBadge": {
                 "label": "Show a Duplicate badge in lead tables",
                 "hint": "Duplicate enquiries show a Duplicate badge next to the lead name."
+            },
+            "duplicatesTabOnly": {
+                "label": "Show duplicates only in Duplicate Leads",
+                "hint": "Duplicate enquiries are listed only on the Duplicate Leads tab. All Leads and the other lead lists show the lead once, with a Duplicate badge. Turn off to keep the lists as they are."
             },
             "tier": {
                 "label": "Set {{tier}} to",

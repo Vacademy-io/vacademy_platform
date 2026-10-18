@@ -24,6 +24,9 @@ const testInputFieldSchema = z.object({
             z.object({
                 id: z.string(),
                 value: z.string(),
+                // Dependent dropdowns: the parent field's option value this option
+                // belongs to. Declared so validation does not strip it on submit.
+                parent: z.string().optional(),
             })
         )
         .optional(),

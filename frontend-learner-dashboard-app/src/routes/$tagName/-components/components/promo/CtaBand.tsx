@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { CatalogueLink } from "../../CatalogueLink";
 import type { CtaBandButtonConfig, CtaBannerBandProps } from "../../../-types/site-chrome-types";
 import { PhoneMockup } from "./PhoneMockup";
+import { AppStoreBadges, resolveAppStoreLinks } from "./AppStoreBadges";
 
 /**
  * ctaBanner variant "band": a full-width band with an optional eyebrow, a
@@ -99,6 +100,7 @@ export const CtaBand: React.FC<CtaBannerBandProps> = ({
   button,
   secondaryButton,
   mockup,
+  appLinks,
 }) => {
   // No author colour = the dark ink fallback below (bg-palette-text), so light text.
   const dark = backgroundColor ? isDarkHex(backgroundColor) : true;
@@ -130,7 +132,10 @@ export const CtaBand: React.FC<CtaBannerBandProps> = ({
       {subheading}
     </p>
   ) : null;
-  const buttonRow = buttons.length ? (
+  const storeLinks = resolveAppStoreLinks(appLinks);
+  const buttonRow = storeLinks ? (
+    <AppStoreBadges links={storeLinks} className={cn("w-full sm:w-auto sm:shrink-0", app && "md:self-center")} />
+  ) : buttons.length ? (
     <div className={cn("flex w-full flex-wrap items-start sm:w-auto sm:shrink-0", large ? "gap-3" : "gap-3.5", app && "md:self-center")}>
       {buttons.map((b, i) => (
         <CtaBandButton key={i} button={b} />

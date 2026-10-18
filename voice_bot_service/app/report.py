@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from . import admin_core, diagnostics
+from .agent_domain import is_general_agent
 from .bot import CallOutcome
 from .config import get_settings
 
@@ -217,6 +218,22 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "Never invent a statement that is not in that list).\n"
     ) if conditions else ""
 
+    # "counsellor" is the education word for the person who follows up. A
+    # non-education agent's report names a team member instead (AAIBUZZ/IRPL,
+    # calls c43e9ce7, e6cb5f47, 2026-10-16); an education agent's prompt is
+    # unchanged, byte for byte.
+    _general = is_general_agent(agent)
+    _human = "team member" if _general else "counsellor"
+    # The gist examples too: a yoga studio and a school reception steer the
+    # summary of a call about something else entirely toward one of those
+    # businesses. Neutral examples for a non-education agent only.
+    _gist_examples = (
+        "'Worth a call — asked about the price and wants the details on WhatsApp.' or "
+        "'Skip — reached a reception desk, not the person who enquired.' or "
+        if _general else
+        "'Worth a call — runs a 50-member "
+        "hybrid studio, sends links by hand, asked about pricing.' or 'Skip — reached "
+        "a school reception, not a yoga trainer.' or ")
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
         # Evidence discipline. Without this the model was handed a bare list of labels
@@ -235,7 +252,9 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "further content is NOT evidence of interest, identity, refusal or a booking. "
         f"\"{_INSUFFICIENT}\" is a CORRECT and expected answer on a short or one-sided "
         "call — always prefer it to a guess.\n"
-        "3. Never state a name, phone number, platform, member count, price, place or "
+        "3. Never state a name, phone number, platform, "
+        + ("quantity" if _general else "member count")
+        + ", price, place or "
         "time the caller did not actually say. In extractedQa use null for every "
         "question the caller did not answer; do not fill one in from what a business "
         "like theirs would probably say.\n"
@@ -261,18 +280,18 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         # the evidence fields before it advises a human. The gist must rest on the
         # same EVIDENCE RULES as everything above — a recommendation built on an
         # invented fact is worse than none.
-        f"followUp (one of {list(_FOLLOW_UP_LEVELS)}: should a HUMAN counsellor "
+        f"followUp (one of {list(_FOLLOW_UP_LEVELS)}: should a HUMAN {_human} "
         "personally call this lead next? CALL = yes, worth a person's time now — a "
         "real need, a question the assistant could not answer, or interest without a "
         "booking; CALL_LATER = yes, but at the time the caller asked for; SKIP = no — "
         "wrong person, a clear refusal, a business that does not fit, or nothing to "
         "pursue. Judge the LEAD, not the assistant), "
-        "followUpGist (ONE sentence, under 30 words, written for the counsellor "
+        f"followUpGist (ONE sentence, under 30 words, written for the {_human} "
         "deciding whether to pick up the phone: lead with the recommendation, then the "
         "concrete reason FROM THIS CALL — what they run, what they asked, what they "
-        "objected to, when they said to call. e.g. 'Worth a call — runs a 50-member "
-        "hybrid studio, sends links by hand, asked about pricing.' or 'Skip — reached "
-        "a school reception, not a yoga trainer.' or 'Call back Tuesday after 4pm — "
+        "objected to, when they said to call. e.g. "
+        + _gist_examples
+        + "'Call back Tuesday after 4pm — "
         "she asked for that slot and sounded keen.' Plain words, no preamble, do not "
         "restate the disposition label, never include a fact the caller did not say).\n"
         + artefact_spec + condition_spec +

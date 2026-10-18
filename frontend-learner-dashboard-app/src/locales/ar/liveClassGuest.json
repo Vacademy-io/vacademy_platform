@@ -68,6 +68,7 @@
         "description": "لا تحتوي هذه الحملة على أي حقول مخصصة معدّة.",
         "debugCount": "الحقول المخصصة من واجهة برمجة التطبيقات: {{count}}"
       },
+      "selectParentFirst": "اختر {{name}} أولاً",
       "submitButton": {
         "submitting": "جارٍ الإرسال...",
         "default": "إرسال الرد"

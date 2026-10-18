@@ -14,6 +14,33 @@ export interface RegistrationTableData {
     email: string;
 }
 
+/** PRESENT / ABSENT / anything else (unmarked) as an icon + label, shared by every attendance table. */
+export const AttendanceStatusCell = ({ status, t }: { status: string | null; t: TFunction }) => {
+    const normalized = status ? status.toString().toUpperCase() : '';
+    if (normalized === 'PRESENT') {
+        return (
+            <div className="flex items-center gap-2 text-success-600">
+                <CheckCircle size={20} weight="fill" />
+                <span>{t('present')}</span>
+            </div>
+        );
+    }
+    if (normalized === 'ABSENT') {
+        return (
+            <div className="flex items-center gap-2 text-danger-600">
+                <XCircle size={20} weight="fill" />
+                <span>{t('absent')}</span>
+            </div>
+        );
+    }
+    return (
+        <div className="flex items-center gap-2 text-gray-400">
+            <MinusCircle size={20} weight="fill" />
+            <span>{t('unmarked')}</span>
+        </div>
+    );
+};
+
 export const buildReportColumns = (t: TFunction): ColumnDef<ReportTableData>[] => [
     {
         accessorKey: 'index',
@@ -26,32 +53,7 @@ export const buildReportColumns = (t: TFunction): ColumnDef<ReportTableData>[] =
     {
         accessorKey: 'attendanceStatus',
         header: t('attendanceStatus'),
-        cell: ({ row }) => {
-            const raw = row.original.attendanceStatus;
-            const status = raw ? raw.toString().toUpperCase() : '';
-            if (status === 'PRESENT') {
-                return (
-                    <div className="flex items-center gap-2 text-success-600">
-                        <CheckCircle size={20} weight="fill" />
-                        <span>{t('present')}</span>
-                    </div>
-                );
-            }
-            if (status === 'ABSENT') {
-                return (
-                    <div className="flex items-center gap-2 text-danger-600">
-                        <XCircle size={20} weight="fill" />
-                        <span>{t('absent')}</span>
-                    </div>
-                );
-            }
-            return (
-                <div className="flex items-center gap-2 text-gray-400">
-                    <MinusCircle size={20} weight="fill" />
-                    <span>{t('unmarked')}</span>
-                </div>
-            );
-        },
+        cell: ({ row }) => <AttendanceStatusCell status={row.original.attendanceStatus} t={t} />,
     },
 ];
 export const buildRegistrationColumns = (t: TFunction): ColumnDef<RegistrationTableData>[] => [

@@ -4,6 +4,8 @@ import {
     computeToolCredits,
 } from '@/services/ai-credits/get-ai-credits';
 import type { ToolKey, ToolParams, ToolPricingRow } from '@/services/ai-credits/get-ai-credits';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { planCoverageForTool, useAiPlanQuery, type PlanCoverage } from './aiPlan';
 
 export interface ToolCostPreview {
     /** Parametric estimate in credits (computed locally, mirrors the backend). */
@@ -17,6 +19,11 @@ export interface ToolCostPreview {
     isLowBalanceAfter: boolean;
     /** The rate card row the estimate came from (DB-tunable), so a dialog can show the formula. */
     rate: ToolPricingRow | null;
+    /**
+     * How the institute's AI plan is expected to pay (included / allowance), or null when the
+     * wallet pays. `credits` stays the list price; balanceAfter / sufficient use the wallet part.
+     */
+    coverage: PlanCoverage | null;
 }
 
 /**
@@ -42,10 +49,14 @@ export function useToolCostPreview(
     const perRun = computeToolCredits(row, params);
     const estimated = perRun == null ? null : perRun * Math.max(0, runs);
 
+    const { data: plan } = useAiPlanQuery(getCurrentInstituteId(), enabled);
+    const coverage = planCoverageForTool(plan, toolKey, estimated);
+    const walletCredits = coverage ? coverage.walletCredits : estimated;
+
     const currentBalance = credits ? parseFloat(credits.current_balance || '0') : null;
     const threshold = credits ? parseFloat(credits.low_balance_threshold || '0') : 0;
     const balanceAfter =
-        currentBalance != null && estimated != null ? currentBalance - estimated : null;
+        currentBalance != null && walletCredits != null ? currentBalance - walletCredits : null;
     const sufficient = balanceAfter != null ? balanceAfter >= 0 : null;
     const isLowBalanceAfter = balanceAfter != null ? balanceAfter < threshold : false;
 
@@ -57,5 +68,6 @@ export function useToolCostPreview(
         sufficient,
         isLowBalanceAfter,
         rate: row ?? null,
+        coverage,
     };
 }

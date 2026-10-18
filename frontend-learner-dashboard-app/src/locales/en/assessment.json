@@ -43,7 +43,8 @@
       "count_one": "{{count}} test",
       "count_other": "{{count}} tests",
       "back": "Back to folders",
-      "fallbackName": "Folder"
+      "fallbackName": "Folder",
+      "otherTests": "Other tests"
     }
   },
   "card": {
@@ -133,7 +134,8 @@
       "viewAiReport": "View AI Report",
       "report": "Report",
       "opening": "Opening…",
-      "viewEvaluated": "View Evaluated"
+      "viewEvaluated": "View Evaluated",
+      "viewReport": "View report"
     },
     "meta": {
       "marksLabel": "marks",
@@ -155,6 +157,10 @@
       "title": "Report Not Available",
       "description": "We couldn't generate the AI report for this assessment right now.",
       "checkBack": "Please check back after {{time}}."
+    },
+    "tabs": {
+      "analysis": "AI analysis",
+      "questions": "Questions & marks"
     }
   },
   "comparison": {

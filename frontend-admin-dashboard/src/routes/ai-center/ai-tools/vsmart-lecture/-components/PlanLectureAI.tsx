@@ -425,6 +425,7 @@ const PlanLectureAI = () => {
                             <ToolCostBadge
                                 credits={costPreview.credits}
                                 sufficient={costPreview.sufficient}
+                                coverage={costPreview.coverage}
                                 loading={costPreview.isLoading}
                             />
                         </div>
@@ -439,6 +440,7 @@ const PlanLectureAI = () => {
                 currentBalance={costPreview.currentBalance}
                 balanceAfter={costPreview.balanceAfter}
                 sufficient={costPreview.sufficient}
+                coverage={costPreview.coverage}
                 confirmLabel={t('actions.draftMyPlan')}
                 onConfirm={() => {
                     if (pendingValues) runGenerate(pendingValues);

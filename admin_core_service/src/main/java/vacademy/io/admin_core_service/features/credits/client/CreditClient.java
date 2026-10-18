@@ -772,7 +772,23 @@ public class CreditClient {
     // ========================================================================
 
     /**
+     * Thrown when ai_service did not confirm a payment grant (non-2xx, transport error, or a 2xx
+     * body with {@code success: false}). The platform webhook lets it escape so Razorpay
+     * retries; nothing has been marked PAID yet (F1).
+     */
+    public static class PaymentGrantException extends RuntimeException {
+        public PaymentGrantException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /**
      * Grant credits to fulfill a successful Razorpay credit-pack payment.
+     *
+     * <p>Throws {@link PaymentGrantException} unless ai_service confirms the grant (F1): the
+     * caller must not mark the payment PAID before this returns. Safe to repeat: the grant is
+     * idempotent on {@code razorpayPaymentId} (V243 partial UNIQUE on
+     * credit_transactions.external_reference_id; a repeat answers {@code already_processed}).
      *
      * @param instituteId          buyer
      * @param credits              amount granted
@@ -781,8 +797,8 @@ public class CreditClient {
      * @param platformPaymentId    our platform_payment.id — populated on
      *                             credit_transactions.reference_id for reverse lookup
      * @param packCode             pack code snapshot (for the description), nullable
-     * @return parsed AI-service response, or {@code {success: false, message: ...}}
-     *         on error. Caller decides whether to retry via webhook reprocess.
+     * @return parsed AI-service response (never a failure)
+     * @throws PaymentGrantException when the grant is not confirmed
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> grantFromPayment(
@@ -791,6 +807,7 @@ public class CreditClient {
             String razorpayPaymentId,
             String platformPaymentId,
             String packCode) {
+        ResponseEntity<Map<String, Object>> response;
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/internal/grant-from-payment";
 
@@ -805,26 +822,31 @@ public class CreditClient {
             body.put("description", "Credit pack purchase via Razorpay (" + (packCode != null ? packCode : "?") + ")");
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+            response = restTemplate.exchange(
                     url, HttpMethod.POST, request,
                     (Class<Map<String, Object>>) (Class<?>) Map.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                Map<String, Object> respBody = response.getBody();
-                Boolean already = respBody == null ? null : (Boolean) respBody.get("already_processed");
-                log.info("Granted {} credits to institute {} (razorpay_payment_id={}, already_processed={})",
-                        credits, instituteId, razorpayPaymentId, already);
-                return respBody;
-            }
-            log.warn("grantFromPayment returned non-2xx for institute {}: {}",
-                    instituteId, response.getStatusCode());
-            return Map.of("success", false, "message", "AI service returned " + response.getStatusCode());
-
         } catch (RestClientException e) {
             log.error("grantFromPayment failed for institute {} payment_id {}: {}",
                     instituteId, razorpayPaymentId, e.getMessage());
-            return Map.of("success", false, "message", e.getMessage());
+            throw new PaymentGrantException("Credit grant failed for payment " + razorpayPaymentId
+                    + ": " + e.getMessage(), e);
         }
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            log.warn("grantFromPayment returned non-2xx for institute {}: {}",
+                    instituteId, response.getStatusCode());
+            throw new PaymentGrantException("Credit grant for payment " + razorpayPaymentId
+                    + " returned " + response.getStatusCode(), null);
+        }
+        Map<String, Object> respBody = response.getBody();
+        if (respBody != null && Boolean.FALSE.equals(respBody.get("success"))) {
+            throw new PaymentGrantException("Credit grant for payment " + razorpayPaymentId
+                    + " was refused: " + respBody.get("message"), null);
+        }
+        Object already = respBody == null ? null : respBody.get("already_processed");
+        log.info("Granted {} credits to institute {} (razorpay_payment_id={}, already_processed={})",
+                credits, instituteId, razorpayPaymentId, already);
+        return respBody != null ? respBody : Map.of("success", true);
     }
 
     /**

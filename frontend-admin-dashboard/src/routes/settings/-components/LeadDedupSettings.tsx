@@ -75,6 +75,7 @@ const REATTEMPT_SWITCHES: ReattemptSwitchKey[] = [
     'notifyOwner',
     'followUp',
     'showBadge',
+    'duplicatesTabOnly',
 ];
 
 /** Select value for "leave the tier as it is" (Radix Select can't use an empty value). */
@@ -515,6 +516,29 @@ export default function LeadDedupSettings() {
                                                         </Label>
                                                         <p className="text-xs text-muted-foreground">
                                                             {t('repeatLead.samePersonByPhone.hint')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-start gap-3">
+                                                    <Switch
+                                                        id="repeat-also-email"
+                                                        checked={repeatLead.alsoMatchEmail}
+                                                        onCheckedChange={(v) =>
+                                                            updateRepeatLead({
+                                                                alsoMatchEmail: v,
+                                                            })
+                                                        }
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <Label
+                                                            htmlFor="repeat-also-email"
+                                                            className="cursor-pointer"
+                                                        >
+                                                            {t('repeatLead.alsoMatchEmail.label')}
+                                                        </Label>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t('repeatLead.alsoMatchEmail.hint')}
                                                         </p>
                                                     </div>
                                                 </div>

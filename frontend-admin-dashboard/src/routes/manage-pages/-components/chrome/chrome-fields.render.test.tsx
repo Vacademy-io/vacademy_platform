@@ -457,7 +457,9 @@ describe('Editorial hero fields', () => {
             target: { value: 'Step 1 free' },
         });
         // The first crumb links to the home page; "Clear" makes it plain text.
-        fireEvent.click(screen.getAllByRole('button', { name: 'Clear' })[0]!);
+        // Scoped to that crumb's picker: the hero CTA pickers above have their own Clear.
+        const homeCrumb = screen.getAllByText('/homepage').find((el) => el.tagName === 'STRONG')!;
+        fireEvent.click(within(homeCrumb.closest('div')!).getByRole('button', { name: 'Clear' }));
         fireEvent.change(input('heroEditorial.mediaWidth'), { target: { value: '560' } });
         fireEvent.click(screen.getByRole('button', { name: 'chromeLook.useSiteColour' }));
 

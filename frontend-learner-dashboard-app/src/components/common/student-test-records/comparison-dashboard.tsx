@@ -904,7 +904,8 @@ export function ComparisonDashboard({
 
       {/* Answer Review — lazy loaded. Shown for MANUAL attempts too so learners
           see their per-question marks, AI/teacher feedback and criteria. */}
-      {!answerReviewOpen ? (
+      {/* The institute can hide every per-question item for an assessment (report option). */}
+      {data?.question_wise_hidden ? null : !answerReviewOpen ? (
         <ReportSection title={t("comparisonDashboard.sections.reviewAndPractice")}>
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <p className="text-body text-muted-foreground">

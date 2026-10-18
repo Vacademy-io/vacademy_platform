@@ -1555,11 +1555,22 @@ def test_plain_hindi_register_rule_targets_the_words_actually_used():
     textbook Hindi. The rule names the ACTUAL offenders, because concrete swaps
     steer a model far better than "be conversational"."""
     hi = b.build_system_prompt({"agent": {
-        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "name": "Ameet", "language": "hinglish",
+        "systemPrompt": "Bot: Hi! " * 80 + "We run live classes.",
         "direction": "OUTBOUND", "openingLine": "Hi!"}})
     assert "PHONE HINDI" in hi
     for offender in ("प्रदर्शन", "पूछताछ", "अकादमिक", "अवधारणाएँ", "शुल्क", "अभिभावक"):
         assert offender in hi, offender
+    # A non-education agent gets the same rule with a business vocabulary
+    # (AAIBUZZ/IRPL, 2026-10-16) — the textbook traps it shares stay named.
+    general = b.build_system_prompt({"agent": {
+        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "PHONE HINDI" in general
+    for offender in ("पूछताछ", "शुल्क", "उपयुक्त"):
+        assert offender in general, offender
+    for edu in ("अकादमिक", "अभिभावक", "scholarship"):
+        assert edu not in general, edu
     # English agents must not be told about Hindi vocabulary at all.
     en = b.build_system_prompt({"agent": {
         "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
@@ -6533,7 +6544,7 @@ def test_no_repeat_gate_fills_slots_before_the_tts():
     src = open(b.__file__, encoding="utf-8").read()
     i = src.index("async def _emit(self, text: str, direction, past_cap: bool = False)")
     j = src.index("norm = normalize_spoken(text)", i)
-    assert "fill_template_slots(text)" in src[i:j]
+    assert "fill_template_slots(text" in src[i:j]
 
 
 @pytest.mark.asyncio

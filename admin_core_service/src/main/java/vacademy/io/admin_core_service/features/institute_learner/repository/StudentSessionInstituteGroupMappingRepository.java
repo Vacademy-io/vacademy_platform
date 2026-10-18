@@ -15,6 +15,24 @@ public interface StudentSessionInstituteGroupMappingRepository
     extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
   /**
+   * The learner's enrollment number at an institute, for report headers. Prefers an
+   * ACTIVE enrolment, then the most recent one; blank numbers are skipped.
+   */
+  @Query(value = """
+      SELECT ssigm.institute_enrollment_number
+      FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.user_id = :userId
+        AND ssigm.institute_id = :instituteId
+        AND COALESCE(TRIM(ssigm.institute_enrollment_number), '') <> ''
+      ORDER BY CASE WHEN ssigm.status = 'ACTIVE' THEN 0 ELSE 1 END,
+               ssigm.enrolled_date DESC NULLS LAST,
+               ssigm.created_at DESC NULLS LAST
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<String> findLatestEnrollmentNumber(@Param("userId") String userId,
+                                              @Param("instituteId") String instituteId);
+
+  /**
    * Every learner enrolled in any of {@code psIds}, deduped to one row per learner.
    *
    * <p>Used by assessment_service to build the "enrolled but has not attempted" list.

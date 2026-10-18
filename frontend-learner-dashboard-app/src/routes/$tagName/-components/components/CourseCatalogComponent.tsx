@@ -70,7 +70,7 @@ import { badgesNeedRanks, resolveCatalogDiscovery, type ResolvedQuickFilter } fr
 import {
   buildCatalogCards,
   cardPriceView,
-  courseTagsOf,
+  courseMatchKeysOf,
   isBuyableNowRow,
   isPureLanguageLevel,
   type CardPriceView,
@@ -1358,7 +1358,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         const price = Number(c.price) || 0;
         entry.price = entry.price === null ? price : Math.min(entry.price, price);
       }
-      courseTagsOf(c).forEach((tag) => entry.tags.add(tag.toLowerCase()));
+      courseMatchKeysOf(c).forEach((tag) => entry.tags.add(tag));
       byCourse.set(courseId, entry);
     }
     // A card folding several packages (courseLanguages.versionGroups) gets ONE

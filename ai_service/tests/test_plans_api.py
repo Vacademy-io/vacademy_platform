@@ -464,7 +464,9 @@ def test_subscription_lifecycle(env):
     draft = c.get(f"{SA}/plans/ai_pro", headers=staff()).json()["versions"][0]["id"]
     assert _assign(env, iid, draft).status_code == 422                      # DRAFT version
     assert _assign(env, "no-such-institute", vid).status_code == 404
-    assert _assign(env, iid, vid, source="PAYMENT").status_code == 422
+    # source PAYMENT (paid plans) needs the V590 billing tables, absent from this fixture: 503, nothing written
+    assert _assign(env, iid, vid, source="PAYMENT").status_code == 503
+    assert _assign(env, iid, vid, source="BARTER").status_code == 422
     assert _assign(env, iid, vid, enforcement="MAYBE").status_code == 422
     r = c.post(f"{SA}/subscriptions", json={"institute_id": iid, "plan_version_id": vid}, headers=staff())
     assert r.status_code == 422                                              # reason required
@@ -777,6 +779,14 @@ def test_tenant_plan_view(env):
     assert feats["learner_analytics"]["usage_pct"] == 80.0          # the tightest cap, figure not shown
     assert feats["image_generation"]["mode"] == "ALLOWANCE" and feats["image_generation"]["usage_pct"] is None
     assert feats["ai_calling"]["mode"] == "CHARGED"
+    # tool keys per feature, so the admin app's cost previews can say "included in your plan"
+    owners = {}
+    for k, f in feats.items():
+        assert isinstance(f["tool_keys"], list)
+        for t in f["tool_keys"]:
+            assert t not in owners, f"{t} billed as both {owners[t]} and {k}"   # one feature per tool
+            owners[t] = k
+    assert owners.get("tutor_avatar_minute", "tutor_avatar_minutes") == "tutor_avatar_minutes"  # engine override
     keys = set(_walk_keys(admin))
     assert not any("usd" in k or "cost" in k or k.endswith("_cap") for k in keys), keys
     member = c.get(url, headers=_hdr(iid, ("TEACHER",), MEMBER)).json()

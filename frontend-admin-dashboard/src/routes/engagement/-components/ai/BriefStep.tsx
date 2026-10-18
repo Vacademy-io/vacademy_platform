@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
+import type { PlanCoverage } from '@/components/common/ai-credits/aiPlan';
 import { TopUpModal } from '@/components/common/ai-credits/TopUpModal';
 import {
     useStudyLibraryStore,
@@ -202,6 +203,8 @@ export interface DraftCost {
     after: number | null;
     sufficient: boolean | null;
     loading: boolean;
+    /** The institute's AI plan pays (included / allowance); `after` uses the wallet part only. */
+    coverage: PlanCoverage | null;
 }
 
 /**
@@ -211,14 +214,16 @@ export interface DraftCost {
 export function useDraftCost(enabled: boolean, days: number, tasks: number): DraftCost {
     const preview = useToolCostPreview('engagement_plan', { days, num_questions: tasks }, enabled);
     const credits = preview.credits ?? estimateDraftCredits(tasks);
+    const coverage = preview.coverage;
     const balance = preview.currentBalance;
-    const after = balance != null ? balance - credits : null;
+    const after = balance != null ? balance - (coverage ? coverage.walletCredits : credits) : null;
     return {
         credits,
         balance,
         after,
         sufficient: after == null ? null : after >= 0,
         loading: preview.isLoading,
+        coverage,
     };
 }
 
@@ -235,7 +240,16 @@ export function BriefCostLine({ cost, className }: { cost: DraftCost; className?
                 <span className="font-semibold text-neutral-800">
                     {t('wizard.costLine.credits', { count: cost.credits })}
                 </span>
-                {cost.balance != null && cost.after != null && (
+                {cost.coverage && (
+                    <span className="truncate font-semibold text-success-700">
+                        {' · '}
+                        {t(`wizard.costLine.plan.${cost.coverage.mode}`, {
+                            plan: cost.coverage.planName,
+                            count: Math.ceil(cost.coverage.walletCredits),
+                        })}
+                    </span>
+                )}
+                {!cost.coverage && cost.balance != null && cost.after != null && (
                     <span className="truncate">
                         {' · '}
                         {t('wizard.costLine.balance', {

@@ -19,6 +19,12 @@ public class InboxConversationDTO {
     private String userId;
     private String lastMessage;
     private String lastMessageType;   // OUTGOING or INCOMING
+    /**
+     * What the learner's last message was when it carried no text — sticker, image, voice,
+     * reaction, ... (see InboxMessageDTO.messageKind). The UI labels it; lastMessage then holds only
+     * a caption or, for a reaction, the emoji.
+     */
+    private String lastMessageKind;
     /** When the last message was sent/received. Jackson emits Instant as ISO-8601 with trailing Z. */
     private Instant lastMessageTime;
     /**

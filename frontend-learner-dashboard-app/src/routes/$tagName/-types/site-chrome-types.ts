@@ -125,6 +125,8 @@ export interface CtaBannerBandProps {
   secondaryButton?: CtaBandButtonConfig;
   /** A phone showing `image` beside the copy (the app banner). */
   mockup?: CtaBandMockup;
+  /** Google Play / App Store badges (https links) shown in place of the buttons. */
+  appLinks?: { playStore?: string; appStore?: string };
 }
 
 /* ── stepsProcess variant "cards" ──────────────────────────────────────── */

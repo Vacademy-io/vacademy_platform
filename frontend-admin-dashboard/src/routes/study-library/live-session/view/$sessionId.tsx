@@ -2680,6 +2680,7 @@ function RecordingTranscribeAction({
                 currentBalance={transcriptionPreview.currentBalance}
                 balanceAfter={transcriptionPreview.balanceAfter}
                 sufficient={transcriptionPreview.sufficient}
+                coverage={transcriptionPreview.coverage}
                 heading="Process this recording?"
                 confirmLabel="Process Recording"
                 onConfirm={() => mutate()}

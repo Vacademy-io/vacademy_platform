@@ -54,6 +54,7 @@ import {
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
 import { ProctoringReviewDialog } from './ProctoringReviewDialog';
+import { StudentAiReportDialog } from './StudentAiReportDialog';
 
 const isEvaluatedStatus = (status?: string | null) => {
     const s = (status || '').toUpperCase();
@@ -558,6 +559,7 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     const [menuOpen, setMenuOpen] = useState(false);
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const [proctoringOpen, setProctoringOpen] = useState(false);
+    const [aiReportOpen, setAiReportOpen] = useState(false);
     const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
@@ -914,6 +916,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                                 : t('dropdown.downloadReport')}
                         </DropdownMenuItem>
                     )}
+                    {/* The student's AI report (what the learner sees). Download Report
+                        above already returns it once it exists; this also lets the
+                        admin generate it, with a credit warning first. */}
+                    {isEvaluated && !isManualEvaluation && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => setAiReportOpen(true)}
+                        >
+                            {t('dropdown.downloadAiReport')}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}
@@ -942,6 +955,14 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                 onUploaded={handleAnswerSheetUploaded}
             />
 
+            <StudentAiReportDialog
+                open={aiReportOpen}
+                onOpenChange={setAiReportOpen}
+                assessmentId={assessmentId}
+                attemptId={student.attempt_id}
+                instituteId={instituteId}
+                studentName={student.full_name}
+            />
             <ProctoringReviewDialog
                 attemptId={student.attempt_id}
                 studentName={student.full_name}

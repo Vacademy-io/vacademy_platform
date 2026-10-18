@@ -30,7 +30,19 @@ import {
   usePreferredPhoneCountries,
 } from "@/hooks/use-preferred-phone-countries";
 import {
+  CaretLeft,
+  CaretRight,
   GraduationCap,
+  Train,
+  Bank,
+  Newspaper,
+  Exam,
+  Books,
+  FileText,
+  SquaresFour,
+  Fire,
+  Student,
+  ChalkboardTeacher,
   Rocket,
   Target,
   UsersThree,
@@ -85,6 +97,8 @@ import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
 import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
+import { RAIL_CLONE_PROPS, useAutoScrollRail, useRailArrows } from "../-utils/use-auto-scroll-rail";
+import { useCatalogueSearchParams } from "../-utils/catalogue-url-state";
 
 // Opt-in section: loaded only by pages that have a learningPath, so every
 // other page (and the logged-in app, which bundles this renderer) skips it.
@@ -849,6 +863,86 @@ const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb,
   ShieldCheck, ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle,
   Wrench, Sparkle, Medal, Briefcase, Globe,
+  Train, Bank, Newspaper, Exam, Books, FileText, SquaresFour, Fire, Student, ChalkboardTeacher,
+};
+
+/**
+ * Prev/next arrows over a full-bleed card rail (featureGrid 'carousel'), the
+ * same affordance the product-page rail has. Hidden until there is somewhere
+ * to go; swipe and snap stay the primary way to move on touch screens.
+ */
+const RailArrows: React.FC<{ canPrev: boolean; canNext: boolean; onMove: (dir: number) => void }> = ({ canPrev, canNext, onMove }) => {
+  const { t } = useTranslation("coursePlayerB");
+  const cls =
+    "catalogue-btn catalogue-btn-secondary absolute top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg catalogue-btn-icon shadow-lg md:inline-flex";
+  return (
+    <>
+      {canPrev && (
+        <button type="button" onClick={() => onMove(-1)} aria-label={t("common.previousSlide")} className={`${cls} left-3`}>
+          <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+      {canNext && (
+        <button type="button" onClick={() => onMove(1)} aria-label={t("common.nextSlide")} className={`${cls} right-3`}>
+          <CaretRight className="size-5" weight="bold" aria-hidden="true" />
+        </button>
+      )}
+    </>
+  );
+};
+
+/**
+ * featureGrid style 'categoryTiles': a row of icon tiles that filter the page.
+ * Each tile writes `?<filterParam>=<value>` (a tile with no value clears it =
+ * "All"), and the sections below opt in with visibleWhen rules on that param.
+ * The tile matching the current URL is filled, so the visitor always sees
+ * which category they are in. No navigation, no scroll jump.
+ */
+const CategoryTilesRenderer: React.FC<any> = ({ headerText, subheading, features = [], filterParam, backgroundColor }) => {
+  const txt = sectionText(backgroundColor);
+  const param = String(filterParam || 'cat').trim() || 'cat';
+  const { get, update } = useCatalogueSearchParams();
+  const current = (get(param) || '').toLowerCase();
+  return (
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+      <div className="catalogue-shell">
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+        {subheading && <p className={`catalogue-lead catalogue-measure mb-8 text-center ${txt.muted}`}>{subheading}</p>}
+        <div
+          role="tablist"
+          aria-label={headerText || param}
+          className="catalogue-no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-4 sm:overflow-visible sm:px-0"
+        >
+          {features.map((f: any, i: number) => {
+            const value = String(f.value || '').trim();
+            const active = value.toLowerCase() === current;
+            const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => update({ [param]: value || null })}
+                className={`flex w-28 shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-catalogue-lg border p-4 text-center transition-all duration-200 sm:w-36 sm:p-5 ${
+                  active
+                    ? 'border-transparent bg-primary-500 text-primary-foreground shadow-lg'
+                    : 'border-catalogue-border bg-catalogue-bg-subtle text-catalogue-text-primary hover:-translate-y-0.5 hover:shadow-md'
+                }`}
+              >
+                {IconComp ? (
+                  <IconComp size={40} weight="duotone" aria-hidden="true" className={active ? '' : 'text-catalogue-brand-ink'} />
+                ) : f.icon ? (
+                  <span className="text-3xl" aria-hidden="true">{f.icon}</span>
+                ) : null}
+                <span className="text-sm font-semibold leading-tight">{f.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 };
 
 const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor }) => {
@@ -1384,6 +1478,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
 /* ─── Logo Cloud ───────────────────────────────────────────────────────── */
 
 const MARQUEE_SPEED_MAP: Record<string, string> = { slow: '45s', medium: '30s', fast: '18s' };
+const MARQUEE_TEXT_SIZE: Record<string, string> = { xs: 'text-xs', sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' };
 
 /* ─── Marquee (announcement ticker) ────────────────────────────────────── */
 
@@ -1408,35 +1503,84 @@ const MarqueeRenderer: React.FC<any> = ({
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const list = (Array.isArray(items) ? items : []).filter((it: any) => it && it.text);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const unitRef = useRef<HTMLDivElement>(null);
+  // Copies of the items in each half of the track. The loop is seamless only
+  // when one half is at least as wide as the band: two short items doubled
+  // ran out halfway across a desktop screen, and the ticker looked stuck.
+  const [copies, setCopies] = useState(1);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const unit = unitRef.current;
+    if (!viewport || !unit || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = unit.offsetWidth;
+      if (width > 0) setCopies(Math.max(1, Math.ceil(viewport.clientWidth / width)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(unit);
+    return () => observer.disconnect();
+  }, [list.length]);
   if (list.length === 0) return null;
-  const row = [...list, ...list];
-  return (
-    <section
-      className="catalogue-marquee-viewport overflow-hidden py-3"
-      style={{ backgroundColor }}
-      aria-label={t("jsonRenderer.announcements")}
-    >
+  // The duration covers one half, so it grows with the copies to keep the speed.
+  const seconds = parseFloat(MARQUEE_SPEED_MAP[speed] || "30s") * copies;
+  // Each item carries its own trailing space (no flex gap), so a half is
+  // exactly N items wide and translate(-50%) lands on the next copy.
+  const half = (part: number) =>
+    Array.from({ length: copies }, (_, copy) => (
       <div
-        className={`catalogue-marquee flex items-center gap-10 ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
-        style={{
-          animationDuration: MARQUEE_SPEED_MAP[speed] || '30s',
-          // The keyframes scroll left; 'right' simply plays them backwards.
-          animationDirection: direction === 'right' ? 'reverse' : undefined,
-          color: textColor,
-        }}
+        key={`${part}-${copy}`}
+        ref={part === 0 && copy === 0 ? unitRef : undefined}
+        aria-hidden={part > 0 || copy > 0 || undefined}
+        className="flex shrink-0 items-center"
       >
-        {row.map((item: any, i: number) => (
-          <span
-            key={i}
-            aria-hidden={i >= list.length}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${fontSize === 'base' ? 'text-base' : 'text-sm'}`}
-          >
-            {(item.icon || defaultIcon) && (
-              <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
-            )}
-            {item.text}
-          </span>
-        ))}
+        {list.map((item: any, i: number) => {
+          const itemClass = `flex shrink-0 items-center gap-2 whitespace-nowrap pe-10 font-medium ${MARQUEE_TEXT_SIZE[fontSize] || 'text-sm'}`;
+          const content = (
+            <>
+              {(item.icon || defaultIcon) && (
+                <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
+              )}
+              {item.text}
+            </>
+          );
+          // A linked item opens a page, scrolls to a #section or opens an
+          // external URL (CatalogueLink). Only the first copy is tabbable — the
+          // loop copies are aria-hidden duplicates.
+          return item.link ? (
+            <CatalogueLink
+              key={i}
+              to={item.link}
+              tabIndex={part > 0 || copy > 0 ? -1 : undefined}
+              className={`${itemClass} underline-offset-4 hover:underline focus-visible:underline`}
+            >
+              {content}
+            </CatalogueLink>
+          ) : (
+            <span key={i} className={itemClass}>{content}</span>
+          );
+        })}
+      </div>
+    ));
+  return (
+    // The band keeps its colour edge to edge; only the moving text fades at
+    // the sides (the mask on the band itself faded the colour into a smudge).
+    <section style={{ backgroundColor }} aria-label={t("jsonRenderer.announcements")}>
+      <div ref={viewportRef} className="catalogue-marquee-viewport overflow-hidden py-3">
+        <div
+          className={`catalogue-marquee flex items-center ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
+          style={{
+            animationDuration: `${seconds}s`,
+            // The keyframes scroll left; 'right' simply plays them backwards.
+            animationDirection: direction === 'right' ? 'reverse' : undefined,
+            color: textColor,
+          }}
+        >
+          {half(0)}
+          {half(1)}
+        </div>
       </div>
     </section>
   );
@@ -1815,10 +1959,35 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout, gateAudienceId = '', gateTitle, gateAll = false,
+  layout, gateAudienceId = '', gateTitle, gateAll = false, autoScroll = false, autoScrollIntervalMs, autoScrollLoop = false, filterParam,
 }) => {
+  // 'carousel' rails (photo / resource) can advance on their own, one card at a time.
+  const railRef = React.useRef<HTMLDivElement>(null);
+  const { looping } = useAutoScrollRail(railRef, {
+    enabled: layout === 'carousel' && !!autoScroll,
+    intervalMs: autoScrollIntervalMs,
+    itemCount: features.length,
+    loop: !!autoScrollLoop,
+  });
+  // Endless ring: a second lap of the same slides (see useAutoScrollRail).
+  const loopCopy = (slides: React.ReactNode[]) =>
+    looping
+      ? slides.map((s, i) => (React.isValidElement(s) ? React.cloneElement(s, { key: `loop-${i}`, ...RAIL_CLONE_PROPS }) : null))
+      : null;
+  const arrows = useRailArrows(railRef, { enabled: layout === 'carousel', itemCount: features.length });
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
+  if (style === 'categoryTiles') {
+    return (
+      <CategoryTilesRenderer
+        headerText={headerText}
+        subheading={subheading}
+        features={features}
+        filterParam={filterParam}
+        backgroundColor={backgroundColor}
+      />
+    );
+  }
   const cardClass =
     style === 'cards' ? 'catalogue-card-elevated group p-6 sm:p-7' :
     style === 'bordered' ? 'rounded-xl border-2 border-catalogue-border p-6' :
@@ -1950,12 +2119,41 @@ const FeatureGridRenderer: React.FC<any> = ({
         <div className="catalogue-shell">
           {headerText && <h2 className={`mb-2 catalogue-h2 ${headLeft ? '' : 'text-center'} ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead mb-8 ${headLeft ? '' : 'catalogue-measure text-center'} ${txt.muted}`}>{subheading}</p>}
-          <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
-            {features.map((f: any, i: number) => (
-              <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
-            ))}
-          </div>
+          {layout !== 'carousel' && (
+            <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
+              {features.map((f: any, i: number) => (
+                <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+              ))}
+            </div>
+          )}
         </div>
+        {layout === 'carousel' && (
+          // Same full-bleed rail as the photo style: `columns` cards per view,
+          // the next one peeking in, swipe / snap native.
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2">
+              {(() => {
+                const slides = features.map((f: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex min-w-reg-250 shrink-0 snap-start [&>*]:w-full"
+                    // Width per card follows the authored column count — a computed value, not a token.
+                    style={{ flexBasis: `calc((100% - ${(Math.min(Math.max(Number(columns) || 4, 1), 4) - 1) * 1.25}rem) / ${Math.min(Math.max(Number(columns) || 4, 1), 4)})` }}
+                  >
+                    <ResourceCard feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+                  </div>
+                ));
+                return (
+                  <>
+                    {slides}
+                    {loopCopy(slides)}
+                  </>
+                );
+              })()}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
+          </div>
+        )}
       </section>
     );
   }
@@ -2050,8 +2248,12 @@ const FeatureGridRenderer: React.FC<any> = ({
           // Full-bleed rail: the shell would clip the edge-to-edge scroll, and
           // scroll-padding (baked into catalogue-carousel-bleed) is what keeps
           // snap alignment honest against the gutter.
-          <div className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
-            {cards}
+          <div className="relative">
+            <div ref={railRef} className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
+              {cards}
+              {loopCopy(cards)}
+            </div>
+            <RailArrows canPrev={arrows.canPrev} canNext={arrows.canNext} onMove={arrows.scrollByPage} />
           </div>
         ) : (
           <div className="catalogue-shell">

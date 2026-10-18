@@ -111,7 +111,7 @@ public final class CatalogStreams {
         return tag.isEmpty() ? folderSlug(n) : tag;
     }
 
-    /** A folder's tag plus the tags of every folder below it, lower-case and unique. */
+    /** A folder's tag plus the tags of every folder below it, lower-case and unique, with their level keys. */
     public static List<String> folderTagSet(FolderNode node) {
         LinkedHashSet<String> out = new LinkedHashSet<>();
         walk(node, out);
@@ -122,6 +122,7 @@ public final class CatalogStreams {
         if (!n.isFolder()) return;
         String tag = lower(folderCourseTag(n));
         if (!tag.isEmpty()) out.add(tag);
+        out.addAll(LevelKeys.levelKeys(folderCourseTag(n), n.title(), n.subtitle()));
         for (FolderNode c : n.children()) walk(c, out);
     }
 
@@ -168,8 +169,11 @@ public final class CatalogStreams {
         List<Stream> out = new ArrayList<>();
         for (StreamItem item : items) {
             String tag = lower(item.tag());
+            LinkedHashSet<String> tags = new LinkedHashSet<>();
+            if (!tag.isEmpty()) tags.add(tag);
+            tags.addAll(LevelKeys.levelKeys(item.tag(), item.label()));
             out.add(new Stream(item.slug(), item.slug(), item.label(), "", tag,
-                    tag.isEmpty() ? List.of() : List.of(tag), false, null, safeImageSrc(item.imageUrl()), null,
+                    List.copyOf(tags), false, null, safeImageSrc(item.imageUrl()), null,
                     List.of()));
         }
         return out;

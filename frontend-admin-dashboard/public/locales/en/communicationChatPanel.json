@@ -40,5 +40,39 @@
         "workflowUnnamed": "Sent by a workflow",
         "chatbotFlow": "Sent by chatbot flow “{{name}}”",
         "chatbotFlowUnnamed": "Sent by a chatbot flow"
+    },
+    "templateCategory": {
+        "MARKETING": "Marketing",
+        "UTILITY": "Utility",
+        "AUTHENTICATION": "Authentication"
+    },
+    "noFailureReason": "WhatsApp did not report a reason for this message.",
+    "inbound": {
+        "kind": {
+            "image": "Photo",
+            "video": "Video",
+            "audio": "Audio",
+            "voice": "Voice message",
+            "sticker": "Sticker",
+            "document": "Document",
+            "location": "Location",
+            "contacts": "Contact card",
+            "reaction": "Reaction",
+            "unsupported": "A message type WhatsApp does not share with business apps",
+            "form_response": "Form response",
+            "other": "Attachment"
+        },
+        "mediaError": {
+            "expired": "WhatsApp no longer has this file — media is kept for about 30 days.",
+            "tooLarge": "This file is too large to preview here.",
+            "notConfigured": "WhatsApp is not set up for this institute, so the file cannot be fetched.",
+            "failed": "Could not load this file from WhatsApp."
+        },
+        "loading": "Loading {{kind}}…",
+        "openInMaps": "Open in Google Maps",
+        "unnamedContact": "Unnamed contact",
+        "reactedTo": "Reacted {{emoji}} to “{{preview}}”",
+        "reactedToMessage": "Reacted {{emoji}} to a message",
+        "reactionRemoved": "Removed a reaction"
     }
 }

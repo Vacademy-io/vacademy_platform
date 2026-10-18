@@ -38,6 +38,7 @@ from .routers.metering_limits_admin import router as metering_limits_admin_route
 from .routers.metering_internal import router as metering_internal_router
 from .routers.plans_admin import router as plans_admin_router
 from .routers.plans_internal import router as plans_internal_router
+from .routers.plans_billing_internal import router as plans_billing_internal_router
 from .routers.credits_plan import router as credits_plan_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
@@ -95,6 +96,25 @@ logging.basicConfig(
 
 
 @asynccontextmanager
+def _warm_billing_indexes(logger: logging.Logger) -> None:
+    """Load the AI-plan subscription index and the usage-limits policy index once,
+    before the pod serves traffic. Both are otherwise loaded lazily in the
+    background, so a fresh pod's first requests saw empty sets: a plan-covered use
+    was charged to the wallet (the engine's fail-safe) until the first refresh
+    landed. A failure here only logs; the lazy refresh still runs as before."""
+    try:
+        from .services.metering import plans as _plans
+        if not _plans.refresh_index():
+            logger.warning("ai plans index warm-up did not load; lazy refresh will retry")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai plans index warm-up skipped: %s", exc)
+    try:
+        from .services.metering import limits as _limits
+        _limits.refresh_policy_index()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai limits index warm-up skipped: %s", exc)
+
+
 async def _lifespan(app: FastAPI):
     """Startup: ensure the ai_task schema exists (idempotent) and sweep any
     PROGRESS rows orphaned by a prior restart to FAILED."""
@@ -115,6 +135,7 @@ async def _lifespan(app: FastAPI):
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
+    _warm_billing_indexes(_logger)
     # Orphaned AI-video runs (deploy/crash killed the in-process pipeline
     # task): refund + mark FAILED so slides stop spinning forever. Sweeps at
     # startup and every 30 min (a crash's own orphans are younger than the TTL
@@ -343,6 +364,7 @@ def create_app() -> FastAPI:
     app.include_router(plans_admin_router, prefix=settings.api_base_path)
     app.include_router(credits_plan_router, prefix=settings.api_base_path)
     app.include_router(plans_internal_router, prefix=settings.api_base_path)
+    app.include_router(plans_billing_internal_router, prefix=settings.api_base_path)
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)

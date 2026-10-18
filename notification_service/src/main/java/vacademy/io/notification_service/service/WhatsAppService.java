@@ -124,6 +124,93 @@ public class WhatsAppService {
      */
     public record WhatsAppSendResult(String phone, boolean success, String error, String messageId) {}
 
+    private static final Pattern BODY_PLACEHOLDER = Pattern.compile("\\{\\{\\s*([^{}]*?)\\s*\\}\\}");
+
+    /**
+     * Highest {{n}} in a WhatsApp template body (Meta numbers them 1..n), or null when it can't be
+     * known: blank body, or a named placeholder ({{first_name}}) whose params aren't positional.
+     */
+    public static Integer countBodyPlaceholders(String bodyText) {
+        if (bodyText == null || bodyText.isBlank()) return null;
+        int max = 0;
+        java.util.regex.Matcher m = BODY_PLACEHOLDER.matcher(bodyText);
+        while (m.find()) {
+            Integer pos = parsePosition(m.group(1));
+            if (pos == null) return null;
+            max = Math.max(max, pos);
+        }
+        return max;
+    }
+
+    /**
+     * Applies {@link #keepDeclaredBodyParams} to each recipient that would send MORE body params
+     * than declared. Recipients at or under the count are passed through untouched, so a send
+     * that Meta accepts today is unchanged.
+     */
+    static List<Map<String, Map<String, String>>> trimToDeclaredBodyParams(
+            List<Map<String, Map<String, String>>> bodyParams, Integer declared) {
+        if (declared == null || bodyParams == null) return bodyParams;
+        List<Map<String, Map<String, String>>> out = new ArrayList<>(bodyParams.size());
+        for (Map<String, Map<String, String>> userDetail : bodyParams) {
+            if (userDetail == null || userDetail.size() != 1) {
+                out.add(userDetail);
+                continue;
+            }
+            Map.Entry<String, Map<String, String>> e = userDetail.entrySet().iterator().next();
+            Map<String, String> params = e.getValue();
+            if (params == null || bodyParamCount(params) <= declared) {
+                out.add(userDetail);
+                continue;
+            }
+            Map<String, Map<String, String>> trimmed = new HashMap<>();
+            trimmed.put(e.getKey(), keepDeclaredBodyParams(params, declared));
+            out.add(trimmed);
+        }
+        return out;
+    }
+
+    /**
+     * Trims params to what the approved body declares: "_" control keys plus positions
+     * 1..declared. A position the caller left unfilled takes the next unmapped named value, in
+     * the order the legacy pass-through would have sent it, so templates stored without
+     * variable names keep working; whatever is left over is dropped.
+     */
+    static Map<String, String> keepDeclaredBodyParams(Map<String, String> params, int declared) {
+        Map<String, String> kept = new HashMap<>();
+        List<String> unmapped = new ArrayList<>();
+        for (Map.Entry<String, String> e : params.entrySet()) {
+            String key = e.getKey();
+            if (key.startsWith("_")) {
+                kept.put(key, e.getValue());
+                continue;
+            }
+            Integer pos = parsePosition(key);
+            if (pos == null) {
+                unmapped.add(e.getValue());
+            } else if (pos >= 1 && pos <= declared) {
+                kept.put(key, e.getValue());
+            }
+        }
+        Iterator<String> fill = unmapped.iterator();
+        for (int pos = 1; pos <= declared && fill.hasNext(); pos++) {
+            kept.putIfAbsent(String.valueOf(pos), fill.next());
+        }
+        return kept;
+    }
+
+    /** Number of values sent as body params — every key not prefixed "_" (see sendViaCombotProvider). */
+    static long bodyParamCount(Map<String, String> params) {
+        return params.keySet().stream().filter(k -> !k.startsWith("_")).count();
+    }
+
+    private static Integer parsePosition(String key) {
+        try {
+            return Integer.parseInt(key);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     /**
      * Same send path as {@link #sendWhatsappMessagesExtended}, but each result carries the
      * provider's error message. Returns {@code null} on the same whole-batch failures
@@ -137,6 +224,24 @@ public class WhatsAppService {
             Map<String, String> buttonIndexParams,
             String languageCode, String headerType, String instituteId,
             String source, String correlationId) {
+        return sendWhatsappMessagesDetailed(templateName, bodyParams, headerParams, headerVideoParams,
+                buttonUrlParams, buttonIndexParams, languageCode, headerType, instituteId,
+                source, correlationId, null);
+    }
+
+    /**
+     * @param declaredBodyParams number of {{n}} in the approved template body (see
+     *        {@link #countBodyPlaceholders}), or null when unknown. Only used on the META/COMBOT
+     *        path to drop body params the template does not declare.
+     */
+    public List<WhatsAppSendResult> sendWhatsappMessagesDetailed(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            Map<String, String> headerVideoParams,
+            Map<String, String> buttonUrlParams,
+            Map<String, String> buttonIndexParams,
+            String languageCode, String headerType, String instituteId,
+            String source, String correlationId, Integer declaredBodyParams) {
 
         if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
@@ -195,6 +300,10 @@ public class WhatsAppService {
                         .collect(Collectors.toList());
             } else {
                 // COMBOT and META both go through CombotMessageProvider
+                // Meta rejects the whole message (#132000) when the body param count differs from
+                // the approved template — audience sends always carry name + email. WATI ignores
+                // extras, so only this path is trimmed.
+                bodyParams = trimToDeclaredBodyParams(bodyParams, declaredBodyParams);
                 senderChannelId = resolveSenderChannelId(whatsappSetting, provider);
                 results = sendViaCombotProvider(templateName, bodyParams, headerParams,
                         headerVideoParams, buttonUrlParams, buttonIndexParams,

@@ -11,7 +11,7 @@ import {
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
-import { SearchableSelect } from '@/components/design-system/searchable-select';
+import { SearchableSelect, prefixFirstFilter } from '@/components/design-system/searchable-select';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -31,7 +31,7 @@ import {
 import { CURRENCIES, getCurrencySymbol } from '@/constants/currencies';
 import {
     COUNTRY_CODES,
-    countryFlag,
+    countryKeywords,
     countryName,
     currencyName,
     currencyOfCountry,
@@ -232,7 +232,7 @@ const PlanRegionalPrices = ({
     return (
         <Card>
             <CardHeader className="p-4 pb-2">
-                <CardTitle className="flex flex-wrap items-baseline justify-between gap-2 text-title">
+                <CardTitle className="text-title flex flex-wrap items-baseline justify-between gap-2">
                     <span>{plan.name}</span>
                     <span className="text-body font-regular text-neutral-500">
                         {t('plans.basePrice', {
@@ -324,7 +324,7 @@ const RegionalPriceRow = ({
     const priceInvalid = price.trim() === '' || !(priceNumber > 0);
 
     const region = row.country_code
-        ? `${countryFlag(row.country_code)} ${countryName(row.country_code, i18n.language)}`
+        ? countryName(row.country_code, i18n.language)
         : t('row.allCountries', { currency: currencyLabel(row.currency, i18n.language) });
     const subtitle = row.country_code
         ? t('row.paidIn', { currency: currencyLabel(row.currency, i18n.language) })
@@ -355,9 +355,9 @@ const RegionalPriceRow = ({
     };
 
     return (
-        <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-end">
+        <div className="border-border flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1 space-y-1">
-                <p className="truncate text-body font-semibold text-neutral-700">{region}</p>
+                <p className="text-body truncate font-semibold text-neutral-700">{region}</p>
                 {subtitle && <p className="text-caption text-neutral-500">{subtitle}</p>}
                 <div className="flex flex-wrap items-center gap-2">
                     {row.needs_review ? (
@@ -373,7 +373,12 @@ const RegionalPriceRow = ({
                             status="SUCCESS"
                         />
                     ) : (
-                        <StatusChip text={t('source.auto')} textSize="text-caption" status="INFO" />
+                        <StatusChip
+                            text={t('source.auto')}
+                            textSize="text-caption"
+                            status="INFO"
+                            showIcon={false}
+                        />
                     )}
                     {row.needs_review && (
                         <span className="text-caption text-warning-700">{t('row.reviewHint')}</span>
@@ -383,6 +388,7 @@ const RegionalPriceRow = ({
             <MyInput
                 inputType="number"
                 size="small"
+                labelStyle="text-body"
                 label={t('row.price', {
                     currency: `${getCurrencySymbol(row.currency)} ${row.currency}`,
                 })}
@@ -395,6 +401,7 @@ const RegionalPriceRow = ({
             <MyInput
                 inputType="number"
                 size="small"
+                labelStyle="text-body"
                 label={t('row.strikePrice')}
                 input={strike}
                 onChangeFunction={(e) => setStrike(e.target.value)}
@@ -442,7 +449,7 @@ const RegionalPriceRow = ({
                         aria-label={t('actions.delete')}
                         onClick={() => setConfirmDelete(true)}
                     >
-                        <Trash className="size-4 text-danger-600" />
+                        <Trash className="text-danger-600 size-4" />
                     </MyButton>
                 )}
             </div>
@@ -496,7 +503,11 @@ const AddCountryPrice = ({
             COUNTRY_CODES.filter((c) => !usedCountries.includes(c))
                 .map((c) => ({ code: c, name: countryName(c, i18n.language) }))
                 .sort((a, b) => a.name.localeCompare(b.name, i18n.language))
-                .map(({ code, name }) => ({ value: code, label: `${countryFlag(code)} ${name}` })),
+                .map(({ code, name }) => ({
+                    value: code,
+                    label: name,
+                    keywords: countryKeywords(code),
+                })),
         [usedCountries, i18n.language]
     );
 
@@ -553,8 +564,8 @@ const AddCountryPrice = ({
     }
 
     return (
-        <div className="space-y-3 rounded-md border border-dashed border-border p-3">
-            <p className="flex items-center gap-2 text-body font-semibold text-neutral-700">
+        <div className="border-border space-y-3 rounded-md border border-dashed p-3">
+            <p className="text-body flex items-center gap-2 font-semibold text-neutral-700">
                 <GlobeHemisphereEast className="size-4" />
                 {t('add.title')}
             </p>
@@ -569,6 +580,7 @@ const AddCountryPrice = ({
                         searchPlaceholder={t('add.countrySearch')}
                         emptyText={t('add.countryEmpty')}
                         portal={false}
+                        filter={prefixFirstFilter}
                     />
                 </div>
                 <div className="space-y-1">
@@ -582,6 +594,7 @@ const AddCountryPrice = ({
                         emptyText={t('add.currencyEmpty')}
                         disabled={!country}
                         portal={false}
+                        filter={prefixFirstFilter}
                     />
                     {country && (
                         <p className="text-caption text-neutral-500">
@@ -606,6 +619,7 @@ const AddCountryPrice = ({
                 <MyInput
                     inputType="number"
                     size="small"
+                    labelStyle="text-body"
                     label={t('add.price', {
                         currency: currency ? `${getCurrencySymbol(currency)} ${currency}` : '',
                     })}

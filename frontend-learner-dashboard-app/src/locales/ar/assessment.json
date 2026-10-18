@@ -47,7 +47,8 @@
       "count_many": "{{count}} اختبارًا",
       "count_other": "{{count}} اختبار",
       "back": "العودة إلى المجلدات",
-      "fallbackName": "مجلد"
+      "fallbackName": "مجلد",
+      "otherTests": "اختبارات أخرى"
     }
   },
   "card": {
@@ -136,7 +137,8 @@
       "viewAiReport": "عرض تقرير الذكاء الاصطناعي",
       "report": "التقرير",
       "opening": "جارٍ الفتح…",
-      "viewEvaluated": "عرض النسخة المصححة"
+      "viewEvaluated": "عرض النسخة المصححة",
+      "viewReport": "عرض التقرير"
     },
     "meta": {
       "marksLabel": "الدرجات",
@@ -158,6 +160,10 @@
       "title": "التقرير غير متاح",
       "description": "تعذّر علينا إنشاء تقرير الذكاء الاصطناعي لهذا الاختبار حاليًا.",
       "checkBack": "يرجى التحقق مرة أخرى بعد {{time}}."
+    },
+    "tabs": {
+      "analysis": "تحليل الذكاء الاصطناعي",
+      "questions": "الأسئلة والدرجات"
     }
   },
   "comparison": {

@@ -25,6 +25,11 @@ export interface InboxConversation {
     userId?: string;
     lastMessage?: string;
     lastMessageType?: string;
+    /**
+     * What the learner's last message was when it carried no text (sticker, image, voice,
+     * reaction, ...). lastMessage then holds only its caption, or a reaction's emoji.
+     */
+    lastMessageKind?: InboundMessageKind;
     lastMessageTime?: string;
     /**
      * What WhatsApp said about the last message when it was outgoing: SENT | DELIVERED | READ |
@@ -76,6 +81,8 @@ export interface InboxMessage {
     status?: string;
     // Template-send context (present only on outgoing template messages)
     templateName?: string;
+    /** Meta's category for that template. */
+    templateCategory?: WhatsAppTemplateCategory | string;
     provider?: string;
     /**
      * SUCCESS/FAILED describe the SEND (did the provider accept the request). SENT/DELIVERED/READ
@@ -101,10 +108,86 @@ export interface InboxMessage {
     mediaUrl?: string;
     /** Original filename — what a document bubble shows. */
     mediaFilename?: string;
+
+    // What the learner sent, read from WhatsApp's own webhook (incoming only).
+    messageKind?: InboundMessageKind;
+    /**
+     * The learner's attachment lives with WhatsApp/WATI behind the institute's token — fetch it
+     * with getInboundMedia(), there is no public URL.
+     */
+    mediaFetchable?: boolean;
+    /** Reaction emoji. An empty string means the learner took an earlier reaction back. */
+    reactionEmoji?: string;
+    /** Id of the message in this thread the reaction is on. */
+    reactedToMessageId?: string;
+    /** Excerpt of that message, for when it is not on screen. */
+    reactedToPreview?: string;
+    latitude?: number;
+    longitude?: number;
+    locationName?: string;
+    locationAddress?: string;
+    contactNames?: string[];
 }
 
 /** The media kinds WhatsApp accepts as a free-form message. */
 export type WhatsAppMediaKind = 'image' | 'video' | 'audio' | 'document';
+
+export type WhatsAppTemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+
+/**
+ * What a learner's message was. The backend passes the provider's own word through for anything
+ * else (order, system, ...), which the UI labels generically.
+ */
+export type InboundMessageKind =
+    | 'text'
+    | 'image'
+    | 'video'
+    | 'audio'
+    | 'voice'
+    | 'sticker'
+    | 'document'
+    | 'location'
+    | 'contacts'
+    | 'reaction'
+    | 'reply'
+    | 'form_response'
+    | 'unsupported'
+    | 'template_sent'
+    | 'template_failed';
+
+/** Why a learner's attachment could not be shown. */
+export type InboundMediaError = 'expired' | 'tooLarge' | 'notConfigured' | 'failed';
+
+export class InboundMediaFetchError extends Error {
+    constructor(readonly reason: InboundMediaError) {
+        super(`Inbound media unavailable: ${reason}`);
+    }
+}
+
+/**
+ * The photo / sticker / voice note / video / document a learner sent, as a Blob the page can
+ * turn into an object URL. Throws {@link InboundMediaFetchError}.
+ */
+export async function getInboundMedia(messageId: string, instituteId: string): Promise<Blob> {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(
+            `${WHATSAPP_INBOX_BASE}/messages/${encodeURIComponent(messageId)}/media`,
+            { params: { instituteId }, responseType: 'blob' }
+        );
+        return data as Blob;
+    } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const reason: InboundMediaError =
+            status === 410 || status === 404
+                ? 'expired'
+                : status === 413
+                  ? 'tooLarge'
+                  : status === 409
+                    ? 'notConfigured'
+                    : 'failed';
+        throw new InboundMediaFetchError(reason);
+    }
+}
 
 /**
  * Whether Meta's 24-hour customer service window is still open on a conversation. Free-form

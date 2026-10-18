@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/internal/learner/v1")
@@ -138,6 +139,18 @@ public class InternalLearnerDetailController {
                 : request.getStatuses();
         return ResponseEntity.ok(studentSessionRepository.findEnrollmentNumbersForUsers(
                 request.getUserIds(), request.getInstituteId(), statuses));
+    }
+
+    /**
+     * A learner's enrollment number at an institute, shown on assessment report headers.
+     * Empty object when they have none.
+     */
+    @GetMapping("/enrollment-number")
+    public ResponseEntity<Map<String, String>> getEnrollmentNumber(@RequestParam String userId,
+                                                                   @RequestParam String instituteId) {
+        return ResponseEntity.ok(studentSessionRepository.findLatestEnrollmentNumber(userId, instituteId)
+                .map(n -> Map.of("enrollment_number", n.trim()))
+                .orElse(Map.of()));
     }
 
     /**

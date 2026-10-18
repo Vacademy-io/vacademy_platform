@@ -46,5 +46,18 @@
         "crmSaveFailed": "تعذر على روبوت المحادثة حفظ هذا العميل المحتمل في CRM",
         "withLeadMessage": "{{why}}\n\nرسالته: {{message}}",
         "withAnswers": "{{why}}\n\nإجاباته:\n{{message}}"
+    },
+    "lastKind": {
+        "image": "صورة",
+        "video": "فيديو",
+        "audio": "صوت",
+        "voice": "رسالة صوتية",
+        "sticker": "ملصق",
+        "document": "مستند",
+        "location": "موقع",
+        "contacts": "بطاقة جهة اتصال",
+        "other": "مرفق",
+        "reaction": "تفاعل بـ {{emoji}}",
+        "reactionRemoved": "أزال تفاعلًا"
     }
 }

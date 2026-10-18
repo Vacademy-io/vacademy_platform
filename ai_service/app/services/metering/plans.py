@@ -87,6 +87,25 @@ keys sorted) BEFORE institute_credits; callers must keep that order (a refund
 that gives allowance back should call refund_allowance before touching the
 balance row, or in a transaction of its own).
 
+Paid plans (source = PAYMENT, V590)
+-----------------------------------
+* Benefits only for a PAID period: a PAYMENT subscription's period gives plan
+  benefits only when its payment_status is PAID / WAIVED / COMPLIMENTARY; any
+  other status, or no period row, is CHARGED (reason UNPAID), whatever the
+  status (GRACE included: grace_behaviour INCLUDED is not honoured for paid
+  plans, no unpaid supply). Period rows of PAYMENT subscriptions are created
+  only by the billing endpoints when a charge is paid (_may_open is False for
+  them), never lazily here and never ahead by the roll job.
+* The global switch cannot take benefits from paying customers (payments
+  critique #9): with billing.plans.enabled off, an institute whose live
+  subscription is source PAYMENT with enforcement LIVE is still decided by its
+  plan. The index remembers those institutes (paid_ids); while the switch is
+  off it is refreshed in the background only when
+  billing.subscriptions.payments.enabled is on or this pod already knows a
+  paid institute, so with every flag at its default nothing changes (no I/O,
+  no thread, PLANS_OFF for everyone). MANUAL / COMPLIMENTARY subscriptions are
+  decided exactly as before.
+
 release(db, token) undoes a decision's reservations while the caller's
 transaction is still the one decide() ran in (e.g. the wallet part of a SPLIT
 could not be charged, or the charge path failed after decide and falls back
@@ -110,8 +129,8 @@ from . import cache as _cache
 from .constants import normalize_role_name
 from .plan_models import (
     CATALOG_FEATURE_TABLE, ELIGIBILITIES, FEATURE_TABLE, ITEM_MODES, ITEM_TABLE, LIVE_STATUSES,
-    LOCKED_ALWAYS_CHARGED, MODEL_POLICIES, OVERRIDE_TABLE, PERIOD_TABLE, PLAN_COUNTER_PERIOD, PLAN_TABLE,
-    SUBSCRIPTION_TABLE, TOOL_FEATURE_OVERRIDES, UNMAPPED_FEATURE, VERSION_TABLE, plan_counter_key,
+    LOCKED_ALWAYS_CHARGED, MODEL_POLICIES, OVERRIDE_TABLE, PAID_PERIOD_STATUSES, PERIOD_TABLE, PLAN_COUNTER_PERIOD,
+    PLAN_TABLE, SUBSCRIPTION_TABLE, TOOL_FEATURE_OVERRIDES, UNMAPPED_FEATURE, VERSION_TABLE, plan_counter_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +142,7 @@ LOOKUP_TTL = 30.0
 PRICE_CACHE_TTL = 60.0
 CHAIN_CACHE_TTL = 30.0
 ENABLED_SETTING = "billing.plans.enabled"
+PAYMENTS_SETTING = "billing.subscriptions.payments.enabled"
 INR_PER_USD_SETTING = "billing.inr_per_usd"
 DEFAULT_INR_PER_USD = Decimal("86")
 #: list credits per US dollar for a cost estimate when the caller passes no cost
@@ -304,6 +324,21 @@ def plans_enabled() -> bool:
         return False
 
 
+def payments_enabled() -> bool:
+    """billing.subscriptions.payments.enabled, from the in-process settings cache only (no I/O)."""
+    try:
+        return _cache.as_bool(_cache.peek_setting(PAYMENTS_SETTING, False), False)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _plans_on_for(institute_id: Any) -> bool:
+    """The global switch, or (switch off) this institute pays for a LIVE plan (no I/O)."""
+    if plans_enabled():
+        return True
+    return bool(institute_id) and str(institute_id) in _index.paid_ids
+
+
 def inr_per_usd() -> Decimal:
     """Reports only (simulate / pnl); may refresh the settings cache."""
     try:
@@ -454,6 +489,9 @@ class _Index:
         self.ids: frozenset = frozenset()
         #: institutes with ANY subscription row (any status, incl. ended ones)
         self.known: frozenset = frozenset()
+        #: institutes whose live subscription is source PAYMENT with enforcement LIVE
+        #: (decided by their plan even with billing.plans.enabled off)
+        self.paid_ids: frozenset = frozenset()
         self.loaded_at: Optional[float] = None
         self.attempted_at: Optional[float] = None
         self.refreshing = False
@@ -461,6 +499,7 @@ class _Index:
         self.engine: Any = None
         self.sessionmaker: Any = None
         self.ok = False
+        self.pending_paid: Optional[frozenset] = None
 
 
 _index = _Index()
@@ -492,14 +531,19 @@ def _index_session():
 
 def _load_index_ids(s) -> Tuple[frozenset, frozenset]:
     """(institutes with a TRIAL / ACTIVE / GRACE subscription, institutes with
-    any subscription row at all) in ONE small grouped query."""
-    from sqlalchemy import case, func, select
+    any subscription row at all) in ONE small grouped query. Also stores the
+    institutes whose live subscription is a LIVE PAYMENT one in _index.pending_paid
+    (applied with the rest by refresh_index)."""
+    from sqlalchemy import and_, case, func, select
 
     S = SUBSCRIPTION_TABLE.c
-    rows = s.execute(select(S.institute_id, func.max(case((S.status.in_(LIVE_STATUSES), 1), else_=0)))
+    paid_live = and_(S.status.in_(LIVE_STATUSES), S.source == "PAYMENT", S.enforcement == "LIVE")
+    rows = s.execute(select(S.institute_id, func.max(case((S.status.in_(LIVE_STATUSES), 1), else_=0)),
+                            func.max(case((paid_live, 1), else_=0)))
                      .group_by(S.institute_id)).all()
     known = frozenset(str(r[0]) for r in rows if r[0])
     live = frozenset(str(r[0]) for r in rows if r[0] and int(r[1] or 0) == 1)
+    _index.pending_paid = frozenset(str(r[0]) for r in rows if r[0] and int(r[2] or 0) == 1)
     return live, known
 
 
@@ -523,6 +567,9 @@ def refresh_index(session=None) -> bool:
             logger.info("ai plans: %d institute(s) with a live AI subscription", len(ids))
         _index.ids = ids
         _index.known = _index.known | known | ids   # monotonic: never forgets an institute
+        if _index.pending_paid is not None:
+            _index.paid_ids = _index.pending_paid & ids
+            _index.pending_paid = None
         _index.loaded_at = time.monotonic()
         _index.ok = True
         _store_lookups(lk)
@@ -582,12 +629,18 @@ def _maybe_refresh_index() -> None:
 def has_live_subscription(institute_id: Any) -> bool:
     """True when plans are on and the institute has a TRIAL / ACTIVE / GRACE
     subscription (SHADOW or LIVE). No I/O on the calling thread, ever; with the
-    flag off not even a background thread (the flag is only peeked)."""
+    flag off not even a background thread (the flag is only peeked) - except
+    that an institute paying for a LIVE plan (source PAYMENT) stays covered with
+    the flag off: then the index is refreshed in the background while paid
+    plans are switched on or this pod knows a paid institute (critique #9)."""
     try:
         if not institute_id:
             return False
         if not plans_enabled():
-            return False
+            if not _index.paid_ids and not payments_enabled():
+                return False
+            _maybe_refresh_index()
+            return str(institute_id) in _index.paid_ids
         _maybe_refresh_index()
         return str(institute_id) in _index.ids
     except Exception:  # noqa: BLE001
@@ -614,9 +667,10 @@ def had_subscription(institute_id: Any) -> bool:
         return False
 
 
-def set_index_for_tests(ids: Iterable[str], known: Iterable[str] = ()) -> None:
+def set_index_for_tests(ids: Iterable[str], known: Iterable[str] = (), paid: Iterable[str] = ()) -> None:
     _index.ids = frozenset(str(i) for i in ids)
     _index.known = _index.ids | frozenset(str(i) for i in known)
+    _index.paid_ids = frozenset(str(i) for i in paid) & _index.ids
     _index.loaded_at = _index.attempted_at = time.monotonic()
     _index.ok = True
 
@@ -834,10 +888,12 @@ def version_terms(db, version_id: Any, *, read: Optional[Callable] = None
     return out
 
 
-def invalidate(institute_id: Any = None, *, live: Optional[bool] = None, version_id: Any = None) -> None:
+def invalidate(institute_id: Any = None, *, live: Optional[bool] = None, version_id: Any = None,
+               paid: Optional[bool] = None) -> None:
     """After a subscription / override / plan write: forget the cached copies (one
     institute or all). `live` updates this process's index at once (True = now
-    TRIAL/ACTIVE/GRACE, False = not); other pods catch up within INDEX_TTL."""
+    TRIAL/ACTIVE/GRACE, False = not); `paid` (with live) also says whether that
+    live subscription is a LIVE PAYMENT one; other pods catch up within INDEX_TTL."""
     with _cache_lock:
         _period_cache.clear()          # cheap: re-read on the next charge
         if institute_id is None:
@@ -859,6 +915,15 @@ def invalidate(institute_id: Any = None, *, live: Optional[bool] = None, version
         else:
             ids.discard(str(institute_id))
         _index.ids = frozenset(ids)
+        if paid is not None:
+            pids = set(_index.paid_ids)
+            if paid and live:
+                pids.add(str(institute_id))
+            else:
+                pids.discard(str(institute_id))
+            _index.paid_ids = frozenset(pids)
+        elif not live:
+            _index.paid_ids = _index.paid_ids - {str(institute_id)}
     else:
         _index.attempted_at = None
 
@@ -873,6 +938,8 @@ def reset_for_tests() -> None:
     _strikes.clear()
     _index.ids = frozenset()
     _index.known = frozenset()
+    _index.paid_ids = frozenset()
+    _index.pending_paid = None
     _index.loaded_at = _index.attempted_at = None
     _index.refreshing = False
     _index.ok = False
@@ -940,7 +1007,11 @@ def _may_open(sub: Sub, start: datetime, end: datetime) -> bool:
     (auto_renew on, no cancel at period end). Never for a non-renewing one:
     its last period's end is final, a charge after it is CHARGED and the roll
     job expires / cancels it. (Turning renewal off mid-period opens the
-    current period first: plans_admin, so that period is never lost.)"""
+    current period first: plans_admin, so that period is never lost.)
+    Never for a source=PAYMENT subscription: its periods are created only when
+    their charge is paid (routers/plans_billing_internal.py)."""
+    if sub.source == "PAYMENT":
+        return False
     if start <= sub.start_at < end:
         return True
     return bool(sub.auto_renew and not sub.cancel_at_period_end)
@@ -1634,7 +1705,11 @@ def _context(db, sub: Sub, now: datetime, *, create: bool, read: Callable) -> Tu
         return None, "ENDED"
     if sub.status not in LIVE_STATUSES:
         return None, "NOT_LIVE"
-    period = current_period(db, sub, now, create=create, read=read)
+    paid_plan = sub.source == "PAYMENT"
+    period = current_period(db, sub, now, create=create and not paid_plan, read=read)
+    if paid_plan and (period is None or period.virtual or period.payment_status not in PAID_PERIOD_STATUSES):
+        # a paid plan gives benefits only for a PAID period (no row = not paid yet)
+        return None, "UNPAID"
     if period is None:
         return None, "NO_PERIOD"
     terms = version_terms(db, period.plan_version_id, read=read)
@@ -1643,7 +1718,7 @@ def _context(db, sub: Sub, now: datetime, *, create: bool, read: Callable) -> Tu
     version, items = terms
     if version.status not in ("PUBLISHED", "RETIRED"):
         return None, "VERSION_NOT_LIVE"
-    if sub.status == "GRACE":
+    if sub.status == "GRACE" and not paid_plan:
         if version.grace_behaviour != INCLUDED:
             return None, "GRACE_CHARGED"
         if now >= period.period_start + timedelta(days=sub.grace_days):
@@ -1793,7 +1868,7 @@ def decide(db, *, institute_id: Any, list_credits: Any, use_case: Any = None, to
     the same verdict read-only (nothing reserved, no release token)."""
     lc = _q4(max(_dec(list_credits), _D0))
     try:
-        if not plans_enabled():
+        if not _plans_on_for(institute_id):
             _count("decide:off")
             return _charged(lc, "PLANS_OFF")
         if not institute_id or not has_live_subscription(institute_id):
@@ -1816,6 +1891,8 @@ def _decide(db, inst, lc, use_case, tool_key, request_type, model, actor_user_id
     sub = live_subscription(db, inst, now)
     if sub is None:
         return _charged(lc, "NO_SUBSCRIPTION")
+    if not plans_enabled() and not (sub.source == "PAYMENT" and sub.enforcement == "LIVE"):
+        return _charged(lc, "PLANS_OFF")       # switch off: only paid LIVE plans keep applying
     lk = lookups(db)
     feature = str(feature_key) if feature_key else feature_for(use_case, tool_key, request_type)
     if lc <= 0:
@@ -1905,7 +1982,7 @@ def precheck(db, *, institute_id: Any, use_case: Any = None, tool_key: Any = Non
     base = {"covered": False, "mode": CHARGED, "reason": "PLANS_OFF", "feature_key": None, "subscription_id": None,
             "enforcement": None, "block": False, "allowance_remaining": None}
     try:
-        if not plans_enabled() or not institute_id or not has_live_subscription(institute_id):
+        if not _plans_on_for(institute_id) or not institute_id or not has_live_subscription(institute_id):
             if plans_enabled():
                 base["reason"] = "NO_SUBSCRIPTION"
             return base
@@ -1919,6 +1996,9 @@ def precheck(db, *, institute_id: Any, use_case: Any = None, tool_key: Any = Non
         feature = feature or feature_for(use_case, tool_key, request_type)
         base.update(feature_key=feature, reason="NO_SUBSCRIPTION")
         if sub is None:
+            return base
+        if not plans_enabled() and not (sub.source == "PAYMENT" and sub.enforcement == "LIVE"):
+            base["reason"] = "PLANS_OFF"
             return base
         base.update(subscription_id=sub.id, enforcement=sub.enforcement)
         ctx, why = _context(db, sub, nowv, create=False, read=_read)
@@ -2387,7 +2467,7 @@ def pnl(db, institute_id: Any = None, period: str = "current", *, now: Optional[
 
 __all__ = [
     "PlanDecision", "ReleaseToken", "Sub", "Period", "Version", "Item", "Feature", "Lookups",
-    "plans_enabled", "inr_per_usd", "has_live_subscription", "had_subscription", "refresh_index", "configure", "invalidate",
+    "plans_enabled", "payments_enabled", "inr_per_usd", "has_live_subscription", "had_subscription", "refresh_index", "configure", "invalidate",
     "set_index_for_tests", "reset_for_tests", "live_subscription", "current_period", "period_window",
     "version_terms", "lookups", "feature_for", "role_class_of", "decide", "precheck", "release",
     "default_chain_models",

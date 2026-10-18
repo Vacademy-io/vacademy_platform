@@ -66,7 +66,7 @@ public class AdminCoreServiceClient {
                     clientName, "GET", adminCoreServiceBaseUrl, route, null);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                Map<String, Object> body = objectMapper.readValue(utf8(response.getBody()), Map.class);
                 java.util.List<?> logs = (java.util.List<?>) body.get("activity_logs");
                 if (logs != null && !logs.isEmpty()) {
                     Map<String, Object> firstLog = (Map<String, Object>) logs.get(0);
@@ -279,6 +279,75 @@ public class AdminCoreServiceClient {
             }
         } catch (Exception e) {
             log.warn("Failed to fetch institute {} for branding fallback: {}", instituteId, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * The result-release template for this assessment on one channel (EMAIL / WHATSAPP):
+     * assessment binding, else institute, else DEFAULT. Null when none applies or admin_core
+     * cannot be reached; keys: template_id, name, type, subject, content, setting_json, level.
+     */
+    public Map<String, Object> resolveResultTemplate(String instituteId, String assessmentId, String channel) {
+        try {
+            String route = "/admin-core-service/internal/v1/assessment-result-notification/resolve?institute_id=" + instituteId
+                    + (StringUtils.hasText(assessmentId) ? "&assessment_id=" + assessmentId : "") + "&template_type=" + channel;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(utf8(response.getBody()), Map.class);
+            }
+        } catch (Exception e) {
+            log.warn("Result template lookup failed for assessment {} ({}): {}", assessmentId, channel, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * The shared RestTemplate decodes a response without a charset as ISO-8859-1, which turns
+     * UTF-8 emoji and curly quotes in admin_core's JSON into mojibake. When every char fits in
+     * one byte and those bytes are valid UTF-8, re-decode them; otherwise leave the text alone.
+     */
+    static String utf8(String body) {
+        if (body == null) return null;
+        for (int i = 0; i < body.length(); i++) {
+            if (body.charAt(i) > 0xFF) return body; // already proper Unicode
+        }
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(body.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1)))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return body;
+        }
+    }
+
+    /** Institute display name for report headers; null when it cannot be read. */
+    @Cacheable(value = "reportBranding", key = "'name:' + #instituteId", unless = "#result == null")
+    public String getInstituteName(String instituteId) {
+        Map<String, Object> institute = getInstituteInfo(instituteId);
+        return institute == null ? null : firstNonBlank(institute, "institute_name", "instituteName", "name");
+    }
+
+    /**
+     * The learner's enrollment number at this institute (from their batch enrolment), or
+     * null when they have none or admin_core cannot be reached. Shown on report headers.
+     */
+    public String getEnrollmentNumber(String userId, String instituteId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) return null;
+        try {
+            String route = "/admin-core-service/internal/learner/v1/enrollment-number?userId=" + userId
+                    + "&instituteId=" + instituteId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                return firstNonBlank(body, "enrollment_number", "enrollmentNumber");
+            }
+        } catch (Exception e) {
+            log.debug("Enrollment number unavailable for user {} at institute {}: {}", userId, instituteId, e.getMessage());
         }
         return null;
     }

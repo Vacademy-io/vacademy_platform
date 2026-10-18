@@ -428,6 +428,7 @@ export const GenerateQuestionsFromText = ({
                         <ToolCostBadge
                             credits={costPreview.credits}
                             sufficient={costPreview.sufficient}
+                            coverage={costPreview.coverage}
                             loading={costPreview.isLoading}
                         />
                     </div>
@@ -441,6 +442,7 @@ export const GenerateQuestionsFromText = ({
                 currentBalance={costPreview.currentBalance}
                 balanceAfter={costPreview.balanceAfter}
                 sufficient={costPreview.sufficient}
+                coverage={costPreview.coverage}
                 confirmLabel={t('actions.draftQuestions')}
                 onConfirm={() => {
                     if (pendingValues) runGenerate(pendingValues);

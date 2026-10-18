@@ -95,12 +95,27 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
                 lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
+                CASE
+                    WHEN COALESCE(TRIM(ps.name), '') <> ''
+                     AND UPPER(TRIM(ps.name)) NOT IN ('DEFAULT', 'GENERAL')
+                    THEN ps.name
+                    WHEN LOWER(TRIM(COALESCE(l.level_name, ''))) IN ('', 'default')
+                    THEN p.package_name
+                    ELSE CONCAT(l.level_name, ' ', p.package_name)
+                END AS batchName,
+                lsp.created_at AS registeredAt,
                 1 AS priority
             FROM live_session_participants lsp
             JOIN student_session_institute_group_mapping m
                 ON m.package_session_id = lsp.source_id AND lsp.source_type = 'BATCH' AND m.status = 'ACTIVE'
             JOIN student s
                 ON s.user_id = m.user_id
+            LEFT JOIN package_session ps
+                ON ps.id = lsp.source_id
+            LEFT JOIN level l
+                ON l.id = ps.level_id
+            LEFT JOIN package p
+                ON p.id = ps.package_id
             LEFT JOIN live_session_logs lsl
                 ON lsl.user_source_id = s.user_id
                 AND lsl.user_source_type = 'USER'
@@ -137,6 +152,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
                 lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
+                NULL AS batchName,
+                lsp.created_at AS registeredAt,
                 2 AS priority
             FROM live_session_participants lsp
             JOIN student s
@@ -172,7 +189,9 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             statusType,
             engagementData,
             providerTotalDurationMinutes,
-            feedbackDetails
+            feedbackDetails,
+            batchName,
+            registeredAt
         FROM all_participants
         ORDER BY studentId, priority ASC
     """, nativeQuery = true)

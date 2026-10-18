@@ -8,6 +8,7 @@
     "/images/*",
     "/svgs/*",
     "/vendor/*",
+    "/pdfjs/*",
     "/badge-library/*",
     "/styles.css",
     "/sw.js",

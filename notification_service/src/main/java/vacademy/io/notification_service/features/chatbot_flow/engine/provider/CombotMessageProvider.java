@@ -243,6 +243,19 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         return sendPayload(config, payload);
     }
 
+    /**
+     * Base URL + token for reading this institute's inbound WhatsApp media (Meta Graph API, or the Com.bot proxy when the institute sends through Com.bot).
+     * Null when the institute has no usable configuration.
+     */
+    public ProviderMediaCredentials mediaCredentials(String instituteId) {
+        ProviderConfig config = resolveConfig(instituteId);
+        if (config == null || config.apiUrl == null || config.apiUrl.isBlank()
+                || config.apiKey == null || config.apiKey.isBlank()) {
+            return null;
+        }
+        return new ProviderMediaCredentials(config.apiUrl, config.apiKey);
+    }
+
     private String sendPayload(ProviderConfig config, Map<String, Object> payload) {
         String url = config.apiUrl + "/" + config.phoneNumberId + "/messages";
 

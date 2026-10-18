@@ -25,7 +25,7 @@ import "@react-pdf-viewer/core/lib/styles/index.css";
  * Same worker pin as simple-pdf-viewer.tsx: pdf.js refuses to start when the
  * API and worker versions differ, so this must track the installed pdfjs-dist.
  */
-const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+const PDF_WORKER_URL = "/pdfjs/3.11.174/pdf.worker.min.js";
 
 const SWIPE_MIN_PX = 60;
 

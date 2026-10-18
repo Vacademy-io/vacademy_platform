@@ -65,6 +65,7 @@
                 "description": "Cette campagne n'a aucun champ personnalisé configuré.",
                 "debugCount": "Champs personnalisés depuis l'API : {{count}}"
             },
+            "selectParentFirst": "Choisissez d’abord {{name}}",
             "submitButton": {
                 "submitting": "Envoi en cours...",
                 "default": "Envoyer la réponse"

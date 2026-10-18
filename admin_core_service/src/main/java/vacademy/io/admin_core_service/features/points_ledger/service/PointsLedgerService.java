@@ -278,7 +278,8 @@ public class PointsLedgerService {
     /**
      * The learner's active days in the institute's zone over the look-back window: the
      * union of learning-activity days (the activity log, same measure as ACTIVITY points
-     * and the learner hero), completed engagement tasks and earning ledger rows.
+     * and the learner hero), completed engagement tasks, earning ledger rows and live
+     * classes the learner was marked PRESENT in.
      *
      * <p>Each source is read on its own so one failing source only narrows the union.
      * Returns null when every source failed, so the caller leaves the streak unset
@@ -367,7 +368,34 @@ public class PointsLedgerService {
             log.warn("[points] streak: ledger days unavailable for user {}: {}", userId, e.getMessage());
         }
 
-        return failures == 3 ? null : days;
+        // Live classes attended. Keyed on the class's own meeting_date: provider attendance
+        // can be written many hours after the class, and that must not shift the day.
+        try {
+            days.addAll(toDates(entityManager.createNativeQuery("""
+                    SELECT DISTINCT ss.meeting_date
+                    FROM live_session_logs lsl
+                    JOIN live_session ls ON ls.id = lsl.session_id
+                    JOIN session_schedules ss ON ss.id = lsl.schedule_id
+                    WHERE lsl.user_source_id = :userId
+                      AND lsl.user_source_type = 'USER'
+                      AND lsl.log_type = 'ATTENDANCE_RECORDED'
+                      AND lsl.status = 'PRESENT'
+                      AND ls.institute_id = :instituteId
+                      AND ss.meeting_date BETWEEN :fromDate AND :toDate
+                      AND ls.status IS DISTINCT FROM 'DELETED'
+                      AND ss.status IS DISTINCT FROM 'DELETED'
+                    """)
+                    .setParameter("userId", userId)
+                    .setParameter("instituteId", instituteId)
+                    .setParameter("fromDate", today.minusDays(STREAK_LOOKBACK_DAYS))
+                    .setParameter("toDate", today)
+                    .getResultList()));
+        } catch (Exception e) {
+            failures++;
+            log.warn("[points] streak: live attendance days unavailable for user {}: {}", userId, e.getMessage());
+        }
+
+        return failures == 4 ? null : days;
     }
 
     private static List<LocalDate> toDates(List<?> rows) {

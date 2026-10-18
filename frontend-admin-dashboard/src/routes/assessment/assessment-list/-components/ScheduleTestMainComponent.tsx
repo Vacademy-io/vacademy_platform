@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet';
 import { Tabs } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
@@ -98,14 +99,17 @@ export const ScheduleTestMainComponent = ({
     showBatchFilter = true,
     folderFilter,
     toolbar,
+    hideList = false,
 }: {
     isCourseOutline?: boolean;
     batchId?: string;
     showBatchFilter?: boolean;
     /** Folder the list is scoped to; the workspace remounts this component when it changes. */
     folderFilter?: FolderListFilter;
-    /** Rendered between the filters and the cards (the assessment folder row). */
+    /** Rendered under the page header, above the tabs (assessment folder cards / breadcrumb). */
     toolbar?: React.ReactNode;
+    /** Assessment folders: show only the header + toolbar (every test is in a folder). */
+    hideList?: boolean;
 }) => {
     const navigate = useNavigate();
     const { t } = useTranslation('assessmentScheduleTestMainComponent');
@@ -617,7 +621,9 @@ export const ScheduleTestMainComponent = ({
                 <meta name="description" content={t('meta.helmetDescription')} />
             </Helmet>
             <ScheduleTestHeaderDescription isCourseOutline />
-            <div className="flex flex-col gap-4">
+            {toolbar}
+            {/* hideList (assessment folders, every test in a folder): no empty tabs. */}
+            <div className={cn('flex flex-col gap-4', hideList && 'hidden')}>
                 <Tabs value={selectedTab} onValueChange={handleTabChange}>
                     <ScheduleTestTabList
                         selectedTab={selectedTab}
@@ -756,9 +762,6 @@ export const ScheduleTestMainComponent = ({
                             )}
                         </div>
                     </div>
-                    {/* Folder row sits right above the cards (tabs and filters keep their place),
-                        so a card has only a short way to travel when dragged onto a folder. */}
-                    {toolbar}
                     {scheduleTestTabsData.map((tab, index) => (
                         <ScheduleTestLists
                             key={index}

@@ -14,7 +14,7 @@
         "currenciesLabel": "Devises à tarifer automatiquement",
         "currenciesHelp": "Pour chaque devise choisie, chaque plan reçoit un prix converti depuis son prix normal au taux du jour et arrondi à un montant net (par exemple 999 ₹ devient 11,99 $). Les apprenants de tous les pays qui utilisent cette devise le paient.",
         "currenciesPlaceholder": "Recherchez et choisissez des devises, ex. dollar américain",
-        "noCurrencies": "Aucune devise choisie : seuls les pays auxquels vous donnez un prix fixe (étape 2) verront un prix différent.",
+        "noCurrencies": "Aucune devise choisie : seuls les pays auxquels vous donnez un prix fixe verront un prix différent.",
         "ratesFetched": "Taux de change mis à jour le {{date}}",
         "ratesNever": "Les taux de change n'ont pas encore été récupérés",
         "gatewayNote": "Les apprenants ne sont facturés que dans une devise acceptée par votre passerelle de paiement. PhonePe et Cashfree acceptent uniquement l'INR, et eWay l'AUD et le NZD. Razorpay nécessite l'activation des paiements internationaux dans votre compte Razorpay."

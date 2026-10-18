@@ -50,12 +50,17 @@ public class CatalogApiService {
     static final int SUBTITLE_MAX = 300;
     static final int SEO_DESCRIPTION_MAX = 160;
     private static final int MAX_SERIES_PATHS = 12;
-    static final Set<String> SORTS = Set.of("newest", "title", "price_asc", "price_desc");
+    /** Sort tokens, in the order the error message lists them (the v1.0 four first). */
+    static final Set<String> SORTS = new LinkedHashSet<>(List.of("newest", "title", "price_asc", "price_desc",
+            "oldest", "rating", "title_desc", "popular"));
     static final Set<String> AVAILABILITIES = Set.of("available", "coming_soon", "not_started", "closed");
 
     private final CatalogDataLoader loader;
     private final LearnerOpenStudyLibraryService openStudyLibraryService;
     private final PackagePageContentService pageContentService;
+
+    /** "now" for the New badge; replaceable in tests. */
+    java.time.Clock clock = java.time.Clock.systemUTC();
 
     private final Cache<String, Map<String, Object>> outlines = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5)).maximumSize(5_000).build();
@@ -83,6 +88,18 @@ public class CatalogApiService {
             for (CatalogRow r : rows()) if (packageId.equals(r.packageId())) return true;
             return false;
         }
+
+        /** Every package id of the card, first-seen order. */
+        List<String> packageIds() {
+            LinkedHashSet<String> ids = new LinkedHashSet<>();
+            for (CatalogRow r : rows()) if (r.packageId() != null) ids.add(r.packageId());
+            return List.copyOf(ids);
+        }
+
+        /** The card's enrolment rank: a card folding several packages ranks as its best one ({@code bestRankedId}). */
+        Integer rank(Map<String, Integer> ranks) {
+            return ranks.isEmpty() ? null : CourseBadges.bestRank(packageIds(), ranks);
+        }
     }
 
     /**
@@ -102,7 +119,10 @@ public class CatalogApiService {
             Set<String> tagSet = new LinkedHashSet<>();
             Instant created = null;
             for (CatalogRow r : g.variants()) {
-                tagSet.addAll(CourseFormats.rowTags(r.tags(), null));
+                for (String t : CourseFormats.rowTags(r.tags(), null)) if (!LevelKeys.isLevelKey(t)) tagSet.add(t);
+                // A course levelled like a stream or category belongs to it (LevelKeys).
+                String level = LevelKeys.levelKey(r.levelName());
+                if (level != null) tagSet.add(level);
                 if (r.createdAt() != null && (created == null || r.createdAt().isAfter(created))) created = r.createdAt();
             }
             out.add(new Card(g, i++, tagSet, CourseFormats.cardFormatKeys(g.variants(), site.formats()), created));
@@ -122,6 +142,80 @@ public class CatalogApiService {
         return code; // unknown code: filters to nothing, never silently to everything
     }
 
+    // ── Request extras: enrolment ranks and badges ─────────────────────────────
+
+    /**
+     * What a request knows beyond the snapshot: enrolment ranks (package id → rank) and every
+     * badge each card earned (card id → badges, in the site's priority order).
+     */
+    record Extras(Map<String, Integer> ranks, Map<String, List<String>> badges) {
+        static final Extras NONE = new Extras(Map.of(), Map.of());
+    }
+
+    /** Ranks never fail a request: an unreadable popularity source is "nothing ranked". */
+    private Map<String, Integer> ranksOf(String instituteId) {
+        try {
+            Map<String, Integer> ranks = loader.ranks(instituteId);
+            return ranks == null ? Map.of() : ranks;
+        } catch (Exception e) {
+            log.warn("catalog-api: popularity ranks failed for {}: {}", instituteId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    Extras extras(CatalogSnapshot s, List<Card> cards) {
+        Map<String, Integer> ranks = ranksOf(s.instituteId());
+        return new Extras(ranks, earnedBadges(s, cards, ranks, clock.instant()));
+    }
+
+    /**
+     * Badge priority: the section's {@code badges.types} first (its display order), then the
+     * other badges in the default order.
+     */
+    static List<String> badgeOrder(SiteConfig site) {
+        CatalogDiscovery.BadgeRules rules = site.discovery().badges();
+        LinkedHashSet<String> order = new LinkedHashSet<>();
+        if (rules != null) order.addAll(rules.types());
+        order.addAll(CourseBadges.ALL_BADGES);
+        return List.copyOf(order);
+    }
+
+    /**
+     * Every badge each card earned, uncapped and over all four kinds — the site's
+     * {@code earnedBadges}, which its badge filter reads (CourseCatalogComponent.tsx) — with the
+     * section's newDays / bestsellerTop. One input per card: the first date seen per package
+     * (the newest across a version group's packages), the cheapest version on sale now (null when
+     * none is), the card's tags plus the tag of every stream it is in; a card folding several
+     * packages ranks as its best one.
+     */
+    static Map<String, List<String>> earnedBadges(CatalogSnapshot s, List<Card> cards, Map<String, Integer> ranks,
+                                                  Instant now) {
+        CatalogDiscovery.BadgeRules rules = s.site().discovery().badges();
+        List<String> streamTags = new ArrayList<>();
+        for (Stream st : s.streams()) if (st.tag() != null && !st.tag().isEmpty()) streamTags.add(st.tag());
+        List<CourseBadges.Input> inputs = new ArrayList<>(cards.size());
+        Map<String, Integer> cardRanks = new HashMap<>();
+        for (Card card : cards) {
+            Map<String, Instant> firstDate = new LinkedHashMap<>();
+            Double price = null;
+            for (CatalogRow r : card.rows()) {
+                if (r.packageId() != null && !firstDate.containsKey(r.packageId())) firstDate.put(r.packageId(), r.createdAt());
+                if (CatalogPricing.isBuyableNow(r)) price = price == null ? r.price() : Math.min(price, r.price());
+            }
+            Instant created = null;
+            for (Instant t : firstDate.values()) if (t != null && (created == null || t.isAfter(created))) created = t;
+            Set<String> tags = new LinkedHashSet<>(card.tagSet());
+            for (Stream st : s.streams()) if (CatalogStreams.matchesAny(st.tags(), card.tagSet())) tags.add(st.tag());
+            String id = card.group().courseId();
+            inputs.add(new CourseBadges.Input(id, created, price, tags));
+            Integer rank = card.rank(ranks);
+            if (rank != null) cardRanks.put(id, rank);
+        }
+        return CourseBadges.compute(inputs, cardRanks, streamTags, now, badgeOrder(s.site()),
+                rules == null ? 60 : rules.newDaysOrDefault(), rules == null ? 3 : rules.bestsellerTopOrDefault(),
+                CourseBadges.ALL_BADGES.size());
+    }
+
     // ── GET /site ───────────────────────────────────────────────────────────────
 
     public Map<String, Object> site(String instituteId) {
@@ -136,9 +230,137 @@ public class CatalogApiService {
         out.put("languages", s.site().courseLanguagesOn() ? languageViews(s.site().languages()) : List.of());
         out.put("formats", formatViews(s, s.site().formats() == null ? List.of()
                 : s.site().formats().list().stream().map(CourseFormats.Format::key).toList()));
-        out.put("currency", dominantCurrency(s.rows()));
+        String currency = dominantCurrency(s.rows());
+        out.put("currency", currency);
         out.put("price_visible", s.site().paymentEnabled());
+        out.put("catalog", catalogView(s.site()));
         return out;
+    }
+
+    /**
+     * The Courses section's discovery settings as the hosted site reads them
+     * ({@link CatalogDiscovery}), so a client can offer the same sort menu, quick filters,
+     * filter groups and badges.
+     */
+    static Map<String, Object> catalogView(SiteConfig site) {
+        CatalogDiscovery d = site.discovery();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("default_sort", d.defaultSort());
+        out.put("sort_options", d.sortOptions());
+        out.put("show_filter_counts", d.showFilterCounts());
+        out.put("quick_filters", d.quickFilters().stream().map(qf -> quickFilterView(site, qf)).toList());
+
+        Map<String, Object> price = new LinkedHashMap<>();
+        price.put("enabled", d.priceFilter().enabled());
+        price.put("label", blankToNull(d.priceFilter().label()));
+        price.put("show_free", d.priceFilter().showFree());
+        price.put("max_options", d.priceFilter().maxOptions());
+        out.put("price_filter", price);
+
+        Map<String, Object> language = new LinkedHashMap<>();
+        language.put("enabled", d.languageFilter().enabled());
+        language.put("label", blankToNull(d.languageFilter().label()));
+        out.put("language_filter", language);
+
+        CatalogDiscovery.CategoryFilter cf = d.categoryFilter();
+        Map<String, Object> category = new LinkedHashMap<>();
+        category.put("enabled", cf.enabled());
+        category.put("label", blankToNull(cf.label()));
+        category.put("scope", cf.scope() == null ? "stream" : cf.scope());
+        category.put("label_mode", cf.labelMode() == null ? "title" : cf.labelMode());
+        category.put("sort", cf.sort() == null ? "folder" : cf.sort());
+        category.put("hide_coming_soon", cf.hideComingSoon());
+        category.put("visible_count", cf.visibleCount());
+        category.put("show_all_label", cf.showAllLabel());
+        out.put("category_filter", category);
+
+        CatalogDiscovery.BadgeRules rules = d.badges();
+        Map<String, Object> badges = new LinkedHashMap<>();
+        badges.put("enabled", rules != null);
+        badges.put("types", rules == null ? List.of() : rules.types());
+        badges.put("new_days", rules == null ? 60 : rules.newDaysOrDefault());
+        badges.put("bestseller_top", rules == null ? 3 : rules.bestsellerTopOrDefault());
+        badges.put("max", rules == null ? 2 : rules.maxOrDefault());
+        out.put("badges", badges);
+
+        out.put("custom_filters", d.customFilters().stream().map(f -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", f.id());
+            m.put("label", blankToNull(f.label()));
+            m.put("source", f.source() == null ? null : "course_formats");
+            m.put("options", f.options().stream().map(o -> {
+                Map<String, Object> om = new LinkedHashMap<>();
+                om.put("id", o.id());
+                om.put("label", o.label());
+                return om;
+            }).toList());
+            m.put("show_counts", f.showCounts() == null ? d.showFilterCounts() : f.showCounts());
+            m.put("show_empty", f.showEmpty());
+            m.put("visible_count", f.visibleCount());
+            return m;
+        }).toList());
+
+        out.put("popular_searches", d.popular().stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("label", c.label());
+            m.put("kind", "quick".equals(c.kind()) ? "quick_filter" : c.kind());
+            m.put("search", c.search());
+            m.put("stream", c.streamSlug());
+            m.put("category", c.categorySlug());
+            m.put("quick_filter", c.quickFilterId());
+            m.put("route", c.route());
+            return m;
+        }).toList());
+        return out;
+    }
+
+    /**
+     * A quick filter: its authored label, else the site's English default; {@code params} are
+     * the /courses parameters that apply it (the site toggles the same state:
+     * catalog-quick-filters.ts).
+     */
+    private static Map<String, Object> quickFilterView(SiteConfig site, CatalogDiscovery.QuickFilter qf) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        String fallback;
+        switch (qf.kind()) {
+            case "popular" -> {
+                params.put("sort", "popular");
+                fallback = "Popular";
+            }
+            case "new" -> {
+                params.put("badge", "new");
+                fallback = "New";
+            }
+            case "bestseller" -> {
+                params.put("badge", "bestseller");
+                fallback = "Bestsellers";
+            }
+            case "free" -> {
+                params.put("price", "free");
+                fallback = "Free";
+            }
+            case "language" -> {
+                params.put("language", qf.value());
+                fallback = site.languages().stream().filter(l -> l.code().equals(qf.value())).findFirst()
+                        .map(l -> languageLabel(l)).orElse(String.valueOf(qf.value()).toUpperCase(Locale.ROOT));
+            }
+            default -> { // priceMax
+                params.put("price_max", qf.value());
+                fallback = "Under " + plainAmount((Double) qf.value());
+            }
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", qf.id());
+        m.put("label", qf.label().isEmpty() ? fallback : qf.label());
+        m.put("kind", "priceMax".equals(qf.kind()) ? "price_max" : qf.kind());
+        m.put("value", qf.value());
+        m.put("params", params);
+        return m;
+    }
+
+    private static String plainAmount(Double v) {
+        if (v == null) return "";
+        return v == Math.rint(v) ? String.valueOf(v.longValue()) : String.valueOf(v);
     }
 
     private static String dominantCurrency(List<CatalogRow> rows) {
@@ -153,14 +375,42 @@ public class CatalogApiService {
 
     // ── GET /courses ────────────────────────────────────────────────────────────
 
+    /**
+     * A /courses request. List parameters are comma lists (OR within a parameter, AND across
+     * parameters); null = not given.
+     */
     public record CourseQuery(String q, String stream, String category, String format, String language, String tag,
-                              String availability, int page, int pageSize, String sort) {
+                              String availability, int page, int pageSize, String sort,
+                              String level, String instructor, String session, String badge, String price,
+                              String priceMin, String priceMax, String custom, boolean facets) {
+
+        /** The v1.0 parameters only. */
+        public CourseQuery(String q, String stream, String category, String format, String language, String tag,
+                           String availability, int page, int pageSize, String sort) {
+            this(q, stream, category, format, language, tag, availability, page, pageSize, sort,
+                    null, null, null, null, null, null, null, null, false);
+        }
+    }
+
+    /** The filter group ids (catalog-filters.ts GROUP_IDS, plus the API's format and availability). */
+    static final String G_SEARCH = "search", G_STREAM = "stream", G_CATEGORY = "category", G_FORMAT = "format",
+            G_BADGE = "badge", G_LANGUAGE = "language", G_PRICE = "price", G_LEVEL = "level", G_SESSION = "session",
+            G_TAG = "tag", G_INSTRUCTOR = "instructor", G_PRICE_RANGE = "price_range", G_AVAILABILITY = "availability",
+            G_CUSTOM = "custom:";
+
+    /** A parsed, validated query and the cards it runs over. */
+    private record Criteria(String sort, String q, List<String> streamSlugs, List<Stream> streams,
+                            List<String> categorySlugs, List<Category> categories, List<String> formats,
+                            List<String> languages, List<String> tags, List<String> levels, List<String> instructors,
+                            List<String> sessions, List<String> badges, CatalogFilters.PriceChoice price,
+                            Double priceMin, Double priceMax, Map<String, List<CatalogDiscovery.CustomOption>> custom,
+                            String availability) {
     }
 
     public Map<String, Object> courses(String instituteId, CourseQuery query) {
         String sort = query.sort() == null || query.sort().isBlank() ? "newest" : query.sort().trim().toLowerCase(Locale.ROOT);
         if (!SORTS.contains(sort)) {
-            throw invalid("sort must be one of newest, title, price_asc, price_desc.", "sort");
+            throw invalid("sort must be one of " + String.join(", ", SORTS) + ".", "sort");
         }
         if (query.page() < 1) throw invalid("page starts at 1.", "page");
         if (query.pageSize() < 1 || query.pageSize() > MAX_PAGE_SIZE) {
@@ -170,62 +420,78 @@ public class CatalogApiService {
         if (availability != null && !AVAILABILITIES.contains(availability.toLowerCase(Locale.ROOT))) {
             throw invalid("availability must be one of available, coming_soon, not_started, closed.", "availability");
         }
+        List<String> badges = lowerList(query.badge());
+        for (String b : badges) {
+            if (!CourseBadges.ALL_BADGES.contains(b)) throw invalid("badge must be a comma list of bestseller, popular, new, free.", "badge");
+        }
+        CatalogFilters.PriceChoice price = null;
+        if (blankToNull(query.price()) != null) {
+            price = switch (query.price().trim().toLowerCase(Locale.ROOT)) {
+                case "free" -> CatalogFilters.PriceChoice.FREE;
+                case "paid" -> CatalogFilters.PriceChoice.PAID;
+                default -> throw invalid("price must be free or paid.", "price");
+            };
+        }
+        Double priceMin = amountParam("price_min", query.priceMin());
+        Double priceMax = amountParam("price_max", query.priceMax());
 
         CatalogSnapshot s = loader.snapshot(instituteId);
-        String language = siteLanguage(s, query.language());
-        boolean priceSort = sort.startsWith("price");
-        List<Card> all = cards(s, language);
+        Map<String, List<CatalogDiscovery.CustomOption>> custom = customParam(s.site(), query.custom());
+        List<String> languages = new ArrayList<>();
+        for (String code : list(query.language())) {
+            String c = siteLanguage(s, code);
+            if (c != null && !languages.contains(c)) languages.add(c);
+        }
+        // A single language opens that version of every card (the site: "a single language filter wins").
+        List<Card> all = cards(s, languages.size() == 1 ? languages.get(0) : null);
+        Extras extras = extras(s, all);
 
-        Stream stream = null;
-        if (blankToNull(query.stream()) != null) {
-            stream = s.streams().stream().filter(st -> st.slug().equalsIgnoreCase(query.stream().trim())).findFirst()
-                    .orElse(null);
-            if (stream == null) return page(List.of(), query, 0);
-        }
-        List<String> categoryTags = null;
-        if (blankToNull(query.category()) != null) {
-            String slug = query.category().trim();
-            List<Stream> scope = stream == null ? s.streams() : List.of(stream);
-            Category cat = scope.stream().flatMap(st -> st.categories().stream())
-                    .filter(c -> c.slug().equalsIgnoreCase(slug)).findFirst().orElse(null);
-            if (cat == null) return page(List.of(), query, 0);
-            categoryTags = cat.tags();
-        }
-        String format = blankToNull(query.format()) == null ? null : query.format().trim().toLowerCase(Locale.ROOT);
-        Set<String> wantedTags = new HashSet<>();
-        if (blankToNull(query.tag()) != null) {
-            for (String t : query.tag().split(",")) if (!t.isBlank()) wantedTags.add(t.trim().toLowerCase(Locale.ROOT));
+        List<String> streamSlugs = list(query.stream());
+        List<Stream> streams = s.streams().stream()
+                .filter(st -> streamSlugs.stream().anyMatch(slug -> slug.equalsIgnoreCase(st.slug()))).toList();
+        List<String> categorySlugs = list(query.category());
+        List<Stream> scope = streamSlugs.isEmpty() ? s.streams() : streams;
+        List<Category> categories = new ArrayList<>();
+        for (String slug : categorySlugs) {
+            scope.stream().flatMap(st -> st.categories().stream()).filter(c -> c.slug().equalsIgnoreCase(slug))
+                    .findFirst().ifPresent(c -> {
+                        if (!categories.contains(c)) categories.add(c);
+                    });
         }
         String q = blankToNull(query.q()) == null ? null : query.q().trim().toLowerCase(Locale.ROOT);
+        Criteria c = new Criteria(sort, q, streamSlugs, streams, categorySlugs, categories, lowerList(query.format()),
+                languages, lowerList(query.tag()), list(query.level()), list(query.instructor()), list(query.session()),
+                badges, price, priceMin, priceMax, custom,
+                availability == null ? null : availability.toLowerCase(Locale.ROOT));
 
-        record Hit(Card card, List<CatalogRow> matching, Map<String, Object> view, double sortPrice) {
+        boolean priceSort = sort.startsWith("price");
+        List<CatalogFilters.Group<Card, CatalogRow>> groups = CatalogFilters.remember(groups(s, c, extras, priceSort));
+        List<Card> matched = CatalogFilters.apply(all, Card::rows, groups, null);
+
+        record Hit(Card card, Map<String, Object> view, double sortPrice, Integer rank) {
         }
         List<Hit> hits = new ArrayList<>();
-        for (Card card : all) {
-            if (stream != null && !CatalogStreams.matchesAny(stream.tags(), card.tagSet())) continue;
-            if (categoryTags != null && !CatalogStreams.matchesAny(categoryTags, card.tagSet())) continue;
-            if (format != null && !card.formatKeys().contains(format)) continue;
-            if (!wantedTags.isEmpty() && wantedTags.stream().noneMatch(card.tagSet()::contains)) continue;
-            if (q != null && !matchesText(card, q)) continue;
-            List<CatalogRow> matching = card.rows();
-            if (language != null) {
-                matching = card.rows().stream().filter(r -> {
-                    Language l = languageOf(s, r);
-                    return l != null && l.code().equals(language);
-                }).toList();
-                if (matching.isEmpty()) continue;
-            }
-            Map<String, Object> view = summary(s, card, card.primary(), matching, priceSort);
-            if (availability != null && !availability.equalsIgnoreCase((String) view.get("availability"))) continue;
-            hits.add(new Hit(card, matching, view, CatalogPricing.sortPrice(matching)));
+        for (Card card : matched) {
+            List<CatalogRow> matching = CatalogFilters.rowsMatching(card, Card::rows, groups);
+            Map<String, Object> view = summary(s, extras, card, card.primary(), matching, priceSort);
+            hits.add(new Hit(card, view, CatalogPricing.sortPrice(matching), card.rank(extras.ranks())));
         }
 
         Comparator<Hit> byOrder = Comparator.comparingInt(h -> h.card().order());
         Comparator<Hit> comparator = switch (sort) {
             case "title" -> Comparator.comparing((Hit h) -> h.card().primary().title(), String.CASE_INSENSITIVE_ORDER)
                     .thenComparing(byOrder);
+            case "title_desc" -> Comparator.comparing((Hit h) -> h.card().primary().title(),
+                    String.CASE_INSENSITIVE_ORDER.reversed()).thenComparing(byOrder);
             case "price_asc" -> Comparator.comparingDouble(Hit::sortPrice).thenComparing(byOrder);
             case "price_desc" -> Comparator.comparingDouble((Hit h) -> -h.sortPrice()).thenComparing(byOrder);
+            case "oldest" -> Comparator.comparing((Hit h) -> h.card().createdAt(),
+                    Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(byOrder);
+            case "rating" -> Comparator.comparing((Hit h) -> ratingOf(h.card().primary()),
+                    Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(byOrder);
+            // catalog-sort.ts "Popular": ranked by rank, the rest after them in catalogue order.
+            case "popular" -> ((Comparator<Hit>) (a, b) -> CourseBadges.comparePopularity(a.rank(), b.rank()))
+                    .thenComparing(byOrder);
             default -> Comparator.comparing((Hit h) -> h.card().createdAt(),
                     Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(byOrder);
         };
@@ -234,14 +500,150 @@ public class CatalogApiService {
         int from = (int) Math.min(hits.size(), offset);
         int to = (int) Math.min(hits.size(), (long) from + query.pageSize());
         List<Map<String, Object>> data = hits.subList(from, to).stream().map(Hit::view).toList();
-        return page(data, query, hits.size());
+        Map<String, Object> out = page(data, query, hits.size());
+        if (query.facets()) out.put("facets", facets(s, c, extras, all, groups));
+        return out;
     }
 
-    private static boolean matchesText(Card card, String q) {
+    private static Double ratingOf(CatalogRow r) {
+        return r.rating() != null && r.rating() > 0 ? r.rating() : null;
+    }
+
+    /** The filter groups of one request, in catalog-filters.ts order (card groups, row groups, authored groups). */
+    private List<CatalogFilters.Group<Card, CatalogRow>> groups(CatalogSnapshot s, Criteria c, Extras extras,
+                                                                boolean priceSort) {
+        List<CatalogFilters.Group<Card, CatalogRow>> g = new ArrayList<>();
+        g.add(new CatalogFilters.Group<>(G_SEARCH, c.q() != null, card -> matchesText(card, c.q()), null));
+        // An unknown stream / category slug matches nothing, never silently everything.
+        g.add(new CatalogFilters.Group<>(G_STREAM, !c.streamSlugs().isEmpty(),
+                card -> c.streams().stream().anyMatch(st -> CatalogStreams.matchesAny(st.tags(), card.tagSet())), null));
+        g.add(new CatalogFilters.Group<>(G_CATEGORY, !c.categorySlugs().isEmpty(),
+                card -> c.categories().stream().anyMatch(cat -> CatalogStreams.matchesAny(cat.tags(), card.tagSet())),
+                null));
+        g.add(new CatalogFilters.Group<>(G_FORMAT, !c.formats().isEmpty(),
+                card -> card.formatKeys().stream().anyMatch(c.formats()::contains), null));
+        g.add(new CatalogFilters.Group<>(G_BADGE, !c.badges().isEmpty(),
+                card -> extras.badges().getOrDefault(card.group().courseId(), List.of()).stream()
+                        .anyMatch(c.badges()::contains), null));
+        g.add(new CatalogFilters.Group<>(G_LANGUAGE, !c.languages().isEmpty(), null, r -> {
+            Language l = languageOf(s, r);
+            return l != null && c.languages().contains(l.code());
+        }));
+        g.add(new CatalogFilters.Group<>(G_PRICE, c.price() != null, null,
+                r -> CatalogFilters.rowMatchesPrice(r, c.price())));
+        g.add(new CatalogFilters.Group<>(G_LEVEL, !c.levels().isEmpty(), null,
+                r -> CatalogFilters.rowMatchesLevels(r, c.levels())));
+        g.add(new CatalogFilters.Group<>(G_SESSION, !c.sessions().isEmpty(), null,
+                r -> r.sessionId() != null && c.sessions().contains(r.sessionId())));
+        g.add(new CatalogFilters.Group<>(G_TAG, !c.tags().isEmpty(), null,
+                r -> rowTagKeys(r).stream().anyMatch(c.tags()::contains)));
+        g.add(new CatalogFilters.Group<>(G_INSTRUCTOR, !c.instructors().isEmpty(), null, r -> {
+            String name = r.firstInstructorName();
+            return name != null && c.instructors().stream().anyMatch(i -> i.equalsIgnoreCase(name.trim()));
+        }));
+        g.add(new CatalogFilters.Group<>(G_PRICE_RANGE, c.priceMin() != null || c.priceMax() != null, null,
+                r -> CatalogFilters.rowInPriceRange(r, c.priceMin(), c.priceMax())));
+        for (Map.Entry<String, List<CatalogDiscovery.CustomOption>> e : c.custom().entrySet()) {
+            List<CatalogDiscovery.CustomOption> options = e.getValue();
+            g.add(new CatalogFilters.Group<>(G_CUSTOM + e.getKey(), true,
+                    card -> options.stream().anyMatch(o -> card.rows().stream()
+                            .anyMatch(r -> CatalogDiscovery.rowMatchesCustomOption(r, o))), null));
+        }
+        if (c.availability() != null) {
+            // What the card would say, over the versions every row group lets through.
+            List<CatalogFilters.Group<Card, CatalogRow>> rowGroups = List.copyOf(g);
+            g.add(new CatalogFilters.Group<>(G_AVAILABILITY, true, card -> {
+                List<CatalogRow> matching = CatalogFilters.rowsMatching(card, Card::rows, rowGroups);
+                if (matching.isEmpty()) return false;
+                PriceState state = displayedState(s.site(), card.primary(), matching, priceSort);
+                return c.availability().equals(CatalogPricing.availabilityOf(state));
+            }, null));
+        }
+        return g;
+    }
+
+    /** A version's tags as the tag filter matches them: lower-case course tags and its level key. */
+    static Set<String> rowTagKeys(CatalogRow r) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String t : CourseFormats.rowTags(r.tags(), null)) if (!LevelKeys.isLevelKey(t)) out.add(t);
+        String level = LevelKeys.levelKey(r.levelName());
+        if (level != null) out.add(level);
+        return out;
+    }
+
+    private static Double amountParam(String name, String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            double v = Double.parseDouble(raw.trim());
+            if (Double.isFinite(v) && v >= 0) return v;
+        } catch (NumberFormatException ignored) {
+            // falls through to the error
+        }
+        throw invalid(name + " must be a number of 0 or more.", name);
+    }
+
+    /**
+     * {@code custom=<groupId>:<optionId>,…} → selected options per authored group. An unknown
+     * group or option selects nothing (so that group matches no course), as an unknown stream does.
+     */
+    static Map<String, List<CatalogDiscovery.CustomOption>> customParam(SiteConfig site, String raw) {
+        Map<String, List<CatalogDiscovery.CustomOption>> out = new LinkedHashMap<>();
+        for (String token : list(raw)) {
+            int at = token.indexOf(':');
+            String group = at < 0 ? "" : token.substring(0, at).trim().toLowerCase(Locale.ROOT);
+            String option = at < 0 ? "" : token.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+            if (group.isEmpty() || option.isEmpty()) {
+                throw invalid("custom must be a comma list of <group id>:<option id>.", "custom");
+            }
+            List<CatalogDiscovery.CustomOption> selected = out.computeIfAbsent(group, k -> new ArrayList<>());
+            site.discovery().customFilters().stream().filter(f -> f.id().equals(group)).findFirst()
+                    .flatMap(f -> f.options().stream().filter(o -> o.id().equals(option)).findFirst())
+                    .ifPresent(o -> {
+                        if (!selected.contains(o)) selected.add(o);
+                    });
+        }
+        return out;
+    }
+
+    /** Comma list: trimmed, blanks dropped, duplicates (case-insensitive) dropped. */
+    static List<String> list(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String part : raw.split(",")) {
+            String v = part.trim();
+            if (!v.isEmpty() && seen.add(v.toLowerCase(Locale.ROOT))) out.add(v);
+        }
+        return out;
+    }
+
+    private static List<String> lowerList(String raw) {
+        return list(raw).stream().map(v -> v.toLowerCase(Locale.ROOT)).toList();
+    }
+
+    /** Plain-text descriptions, lower-case, per row object (rows live as long as their snapshot). */
+    private final Cache<CatalogRow, String> searchDescriptions = Caffeine.newBuilder().weakKeys()
+            .maximumSize(100_000).build();
+
+    /**
+     * Search: any version's title or description (plain text) — the site's {@code rowMatchesSearch}
+     * — or any version's instructor name, or a course tag. Level keys are internal and never match.
+     */
+    private boolean matchesText(Card card, String q) {
         for (CatalogRow r : card.rows()) {
             if (r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(q)) return true;
         }
-        for (String t : card.tagSet()) if (t.contains(q)) return true;
+        for (String t : card.tagSet()) if (!LevelKeys.isLevelKey(t) && t.contains(q)) return true;
+        for (CatalogRow r : card.rows()) {
+            for (CatalogRow.Person p : r.instructors()) {
+                if (p.name() != null && p.name().toLowerCase(Locale.ROOT).contains(q)) return true;
+            }
+            String d = searchDescriptions.get(r, row -> {
+                String text = CatalogHtml.plainText(row.descriptionHtml());
+                return text == null ? "" : text.toLowerCase(Locale.ROOT);
+            });
+            if (d.contains(q)) return true;
+        }
         return false;
     }
 
@@ -255,17 +657,250 @@ public class CatalogApiService {
         return out;
     }
 
+    // ── facets ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Live counts per filter option, each counted against every OTHER active filter
+     * ({@code countFacetOptions}; CourseCatalogComponent's facetCounts). Only options with a
+     * count above 0 are listed, except authored groups whose {@code showEmpty} is on.
+     */
+    private Map<String, Object> facets(CatalogSnapshot s, Criteria c, Extras extras, List<Card> all,
+                                       List<CatalogFilters.Group<Card, CatalogRow>> groups) {
+        SiteConfig site = s.site();
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        List<CatalogFilters.Option<Card, CatalogRow>> streamOptions = new ArrayList<>();
+        Map<String, String> streamLabels = new LinkedHashMap<>();
+        for (Stream st : s.streams()) {
+            streamOptions.add(new CatalogFilters.Option<>(st.slug(),
+                    card -> CatalogStreams.matchesAny(st.tags(), card.tagSet()), null));
+            streamLabels.put(st.slug(), CatalogStreams.placeLabel(st.title(), st.subtitle(), site.labelMode(), null));
+        }
+        out.put("streams", facetList("slug", streamLabels,
+                CatalogFilters.countOptions(all, Card::rows, groups, G_STREAM, streamOptions)));
+
+        List<Stream> scope = c.streams().isEmpty() ? s.streams() : c.streams();
+        List<CatalogFilters.Option<Card, CatalogRow>> categoryOptions = new ArrayList<>();
+        Map<String, String> categoryLabels = new LinkedHashMap<>();
+        Set<String> seenCategories = new HashSet<>();
+        for (Stream st : scope) {
+            for (Category cat : st.categories()) {
+                if (!seenCategories.add(cat.slug().toLowerCase(Locale.ROOT))) continue;
+                categoryOptions.add(new CatalogFilters.Option<>(cat.slug(),
+                        card -> CatalogStreams.matchesAny(cat.tags(), card.tagSet()), null));
+                categoryLabels.put(cat.slug(), CatalogStreams.placeLabel(cat.title(), cat.subtitle(), site.labelMode(), null));
+            }
+        }
+        out.put("categories", facetList("slug", categoryLabels,
+                CatalogFilters.countOptions(all, Card::rows, groups, G_CATEGORY, categoryOptions)));
+
+        List<CatalogFilters.Option<Card, CatalogRow>> formatOptions = new ArrayList<>();
+        Map<String, String> formatLabels = new LinkedHashMap<>();
+        if (site.formats() != null) {
+            for (CourseFormats.Format f : site.formats().list()) {
+                formatOptions.add(new CatalogFilters.Option<>(f.key(), card -> card.formatKeys().contains(f.key()), null));
+                formatLabels.put(f.key(), f.label());
+            }
+        }
+        out.put("formats", facetList("key", formatLabels,
+                CatalogFilters.countOptions(all, Card::rows, groups, G_FORMAT, formatOptions)));
+
+        List<CatalogFilters.Option<Card, CatalogRow>> languageOptions = new ArrayList<>();
+        Map<String, String> languageLabels = new LinkedHashMap<>();
+        if (site.courseLanguagesOn()) {
+            Set<String> present = new HashSet<>();
+            for (CatalogRow r : s.rows()) {
+                Language l = languageOf(s, r);
+                if (l != null) present.add(l.code());
+            }
+            for (Language l : site.languages()) {
+                if (!present.contains(l.code())) continue;
+                languageOptions.add(new CatalogFilters.Option<>(l.code(), null, r -> {
+                    Language rl = languageOf(s, r);
+                    return rl != null && rl.code().equals(l.code());
+                }));
+                languageLabels.put(l.code(), languageLabel(l));
+            }
+        }
+        out.put("languages", facetList("code", languageLabels,
+                CatalogFilters.countOptions(all, Card::rows, groups, G_LANGUAGE, languageOptions)));
+
+        // Levels: real level names (no placeholder; with grouping, no level that is only a language).
+        Map<String, String> levelLabels = new LinkedHashMap<>();
+        Set<String> seenLevels = new HashSet<>();
+        for (CatalogRow r : s.rows()) {
+            String name = r.levelName() == null ? null : r.levelName().trim();
+            if (CatalogFilters.isSentinel(name)) continue;
+            if (site.grouping() && CatalogFilters.isPureLanguageLevel(name, site.languages())) continue;
+            if (seenLevels.add(name.toLowerCase(Locale.ROOT))) levelLabels.put(name, name);
+        }
+        List<String> levelKeys = new ArrayList<>(levelLabels.keySet());
+        levelKeys.sort(authoredOrder(site.discovery().levelOrder()));
+        Map<String, String> sortedLevels = new LinkedHashMap<>();
+        for (String k : levelKeys) sortedLevels.put(k, levelLabels.get(k));
+        out.put("levels", facetList("key", sortedLevels, CatalogFilters.countOptions(all, Card::rows, groups, G_LEVEL,
+                levelKeys.stream().map(l -> new CatalogFilters.Option<Card, CatalogRow>(l, null,
+                        r -> CatalogFilters.rowMatchesLevels(r, List.of(l)))).toList())));
+
+        Map<String, String> sessionLabels = new LinkedHashMap<>();
+        for (CatalogRow r : s.rows()) {
+            if (r.sessionId() == null || sessionLabels.containsKey(r.sessionId())) continue;
+            String name = r.sessionName() != null ? r.sessionName() : r.sessionId();
+            if (!CatalogFilters.isSentinel(name)) sessionLabels.put(r.sessionId(), name.trim());
+        }
+        List<String> sessionIds = new ArrayList<>(sessionLabels.keySet());
+        sessionIds.sort((a, b) -> naturalCompare(sessionLabels.get(a), sessionLabels.get(b)));
+        Map<String, String> sortedSessions = new LinkedHashMap<>();
+        for (String id : sessionIds) sortedSessions.put(id, sessionLabels.get(id));
+        out.put("sessions", facetList("id", sortedSessions, CatalogFilters.countOptions(all, Card::rows, groups,
+                G_SESSION, sessionIds.stream().map(id -> new CatalogFilters.Option<Card, CatalogRow>(id, null,
+                        r -> id.equals(r.sessionId()))).toList())));
+
+        Map<String, String> instructorLabels = new LinkedHashMap<>();
+        Set<String> seenInstructors = new HashSet<>();
+        for (CatalogRow r : s.rows()) {
+            String name = r.firstInstructorName();
+            if (name != null && !name.isBlank() && seenInstructors.add(name.trim().toLowerCase(Locale.ROOT))) {
+                instructorLabels.put(name.trim(), name.trim());
+            }
+        }
+        out.put("instructors", facetList("key", instructorLabels, CatalogFilters.countOptions(all, Card::rows, groups,
+                G_INSTRUCTOR, instructorLabels.keySet().stream().map(n -> new CatalogFilters.Option<Card, CatalogRow>(n,
+                        null, r -> r.firstInstructorName() != null
+                        && r.firstInstructorName().trim().equalsIgnoreCase(n))).toList())));
+
+        Map<String, String> tagLabels = new LinkedHashMap<>();
+        for (CatalogRow r : s.rows()) {
+            if (r.tags() == null) continue;
+            for (String t : r.tags().split(",")) {
+                String v = t.trim();
+                String key = v.toLowerCase(Locale.ROOT);
+                if (!v.isEmpty() && !LevelKeys.isLevelKey(key)) tagLabels.putIfAbsent(key, v);
+            }
+        }
+        List<String> tagKeys = new ArrayList<>(tagLabels.keySet());
+        if (!site.discovery().tagOrder().isEmpty()) tagKeys.sort(authoredOrder(site.discovery().tagOrder()));
+        Map<String, String> sortedTags = new LinkedHashMap<>();
+        for (String k : tagKeys) sortedTags.put(k, tagLabels.get(k));
+        out.put("tags", facetList("key", sortedTags, CatalogFilters.countOptions(all, Card::rows, groups, G_TAG,
+                tagKeys.stream().map(t -> new CatalogFilters.Option<Card, CatalogRow>(t, null,
+                        r -> rowTagKeys(r).contains(t))).toList())));
+
+        Map<String, String> badgeLabels = new LinkedHashMap<>();
+        for (String b : badgeOrder(site)) badgeLabels.put(b, BADGE_LABELS.get(b));
+        out.put("badges", facetList("key", badgeLabels, CatalogFilters.countOptions(all, Card::rows, groups, G_BADGE,
+                badgeLabels.keySet().stream().map(b -> new CatalogFilters.Option<Card, CatalogRow>(b,
+                        card -> extras.badges().getOrDefault(card.group().courseId(), List.of()).contains(b),
+                        null)).toList())));
+
+        Map<String, Integer> priceCounts = CatalogFilters.countOptions(all, Card::rows, groups, G_PRICE, List.of(
+                new CatalogFilters.Option<>("free", null, r -> CatalogFilters.rowMatchesPrice(r, CatalogFilters.PriceChoice.FREE)),
+                new CatalogFilters.Option<>("paid", null, r -> CatalogFilters.rowMatchesPrice(r, CatalogFilters.PriceChoice.PAID))));
+        Map<String, Object> priceFacet = new LinkedHashMap<>();
+        priceFacet.put("free", priceCounts.get("free"));
+        priceFacet.put("paid", priceCounts.get("paid"));
+        List<Double> maxOptions = site.discovery().priceFilter().maxOptions();
+        Map<String, Integer> under = CatalogFilters.countOptions(all, Card::rows, groups, G_PRICE_RANGE,
+                maxOptions.stream().map(max -> new CatalogFilters.Option<Card, CatalogRow>(String.valueOf(max), null,
+                        r -> CatalogFilters.rowInPriceRange(r, null, max))).toList());
+        priceFacet.put("under", maxOptions.stream().map(max -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("max", max);
+            m.put("count", under.get(String.valueOf(max)));
+            return m;
+        }).toList());
+        out.put("price", priceFacet);
+
+        Map<String, Object> custom = new LinkedHashMap<>();
+        for (CatalogDiscovery.CustomFilter f : site.discovery().customFilters()) {
+            Map<String, Integer> counts = CatalogFilters.countOptions(all, Card::rows, groups, G_CUSTOM + f.id(),
+                    f.options().stream().map(o -> new CatalogFilters.Option<Card, CatalogRow>(o.id(),
+                            card -> card.rows().stream().anyMatch(r -> CatalogDiscovery.rowMatchesCustomOption(r, o)),
+                            null)).toList());
+            Map<String, Integer> shown = new LinkedHashMap<>();
+            counts.forEach((k, v) -> {
+                if (v > 0 || f.showEmpty()) shown.put(k, v);
+            });
+            custom.put(f.id(), shown);
+        }
+        out.put("custom", custom);
+        return out;
+    }
+
+    static final Map<String, String> BADGE_LABELS = Map.of("bestseller", "Bestseller", "popular", "Popular",
+            "new", "New", "free", "Free");
+
+    private static List<Map<String, Object>> facetList(String keyName, Map<String, String> labels,
+                                                       Map<String, Integer> counts) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : labels.entrySet()) {
+            int n = counts.getOrDefault(e.getKey(), 0);
+            if (n <= 0) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(keyName, e.getKey());
+            m.put("label", e.getValue());
+            m.put("count", n);
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Names listed in {@code order} (case-insensitive) first, in that order; the rest in natural order ({@code byAuthoredOrder}). */
+    static Comparator<String> authoredOrder(List<String> order) {
+        Map<String, Integer> rank = new HashMap<>();
+        for (int i = 0; i < order.size(); i++) rank.putIfAbsent(order.get(i).trim().toLowerCase(Locale.ROOT), i);
+        return (a, b) -> {
+            int ra = rank.getOrDefault(a.trim().toLowerCase(Locale.ROOT), Integer.MAX_VALUE);
+            int rb = rank.getOrDefault(b.trim().toLowerCase(Locale.ROOT), Integer.MAX_VALUE);
+            return ra == rb ? naturalCompare(a, b) : Integer.compare(ra, rb);
+        };
+    }
+
+    /** "Class 2" before "Class 10": digit runs compare as numbers, the rest case-insensitively. */
+    static int naturalCompare(String a, String b) {
+        int i = 0, j = 0;
+        while (i < a.length() && j < b.length()) {
+            char ca = a.charAt(i), cb = b.charAt(j);
+            if (Character.isDigit(ca) && Character.isDigit(cb)) {
+                int si = i, sj = j;
+                while (i < a.length() && Character.isDigit(a.charAt(i))) i++;
+                while (j < b.length() && Character.isDigit(b.charAt(j))) j++;
+                String na = a.substring(si, i).replaceFirst("^0+(?=.)", "");
+                String nb = b.substring(sj, j).replaceFirst("^0+(?=.)", "");
+                int cmp = na.length() != nb.length() ? Integer.compare(na.length(), nb.length()) : na.compareTo(nb);
+                if (cmp != 0) return cmp;
+            } else {
+                int cmp = Character.compare(Character.toLowerCase(ca), Character.toLowerCase(cb));
+                if (cmp != 0) return cmp;
+                i++;
+                j++;
+            }
+        }
+        return Integer.compare(a.length() - i, b.length() - j);
+    }
+
     // ── CourseSummary ───────────────────────────────────────────────────────────
 
+    /** The price state a card shows for {@code primary} over {@code matching} (summary's price area). */
+    static PriceState displayedState(SiteConfig site, CatalogRow primary, List<CatalogRow> matching, boolean priceSort) {
+        CardPriceView view = CatalogPricing.cardPriceView(primary, matching);
+        CatalogRow priceRow = CatalogPricing.editorialPriceRow(primary, view, matching, priceSort);
+        return primary.comingSoon() != null || priceRow == null
+                ? CatalogPricing.priceStateOf(primary, site.paymentEnabled())
+                : CatalogPricing.priceStateOf(priceRow, site.paymentEnabled());
+    }
+
     /** The CourseSummary view of a card displayed as {@code primary}, priced over {@code matching}. */
-    Map<String, Object> summary(CatalogSnapshot s, Card card, CatalogRow primary, List<CatalogRow> matching,
-                                boolean priceSort) {
+    Map<String, Object> summary(CatalogSnapshot s, Extras extras, Card card, CatalogRow primary,
+                                List<CatalogRow> matching, boolean priceSort) {
         SiteConfig site = s.site();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", card.group().courseId());
         out.put("title", primary.title());
         out.put("subtitle", subtitleOf(site, card.rows(), primary));
         out.put("image_url", s.mediaUrl(primary.imageMediaId()));
+        out.put("images", imagesView(s.mediaUrl(primary.previewImageId()), s.mediaUrl(primary.bannerImageId()),
+                s.mediaUrl(primary.thumbnailId())));
         out.put("url", hostedUrl(s, primary.packageId(), primary.packageSessionId(), primary.enrollInviteId(),
                 primary.levelName()));
         out.put("formats", formatViews(s, card.formatKeys()));
@@ -281,14 +916,24 @@ public class CatalogApiService {
 
         CardPriceView view = CatalogPricing.cardPriceView(primary, matching);
         CatalogRow priceRow = CatalogPricing.editorialPriceRow(primary, view, matching, priceSort);
-        PriceState state = primary.comingSoon() != null || priceRow == null
-                ? CatalogPricing.priceStateOf(primary, site.paymentEnabled())
-                : CatalogPricing.priceStateOf(priceRow, site.paymentEnabled());
+        PriceState state = displayedState(site, primary, matching, priceSort);
         CatalogRow pricedBy = priceRow == null || primary.comingSoon() != null ? primary : priceRow;
         out.put("availability", CatalogPricing.availabilityOf(state));
         out.put("price_visible", priceVisible(state, site.paymentEnabled()));
         Map<String, Object> price = priceView(state, pricedBy);
-        if (price != null) price.put("varies", view != null && view.from());
+        if (price != null) {
+            price.put("varies", view != null && view.from());
+            // The "from ₹X" range over the versions on sale now (catalog-cards.ts cardPriceView);
+            // with prices hidden it never reveals a paid amount.
+            double amount = (double) price.get("amount");
+            double min = amount, max = amount;
+            if (view != null && site.paymentEnabled()) {
+                min = view.minPrice();
+                for (CatalogRow r : matching) if (CatalogPricing.isBuyableNow(r)) max = Math.max(max, r.price());
+            }
+            price.put("min_amount", min);
+            price.put("max_amount", max);
+        }
         out.put("price", price);
         out.put("instructors", primary.instructors().stream().filter(p -> p.name() != null).map(p -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -296,8 +941,16 @@ public class CatalogApiService {
             m.put("image_url", s.mediaUrl(p.imageFileId()));
             return m;
         }).toList());
-        out.put("rating", primary.rating() != null && primary.rating() > 0 ? primary.rating() : null);
+        out.put("rating", ratingOf(primary));
         out.put("created_at", card.createdAt() == null ? null : card.createdAt().toString());
+        out.put("badges", extras.badges().getOrDefault(card.group().courseId(), List.of()));
+        out.put("popularity_rank", card.rank(extras.ranks()));
+        out.put("duration_minutes", primary.readTimeMinutes() != null && primary.readTimeMinutes() > 0
+                ? primary.readTimeMinutes() : null);
+        out.put("available_slots", primary.availableSlots());
+        out.put("max_seats", primary.maxSeats());
+        out.put("package_type", primary.packageType());
+        out.put("coming_soon", comingSoonView(primary.comingSoon()));
 
         List<Map<String, Object>> variants = new ArrayList<>();
         for (CatalogRow r : card.rows()) {
@@ -306,7 +959,10 @@ public class CatalogApiService {
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("package_session_id", r.packageSessionId());
             v.put("enroll_invite_id", r.enrollInviteId());
+            v.put("title", r.title());
             v.put("level", levelLabel(r.levelName()));
+            v.put("session_id", r.sessionId());
+            v.put("session_name", CatalogFilters.isSentinel(r.sessionName()) ? null : r.sessionName());
             v.put("language", lang == null ? null : languageView(lang));
             v.put("url", hostedUrl(s, r.packageId(), r.packageSessionId(), r.enrollInviteId(), r.levelName()));
             v.put("availability", CatalogPricing.availabilityOf(vs));
@@ -315,6 +971,25 @@ public class CatalogApiService {
         }
         out.put("variants", variants);
         return out;
+    }
+
+    private static Map<String, Object> imagesView(String preview, String banner, String thumbnail) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("preview_url", preview);
+        m.put("banner_url", banner);
+        m.put("thumbnail_url", thumbnail);
+        return m;
+    }
+
+    /** {launch_date, button_text, ribbon_text, notify_campaign_id} of a Coming Soon course; null otherwise. */
+    static Map<String, Object> comingSoonView(CatalogRow.ComingSoon cs) {
+        if (cs == null) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("launch_date", cs.launchDate());
+        m.put("button_text", cs.buttonText());
+        m.put("ribbon_text", cs.ribbonText());
+        m.put("notify_campaign_id", cs.audienceId());
+        return m;
     }
 
     /**
@@ -394,10 +1069,16 @@ public class CatalogApiService {
         return out;
     }
 
+    private static String languageLabel(Language l) {
+        return l.label() == null || l.label().isBlank() ? l.code().toUpperCase(Locale.ROOT) : l.label();
+    }
+
+    /** {code, label, chip}; chip is the card chip text ({@code l.chip || l.label || CODE}, CardDiscoveryMeta). */
     private static Map<String, Object> languageView(Language l) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("code", l.code());
-        m.put("label", l.label() == null || l.label().isBlank() ? l.code().toUpperCase(Locale.ROOT) : l.label());
+        m.put("label", languageLabel(l));
+        m.put("chip", l.chip() != null && !l.chip().isBlank() ? l.chip() : languageLabel(l));
         return m;
     }
 
@@ -473,7 +1154,7 @@ public class CatalogApiService {
         Found found = find(s, id, language);
         Card card = found.card();
         CatalogRow primary = found.primary();
-        Map<String, Object> out = summary(s, card, primary, card.rows(), false);
+        Map<String, Object> out = summary(s, extras(s, cards(s, null)), card, primary, card.rows(), false);
 
         out.put("description_html", CatalogHtml.sanitize(primary.descriptionHtml()));
         out.put("description_text", CatalogHtml.plainText(primary.descriptionHtml()));
@@ -790,6 +1471,8 @@ public class CatalogApiService {
             v.put("accent_color", st.accentColor());
             v.put("coming_soon", st.comingSoon());
             v.put("course_count", count(st.tags(), tagSets));
+            v.put("tag", blankToNull(st.tag()));
+            v.put("notify_campaign_id", st.audienceId());
             List<Map<String, Object>> categories = new ArrayList<>();
             for (Category c : st.categories()) {
                 Map<String, Object> cv = new LinkedHashMap<>();
@@ -799,6 +1482,8 @@ public class CatalogApiService {
                 cv.put("image_url", absolute(s, c.imageUrl()));
                 cv.put("coming_soon", c.comingSoon());
                 cv.put("course_count", count(c.tags(), tagSets));
+                cv.put("accent_color", c.accentColor());
+                cv.put("notify_campaign_id", c.audienceId());
                 categories.add(cv);
             }
             v.put("categories", categories);
@@ -858,6 +1543,7 @@ public class CatalogApiService {
                 s.site().languages(), null);
 
         List<Card> cards = cards(s, null);
+        Extras extras = extras(s, cards);
         Set<String> missingImages = new LinkedHashSet<>();
         for (Step step : steps) {
             if (cardOf(cards, step.primary().packageId()) == null && step.primary().imageMediaId() != null) {
@@ -875,9 +1561,9 @@ public class CatalogApiService {
                 CatalogRow primary = card.rows().stream()
                         .filter(r -> Objects.equals(r.packageSessionId(), step.primary().packageSessionId()))
                         .findFirst().orElse(card.primary());
-                course = summary(s, card, primary, card.rows(), false);
+                course = summary(s, extras, card, primary, card.rows(), false);
             } else {
-                course = mappingSummary(s, step, images);
+                course = mappingSummary(s, step, images, extras);
             }
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("position", position++);
@@ -903,7 +1589,7 @@ public class CatalogApiService {
      * A path step whose course is not in the catalogue (not published to it): the summary the
      * path's own product-page mapping can give — its price is the mapping's payment plan.
      */
-    private Map<String, Object> mappingSummary(CatalogSnapshot s, Step step, Map<String, String> images) {
+    private Map<String, Object> mappingSummary(CatalogSnapshot s, Step step, Map<String, String> images, Extras extras) {
         SiteConfig site = s.site();
         PathMapping primary = step.primary();
         Set<String> tagSet = new LinkedHashSet<>();
@@ -920,7 +1606,9 @@ public class CatalogApiService {
         out.put("id", step.courseId());
         out.put("title", primary.packageName());
         out.put("subtitle", null);
-        out.put("image_url", primary.imageMediaId() == null ? null : images.get(primary.imageMediaId()));
+        String imageUrl = primary.imageMediaId() == null ? null : images.get(primary.imageMediaId());
+        out.put("image_url", imageUrl);
+        out.put("images", imagesView(imageUrl, null, null));
         out.put("url", hostedUrl(s, primary.packageId(), primary.packageSessionId(), primary.enrollInviteId(),
                 primary.levelName()));
         out.put("formats", formatViews(s, formatKeys));
@@ -943,11 +1631,29 @@ public class CatalogApiService {
             Set<Double> prices = step.variants().stream().map(PathMapping::price).filter(Objects::nonNull)
                     .collect(Collectors.toSet());
             price.put("varies", prices.size() > 1);
+            double amount = (double) price.get("amount");
+            double min = amount, max = amount;
+            if (site.paymentEnabled()) {
+                for (Double p : prices) {
+                    min = Math.min(min, Math.max(0, p));
+                    max = Math.max(max, Math.max(0, p));
+                }
+            }
+            price.put("min_amount", min);
+            price.put("max_amount", max);
         }
         out.put("price", price);
         out.put("instructors", List.of());
         out.put("rating", null);
         out.put("created_at", null);
+        out.put("badges", List.of());
+        out.put("popularity_rank", CourseBadges.bestRank(step.variants().stream().map(PathMapping::packageId)
+                .filter(Objects::nonNull).distinct().toList(), extras.ranks()));
+        out.put("duration_minutes", null);
+        out.put("available_slots", null);
+        out.put("max_seats", null);
+        out.put("package_type", null);
+        out.put("coming_soon", null);
         List<Map<String, Object>> variants = new ArrayList<>();
         for (PathMapping m : step.variants()) {
             Language lang = site.courseLanguagesOn()
@@ -955,7 +1661,10 @@ public class CatalogApiService {
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("package_session_id", m.packageSessionId());
             v.put("enroll_invite_id", m.enrollInviteId());
+            v.put("title", m.packageName() == null ? null : m.packageName().trim());
             v.put("level", levelLabel(m.levelName()));
+            v.put("session_id", null);
+            v.put("session_name", null);
             v.put("language", lang == null ? null : languageView(lang));
             v.put("url", hostedUrl(s, m.packageId(), m.packageSessionId(), m.enrollInviteId(), m.levelName()));
             v.put("availability", "available");

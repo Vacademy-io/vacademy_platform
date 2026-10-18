@@ -20,7 +20,9 @@ import vacademy.io.admin_core_service.features.course_catalogue.dtos.CourseCatal
 import vacademy.io.admin_core_service.features.course_catalogue.service.CourseCatalogueService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
+import vacademy.io.admin_core_service.features.packages.dto.CatalogPopularityDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailV2DTO;
+import vacademy.io.admin_core_service.features.packages.service.CatalogPopularityService;
 import vacademy.io.admin_core_service.features.packages.service.OpenPackageService;
 import vacademy.io.admin_core_service.features.product_page.dto.ProductPageResponse;
 import vacademy.io.admin_core_service.features.product_page.service.ProductPageService;
@@ -40,7 +42,10 @@ import java.util.*;
  *       by-tag endpoint);</li>
  *   <li>stream library / learning-path library: {@link CatalogueFolderService#publicTree};</li>
  *   <li>learning paths: {@link ProductPageService#getProductPageByCode}; course details:
- *       {@link StudyLibraryService#getCourseInitDetails} (course-init).</li>
+ *       {@link StudyLibraryService#getCourseInitDetails} (course-init);</li>
+ *   <li>enrolment ranks (Popular sort, badges): {@link CatalogPopularityService#getPopularity}, the
+ *       source of the site's {@code /open/packages/v1/popularity}, itself cached 10 min per
+ *       institute (60 s after a failed load).</li>
  * </ul>
  * Everything is cached in memory for 60 s per institute; media URLs for 24 h.
  */
@@ -61,6 +66,7 @@ public class CatalogDataLoader {
     private final InstituteRepository instituteRepository;
     private final CatalogMediaResolver mediaResolver;
     private final ObjectMapper objectMapper;
+    private final CatalogPopularityService popularityService;
 
     /**
      * Refreshed in the background once older than {@link #TTL}: callers keep getting the previous
@@ -80,7 +86,7 @@ public class CatalogDataLoader {
                              CourseCatalogueService courseCatalogueService, CatalogueFolderService folderService,
                              ProductPageService productPageService, StudyLibraryService studyLibraryService,
                              InstituteRepository instituteRepository, CatalogMediaResolver mediaResolver,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper, CatalogPopularityService popularityService) {
         this.openPackageService = openPackageService;
         this.siteResolver = siteResolver;
         this.courseCatalogueService = courseCatalogueService;
@@ -90,6 +96,7 @@ public class CatalogDataLoader {
         this.instituteRepository = instituteRepository;
         this.mediaResolver = mediaResolver;
         this.objectMapper = objectMapper;
+        this.popularityService = popularityService;
     }
 
     /** The institute's catalogue, loaded at most once a minute (concurrent callers share one load). */
@@ -126,7 +133,9 @@ public class CatalogDataLoader {
 
         Set<String> mediaIds = new LinkedHashSet<>();
         for (CatalogRow r : rows) {
-            if (r.imageMediaId() != null) mediaIds.add(r.imageMediaId());
+            for (String id : new String[]{r.imageMediaId(), r.previewImageId(), r.bannerImageId(), r.thumbnailId()}) {
+                if (id != null) mediaIds.add(id);
+            }
             for (CatalogRow.Person p : r.instructors()) if (p.imageFileId() != null) mediaIds.add(p.imageFileId());
         }
         if (logoId != null && !logoId.isBlank()) mediaIds.add(logoId);
@@ -218,6 +227,26 @@ public class CatalogDataLoader {
                 return Optional.empty();
             }
         });
+    }
+
+    /**
+     * Package id → enrolment rank (1 = most enrolled) for the institute; empty — never an error —
+     * when the ranks cannot be read, so the courses still list (unranked).
+     */
+    public Map<String, Integer> ranks(String instituteId) {
+        try {
+            CatalogPopularityDTO popularity = popularityService.getPopularity(instituteId);
+            if (popularity == null || popularity.getRanks() == null) return Map.of();
+            Map<String, Integer> out = new HashMap<>();
+            for (CatalogPopularityDTO.PackageRank r : popularity.getRanks()) {
+                if (r == null || r.getPackageId() == null || r.getPackageId().isBlank() || r.getRank() < 1) continue;
+                out.merge(r.getPackageId().trim(), r.getRank(), Math::min);
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("catalog-api: popularity ranks unreadable for {}: {}", instituteId, e.getMessage());
+            return Map.of();
+        }
     }
 
     public Map<String, String> resolveMedia(Collection<String> ids) {

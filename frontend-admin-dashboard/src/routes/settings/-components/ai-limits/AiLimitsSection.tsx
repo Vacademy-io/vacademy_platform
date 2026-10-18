@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePlatformBrand } from '@/lib/platform-brand';
 import { toast } from 'sonner';
 import {
     Gauge,
@@ -76,6 +77,7 @@ function PolicyCard({
     onSaved: () => void;
 }) {
     const { t } = useTranslation('settingsAiLimits');
+    const brand = usePlatformBrand();
     const [mode, setMode] = useState<LimitsMode>(policy.mode);
     const [notify, setNotify] = useState(policy.notify_admins_on_soft);
     const [showNumbers, setShowNumbers] = useState(policy.show_numbers_to_learners);
@@ -169,7 +171,9 @@ function PolicyCard({
                                 <TooltipTrigger asChild>
                                     <span className="block">{option}</span>
                                 </TooltipTrigger>
-                                <TooltipContent>{t('mode.enforceLocked')}</TooltipContent>
+                                <TooltipContent>
+                                    {t('mode.enforceLocked', brand.vars)}
+                                </TooltipContent>
                             </Tooltip>
                         ) : (
                             option
@@ -178,7 +182,9 @@ function PolicyCard({
                 </div>
 
                 {!policy.tenant_may_enforce && (
-                    <p className="text-caption text-neutral-500">{t('mode.enforceLockedNote')}</p>
+                    <p className="text-caption text-neutral-500">
+                        {t('mode.enforceLockedNote', brand.vars)}
+                    </p>
                 )}
                 {!enforceGloballyEnabled && mode === 'ENFORCE' && (
                     <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
@@ -365,6 +371,7 @@ function RowsTable({
     onDelete?: (row: LimitRow) => void;
 }) {
     const { t } = useTranslation('settingsAiLimits');
+    const brand = usePlatformBrand();
     return (
         <div className="overflow-x-auto rounded-lg border border-neutral-200">
             <Table>
@@ -391,11 +398,14 @@ function RowsTable({
                                             <TooltipTrigger asChild>
                                                 <Lock
                                                     className="size-3.5 shrink-0 text-neutral-500"
-                                                    aria-label={t('platform.lockedTooltip')}
+                                                    aria-label={t(
+                                                        'platform.lockedTooltip',
+                                                        brand.vars
+                                                    )}
                                                 />
                                             </TooltipTrigger>
                                             <TooltipContent>
-                                                {t('platform.lockedTooltip')}
+                                                {t('platform.lockedTooltip', brand.vars)}
                                             </TooltipContent>
                                         </Tooltip>
                                     )}
@@ -548,6 +558,7 @@ function DeleteRowDialog({
 
 export function AiLimitsSection() {
     const { t } = useTranslation('settingsAiLimits');
+    const brand = usePlatformBrand();
     const instituteId = getInstituteId() ?? '';
     const limitsQ = useLimitsQuery(instituteId);
     const invalidate = useInvalidateLimits(instituteId);
@@ -626,7 +637,7 @@ export function AiLimitsSection() {
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
                                         <Lock className="size-4 text-neutral-500" />
-                                        {t('platform.title')}
+                                        {t('platform.title', brand.vars)}
                                     </div>
                                     <p className="text-caption text-neutral-500">
                                         {t('platform.description')}

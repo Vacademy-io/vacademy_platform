@@ -416,6 +416,10 @@ export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/fil
 export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
 
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+// Different phones and real emails the person behind a lead enquired with ("Other contact
+// details" on the lead Overview), e.g. a repeat that came in with a new phone or email.
+export const GET_LEAD_ENQUIRY_CONTACTS = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/enquiry-contacts`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
 export const SET_MANUAL_LEAD_SCORE = (responseId: string) =>
@@ -926,6 +930,7 @@ export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operati
 // bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
 export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
 export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
+export const RESULT_NOTIFICATION_TEMPLATE = `${BASE_URL}/admin-core-service/assessment-result-notification/v1/template`;
 // Password reset: mails the learner a link to CHOOSE a new password rather than
 // mailing the one they already have. `/link` returns that link both filled in for
 // one learner and with a {username} placeholder for third-party integrators.

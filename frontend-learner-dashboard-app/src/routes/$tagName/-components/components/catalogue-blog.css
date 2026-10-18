@@ -77,6 +77,41 @@
     background: hsl(var(--catalogue-bg-muted, 210 40% 96%));
     font-weight: 600;
 }
+
+/* Imported posts (WordPress/Elementor) arrive with their desktop CSS inlined
+   and their media queries lost: fixed multi-column grids, image-beside-text
+   flex cards and wide tables then push the page sideways on a phone or clip
+   the text. Inline styles only lose to !important, so these phone rules use it,
+   scoped to the article body. */
+@media (max-width: 640px) {
+    .catalogue-blog-article {
+        overflow-wrap: anywhere;
+    }
+    .catalogue-blog-article table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .catalogue-blog-article [style*="grid-template-columns"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+    .catalogue-blog-article [style*="display:flex"]:not([style*="flex-direction:column"]),
+    .catalogue-blog-article [style*="display: flex"]:not([style*="flex-direction: column"]) {
+        flex-wrap: wrap !important;
+    }
+    .catalogue-blog-article [style*="flex-shrink:0"][style*="width:"],
+    .catalogue-blog-article [style*="flex-shrink: 0"][style*="width:"] {
+        width: 100% !important;
+        border-right: 0 !important;
+    }
+    .catalogue-blog-article [style*="display:flex"] > *,
+    .catalogue-blog-article [style*="display: flex"] > *,
+    .catalogue-blog-article [style*="display:grid"] > *,
+    .catalogue-blog-article [style*="display: grid"] > * {
+        min-width: 0;
+    }
+}
 .catalogue-blog-article hr {
     margin: 2rem 0;
     border: 0;

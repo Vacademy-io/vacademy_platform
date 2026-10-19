@@ -64,6 +64,20 @@ public class AiCallingApiAuth {
         return p;
     }
 
+    /**
+     * As {@link #authenticate}, for routes several scopes may reach (e.g. reading a counsellor:
+     * human_calls:read or counsellors:manage). Passes when the key holds any of them.
+     */
+    public Principal authenticateAny(HttpServletRequest request, String... anyOf) {
+        Principal p = authenticate(request, null);
+        for (String s : anyOf) {
+            if (p.has(s)) return p;
+        }
+        throw new AiCallingApiException(HttpStatus.FORBIDDEN, "insufficient_scope",
+                "This API key needs one of these scopes: " + String.join(", ", anyOf) + ".",
+                Map.of("required_scope", anyOf[0], "accepted_scopes", List.of(anyOf)));
+    }
+
     private Principal current(String key, String ip) {
         if (!key.startsWith(ApiKeySecrets.AI_CALLING_KEY_PREFIX)) {
             throw new AiCallingApiException(HttpStatus.UNAUTHORIZED, "invalid_api_key",

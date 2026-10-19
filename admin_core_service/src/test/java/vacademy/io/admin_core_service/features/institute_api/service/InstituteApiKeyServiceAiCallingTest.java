@@ -81,6 +81,14 @@ class InstituteApiKeyServiceAiCallingTest {
     }
 
     @Test
+    void managementScopesAreOptInAndAccepted() {
+        InstituteApiKey row = issue(List.of("calls:read", "counsellors:manage", "agents:manage"));
+        assertArrayEquals(new String[]{"calls:read", "counsellors:manage", "agents:manage"}, row.getScopes());
+        assertFalse(InstituteApiKeyService.AI_CALLING_SCOPES.contains("counsellors:manage"));
+        assertFalse(InstituteApiKeyService.AI_CALLING_SCOPES.contains("agents:manage"));
+    }
+
+    @Test
     void scopesCanBeNarrowed() {
         InstituteApiKey row = issue(List.of("calls:read"));
         assertArrayEquals(new String[]{"calls:read"}, row.getScopes());

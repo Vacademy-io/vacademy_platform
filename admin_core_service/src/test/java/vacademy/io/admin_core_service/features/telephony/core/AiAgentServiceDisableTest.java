@@ -2,8 +2,6 @@ package vacademy.io.admin_core_service.features.telephony.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiAgentDTO;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository;
@@ -21,6 +19,7 @@ class AiAgentServiceDisableTest {
     private AiAgentRepository repo;
     private AiCallQueueItemRepository queue;
     private AiAgentSpeechWarmer warmer;
+    private AiCallingSettingsMutator mutator;
     private AiAgentService service;
     private AiAgent stored;
 
@@ -29,9 +28,8 @@ class AiAgentServiceDisableTest {
         repo = mock(AiAgentRepository.class);
         queue = mock(AiCallQueueItemRepository.class);
         warmer = mock(AiAgentSpeechWarmer.class);
-        InstituteRepository institutes = mock(InstituteRepository.class);
-        when(institutes.findById(anyString())).thenReturn(Optional.empty()); // bridge is best-effort
-        service = new AiAgentService(repo, institutes, mock(InstituteSettingService.class), warmer, queue);
+        mutator = mock(AiCallingSettingsMutator.class);
+        service = new AiAgentService(repo, warmer, queue, mutator);
         stored = AiAgent.builder().id("a-1").instituteId("inst-1").name("Riya").enabled(true)
                 .direction("OUTBOUND").ttsModel("google").voice("hi-IN-Chirp3-HD-Achird").build();
         when(repo.findByIdAndInstituteId("a-1", "inst-1")).thenReturn(Optional.of(stored));
@@ -80,5 +78,40 @@ class AiAgentServiceDisableTest {
         when(queue.cancelQueuedForAgent(anyString(), anyString(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("db"));
         assertEquals(0, service.saveWithResult(dto(false)).cancelledCalls());
+    }
+
+    @Test
+    void theRegistryBridgeRecordsTheApiActorAndDropsADisabledAgent() {
+        service.saveWithResult(dto(false), "api:key1");
+        verify(mutator).update(eq("inst-1"), any(), argThat(a -> "api:key1".equals(a.userId())));
+        com.fasterxml.jackson.databind.node.ObjectNode data = new com.fasterxml.jackson.databind.ObjectMapper()
+                .createObjectNode();
+        data.putArray("campaigns").addObject().put("campaignId", "a-1").put("name", "Riya");
+        data.withArray("campaigns").addObject().put("campaignId", "other").put("name", "Other");
+        data.put("defaultCampaignId", "x");
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.function.Consumer<com.fasterxml.jackson.databind.node.ObjectNode>> change =
+                org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
+        verify(mutator).update(eq("inst-1"), change.capture(), any());
+        change.getValue().accept(data);
+        assertEquals(1, data.get("campaigns").size());
+        assertEquals("other", data.get("campaigns").get(0).get("campaignId").asText());
+        assertEquals("x", data.get("defaultCampaignId").asText(), "fields the bridge does not own are kept");
+    }
+
+    @Test
+    void anEnabledAgentIsRegisteredOnce() {
+        service.saveWithResult(dto(true));
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.function.Consumer<com.fasterxml.jackson.databind.node.ObjectNode>> change =
+                org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
+        verify(mutator).update(eq("inst-1"), change.capture(), any());
+        com.fasterxml.jackson.databind.node.ObjectNode data = new com.fasterxml.jackson.databind.ObjectMapper()
+                .createObjectNode();
+        data.putArray("campaigns").addObject().put("campaignId", "a-1").put("name", "Old name");
+        change.getValue().accept(data);
+        assertEquals(1, data.get("campaigns").size());
+        assertEquals("Riya", data.get("campaigns").get(0).get("name").asText());
+        assertEquals("VACADEMY_AI", data.get("campaigns").get(0).get("provider").asText());
     }
 }

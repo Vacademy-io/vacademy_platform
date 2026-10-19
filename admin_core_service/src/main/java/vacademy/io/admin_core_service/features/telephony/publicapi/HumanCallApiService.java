@@ -125,8 +125,13 @@ public class HumanCallApiService {
             m.put("name", c.name());
             m.put("email", c.email());
             m.put("roles", c.roles());
+            m.put("status", "active");
             m.put("can_call", blocked == null);
             m.put("blocked_reason", blocked);
+            if (p.has(vacademy.io.admin_core_service.features.institute_api.service.InstituteApiKeyService
+                    .SCOPE_COUNSELLORS_MANAGE)) {
+                m.put("mobile_number", c.mobile());
+            }
             data.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();

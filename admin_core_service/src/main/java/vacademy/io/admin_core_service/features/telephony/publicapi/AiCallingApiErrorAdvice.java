@@ -27,7 +27,7 @@ import java.util.Map;
  */
 @Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@RestControllerAdvice(assignableTypes = PublicAiCallingApiController.class)
+@RestControllerAdvice(assignableTypes = {PublicAiCallingApiController.class, PublicAiCallingManagementController.class})
 public class AiCallingApiErrorAdvice {
 
     @ExceptionHandler(AiCallingApiException.class)

@@ -26,6 +26,16 @@ public interface AiAgentRepository extends JpaRepository<AiAgent, String> {
     boolean existsByInstituteIdAndNameIgnoreCase(String instituteId, String name);
 
     /**
+     * ai_agent.updated_at has no trigger and the entity maps it read-only, so without this an
+     * edited agent kept its creation time as "updated".
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query(value =
+            "UPDATE ai_agent SET updated_at = CURRENT_TIMESTAMP WHERE id = :id", nativeQuery = true)
+    int touchUpdatedAt(@org.springframework.data.repository.query.Param("id") String id);
+
+    /**
      * Bulk id -> agent name. Saving an agent auto-registers it as a VACADEMY_AI campaign
      * with {@code campaignId = agent id}, so this resolves the agent behind a queued or
      * placed call without loading the prompts, send rules and voice config with it.

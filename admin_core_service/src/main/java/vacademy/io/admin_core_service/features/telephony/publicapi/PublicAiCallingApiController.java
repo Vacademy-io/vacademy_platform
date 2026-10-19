@@ -19,7 +19,8 @@ import java.util.Map;
 
 /**
  * Telleo calling API v1: AI calls (/calls, /batches) and, since v1.2, human counsellor
- * click-to-call (/human-calls). Public base URL https://api.telleo.ai/v1 (ingress rewrite to
+ * click-to-call (/human-calls). v1.3's counsellor and agent management lives in
+ * {@link PublicAiCallingManagementController} (same base path; the catch-all below covers it). Public base URL https://api.telleo.ai/v1 (ingress rewrite to
  * this path); authenticated with an AI calling API key. JSON is snake_case. Errors use
  * {"error":{"code","message","request_id","details"}} (AiCallingApiErrorAdvice).
  */
@@ -36,8 +37,10 @@ public class PublicAiCallingApiController {
 
     /** Every route of this API, for telling a wrong method (405) from an unknown path (404). */
     private static final java.util.regex.Pattern KNOWN_PATHS = java.util.regex.Pattern.compile(
-            "^/(calls(/[^/]+(/cancel)?)?|batches(/[^/]+)?|agents|webhook(/(rotate-secret|test))?|credits|usage"
-                    + "|human-calls(/[^/]+(/disposition)?)?|counsellors|dispositions)/?$");
+            "^/(calls(/[^/]+(/cancel)?)?|batches(/[^/]+)?|agents(/[^/]+(/(enable|disable))?)?"
+                    + "|webhook(/(rotate-secret|test))?|credits|usage"
+                    + "|human-calls(/[^/]+(/disposition)?)?|counsellors(/[^/]+)?|dispositions"
+                    + "|voices|settings/default-agent|numbers(/[^/]+/agent)?)/?$");
     private static final String PREFIX = "/admin-core-service/open/ai-calling/v1";
 
     // ── Calls ────────────────────────────────────────────────────────────────────
@@ -108,9 +111,10 @@ public class PublicAiCallingApiController {
     // ── Agents ───────────────────────────────────────────────────────────────────
 
     @GetMapping("/agents")
-    public ResponseEntity<Map<String, Object>> agents(HttpServletRequest http) {
+    public ResponseEntity<Map<String, Object>> agents(HttpServletRequest http,
+            @RequestParam(value = "include_disabled", required = false, defaultValue = "false") boolean includeDisabled) {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_CALLS_READ);
-        return ok(http, HttpStatus.OK, service.listAgents(p));
+        return ok(http, HttpStatus.OK, service.listAgents(p, includeDisabled));
     }
 
     // ── Human calls (counsellor click-to-call) ───────────────────────────────────
@@ -119,7 +123,8 @@ public class PublicAiCallingApiController {
 
     @GetMapping("/counsellors")
     public ResponseEntity<Map<String, Object>> counsellors(HttpServletRequest http) {
-        var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ);
+        var p = auth.authenticateAny(http, InstituteApiKeyService.SCOPE_HUMAN_CALLS_READ,
+                InstituteApiKeyService.SCOPE_COUNSELLORS_MANAGE);
         return ok(http, HttpStatus.OK, humanCalls.listCounsellors(p));
     }
 

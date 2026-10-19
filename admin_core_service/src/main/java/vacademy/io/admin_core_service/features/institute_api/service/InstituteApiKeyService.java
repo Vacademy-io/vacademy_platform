@@ -81,9 +81,19 @@ public class InstituteApiKeyService {
      */
     public static final String SCOPE_HUMAN_CALLS_READ = "human_calls:read";
     public static final String SCOPE_HUMAN_CALLS_WRITE = "human_calls:write";
+    /**
+     * Telleo API v1.3 management scopes, never in the default set either. counsellors:manage
+     * adds counsellors to the institute (creating a dashboard login and mailing it), edits and
+     * deactivates them; agents:manage creates, edits, switches and deletes AI agents and moves
+     * the institute's default agent and inbound numbers between them. Reading agents stays on
+     * calls:read; reading counsellors is also allowed with human_calls:read.
+     */
+    public static final String SCOPE_COUNSELLORS_MANAGE = "counsellors:manage";
+    public static final String SCOPE_AGENTS_MANAGE = "agents:manage";
     /** Every scope an ai_calling key may be issued with. */
     public static final List<String> AI_CALLING_ALLOWED_SCOPES = List.of(SCOPE_CALLS_READ, SCOPE_CALLS_WRITE,
-            SCOPE_WEBHOOKS_MANAGE, SCOPE_HUMAN_CALLS_READ, SCOPE_HUMAN_CALLS_WRITE);
+            SCOPE_WEBHOOKS_MANAGE, SCOPE_HUMAN_CALLS_READ, SCOPE_HUMAN_CALLS_WRITE,
+            SCOPE_COUNSELLORS_MANAGE, SCOPE_AGENTS_MANAGE);
     /**
      * Publishable keys ({@code vak_pub_…}) for the public Catalogue API
      * ({@code /admin-core-service/open/catalog/v1}): safe in browser code, so they only read the

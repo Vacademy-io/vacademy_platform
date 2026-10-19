@@ -33,6 +33,16 @@ class HumanCallRoutesTest {
             scopes.add(i.getArgument(1));
             return P;
         });
+        when(auth.authenticateAny(any(), any(String[].class))).thenAnswer(i -> {
+            List<String> any = new ArrayList<>();
+            for (int k = 1; k < i.getArguments().length; k++) {
+                Object a = i.getArguments()[k];
+                if (a instanceof String[] arr) any.addAll(List.of(arr));
+                else any.add((String) a);
+            }
+            scopes.add(String.join("|", any));
+            return P;
+        });
         when(humanCalls.createHumanCall(any(), any(), any())).thenReturn(Map.of("id", "hcall_1"));
         when(humanCalls.listHumanCalls(any(), any(), any(), any(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(Map.of("object", "list"));
@@ -57,8 +67,9 @@ class HumanCallRoutesTest {
         controller.dispositions(r);
         controller.counsellors(r);
         // Human calls have their own scopes: calls:read / calls:write alone never reach them.
+        // GET /counsellors also accepts counsellors:manage (v1.3).
         assertEquals(List.of("human_calls:write", "human_calls:read", "human_calls:read", "human_calls:write",
-                "human_calls:read", "human_calls:read"), scopes);
+                "human_calls:read", "human_calls:read|counsellors:manage"), scopes);
     }
 
     @Test

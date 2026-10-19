@@ -30,10 +30,14 @@
             "criteria": "Criteria",
             "time": "Time"
         },
-        "criteriaNotSet": "Not set"
+        "criteriaNotSet": "Not set",
+        "criteriaUsedByAi": "AI checks by these",
+        "criteriaNotUsedByAi": "Not used by the AI check yet: edit and save to use them"
     },
     "toasts": {
-        "invalidCriteriaFormat": "Unable to preview criteria. Invalid data format."
+        "invalidCriteriaFormat": "Unable to preview criteria. Invalid data format.",
+        "criteriaSavedForAi": "Criteria saved. The AI checks this question by them from the next copy.",
+        "criteriaSaveFailed": "The criteria could not be saved for AI checking"
     },
     "accordion": {
         "questionCount_one": "{{count}} question",

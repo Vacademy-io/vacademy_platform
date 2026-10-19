@@ -30,10 +30,14 @@
             "criteria": "मानदंड",
             "time": "समय"
         },
-        "criteriaNotSet": "सेट नहीं है"
+        "criteriaNotSet": "सेट नहीं है",
+        "criteriaUsedByAi": "AI इन्हीं से जाँचता है",
+        "criteriaNotUsedByAi": "AI जाँच में अभी उपयोग नहीं: उपयोग के लिए बदलें और सहेजें"
     },
     "toasts": {
-        "invalidCriteriaFormat": "मानदंड का पूर्वावलोकन नहीं हो सका। डेटा फ़ॉर्मेट अमान्य है।"
+        "invalidCriteriaFormat": "मानदंड का पूर्वावलोकन नहीं हो सका। डेटा फ़ॉर्मेट अमान्य है।",
+        "criteriaSavedForAi": "मानदंड सहेजे गए। अगली कॉपी से AI इस प्रश्न को इन्हीं से जाँचेगा।",
+        "criteriaSaveFailed": "AI जाँच के लिए मानदंड सहेजे नहीं जा सके"
     },
     "accordion": {
         "questionCount_one": "{{count}} प्रश्न",

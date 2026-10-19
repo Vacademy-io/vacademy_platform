@@ -21,7 +21,7 @@ from ..ai_billing import UC, metering_api_key, metering_user, record_tool_billin
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, deduction_check, language_check, locate, math_reread, option_letter, typed_answers, vision_transcript
+from . import annotator, callbacks, cancellation, deduction_check, language_check, language_feedback, locate, math_reread, option_letter, typed_answers, vision_transcript
 from .choice_groups import counted_awarded, counted_flags, resolve_paper_max
 from .failure import (
     COPY_UNREADABLE,
@@ -732,6 +732,23 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         if hasattr(grader, "token_budget"):
             grader.token_budget += (TOKENS_PER_PAGE_ALLOWANCE * len(layout_map.get("pages") or [])
                                     + TOKENS_PER_QUESTION_CHECK * len(questions))
+        # 2c. Language accuracy, when the institute asked for it: every error in
+        # the student's English, with its correction, found once for the whole
+        # copy. Marks are never touched; each written answer's feedback lists
+        # its errors and the copy shows them (step 4).
+        language_errors: dict[str, list[dict[str, Any]]] = {}
+        row_positions: dict[str, tuple[int, int]] = {}
+        if language_feedback.enabled(req.get("exam_context")):
+            cancellation.check(job_id, process_id)
+            if hasattr(grader, "token_budget"):
+                grader.token_budget += TOKENS_PER_PAGE_ALLOWANCE * len(layout_map.get("pages") or [])
+            language_errors = await language_feedback.find_errors(
+                llm, layout_map, eval_model, institute_id=institute_id, token_sink=grader,
+                cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
+            )
+            row_positions = language_feedback.row_positions(layout_map)
+        # question id -> the language errors in its answer.
+        language_found: dict[str, list[dict[str, Any]]] = {}
         checker = (deduction_check.DeductionChecker(
             pdf_url, layout_map, check_llm, institute_id=institute_id, token_sink=grader,
             model=deduction_model,
@@ -830,14 +847,27 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                         # only admins read it. Class name + message, not a trace.
                         "error_detail": describe_failure(retry_err),
                     }
+            if (language_errors and language_feedback.applies_to_question(q)
+                    and str(verdict.get("status") or "").upper() != "FAILED"):
+                errors = language_feedback.errors_for_answer(
+                    language_errors, verdict.get("answer_rows"), row_positions)
+                if errors:
+                    language_found[qid] = errors
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
             evaluated += 1
             verdict.setdefault("question_number", q.get("question_number") or evaluated)
             verdicts.append(verdict)
             sent[qid] = (float(verdict.get("marks_awarded") or 0), list(verdict.get("annotations") or []))
+            # The language paragraph rides on the callback only: enforcement
+            # below may build a deduction reason from the verdict's feedback,
+            # and a language slip is never a reason for lost marks.
+            reported = verdict
+            if qid in language_found:
+                reported = dict(verdict, feedback=language_feedback.with_language_feedback(
+                    verdict.get("feedback"), language_found[qid]))
             await callbacks.question_done(
-                callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                callback_base, process_id, job_id, reported, rubric_version=rubric_version,
             )
 
         # 4. Burn the corrections onto the copy so the admin screens that resolve
@@ -874,6 +904,15 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
         if unmarked:
             logger.warning("copy-check %s: enforce could not place a mark for %s; shipping the copy without them",
                            process_id, unmarked)
+        # Language corrections go on after enforcement, which keeps one remark
+        # per answer and would drop them. They are not in the question
+        # callbacks: the feedback there already lists them.
+        for v in verdicts:
+            errors = language_found.get(str(v.get("question_id")))
+            if errors:
+                v["feedback"] = language_feedback.with_language_feedback(v.get("feedback"), errors)
+                v["annotations"] = (list(v.get("annotations") or [])
+                                    + language_feedback.annotations(errors, v.get("question_id")))
         # The marks Java stores must be the marks on the checked copy (gate G9):
         # re-send every question enforcement changed or a choice group dropped,
         # before `complete` makes Java total the rows.

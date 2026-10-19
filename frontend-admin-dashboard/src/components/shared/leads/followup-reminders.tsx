@@ -45,6 +45,7 @@ import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { MY_PENDING_LEAD_FOLLOWUPS, UPDATE_LEAD_FOLLOWUP } from '@/constants/urls';
 import { CompleteFollowUpPopover } from './complete-followup-popover';
+import { useFollowUpFeatures } from './follow-up-fields';
 import { getUserId } from '@/utils/userDetails';
 import { cn, parseHtmlToString } from '@/lib/utils';
 
@@ -60,6 +61,7 @@ export interface PendingFollowup {
     status: string;
     is_closed: boolean;
     content: string | null;
+    created_at?: string | null;
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;
@@ -191,6 +193,17 @@ const MAX_SHOWN = 6;
 
 // ── Global centered dialog ─────────────────────────────────────────────
 
+/**
+ * " · Created 12 Oct, 4:10 PM" — only with the institute's follow-up history
+ * switch on. Reads the switch here, not in the dialog: the dialog is mounted on
+ * every page from __root, this only once a reminder row is on screen.
+ */
+function CreatedOn({ raw }: { raw: string }) {
+    const { showHistory } = useFollowUpFeatures();
+    if (!showHistory) return null;
+    return <> · Created {format(new Date(raw), 'd MMM, h:mm a')}</>;
+}
+
 export function FollowUpReminderDialog() {
     const { visible } = useDueFollowupReminders();
     const [open, setOpen] = useState(false);
@@ -307,7 +320,9 @@ export function FollowUpReminderDialog() {
                                 )}
                                 {f.schedule_time && (
                                     <p className="text-xs text-neutral-400">
-                                        Scheduled {format(new Date(f.schedule_time), 'd MMM, h:mm a')}
+                                        Scheduled{' '}
+                                        {format(new Date(f.schedule_time), 'd MMM, h:mm a')}
+                                        {f.created_at && <CreatedOn raw={f.created_at} />}
                                     </p>
                                 )}
                                 <div className="flex flex-wrap items-center gap-1.5">

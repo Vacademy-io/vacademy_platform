@@ -16,6 +16,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
 import {
     FollowUpFields,
+    useFollowUpFeatures,
     useFollowUpFields,
     useFollowUpNotesRequired,
 } from '@/components/shared/leads/follow-up-fields';
@@ -48,6 +49,10 @@ interface AddLeadNoteDialogProps {
      *  the Follow Up tab is disabled with an inline hint. */
     audienceResponseId?: string;
     onSuccess?: () => void;
+    /** Called only after a follow-up (not a note) is saved — the Follow-ups
+     *  page closes the previous follow-up here, so dismissing the dialog
+     *  leaves it pending instead of completed with nothing booked. */
+    onFollowUpScheduled?: () => void;
     /** Pre-select an action tab when the dialog opens (e.g. CALL_LOG when
      *  invoked from a row in the Call History panel). */
     initialActionType?: string;
@@ -66,6 +71,7 @@ export const AddLeadNoteDialog = ({
     userName,
     audienceResponseId,
     onSuccess,
+    onFollowUpScheduled,
     initialActionType,
     initialCallActivity,
     hideCallRecordingControls = false,
@@ -96,6 +102,11 @@ export const AddLeadNoteDialog = ({
     const isFollowUp = actionType === 'FOLLOW_UP';
     const followUpFields = useFollowUpFields();
     const notesRequired = useFollowUpNotesRequired();
+    const { keepPopupsOpen } = useFollowUpFeatures();
+    // With the institute's "close pop-ups only with X" switch on, a stray click
+    // outside (or Escape) no longer closes the dialog and wipes what was typed;
+    // only X / Cancel do. Off = the old behaviour.
+    const keepOpen = keepPopupsOpen ? (e: Event) => e.preventDefault() : undefined;
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
     const isNoteEmpty = !parseHtmlToString(noteText).trim();
@@ -178,6 +189,7 @@ export const AddLeadNoteDialog = ({
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
             queryClient.invalidateQueries({ queryKey: ['lead-all-events', userId] });
+            onFollowUpScheduled?.();
             onSuccess?.();
             onOpenChange(false);
         },
@@ -204,6 +216,8 @@ export const AddLeadNoteDialog = ({
                 // Inline style: cap height to the viewport so tall content (e.g. Call Log)
                 // scrolls inside the dialog instead of overflowing the screen.
                 style={{ maxHeight: '90vh' }}
+                onInteractOutside={keepOpen}
+                onEscapeKeyDown={keepOpen}
             >
                 <DialogHeader className="border-b border-neutral-100 px-6 py-4">
                     <div className="flex items-center gap-3">

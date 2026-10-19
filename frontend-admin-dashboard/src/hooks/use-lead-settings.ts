@@ -149,6 +149,12 @@ export interface FollowUpFieldsConfig {
     followUpModes: string[];
     nextActions: string[];
     /**
+     * How warm the lead sounded on this follow-up ("Very Hot" … "Very Cold").
+     * Stored on the follow-up itself, separate from the lead's tier, so the
+     * history shows how interest moved call by call.
+     */
+    interestLevels: string[];
+    /**
      * Refuse to save a follow-up with an empty note.
      *
      * Independent of {@link enabled}: an institute can insist on a written note
@@ -167,6 +173,17 @@ export interface FollowUpFieldsConfig {
      * retroactively would block a counsellor mid-call.
      */
     fieldsRequired: boolean;
+    /*
+     * The three below change how follow-ups behave, so each is off until an
+     * institute turns it on — with all three off a follow-up works exactly as it
+     * always has. Independent of {@link enabled}, like notesRequired.
+     */
+    /** Follow-up pop-ups close only from their X / Cancel, not an outside click or Escape. */
+    keepPopupsOpen: boolean;
+    /** Follow-up history + created dates in the Lead Profile, reminders, Completed tab and Check Lead. */
+    showHistory: boolean;
+    /** Counsellors can edit a follow-up's note, closing note and interest level, closed ones included. */
+    allowEditing: boolean;
 }
 
 /**
@@ -260,8 +277,12 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         studentResponses: [],
         followUpModes: [],
         nextActions: [],
+        interestLevels: [],
         notesRequired: false,
         fieldsRequired: false,
+        keepPopupsOpen: false,
+        showHistory: false,
+        allowEditing: false,
     },
     leadLookup: {
         enabled: false,
@@ -348,8 +369,12 @@ export function normaliseFollowUpFields(
         studentResponses: list(saved?.studentResponses),
         followUpModes: list(saved?.followUpModes),
         nextActions: list(saved?.nextActions),
+        interestLevels: list(saved?.interestLevels),
         notesRequired: saved?.notesRequired === true,
         fieldsRequired: saved?.fieldsRequired === true,
+        keepPopupsOpen: saved?.keepPopupsOpen === true,
+        showHistory: saved?.showHistory === true,
+        allowEditing: saved?.allowEditing === true,
     };
 }
 

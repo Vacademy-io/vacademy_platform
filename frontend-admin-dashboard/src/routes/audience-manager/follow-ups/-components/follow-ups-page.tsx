@@ -222,6 +222,9 @@ const FollowUpsContent = () => {
         /** Pre-select a dialog tab — 'FOLLOW_UP' for the "schedule next" flow
          *  after marking a follow-up complete. */
         initialActionType?: string;
+        /** Closes the follow-up being completed — runs only once the next
+         *  one is saved, so dismissing the dialog leaves it pending. */
+        onFollowUpScheduled?: () => void;
     } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
@@ -612,12 +615,13 @@ const FollowUpsContent = () => {
                             audienceResponseId={vm.responseId}
                             userId={vm.userId}
                             invalidateKeys={INVALIDATE_KEYS}
-                            onScheduleNext={() =>
+                            onScheduleNext={(closeCurrent) =>
                                 setNoteTarget({
                                     userId: vm.userId!,
                                     userName: vm.name,
                                     responseId: vm.responseId,
                                     initialActionType: 'FOLLOW_UP',
+                                    onFollowUpScheduled: () => void closeCurrent(),
                                 })
                             }
                         />
@@ -1123,6 +1127,7 @@ const FollowUpsContent = () => {
                         // permanently disabled (canSubmit requires it).
                         audienceResponseId={noteTarget.responseId}
                         initialActionType={noteTarget.initialActionType}
+                        onFollowUpScheduled={noteTarget.onFollowUpScheduled}
                         // Scheduling a follow-up changes followUpDueAt — refresh
                         // the queue so the new task appears without a reload.
                         onSuccess={() =>

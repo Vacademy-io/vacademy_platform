@@ -24,8 +24,8 @@
         "description": "Personnalisez l'apparence des rapports PDF générés pour les élèves. Ces paramètres s'appliquent à tous les rapports d'évaluation de votre établissement."
     },
     "aiCopyCheck": {
-        "title": "Modèle de correction IA des copies",
-        "description": "Comment les remarques de l'enseignant apparaissent sur les copies corrigées par l'IA. Présélectionné à l'envoi des copies, modifiable pour chaque lot."
+        "title": "Correction IA des copies",
+        "description": "Comment l'IA corrige les copies : où apparaissent les remarques de l'enseignant, les consignes suivies par l'IA et le signalement des fautes d'orthographe et de grammaire. Présélectionné à l'envoi des copies, modifiable pour chaque lot."
     },
     "assessmentFolders": {
         "title": "Dossiers d’évaluations",

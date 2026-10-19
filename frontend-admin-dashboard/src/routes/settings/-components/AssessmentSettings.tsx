@@ -19,6 +19,10 @@ import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard
 import ResultNotificationTemplatesCard from './ResultNotificationTemplatesCard';
 import ExamExperienceSettingsCard from './ExamExperienceSettingsCard';
 import { CommentPlacementPicker } from '@/components/common/ai-copy-check/CommentPlacementPicker';
+import {
+    CopyCheckSettingsFields,
+    EMPTY_COPY_CHECK_SETTINGS,
+} from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
 
 const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
 <div style="text-align:center; font-size:11px; color:rgb(102,102,102);">Student Performance Analysis</div>`;
@@ -195,13 +199,40 @@ const AssessmentSettings = () => {
                     <CardDescription>{t('aiCopyCheck.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <CommentPlacementPicker
-                        value={settings.aiCopyCheck?.commentPlacement ?? 'INSIDE'}
-                        onChange={(commentPlacement) => {
-                            setSettings((prev) => ({ ...prev, aiCopyCheck: { commentPlacement } }));
-                            setHasChanges(true);
-                        }}
-                    />
+                    <div className="flex flex-col gap-4">
+                        <CommentPlacementPicker
+                            value={settings.aiCopyCheck?.commentPlacement ?? 'INSIDE'}
+                            onChange={(commentPlacement) => {
+                                setSettings((prev) => ({
+                                    ...prev,
+                                    aiCopyCheck: { ...prev.aiCopyCheck, commentPlacement },
+                                }));
+                                setHasChanges(true);
+                            }}
+                        />
+                        {/* Institute defaults for every assessment that has none of its own */}
+                        <CopyCheckSettingsFields
+                            withPaper={false}
+                            value={{
+                                ...EMPTY_COPY_CHECK_SETTINGS,
+                                instructions: settings.aiCopyCheck?.instructions ?? '',
+                                languageFeedback: settings.aiCopyCheck?.languageFeedback ?? 'OFF',
+                            }}
+                            onChange={({ instructions, languageFeedback }) => {
+                                setSettings((prev) => ({
+                                    ...prev,
+                                    aiCopyCheck: {
+                                        ...prev.aiCopyCheck,
+                                        commentPlacement:
+                                            prev.aiCopyCheck?.commentPlacement ?? 'INSIDE',
+                                        instructions,
+                                        languageFeedback,
+                                    },
+                                }));
+                                setHasChanges(true);
+                            }}
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

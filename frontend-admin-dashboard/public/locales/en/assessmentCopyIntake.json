@@ -164,5 +164,17 @@
         "partial": "{{count}} checked copies downloaded; {{failed}} could not be fetched",
         "failed": "Could not download the checked copies",
         "none": "No checked copies in this batch yet"
+    },
+    "aiSettings": {
+        "subject": "Subject",
+        "subjectPlaceholder": "e.g. English Language and Literature",
+        "level": "Class / board",
+        "levelPlaceholder": "e.g. CBSE Class X",
+        "instructions": "Instructions for the AI checker",
+        "instructionsPlaceholder": "e.g. Follow the CBSE marking scheme. Letter writing: format 1, content 2, expression 2. Quote the missing points in the feedback.",
+        "instructionsHint": "Used for every copy of this assessment, with the answer key and rubric",
+        "instructionsDefaultHint": "Used for every assessment that has no instructions of its own",
+        "language": "Highlight spelling and grammar errors",
+        "languageHint": "Each error is underlined with its correction and listed in the answer's feedback. No marks are deducted for it. For answers written in English."
     }
 }

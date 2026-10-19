@@ -1,6 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { COPY_INTAKE_BASE_URL } from '@/constants/urls';
-import type { CommentPlacement } from '@/types/assessment-settings';
+import type { CommentPlacement, CopyCheckConfig } from '@/types/assessment-settings';
 
 /**
  * Bulk AI copy-check: many scanned copies uploaded at once, the student's
@@ -98,7 +98,8 @@ export const startCopyIntake = async (
     files: CopyIntakeUploadedFile[],
     preferredModel?: string,
     notifyEmail = true,
-    commentPlacement: CommentPlacement = 'INSIDE'
+    commentPlacement: CommentPlacement = 'INSIDE',
+    copyCheckConfig?: CopyCheckConfig
 ): Promise<CopyIntakeBatch> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
@@ -109,9 +110,23 @@ export const startCopyIntake = async (
             preferred_model: preferredModel,
             notify_email: notifyEmail,
             comment_placement: commentPlacement,
+            copy_check_config: copyCheckConfig,
         },
     });
     return response.data;
+};
+
+/** How the AI checks this assessment's copies, as last sent with a batch. */
+export const getCopyCheckConfig = async (
+    assessmentId: string,
+    instituteId: string
+): Promise<CopyCheckConfig> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${COPY_INTAKE_BASE_URL}/copy-check-config`,
+        params: { assessmentId, instituteId },
+    });
+    return response.data ?? {};
 };
 
 /** What a check of the learners' own submissions would do, before any credit is spent. */
@@ -133,6 +148,8 @@ export interface SubmittedCheckRequest {
     preferred_model?: string;
     notify_email?: boolean;
     comment_placement?: CommentPlacement;
+    /** Subject, marking instructions and language feedback for this check. */
+    copy_check_config?: CopyCheckConfig;
 }
 
 export const previewSubmittedCheck = async (

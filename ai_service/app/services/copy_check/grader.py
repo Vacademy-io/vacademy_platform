@@ -20,7 +20,7 @@ import re
 from typing import Any, Optional
 
 from ..chat_llm_client import ChatLLMClient
-from .prompt_builder import build_grading_prompt, grading_system_for
+from .prompt_builder import build_grading_prompt, examiner_instructions_block, grading_system_for
 from .typed_answers import build_typed_grading_prompt, typed_grading_system
 from .validator import coerce_confidence
 
@@ -132,6 +132,7 @@ class CopyCheckGrader:
         token_budget: int = FAIL_TOKENS_PER_COPY,
         exam_context: Optional[dict[str, Any]] = None,
         default_model: Optional[str] = None,
+        grading_instructions: bool = False,
     ):
         self.llm = llm
         # Model used when the teacher picked none, and for escalations: the
@@ -140,6 +141,10 @@ class CopyCheckGrader:
         # {"level","subject",...} from the grade request: picks the grading
         # persona (T0.25). Absent = the constant "school teacher" prompt.
         self.exam_context = exam_context or {}
+        # Whether exam_context.instructions also go into the grading prompt
+        # (dashboard runs). Partner API instructions shape the rubric only,
+        # as they always have.
+        self.grading_instructions = grading_instructions
         self.institute_id = institute_id
         self.user_id = user_id
         self.token_budget = max(int(token_budget or 0), FAIL_TOKENS_PER_COPY)
@@ -155,7 +160,10 @@ class CopyCheckGrader:
         sends it per question) or the paper's, at the paper's level."""
         subject = question.get("subject") or self.exam_context.get("subject")
         level = self.exam_context.get("level")
-        return typed_grading_system(subject, level) if typed else grading_system_for(subject, level)
+        system = typed_grading_system(subject, level) if typed else grading_system_for(subject, level)
+        if not self.grading_instructions:
+            return system
+        return system + examiner_instructions_block(self.exam_context)
 
     def add_tokens(self, n: int) -> None:
         """External counter for non-grading calls (e.g. criteria generation

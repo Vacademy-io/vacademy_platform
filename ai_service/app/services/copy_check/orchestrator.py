@@ -468,6 +468,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
     grader = CopyCheckGrader(
         llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)),
         exam_context=req.get("exam_context"), default_model=eval_model,
+        grading_instructions=not is_api_actor(billing["billing_actor"]),
     )
     mathpix = MathpixFallback()
 

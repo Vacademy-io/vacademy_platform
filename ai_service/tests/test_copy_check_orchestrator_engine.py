@@ -442,3 +442,11 @@ def test_any_other_template_value_renders_the_usual_copy(env):
         env["posts"].clear()
         _run(_payload(comment_placement=value))
         assert _posts(env, "complete")[0]["evaluated_file_id"] == "checked-copy-1"
+
+
+def test_instructions_reach_grading_on_dashboard_runs_only(env):
+    _run(_payload(exam_context={"instructions": "Format 1."}))
+    assert env["grader_kwargs"]["grading_instructions"] is True
+    _run(_payload(exam_context={"instructions": "Format 1."}, billing_actor="apikey:key-1",
+                  page_count=1, rate_snapshot=SNAPSHOT))
+    assert env["grader_kwargs"]["grading_instructions"] is False

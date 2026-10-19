@@ -12,7 +12,7 @@ interface AccessPassGridEditorProps {
 /**
  * Property panel of the `accessPassGrid` section: published access passes as cards,
  * optionally only those carrying one tag. Passes themselves are managed in
- * Membership → Access Passes; the section reads them live.
+ * LMS → Access Passes; the section reads them live.
  */
 export function AccessPassGridEditor({ component, pageId, updateComponent }: AccessPassGridEditorProps) {
     const props = component.props || {};
@@ -69,7 +69,7 @@ export function AccessPassGridEditor({ component, pageId, updateComponent }: Acc
             </div>
             <p className="text-2xs text-neutral-500">
                 Manage passes in{' '}
-                <Link to="/manage-access-passes" className="underline">
+                <Link to="/access-passes" className="underline">
                     Access Passes
                 </Link>
                 . Only published passes appear on the site.

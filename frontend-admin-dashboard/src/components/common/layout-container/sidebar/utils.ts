@@ -1,5 +1,6 @@
 import {
     Robot,
+    Ticket,
     Megaphone,
     GearSix,
     UsersFour,
@@ -462,11 +463,6 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 }),
                 subItemLink: '/membership-stats',
                 subItemId: 'membership-stats-sub',
-            },
-            {
-                subItem: sidebarT('sidebar:accessPasses'),
-                subItemLink: '/manage-access-passes',
-                subItemId: 'access-passes-sub',
             },
         ],
     },
@@ -1221,6 +1217,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'content-ai-api',
         category: 'AI',
         to: '/video-api-studio',
+    },
+
+    // Access Passes (one purchase -> several courses). An LMS tab, appended last so no
+    // other tab's order moves. Ships HIDDEN for every role (OPT_IN_TAB_IDS, the teacher
+    // defaults and controlledTabs): an institute turns it on in Display Settings.
+    {
+        icon: Ticket,
+        title: sidebarT('sidebar:accessPasses'),
+        id: 'access-passes',
+        category: 'LMS',
+        to: '/access-passes',
     },
 ];
 

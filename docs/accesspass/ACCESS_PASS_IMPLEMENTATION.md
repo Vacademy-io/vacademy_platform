@@ -254,7 +254,7 @@ A learner's course access is one `student_session_institute_group_mapping` (ssig
 ## 6. Frontend
 
 ### Admin dashboard (`frontend-admin-dashboard`) — built
-- **Route `/manage-access-passes`** (`src/routes/manage-access-passes/`). The sidebar entry is **Membership → Access Passes** (`access-passes-sub`). The nav manifest has been updated by hand.
+- **Route `/access-passes`** (`src/routes/access-passes/`). The sidebar entry is a top-level **LMS → Access Passes** tab (`access-passes`), **hidden for every role by default**: it is in `OPT_IN_TAB_IDS` (admin), the teacher defaults and `controlledTabs`, so an institute turns it on per role in Settings → Display Settings. The nav manifest has been updated by hand.
   - Pass list on the left. On the right, the selected pass: header (status, price, course and holder counts), Publish / Stop selling / Delete, the sell link (short URL and invite code), and **Included courses**. That section lets you add batches (multi-select over `batches_for_sessions`, with organisation batches filtered out), remove a batch (the confirm text follows the removal policy), and **Sync holders now**. Below that, a **Holders** table, paginated, showing pass-granted vs own-course counts.
   - `AccessPassEditorDialog` handles create and edit:
     - fields: name, slug, short description, description, cover upload (`UploadFileInS3` + `getPublicUrl`), tags, payment option (`handleGetPaymentDetails`), and removal policy;

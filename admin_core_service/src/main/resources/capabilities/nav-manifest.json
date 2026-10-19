@@ -418,17 +418,6 @@
             "ADMIN": true,
             "TEACHER": true
           }
-        },
-        {
-          "id": "access-passes-sub",
-          "label": "Access Passes",
-          "route": "/manage-access-passes",
-          "order": 5,
-          "admin_only": false,
-          "default_visible": {
-            "ADMIN": true,
-            "TEACHER": true
-          }
         }
       ]
     },
@@ -1847,6 +1836,18 @@
       "default_visible": {
         "ADMIN": true,
         "TEACHER": true
+      },
+      "sub_tabs": []
+    },
+    {
+      "id": "access-passes",
+      "label": "Access Passes",
+      "category": "LMS",
+      "route": "/access-passes",
+      "order": 42,
+      "default_visible": {
+        "ADMIN": false,
+        "TEACHER": false
       },
       "sub_tabs": []
     }

@@ -266,7 +266,7 @@ const DATA_BOUND = {
     accessPassGrid:
         "Renders the institute's LIVE published Access Passes (one purchase that unlocks several courses) " +
         "as cards with a details dialog and a Buy button into the pass's checkout. Passes are created by the " +
-        "admin in Membership → Access Passes, so NEVER invent pass names, prices or courses. Set ONLY " +
+        "admin in LMS → Access Passes, so NEVER invent pass names, prices or courses. Set ONLY " +
         "title/subtitle/buyLabel/columns (2-4) and the showCourses/showPrice toggles; leave tag as an empty " +
         "string unless the admin names a pass tag to filter by. Use it when the brief mentions memberships, " +
         "passes or all-access bundles; it renders nothing until a pass is published.",

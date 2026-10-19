@@ -12,10 +12,10 @@ import { AccessPassEditorDialog } from './-components/AccessPassEditorDialog';
 import { AccessPassDetail } from './-components/AccessPassDetail';
 import { AccessPassStatusBadge } from './-components/AccessPassStatusBadge';
 
-export const Route = createLazyFileRoute('/manage-access-passes/')({
+export const Route = createLazyFileRoute('/access-passes/')({
     component: () => (
         <LayoutContainer>
-            <ManageAccessPassesPage />
+            <AccessPassesPage />
         </LayoutContainer>
     ),
 });
@@ -24,7 +24,7 @@ export const Route = createLazyFileRoute('/manage-access-passes/')({
  * Access Passes: one purchase that unlocks a set of courses. List on the left,
  * the selected pass (courses, sell link, holders) on the right.
  */
-function ManageAccessPassesPage() {
+function AccessPassesPage() {
     const { t } = useTranslation('manageAccessPasses');
     const { setNavHeading } = useNavHeadingStore();
     const queryClient = useQueryClient();

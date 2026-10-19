@@ -47,15 +47,35 @@ export interface IssueAiCallingKeyInput {
      * be edited after creation, so this is decided here.
      */
     humanCalls?: boolean;
+    /**
+     * Also grant counsellors:manage (add counsellors with a dashboard login, edit and
+     * deactivate them). Opt-in, like humanCalls.
+     */
+    manageCounsellors?: boolean;
+    /**
+     * Also grant agents:manage (create, edit, switch and delete AI agents; set the default
+     * agent and which agent answers an inbound number). Opt-in, like humanCalls.
+     */
+    manageAgents?: boolean;
 }
 
 /** The AI calling key's default scopes (what the server grants when none are sent). */
 export const AI_CALLING_DEFAULT_SCOPES = ['calls:read', 'calls:write', 'webhooks:manage'];
 export const HUMAN_CALL_SCOPES = ['human_calls:read', 'human_calls:write'];
+export const MANAGE_COUNSELLORS_SCOPE = 'counsellors:manage';
+export const MANAGE_AGENTS_SCOPE = 'agents:manage';
 
 /** A key that can place human (counsellor) calls through the API. */
 export const canPlaceHumanCalls = (key: { scopes?: string[] }) =>
     Boolean(key.scopes?.includes('human_calls:write'));
+
+/** A key that can add, edit and deactivate counsellors through the API. */
+export const canManageCounsellors = (key: { scopes?: string[] }) =>
+    Boolean(key.scopes?.includes(MANAGE_COUNSELLORS_SCOPE));
+
+/** A key that can create, edit, switch and delete AI agents through the API. */
+export const canManageAgents = (key: { scopes?: string[] }) =>
+    Boolean(key.scopes?.includes(MANAGE_AGENTS_SCOPE));
 
 export interface AiCallingWebhook {
     url: string;
@@ -104,9 +124,15 @@ export function buildIssueAiCallingKeyPayload(
         name,
         expires_at: expiresAt,
     };
-    // No scopes = the server's default three; human-call scopes are only ever opt-in.
-    return input.humanCalls
-        ? { ...payload, scopes: [...AI_CALLING_DEFAULT_SCOPES, ...HUMAN_CALL_SCOPES] }
+    // No scopes = the server's default three; human-call and management scopes are only
+    // ever opt-in.
+    const extra = [
+        ...(input.humanCalls ? HUMAN_CALL_SCOPES : []),
+        ...(input.manageCounsellors ? [MANAGE_COUNSELLORS_SCOPE] : []),
+        ...(input.manageAgents ? [MANAGE_AGENTS_SCOPE] : []),
+    ];
+    return extra.length > 0
+        ? { ...payload, scopes: [...AI_CALLING_DEFAULT_SCOPES, ...extra] }
         : payload;
 }
 

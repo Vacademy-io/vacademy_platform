@@ -178,7 +178,13 @@
             "notCopiedWarning": "You have not copied the key. Close again to discard it; it cannot be shown again.",
             "humanCallsLabel": "Can ring counsellors (human calls)",
             "humanCallsHint": "Lets this key list your counsellors' names and emails and connect them to contacts by phone (human_calls:read, human_calls:write). Keys cannot be changed later.",
-            "humanCallsBadge": "Human calls"
+            "humanCallsBadge": "Human calls",
+            "manageCounsellorsLabel": "Can manage counsellors",
+            "manageCounsellorsHint": "Lets this key add counsellors (each gets a dashboard login and a welcome email), change their name, mobile number and Airtel extension, and deactivate them (counsellors:manage). It never touches admins or other staff. Keys cannot be changed later.",
+            "manageCounsellorsBadge": "Manages counsellors",
+            "manageAgentsLabel": "Can manage AI agents",
+            "manageAgentsHint": "Lets this key create, edit, turn on or off and delete AI agents, choose the default agent and which agent answers an inbound number (agents:manage). Keys cannot be changed later.",
+            "manageAgentsBadge": "Manages AI agents"
         },
         "agents": {
             "title": "Agent ids",

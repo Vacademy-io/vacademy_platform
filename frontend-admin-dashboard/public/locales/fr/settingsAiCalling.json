@@ -176,7 +176,13 @@
             "notCopiedWarning": "Vous n'avez pas copié la clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée.",
             "humanCallsLabel": "Peut appeler les conseillers (appels humains)",
             "humanCallsHint": "Permet à cette clé de lister les noms et e-mails de vos conseillers et de les mettre en relation avec des contacts par téléphone (human_calls:read, human_calls:write). Une clé ne peut pas être modifiée ensuite.",
-            "humanCallsBadge": "Appels humains"
+            "humanCallsBadge": "Appels humains",
+            "manageCounsellorsLabel": "Peut gérer les conseillers",
+            "manageCounsellorsHint": "Permet à cette clé d'ajouter des conseillers (chacun reçoit un accès au tableau de bord et un e-mail de bienvenue), de modifier leur nom, leur numéro de mobile et leur extension Airtel, et de les désactiver (counsellors:manage). Elle ne modifie jamais les administrateurs ni les autres membres de l'équipe. Une clé ne peut pas être modifiée ensuite.",
+            "manageCounsellorsBadge": "Gère les conseillers",
+            "manageAgentsLabel": "Peut gérer les agents IA",
+            "manageAgentsHint": "Permet à cette clé de créer, modifier, activer ou désactiver et supprimer des agents IA, de choisir l'agent par défaut et l'agent qui répond sur un numéro entrant (agents:manage). Une clé ne peut pas être modifiée ensuite.",
+            "manageAgentsBadge": "Gère les agents IA"
         },
         "agents": {
             "title": "Identifiants d'agent",

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
     AI_CALLING_PRODUCT,
     buildIssueAiCallingKeyPayload,
+    canManageAgents,
+    canManageCounsellors,
     canPlaceHumanCalls,
     normalizeWebhook,
     startCallCurlExample,
@@ -47,6 +49,34 @@ describe('buildIssueAiCallingKeyPayload', () => {
         ]);
         expect(canPlaceHumanCalls({ scopes: ['calls:write'] })).toBe(false);
         expect(canPlaceHumanCalls({ scopes: ['calls:write', 'human_calls:write'] })).toBe(true);
+    });
+
+    it('grants the management scopes only when asked, each on its own', () => {
+        expect(
+            buildIssueAiCallingKeyPayload(
+                'i',
+                { name: 'k', expiryDate: '', manageCounsellors: true },
+                now
+            ).scopes
+        ).toEqual(['calls:read', 'calls:write', 'webhooks:manage', 'counsellors:manage']);
+        expect(
+            buildIssueAiCallingKeyPayload(
+                'i',
+                { name: 'k', expiryDate: '', humanCalls: true, manageAgents: true },
+                now
+            ).scopes
+        ).toEqual([
+            'calls:read',
+            'calls:write',
+            'webhooks:manage',
+            'human_calls:read',
+            'human_calls:write',
+            'agents:manage',
+        ]);
+        expect(canManageCounsellors({ scopes: ['human_calls:write'] })).toBe(false);
+        expect(canManageCounsellors({ scopes: ['counsellors:manage'] })).toBe(true);
+        expect(canManageAgents({ scopes: ['calls:read', 'agents:manage'] })).toBe(true);
+        expect(canManageAgents({})).toBe(false);
     });
 
     it('rejects a missing name, a past date and a malformed date', () => {

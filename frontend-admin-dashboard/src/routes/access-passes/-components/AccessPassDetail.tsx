@@ -226,39 +226,63 @@ export function AccessPassDetail({ passId, onDeleted }: { passId: string; onDele
 
             {pass.audience_type === 'B2B' && <AccessPassSubOrgsPanel passId={passId} />}
 
-            {/* Share (B2C only: a B2B pass reaches learners through its sub-orgs) */}
-            {pass.audience_type !== 'B2B' && (
-            <div className="flex flex-col gap-2 rounded-lg border p-4">
-                <h3 className="font-medium">{t('detail.shareTitle', 'Sell link')}</h3>
-                {pass.status !== 'ACTIVE' && (
-                    <p className="text-xs text-amber-600">
-                        {t('detail.notSelling', 'The link only accepts purchases while the pass is published.')}
-                    </p>
-                )}
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                    {shareLink && (
-                        <>
-                            <code className="rounded bg-neutral-100 px-2 py-1">{shareLink}</code>
-                            <Button variant="ghost" size="sm" onClick={() => copy(shareLink)}>
-                                <Copy className="size-4" />
-                            </Button>
-                        </>
-                    )}
-                    <span className="text-neutral-500">
-                        {t('detail.inviteCode', 'Invite code')}: <code>{pass.invite_code}</code>
-                    </span>
-                    <span className="text-neutral-500">
-                        {t('detail.slug', 'Catalogue key')}: <code>{pass.slug}</code>
-                    </span>
-                </div>
-                <p className="text-xs text-neutral-500">
-                    {t(
-                        'detail.catalogueHint',
-                        'To show passes on your website, add the "Access Passes" section in Manage Pages.'
-                    )}
-                </p>
-            </div>
-            )}
+            {/* Sell link (B2C only: a B2B pass reaches learners through its sub-orgs). The
+                invite only accepts enrolments while the pass is published, so a draft's link
+                is shown as closed instead of being handed out to learners. */}
+            {pass.audience_type !== 'B2B' &&
+                (pass.status === 'ACTIVE' ? (
+                    <div className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                        <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-emerald-500" />
+                            <h3 className="font-medium text-emerald-900">
+                                {t('detail.sellingTitle', 'Selling — share this link')}
+                            </h3>
+                        </div>
+                        {shareLink && (
+                            <div className="flex min-w-0 items-center gap-2">
+                                <code className="min-w-0 flex-1 truncate rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm">
+                                    {shareLink}
+                                </code>
+                                <Button size="sm" onClick={() => copy(shareLink)}>
+                                    <Copy className="mr-1 size-4" />
+                                    {t('detail.copy', 'Copy')}
+                                </Button>
+                            </div>
+                        )}
+                        <p className="text-xs text-emerald-800">
+                            {t('detail.inviteCode', 'Invite code')}: <code>{pass.invite_code}</code> ·{' '}
+                            {t('detail.slug', 'Catalogue key')}: <code>{pass.slug}</code> ·{' '}
+                            {t(
+                                'detail.catalogueHint',
+                                'To show passes on your website, add the "Access Passes" section in Manage Pages.'
+                            )}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                            <h3 className="font-medium text-amber-900">
+                                {pass.status === 'ARCHIVED'
+                                    ? t('detail.closedArchived', 'Not selling — the link is closed')
+                                    : t('detail.closedDraft', 'Draft — the link opens when you publish')}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-amber-800">
+                                {t(
+                                    'detail.closedHint',
+                                    'Until then, learners opening the link see "Enrollment is currently closed".'
+                                )}
+                            </p>
+                        </div>
+                        <Button
+                            size="sm"
+                            className="shrink-0"
+                            disabled={statusMutation.isPending}
+                            onClick={() => statusMutation.mutate('ACTIVE')}
+                        >
+                            {t('detail.publishNow', 'Publish now')}
+                        </Button>
+                    </div>
+                ))}
 
             {/* Courses */}
             <div className="flex flex-col gap-3 rounded-lg border p-4">

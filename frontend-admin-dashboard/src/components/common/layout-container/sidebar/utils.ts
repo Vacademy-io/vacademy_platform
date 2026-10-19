@@ -463,6 +463,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/membership-stats',
                 subItemId: 'membership-stats-sub',
             },
+            {
+                subItem: sidebarT('sidebar:accessPasses'),
+                subItemLink: '/manage-access-passes',
+                subItemId: 'access-passes-sub',
+            },
         ],
     },
     {

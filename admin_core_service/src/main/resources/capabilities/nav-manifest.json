@@ -418,6 +418,17 @@
             "ADMIN": true,
             "TEACHER": true
           }
+        },
+        {
+          "id": "access-passes-sub",
+          "label": "Access Passes",
+          "route": "/manage-access-passes",
+          "order": 5,
+          "admin_only": false,
+          "default_visible": {
+            "ADMIN": true,
+            "TEACHER": true
+          }
         }
       ]
     },

@@ -223,6 +223,15 @@ public class CopyIntakeService {
         }
     }
 
+    /** Store the AI checking settings on their own; returns what is now kept. */
+    @Transactional
+    public CopyCheckConfig.Settings saveCopyCheckConfig(String assessmentId, CopyCheckConfig.Settings settings) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment not found"));
+        rememberCopyCheckConfig(assessment, settings);
+        return CopyCheckConfig.normalize(settings);
+    }
+
     /** The AI checking settings kept on the assessment, for the dialog to start from. */
     @Transactional(readOnly = true)
     public CopyCheckConfig.Settings copyCheckConfig(String assessmentId) {

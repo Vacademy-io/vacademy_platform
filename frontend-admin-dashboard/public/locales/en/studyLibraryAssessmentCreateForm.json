@@ -121,6 +121,15 @@
             "allCompulsory": "all questions compulsory",
             "invalid": "Must be at least 1 and less than {{count}} — otherwise every question counts.",
             "chip": "any {{attempt}} of {{count}}"
+        },
+        "ai": {
+            "title": "AI checking settings",
+            "hint": "Subject, class, your marking scheme and grammar highlighting, used for every answer sheet of this test."
+        },
+        "criteria": {
+            "none": "No criteria yet: the AI writes them on the first check",
+            "edited": "Edited",
+            "edit": "Edit criteria"
         }
     },
     "retrofit": {
@@ -153,7 +162,8 @@
         "checkStarted_one": "AI check started for {{count}} sheet.",
         "checkStarted_other": "AI check started for {{count}} sheets.",
         "checkFailed": "Could not start the AI check. Use “Evaluate with AI” on the submissions page.",
-        "thisTest": "this test"
+        "thisTest": "this test",
+        "criteriaNotSaved": "AI checking is on, but the criteria or settings could not be saved. Set them from the test's Submissions tab → Check submitted copies."
     },
     "background": {
         "started": "Reading the question paper in the background (≈{{credits}} credits). You can leave this page — you will get an alert when it is ready.",

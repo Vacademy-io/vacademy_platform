@@ -98,6 +98,23 @@ public class CopyIntakeController {
         return ResponseEntity.ok(service.copyCheckConfig(assessmentId));
     }
 
+    /**
+     * Save the AI checking settings on the assessment without sending copies (used where
+     * copies are checked one by one, e.g. a course's assessment slide). Empty settings
+     * clear them, so the institute default applies again.
+     */
+    @PutMapping("/copy-check-config")
+    public ResponseEntity<CopyCheckConfig.Settings> saveCopyCheckConfig(@RequestAttribute("user") CustomUserDetails user,
+                                                                        @RequestHeader(value = "clientId", required = false) String clientId,
+                                                                        @RequestParam("assessmentId") String assessmentId,
+                                                                        @RequestParam("instituteId") String instituteId,
+                                                                        @RequestBody CopyCheckConfig.Settings settings) {
+        requireAssessmentInInstitute(user, clientId, assessmentId, instituteId);
+        accessValidator.requireStaffRole(user);
+        return ResponseEntity.ok(service.saveCopyCheckConfig(assessmentId,
+                settings == null ? new CopyCheckConfig.Settings() : settings));
+    }
+
     @GetMapping("/batches")
     public ResponseEntity<List<CopyIntakeDtos.BatchDto>> list(@RequestAttribute("user") CustomUserDetails user,
                                                               @RequestHeader(value = "clientId", required = false) String clientId,

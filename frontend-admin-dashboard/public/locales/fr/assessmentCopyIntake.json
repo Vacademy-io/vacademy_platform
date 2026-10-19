@@ -147,5 +147,40 @@
         "instructionsDefaultHint": "Utilisées pour chaque évaluation qui n'a pas ses propres consignes",
         "language": "Signaler les fautes d'orthographe et de grammaire",
         "languageHint": "Chaque faute est soulignée avec sa correction et listée dans le commentaire de la réponse. Aucun point n'est retiré. Pour les réponses rédigées en anglais."
+    },
+    "criteria": {
+        "title": "Critères d'évaluation",
+        "loading": "Chargement des critères…",
+        "loadFailed": "Les critères n'ont pas pu être chargés.",
+        "noQuestions": "Ce test n'a encore aucune question.",
+        "summary": "{{set}} questions sur {{total}} ont des critères · les autres sont rédigés par l'IA à la première correction",
+        "review": "Voir les critères",
+        "addOpen": "Ajouter des critères d'évaluation",
+        "dialogTitle": "Critères d'évaluation pour la correction IA",
+        "dialogIntro": "L'IA note chaque réponse selon ces critères. Les changements s'appliquent à chaque copie corrigée désormais ; les copies déjà corrigées gardent leurs notes jusqu'à une nouvelle correction.",
+        "countSet_one": "{{count}} défini",
+        "countSet_other": "{{count}} définis",
+        "countFromQuestion_one": "{{count}} depuis la banque",
+        "countFromQuestion_other": "{{count}} depuis la banque",
+        "countAi_one": "{{count}} rédigé par l'IA",
+        "countAi_other": "{{count}} rédigés par l'IA",
+        "useQuestionCriteria_one": "Utiliser les critères de la question pour {{count}} question",
+        "useQuestionCriteria_other": "Utiliser les critères des questions pour {{count}} questions",
+        "marks_one": "{{marks}} point",
+        "marks_other": "{{marks}} points",
+        "status": {
+            "SET": "Défini",
+            "FROM_QUESTION": "Pas encore utilisé",
+            "AI": "Rédigé par l'IA"
+        },
+        "noText": "Texte de la question indisponible",
+        "aiWillWrite": "Pas encore de critères : l'IA les rédige à la première correction",
+        "add": "Ajouter",
+        "edit": "Modifier",
+        "saved_one": "Critères enregistrés",
+        "saved_other": "Critères enregistrés pour {{count}} questions",
+        "saveFailed": "Les critères n'ont pas pu être enregistrés",
+        "retry": "Réessayer",
+        "done": "Terminé"
     }
 }

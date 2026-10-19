@@ -207,6 +207,14 @@
       "contentWidthHint": "Width of the page content in pixels, from {{min}} to {{max}}. Leave empty for the default.",
       "contentWidthNotSaved": "Not saved: enter a whole number from {{min}} to {{max}}."
     },
+    "coursePage": {
+      "heading": "Course page",
+      "hint": "Choose which parts show on each course's public page. Everything is on by default.",
+      "content": "Course content (modules & slides)",
+      "contentHint": "The Course content tab (Table of Contents on e-books) with the course's modules and slides.",
+      "series": "Part of a learning path",
+      "seriesHint": "The \"Part of …\" chips listing the other steps of the learning path the course is in, and the \"Next in the series\" card."
+    },
     "courseFormats": {
       "fromTags": {
         "enable": "Add new course tags as formats",

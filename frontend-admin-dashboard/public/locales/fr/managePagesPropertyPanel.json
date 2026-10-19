@@ -207,6 +207,14 @@
       "contentWidthHint": "Largeur du contenu de la page en pixels, de {{min}} à {{max}}. Laissez vide pour la valeur par défaut.",
       "contentWidthNotSaved": "Non enregistré : saisissez un nombre entier de {{min}} à {{max}}."
     },
+    "coursePage": {
+      "heading": "Page du cours",
+      "hint": "Choisissez les parties affichées sur la page publique de chaque cours. Tout est activé par défaut.",
+      "content": "Contenu du cours (modules et diapositives)",
+      "contentHint": "L'onglet Contenu du cours (Table des matières pour les e-books) avec les modules et diapositives du cours.",
+      "series": "Partie d'un parcours",
+      "seriesHint": "Les puces « Part of … » listant les autres étapes du parcours auquel appartient le cours, et la carte « Next in the series »."
+    },
     "courseFormats": {
       "fromTags": {
         "enable": "Ajouter les nouvelles étiquettes de cours comme formats",

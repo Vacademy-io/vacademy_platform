@@ -247,6 +247,8 @@ export interface CourseDetailsViewProps {
   /** A series step's format label ("E-Learning"), or "". */
   stepFormat: (step: SeriesStep) => string;
   outline: React.ReactNode;
+  /** False: no Course content / Table of Contents tab (globalSettings.courseDetails.content). Default true. */
+  showContent?: boolean;
   /** "You may also like" (a course strip that brings its own section), or null. */
   related: React.ReactNode;
   /** The site's app banner, or null. */
@@ -293,6 +295,7 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
     formatStepPrice,
     stepFormat,
     outline,
+    showContent = true,
     related,
     closingBanner,
     tagName,
@@ -320,10 +323,12 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
   const tabs = useMemo(() => {
     const list: Array<{ id: CourseTabId; label: string }> = [];
     if (hasAbout) list.push({ id: "description", label: t("courseDetails.page.tabDescription", "Description") });
-    list.push({
-      id: "content",
-      label: isBook ? t("courseDetails.page.tabToc", "Table of Contents") : t("courseDetails.page.tabContent", "Course content"),
-    });
+    if (showContent) {
+      list.push({
+        id: "content",
+        label: isBook ? t("courseDetails.page.tabToc", "Table of Contents") : t("courseDetails.page.tabContent", "Course content"),
+      });
+    }
     if (hasAudience) list.push({ id: "audience", label: t("courseDetails.page.tabAudience", "Who should do this course") });
     if (hasLanguage) list.push({ id: "language", label: t("courseDetails.page.tabLanguage", "Language") });
     if (faqs.length) list.push({ id: "faq", label: t("courseDetails.page.tabFaq", "FAQ") });
@@ -334,11 +339,12 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
       });
     }
     return list;
-  }, [hasAbout, hasAudience, hasLanguage, isBook, faqs.length, authors.length, t]);
+  }, [hasAbout, hasAudience, hasLanguage, isBook, showContent, faqs.length, authors.length, t]);
 
   // One panel at a time; #content, #faq… open (and are kept in) the address.
   const [active, setActive] = useState<CourseTabId | null>(hashTab);
-  const current: CourseTabId = tabs.find((tab) => tab.id === active)?.id ?? tabs[0]?.id ?? "content";
+  const current: CourseTabId | null =
+    tabs.find((tab) => tab.id === active)?.id ?? tabs[0]?.id ?? (showContent ? "content" : null);
   useEffect(() => {
     const onHash = () => {
       const h = hashTab();
@@ -596,6 +602,8 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
 
       {/* Tabs stick under the header only while the course details are on screen. */}
       <div>
+      {/* No tabs at all (every part off): no empty bar. */}
+      {tabs.length > 0 && (
       <div className="sticky top-16 z-30 border-b border-palette-border bg-white md:top-20">
         <div role="tablist" aria-label={title} className={cn(SHELL, "catalogue-no-scrollbar flex gap-1 overflow-x-auto")}>
           {tabs.map((tab, i) => {
@@ -624,10 +632,11 @@ export const CourseDetailsView: React.FC<CourseDetailsViewProps> = (props) => {
           })}
         </div>
       </div>
+      )}
 
       <section className="pb-20 pt-10 lg:pt-14">
         <div className={cn(SHELL, "flex flex-col gap-10 lg:flex-row lg:items-start lg:gap-14")}>
-          <div id={`${baseId}-panel`} role="tabpanel" aria-labelledby={`${baseId}-tab-${current}`} className="min-w-0 flex-1">
+          <div id={`${baseId}-panel`} role={current ? "tabpanel" : undefined} aria-labelledby={current ? `${baseId}-tab-${current}` : undefined} className="min-w-0 flex-1">
             {panel}
           </div>
           <aside className="w-full lg:sticky lg:top-40 lg:w-auto">

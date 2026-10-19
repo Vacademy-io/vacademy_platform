@@ -9,6 +9,7 @@ import vacademy.io.assessment_service.features.assessment.copy_intake.entity.AiC
 import vacademy.io.assessment_service.features.assessment.copy_intake.service.CopyIntakeRunner;
 import vacademy.io.assessment_service.features.assessment.copy_intake.service.CopyIntakeService;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckConfig;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.EvaluationAccessValidator;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
@@ -85,6 +86,16 @@ public class CopyIntakeController {
         AiCopyIntakeBatch batch = service.startFromSubmitted(user, assessmentId, instituteId, request);
         runner.run(batch.getId());
         return ResponseEntity.ok(service.toDto(batch, false));
+    }
+
+    /** The AI checking settings kept on the assessment (subject, instructions, language feedback). */
+    @GetMapping("/copy-check-config")
+    public ResponseEntity<CopyCheckConfig.Settings> copyCheckConfig(@RequestAttribute("user") CustomUserDetails user,
+                                                                    @RequestHeader(value = "clientId", required = false) String clientId,
+                                                                    @RequestParam("assessmentId") String assessmentId,
+                                                                    @RequestParam("instituteId") String instituteId) {
+        requireAssessmentInInstitute(user, clientId, assessmentId, instituteId);
+        return ResponseEntity.ok(service.copyCheckConfig(assessmentId));
     }
 
     @GetMapping("/batches")

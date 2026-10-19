@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckConfig;
 
 import java.util.Date;
 import java.util.List;
@@ -28,6 +29,8 @@ public final class CopyIntakeDtos {
         private Boolean notifyEmail;
         /** Checked-copy template: INSIDE (remarks on the copy) or OUTSIDE (panel beside it). */
         private String commentPlacement;
+        /** How the AI checks this paper (subject, instructions, language feedback); null keeps what is set. */
+        private CopyCheckConfig.Settings copyCheckConfig;
     }
 
     /**
@@ -48,6 +51,8 @@ public final class CopyIntakeDtos {
         private Boolean notifyEmail;
         /** Checked-copy template: INSIDE (remarks on the copy) or OUTSIDE (panel beside it). */
         private String commentPlacement;
+        /** How the AI checks this paper (subject, instructions, language feedback); null keeps what is set. */
+        private CopyCheckConfig.Settings copyCheckConfig;
     }
 
     /** One checked copy of a batch, for "Download checked copies". */

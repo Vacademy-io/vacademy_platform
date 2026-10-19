@@ -37,6 +37,7 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentR
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationEnqueueContext;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationService;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckConfig;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCommentPlacement;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -164,6 +165,7 @@ public class CopyIntakeService {
         // each is checked again, under the institute lock, when it is queued.
         aiEvaluationService.requireCreditsForCopies(assessment, instituteId, usable.size());
         rememberCommentPlacement(assessment, request.getCommentPlacement());
+        rememberCopyCheckConfig(assessment, request.getCopyCheckConfig());
 
         AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()
                 .assessmentId(assessment.getId())
@@ -202,6 +204,29 @@ public class CopyIntakeService {
         if (placement != null) {
             assessmentRepository.updateCopyCommentPlacement(assessment.getId(), placement);
         }
+    }
+
+    /**
+     * Keep the AI checking settings sent with this batch on the assessment; dispatch
+     * reads them there. Settings sent empty clear the assessment's own, so the
+     * institute default applies again; no settings sent leaves them as they are.
+     */
+    private void rememberCopyCheckConfig(Assessment assessment, CopyCheckConfig.Settings requested) {
+        if (!CopyCheckConfig.differs(assessment, requested)) {
+            return;
+        }
+        String json = CopyCheckConfig.write(requested);
+        if (json == null) {
+            assessmentRepository.clearCopyCheckConfig(assessment.getId());
+        } else {
+            assessmentRepository.updateCopyCheckConfig(assessment.getId(), json);
+        }
+    }
+
+    /** The AI checking settings kept on the assessment, for the dialog to start from. */
+    @Transactional(readOnly = true)
+    public CopyCheckConfig.Settings copyCheckConfig(String assessmentId) {
+        return CopyCheckConfig.on(assessmentRepository.findById(assessmentId).orElse(null));
     }
 
     // ------------------------------------------------- submitted copies
@@ -289,6 +314,7 @@ public class CopyIntakeService {
 
         if (request != null) {
             rememberCommentPlacement(assessment, request.getCommentPlacement());
+            rememberCopyCheckConfig(assessment, request.getCopyCheckConfig());
         }
 
         String model = request == null ? null : request.getPreferredModel();

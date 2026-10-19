@@ -557,6 +557,37 @@ public class AdminCoreServiceClient {
     }
 
     /**
+     * The institute's default AI checking settings, {@code ASSESSMENT_SETTING.aiCopyCheck}
+     * as saved (instructions, languageFeedback, ...); an empty map when the institute set
+     * none or admin-core could not be asked. Cached like the template above, failures
+     * included, so admin-core is asked once per institute per 5 minutes.
+     */
+    @Cacheable(value = "aiCopyCheckDefaults", key = "#instituteId", unless = "#result == null")
+    public Map<String, Object> getAiCopyCheckDefaults(String instituteId) {
+        if (!StringUtils.hasText(instituteId)) return null;
+        try {
+            String route = "/admin-core-service/internal/institute/v1/" + instituteId
+                    + "/setting?settingKey=ASSESSMENT_SETTING";
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() != HttpStatus.OK) return Map.of();
+            String body = response.getBody();
+            if (body == null || body.isBlank() || "null".equals(body.trim())) return Map.of();
+            Map<String, Object> settingData = objectMapper.readValue(body, Map.class);
+            Object copyCheck = settingData == null ? null : settingData.get("aiCopyCheck");
+            if (copyCheck instanceof Map) {
+                Map<String, Object> out = new java.util.HashMap<>();
+                ((Map<?, ?>) copyCheck).forEach((k, v) -> out.put(String.valueOf(k), v));
+                return out;
+            }
+            return Map.of();
+        } catch (Exception e) {
+            log.warn("Failed to fetch AI copy-check defaults for institute {}: {}", instituteId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
      * Staff roles explicitly enabled to receive the "result released"/"reevaluated"
      * email (the learner audience is excluded — it's handled separately). Default
      * for every staff role (incl. ADMIN) is OFF, so this is simply the explicitly

@@ -177,6 +177,7 @@ public class CopyCheckOrchestratorService {
             return;
         }
         request.setCommentPlacement(commentPlacementFor(request, facts));
+        applyCopyCheckSettings(request, facts);
 
         String jobId;
         try {
@@ -303,6 +304,7 @@ public class CopyCheckOrchestratorService {
                 // The assessment's own template choice; dispatch resolves it (with the
                 // institute default) to OUTSIDE or nothing before sending.
                 .commentPlacement(typed ? null : CopyCommentPlacement.chosenOn(assessmentOf(process)))
+                .copyCheckSettings(CopyCheckConfig.on(assessmentOf(process)))
                 .build();
         if (gradeRequestEnricher != null) {
             gradeRequestEnricher.enrich(process, request);
@@ -340,6 +342,46 @@ public class CopyCheckOrchestratorService {
                     }
                 };
         return CopyCommentPlacement.effective(request.getCommentPlacement(), instituteDefault);
+    }
+
+    /**
+     * The assessment's AI checking settings, with the institute's instructions and
+     * language choice where it has none, sent as exam_context. Partner API traffic
+     * brings its own exam_context and is left as it is; nothing set anywhere leaves
+     * the request exactly as before. A subject chosen here is the subject of every
+     * question. Read outside any transaction; a failed lookup means the assessment's
+     * own settings only, never a failed check.
+     */
+    void applyCopyCheckSettings(CopyCheckGradeRequestDto request, DispatchFacts facts) {
+        if (facts.apiTraffic() || request.getExamContext() != null) {
+            return;
+        }
+        AdminCoreServiceClient client = adminCoreServiceClient;
+        Supplier<Map<String, Object>> instituteDefault = client == null
+                ? null
+                : () -> {
+                    try {
+                        return CompletableFuture
+                                .supplyAsync(() -> client.getAiCopyCheckDefaults(facts.instituteId()), TEMPLATE_LOOKUP)
+                                .get(TEMPLATE_LOOKUP_WAIT_MS, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    } catch (Exception e) {
+                        log.info("[copy-check] institute AI checking defaults for {} not back in time ({})",
+                                facts.instituteId(), e.getClass().getSimpleName());
+                        return null;
+                    }
+                };
+        Map<String, Object> examContext = CopyCheckConfig.examContext(request.getCopyCheckSettings(), instituteDefault);
+        if (examContext == null) {
+            return;
+        }
+        request.setExamContext(examContext);
+        Object subject = examContext.get("subject");
+        if (subject != null && request.getQuestions() != null) {
+            request.getQuestions().forEach(q -> q.setSubject(subject.toString()));
+        }
     }
 
     /** What dispatch reads about a claimed row in its first, short transaction. */

@@ -199,6 +199,13 @@ public class LearnerEnrollRequestService {
     @Autowired
     private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
 
+    /**
+     * extraData flag: reject the enrollment when the invite is not currently available
+     * (status / date window). Set by the public learner endpoint; internal callers
+     * (sub-org registration, admin MANUAL) leave it off.
+     */
+    public static final String ENFORCE_INVITE_AVAILABILITY = "ENFORCE_INVITE_AVAILABILITY";
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -247,6 +254,24 @@ public class LearnerEnrollRequestService {
                 && gatewayStrategy.isClientPaymentConfirmation(enrollDTO.getPaymentInitiationRequest())) {
             return completeGatewayPaymentConfirmation(learnerEnrollRequestDTO,
                     enrollDTO.getPaymentInitiationRequest(), gatewayStrategy);
+        }
+
+        // ── Invite availability guard ─────────────────────────────────────────────
+        // The open invite endpoint shows an expired / not-started / deactivated link's
+        // "unavailable" message, but nothing stopped a direct POST from enrolling through
+        // it. Enforced only for callers that opt in (the public learner endpoint), and
+        // only after the phase-2 branch above: a payment that was already taken must
+        // still complete even if the link closed in between.
+        if (Boolean.TRUE.equals(extraData.get(ENFORCE_INVITE_AVAILABILITY))
+                && StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
+            EnrollInvite availabilityInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
+            if (!vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil
+                    .isAvailable(availabilityInvite)) {
+                throw new VacademyException("This enrollment link is not accepting enrollments ("
+                        + vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil
+                                .compute(availabilityInvite)
+                        + ").");
+            }
         }
 
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {

@@ -116,12 +116,24 @@ public class MultiPackageLearnerEnrollService {
         PaymentInitiationRequestDTO paymentInit = request.getPaymentInitiationRequest();
 
         // 0.1 Calculate Total Amount if missing
+        // A negative amount is never legitimate, and the "free" checks below key off
+        // amount <= 0 — so letting one through skipped payment entirely.
+        if (paymentInit.getAmount() != null && paymentInit.getAmount() < 0
+                && !"MANUAL".equalsIgnoreCase(request.getEnrollmentType())) {
+            throw new VacademyException("Payment amount cannot be negative");
+        }
         if (paymentInit.getAmount() == null || paymentInit.getAmount() == 0.0) {
             double totalAmount = 0.0;
             for (LearnerPackageSessionEnrollmentItemDTO item : items) {
                 if (StringUtils.hasText(item.getPlanId())) {
                     vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan plan = paymentPlanService
                             .findById(item.getPlanId()).orElse(null);
+                    // This loop used to fetch the plan and never add its price, so an omitted
+                    // amount summed to 0 and the request was treated as FREE (skip payment +
+                    // force PAID) — a paid enrollment for nothing.
+                    if (plan != null) {
+                        totalAmount += plan.getActualPrice();
+                    }
 
                 } else if (StringUtils.hasText(item.getPaymentOptionId())) {
                     // Fallback to auto-select active plan if planId is missing but paymentOption is
@@ -140,7 +152,16 @@ public class MultiPackageLearnerEnrollService {
                             vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan autoPlan = activePlans
                                     .get(0);
                             log.info("Auto-calculated price from single ACTIVE plan: {}", autoPlan.getId());
-
+                            totalAmount += autoPlan.getActualPrice();
+                            // Pin the plan so the amount verification below checks the
+                            // same plan that was priced here.
+                            item.setPlanId(autoPlan.getId());
+                        } else if (!PaymentOptionType.FREE.name().equalsIgnoreCase(option.getType())
+                                && !"MANUAL".equalsIgnoreCase(request.getEnrollmentType())) {
+                            // A paid option whose plan can't be resolved can't be priced; summing
+                            // it as 0 would hand the course out for free.
+                            throw new VacademyException(
+                                    "plan_id is required for payment option " + option.getId());
                         }
                     }
                 }
@@ -223,6 +244,13 @@ public class MultiPackageLearnerEnrollService {
             isSkipPayment = true;
         }
 
+        // Learner checkouts must not enroll through an expired / inactive link. Admin
+        // MANUAL enrollment is exempt (admins can place learners on closed invites).
+        boolean enforceAvailability = !"MANUAL".equalsIgnoreCase(request.getEnrollmentType());
+        if (enforceAvailability) {
+            mainExtraData.put(LearnerEnrollRequestService.ENFORCE_INVITE_AVAILABILITY, true);
+        }
+
         if (isSkipPayment) {
             mainExtraData.put("SKIP_PAYMENT_INITIATION", true);
             mainExtraData.put("IS_MANUAL_ENROLLMENT", true);
@@ -267,6 +295,9 @@ public class MultiPackageLearnerEnrollService {
             Map<String, Object> childExtraData = new HashMap<>();
             childExtraData.put("SKIP_PAYMENT_INITIATION", true);
             childExtraData.put("PARENT_PAYMENT_LOG_ID", mainPaymentLogId);
+            if (enforceAvailability) {
+                childExtraData.put(LearnerEnrollRequestService.ENFORCE_INVITE_AVAILABILITY, true);
+            }
 
             // Inherit Manual/Skip flags from main if applicable
             if (isSkipPayment) {

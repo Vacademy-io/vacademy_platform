@@ -50,7 +50,7 @@ export function ReportsRail({
         <nav
             role="tablist"
             aria-orientation="vertical"
-            className="flex gap-3 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:flex-col lg:gap-4 lg:self-start lg:overflow-visible"
+            className="flex gap-3 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-2 lg:sticky lg:top-4 lg:w-44 lg:shrink-0 lg:flex-col lg:gap-3 lg:overflow-visible"
         >
             {GROUPS.map(([group, tabs]) => (
                 <div
@@ -70,7 +70,7 @@ export function ReportsRail({
                                 aria-selected={active === tab}
                                 onClick={() => onSelect(tab)}
                                 className={cn(
-                                    'whitespace-nowrap rounded-md px-2 py-1.5 text-left transition-colors',
+                                    'whitespace-nowrap rounded-md px-2 py-1 text-left transition-colors',
                                     active === tab
                                         ? 'bg-primary-50 font-semibold text-primary-600'
                                         : 'text-neutral-700 hover:bg-neutral-50'

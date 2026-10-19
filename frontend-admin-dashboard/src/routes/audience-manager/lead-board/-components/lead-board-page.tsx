@@ -158,8 +158,9 @@ export const LeadBoardPage = () => {
 
 const LeadBoardContent = () => {
     const { t } = useTranslation('audienceManagerLeadBoardPage');
-    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
-    const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
+    // Built every render (cheap): a memo could keep raw keys from before the catalog loaded.
+    const slaOptions = buildSlaOptions(t);
+    const dateRangeOptions = buildDateRangeOptions(t);
     // Institute tier catalog (custom tiers + labels) and its own name for "Tier".
     const tierCatalog = useLeadTiers();
     const terminology = useLeadTerminology();

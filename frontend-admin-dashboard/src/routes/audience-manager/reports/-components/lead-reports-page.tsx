@@ -18,6 +18,7 @@
  * Every tab is read-only; this page never writes anything.
  */
 import { ReportsRail } from './ReportsRail';
+import { DatePickerButton } from '@/components/shared/crm-enhance/date-picker-button';
 import { ReportScope } from './ReportScope';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,8 +26,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { ArrowsClockwise, Megaphone, User } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -249,30 +248,20 @@ export function LeadReportsPage() {
                         </button>
                     ))}
                 </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="rep-from" className="text-xs text-neutral-600">
-                        {t('filters.from')}
-                    </Label>
-                    <Input
-                        id="rep-from"
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="h-9 w-40"
-                    />
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="rep-to" className="text-xs text-neutral-600">
-                        {t('filters.to')}
-                    </Label>
-                    <Input
-                        id="rep-to"
-                        type="date"
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="h-9 w-40"
-                    />
-                </div>
+                <DatePickerButton
+                    label={t('filters.from')}
+                    value={fromDate}
+                    onChange={setFromDate}
+                    max={toDate || undefined}
+                    className="self-end"
+                />
+                <DatePickerButton
+                    label={t('filters.to')}
+                    value={toDate}
+                    onChange={setToDate}
+                    min={fromDate || undefined}
+                    className="self-end"
+                />
                 <Button onClick={apply} size="sm" className="h-9 self-end" disabled={!instituteId}>
                     {t('filters.apply')}
                 </Button>
@@ -310,13 +299,13 @@ export function LeadReportsPage() {
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
-                <div className="grid gap-6 lg:grid-cols-12">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
                     <ReportsRail
                         active={activeTab}
                         onSelect={setActiveTab}
                         showIntelligence={!!callIntelligenceEnabled}
                     />
-                    <div className="min-w-0 lg:col-span-9">
+                    <div className="min-w-0 flex-1">
 
                 <TabsContent value="overview">
                     <OverviewTab {...tabProps} />

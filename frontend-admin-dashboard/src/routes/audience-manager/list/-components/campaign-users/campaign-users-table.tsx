@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -119,11 +118,17 @@ import {
     type LeadSortDirection,
 } from '@/components/shared/leads';
 import { usePoolForAudience } from '@/services/counselor-pool';
-import { UsersThree, Tag } from '@phosphor-icons/react';
+import { Tag } from '@phosphor-icons/react';
 import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 import { FreebieDownloadsPanel } from '@/components/shared/freebies/FreebieDownloadsPanel';
 import { LeadListLeadsEnhancedHeader } from './LeadListLeadsEnhancedHeader';
 import { ListShareBar } from './ListShareBar';
+import { LeadListDetailHeader } from './LeadListDetailHeader';
+import { LeadListDetailTabs, type LeadListTab } from './LeadListDetailTabs';
+import { ListShareTab } from './ListShareTab';
+import { ListAutomationsTab } from './ListAutomationsTab';
+import { listCampaignKey, useListCampaign } from '../../-hooks/useListCampaign';
+import { CreateCampaignDialog } from '../create-campaign-dialog/CreateCampaignDialog';
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
@@ -153,9 +158,6 @@ const buildSlaOptions = (t: TFunction): { value: string; label: string }[] => [
 ];
 const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;
-
-// Force-filled primary CTA so the page's primary action carries weight.
-const PRIMARY_BTN = 'bg-primary-500 text-white shadow-sm hover:bg-primary-600';
 
 const generateKeyFromName = (name: string): string =>
     name
@@ -202,7 +204,8 @@ const CampaignUsersContent = ({
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { setSelectedStudent } = useStudentSidebar();
-    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
+    // Built every render (cheap): a memo could keep raw keys from before the catalog loaded.
+    const slaOptions = buildSlaOptions(t);
 
     // ── Filter state ─────────────────────────────────────────
     const [page, setPage] = useState(0);
@@ -631,7 +634,6 @@ const CampaignUsersContent = ({
         [setSelectedStudent, updateTier]
     );
     // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
-    useRegisterLeadDrawerSource({ vms: vms, profiles: leadProfiles, actions, showOps, showScore });
     const handleStatusUpdated = () => {
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
         queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
@@ -1122,579 +1124,622 @@ const CampaignUsersContent = ({
     // lists that aren't auto-assigned, in which case the chip simply doesn't render.
     const { data: pool } = usePoolForAudience(campaignId);
 
+    // ── List page sections + the list's own record ──────────────
+    const [tab, setTab] = useState<LeadListTab>('leads');
+    const { data: listCampaign } = useListCampaign(campaignId);
+    // Wizard step the Edit dialog opens on; null = closed.
+    const [editStep, setEditStep] = useState<number | null>(null);
+    const closeEdit = () => {
+        setEditStep(null);
+        // Saving changes the list's name / status / settings shown above.
+        queryClient.invalidateQueries({
+            queryKey: listCampaignKey(instituteId ?? '', campaignId),
+        });
+    };
+    // Counsellor names for the pool card, from the option lists already loaded.
+    const counsellorNames = new Map<string, string>();
+    for (const o of [...assignableCounsellorOptions, ...counsellorOptions]) {
+        counsellorNames.set(o.id, o.full_name);
+    }
+    const goToAddResponse = () =>
+        navigate({
+            to: '/audience-manager/list/campaign-users/add',
+            search: {
+                campaignId,
+                campaignName,
+                customFields: customFieldsJson,
+            },
+            // Router's typed search doesn't model these dynamic params.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+
     return (
         <div className="flex w-full flex-col gap-6">
             {/* Heading */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                    <h1
-                        className="truncate text-2xl font-semibold leading-tight text-neutral-900"
-                        title={campaignName}
-                    >
-                        {campaignName ?? t('heading.fallbackTitle')}
-                    </h1>
-                    <p className="mt-1 text-sm text-neutral-500">
-                        {isLoading
-                            ? t('heading.loadingRespondents')
-                            : t('heading.respondentsCount', {
-                                  count: totalElements,
-                                  formattedCount: totalElements.toLocaleString(i18n.language),
-                              })}
-                    </p>
-                    {/* Where this list's leads get routed. Only auto-assigned lists have a
-                        pool, so its absence is meaningful rather than missing data. */}
-                    {pool && (
-                        <span
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700"
-                            title={`Leads from this list are assigned through the "${pool.name}" pool`}
-                        >
-                            <UsersThree className="size-3.5" weight="fill" />
-                            {pool.name}
-                            {pool.members?.length ? (
-                                <span className="font-normal text-primary-600">
-                                    · {pool.members.length}{' '}
-                                    {pool.members.length === 1 ? 'counsellor' : 'counsellors'}
-                                </span>
-                            ) : null}
-                        </span>
-                    )}
-                </div>
-                {!isOptOut && (
-                    <Button
-                        onClick={() =>
-                            navigate({
-                                to: '/audience-manager/list/campaign-users/add',
-                                search: {
-                                    campaignId,
-                                    campaignName,
-                                    customFields: customFieldsJson,
-                                },
-                                // Router's typed search doesn't model these dynamic params.
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            } as any)
-                        }
-                        className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
-                    >
-                        <UserPlus className="me-2 size-4" /> {t('heading.addResponse')}
-                    </Button>
-                )}
-            </div>
+            <LeadListDetailHeader
+                campaign={listCampaign}
+                fallbackName={campaignName ?? t('heading.fallbackTitle')}
+                respondentsLabel={
+                    isLoading
+                        ? t('heading.loadingRespondents')
+                        : t('heading.respondentsCount', {
+                              count: totalElements,
+                              formattedCount: totalElements.toLocaleString(i18n.language),
+                          })
+                }
+                isOptOut={isOptOut}
+                pool={pool}
+                onAddResponse={goToAddResponse}
+                onEdit={() => setEditStep(0)}
+            />
 
             {/* Summary header. */}
             {campaignId && <ListShareBar campaignId={campaignId} />}
             {campaignId && !isOptOut && <LeadListLeadsEnhancedHeader audienceId={campaignId} />}
 
-            {/* Which freebies this list's leads took from the website. Renders nothing
-                for lists that never gated a resource. */}
-            {campaignId && !isOptOut && (
-                <FreebieDownloadsPanel audienceId={campaignId} hideWhenEmpty collapsible />
-            )}
+            <LeadListDetailTabs
+                value={tab}
+                onChange={setTab}
+                counts={{ leads: isLoading ? undefined : totalElements }}
+            />
 
-            {/* Toolbar — left filters, right actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                    <MultiSelectFilter
-                        label={terminology.tier}
-                        icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                        options={tierCatalog.tiers.map((tier) => ({
-                            value: tier.tier_key,
-                            label: tier.label,
-                        }))}
-                        selected={tierFilters}
-                        onChange={handleTierChange}
-                        widthClass="w-36"
-                    />
-                    <MultiSelectFilter
-                        label={terminology.leadStatus}
-                        icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
-                        options={[
-                            { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            // Built-in, not a catalog row — see Lead Settings -> All Leads View.
-                            ...(leadSettings.showConvertedFilterOption
-                                ? [
-                                      {
-                                          value: ALL_CONVERTED_VALUE,
-                                          label: t('filters.leadStatus.converted'),
-                                      },
-                                  ]
-                                : []),
-                            ...leadStatusFilterOptions.map((s) => ({
-                                value: s.status_key,
-                                label: s.label,
-                            })),
-                        ]}
-                        selected={leadStatusFilters}
-                        onChange={handleLeadStatusChange}
-                        widthClass="w-44"
-                    />
-                    {showOps && (
+            {/* Leads tab. Kept mounted while another tab is open so filters, selection
+                and the side panel survive a tab switch. */}
+            <div className={cn('flex flex-col gap-6', tab !== 'leads' && 'hidden')}>
+                {/* Which freebies this list's leads took from the website. Renders nothing
+                for lists that never gated a resource. */}
+                {campaignId && !isOptOut && (
+                    <FreebieDownloadsPanel audienceId={campaignId} hideWhenEmpty collapsible />
+                )}
+
+                {/* Toolbar — left filters, right actions */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <MultiSelectFilter
-                            label={t('filters.sla.label')}
-                            icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
-                            options={slaOptions
-                                .filter((o) => o.value !== ALL_SLA_VALUE)
-                                .map((o) => ({ value: o.value, label: o.label }))}
-                            selected={slaFilters}
-                            onChange={setSla}
+                            label={terminology.tier}
+                            icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                            options={tierCatalog.tiers.map((tier) => ({
+                                value: tier.tier_key,
+                                label: tier.label,
+                            }))}
+                            selected={tierFilters}
+                            onChange={handleTierChange}
+                            widthClass="w-36"
+                        />
+                        <MultiSelectFilter
+                            label={terminology.leadStatus}
+                            icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
+                            options={[
+                                { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
+                                // Built-in, not a catalog row — see Lead Settings -> All Leads View.
+                                ...(leadSettings.showConvertedFilterOption
+                                    ? [
+                                          {
+                                              value: ALL_CONVERTED_VALUE,
+                                              label: t('filters.leadStatus.converted'),
+                                          },
+                                      ]
+                                    : []),
+                                ...leadStatusFilterOptions.map((s) => ({
+                                    value: s.status_key,
+                                    label: s.label,
+                                })),
+                            ]}
+                            selected={leadStatusFilters}
+                            onChange={handleLeadStatusChange}
                             widthClass="w-44"
                         />
-                    )}
-                    {showOps && (
-                        <CounsellorFilter
-                            values={counsellorFilters}
-                            onChange={setCounsellor}
-                            unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
-                            options={counsellorOptions}
-                            isLoading={counsellorOptionsLoading}
+                        {showOps && (
+                            <MultiSelectFilter
+                                label={t('filters.sla.label')}
+                                icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
+                                options={slaOptions
+                                    .filter((o) => o.value !== ALL_SLA_VALUE)
+                                    .map((o) => ({ value: o.value, label: o.label }))}
+                                selected={slaFilters}
+                                onChange={setSla}
+                                widthClass="w-44"
+                            />
+                        )}
+                        {showOps && (
+                            <CounsellorFilter
+                                values={counsellorFilters}
+                                onChange={setCounsellor}
+                                unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
+                                options={counsellorOptions}
+                                isLoading={counsellorOptionsLoading}
+                            />
+                        )}
+                        {filterCustomFields.map((f) =>
+                            isRangeFieldType(f.fieldType) ? (
+                                <CustomFieldRangeFilter
+                                    key={f.customFieldId}
+                                    fieldId={f.customFieldId}
+                                    fieldName={f.fieldName}
+                                    fieldType={f.fieldType}
+                                    selected={customFieldFilters[f.customFieldId] ?? []}
+                                    onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                                />
+                            ) : (
+                                <CustomFieldMultiSelectFilter
+                                    key={f.customFieldId}
+                                    instituteId={instituteId ?? ''}
+                                    fieldId={f.customFieldId}
+                                    fieldName={f.fieldName}
+                                    selected={customFieldFilters[f.customFieldId] ?? []}
+                                    onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                                />
+                            )
+                        )}
+                        <Select
+                            value={callHistoryFilter || 'ANY'}
+                            onValueChange={(v) => {
+                                setCallHistoryFilter(v === 'ANY' ? '' : v);
+                                setPage(0);
+                            }}
+                        >
+                            <SelectTrigger className="h-10 w-44">
+                                <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ANY">
+                                    {t('filters.callHistory.placeholder')}
+                                </SelectItem>
+                                <SelectItem value="NOT_CALLED">
+                                    {t('filters.callHistory.notCalled')}
+                                </SelectItem>
+                                <SelectItem value="CALLED">
+                                    {t('filters.callHistory.called')}
+                                </SelectItem>
+                                <SelectItem value="CALLED_ONCE">
+                                    {t('filters.callHistory.calledOnce')}
+                                </SelectItem>
+                                <SelectItem value="CALLED_TWICE_PLUS">
+                                    {t('filters.callHistory.calledTwicePlus')}
+                                </SelectItem>
+                                <SelectItem value="AI_CALLED">
+                                    {t('filters.callHistory.aiCalled')}
+                                </SelectItem>
+                                <SelectItem value="MANUAL_CALLED">
+                                    {t('filters.callHistory.manualCalled')}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <UtmFilterControls
+                            surface="LEADS"
+                            instituteId={instituteId ?? ''}
+                            selection={utmFilters}
+                            onChange={setUtmFilter}
                         />
-                    )}
-                    {filterCustomFields.map((f) =>
-                        isRangeFieldType(f.fieldType) ? (
-                            <CustomFieldRangeFilter
-                                key={f.customFieldId}
-                                fieldId={f.customFieldId}
-                                fieldName={f.fieldName}
-                                fieldType={f.fieldType}
-                                selected={customFieldFilters[f.customFieldId] ?? []}
-                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                            />
-                        ) : (
-                            <CustomFieldMultiSelectFilter
-                                key={f.customFieldId}
-                                instituteId={instituteId ?? ''}
-                                fieldId={f.customFieldId}
-                                fieldName={f.fieldName}
-                                selected={customFieldFilters[f.customFieldId] ?? []}
-                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                            />
-                        )
-                    )}
-                    <Select
-                        value={callHistoryFilter || 'ANY'}
-                        onValueChange={(v) => {
-                            setCallHistoryFilter(v === 'ANY' ? '' : v);
-                            setPage(0);
-                        }}
-                    >
-                        <SelectTrigger className="h-10 w-44">
-                            <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="ANY">
-                                {t('filters.callHistory.placeholder')}
-                            </SelectItem>
-                            <SelectItem value="NOT_CALLED">
-                                {t('filters.callHistory.notCalled')}
-                            </SelectItem>
-                            <SelectItem value="CALLED">
-                                {t('filters.callHistory.called')}
-                            </SelectItem>
-                            <SelectItem value="CALLED_ONCE">
-                                {t('filters.callHistory.calledOnce')}
-                            </SelectItem>
-                            <SelectItem value="CALLED_TWICE_PLUS">
-                                {t('filters.callHistory.calledTwicePlus')}
-                            </SelectItem>
-                            <SelectItem value="AI_CALLED">
-                                {t('filters.callHistory.aiCalled')}
-                            </SelectItem>
-                            <SelectItem value="MANUAL_CALLED">
-                                {t('filters.callHistory.manualCalled')}
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <UtmFilterControls
-                        surface="LEADS"
-                        instituteId={instituteId ?? ''}
-                        selection={utmFilters}
-                        onChange={setUtmFilter}
-                    />
-                    <ManageListFiltersLink surface="LEADS" />
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-10">
-                                <Funnel className="mr-1.5 size-4" />
-                                {t('filters.moreFilters')}
-                                {isDateFilterActive && (
-                                    <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
-                                )}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-72 space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">
-                                        {t('filters.dateFrom')}
-                                    </Label>
-                                    <Input
-                                        type="date"
-                                        value={fromDate}
-                                        onChange={(e) => setFromDate(e.target.value)}
-                                        className="h-9"
-                                    />
+                        <ManageListFiltersLink surface="LEADS" />
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-10">
+                                    <Funnel className="mr-1.5 size-4" />
+                                    {t('filters.moreFilters')}
+                                    {isDateFilterActive && (
+                                        <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-72 space-y-3">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.dateFrom')}
+                                        </Label>
+                                        <Input
+                                            type="date"
+                                            value={fromDate}
+                                            onChange={(e) => setFromDate(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.dateTo')}
+                                        </Label>
+                                        <Input
+                                            type="date"
+                                            value={toDate}
+                                            onChange={(e) => setToDate(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">
-                                        {t('filters.dateTo')}
-                                    </Label>
-                                    <Input
-                                        type="date"
-                                        value={toDate}
-                                        onChange={(e) => setToDate(e.target.value)}
-                                        className="h-9"
-                                    />
-                                </div>
-                            </div>
-                            <Button size="sm" className="w-full" onClick={handleApplyDate}>
-                                {t('filters.applyDates')}
-                            </Button>
-                        </PopoverContent>
-                    </Popover>
-                </div>
+                                <Button size="sm" className="w-full" onClick={handleApplyDate}>
+                                    {t('filters.applyDates')}
+                                </Button>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-10"
-                        onClick={() => setShowSendMessage(true)}
-                    >
-                        <PaperPlaneTilt className="mr-1.5 size-4" />
-                        {t('toolbar.sendMessage')}
-                    </Button>
-                    {!isOptOut && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                         <Button
                             variant="outline"
                             size="sm"
                             className="h-10"
-                            onClick={() => setShowBulkImport(true)}
+                            onClick={() => setShowSendMessage(true)}
                         >
-                            <UploadSimple className="mr-1.5 size-4" />
-                            {t('toolbar.importCsv')}
+                            <PaperPlaneTilt className="mr-1.5 size-4" />
+                            {t('toolbar.sendMessage')}
                         </Button>
-                    )}
-                    <ManageColumnsPopover
-                        columns={toggleableColumns}
-                        hiddenColumns={hiddenColumns}
-                        onToggle={toggleColumn}
-                        onReset={handleResetColumns}
-                        onReorder={setColumnOrder}
-                    />
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-10"
-                        onClick={() => {
-                            setSelectedExportCols(new Set(exportColumnOptions.map((c) => c.key)));
-                            setExportPickerOpen(true);
-                        }}
-                        disabled={isExporting || !totalElements}
-                    >
-                        <DownloadSimple className="mr-1.5 size-4" />
-                        {isExporting ? t('toolbar.exporting') : t('toolbar.export')}
-                    </Button>
-                    <CallAllWithAiButton
-                        audienceId={campaignId}
-                        instituteId={instituteId}
-                        totalElements={totalElements}
-                        selectedLeads={selectedLeads}
-                    />
-                </div>
-            </div>
-
-            {/* Active filter chips */}
-            {chips.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {chips.map((chip, i) => (
-                        <span
-                            key={i}
-                            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600"
+                        {!isOptOut && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10"
+                                onClick={() => setShowBulkImport(true)}
+                            >
+                                <UploadSimple className="mr-1.5 size-4" />
+                                {t('toolbar.importCsv')}
+                            </Button>
+                        )}
+                        <ManageColumnsPopover
+                            columns={toggleableColumns}
+                            hiddenColumns={hiddenColumns}
+                            onToggle={toggleColumn}
+                            onReset={handleResetColumns}
+                            onReorder={setColumnOrder}
+                        />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10"
+                            onClick={() => {
+                                setSelectedExportCols(
+                                    new Set(exportColumnOptions.map((c) => c.key))
+                                );
+                                setExportPickerOpen(true);
+                            }}
+                            disabled={isExporting || !totalElements}
                         >
-                            {chip.label}
+                            <DownloadSimple className="mr-1.5 size-4" />
+                            {isExporting ? t('toolbar.exporting') : t('toolbar.export')}
+                        </Button>
+                        <CallAllWithAiButton
+                            audienceId={campaignId}
+                            instituteId={instituteId}
+                            totalElements={totalElements}
+                            selectedLeads={selectedLeads}
+                        />
+                    </div>
+                </div>
+
+                {/* Active filter chips */}
+                {chips.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {chips.map((chip, i) => (
+                            <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600"
+                            >
+                                {chip.label}
+                                <button
+                                    type="button"
+                                    onClick={chip.onRemove}
+                                    className="text-neutral-400 hover:text-neutral-700"
+                                    aria-label={t('chips.removeAriaLabel', { label: chip.label })}
+                                >
+                                    <X className="size-3" />
+                                </button>
+                            </span>
+                        ))}
+                        {isAnyFilterActive && (
                             <button
                                 type="button"
-                                onClick={chip.onRemove}
-                                className="text-neutral-400 hover:text-neutral-700"
-                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
+                                onClick={handleClearAllFilters}
+                                className="px-1 text-xs font-medium text-primary-600 hover:underline"
                             >
-                                <X className="size-3" />
+                                {t('filters.clearAll')}
                             </button>
-                        </span>
-                    ))}
-                    {isAnyFilterActive && (
-                        <button
-                            type="button"
-                            onClick={handleClearAllFilters}
-                            className="px-1 text-xs font-medium text-primary-600 hover:underline"
-                        >
-                            {t('filters.clearAll')}
-                        </button>
-                    )}
-                </div>
-            )}
+                        )}
+                    </div>
+                )}
 
-            {/* Search + result count */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                    <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                    <Input
-                        type="text"
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder={t('search.placeholder')}
-                        className="h-10 w-full pl-8"
-                        aria-label={t('search.ariaLabel')}
+                {/* Search + result count */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder={t('search.placeholder')}
+                            className="h-10 w-full pl-8"
+                            aria-label={t('search.ariaLabel')}
+                        />
+                    </div>
+                    <div className="text-sm text-neutral-500">
+                        {isLoading ? (
+                            <span className="flex items-center gap-1.5">
+                                <CircleNotch className="size-3.5 animate-spin" />
+                                {t('search.loadingResults')}
+                            </span>
+                        ) : (
+                            t('search.resultsCount', {
+                                count: totalElements,
+                                shown: tableRows.length.toLocaleString(i18n.language),
+                                total: totalElements.toLocaleString(i18n.language),
+                            })
+                        )}
+                    </div>
+                </div>
+
+                {/* Table */}
+                <SidebarProvider
+                    style={{ ['--sidebar-width' as string]: '565px' }}
+                    defaultOpen={false}
+                    open={isSidebarOpen}
+                    onOpenChange={setIsSidebarOpen}
+                >
+                    <div className="min-w-0 flex-1">
+                        {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
+                        {selectedLeads.size > 0 && (
+                            <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                                <span className="text-body font-medium text-primary-700">
+                                    {t('bulkToolbar.selectedCount', { count: selectedLeads.size })}
+                                </span>
+                                <div className="flex gap-2">
+                                    {selectedLeads.size < totalElements && (
+                                        <MyButton
+                                            buttonType="text"
+                                            scale="small"
+                                            disable={selectAllLoading}
+                                            onClick={selectAllAcrossPages}
+                                        >
+                                            {selectAllLoading
+                                                ? t('bulkToolbar.selecting')
+                                                : t('bulkToolbar.selectAll', {
+                                                      count: totalElements,
+                                                  })}
+                                        </MyButton>
+                                    )}
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => setSelectedLeads(new Map())}
+                                    >
+                                        {t('bulkToolbar.clear')}
+                                    </MyButton>
+                                    <MyDropdown
+                                        dropdownList={[
+                                            {
+                                                label: t('bulkToolbar.sendMessage'),
+                                                value: 'send-message',
+                                                icon: <PaperPlaneTilt className="size-4" />,
+                                            },
+                                            {
+                                                label: t('bulkToolbar.assignLeads'),
+                                                value: 'assign',
+                                                icon: <UserPlus className="size-4" />,
+                                            },
+                                            {
+                                                label: t('bulkToolbar.unassignLeads'),
+                                                value: 'unassign',
+                                                icon: <UserMinus className="size-4" />,
+                                            },
+                                            // Not admin-gated, unlike move/delete below: changing
+                                            // status is a counsellor's normal daily action and the
+                                            // per-row status chip already allows it.
+                                            {
+                                                label: t('bulkToolbar.changeStatus'),
+                                                value: 'status',
+                                                icon: <Tag className="size-4" />,
+                                            },
+                                            // Move and delete are admin-only, matching those
+                                            // endpoints' own checks.
+                                            ...(canDeleteLeads
+                                                ? [
+                                                      {
+                                                          label: t('bulkToolbar.moveLeads'),
+                                                          value: 'migrate',
+                                                          icon: (
+                                                              <ArrowsLeftRight className="size-4" />
+                                                          ),
+                                                      },
+                                                      {
+                                                          label: t('bulkToolbar.deleteLeads'),
+                                                          value: 'delete',
+                                                          icon: (
+                                                              <Trash className="size-4 text-danger-600" />
+                                                          ),
+                                                      },
+                                                  ]
+                                                : []),
+                                        ]}
+                                        onSelect={(value) => {
+                                            if (value === 'status') {
+                                                setBulkStatusOpen(true);
+                                                return;
+                                            }
+                                            if (value === 'send-message') {
+                                                setShowSendMessage(true);
+                                                return;
+                                            }
+                                            if (value === 'delete') {
+                                                setBulkDeleteOpen(true);
+                                                return;
+                                            }
+                                            if (value === 'migrate') {
+                                                setBulkMigrateOpen(true);
+                                                return;
+                                            }
+                                            setBulkActionMode(
+                                                value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
+                                            );
+                                            setBulkAssignOpen(true);
+                                        }}
+                                    >
+                                        <MyButton buttonType="primary" scale="small">
+                                            {t('bulkToolbar.bulkActions')}
+                                            <CaretDown className="size-3.5" />
+                                        </MyButton>
+                                    </MyDropdown>
+                                </div>
+                            </div>
+                        )}
+                        {error ? (
+                            <LeadEmptyState
+                                title={t('emptyState.errorTitle')}
+                                description={t('emptyState.errorDescription')}
+                            />
+                        ) : (
+                            <LeadTable
+                                vms={vms}
+                                profiles={leadProfiles}
+                                notes={notesByUserId}
+                                statuses={leadStatusCatalog}
+                                showOps={showOps}
+                                showScore={showScore}
+                                isLoading={isLoading || isCfLoading}
+                                actions={actions}
+                                onStatusUpdated={handleStatusUpdated}
+                                hiddenColumns={hiddenColumns}
+                                columnOrder={columnOrder}
+                                selectable
+                                selectedIds={new Set(selectedLeads.keys())}
+                                onToggleRow={toggleLeadRow}
+                                onToggleAll={toggleAllLeads}
+                                sortBy={sortBy}
+                                sortDirection={sortDirection}
+                                onSortChange={handleSortChange}
+                                emptyState={
+                                    <LeadEmptyState
+                                        title={
+                                            isAnyFilterActive
+                                                ? t('emptyState.noResultsTitle')
+                                                : t('emptyState.noDataTitle')
+                                        }
+                                        description={
+                                            isAnyFilterActive
+                                                ? t('emptyState.noResultsDescription')
+                                                : t('emptyState.noDataDescription')
+                                        }
+                                        onClear={
+                                            isAnyFilterActive ? handleClearAllFilters : undefined
+                                        }
+                                    />
+                                }
+                            />
+                        )}
+                    </div>
+                    <StudentSidebar
+                        selectedTab="overview"
+                        examType="EXAM"
+                        isStudentList={false}
+                        defaultLeadProfile
                     />
-                </div>
-                <div className="text-sm text-neutral-500">
-                    {isLoading ? (
-                        <span className="flex items-center gap-1.5">
-                            <CircleNotch className="size-3.5 animate-spin" />
-                            {t('search.loadingResults')}
-                        </span>
-                    ) : (
-                        t('search.resultsCount', {
-                            count: totalElements,
-                            shown: tableRows.length.toLocaleString(i18n.language),
-                            total: totalElements.toLocaleString(i18n.language),
-                        })
+
+                    <BulkAssignCounsellorDialog
+                        open={bulkAssignOpen}
+                        onOpenChange={setBulkAssignOpen}
+                        instituteId={instituteId ?? ''}
+                        leads={Array.from(selectedLeads.values())}
+                        counsellorOptions={assignableCounsellorOptions}
+                        initialMode={bulkActionMode}
+                        onSuccess={handleBulkAssignSuccess}
+                    />
+
+                    <BulkLeadStatusDialog
+                        open={bulkStatusOpen}
+                        onOpenChange={setBulkStatusOpen}
+                        instituteId={instituteId ?? ''}
+                        responseIds={Array.from(selectedLeads.keys())}
+                        statuses={leadStatusCatalog}
+                        onSuccess={(result) => {
+                            // Keep the selection when nothing moved -- the admin probably wants to
+                            // pick a different status rather than reselect every row.
+                            if (result.updated > 0) setSelectedLeads(new Map());
+                            handleStatusUpdated();
+                        }}
+                    />
+
+                    <DeleteLeadsDialog
+                        open={bulkDeleteOpen}
+                        onOpenChange={setBulkDeleteOpen}
+                        instituteId={instituteId ?? ''}
+                        responseIds={Array.from(selectedLeads.keys())}
+                        onSuccess={() => {
+                            setSelectedLeads(new Map());
+                            handleStatusUpdated();
+                        }}
+                    />
+
+                    <MigrateLeadsDialog
+                        open={bulkMigrateOpen}
+                        onOpenChange={setBulkMigrateOpen}
+                        instituteId={instituteId ?? ''}
+                        responseIds={Array.from(selectedLeads.keys())}
+                        // This view is one list, so exclude it from the picker.
+                        currentAudienceId={campaignId}
+                        onSuccess={() => {
+                            setSelectedLeads(new Map());
+                            handleStatusUpdated();
+                        }}
+                    />
+
+                    {noteTarget && (
+                        <AddLeadNoteDialog
+                            open={!!noteTarget}
+                            onOpenChange={(o) => !o && setNoteTarget(null)}
+                            userId={noteTarget.userId}
+                            userName={noteTarget.userName}
+                            audienceResponseId={noteTarget.responseId}
+                        />
                     )}
-                </div>
+                    {counsellorTarget && (
+                        <AssignCounselorToLeadDialog
+                            open={!!counsellorTarget}
+                            onOpenChange={(o) => !o && setCounsellorTarget(null)}
+                            userId={counsellorTarget.userId}
+                            userName={counsellorTarget.userName}
+                            invalidateKeys={[['lead-profiles-batch']]}
+                        />
+                    )}
+                </SidebarProvider>
+
+                {/* Pagination */}
+                <LeadPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
 
-            {/* Table */}
-            <SidebarProvider
-                style={{ ['--sidebar-width' as string]: '565px' }}
-                defaultOpen={false}
-                open={isSidebarOpen}
-                onOpenChange={setIsSidebarOpen}
-            >
-                <div className="min-w-0 flex-1">
-                    {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
-                    {selectedLeads.size > 0 && (
-                        <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
-                            <span className="text-body font-medium text-primary-700">
-                                {t('bulkToolbar.selectedCount', { count: selectedLeads.size })}
-                            </span>
-                            <div className="flex gap-2">
-                                {selectedLeads.size < totalElements && (
-                                    <MyButton
-                                        buttonType="text"
-                                        scale="small"
-                                        disable={selectAllLoading}
-                                        onClick={selectAllAcrossPages}
-                                    >
-                                        {selectAllLoading
-                                            ? t('bulkToolbar.selecting')
-                                            : t('bulkToolbar.selectAll', { count: totalElements })}
-                                    </MyButton>
-                                )}
-                                <MyButton
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={() => setSelectedLeads(new Map())}
-                                >
-                                    {t('bulkToolbar.clear')}
-                                </MyButton>
-                                <MyDropdown
-                                    dropdownList={[
-                                        {
-                                            label: t('bulkToolbar.sendMessage'),
-                                            value: 'send-message',
-                                            icon: <PaperPlaneTilt className="size-4" />,
-                                        },
-                                        {
-                                            label: t('bulkToolbar.assignLeads'),
-                                            value: 'assign',
-                                            icon: <UserPlus className="size-4" />,
-                                        },
-                                        {
-                                            label: t('bulkToolbar.unassignLeads'),
-                                            value: 'unassign',
-                                            icon: <UserMinus className="size-4" />,
-                                        },
-                                        // Not admin-gated, unlike move/delete below: changing
-                                        // status is a counsellor's normal daily action and the
-                                        // per-row status chip already allows it.
-                                        {
-                                            label: t('bulkToolbar.changeStatus'),
-                                            value: 'status',
-                                            icon: <Tag className="size-4" />,
-                                        },
-                                        // Move and delete are admin-only, matching those
-                                        // endpoints' own checks.
-                                        ...(canDeleteLeads
-                                            ? [
-                                                  {
-                                                      label: t('bulkToolbar.moveLeads'),
-                                                      value: 'migrate',
-                                                      icon: <ArrowsLeftRight className="size-4" />,
-                                                  },
-                                                  {
-                                                      label: t('bulkToolbar.deleteLeads'),
-                                                      value: 'delete',
-                                                      icon: (
-                                                          <Trash className="size-4 text-danger-600" />
-                                                      ),
-                                                  },
-                                              ]
-                                            : []),
-                                    ]}
-                                    onSelect={(value) => {
-                                        if (value === 'status') {
-                                            setBulkStatusOpen(true);
-                                            return;
-                                        }
-                                        if (value === 'send-message') {
-                                            setShowSendMessage(true);
-                                            return;
-                                        }
-                                        if (value === 'delete') {
-                                            setBulkDeleteOpen(true);
-                                            return;
-                                        }
-                                        if (value === 'migrate') {
-                                            setBulkMigrateOpen(true);
-                                            return;
-                                        }
-                                        setBulkActionMode(
-                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
-                                        );
-                                        setBulkAssignOpen(true);
-                                    }}
-                                >
-                                    <MyButton buttonType="primary" scale="small">
-                                        {t('bulkToolbar.bulkActions')}
-                                        <CaretDown className="size-3.5" />
-                                    </MyButton>
-                                </MyDropdown>
-                            </div>
-                        </div>
-                    )}
-                    {error ? (
-                        <LeadEmptyState
-                            title={t('emptyState.errorTitle')}
-                            description={t('emptyState.errorDescription')}
-                        />
-                    ) : (
-                        <LeadTable
-                            vms={vms}
-                            profiles={leadProfiles}
-                            notes={notesByUserId}
-                            statuses={leadStatusCatalog}
-                            showOps={showOps}
-                            showScore={showScore}
-                            isLoading={isLoading || isCfLoading}
-                            actions={actions}
-                            onStatusUpdated={handleStatusUpdated}
-                            hiddenColumns={hiddenColumns}
-                            columnOrder={columnOrder}
-                            selectable
-                            selectedIds={new Set(selectedLeads.keys())}
-                            onToggleRow={toggleLeadRow}
-                            onToggleAll={toggleAllLeads}
-                            sortBy={sortBy}
-                            sortDirection={sortDirection}
-                            onSortChange={handleSortChange}
-                            emptyState={
-                                <LeadEmptyState
-                                    title={
-                                        isAnyFilterActive
-                                            ? t('emptyState.noResultsTitle')
-                                            : t('emptyState.noDataTitle')
-                                    }
-                                    description={
-                                        isAnyFilterActive
-                                            ? t('emptyState.noResultsDescription')
-                                            : t('emptyState.noDataDescription')
-                                    }
-                                    onClear={isAnyFilterActive ? handleClearAllFilters : undefined}
-                                />
-                            }
-                        />
-                    )}
-                </div>
-                <StudentSidebar
-                    selectedTab="overview"
-                    examType="EXAM"
-                    isStudentList={false}
-                    defaultLeadProfile
+            {/* Communication history for this campaign — loads when its tab opens. */}
+            {tab === 'history' && (
+                <CommunicationHistory
+                    campaignId={campaignId}
+                    onSendMessage={() => setShowSendMessage(true)}
                 />
-
-                <BulkAssignCounsellorDialog
-                    open={bulkAssignOpen}
-                    onOpenChange={setBulkAssignOpen}
+            )}
+            {tab === 'share' && (
+                <ListShareTab
+                    campaignId={campaignId}
+                    campaign={listCampaign}
+                    formFields={bulkImportCustomFields}
+                    onEdit={setEditStep}
+                />
+            )}
+            {tab === 'auto' && (
+                <ListAutomationsTab
+                    campaignId={campaignId}
+                    campaign={listCampaign}
                     instituteId={instituteId ?? ''}
-                    leads={Array.from(selectedLeads.values())}
-                    counsellorOptions={assignableCounsellorOptions}
-                    initialMode={bulkActionMode}
-                    onSuccess={handleBulkAssignSuccess}
+                    pool={pool}
+                    counsellorNames={counsellorNames}
+                    formFields={bulkImportCustomFields}
+                    onEdit={setEditStep}
                 />
+            )}
 
-                <BulkLeadStatusDialog
-                    open={bulkStatusOpen}
-                    onOpenChange={setBulkStatusOpen}
-                    instituteId={instituteId ?? ''}
-                    responseIds={Array.from(selectedLeads.keys())}
-                    statuses={leadStatusCatalog}
-                    onSuccess={(result) => {
-                        // Keep the selection when nothing moved -- the admin probably wants to
-                        // pick a different status rather than reselect every row.
-                        if (result.updated > 0) setSelectedLeads(new Map());
-                        handleStatusUpdated();
-                    }}
+            {/* Edit list — the same create/edit dialog as the Lead Lists card. */}
+            {listCampaign && (
+                <CreateCampaignDialog
+                    isOpen={editStep !== null}
+                    onClose={closeEdit}
+                    campaign={listCampaign}
+                    initialStep={editStep ?? 0}
                 />
-
-                <DeleteLeadsDialog
-                    open={bulkDeleteOpen}
-                    onOpenChange={setBulkDeleteOpen}
-                    instituteId={instituteId ?? ''}
-                    responseIds={Array.from(selectedLeads.keys())}
-                    onSuccess={() => {
-                        setSelectedLeads(new Map());
-                        handleStatusUpdated();
-                    }}
-                />
-
-                <MigrateLeadsDialog
-                    open={bulkMigrateOpen}
-                    onOpenChange={setBulkMigrateOpen}
-                    instituteId={instituteId ?? ''}
-                    responseIds={Array.from(selectedLeads.keys())}
-                    // This view is one list, so exclude it from the picker.
-                    currentAudienceId={campaignId}
-                    onSuccess={() => {
-                        setSelectedLeads(new Map());
-                        handleStatusUpdated();
-                    }}
-                />
-
-                {noteTarget && (
-                    <AddLeadNoteDialog
-                        open={!!noteTarget}
-                        onOpenChange={(o) => !o && setNoteTarget(null)}
-                        userId={noteTarget.userId}
-                        userName={noteTarget.userName}
-                        audienceResponseId={noteTarget.responseId}
-                    />
-                )}
-                {counsellorTarget && (
-                    <AssignCounselorToLeadDialog
-                        open={!!counsellorTarget}
-                        onOpenChange={(o) => !o && setCounsellorTarget(null)}
-                        userId={counsellorTarget.userId}
-                        userName={counsellorTarget.userName}
-                        invalidateKeys={[['lead-profiles-batch']]}
-                    />
-                )}
-            </SidebarProvider>
-
-            {/* Pagination */}
-            <LeadPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-
-            {/* Communication history for this campaign */}
-            <CommunicationHistory campaignId={campaignId} />
+            )}
 
             {/* Dialogs anchored at the page level */}
             <LeadBulkImportDialog

@@ -1,51 +1,27 @@
-import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ArrowSquareOut, Code, Copy, LinkSimple, Plug, QrCode } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { copyTextToClipboard } from '@/lib/clipboard';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import type { CampaignItem, CampaignListResponse } from '../../-services/get-campaigns-list';
-import { getCampaignById } from '../../-services/get-campaign-by-id';
+import { useListCampaign } from '../../-hooks/useListCampaign';
 import createCampaignLink from '../../-utils/createCampaignLink';
 import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 
-const idOf = (c: CampaignItem) => c.campaign_id || c.id || c.audience_id || '';
-
 /**
  * Lead list page: the form link with copy / open, and the QR, embed and
  * API dialogs the list card menu already has — so sharing does not mean going back
  * to the Lead Lists page. The list itself comes from the Lead Lists cache when the
- * page was opened from there; otherwise it is fetched once.
+ * page was opened from there; otherwise it is fetched once (useListCampaign).
  */
 export function ListShareBar({ campaignId }: { campaignId: string }) {
     const { t } = useTranslation('crmPages');
-    const queryClient = useQueryClient();
-    const instituteId = getCurrentInstituteId() || '';
     const { instituteDetails } = useInstituteDetailsStore();
     const [dialog, setDialog] = useState<'qr' | 'embed' | 'api' | null>(null);
-
-    const cached = useMemo(() => {
-        const pages = queryClient.getQueriesData<CampaignListResponse>({
-            queryKey: ['campaignsList'],
-        });
-        for (const [, data] of pages) {
-            const hit = data?.content?.find((c) => idOf(c) === campaignId);
-            if (hit) return hit;
-        }
-        return undefined;
-    }, [queryClient, campaignId]);
-    const fetched = useQuery({
-        queryKey: ['list-share-campaign', instituteId, campaignId],
-        queryFn: () => getCampaignById(instituteId, campaignId),
-        enabled: !cached && !!instituteId && !!campaignId,
-        staleTime: 5 * 60 * 1000,
-    });
-    const campaign = cached ?? fetched.data;
+    const { data: campaign } = useListCampaign(campaignId);
     if (!campaign) return null;
 
     const active = (campaign.status || '').toUpperCase() === 'ACTIVE';

@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { FollowUpsAgenda } from './FollowUpsAgenda';
-import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
 import { FollowUpsEnhancedHeader } from './FollowUpsEnhancedHeader';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -601,14 +600,6 @@ const FollowUpsContent = () => {
         [setSelectedStudent, updateTier, isAdmin, placeCall, t]
     );
     // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
-    useRegisterLeadDrawerSource({
-        vms: sortedVms,
-        profiles: leadProfiles,
-        actions,
-        showOps,
-        showScore,
-    });
-
     // Inline "Mark complete" row action — the close flow for the follow-up the
     // row represents. Rows are leads (one row can carry several open
     // follow-ups), so the popover fetches the lead's open follow-ups on demand

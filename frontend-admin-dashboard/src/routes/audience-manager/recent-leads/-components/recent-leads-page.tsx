@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RangeSegment } from './RangeSegment';
-import { useRegisterLeadDrawerSource } from '@/components/shared/leads/lead-drawer-source';
 import { RecentLeadsEnhancedHeader } from './RecentLeadsEnhancedHeader';
+import { LeadFilterSection, LeadFiltersPanel } from './LeadFiltersPanel';
+import { useUtmListFilters } from '@/components/shared/leads/use-utm-list-filters';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { parseLockedParams, searchSignature } from './pinned-filters';
@@ -12,20 +13,26 @@ import type { TFunction } from 'i18next';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import {
-    CalendarBlank,
+    ChartLineUp,
     CheckCircle,
     Clock,
     DownloadSimple,
     Flame,
     Folders,
+    Funnel,
+    Kanban,
+    LinkSimple,
     MagnifyingGlass,
     Megaphone,
+    PhoneCall,
     Plus,
+    SlidersHorizontal,
+    UserCircle,
     X,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { DatePickerButton } from '@/components/shared/crm-enhance/date-picker-button';
 import {
     Select,
     SelectContent,
@@ -33,7 +40,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useActiveSidebarSection } from '@/components/common/layout-container/sidebar/use-active-sidebar-section';
@@ -317,8 +323,10 @@ const RecentLeadsContent = ({
 }) => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
-    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
-    const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
+    // Built every render, not memoised: the first render runs before this page's
+    // catalog has loaded, and a memo kept the raw keys (slaOptions.*) in dev.
+    const slaOptions = buildSlaOptions(t);
+    const dateRangeOptions = buildDateRangeOptions(t);
     // Institute tier catalog (custom tiers + labels + colours) and the institute's
     // own names for "Tier" / "Lead status".
     const tierCatalog = useLeadTiers();
@@ -411,7 +419,14 @@ const RecentLeadsContent = ({
     // Custom-range state (only used when rangeDays === CUSTOM_DATE_VALUE).
     const [customFrom, setCustomFrom] = useState(urlSearch.from ?? '');
     const [customTo, setCustomTo] = useState(urlSearch.to ?? '');
-    const [customOpen, setCustomOpen] = useState(false);
+    // Which custom-range calendar is open: the start date's, the end date's, or none.
+    const [customOpen, setCustomOpen] = useState<'from' | 'to' | null>(null);
+    // Summary header and the long filter list start closed so the leads table is in
+    // view; the active-filter chips below always show what is applied.
+    const [showSummary, setShowSummary] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    // Same query as the UTM controls, so the Campaign links section hides with them.
+    const utmControls = useUtmListFilters('LEADS', instituteId || undefined);
     // "Worked in the last …" windows. Rolling, and independent of the submitted-date
     // range above: a lead submitted 3 months ago that I called this morning belongs in
     // "called in the last 24h", and the submitted filter can never say so.
@@ -980,7 +995,6 @@ const RecentLeadsContent = ({
         [setSelectedStudent, updateTier, placeCall, showAiButton, t]
     );
     // Enhanced lead side panel: Previous / Next and quick actions run on these rows.
-    useRegisterLeadDrawerSource({ vms: vms, profiles: leadProfiles, actions, showOps, showScore });
 
     // The backend mirrors a per-response status change onto the user's profile
     // conversion_status, so the side-view agrees. Invalidate the profile/batch caches too
@@ -1147,7 +1161,7 @@ const RecentLeadsContent = ({
                 setCustomFrom(seed.from);
                 setCustomTo(seed.to);
             }
-            setCustomOpen(true);
+            setCustomOpen('from');
         }
     };
     const setCounsellor = (values: string[]) => {
@@ -1683,6 +1697,10 @@ const RecentLeadsContent = ({
     // own label already says what it narrows to, and rendering them chipped the whole row
     // (one I2CAN tab pins nine statuses). They stay applied, they just stop shouting.
     const visibleChips = chips.filter((c) => !(c.param && isLocked(c.param)));
+    // Filters behind the Filters button (range and search stay on screen).
+    const hiddenFilterCount = visibleChips.filter(
+        (c) => c.param !== 'range' && c.param !== 'search'
+    ).length;
 
     // Bulk actions: shown as inline buttons.
     const bulkItems = [
@@ -1779,201 +1797,54 @@ const RecentLeadsContent = ({
                         t('heading.leadsCount', { count: totalElements })
                     )}
                 </h1>
-                {canAddLead && !showDeleted && (
-                    <MyButton
-                        buttonType="primary"
-                        scale="large"
-                        onClick={() => setAddLeadOpen(true)}
-                    >
-                        <Plus className="size-4" weight="bold" />
-                        {t('toolbar.addLead')}
-                    </MyButton>
-                )}
+                <div className="flex items-center gap-2">
+                    {!lockRef.current && !showDeleted && (
+                        <Button
+                            variant="outline"
+                            className="h-10 gap-1.5"
+                            aria-expanded={showSummary}
+                            onClick={() => setShowSummary((v) => !v)}
+                        >
+                            <ChartLineUp className="size-4 text-neutral-500" />
+                            {showSummary
+                                ? t('toolbar.summaryHide', { defaultValue: 'Hide summary' })
+                                : t('toolbar.summaryShow', { defaultValue: 'Show summary' })}
+                        </Button>
+                    )}
+                    {canAddLead && !showDeleted && (
+                        <MyButton
+                            buttonType="primary"
+                            scale="large"
+                            onClick={() => setAddLeadOpen(true)}
+                        >
+                            <Plus className="size-4" weight="bold" />
+                            {t('toolbar.addLead')}
+                        </MyButton>
+                    )}
+                </div>
             </div>
 
             {/* Summary header. Not on a
                 pinned sidebar sub-tab or the deleted view: those carry their own filter. */}
-            {!lockRef.current && !showDeleted && <RecentLeadsEnhancedHeader />}
+            {!lockRef.current && !showDeleted && showSummary && <RecentLeadsEnhancedHeader />}
 
             {/* Toolbar — left filters, right actions (search lives in its own row below) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    {showOps && (
-                        <MultiSelectFilter
-                            label={terminology.tier}
-                            icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                            options={tierCatalog.tiers.map((tier) => ({
-                                value: tier.tier_key,
-                                label: tier.label,
-                            }))}
-                            selected={tierFilters}
-                            onChange={setTier}
-                            locked={isLocked('tier')}
-                            widthClass="w-36"
-                        />
-                    )}
-                    <MultiSelectFilter
-                        label={terminology.leadStatus}
-                        icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
-                        options={[
-                            { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            // Built-in, not a catalog row — it filters on conversion_status,
-                            // so it has its own switch in Lead Settings.
-                            ...(leadSettings.showConvertedFilterOption
-                                ? [
-                                      {
-                                          value: ALL_CONVERTED_VALUE,
-                                          label: t('filters.leadStatus.converted'),
-                                      },
-                                  ]
-                                : []),
-                            ...leadStatusFilterOptions.map((s) => ({
-                                value: s.status_key,
-                                label: s.label,
-                            })),
-                        ]}
-                        selected={leadStatusFilters}
-                        onChange={handleLeadStatusChange}
-                        locked={isLocked('status')}
-                        widthClass="w-44"
-                        exclude={{
-                            value: statusExclude,
-                            onChange: (next) => {
-                                setStatusExclude(next);
-                                setPage(0);
-                            },
-                            label: t('filters.leadStatus.excludeSelected'),
-                        }}
-                    />
-                    {showOps && (
-                        <MultiSelectFilter
-                            label={t('filters.sla.label')}
-                            icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
-                            options={slaOptions
-                                .filter((o) => o.value !== ALL_SLA_VALUE)
-                                .map((o) => ({ value: o.value, label: o.label }))}
-                            selected={slaFilters}
-                            onChange={setSla}
-                            locked={isLocked('sla')}
-                            widthClass="w-44"
-                        />
-                    )}
-                    {showOps && (
-                        <CounsellorFilter
-                            values={counsellorFilters}
-                            onChange={setCounsellor}
-                            unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
-                            options={counsellorOptions}
-                            isLoading={counsellorOptionsLoading}
-                        />
-                    )}
-                    <MultiSelectFilter
-                        label={t('filters.campaignType.label', { term })}
-                        icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
-                        options={campaignTypeOptions}
-                        selected={campaignTypeFilters}
-                        onChange={handleCampaignTypeChange}
-                        locked={isLocked('campaignType')}
-                        widthClass="w-48"
-                    />
-                    <MultiSelectFilter
-                        label={t('filters.audience.label', { term: terminology.leadSource })}
-                        icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
-                        options={typeAudienceOptions.map((opt) => ({
-                            value: opt.id,
-                            label: opt.name,
-                        }))}
-                        selected={audienceFilters}
-                        onChange={handleAudienceChange}
-                        locked={isLocked('audience')}
-                        widthClass="w-44"
-                    />
-                    <CallHistoryFilter
-                        value={callHistoryFilter}
-                        onValueChange={(v) => {
-                            setCallHistoryFilter(v);
-                            setPage(0);
-                        }}
-                        count={callCountValue}
-                        onCountChange={(n) => {
-                            setCallCountValue(n);
-                            setPage(0);
-                        }}
-                    />
-                    <WorkedWindowFilter
-                        kind="CALLED"
-                        value={calledWindow}
-                        onValueChange={(v) => {
-                            setCalledWindow(v);
-                            setPage(0);
-                        }}
-                        labels={{
-                            anyLabel: t('filters.calledWithin.any'),
-                            placeholder: t('filters.calledWithin.placeholder'),
-                            optionLabel: (hours) => workedWindowLabel(String(hours)),
-                            customLabel: t('dateRangeOptions.customRange'),
-                        }}
-                        custom={{
-                            from: calledRange.from,
-                            to: calledRange.to,
-                            onChange: (from, to) => {
-                                setCalledRange({ from, to });
-                                setPage(0);
-                            },
-                            labels: customRangeLabels,
-                        }}
-                    />
-                    <WorkedWindowFilter
-                        kind="ACTIVITY"
-                        value={workedWindow}
-                        onValueChange={(v) => {
-                            setWorkedWindow(v);
-                            setPage(0);
-                        }}
-                        labels={{
-                            anyLabel: t('filters.workedWithin.any'),
-                            placeholder: t('filters.workedWithin.placeholder'),
-                            optionLabel: (hours) => workedWindowLabel(String(hours)),
-                            customLabel: t('dateRangeOptions.customRange'),
-                        }}
-                        custom={{
-                            from: workedRange.from,
-                            to: workedRange.to,
-                            onChange: (from, to) => {
-                                setWorkedRange({ from, to });
-                                setPage(0);
-                            },
-                            labels: customRangeLabels,
-                        }}
-                    />
-                    {filterCustomFields.map((f) =>
-                        isRangeFieldType(f.fieldType) ? (
-                            <CustomFieldRangeFilter
-                                key={f.customFieldId}
-                                fieldId={f.customFieldId}
-                                fieldName={f.fieldName}
-                                fieldType={f.fieldType}
-                                selected={customFieldFilters[f.customFieldId] ?? []}
-                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                            />
-                        ) : (
-                            <CustomFieldMultiSelectFilter
-                                key={f.customFieldId}
-                                instituteId={instituteId ?? ''}
-                                fieldId={f.customFieldId}
-                                fieldName={f.fieldName}
-                                selected={customFieldFilters[f.customFieldId] ?? []}
-                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                            />
-                        )
-                    )}
-                    <UtmFilterControls
-                        surface="LEADS"
-                        instituteId={instituteId ?? ''}
-                        selection={utmFilters}
-                        onChange={setUtmFilter}
-                    />
-                    <ManageListFiltersLink surface="LEADS" />
+                    <Button
+                        variant={showFilters ? 'default' : 'outline'}
+                        className="h-10 gap-1.5"
+                        aria-expanded={showFilters}
+                        onClick={() => setShowFilters((v) => !v)}
+                    >
+                        <Funnel className="size-4" />
+                        {t('toolbar.filters', { defaultValue: 'Filters' })}
+                        {hiddenFilterCount > 0 && (
+                            <span className="rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
+                                {hiddenFilterCount}
+                            </span>
+                        )}
+                    </Button>
                     <RangeSegment
                         value={rangeDays}
                         options={dateRangeOptions.map((o) => o.value)}
@@ -1981,49 +1852,29 @@ const RecentLeadsContent = ({
                         disabled={isLocked('range')}
                     />
                     {rangeDays === CUSTOM_DATE_VALUE && (
-                        <Popover open={customOpen} onOpenChange={setCustomOpen}>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" size="sm" className="h-10">
-                                    <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
-                                    {customFrom && customTo
-                                        ? `${customFrom} → ${customTo}`
-                                        : t('filters.customDate.setDates')}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-72 space-y-3">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">
-                                            {t('filters.customDate.from')}
-                                        </Label>
-                                        <Input
-                                            type="date"
-                                            value={customFrom}
-                                            onChange={(e) => setCustomFrom(e.target.value)}
-                                            className="h-9"
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">
-                                            {t('filters.customDate.to')}
-                                        </Label>
-                                        <Input
-                                            type="date"
-                                            value={customTo}
-                                            onChange={(e) => setCustomTo(e.target.value)}
-                                            className="h-9"
-                                        />
-                                    </div>
-                                </div>
-                                <Button
-                                    size="sm"
-                                    className="w-full"
-                                    onClick={() => setCustomOpen(false)}
-                                >
-                                    {t('filters.customDate.done')}
-                                </Button>
-                            </PopoverContent>
-                        </Popover>
+                        <div className="flex items-center gap-1.5">
+                            <DatePickerButton
+                                label={t('filters.customDate.from')}
+                                value={customFrom}
+                                onChange={setCustomFrom}
+                                max={customTo || format(new Date(), 'yyyy-MM-dd')}
+                                placeholder={t('filters.customDate.setDates')}
+                                open={customOpen === 'from'}
+                                onOpenChange={(open) => setCustomOpen(open ? 'from' : null)}
+                                className="h-10"
+                            />
+                            <DatePickerButton
+                                label={t('filters.customDate.to')}
+                                value={customTo}
+                                onChange={setCustomTo}
+                                min={customFrom || undefined}
+                                max={format(new Date(), 'yyyy-MM-dd')}
+                                placeholder={t('filters.customDate.setDates')}
+                                open={customOpen === 'to'}
+                                onOpenChange={(open) => setCustomOpen(open ? 'to' : null)}
+                                className="h-10"
+                            />
+                        </div>
                     )}
                 </div>
 
@@ -2082,6 +1933,273 @@ const RecentLeadsContent = ({
                     </Button>
                 </div>
             </div>
+
+            {/* Filters panel — grouped by what each filter answers, under its own button. */}
+            {showFilters && (
+                <LeadFiltersPanel
+                    title={t('filtersPanel.title', { defaultValue: 'Filters' })}
+                    activeCount={hiddenFilterCount}
+                    activeLabel={t('filtersPanel.active', {
+                        count: hiddenFilterCount,
+                        defaultValue: '{{count}} active',
+                    })}
+                    closeLabel={t('filtersPanel.close', { defaultValue: 'Close filters' })}
+                    onClose={() => setShowFilters(false)}
+                    actions={
+                        <>
+                            <ManageListFiltersLink surface="LEADS" />
+                            {hiddenFilterCount > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleClearFilter}
+                                    className="px-1 text-xs font-medium text-primary-600 hover:underline"
+                                >
+                                    {t('chips.clearAll')}
+                                </button>
+                            )}
+                        </>
+                    }
+                >
+                    <LeadFilterSection
+                        title={t('filtersPanel.sections.pipeline', { defaultValue: 'Pipeline' })}
+                        icon={Kanban}
+                        activeCount={
+                            tierFilters.length + leadStatusFilters.length + slaFilters.length
+                        }
+                    >
+                        {showOps && (
+                            <MultiSelectFilter
+                                label={terminology.tier}
+                                icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                                options={tierCatalog.tiers.map((tier) => ({
+                                    value: tier.tier_key,
+                                    label: tier.label,
+                                }))}
+                                selected={tierFilters}
+                                onChange={setTier}
+                                locked={isLocked('tier')}
+                                widthClass="w-36"
+                            />
+                        )}
+                        <MultiSelectFilter
+                            label={terminology.leadStatus}
+                            icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
+                            options={[
+                                {
+                                    value: ALL_ACTIVE_VALUE,
+                                    label: t('filters.leadStatus.active'),
+                                },
+                                // Built-in, not a catalog row — it filters on conversion_status,
+                                // so it has its own switch in Lead Settings.
+                                ...(leadSettings.showConvertedFilterOption
+                                    ? [
+                                          {
+                                              value: ALL_CONVERTED_VALUE,
+                                              label: t('filters.leadStatus.converted'),
+                                          },
+                                      ]
+                                    : []),
+                                ...leadStatusFilterOptions.map((s) => ({
+                                    value: s.status_key,
+                                    label: s.label,
+                                })),
+                            ]}
+                            selected={leadStatusFilters}
+                            onChange={handleLeadStatusChange}
+                            locked={isLocked('status')}
+                            widthClass="w-44"
+                            exclude={{
+                                value: statusExclude,
+                                onChange: (next) => {
+                                    setStatusExclude(next);
+                                    setPage(0);
+                                },
+                                label: t('filters.leadStatus.excludeSelected'),
+                            }}
+                        />
+                        {showOps && (
+                            <MultiSelectFilter
+                                label={t('filters.sla.label')}
+                                icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
+                                options={slaOptions
+                                    .filter((o) => o.value !== ALL_SLA_VALUE)
+                                    .map((o) => ({ value: o.value, label: o.label }))}
+                                selected={slaFilters}
+                                onChange={setSla}
+                                locked={isLocked('sla')}
+                                widthClass="w-44"
+                            />
+                        )}
+                    </LeadFilterSection>
+                    <LeadFilterSection
+                        title={t('filtersPanel.sections.owner', {
+                            defaultValue: 'Owner & source',
+                        })}
+                        icon={UserCircle}
+                        activeCount={
+                            counsellorFilters.length +
+                            campaignTypeFilters.length +
+                            audienceFilters.length
+                        }
+                    >
+                        {showOps && (
+                            <CounsellorFilter
+                                values={counsellorFilters}
+                                onChange={setCounsellor}
+                                unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
+                                options={counsellorOptions}
+                                isLoading={counsellorOptionsLoading}
+                            />
+                        )}
+                        <MultiSelectFilter
+                            label={t('filters.campaignType.label', { term })}
+                            icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
+                            options={campaignTypeOptions}
+                            selected={campaignTypeFilters}
+                            onChange={handleCampaignTypeChange}
+                            locked={isLocked('campaignType')}
+                            widthClass="w-48"
+                        />
+                        <MultiSelectFilter
+                            label={t('filters.audience.label', {
+                                term: terminology.leadSource,
+                            })}
+                            icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
+                            options={typeAudienceOptions.map((opt) => ({
+                                value: opt.id,
+                                label: opt.name,
+                            }))}
+                            selected={audienceFilters}
+                            onChange={handleAudienceChange}
+                            locked={isLocked('audience')}
+                            widthClass="w-44"
+                        />
+                    </LeadFilterSection>
+                    <LeadFilterSection
+                        title={t('filtersPanel.sections.activity', { defaultValue: 'Activity' })}
+                        icon={PhoneCall}
+                        activeCount={
+                            [callHistoryFilter, calledWindow, workedWindow].filter(Boolean).length
+                        }
+                    >
+                        <CallHistoryFilter
+                            value={callHistoryFilter}
+                            onValueChange={(v) => {
+                                setCallHistoryFilter(v);
+                                setPage(0);
+                            }}
+                            count={callCountValue}
+                            onCountChange={(n) => {
+                                setCallCountValue(n);
+                                setPage(0);
+                            }}
+                        />
+                        <WorkedWindowFilter
+                            kind="CALLED"
+                            value={calledWindow}
+                            onValueChange={(v) => {
+                                setCalledWindow(v);
+                                setPage(0);
+                            }}
+                            labels={{
+                                anyLabel: t('filters.calledWithin.any'),
+                                placeholder: t('filters.calledWithin.placeholder'),
+                                optionLabel: (hours) => workedWindowLabel(String(hours)),
+                                customLabel: t('dateRangeOptions.customRange'),
+                            }}
+                            custom={{
+                                from: calledRange.from,
+                                to: calledRange.to,
+                                onChange: (from, to) => {
+                                    setCalledRange({ from, to });
+                                    setPage(0);
+                                },
+                                labels: customRangeLabels,
+                            }}
+                        />
+                        <WorkedWindowFilter
+                            kind="ACTIVITY"
+                            value={workedWindow}
+                            onValueChange={(v) => {
+                                setWorkedWindow(v);
+                                setPage(0);
+                            }}
+                            labels={{
+                                anyLabel: t('filters.workedWithin.any'),
+                                placeholder: t('filters.workedWithin.placeholder'),
+                                optionLabel: (hours) => workedWindowLabel(String(hours)),
+                                customLabel: t('dateRangeOptions.customRange'),
+                            }}
+                            custom={{
+                                from: workedRange.from,
+                                to: workedRange.to,
+                                onChange: (from, to) => {
+                                    setWorkedRange({ from, to });
+                                    setPage(0);
+                                },
+                                labels: customRangeLabels,
+                            }}
+                        />
+                    </LeadFilterSection>
+                    {utmControls.enabled && utmControls.dimensions.length > 0 && (
+                        <LeadFilterSection
+                            title={t('filtersPanel.sections.campaign', {
+                                defaultValue: 'Campaign links',
+                            })}
+                            icon={LinkSimple}
+                            activeCount={
+                                Object.values(utmFilters).filter((v) => (v?.length ?? 0) > 0).length
+                            }
+                        >
+                            <UtmFilterControls
+                                surface="LEADS"
+                                instituteId={instituteId ?? ''}
+                                selection={utmFilters}
+                                onChange={setUtmFilter}
+                            />
+                        </LeadFilterSection>
+                    )}
+                    {filterCustomFields.length > 0 && (
+                        <LeadFilterSection
+                            title={t('filtersPanel.sections.custom', {
+                                defaultValue: 'Custom fields',
+                            })}
+                            icon={SlidersHorizontal}
+                            activeCount={
+                                Object.values(customFieldFilters).filter(
+                                    (v) => (v?.length ?? 0) > 0
+                                ).length
+                            }
+                        >
+                            {filterCustomFields.map((f) =>
+                                isRangeFieldType(f.fieldType) ? (
+                                    <CustomFieldRangeFilter
+                                        key={f.customFieldId}
+                                        fieldId={f.customFieldId}
+                                        fieldName={f.fieldName}
+                                        fieldType={f.fieldType}
+                                        selected={customFieldFilters[f.customFieldId] ?? []}
+                                        onChange={(vals) =>
+                                            setCustomFieldFilter(f.customFieldId, vals)
+                                        }
+                                    />
+                                ) : (
+                                    <CustomFieldMultiSelectFilter
+                                        key={f.customFieldId}
+                                        instituteId={instituteId ?? ''}
+                                        fieldId={f.customFieldId}
+                                        fieldName={f.fieldName}
+                                        selected={customFieldFilters[f.customFieldId] ?? []}
+                                        onChange={(vals) =>
+                                            setCustomFieldFilter(f.customFieldId, vals)
+                                        }
+                                    />
+                                )
+                            )}
+                        </LeadFilterSection>
+                    )}
+                </LeadFiltersPanel>
+            )}
 
             {/* Active filter chips */}
             {visibleChips.length > 0 && (

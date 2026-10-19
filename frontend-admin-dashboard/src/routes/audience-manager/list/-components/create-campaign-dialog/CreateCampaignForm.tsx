@@ -14,6 +14,8 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { ImageSquare, PencilSimpleLine } from '@phosphor-icons/react';
+import { Check } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { Info } from '@phosphor-icons/react';
@@ -141,9 +143,41 @@ const buildInitialFormValues = (
 interface CreateCampaignFormProps {
     onSuccess?: () => void;
     campaign?: CampaignItem | null;
+    /** Wizard step to open on (0 = Basics). */
+    initialStep?: number;
 }
 
-export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
+/**
+ * The create / edit wizard. Every step stays mounted and is only hidden, so the
+ * form state, its validation and the single save are unchanged; `fields` maps a
+ * validation error back to the step that shows it.
+ */
+const WIZARD_STEPS: ReadonlyArray<{ key: string; fields: readonly string[] }> = [
+    {
+        key: 'basics',
+        fields: [
+            'campaign_name',
+            'campaign_type',
+            'campaign_objective',
+            'sub_org_id',
+            'description',
+            'start_date_local',
+            'end_date_local',
+            'status',
+        ],
+    },
+    { key: 'fields', fields: ['custom_fields'] },
+    { key: 'afterSubmit', fields: ['postSubmitConfiguration'] },
+    { key: 'appearance', fields: ['formAppearance'] },
+    { key: 'notify', fields: ['to_notify', 'send_respondent_email', 'default_initial_score'] },
+];
+const LAST_STEP = WIZARD_STEPS.length - 1;
+
+export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({
+    onSuccess,
+    campaign,
+    initialStep,
+}) => {
     const { t } = useTranslation('audienceManagerCreateCampaignForm');
     const { campaignType: term } = useLeadTerminology();
     const { t: tUpdateAudienceCampaign } = useTranslation(
@@ -194,6 +228,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         getValues,
         formState: { errors },
     } = form;
+    const submitCount = form.formState.submitCount;
+
+    // ── Wizard ────────────────────────────────────────────────
+    const [step, setStep] = useState(() => Math.min(Math.max(initialStep ?? 0, 0), LAST_STEP));
+    // After a failed save, show the first step that has an error.
+    const handledSubmitRef = useRef(0);
+    useEffect(() => {
+        if (!submitCount || handledSubmitRef.current === submitCount) return;
+        const errorKeys = Object.keys(errors);
+        if (errorKeys.length === 0) return;
+        handledSubmitRef.current = submitCount;
+        const firstStep = WIZARD_STEPS.findIndex((s) =>
+            s.fields.some((f) => errorKeys.includes(f))
+        );
+        if (firstStep >= 0) setStep(firstStep);
+    }, [submitCount, errors]);
     const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
     const updateCampaign = useUpdateAudienceCampaign(tUpdateAudienceCampaign);
 
@@ -950,6 +1000,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 term: getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList),
             });
 
+    // Built every render (cheap): a memo could keep raw keys from before the catalog loaded.
+    const stepLabels = [
+        t('wizard.steps.basics'),
+        t('wizard.steps.fields'),
+        t('wizard.steps.afterSubmit'),
+        t('wizard.steps.appearance'),
+        t('wizard.steps.notify'),
+    ];
+
     // Show loading state while fetching campaign data
     if (isEditMode && isLoadingCampaign) {
         return (
@@ -973,121 +1032,303 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     />
                 </div>
             )}
-            {/* Campaign Name */}
-            <div>
-                <label className="block text-sm font-semibold text-neutral-700">
-                    {t('campaignName.label')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                    type="text"
-                    placeholder={t('campaignName.placeholder')}
-                    {...register('campaign_name')}
-                    className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                />
-                {errors.campaign_name && (
-                    <span className="mt-1 block text-sm text-red-500">
-                        {errors.campaign_name.message as string}
-                    </span>
-                )}
-            </div>
+            {/* Wizard steps — every step can be opened directly. */}
+            <ol className="flex flex-wrap items-center gap-2" aria-label={t('wizard.ariaLabel')}>
+                {stepLabels.map((label, i) => {
+                    const hasError = WIZARD_STEPS[i]?.fields.some((f) => f in errors);
+                    return (
+                        <li key={WIZARD_STEPS[i]?.key ?? i}>
+                            <button
+                                type="button"
+                                onClick={() => setStep(i)}
+                                aria-current={step === i ? 'step' : undefined}
+                                className={cn(
+                                    'flex items-center gap-2 rounded-full border px-3 py-1.5 text-caption font-medium transition-colors',
+                                    step === i
+                                        ? 'border-primary-500 bg-primary-50 text-primary-600'
+                                        : i < step
+                                          ? 'border-success-200 bg-success-50 text-success-700 hover:bg-success-100'
+                                          : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        'flex size-5 items-center justify-center rounded-full',
+                                        step === i
+                                            ? 'bg-primary-500 text-white'
+                                            : i < step
+                                              ? 'bg-success-500 text-white'
+                                              : 'bg-neutral-100 text-neutral-600'
+                                    )}
+                                >
+                                    {i < step ? <Check size={12} weight="bold" /> : i + 1}
+                                </span>
+                                {label}
+                                {hasError && (
+                                    <span
+                                        className="size-1.5 rounded-full bg-danger-500"
+                                        aria-label={t('wizard.hasErrors')}
+                                    />
+                                )}
+                            </button>
+                        </li>
+                    );
+                })}
+            </ol>
 
-            {/* Campaign Image */}
-
-            {/* Campaign Type & Objective Row */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className={cn('space-y-6', step !== 0 && 'hidden')}>
+                {/* Campaign Name */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        {t('campaignType.label', { term })} <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                        <CampaignTypeDropdown
-                            value={watch('campaign_type')}
-                            error={errors.campaign_type?.message as string}
-                            onChange={(val) => {
-                                setValue('campaign_type', val, {
-                                    shouldValidate: true,
-                                    shouldDirty: true,
-                                });
-                            }}
-                        />
-                    </div>
-                </div>
-                {/* CampaignObjective */}
-                <div>
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('campaignObjective.label')}
-                        {/* <span className="text-red-500">*</span> */}
+                        {t('campaignName.label')} <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="text"
-                        placeholder={t('campaignObjective.placeholder')}
-                        {...register('campaign_objective')}
+                        placeholder={t('campaignName.placeholder')}
+                        {...register('campaign_name')}
                         className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                     />
-                    {/* {errors.campaign_objective && (
+                    {errors.campaign_name && (
+                        <span className="mt-1 block text-sm text-red-500">
+                            {errors.campaign_name.message as string}
+                        </span>
+                    )}
+                </div>
+
+                {/* Campaign Image */}
+
+                {/* Campaign Type & Objective Row */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('campaignType.label', { term })}{' '}
+                            <span className="text-red-500">*</span>
+                        </label>
+                        <div className="mt-2">
+                            <CampaignTypeDropdown
+                                value={watch('campaign_type')}
+                                error={errors.campaign_type?.message as string}
+                                onChange={(val) => {
+                                    setValue('campaign_type', val, {
+                                        shouldValidate: true,
+                                        shouldDirty: true,
+                                    });
+                                }}
+                            />
+                        </div>
+                    </div>
+                    {/* CampaignObjective */}
+                    <div>
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('campaignObjective.label')}
+                            {/* <span className="text-red-500">*</span> */}
+                        </label>
+                        <input
+                            type="text"
+                            placeholder={t('campaignObjective.placeholder')}
+                            {...register('campaign_objective')}
+                            className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                        />
+                        {/* {errors.campaign_objective && (
                         <span className="mt-1 block text-sm text-red-500">
                             {errors.campaign_objective.message as string}
                         </span>
                     )} */}
-                </div>
-            </div>
-
-            {/* Sub-Org (optional) — only shown when the institute has sub-orgs */}
-            {subOrgDropdownOptions.length > 1 && (
-                <div>
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('subOrg.label')}
-                    </label>
-                    <div className="mt-2">
-                        <StatusDropdown
-                            value={watch('sub_org_id') || ''}
-                            initialOptions={subOrgDropdownOptions}
-                            placeholder={t('subOrg.placeholder')}
-                            onChange={(val) => {
-                                setValue('sub_org_id', val, { shouldDirty: true });
-                            }}
-                        />
                     </div>
                 </div>
-            )}
 
-            {/* Emails & Share Analytics */}
-            <div className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">
-                <div className="flex flex-wrap gap-2">
+                {/* Sub-Org (optional) — only shown when the institute has sub-orgs */}
+                {subOrgDropdownOptions.length > 1 && (
+                    <div>
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('subOrg.label')}
+                        </label>
+                        <div className="mt-2">
+                            <StatusDropdown
+                                value={watch('sub_org_id') || ''}
+                                initialOptions={subOrgDropdownOptions}
+                                placeholder={t('subOrg.placeholder')}
+                                onChange={(val) => {
+                                    setValue('sub_org_id', val, { shouldDirty: true });
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Description */}
+                <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        {' '}
-                        {t('teamNotifications.label')}{' '}
+                        {t('description.label')}
                     </label>
-                    <TooltipProvider>
-                        <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label={t('teamNotifications.infoAriaLabel')}
-                                >
-                                    <Info className="size-4" weight="bold" />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>{t('teamNotifications.tooltip')}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
+                    <textarea
+                        placeholder={t('description.placeholder')}
+                        rows={3}
+                        {...register('description')}
+                        className="mt-2 w-full resize-none rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                    />
+                    {errors.description && (
+                        <span className="mt-1 block text-sm text-red-500">
+                            {errors.description.message as string}
+                        </span>
+                    )}
                 </div>
-                <MultiEmailInput
-                    ref={multiEmailRef}
-                    value={emails}
-                    onChange={setEmails}
-                    placeholder={t('teamNotifications.placeholder')}
-                    error={errors?.to_notify?.message}
-                />
 
-                {/* Share Campaign Analytics */}
-                <div className="flex items-center justify-between gap-2 p-2">
+                {/* Start & End Date Row */}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {/* Start Date */}
+                    <div>
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('startDate.label')} <span className="text-red-500">*</span>
+                        </label>
+                        <Controller
+                            name="start_date_local"
+                            control={control}
+                            render={({ field }) => {
+                                const rawValue = field.value as unknown;
+                                let dateValue = '';
+
+                                // Handle different input types (string date, Date object, or ISO string)
+                                if (typeof rawValue === 'string' && rawValue !== '') {
+                                    // If it's already in YYYY-MM-DD format, use it directly
+                                    if (rawValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                        dateValue = rawValue;
+                                    } else {
+                                        // If it's an ISO string, extract just the date part
+                                        const date = new Date(rawValue);
+                                        if (!Number.isNaN(date.getTime())) {
+                                            dateValue =
+                                                date.toISOString().split('T')[0] ||
+                                                date.toISOString().substring(0, 10);
+                                        }
+                                    }
+                                } else if (
+                                    rawValue &&
+                                    typeof rawValue === 'object' &&
+                                    typeof (rawValue as Date).toISOString === 'function'
+                                ) {
+                                    const isoString = (rawValue as Date).toISOString();
+                                    dateValue =
+                                        isoString.split('T')[0] || isoString.substring(0, 10);
+                                }
+
+                                // Set minimum date to today (date only)
+                                const today = new Date();
+                                const minDate =
+                                    today.toISOString().split('T')[0] ||
+                                    today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
+
+                                return (
+                                    <input
+                                        type="date"
+                                        value={dateValue}
+                                        min={minDate}
+                                        onChange={(e) => {
+                                            const selectedDate = e.target.value; // Already in YYYY-MM-DD format
+                                            setValue('start_date_local', selectedDate, {
+                                                shouldValidate: true,
+                                                shouldDirty: true,
+                                            });
+                                        }}
+                                        className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                    />
+                                );
+                            }}
+                        />
+                        {errors.start_date_local && (
+                            <span className="mt-1 block text-sm text-red-500">
+                                {errors.start_date_local.message as string}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* End Date */}
+                    <div>
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('endDate.label')} <span className="text-red-500">*</span>
+                        </label>
+                        <Controller
+                            name="end_date_local"
+                            control={control}
+                            render={({ field }) => {
+                                const rawValue = field.value as unknown;
+                                let dateValue = '';
+
+                                // Handle different input types (string date, Date object, or ISO string)
+                                if (typeof rawValue === 'string' && rawValue !== '') {
+                                    // If it's already in YYYY-MM-DD format, use it directly
+                                    if (rawValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                        dateValue = rawValue;
+                                    } else {
+                                        // If it's an ISO string, extract just the date part
+                                        const date = new Date(rawValue);
+                                        if (!Number.isNaN(date.getTime())) {
+                                            dateValue =
+                                                date.toISOString().split('T')[0] ||
+                                                date.toISOString().substring(0, 10);
+                                        }
+                                    }
+                                } else if (
+                                    rawValue &&
+                                    typeof rawValue === 'object' &&
+                                    typeof (rawValue as Date).toISOString === 'function'
+                                ) {
+                                    const isoString = (rawValue as Date).toISOString();
+                                    dateValue =
+                                        isoString.split('T')[0] || isoString.substring(0, 10);
+                                }
+
+                                // Compute minimum End Date = Start Date + 1 day (date only)
+                                const startDateValue = watch('start_date_local');
+                                let minEndDate: string;
+
+                                if (startDateValue) {
+                                    const start = new Date(startDateValue);
+                                    const nextDay = new Date(start);
+                                    nextDay.setDate(start.getDate() + 1); // Move to the next day
+                                    const nextDayIso = nextDay.toISOString();
+                                    minEndDate = (nextDayIso.split('T')[0] ||
+                                        nextDayIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
+                                } else {
+                                    // Fallback: today + 1 day
+                                    const tomorrow = new Date();
+                                    tomorrow.setDate(tomorrow.getDate() + 1);
+                                    const tomorrowIso = tomorrow.toISOString();
+                                    minEndDate = (tomorrowIso.split('T')[0] ||
+                                        tomorrowIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
+                                }
+
+                                return (
+                                    <input
+                                        type="date"
+                                        value={dateValue}
+                                        min={minEndDate}
+                                        onChange={(e) => {
+                                            const selectedDate = e.target.value; // Already in YYYY-MM-DD format
+                                            setValue('end_date_local', selectedDate, {
+                                                shouldValidate: true,
+                                                shouldDirty: true,
+                                            });
+                                        }}
+                                        className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                    />
+                                );
+                            }}
+                        />
+                        {errors.end_date_local && (
+                            <span className="mt-1 block text-sm text-red-500">
+                                {errors.end_date_local.message as string}
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Status */}
+                <div>
                     <div className="flex items-center gap-2">
                         <label className="block text-sm font-semibold text-neutral-700">
-                            {t('shareAnalytics.label')}
+                            {t('status.label')}
                         </label>
                         <TooltipProvider>
                             <Tooltip delayDuration={0}>
@@ -1095,368 +1336,92 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     <button
                                         type="button"
                                         className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                        aria-label={t('shareAnalytics.infoAriaLabel')}
+                                        aria-label={t('status.infoAriaLabel')}
                                     >
-                                        <Info className="size-4" weight="regular" />
+                                        <Info className="size-4" weight="bold" />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                    <p>{t('shareAnalytics.tooltip')}</p>
+                                    <p>{t('status.tooltip')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
                     </div>
-                    <Switch
-                        checked={watch('send_respondent_email')}
-                        onCheckedChange={(checked: boolean) =>
-                            setValue('send_respondent_email', checked)
-                        }
-                    />
+                    <div className="mt-2">
+                        <StatusDropdown
+                            value={watch('status')}
+                            error={errors.status?.message as string}
+                            onChange={(val) => {
+                                setValue('status', val, {
+                                    shouldValidate: true,
+                                    shouldDirty: true,
+                                });
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Description */}
-            <div>
-                <label className="block text-sm font-semibold text-neutral-700">
-                    {t('description.label')}
-                </label>
-                <textarea
-                    placeholder={t('description.placeholder')}
-                    rows={3}
-                    {...register('description')}
-                    className="mt-2 w-full resize-none rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            <div className={cn('space-y-6', step !== 1 && 'hidden')}>
+                {/* Customize Campaign Form - Custom Fields Card */}
+                <CampaignCustomFieldsCard
+                    form={form}
+                    updateFieldOrders={updateFieldOrders}
+                    handleDeleteOpenField={handleDeleteOpenField}
+                    toggleIsRequired={toggleIsRequired}
+                    handleAddGender={handleAddGender}
+                    handleAddOpenFieldValues={handleAddOpenFieldValues}
+                    handleValueChange={handleValueChange}
+                    handleEditClick={handleEditClick}
+                    handleDeleteOptionField={handleDeleteOptionField}
+                    handleAddDropdownOptions={handleAddDropdownOptions}
+                    handleEditFieldAt={handleEditFieldAt}
+                    campaignId={editingCampaignId}
+                    handleCloseDialog={handleCloseDialog}
+                    handleAddPhoneNumber={handleAddPhoneNumber}
                 />
-                {errors.description && (
-                    <span className="mt-1 block text-sm text-red-500">
-                        {errors.description.message as string}
-                    </span>
-                )}
             </div>
 
-            {/* Start & End Date Row */}
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Start Date */}
-                <div>
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('startDate.label')} <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                        name="start_date_local"
-                        control={control}
-                        render={({ field }) => {
-                            const rawValue = field.value as unknown;
-                            let dateValue = '';
-
-                            // Handle different input types (string date, Date object, or ISO string)
-                            if (typeof rawValue === 'string' && rawValue !== '') {
-                                // If it's already in YYYY-MM-DD format, use it directly
-                                if (rawValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                    dateValue = rawValue;
-                                } else {
-                                    // If it's an ISO string, extract just the date part
-                                    const date = new Date(rawValue);
-                                    if (!Number.isNaN(date.getTime())) {
-                                        dateValue =
-                                            date.toISOString().split('T')[0] ||
-                                            date.toISOString().substring(0, 10);
-                                    }
-                                }
-                            } else if (
-                                rawValue &&
-                                typeof rawValue === 'object' &&
-                                typeof (rawValue as Date).toISOString === 'function'
-                            ) {
-                                const isoString = (rawValue as Date).toISOString();
-                                dateValue = isoString.split('T')[0] || isoString.substring(0, 10);
-                            }
-
-                            // Set minimum date to today (date only)
-                            const today = new Date();
-                            const minDate =
-                                today.toISOString().split('T')[0] ||
-                                today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
-
-                            return (
-                                <input
-                                    type="date"
-                                    value={dateValue}
-                                    min={minDate}
-                                    onChange={(e) => {
-                                        const selectedDate = e.target.value; // Already in YYYY-MM-DD format
-                                        setValue('start_date_local', selectedDate, {
-                                            shouldValidate: true,
-                                            shouldDirty: true,
-                                        });
-                                    }}
-                                    className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                                />
-                            );
-                        }}
-                    />
-                    {errors.start_date_local && (
-                        <span className="mt-1 block text-sm text-red-500">
-                            {errors.start_date_local.message as string}
-                        </span>
-                    )}
-                </div>
-
-                {/* End Date */}
-                <div>
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('endDate.label')} <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                        name="end_date_local"
-                        control={control}
-                        render={({ field }) => {
-                            const rawValue = field.value as unknown;
-                            let dateValue = '';
-
-                            // Handle different input types (string date, Date object, or ISO string)
-                            if (typeof rawValue === 'string' && rawValue !== '') {
-                                // If it's already in YYYY-MM-DD format, use it directly
-                                if (rawValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                    dateValue = rawValue;
-                                } else {
-                                    // If it's an ISO string, extract just the date part
-                                    const date = new Date(rawValue);
-                                    if (!Number.isNaN(date.getTime())) {
-                                        dateValue =
-                                            date.toISOString().split('T')[0] ||
-                                            date.toISOString().substring(0, 10);
-                                    }
-                                }
-                            } else if (
-                                rawValue &&
-                                typeof rawValue === 'object' &&
-                                typeof (rawValue as Date).toISOString === 'function'
-                            ) {
-                                const isoString = (rawValue as Date).toISOString();
-                                dateValue = isoString.split('T')[0] || isoString.substring(0, 10);
-                            }
-
-                            // Compute minimum End Date = Start Date + 1 day (date only)
-                            const startDateValue = watch('start_date_local');
-                            let minEndDate: string;
-
-                            if (startDateValue) {
-                                const start = new Date(startDateValue);
-                                const nextDay = new Date(start);
-                                nextDay.setDate(start.getDate() + 1); // Move to the next day
-                                const nextDayIso = nextDay.toISOString();
-                                minEndDate = (nextDayIso.split('T')[0] ||
-                                    nextDayIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
-                            } else {
-                                // Fallback: today + 1 day
-                                const tomorrow = new Date();
-                                tomorrow.setDate(tomorrow.getDate() + 1);
-                                const tomorrowIso = tomorrow.toISOString();
-                                minEndDate = (tomorrowIso.split('T')[0] ||
-                                    tomorrowIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
-                            }
-
-                            return (
-                                <input
-                                    type="date"
-                                    value={dateValue}
-                                    min={minEndDate}
-                                    onChange={(e) => {
-                                        const selectedDate = e.target.value; // Already in YYYY-MM-DD format
-                                        setValue('end_date_local', selectedDate, {
-                                            shouldValidate: true,
-                                            shouldDirty: true,
-                                        });
-                                    }}
-                                    className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                                />
-                            );
-                        }}
-                    />
-                    {errors.end_date_local && (
-                        <span className="mt-1 block text-sm text-red-500">
-                            {errors.end_date_local.message as string}
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {/* Status */}
-            <div>
-                <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('status.label')}
-                    </label>
-                    <TooltipProvider>
-                        <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label={t('status.infoAriaLabel')}
-                                >
-                                    <Info className="size-4" weight="bold" />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>{t('status.tooltip')}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                </div>
-                <div className="mt-2">
-                    <StatusDropdown
-                        value={watch('status')}
-                        error={errors.status?.message as string}
-                        onChange={(val) => {
-                            setValue('status', val, {
-                                shouldValidate: true,
-                                shouldDirty: true,
-                            });
-                        }}
-                    />
-                </div>
-            </div>
-
-            {/* Initial Lead Score */}
-            <div>
-                <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        {t('initialLeadScore.label')}
-                    </label>
-                    <TooltipProvider>
-                        <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label={t('initialLeadScore.infoAriaLabel')}
-                                >
-                                    <Info className="size-4" weight="bold" />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>{t('initialLeadScore.tooltip')}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                </div>
+            <div className={cn('space-y-6', step !== 2 && 'hidden')}>
+                {/* Post Submit Configuration — the thank-you screen / redirect the
+                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
                 <Controller
-                    name="default_initial_score"
+                    name="postSubmitConfiguration"
                     control={control}
                     render={({ field }) => (
-                        <input
-                            type="number"
-                            min={0}
-                            max={50}
-                            value={field.value ?? 20}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                            className="mt-2 w-32 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                        <PostSubmitConfigurationEditor
+                            // `?? DEFAULT` guards the window between a form.reset()
+                            // and the async default landing — the editor is fully
+                            // controlled and would crash on an undefined value.
+                            value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
+                            onChange={field.onChange}
+                            // Open: it is the only card of its wizard step.
+                            collapsible={false}
+                            previewCampaignName={
+                                watch('campaign_name') ||
+                                t('postSubmit.previewCampaignNameFallback')
+                            }
+                            description={t('postSubmit.description')}
                         />
                     )}
                 />
-                {errors.default_initial_score && (
-                    <span className="mt-1 block text-sm text-red-500">
-                        {errors.default_initial_score.message as string}
-                    </span>
-                )}
             </div>
 
-            {/* Customize Campaign Form - Custom Fields Card */}
-            <CampaignCustomFieldsCard
-                form={form}
-                updateFieldOrders={updateFieldOrders}
-                handleDeleteOpenField={handleDeleteOpenField}
-                toggleIsRequired={toggleIsRequired}
-                handleAddGender={handleAddGender}
-                handleAddOpenFieldValues={handleAddOpenFieldValues}
-                handleValueChange={handleValueChange}
-                handleEditClick={handleEditClick}
-                handleDeleteOptionField={handleDeleteOptionField}
-                handleAddDropdownOptions={handleAddDropdownOptions}
-                handleEditFieldAt={handleEditFieldAt}
-                campaignId={editingCampaignId}
-                handleCloseDialog={handleCloseDialog}
-                handleAddPhoneNumber={handleAddPhoneNumber}
-            />
-
-            {/* Form Heading & Text — the page heading (defaults to this list's
+            <div className={cn('space-y-6', step !== 3 && 'hidden')}>
+                {/* Form Heading & Text — the page heading (defaults to this list's
                 name) and the form card's heading + sub-heading, with alignment.
                 Deliberately NOT behind the Form Appearance institute switch:
                 every campaign can reword its own form. Writes into the same
                 `formAppearance` value, so the save path is unchanged. */}
-            <Controller
-                name="formAppearance"
-                control={control}
-                render={({ field }) => (
-                    <FormTextEditor
-                        value={field.value ?? DEFAULT_FORM_APPEARANCE}
-                        onChange={field.onChange}
-                        // Collapsed by default, like the cards around it.
-                        collapsible
-                        previewCampaignName={
-                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
-                        }
-                        previewCampaignDescription={watch('description') || ''}
-                        previewCampaignObjective={watch('campaign_objective') || ''}
-                        previewInstituteName={instituteDetails?.institute_name || 'Your Institute'}
-                        previewFields={(watch('custom_fields') || [])
-                            .filter((customField) => customField?.status !== 'DELETED')
-                            .map((customField) => ({
-                                name: customField?.name || '',
-                                required: Boolean(customField?.isRequired),
-                            }))}
-                        title={t('formText.title')}
-                        description={t('formText.description')}
-                    />
-                )}
-            />
-
-            {/* Post Submit Configuration — the thank-you screen / redirect the
-                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
-            <Controller
-                name="postSubmitConfiguration"
-                control={control}
-                render={({ field }) => (
-                    <PostSubmitConfigurationEditor
-                        // `?? DEFAULT` guards the window between a form.reset()
-                        // and the async default landing — the editor is fully
-                        // controlled and would crash on an undefined value.
-                        value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
-                        onChange={field.onChange}
-                        // Collapsed by default: this is an optional advanced
-                        // block, and the create form must look the way it
-                        // always did for admins who don't need it.
-                        collapsible
-                        previewCampaignName={
-                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
-                        }
-                        description={t('postSubmit.description')}
-                    />
-                )}
-            />
-
-            {/* Form Appearance — how the public response form looks while it is
-                being filled in. Sits above the post-submit card because it is
-                about the form itself, not what follows it. */}
-            {/* Hidden until an institute turns it on in Settings → Lead
-                Settings → Forms. A campaign that already has a saved
-                formAppearance keeps it either way — this hides the editor, it
-                does not clear the stored config. */}
-            {formAppearanceEnabled && (
                 <Controller
                     name="formAppearance"
                     control={control}
                     render={({ field }) => (
-                        <FormAppearanceEditor
-                            // `?? DEFAULT` guards the window between a form.reset()
-                            // and the value landing — the editor is fully controlled
-                            // and would crash on an undefined value.
+                        <FormTextEditor
                             value={field.value ?? DEFAULT_FORM_APPEARANCE}
                             onChange={field.onChange}
-                            // Collapsed by default: the create form must look the way
-                            // it always did for admins who don't need this.
-                            collapsible
+                            // Open: it is the main card of its wizard step.
+                            collapsible={false}
                             previewCampaignName={
                                 watch('campaign_name') ||
                                 t('postSubmit.previewCampaignNameFallback')
@@ -1466,27 +1431,180 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                             previewInstituteName={
                                 instituteDetails?.institute_name || 'Your Institute'
                             }
-                            // The campaign's own fields, so the preview shows real
-                            // labels instead of placeholder rows. Deleted rows are
-                            // excluded because they are not sent to the API either.
                             previewFields={(watch('custom_fields') || [])
-                                .filter((field) => field?.status !== 'DELETED')
-                                .map((field) => ({
-                                    name: field?.name || '',
-                                    required: Boolean(field?.isRequired),
+                                .filter((customField) => customField?.status !== 'DELETED')
+                                .map((customField) => ({
+                                    name: customField?.name || '',
+                                    required: Boolean(customField?.isRequired),
                                 }))}
-                            title={t('formAppearance.title')}
-                            description={t('formAppearance.description')}
+                            title={t('formText.title')}
+                            description={t('formText.description')}
                         />
                     )}
                 />
-            )}
+
+                {/* Form Appearance — how the public response form looks while it is
+                being filled in. On the Appearance step with the heading text,
+                because it is about the form itself, not what follows it. */}
+                {/* Hidden until an institute turns it on in Settings → Lead
+                Settings → Forms. A campaign that already has a saved
+                formAppearance keeps it either way — this hides the editor, it
+                does not clear the stored config. */}
+                {formAppearanceEnabled && (
+                    <Controller
+                        name="formAppearance"
+                        control={control}
+                        render={({ field }) => (
+                            <FormAppearanceEditor
+                                // `?? DEFAULT` guards the window between a form.reset()
+                                // and the value landing — the editor is fully controlled
+                                // and would crash on an undefined value.
+                                value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                                onChange={field.onChange}
+                                // Collapsed by default: the create form must look the way
+                                // it always did for admins who don't need this.
+                                collapsible
+                                previewCampaignName={
+                                    watch('campaign_name') ||
+                                    t('postSubmit.previewCampaignNameFallback')
+                                }
+                                previewCampaignDescription={watch('description') || ''}
+                                previewCampaignObjective={watch('campaign_objective') || ''}
+                                previewInstituteName={
+                                    instituteDetails?.institute_name || 'Your Institute'
+                                }
+                                // The campaign's own fields, so the preview shows real
+                                // labels instead of placeholder rows. Deleted rows are
+                                // excluded because they are not sent to the API either.
+                                previewFields={(watch('custom_fields') || [])
+                                    .filter((field) => field?.status !== 'DELETED')
+                                    .map((field) => ({
+                                        name: field?.name || '',
+                                        required: Boolean(field?.isRequired),
+                                    }))}
+                                title={t('formAppearance.title')}
+                                description={t('formAppearance.description')}
+                            />
+                        )}
+                    />
+                )}
+            </div>
+
+            <div className={cn('space-y-6', step !== 4 && 'hidden')}>
+                {/* Emails & Share Analytics */}
+                <div className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {' '}
+                            {t('teamNotifications.label')}{' '}
+                        </label>
+                        <TooltipProvider>
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
+                                        aria-label={t('teamNotifications.infoAriaLabel')}
+                                    >
+                                        <Info className="size-4" weight="bold" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                    <p>{t('teamNotifications.tooltip')}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </div>
+                    <MultiEmailInput
+                        ref={multiEmailRef}
+                        value={emails}
+                        onChange={setEmails}
+                        placeholder={t('teamNotifications.placeholder')}
+                        error={errors?.to_notify?.message}
+                    />
+
+                    {/* Share Campaign Analytics */}
+                    <div className="flex items-center justify-between gap-2 p-2">
+                        <div className="flex items-center gap-2">
+                            <label className="block text-sm font-semibold text-neutral-700">
+                                {t('shareAnalytics.label')}
+                            </label>
+                            <TooltipProvider>
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
+                                            aria-label={t('shareAnalytics.infoAriaLabel')}
+                                        >
+                                            <Info className="size-4" weight="regular" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                        <p>{t('shareAnalytics.tooltip')}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                        <Switch
+                            checked={watch('send_respondent_email')}
+                            onCheckedChange={(checked: boolean) =>
+                                setValue('send_respondent_email', checked)
+                            }
+                        />
+                    </div>
+                </div>
+
+                {/* Initial Lead Score */}
+                <div>
+                    <div className="flex items-center gap-2">
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            {t('initialLeadScore.label')}
+                        </label>
+                        <TooltipProvider>
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
+                                        aria-label={t('initialLeadScore.infoAriaLabel')}
+                                    >
+                                        <Info className="size-4" weight="bold" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                    <p>{t('initialLeadScore.tooltip')}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </div>
+                    <Controller
+                        name="default_initial_score"
+                        control={control}
+                        render={({ field }) => (
+                            <input
+                                type="number"
+                                min={0}
+                                max={50}
+                                value={field.value ?? 20}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                className="mt-2 w-32 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                            />
+                        )}
+                    />
+                    {errors.default_initial_score && (
+                        <span className="mt-1 block text-sm text-red-500">
+                            {errors.default_initial_score.message as string}
+                        </span>
+                    )}
+                </div>
+            </div>
 
             {/* Custom HTML Card */}
             {/* <CustomHTMLCard form={form} /> */}
 
             {/* Form Actions */}
-            <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-6">
+            <div className="flex flex-wrap items-center gap-3 border-t border-neutral-200 pt-6">
                 <MyButton
                     type="button"
                     onClick={handleFormReset}
@@ -1495,6 +1613,31 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 >
                     {t('actions.reset')}
                 </MyButton>
+                <span className="flex-1" />
+                <span className="text-caption text-neutral-500">
+                    {t('wizard.stepOf', { current: step + 1, total: WIZARD_STEPS.length })}
+                </span>
+                {step > 0 && (
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={() => setStep(step - 1)}
+                    >
+                        {t('wizard.back')}
+                    </MyButton>
+                )}
+                {step < LAST_STEP && (
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={() => setStep(step + 1)}
+                    >
+                        {t('wizard.next', { step: stepLabels[step + 1] })}
+                    </MyButton>
+                )}
+                {/* Save is offered on every step, as the single-page form did. */}
                 <MyButton type="submit" disabled={isSaving} buttonType="primary" scale="medium">
                     {primaryButtonLabel}
                 </MyButton>

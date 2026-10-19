@@ -18,14 +18,17 @@
         "retry": "Retry",
         "cancel": "Cancel",
         "deleting": "Deleting…",
-        "deleteFlow": "Delete Flow"
+        "deleteFlow": "Delete Flow",
+        "settings": "Onboarding settings"
     },
     "columns": {
         "name": "Name",
         "description": "Description",
         "status": "Status",
         "steps": "Steps",
-        "actions": "Actions"
+        "actions": "Actions",
+        "noSteps": "No steps yet",
+        "updated": "Updated"
     },
     "statusLabels": {
         "draft": "Draft",
@@ -46,5 +49,18 @@
     "toasts": {
         "deleted": "Onboarding flow deleted",
         "deleteError": "Could not delete the flow. Please try again."
+    },
+    "summary": {
+        "activeFlows": "Active flows",
+        "drafts_one": "{{count}} draft not live yet",
+        "drafts_other": "{{count}} drafts not live yet",
+        "inProgress": "In progress",
+        "inProgressDetail": "People part-way through a flow",
+        "completed": "Completed",
+        "abandoned": "Abandoned"
+    },
+    "table": {
+        "title": "Flows",
+        "subtitle": "Deleting a flow archives it — people already on it keep going."
     }
 }

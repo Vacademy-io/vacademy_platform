@@ -70,7 +70,10 @@
         "viewingDeletedButton": "हटाई गई लीड्स देखी जा रही हैं",
         "exporting": "निर्यात हो रहा है…",
         "export": "निर्यात करें",
-        "addLead": "नया लीड जोड़ें"
+        "addLead": "नया लीड जोड़ें",
+        "filters": "फ़िल्टर",
+        "summaryShow": "सारांश दिखाएँ",
+        "summaryHide": "सारांश छिपाएँ"
     },
     "chips": {
         "search": "खोज: {{query}}",
@@ -164,5 +167,17 @@
         "bulkStatusUnchanged_other": null,
         "bulkStatusPartial": null,
         "bulkStatusFailed": null
+    },
+    "filtersPanel": {
+        "title": "फ़िल्टर",
+        "active": "{{count}} लागू",
+        "close": "फ़िल्टर बंद करें",
+        "sections": {
+            "pipeline": "पाइपलाइन",
+            "owner": "ओनर और सोर्स",
+            "activity": "गतिविधि",
+            "campaign": "कैंपेन लिंक",
+            "custom": "कस्टम फ़ील्ड"
+        }
     }
 }

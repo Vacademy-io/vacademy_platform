@@ -25,7 +25,9 @@
     "sections": {
         "stepAccess": "Accès à l'étape (qui peut consulter/modifier cette étape)",
         "formFields": "Champs du formulaire",
-        "loadingFields": "Chargement des champs existants…"
+        "loadingFields": "Chargement des champs existants…",
+        "step": "Step",
+        "formFieldsHint": "Attach existing custom fields or create new ones."
     },
     "actions": {
         "cancel": "Annuler",
@@ -42,5 +44,9 @@
     "schema": {
         "stepNameRequired": "Le nom de l'étape est requis",
         "stepNameMaxLength": "Limitez-le à moins de 150 caractères"
+    },
+    "switchHints": {
+        "optional": "Admins can skip it with a reason.",
+        "createStudent": "Shows the {{course}} choice and the auto-complete option."
     }
 }

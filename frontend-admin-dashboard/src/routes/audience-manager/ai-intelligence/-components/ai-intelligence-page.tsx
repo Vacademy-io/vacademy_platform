@@ -23,6 +23,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import type { Icon } from '@phosphor-icons/react';
 import {
     Sparkle,
     UsersThree,
@@ -34,8 +35,22 @@ import {
     Target,
     Lightbulb,
     ChartLineUp,
+    ArrowsLeftRight,
+    Phone,
+    PhoneCall,
+    Smiley,
+    CheckCircle,
+    User,
+    ArrowsClockwise,
+    ArrowsInLineVertical,
+    ArrowsOutLineVertical,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { MyButton } from '@/components/design-system/button';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
     TeamCoachingSection,
@@ -152,7 +167,7 @@ function Delta({
         <span
             className={cn(
                 'inline-flex items-center gap-0.5 text-caption font-medium',
-                up ? 'text-green-700' : 'text-red-600'
+                up ? 'text-success-700' : 'text-danger-600'
             )}
         >
             {up ? <TrendUp size={12} /> : <TrendDown size={12} />}
@@ -163,27 +178,60 @@ function Delta({
     );
 }
 
+const KPI_TINT = {
+    primary: 'bg-primary-50 text-primary-500',
+    info: 'bg-info-50 text-info-600',
+    success: 'bg-success-50 text-success-600',
+    warning: 'bg-warning-50 text-warning-600',
+} as const;
+
 function KpiDeltaCard({
     label,
     value,
     previous,
     digits = 1,
     suffix = '',
+    icon: IconCmp,
+    tint = 'primary',
+    detail,
 }: {
     label: string;
     value: number | null | undefined;
     previous: number | null | undefined;
     digits?: number;
     suffix?: string;
+    icon: Icon;
+    tint?: keyof typeof KPI_TINT;
+    detail?: string;
 }) {
+    const { t } = useTranslation('audienceManagerAiIntelligencePage');
+    const fmt = (v: number | null | undefined) =>
+        v == null ? '—' : `${v.toFixed(digits)}${suffix}`;
     return (
-        <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="text-caption uppercase tracking-wide text-neutral-500">{label}</span>
-            <span className="text-h3 font-semibold text-neutral-900">
-                {value == null ? '—' : `${value.toFixed(digits)}${suffix}`}
-            </span>
-            <Delta current={value} previous={previous} digits={digits} suffix={suffix} />
-        </div>
+        <Card className="flex min-w-0 flex-col gap-2 rounded-xl border-neutral-200 p-4 shadow-sm transition-shadow hover:shadow-md">
+            <div className="flex items-center gap-2 text-neutral-600">
+                <span
+                    className={cn(
+                        'flex size-8 shrink-0 items-center justify-center rounded-lg',
+                        KPI_TINT[tint]
+                    )}
+                >
+                    <IconCmp size={16} weight="duotone" />
+                </span>
+                <span className="truncate text-caption font-medium">{label}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-h2 font-semibold tabular-nums text-neutral-900">
+                    {fmt(value)}
+                </span>
+                <Delta current={value} previous={previous} digits={digits} suffix={suffix} />
+            </div>
+            <p className="text-caption text-neutral-500">
+                {[detail, previous != null ? t('kpi.was', { value: fmt(previous) }) : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+            </p>
+        </Card>
     );
 }
 
@@ -257,10 +305,7 @@ function significantMovers(movers: Mover[]): { improved: Mover[]; declined: Move
  */
 const buildAiSummary =
     (t: TFunction) =>
-    (
-        movers: Mover[],
-        coaching: CallIntelligenceCoachingDto | undefined
-    ): string | null => {
+    (movers: Mover[], coaching: CallIntelligenceCoachingDto | undefined): string | null => {
         if (!coaching || coaching.totalAnalyzed === 0) return null;
         const phrase = (m: Mover) => {
             const diff = (m.cur ?? 0) - (m.prev ?? 0);
@@ -298,7 +343,7 @@ function MoverChip({ m, up }: { m: Mover; up: boolean }) {
         <span
             className={cn(
                 'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-caption font-medium',
-                up ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                up ? 'bg-success-50 text-success-700' : 'bg-danger-50 text-danger-600'
             )}
         >
             {up ? <TrendUp size={13} /> : <TrendDown size={13} />}
@@ -317,13 +362,13 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
     const { improved, declined } = significantMovers(movers);
     if (improved.length === 0 && declined.length === 0 && !aiSummary) {
         return (
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-caption text-neutral-500">
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-caption text-neutral-500">
                 {t('teamInsights.summary.noChangeYet')}
             </div>
         );
     }
     return (
-        <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
+        <div className="flex flex-col gap-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
             {aiSummary && (
                 <div className="flex items-start gap-1.5">
                     <Sparkle size={14} weight="fill" className="mt-0.5 shrink-0 text-primary-500" />
@@ -337,7 +382,7 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
             )}
             {improved.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-caption font-semibold text-neutral-600">
+                    <span className="text-caption font-semibold text-success-700">
                         {t('teamInsights.summary.whatImproved')}
                     </span>
                     {improved.map((m) => (
@@ -347,7 +392,7 @@ function ImprovementSummary({ movers, aiSummary }: { movers: Mover[]; aiSummary?
             )}
             {declined.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-caption font-semibold text-neutral-600">
+                    <span className="text-caption font-semibold text-danger-600">
                         {t('teamInsights.summary.needsAttention')}
                     </span>
                     {declined.map((m) => (
@@ -470,8 +515,66 @@ function TeamInsights({
     ];
     const aiSummary = buildAiSummary(t)(movers, coaching.data);
 
+    const fmtRange = buildFmtRange(t);
+    const positive = positivePct(c?.sentimentDistribution);
+    const groupLabel = (IconCmp: Icon, label: string) => (
+        <span className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+            <IconCmp size={13} />
+            {label}
+        </span>
+    );
+
     return (
         <section className="flex flex-col gap-4">
+            {/* Headline: the team's call quality this period against the previous one. */}
+            <Card className="overflow-hidden rounded-xl border-primary-100 bg-gradient-to-br from-primary-50 via-white to-white p-5 shadow-sm">
+                <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wide text-primary-600">
+                    <Sparkle size={14} weight="fill" />
+                    <span className="text-caption">
+                        {t('hero.eyebrow', { range: fmtRange(current) })}
+                    </span>
+                </div>
+                {cur.isLoading ? (
+                    <div className="mt-3 h-16 w-64 animate-pulse rounded-lg bg-neutral-100" />
+                ) : (
+                    <>
+                        <div className="mt-2 flex flex-wrap items-baseline gap-2">
+                            <span className="text-h1 font-semibold tabular-nums text-neutral-900">
+                                {c?.avgCallerSelfGoalRating == null
+                                    ? '—'
+                                    : c.avgCallerSelfGoalRating.toFixed(1)}
+                            </span>
+                            <span className="text-body text-neutral-500">{t('hero.unit')}</span>
+                            <Delta
+                                current={c?.avgCallerSelfGoalRating ?? null}
+                                previous={p?.avgCallerSelfGoalRating ?? null}
+                            />
+                        </div>
+                        <p className="mt-2 text-body text-neutral-600">
+                            {[
+                                t('hero.analyzed', { count: c?.totalAnalyzed ?? 0 }),
+                                positive != null ? t('hero.positive', { value: positive }) : '',
+                                actC.reach != null ? t('hero.reach', { value: actC.reach }) : '',
+                            ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                        </p>
+                    </>
+                )}
+                {/* Explicit current-vs-previous comparison so "improved" is unambiguous */}
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-caption">
+                    <ArrowsLeftRight size={14} className="text-neutral-400" />
+                    <span className="font-medium text-neutral-700">{t('comparing.label')}</span>
+                    <span className="rounded-full bg-primary-100 px-2.5 py-1 font-medium text-primary-600">
+                        {fmtRange(current)}
+                    </span>
+                    <span className="text-neutral-400">{t('comparing.against')}</span>
+                    <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-neutral-600">
+                        {fmtRange(previous)}
+                    </span>
+                </div>
+            </Card>
+
             <div className="flex items-center gap-2">
                 <UsersThree size={18} className="text-primary-500" />
                 <h2 className="text-h3 font-semibold text-neutral-800">
@@ -485,38 +588,43 @@ function TeamInsights({
 
             {/* Group 1 — calling & call quality */}
             <div className="flex flex-col gap-2">
-                <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                    {t('teamInsights.groupCallQuality')}
-                </span>
+                {groupLabel(Phone, t('teamInsights.groupCallQuality'))}
                 {cur.isLoading ? (
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         {[0, 1, 2, 3].map((i) => (
-                            <div key={i} className="h-24 animate-pulse rounded-lg bg-neutral-100" />
+                            <div key={i} className="h-28 animate-pulse rounded-xl bg-neutral-100" />
                         ))}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <KpiDeltaCard
+                            icon={Sparkle}
                             label={t('teamInsights.metrics.callsAnalyzed')}
                             value={c?.totalAnalyzed ?? 0}
                             previous={p?.totalAnalyzed ?? 0}
                             digits={0}
                         />
                         <KpiDeltaCard
+                            icon={User}
+                            tint="success"
                             label={t('teamInsights.metrics.avgCallerRating')}
                             value={c?.avgCallerSelfGoalRating ?? null}
                             previous={p?.avgCallerSelfGoalRating ?? null}
                             suffix="/10"
                         />
                         <KpiDeltaCard
+                            icon={CheckCircle}
+                            tint="info"
                             label={t('teamInsights.metrics.avgCallOutput')}
                             value={c?.avgCallOutputRating ?? null}
                             previous={p?.avgCallOutputRating ?? null}
                             suffix="/10"
                         />
                         <KpiDeltaCard
+                            icon={Smiley}
+                            tint="warning"
                             label={t('teamInsights.metrics.positiveSentiment')}
-                            value={positivePct(c?.sentimentDistribution)}
+                            value={positive}
                             previous={positivePct(p?.sentimentDistribution)}
                             digits={0}
                             suffix="%"
@@ -527,30 +635,33 @@ function TeamInsights({
 
             {/* Group 2 — day-to-day activity (dispositions + calling reach) */}
             <div className="flex flex-col gap-2">
-                <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                    {t('teamInsights.groupActivity')}
-                </span>
+                {groupLabel(ArrowsClockwise, t('teamInsights.groupActivity'))}
                 {curDisp.isLoading ? (
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         {[0, 1, 2].map((i) => (
-                            <div key={i} className="h-24 animate-pulse rounded-lg bg-neutral-100" />
+                            <div key={i} className="h-28 animate-pulse rounded-xl bg-neutral-100" />
                         ))}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <KpiDeltaCard
+                            icon={ArrowsClockwise}
                             label={t('teamInsights.metrics.leadsDispositioned')}
                             value={actC.dispositioned}
                             previous={actP.dispositioned}
                             digits={0}
                         />
                         <KpiDeltaCard
+                            icon={Phone}
+                            tint="info"
                             label={t('teamInsights.metrics.callsMade')}
                             value={actC.calls}
                             previous={actP.calls}
                             digits={0}
                         />
                         <KpiDeltaCard
+                            icon={PhoneCall}
+                            tint="success"
                             label={t('teamInsights.metrics.teamReach')}
                             value={actC.reach}
                             previous={actP.reach}
@@ -606,32 +717,50 @@ function CoachingDrillIn({
     }
     const weakest = (data.qualityAverages ?? []).slice(0, 3);
     const tips = (data.topCoachingTips ?? []).slice(0, 3);
+    const skillTone = (v: number | null | undefined) =>
+        v == null
+            ? '[&>div]:bg-neutral-300'
+            : v >= 7
+              ? '[&>div]:bg-success-500'
+              : v >= 4
+                ? '[&>div]:bg-warning-500'
+                : '[&>div]:bg-danger-500';
     return (
-        <div className="flex flex-col gap-2 px-4 py-3">
+        <div className="grid grid-cols-1 gap-4 px-4 py-3 md:grid-cols-2">
             {weakest.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 text-caption">
-                    <span className="font-medium text-neutral-600">
+                <div className="flex flex-col gap-2">
+                    <span className="flex items-center gap-1.5 text-caption font-semibold text-neutral-600">
+                        <Lightbulb size={13} />
                         {t('counsellorBreakdown.coaching.weakestSkills')}
                     </span>
-                    {weakest.map((q) => (
-                        <span
-                            key={q.key}
-                            className="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600"
-                        >
-                            {q.key.replace(/_/g, ' ')} ·{' '}
-                            {q.avgScore == null ? '—' : q.avgScore.toFixed(1)}/10
-                        </span>
-                    ))}
+                    <ul className="flex flex-col gap-2">
+                        {weakest.map((q) => (
+                            <li key={q.key} className="flex items-center gap-3 text-caption">
+                                <span className="w-36 shrink-0 truncate capitalize text-neutral-700">
+                                    {q.key.replace(/_/g, ' ')}
+                                </span>
+                                <Progress
+                                    value={q.avgScore == null ? 0 : q.avgScore * 10}
+                                    className={cn('h-1.5 !bg-neutral-100', skillTone(q.avgScore))}
+                                />
+                                <span className="w-10 shrink-0 text-end font-semibold tabular-nums text-neutral-800">
+                                    {q.avgScore == null ? '—' : q.avgScore.toFixed(1)}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
             {tips.length > 0 && (
-                <ul className="space-y-1">
+                <ul className="flex flex-col gap-2">
                     {tips.map((tip, i) => (
                         <li
                             key={i}
-                            className="flex items-start gap-1.5 text-caption text-neutral-700"
+                            className="flex items-start gap-2 rounded-lg bg-neutral-50 px-3 py-2 text-caption text-neutral-700"
                         >
-                            <Target className="mt-0.5 size-3.5 shrink-0 text-primary-400" />
+                            <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-warning-50 text-warning-600">
+                                <Target className="size-3.5" />
+                            </span>
                             <span>{tip.text}</span>
                         </li>
                     ))}
@@ -669,9 +798,9 @@ const reach = (outcomes: Record<string, number>): number | null => {
 
 function reachTone(v: number | null): string {
     if (v == null) return 'text-neutral-400';
-    if (v >= 40) return 'text-green-700';
-    if (v >= 20) return 'text-amber-700';
-    return 'text-red-600';
+    if (v >= 40) return 'text-success-700';
+    if (v >= 20) return 'text-warning-700';
+    return 'text-danger-600';
 }
 
 // One right-aligned metric column (value + its vs-previous delta). Fixed width so
@@ -818,9 +947,11 @@ function CounsellorBreakdown({
     const loading =
         curTeam.isLoading || prevTeam.isLoading || curDisp.isLoading || prevDisp.isLoading;
 
+    const allCollapsed = rows.length > 0 && rows.every((r) => collapsed.has(r.userId));
+
     return (
         <section className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
                 <ChartLineUp size={18} className="text-primary-500" />
                 <h2 className="text-h3 font-semibold text-neutral-800">
                     {t('counsellorBreakdown.heading')}
@@ -828,11 +959,33 @@ function CounsellorBreakdown({
                 <span className="text-caption text-neutral-400">
                     {t('counsellorBreakdown.subtitle')}
                 </span>
+                {rows.length > 1 && (
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        className="ms-auto"
+                        onClick={() =>
+                            setCollapsed(
+                                allCollapsed ? new Set() : new Set(rows.map((r) => r.userId))
+                            )
+                        }
+                    >
+                        {allCollapsed ? (
+                            <ArrowsOutLineVertical size={14} />
+                        ) : (
+                            <ArrowsInLineVertical size={14} />
+                        )}
+                        {allCollapsed
+                            ? t('counsellorBreakdown.expandAll')
+                            : t('counsellorBreakdown.collapseAll')}
+                    </MyButton>
+                )}
             </div>
             {loading ? (
-                <div className="h-40 animate-pulse rounded-lg bg-neutral-100" />
+                <div className="h-40 animate-pulse rounded-xl bg-neutral-100" />
             ) : rows.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-neutral-200 p-6 text-center text-body text-neutral-400">
+                <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-body text-neutral-400">
                     {t('counsellorBreakdown.noActivity')}
                 </div>
             ) : (
@@ -868,7 +1021,7 @@ function CounsellorBreakdown({
                                 // rep, and the gap-3 between cards keeps them clearly apart.
                                 <div
                                     key={r.userId}
-                                    className="overflow-hidden rounded-lg border border-neutral-200 bg-white"
+                                    className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
                                 >
                                     <div
                                         className={cn(
@@ -884,8 +1037,11 @@ function CounsellorBreakdown({
                                                 <CaretRight size={14} />
                                             )}
                                         </span>
-                                        <span className="min-w-40 flex-1 font-medium text-neutral-800">
-                                            {r.name}
+                                        <span className="flex min-w-40 flex-1 items-center gap-2.5 font-medium text-neutral-800">
+                                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-600">
+                                                {r.name.slice(0, 1).toUpperCase()}
+                                            </span>
+                                            <span className="truncate">{r.name}</span>
                                         </span>
                                         <MetricCol value={r.analyzed} previous={r.analyzedPrev} />
                                         <MetricCol
@@ -1032,52 +1188,47 @@ export function AiIntelligencePage() {
     const [period, setPeriod] = useState<Period>({ kind: 'preset', days: 30 });
 
     const { current, previous } = useMemo(() => windowsFor(period), [period]);
-    const fmtRange = buildFmtRange(t);
 
     return (
         <div className="flex flex-col gap-6 p-6">
             <header className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                        <Sparkle size={22} className="text-primary-500" weight="fill" />
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                        <Sparkle size={22} weight="duotone" />
+                    </span>
+                    <div className="flex flex-col gap-1">
                         <h1 className="text-h2 font-semibold text-neutral-900">
                             {t('header.title')}
                         </h1>
+                        <p className="max-w-xl text-body text-neutral-500">
+                            {t('header.subtitle')}
+                        </p>
                     </div>
-                    <p className="max-w-xl text-body text-neutral-500">{t('header.subtitle')}</p>
                 </div>
-                <PeriodControl period={period} current={current} onChange={setPeriod} />
+                <div className="flex items-start gap-2">
+                    <PeriodControl period={period} current={current} onChange={setPeriod} />
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.CrmIntelligence}
+                        label={t('header.settings')}
+                    />
+                </div>
             </header>
 
             {/* Feature is off but there's historical data — show it read-only and
                 make clear no new calls are being analyzed. */}
             {instituteId && !enabled && hasData && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-caption text-amber-700">
-                    <Sparkle size={16} weight="fill" className="mt-0.5 shrink-0 text-amber-500" />
+                <div className="flex items-start gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-caption text-warning-700">
+                    <Sparkle size={16} weight="fill" className="mt-0.5 shrink-0 text-warning-500" />
                     <span>{t('banner.offWithData')}</span>
                 </div>
             )}
 
-            {/* Explicit current-vs-previous comparison so "improved" is unambiguous */}
-            {instituteId && showContent && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-caption">
-                    <span className="font-medium text-neutral-700">{t('comparing.label')}</span>
-                    <span className="rounded-full bg-primary-50 px-2.5 py-1 font-medium text-primary-700">
-                        {fmtRange(current)}
-                    </span>
-                    <span className="text-neutral-400">{t('comparing.against')}</span>
-                    <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-neutral-600">
-                        {fmtRange(previous)}
-                    </span>
-                </div>
-            )}
-
             {!instituteId ? (
-                <div className="rounded-lg border border-dashed border-neutral-200 p-8 text-center text-body text-neutral-400">
+                <div className="rounded-xl border border-dashed border-neutral-200 p-8 text-center text-body text-neutral-400">
                     {t('loadingInstitute')}
                 </div>
             ) : !showContent ? (
-                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-neutral-200 bg-white p-10 text-center">
                     <Sparkle size={28} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-600">
                         {t('emptyState.title')}

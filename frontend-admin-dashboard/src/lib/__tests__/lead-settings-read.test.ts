@@ -81,6 +81,10 @@ describe('follow-up fields config', () => {
             interestLevels: [],
             notesRequired: false,
             fieldsRequired: false,
+            // Behaviour switches: all off, so nothing changes until an institute opts in.
+            keepPopupsOpen: false,
+            showHistory: false,
+            allowEditing: false,
         });
     });
 

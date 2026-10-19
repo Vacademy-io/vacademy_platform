@@ -11,6 +11,7 @@ import {
 } from '@/components/shared/leads';
 import { parseHtmlToString } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { useFollowUpFeatures } from '@/components/shared/leads/follow-up-fields';
 import { EditFollowUpDialog } from './edit-follow-up-dialog';
 
 // Close flow (CompleteFollowUpPopover) lives in the shared leads layer now —
@@ -59,17 +60,20 @@ function FollowUpCard({
     followup,
     userId,
     onEdit,
+    showCreated,
 }: {
     followup: LeadFollowup;
     userId: string;
-    onEdit: () => void;
+    /** Omitted = the institute has editing switched off; no edit button. */
+    onEdit?: () => void;
+    showCreated: boolean;
 }) {
     const { t } = useTranslation('manageStudentsFollowUpsWidget');
     const statusConfig = useMemo(() => buildStatusConfig(t), [t]);
     const config = (statusConfig[followup.status] ?? statusConfig['PENDING'])!;
 
     const formattedTime = formatDateTime(followup.schedule_time);
-    const createdAt = formatDateTime(followup.created_at);
+    const createdAt = showCreated ? formatDateTime(followup.created_at) : null;
 
     const relativeTime = followup.schedule_time
         ? formatDistanceToNow(new Date(followup.schedule_time), { addSuffix: true })
@@ -93,7 +97,7 @@ function FollowUpCard({
                     {config.label}
                 </span>
                 <div className="flex items-center gap-1">
-                    <EditButton onClick={onEdit} />
+                    {onEdit && <EditButton onClick={onEdit} />}
                     {!followup.is_closed && (
                         <CompleteFollowUpPopover
                             followupId={followup.id}
@@ -160,7 +164,8 @@ function FollowUpHistory({
     onEdit,
 }: {
     followups: LeadFollowup[];
-    onEdit: (f: LeadFollowup) => void;
+    /** Omitted = the institute has editing switched off; no edit buttons. */
+    onEdit?: (f: LeadFollowup) => void;
 }) {
     const { t } = useTranslation('manageStudentsFollowUpsWidget');
     const statusConfig = useMemo(() => buildStatusConfig(t), [t]);
@@ -207,7 +212,7 @@ function FollowUpHistory({
                                         </span>
                                     )}
                                 </div>
-                                <EditButton onClick={() => onEdit(f)} />
+                                {onEdit && <EditButton onClick={() => onEdit(f)} />}
                             </div>
                             <HistoryLine
                                 label={t('history.created')}
@@ -266,6 +271,8 @@ interface FollowUpsWidgetProps {
 export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetProps) {
     const { t } = useTranslation('manageStudentsFollowUpsWidget');
     const [editing, setEditing] = useState<LeadFollowup | null>(null);
+    // Institute switches; both off = the widget exactly as before.
+    const { showHistory, allowEditing } = useFollowUpFeatures();
     const { data: followups = [], isLoading } = useQuery({
         queryKey: ['lead-followups', audienceResponseId],
         queryFn: () => fetchLeadFollowups(audienceResponseId),
@@ -306,21 +313,27 @@ export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetP
                             key={f.id}
                             followup={f}
                             userId={userId}
-                            onEdit={() => setEditing(f)}
+                            onEdit={allowEditing ? () => setEditing(f) : undefined}
+                            showCreated={showHistory}
                         />
                     ))}
                 </div>
             )}
 
-            {!isLoading && followups.length > 0 && (
-                <FollowUpHistory followups={followups} onEdit={setEditing} />
+            {showHistory && !isLoading && followups.length > 0 && (
+                <FollowUpHistory
+                    followups={followups}
+                    onEdit={allowEditing ? setEditing : undefined}
+                />
             )}
 
-            <EditFollowUpDialog
-                followup={editing}
-                userId={userId}
-                onOpenChange={(o) => !o && setEditing(null)}
-            />
+            {allowEditing && (
+                <EditFollowUpDialog
+                    followup={editing}
+                    userId={userId}
+                    onOpenChange={(o) => !o && setEditing(null)}
+                />
+            )}
         </div>
     );
 }

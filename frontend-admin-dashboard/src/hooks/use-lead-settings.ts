@@ -173,6 +173,17 @@ export interface FollowUpFieldsConfig {
      * retroactively would block a counsellor mid-call.
      */
     fieldsRequired: boolean;
+    /*
+     * The three below change how follow-ups behave, so each is off until an
+     * institute turns it on — with all three off a follow-up works exactly as it
+     * always has. Independent of {@link enabled}, like notesRequired.
+     */
+    /** Follow-up pop-ups close only from their X / Cancel, not an outside click or Escape. */
+    keepPopupsOpen: boolean;
+    /** Follow-up history + created dates in the Lead Profile, reminders, Completed tab and Check Lead. */
+    showHistory: boolean;
+    /** Counsellors can edit a follow-up's note, closing note and interest level, closed ones included. */
+    allowEditing: boolean;
 }
 
 /**
@@ -269,6 +280,9 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         interestLevels: [],
         notesRequired: false,
         fieldsRequired: false,
+        keepPopupsOpen: false,
+        showHistory: false,
+        allowEditing: false,
     },
     leadLookup: {
         enabled: false,
@@ -358,6 +372,9 @@ export function normaliseFollowUpFields(
         interestLevels: list(saved?.interestLevels),
         notesRequired: saved?.notesRequired === true,
         fieldsRequired: saved?.fieldsRequired === true,
+        keepPopupsOpen: saved?.keepPopupsOpen === true,
+        showHistory: saved?.showHistory === true,
+        allowEditing: saved?.allowEditing === true,
     };
 }
 

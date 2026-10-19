@@ -51,6 +51,7 @@ public class LeadFollowupService {
     private final vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
     private final vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository customFieldRepository;
+    private final LeadFollowupSettingService leadFollowupSettingService;
 
     @Transactional
     public LeadFollowupDto create(CreateLeadFollowupRequest request, CustomUserDetails user) {
@@ -444,40 +445,51 @@ public class LeadFollowupService {
     }
 
     /**
-     * Edit a follow-up. The note, closing note and interest level stay editable
-     * after it is closed, so a counsellor can correct what they wrote; only the
-     * schedule is frozen, because a closed follow-up keeps the time it was due.
+     * Edit a follow-up.
      *
-     * Editing a closed one is new, so only that path gets the lead-scope rule of
-     * {@link #listForLead} (the creator is always allowed). Open follow-ups keep
-     * the old unchecked path: the reminder's snooze runs through here, and a
-     * counsellor must still be able to snooze their own follow-up after the
-     * lead moved to someone outside their scope.
+     * Open follow-ups keep the old path: no scope check, because the reminder's
+     * snooze runs through here and a counsellor must still be able to snooze
+     * their own follow-up after the lead moved to someone outside their scope.
+     *
+     * A closed follow-up stays read-only, exactly as before, unless the
+     * institute turned on "Allow editing past follow-ups" (LEAD_SETTING
+     * followUpFields.allowEditing). Then its note, closing note and interest
+     * level can be corrected; the schedule never, since a closed follow-up
+     * keeps the time it was due.
      */
     @Transactional
     public LeadFollowupDto update(String id, UpdateLeadFollowupRequest request, CustomUserDetails user) {
         LeadFollowup followup = findOrThrow(id);
-        boolean closed = Boolean.TRUE.equals(followup.getIsClosed());
-        if (closed && (user == null || !java.util.Objects.equals(user.getUserId(), followup.getCreatedBy()))) {
-            assertCanAccessLead(followup.getAudienceResponseId(), followup.getInstituteId(), user);
-        }
-        if (request.getScheduleTime() != null) {
-            if (closed) {
-                throw new VacademyException("Cannot reschedule a closed follow-up");
-            }
-            followup.setScheduleTime(request.getScheduleTime());
-        }
-        if (request.getContent() != null) followup.setContent(request.getContent());
-        if (request.getInterestLevel() != null) {
-            followup.setInterestLevel(isBlank(request.getInterestLevel()) ? null : request.getInterestLevel());
-        }
-        if (request.getCloserReason() != null) {
-            if (!closed) {
-                throw new VacademyException("Only a closed follow-up has a closing note");
-            }
-            followup.setCloserReason(request.getCloserReason());
+        if (Boolean.TRUE.equals(followup.getIsClosed())) {
+            editClosed(followup, request, user);
+        } else {
+            if (request.getScheduleTime() != null) followup.setScheduleTime(request.getScheduleTime());
+            if (request.getContent() != null) followup.setContent(request.getContent());
+            // An open follow-up has no closing note yet; closerReason is ignored here.
+            applyInterestLevel(followup, request);
         }
         return LeadFollowupDto.from(leadFollowupRepository.save(followup));
+    }
+
+    private void editClosed(LeadFollowup followup, UpdateLeadFollowupRequest request, CustomUserDetails user) {
+        if (request.getScheduleTime() != null
+                || !leadFollowupSettingService.allowEditing(followup.getInstituteId())) {
+            throw new VacademyException("Cannot update a closed follow-up");
+        }
+        // Editing a closed follow-up is the new path, so it gets the lead-scope
+        // rule of listForLead; whoever created the follow-up may always fix it.
+        if (user == null || !java.util.Objects.equals(user.getUserId(), followup.getCreatedBy())) {
+            assertCanAccessLead(followup.getAudienceResponseId(), followup.getInstituteId(), user);
+        }
+        if (request.getContent() != null) followup.setContent(request.getContent());
+        if (request.getCloserReason() != null) followup.setCloserReason(request.getCloserReason());
+        applyInterestLevel(followup, request);
+    }
+
+    /** A blank interest level clears it. */
+    private static void applyInterestLevel(LeadFollowup followup, UpdateLeadFollowupRequest request) {
+        if (request.getInterestLevel() == null) return;
+        followup.setInterestLevel(isBlank(request.getInterestLevel()) ? null : request.getInterestLevel());
     }
 
     /**

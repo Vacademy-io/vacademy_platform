@@ -69,7 +69,7 @@ export function CompletedFollowUpsTable({
                         {[
                             'lead',
                             'contact',
-                            'createdAt',
+                            ...(followUpFields.showHistory ? ['createdAt'] : []),
                             'wasDue',
                             'completedAt',
                             'completedBy',
@@ -101,9 +101,12 @@ export function CompletedFollowUpsTable({
                                 </span>
                             </td>
                             <td className="px-4 py-3 text-neutral-500">{row.lead_mobile || '—'}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-neutral-500">
-                                {cell(toDate(row.created_at ?? null))}
-                            </td>
+                            {/* Created date only with the follow-up history switch on. */}
+                            {followUpFields.showHistory && (
+                                <td className="whitespace-nowrap px-4 py-3 text-neutral-500">
+                                    {cell(toDate(row.created_at ?? null))}
+                                </td>
+                            )}
                             <td className="whitespace-nowrap px-4 py-3 text-neutral-500">
                                 {cell(toDate(row.schedule_time))}
                             </td>

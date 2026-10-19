@@ -109,6 +109,23 @@ export function useFollowUpNotesRequired(): boolean {
     return followUpFields.notesRequired;
 }
 
+/**
+ * The institute's follow-up behaviour switches (Settings → Lead settings →
+ * Follow-up fields). All off by default, and off means the old behaviour.
+ */
+export function useFollowUpFeatures(): {
+    keepPopupsOpen: boolean;
+    showHistory: boolean;
+    allowEditing: boolean;
+} {
+    const { followUpFields } = useLeadSettings();
+    return {
+        keepPopupsOpen: followUpFields.keepPopupsOpen,
+        showHistory: followUpFields.showHistory,
+        allowEditing: followUpFields.allowEditing,
+    };
+}
+
 interface FollowUpFieldsProps {
     values: FollowUpFieldValues;
     onChange: (next: FollowUpFieldValues) => void;

@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock factories are hoisted above these; vi.hoisted keeps the handles usable inside them.
-const { http, toast } = vi.hoisted(() => ({
+const { http, toast, flags } = vi.hoisted(() => ({
     http: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
     toast: { success: vi.fn(), error: vi.fn() },
+    // The institute's "close pop-ups only with X" switch.
+    flags: { keepPopupsOpen: false },
 }));
 vi.mock('@/lib/auth/axiosInstance', () => ({ default: http }));
 vi.mock('@/constants/urls', () => ({
@@ -25,6 +27,9 @@ vi.mock('@/hooks/use-lead-settings', () => ({
             interestLevels: [],
             notesRequired: false,
             fieldsRequired: false,
+            keepPopupsOpen: flags.keepPopupsOpen,
+            showHistory: false,
+            allowEditing: false,
         },
     }),
 }));
@@ -57,18 +62,23 @@ const openAndFill = (opts: { scheduleNext?: boolean; nextTime?: string } = {}) =
     }
 };
 
+const resetMocks = () => {
+    http.get.mockReset();
+    http.post.mockReset();
+    http.put.mockReset();
+    toast.success.mockReset();
+    toast.error.mockReset();
+};
+
 /**
  * Closing a follow-up and booking the next used to close first, so a failed
  * create or a dismissed schedule dialog left the lead "Completed" with nothing
- * booked. These pin the new order and the old single-close path.
+ * booked. That is a bug, so the fix applies to every institute — no switch.
  */
-describe('CompleteFollowUpPopover', () => {
+describe('CompleteFollowUpPopover — scheduling order (every institute)', () => {
     beforeEach(() => {
-        http.get.mockReset();
-        http.post.mockReset();
-        http.put.mockReset();
-        toast.success.mockReset();
-        toast.error.mockReset();
+        flags.keepPopupsOpen = false;
+        resetMocks();
     });
 
     it('a plain close still sends exactly one close and nothing else', async () => {
@@ -81,6 +91,7 @@ describe('CompleteFollowUpPopover', () => {
             closer_reason: 'Spoke to the parent',
         });
         expect(http.post).not.toHaveBeenCalled();
+        expect(toast.success).toHaveBeenCalledWith('Follow-up marked complete');
     });
 
     it('books the next follow-up before closing the current one', async () => {
@@ -137,16 +148,35 @@ describe('CompleteFollowUpPopover', () => {
             closer_reason: 'Spoke to the parent',
         });
     });
+});
 
-    it('a click outside does not close it or drop the typed note', () => {
+/** The "close pop-ups only with X" switch changes how the pop-up closes, nothing else. */
+describe('CompleteFollowUpPopover — close-only-with-X switch', () => {
+    beforeEach(resetMocks);
+
+    it('OFF (default): no X, and Escape closes it as before', async () => {
+        flags.keepPopupsOpen = false;
         mount();
         openAndFill();
-        fireEvent.pointerDown(document.body);
-        fireEvent.mouseDown(document.body);
-        fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(screen.queryByLabelText('Close')).toBeNull();
+        fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+        await waitFor(() =>
+            expect(screen.queryByPlaceholderText('Closing note (required)…')).toBeNull()
+        );
+    });
+
+    it('ON: Escape does not close it or drop the typed note; X does', async () => {
+        flags.keepPopupsOpen = true;
+        mount();
+        openAndFill();
+        fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
         expect(screen.getByPlaceholderText('Closing note (required)…')).toHaveProperty(
             'value',
             'Spoke to the parent'
+        );
+        fireEvent.click(screen.getByLabelText('Close'));
+        await waitFor(() =>
+            expect(screen.queryByPlaceholderText('Closing note (required)…')).toBeNull()
         );
     });
 });

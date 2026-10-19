@@ -66,6 +66,26 @@ const LISTS: { key: ListKey; title: string; hint: string }[] = [
     },
 ];
 
+type BehaviourKey = 'keepPopupsOpen' | 'showHistory' | 'allowEditing';
+
+const BEHAVIOUR_SWITCHES: { key: BehaviourKey; label: string; hint: string }[] = [
+    {
+        key: 'keepPopupsOpen',
+        label: 'Close follow-up pop-ups only with ✕',
+        hint: 'Follow-up pop-ups stay open on a click outside or Escape, so typed text is not lost by accident. They close with ✕ or Cancel.',
+    },
+    {
+        key: 'showHistory',
+        label: 'Show follow-up history',
+        hint: 'A Follow-up history section in the Lead Profile (created date, next follow-up, comment, interest level), plus created dates in reminders, the Completed tab and Check Lead.',
+    },
+    {
+        key: 'allowEditing',
+        label: 'Allow editing past follow-ups',
+        hint: 'Counsellors can correct a follow-up’s comment, closing note and interest level, including completed ones. The earlier text stays in the activity log.',
+    },
+];
+
 async function fetchFollowUpFields(): Promise<FollowUpFieldsConfig> {
     try {
         const raw = await fetchLeadSettingRawData();
@@ -333,6 +353,26 @@ export default function LeadFollowUpFieldsSettings() {
 
                         <Separator />
 
+                        {/* Behaviour switches — each off by default, and off keeps a
+                            follow-up working exactly as it always has. */}
+                        {BEHAVIOUR_SWITCHES.map(({ key, label, hint }) => (
+                            <div key={key} className="space-y-1.5">
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        id={`followup-${key}`}
+                                        checked={draft[key]}
+                                        onCheckedChange={(v) => update({ [key]: v })}
+                                    />
+                                    <Label htmlFor={`followup-${key}`} className="cursor-pointer">
+                                        {label}
+                                    </Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{hint}</p>
+                            </div>
+                        ))}
+
+                        <Separator />
+
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-3">
                                 <Switch
@@ -345,8 +385,8 @@ export default function LeadFollowUpFieldsSettings() {
                                 </Label>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Student response, follow-up mode and next action, each from a list
-                                you write below.
+                                Interest level, student response, follow-up mode and next action,
+                                each from a list you write below.
                             </p>
                         </div>
 

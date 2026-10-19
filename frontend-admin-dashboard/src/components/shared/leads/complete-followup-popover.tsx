@@ -6,7 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEAD_FOLLOWUPS, CLOSE_LEAD_FOLLOWUP, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
-import { FollowUpFields, useFollowUpFields, useFollowUpNotesRequired } from './follow-up-fields';
+import {
+    FollowUpFields,
+    useFollowUpFeatures,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from './follow-up-fields';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -99,6 +104,9 @@ export function CompleteFollowUpPopover({
     const [nextScheduled, setNextScheduled] = useState(false);
     const followUpFields = useFollowUpFields();
     const notesRequired = useFollowUpNotesRequired();
+    // Institute switch: pop-up closes only from X / Cancel. Off = closes on an
+    // outside click / Escape like before, and there is no X.
+    const { keepPopupsOpen } = useFollowUpFeatures();
     // Only meaningful when followupId is unknown and several are open.
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const queryClient = useQueryClient();
@@ -259,23 +267,27 @@ export function CompleteFollowUpPopover({
                 className="w-72 p-3"
                 align={align}
                 onClick={(e) => e.stopPropagation()}
-                // A stray click outside (or Escape) used to close this and drop
-                // the typed note. Only X / Cancel close it.
-                onInteractOutside={(e) => e.preventDefault()}
-                onEscapeKeyDown={(e) => e.preventDefault()}
+                // Switch on: a stray click outside (or Escape) no longer drops the
+                // typed note — only X / Cancel close it.
+                onInteractOutside={keepPopupsOpen ? (e) => e.preventDefault() : undefined}
+                onEscapeKeyDown={keepPopupsOpen ? (e) => e.preventDefault() : undefined}
             >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-neutral-700">Mark as complete</p>
-                    <button
-                        type="button"
-                        onClick={resetAndClose}
-                        disabled={isBusy}
-                        aria-label="Close"
-                        className="rounded-sm p-0.5 text-neutral-400 transition-colors hover:text-neutral-700 disabled:pointer-events-none"
-                    >
-                        <X className="size-3.5" />
-                    </button>
-                </div>
+                {keepPopupsOpen ? (
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-neutral-700">Mark as complete</p>
+                        <button
+                            type="button"
+                            onClick={resetAndClose}
+                            disabled={isBusy}
+                            aria-label="Close"
+                            className="rounded-sm p-0.5 text-neutral-400 transition-colors hover:text-neutral-700 disabled:pointer-events-none"
+                        >
+                            <X className="size-3.5" />
+                        </button>
+                    </div>
+                ) : (
+                    <p className="mb-2 text-xs font-semibold text-neutral-700">Mark as complete</p>
+                )}
 
                 {isResolving && <div className="h-10 animate-pulse rounded-lg bg-neutral-100" />}
 

@@ -51,6 +51,7 @@ def test_exposed_set_is_the_documented_one():
         "workflows", "workflows_edit", "blog", "blog_edit",
         "courses", "course_edit", "course_drip_edit", "course_invites_edit", "course_structure_edit",
         "learners", "learner_report", "learner_enroll", "learner_edit",
+        "sub_orgs", "sub_org_edit", "sub_org_enroll",
     )
 
 
@@ -251,7 +252,7 @@ def test_website_publish_is_an_opt_in_live_capability_no_existing_connection_has
     # Every other group keeps the area's Edit level / presets behaviour.
     assert [c["key"] for c in adapter.tool_catalog() if c["opt_in"]] == [
         "website_data_edits", "website_publish", "course_structure_edits", "learner_enrollments",
-        "learner_profile_edits"]
+        "learner_profile_edits", "sub_org_edits", "sub_org_enrollments"]
     spec = ASSISTANT_TOOLS["website_publish"]
     assert spec.mcp_only and not spec.default_enabled and not spec.default_roles and spec.mode == "WRITE"
     assert "LIVE" in MCP_ALLOWED_WRITE_TOOLS["website_publish"]

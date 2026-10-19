@@ -2449,6 +2449,7 @@ def _load_feature_tools() -> None:
         "assistant_tools_course_structure",
         "assistant_tools_learners", "assistant_tools_learner_enroll", "assistant_tools_learner_edit",
         "assistant_tools_learner_report",
+        "assistant_tools_sub_orgs", "assistant_tools_sub_org_edit", "assistant_tools_sub_org_enroll",
     ):
         try:
             __import__(f"{__package__}.{module}")

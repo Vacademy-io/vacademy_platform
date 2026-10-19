@@ -143,7 +143,16 @@ SERVER_INSTRUCTIONS = (
     "Progress reports: YOU write a learner's report — no model runs on the server and no AI credits are used. Read "
     "learner_report(action='guide') once, find the learner, ask the period and who the report is for, then "
     "learner_report(action='data') and write from it; saved_reports / saved_report give earlier dashboard reports "
-    "to compare. Every number you write must come from the data; a missing section had no data — never call it 0."
+    "to compare. Every number you write must come from the data; a missing section had no data — never call it 0.\n"
+    "Sub-organisations (partner organisations / centres — use the institute's own term): find one with "
+    "sub_orgs(action='list'), see its courses, seats and admin with sub_orgs(action='get'). To create one, read "
+    "sub_orgs(action='create_options') and ASK the admin for the name, courses, payment option, seats, validity and "
+    "admin roles (never assume any of them), then sub_org_edit(action='preview', change='create') → show it → "
+    "sub_org_edit(action='apply') on a clear yes; give it its admin with change='add_admin' or share the invite "
+    "link with that admin only. To add learners in bulk hand the admin sub_orgs(action='enroll_template') as a .csv "
+    "file, pass the filled-in CSV to sub_org_enroll(action='preview'), show who is added / skipped and the seats "
+    "left, and only after a yes call sub_org_enroll(action='enroll') with the same arguments and the confirm_token. "
+    "Deleting a sub-org or removing a course or member is done in the dashboard."
 )
 
 

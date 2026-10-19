@@ -238,13 +238,15 @@ def cf_column(label: str) -> str:
 ENROLMENT_EVENT = "LEARNER_BATCH_ENROLLMENT"
 
 
-async def enrolment_automations(ctx: ToolContext, batch_ids: List[str]) -> Dict[str, List[str]]:
+async def enrolment_automations(ctx: ToolContext, batch_ids: List[str],
+                                event: str = ENROLMENT_EVENT) -> Dict[str, List[str]]:
     """
     batch id → names of the ACTIVE automations an enrolment into it fires. They run
     whatever the enrol options say, and usually send their own welcome message. Same
     rule as the wizard's "Linked workflows" panel and WorkflowTriggerService: a batch's
     own enrolment trigger replaces the institute-wide ones for that batch. (A global
     automation gated on the course by a condition node is still listed — it MAY fire.)
+    ``event`` is the trigger: sub-org member adds fire SUB_ORG_MEMBER_ENROLLMENT instead.
     """
     data = await cbd.admin_core(
         ctx, "POST", "/admin-core-service/v1/workflow/institute/workflows-with-schedules/list",
@@ -254,7 +256,7 @@ async def enrolment_automations(ctx: ToolContext, batch_ids: List[str]) -> Dict[
     specific: Dict[str, List[str]] = {}
     general: List[str] = []
     for r in rows or []:
-        if not isinstance(r, dict) or str(r.get("trigger_event_name") or "").upper() != ENROLMENT_EVENT:
+        if not isinstance(r, dict) or str(r.get("trigger_event_name") or "").upper() != event:
             continue
         if str(r.get("trigger_status") or "ACTIVE").upper() != "ACTIVE":
             continue

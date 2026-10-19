@@ -50,6 +50,9 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "learner_report",       # READ:  a learner's progress-report data (facts + discarded detail) for the AI app to write the report
     "learner_enroll",       # WRITE: additive — enrols learners into courses via an invite; preview + confirm token
     "learner_edit",         # WRITE: live — edits a learner's details (never email / username); preview + confirm token
+    "sub_orgs",             # READ:  sub-organisations, their courses / seats / admins / members, set-up options, CSV template
+    "sub_org_edit",         # WRITE: live — create a sub-org, add courses / change seats / roles, add its admin; preview + confirm token
+    "sub_org_enroll",       # WRITE: additive — adds LEARNERS to a sub-org's courses (CSV / list); preview + confirm token
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -68,6 +71,9 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 #:   * learner_enroll / learner_edit (product decision 2026-10-10): a preview the
 #:     admin is shown → a signed confirm_token over the identical request → the
 #:     write (see services/learner_data.py).
+#:   * sub_org_edit / sub_org_enroll (product decision 2026-10-19): same preview →
+#:     confirm_token → write; no delete / deactivate / course removal / payment
+#:     swap from here (see services/sub_org_data.py).
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": (
         "draft-only: every action saves a draft revision; discard_draft undoes it; request_publish only reads "
@@ -128,6 +134,17 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "confirm-gated live edit, the admin's explicit choice: changes one learner of this institute at a time; "
         "never email or username; needs the confirm_token of a preview that showed every before → after"
     ),
+    "sub_org_edit": (
+        "confirm-gated live write, the admin's explicit choice: creates a sub-org of this institute, adds courses / "
+        "changes seats, validity and roles of one (add-only for courses), or gives a sub-org without an admin its "
+        "admin; never deletes or deactivates a sub-org, removes a course or swaps its payment option; every write "
+        "needs the confirm_token of a preview of the identical request"
+    ),
+    "sub_org_enroll": (
+        "additive + confirm-gated: only ADDS learners (role LEARNER, never admin) to the courses of a sub-org of "
+        "this institute; skips anyone already active in a course; refuses uploads over the sub-org's seat cap; "
+        "every write needs the confirm_token of a preview of the identical request"
+    ),
 }
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
@@ -155,6 +172,9 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "learner_enrollments": "Learners: enrol into courses",
     "learner_profile_edits": "Learners: edit details",
     "learner_reports": "Progress reports: view data",
+    "sub_orgs": "Sub-organisations: view",
+    "sub_org_edits": "Sub-organisations: create and change",
+    "sub_org_enrollments": "Sub-organisations: add learners",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -267,6 +287,24 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "private download link that expires after 30 minutes, never shown in the chat). Never removes anyone from a "
         "course. Batches sold to organisations stay dashboard-only."
     ),
+    "sub_orgs": (
+        "See the institute's sub-organisations (partner organisations / centres): each one's admin, courses, seats "
+        "used against the cap, plan status, invite link and learners, plus the payment options and roles a new one "
+        "can be set up with."
+    ),
+    "sub_org_edits": (
+        "Let the connected AI app create sub-organisations (name, courses, payment option, seats, validity, admin "
+        "roles), add courses to one or change its seats, validity and roles, and give a new one its admin. It always "
+        "shows you the change first and makes it only after you confirm. Changes apply right away. It never deletes "
+        "or deactivates a sub-organisation, never removes a course from one and never changes how its admin pays."
+    ),
+    "sub_org_enrollments": (
+        "Let the connected AI app add learners — one, a list or a CSV — to a sub-organisation's courses. It always "
+        "shows you a preview (who is added, who is already in and skipped, seats left) and adds them only after you "
+        "confirm, never past the sub-organisation's seat cap. Adds learners only — never admins — and never removes "
+        "anyone. It asks whether you want a CSV of the learners' usernames and passwords (a private download link "
+        "that expires after 30 minutes, never shown in the chat)."
+    ),
     "learner_profile_edits": (
         "Let the connected AI app change a learner's details — name, phone, password, address, parents and custom "
         "fields — after showing you the before and after and getting your confirmation. Changes apply right away. "
@@ -289,6 +327,8 @@ MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
     "learner_reports": {"label": "Progress reports",
                         "summary": "A learner's attendance, scores, study time and progress, for the AI app to write "
                                    "their report."},
+    "sub_orgs": {"label": "Sub-organisations",
+                 "summary": "Partner organisations / centres: their courses, seats, admins and learners."},
 }
 
 #: group key → where it sits on the settings page.
@@ -328,13 +368,18 @@ MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
     "learner_enrollments": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Enrol into courses"},
     "learner_profile_edits": {"area": "learners", "level": "edit", "risk": "live", "sub_label": "Edit learner details"},
     "learner_reports": {"area": "learner_reports", "level": "view"},
+    "sub_orgs": {"area": "sub_orgs", "level": "view"},
+    "sub_org_edits": {"area": "sub_orgs", "level": "edit", "risk": "live",
+                      "sub_label": "Create and change sub-organisations"},
+    "sub_org_enrollments": {"area": "sub_orgs", "level": "edit", "risk": "live", "sub_label": "Add learners"},
 }
 
 #: Groups an admin turns on ONE BY ONE: the settings page never switches them
 #: on with their area's Edit level or the "Turn everything on" preset (the
 #: catalogue marks them ``opt_in``). Off for every existing institute.
 MCP_OPT_IN_GROUPS = frozenset({"website_data_edits", "website_publish",
-                               "learner_enrollments", "learner_profile_edits", "course_structure_edits"})
+                               "learner_enrollments", "learner_profile_edits", "course_structure_edits",
+                               "sub_org_edits", "sub_org_enrollments"})
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
 #: surface is staff-only by product decision.

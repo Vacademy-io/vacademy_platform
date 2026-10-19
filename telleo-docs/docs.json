@@ -58,7 +58,9 @@
             "pages": [
               "concepts/calls",
               "concepts/human-calls",
+              "concepts/counsellors",
               "concepts/agents-and-variables",
+              "concepts/managing-agents",
               "concepts/outcomes",
               "concepts/queue-and-limits",
               "concepts/test-mode"
@@ -77,6 +79,7 @@
             "pages": [
               "guides/crm-integration",
               "guides/click-to-call",
+              "guides/manage-agents-and-counsellors",
               "guides/website-forms",
               "guides/no-code",
               "guides/bulk-calling",

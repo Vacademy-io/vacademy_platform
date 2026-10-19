@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Telleo API",
-    "version": "1.2.0",
-    "description": "Start AI phone calls, or connect your counsellors to contacts, from your own systems and get each call's outcome back."
+    "version": "1.3.0",
+    "description": "Start AI phone calls, or connect your counsellors to contacts, from your own systems and get each call's outcome back. Manage your counsellors and AI agents from the same API."
   },
   "servers": [
     {
@@ -27,6 +27,9 @@
     },
     {
       "name": "Human calls"
+    },
+    {
+      "name": "Counsellors"
     },
     {
       "name": "Credits"
@@ -1306,7 +1309,7 @@
     "/agents": {
       "get": {
         "summary": "List agents",
-        "description": "The agents you can name as `agent_id`: every agent that is turned on and can call out. Each lists the placeholders its script uses, so you know which `variables` to send.\n\nScope: `calls:read`.",
+        "description": "The agents you can name as `agent_id`: every agent that is turned on and can call out. Each lists the placeholders its script uses, so you know which `variables` to send. With `include_disabled=true`, every agent of your account, including those turned off and inbound-only ones.\n\nScope: `calls:read`.",
         "tags": [
           "Agents"
         ],
@@ -1394,7 +1397,345 @@
             }
           }
         },
-        "operationId": "listAgents"
+        "operationId": "listAgents",
+        "parameters": [
+          {
+            "name": "include_disabled",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Also list agents that are turned off and inbound-only agents."
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create an agent",
+        "description": "Creates an AI agent. Every value is checked: an unknown engine, voice or language is refused with the valid options instead of being replaced.\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "201": {
+            "description": "The agent was created.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                },
+                "example": {
+                  "id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                  "object": "agent",
+                  "name": "Riya – admissions",
+                  "enabled": true,
+                  "direction": "outbound",
+                  "is_default": true,
+                  "language": "hinglish",
+                  "tts_model": "google",
+                  "voice": "hi-IN-Chirp3-HD-Kore",
+                  "opening_line": "Hi {{name}}, this is Riya from Shiksha Academy. Is this a good time?",
+                  "system_prompt": "You are Riya, an admissions counsellor at Shiksha Academy…",
+                  "extraction_questions": [
+                    "Which course are you interested in?"
+                  ],
+                  "dispositions": [],
+                  "handoff_numbers": [
+                    "+919800000001"
+                  ],
+                  "max_call_minutes": 8,
+                  "pace": null,
+                  "temperature": null,
+                  "voice_modulation": null,
+                  "speech_cache_mode": "off",
+                  "booking_page_id": null,
+                  "send_rules": [],
+                  "uses_contact_name": true,
+                  "variables": [
+                    "course"
+                  ],
+                  "created_at": "2026-10-13T09:00:00Z",
+                  "updated_at": "2026-10-19T10:15:00Z"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replay of this `Idempotency-Key`.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "system_prompt is required.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_name_taken": {
+                    "value": {
+                      "error": {
+                        "code": "agent_name_taken",
+                        "message": "An agent named Riya already exists in this account (names are unique, ignoring case).",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "idempotency_key_reused": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_key_reused",
+                        "message": "This Idempotency-Key was already used for a different request.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A value is not one the platform supports.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_voice": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_voice",
+                        "message": "Voice priya is not a google voice. Pick one of valid_voices (GET /v1/voices).",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "unsupported_tts_model": {
+                    "value": {
+                      "error": {
+                        "code": "unsupported_tts_model",
+                        "message": "tts_model must be one of the engines listed by GET /v1/voices.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "unsupported_language": {
+                    "value": {
+                      "error": {
+                        "code": "unsupported_language",
+                        "message": "language klingon is not supported.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "voice_language_mismatch": {
+                    "value": {
+                      "error": {
+                        "code": "voice_language_mismatch",
+                        "message": "The deepgram engine speaks English only…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "booking_page_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "booking_page_not_found",
+                        "message": "No booking page bp-9 in this account (booking_page_id).",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_agent": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_agent",
+                        "message": "Action rule \"Brochure\": choose an approved WhatsApp template…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "createAgent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgent"
+              },
+              "example": {
+                "name": "Riya – admissions",
+                "language": "hinglish",
+                "tts_model": "google",
+                "voice": "hi-IN-Chirp3-HD-Kore",
+                "opening_line": "Hi {{name}}, this is Riya from Shiksha Academy. Is this a good time?",
+                "system_prompt": "You are Riya, an admissions counsellor…"
+              }
+            }
+          }
+        }
       }
     },
     "/credits": {
@@ -2293,7 +2634,7 @@
     "/counsellors": {
       "get": {
         "summary": "List counsellors",
-        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are never returned.\n\nScope: `human_calls:read`.",
+        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are returned only to keys with `counsellors:manage`. Deactivated counsellors are not listed; read one with `GET /counsellors/{id}`.\n\nScope: `human_calls:read` or `counsellors:manage`.",
         "tags": [
           "Human calls"
         ],
@@ -2434,6 +2775,300 @@
           }
         },
         "operationId": "listCounsellors"
+      },
+      "post": {
+        "summary": "Add a counsellor",
+        "description": "Makes a person a counsellor of your account. A NEW email gets a dashboard login (active at once) and, unless `send_welcome_email` is false, the welcome email with their username and password. An email that already has a login is reused: the counsellor role is added in your account only, their name, mobile number and password stay as they are, and no email is sent. The API only ever grants the counsellor role.\n\nScope: `counsellors:manage`.",
+        "tags": [
+          "Counsellors"
+        ],
+        "responses": {
+          "201": {
+            "description": "The counsellor was added.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounsellorWrite"
+                },
+                "example": {
+                  "id": "6b7e0c2a-1d3f-4e5a-8b9c-0d1e2f3a4b5c",
+                  "object": "counsellor",
+                  "name": "Asha Rao",
+                  "email": "asha@school.in",
+                  "roles": [
+                    "COUNSELLOR"
+                  ],
+                  "status": "active",
+                  "can_call": true,
+                  "blocked_reason": null,
+                  "mobile_number": "919876543210",
+                  "airtel_extension": null,
+                  "manageable": true,
+                  "shared_account": false,
+                  "created": true,
+                  "existing_account": false,
+                  "welcome_email_sent": true,
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Already a counsellor here (`created: false`), or a replay of this `Idempotency-Key` (`idempotent_replay: true`).",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounsellorWrite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "email is not a valid email address.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the counsellors:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the counsellors:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The email cannot be made a counsellor through the API.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "account_has_other_role": {
+                    "value": {
+                      "error": {
+                        "code": "account_has_other_role",
+                        "message": "This email belongs to a member of this account with another role (ADMIN)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "counsellor_inactive": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_inactive",
+                        "message": "This counsellor was deactivated. Reactivate them with PATCH …",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "extension_taken": {
+                    "value": {
+                      "error": {
+                        "code": "extension_taken",
+                        "message": "Airtel extension 201 is already mapped to another person in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "idempotency_key_reused": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_key_reused",
+                        "message": "This Idempotency-Key was already used for a different request.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "request_in_progress": {
+                    "value": {
+                      "error": {
+                        "code": "request_in_progress",
+                        "message": "Another request is adding this email right now. Retry in 5 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Your user directory could not be reached for a moment.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "temporarily_unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "Could not reach the account directory right now. Retry shortly.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "createCounsellor",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "description": "Same body + same key within 24 hours returns the first result."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCounsellor"
+              },
+              "example": {
+                "name": "Asha Rao",
+                "email": "asha@school.in",
+                "mobile_number": "+919876543210"
+              }
+            }
+          }
+        }
       }
     },
     "/human-calls": {
@@ -3623,6 +4258,2357 @@
         },
         "operationId": "listDispositions"
       }
+    },
+    "/counsellors/{id}": {
+      "get": {
+        "summary": "Get a counsellor",
+        "description": "One counsellor or admin of your account, active or deactivated.\n\nScope: `human_calls:read` or `counsellors:manage`.",
+        "tags": [
+          "Counsellors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The counsellor.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounsellorWrite"
+                },
+                "example": {
+                  "id": "6b7e0c2a-1d3f-4e5a-8b9c-0d1e2f3a4b5c",
+                  "object": "counsellor",
+                  "name": "Asha Rao",
+                  "email": "asha@school.in",
+                  "roles": [
+                    "COUNSELLOR"
+                  ],
+                  "status": "active",
+                  "can_call": true,
+                  "blocked_reason": null,
+                  "mobile_number": "919876543210",
+                  "airtel_extension": null,
+                  "manageable": true,
+                  "shared_account": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No counsellor or admin with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "counsellor_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_not_found",
+                        "message": "No counsellor 6b7e… in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Your user directory could not be reached for a moment.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "temporarily_unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "Could not reach the account directory right now. Retry shortly.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCounsellor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Update a counsellor",
+        "description": "Changes only the fields you send. `name` and `mobile_number` change only when the login belongs to your account alone; `active: false` deactivates and `true` reactivates. Admins and other staff are never changed (403).\n\nScope: `counsellors:manage`.",
+        "tags": [
+          "Counsellors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated counsellor.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounsellorWrite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "mobile_number must be in E.164 format, e.g. +919876543210.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a counsellor the API may change, or the key lacks the scope.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "counsellor_not_manageable": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_not_manageable",
+                        "message": "This person is an admin or other staff of this account (ADMIN)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the counsellors:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No counsellor or admin with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "counsellor_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_not_found",
+                        "message": "No counsellor 6b7e… in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The change is not possible.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "shared_account": {
+                    "value": {
+                      "error": {
+                        "code": "shared_account",
+                        "message": "This counsellor's account also belongs to another account on the platform…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "extension_taken": {
+                    "value": {
+                      "error": {
+                        "code": "extension_taken",
+                        "message": "Airtel extension 201 is already mapped to another person in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "extension_managed_elsewhere": {
+                    "value": {
+                      "error": {
+                        "code": "extension_managed_elsewhere",
+                        "message": "This counsellor's Airtel extension is managed by another account on the platform.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Your user directory could not be reached for a moment.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "temporarily_unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "Could not reach the account directory right now. Retry shortly.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "updateCounsellor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCounsellor"
+              },
+              "example": {
+                "mobile_number": "+919812345678",
+                "airtel_extension": null
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deactivate a counsellor",
+        "description": "Deactivates the counsellor in your account only: their role here is disabled (they can no longer sign in to it, other accounts are untouched), they are set inactive in every lead pool (their existing leads stay with them), they are taken out of your IVR ring lists, and inbound calls stop being routed to them. Repeating it is harmless. Reactivate with `PATCH {\"active\": true}`.\n\nScope: `counsellors:manage`.",
+        "tags": [
+          "Counsellors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The deactivated counsellor, with `effects`.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounsellorWrite"
+                },
+                "example": {
+                  "id": "6b7e0c2a-1d3f-4e5a-8b9c-0d1e2f3a4b5c",
+                  "object": "counsellor",
+                  "name": "Asha Rao",
+                  "email": "asha@school.in",
+                  "roles": [
+                    "COUNSELLOR"
+                  ],
+                  "status": "inactive",
+                  "can_call": false,
+                  "blocked_reason": "This counsellor is deactivated.",
+                  "mobile_number": "919876543210",
+                  "airtel_extension": null,
+                  "manageable": true,
+                  "shared_account": false,
+                  "effects": {
+                    "role_disabled": true,
+                    "pool_memberships_deactivated": 3,
+                    "ivr_dial_steps_updated": [
+                      {
+                        "menu_id": "m-1",
+                        "menu_name": "Main",
+                        "step_id": "n-4",
+                        "step_label": "Sales",
+                        "no_one_left": false
+                      }
+                    ],
+                    "leads_reassigned": 0
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a counsellor the API may change.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "counsellor_not_manageable": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_not_manageable",
+                        "message": "This person is an admin or other staff of this account (ADMIN)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No counsellor or admin with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "counsellor_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "counsellor_not_found",
+                        "message": "No counsellor 6b7e… in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Your user directory could not be reached for a moment.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "temporarily_unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "temporarily_unavailable",
+                        "message": "Could not reach the account directory right now. Retry shortly.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deactivateCounsellor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/agents/{id}": {
+      "get": {
+        "summary": "Get an agent",
+        "description": "The agent's whole configuration, including its script.\n\nScope: `calls:read`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                },
+                "example": {
+                  "id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                  "object": "agent",
+                  "name": "Riya – admissions",
+                  "enabled": true,
+                  "direction": "outbound",
+                  "is_default": true,
+                  "language": "hinglish",
+                  "tts_model": "google",
+                  "voice": "hi-IN-Chirp3-HD-Kore",
+                  "opening_line": "Hi {{name}}, this is Riya from Shiksha Academy. Is this a good time?",
+                  "system_prompt": "You are Riya, an admissions counsellor at Shiksha Academy…",
+                  "extraction_questions": [
+                    "Which course are you interested in?"
+                  ],
+                  "dispositions": [],
+                  "handoff_numbers": [
+                    "+919800000001"
+                  ],
+                  "max_call_minutes": 8,
+                  "pace": null,
+                  "temperature": null,
+                  "voice_modulation": null,
+                  "speech_cache_mode": "off",
+                  "booking_page_id": null,
+                  "send_rules": [],
+                  "uses_contact_name": true,
+                  "variables": [
+                    "course"
+                  ],
+                  "created_at": "2026-10-13T09:00:00Z",
+                  "updated_at": "2026-10-19T10:15:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Update an agent",
+        "description": "Changes only the fields you send; everything else keeps its stored value. Setting `enabled: false` cancels the calls waiting for it (`waiting_calls_canceled`).\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_request": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "speech_cache_mode is read-only: support sets it per agent.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_name_taken": {
+                    "value": {
+                      "error": {
+                        "code": "agent_name_taken",
+                        "message": "An agent named Kabir already exists in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A value is not supported.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalid_voice": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_voice",
+                        "message": "voice is required for the sarvam engine.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "unsupported_language": {
+                    "value": {
+                      "error": {
+                        "code": "unsupported_language",
+                        "message": "language klingon is not supported.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "updateAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgent"
+              },
+              "example": {
+                "opening_line": "Namaste {{name}}!",
+                "max_call_minutes": 6
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete an agent",
+        "description": "Deletes an agent nothing uses any more. While it is the default agent, an IVR step, a workflow's AI call step, or has calls waiting, it is refused with `agent_in_use` and the list of places.\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent is still in use.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "agent_in_use",
+                    "message": "This agent is still in use…",
+                    "request_id": "req_8f2c1a7e",
+                    "details": {
+                      "used_by": [
+                        {
+                          "type": "default_agent"
+                        },
+                        {
+                          "type": "ivr_step",
+                          "menu_id": "m-1",
+                          "menu_name": "Main",
+                          "menu_enabled": true,
+                          "step_id": "n-2",
+                          "step_label": "Talk to AI"
+                        },
+                        {
+                          "type": "workflow",
+                          "workflow_id": "w-1",
+                          "workflow_name": "New lead nurture",
+                          "workflow_status": "active",
+                          "node_id": "nt-9",
+                          "node_name": "AI call"
+                        },
+                        {
+                          "type": "waiting_calls",
+                          "count": 12
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/agents/{id}/enable": {
+      "post": {
+        "summary": "Turn on an agent",
+        "description": "Turns the agent on. Already on: nothing changes.\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "enableAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/agents/{id}/disable": {
+      "post": {
+        "summary": "Turn off an agent",
+        "description": "Turns the agent off and cancels every call still waiting for it, from any source (API, workflows, bulk, manual), with a reason on each; `waiting_calls_canceled` says how many. Warnings flag when it is the default agent or answers an inbound number.\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "disableAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/voices": {
+      "get": {
+        "summary": "List voices",
+        "description": "Every voice engine with its voices (id, gender), the languages it speaks and what a connected minute costs in credits.\n\nScope: `calls:read`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Voice engines.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "listVoices"
+      }
+    },
+    "/settings/default-agent": {
+      "get": {
+        "summary": "Get the default agent",
+        "description": "The agent your account's workflow, bulk and manual AI calls use when they do not name one.\n\nScope: `calls:read`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The default agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultAgent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getDefaultAgent"
+      },
+      "put": {
+        "summary": "Set the default agent",
+        "description": "Makes an enabled agent that places calls (`outbound` or `both`) your account's default. Only this one setting changes.\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The new default.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultAgent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No agent with this id in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account. List your agents with GET /v1/agents.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This agent cannot be the default.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "agent_disabled": {
+                    "value": {
+                      "error": {
+                        "code": "agent_disabled",
+                        "message": "Agent 17ea… is turned off.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_inbound_only": {
+                    "value": {
+                      "error": {
+                        "code": "agent_inbound_only",
+                        "message": "Agent 17ea… only answers incoming calls…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "ai_provider_not_supported": {
+                    "value": {
+                      "error": {
+                        "code": "ai_provider_not_supported",
+                        "message": "This account's AI calling provider is AAVTAAR…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "setDefaultAgent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRef"
+              },
+              "example": {
+                "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/numbers": {
+      "get": {
+        "summary": "List inbound numbers",
+        "description": "Your Vacademy Voice numbers, which agent answers each and how calls are routed (the number's IVR menu).\n\nScope: `calls:read`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Your inbound numbers.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NumberList"
+                },
+                "example": {
+                  "object": "list",
+                  "has_more": false,
+                  "data": [
+                    {
+                      "id": "pn_1",
+                      "object": "number",
+                      "phone_number": "+918045001234",
+                      "label": "Admissions",
+                      "provider": "plivo",
+                      "enabled": true,
+                      "agent": {
+                        "id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c",
+                        "object": "agent",
+                        "name": "Riya – admissions",
+                        "enabled": true,
+                        "direction": "both"
+                      },
+                      "routing": {
+                        "menu_id": "m-1",
+                        "menu_name": "Admissions line",
+                        "ai_agent_steps": 1,
+                        "shared_with": [],
+                        "type": "ai_agent",
+                        "description": "An AI agent answers every call."
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "listNumbers"
+      }
+    },
+    "/numbers/{id}/agent": {
+      "put": {
+        "summary": "Set a number's agent",
+        "description": "Points the number's one AI agent step at another agent. Only when it is unambiguous: the number plays an IVR menu with exactly one AI agent step that no other number shares. Otherwise `409 number_routing_complex` with `details.reason` (`no_menu`, `menu_without_ai_agent`, `menu_with_several_ai_agents`, `menu_shared`); change those in the dashboard's IVR builder. The agent must be on and answer calls (`inbound` or `both`).\n\nScope: `agents:manage`.",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "The number with its new agent.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Number"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The key lacks the agents:manage scope. Keys only have it when created with it.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "insufficient_scope": {
+                    "value": {
+                      "error": {
+                        "code": "insufficient_scope",
+                        "message": "This API key does not have the agents:manage scope.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such number or agent in your account.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "number_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "number_not_found",
+                        "message": "No number pn_9 in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_not_found": {
+                    "value": {
+                      "error": {
+                        "code": "agent_not_found",
+                        "message": "No agent 17ea… in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The switch is not possible through the API.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "number_routing_complex": {
+                    "value": {
+                      "error": {
+                        "code": "number_routing_complex",
+                        "message": "This number's menu has 2 AI agent steps (one per menu option)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "number_not_inbound_capable": {
+                    "value": {
+                      "error": {
+                        "code": "number_not_inbound_capable",
+                        "message": "Calls to this number are not answered by an AI agent on its provider (EXOTEL)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_disabled": {
+                    "value": {
+                      "error": {
+                        "code": "agent_disabled",
+                        "message": "Agent 17ea… is turned off.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "agent_outbound_only": {
+                    "value": {
+                      "error": {
+                        "code": "agent_outbound_only",
+                        "message": "Agent 17ea… only places calls…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "number_routing_changed": {
+                    "value": {
+                      "error": {
+                        "code": "number_routing_changed",
+                        "message": "The number's menu changed while this request ran…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The key is missing, unknown, revoked or expired.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "missing_api_key",
+                        "message": "Send your API key in the X-API-Key header.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "invalid_api_key": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_api_key",
+                        "message": "This API key is not valid.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait before retrying."
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Retry after 12 seconds.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "setNumberAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRef"
+              },
+              "example": {
+                "agent_id": "17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b0c"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "webhooks": {
@@ -4540,6 +7526,39 @@
               "course",
               "city"
             ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "outbound",
+              "inbound",
+              "both"
+            ]
+          },
+          "voice": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "hi-IN-Chirp3-HD-Kore"
+          },
+          "tts_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice engine; see `GET /voices`.",
+            "example": "google"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -4834,6 +7853,38 @@
               "null"
             ],
             "description": "Why `can_call` is false, e.g. no mobile number on their profile (Vacademy Voice, Exotel) or no Airtel extension mapped."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "invited",
+              "inactive"
+            ],
+            "description": "`inactive` after `DELETE /counsellors/{id}` (deactivated); `GET /counsellors` lists active ones only."
+          },
+          "mobile_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only for keys with `counsellors:manage`. Digits with the country code, as stored on the profile.",
+            "example": "919876543210"
+          },
+          "airtel_extension": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only on single-counsellor responses, for keys with `counsellors:manage`."
+          },
+          "manageable": {
+            "type": "boolean",
+            "description": "Only for `counsellors:manage` keys: whether the API may change this person (their roles here are counsellor roles only). Admins and other staff are `false`."
+          },
+          "shared_account": {
+            "type": "boolean",
+            "description": "Only for `counsellors:manage` keys: the login also belongs to another account on the platform, so its name and mobile number cannot be changed through the API."
           }
         }
       },
@@ -5303,6 +8354,849 @@
           },
           "data": {
             "$ref": "#/components/schemas/HumanCall"
+          }
+        }
+      },
+      "CounsellorWrite": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Counsellor"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "boolean",
+                "description": "`true` when this request made the person a counsellor here; `false` when they already were (nothing changed)."
+              },
+              "existing_account": {
+                "type": "boolean",
+                "description": "The email already had a login on the platform: it was reused, its name, mobile and password were not changed, and no email was sent."
+              },
+              "welcome_email_sent": {
+                "type": "boolean"
+              },
+              "effects": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "On deactivation / reactivation: what else changed (see the counsellors guide)."
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Warning"
+                },
+                "description": "Non-fatal notes about what was (not) done, e.g. `mobile_number_missing`."
+              },
+              "idempotent_replay": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "CreateCounsellor": {
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Their dashboard login. An email that already has an account is reused (see `existing_account`)."
+          },
+          "mobile_number": {
+            "type": "string",
+            "description": "E.164. Their phone rings first on a human call, so Vacademy Voice and Exotel need it (a warning says so when it is missing). Ignored for an existing account."
+          },
+          "airtel_extension": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "Their Airtel IQ extension, when your calling provider is Airtel. Unique in your account."
+          },
+          "send_welcome_email": {
+            "type": "boolean",
+            "default": true,
+            "description": "Email a NEW account its login (username, password, dashboard link). Never sent to an existing account."
+          }
+        }
+      },
+      "UpdateCounsellor": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Only for a login that belongs to your account alone (else `409 shared_account`)."
+          },
+          "mobile_number": {
+            "type": "string",
+            "description": "E.164. Same rule as `name`. Cannot be removed."
+          },
+          "airtel_extension": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` removes the mapping."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "`false` deactivates (as `DELETE`), `true` reactivates."
+          }
+        }
+      },
+      "AgentDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "agent"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Unique in your account, ignoring case."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "outbound",
+              "inbound",
+              "both"
+            ],
+            "default": "outbound",
+            "description": "`outbound` places calls, `inbound` answers your numbers, `both` does both."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "hinglish, hindi, english, punjabi, marathi, gujarati, bengali, tamil, telugu, kannada, malayalam, odia, a code (`hi`) or a tag (`hi-IN`). `null` = Hindi or Hinglish.",
+            "example": "hinglish"
+          },
+          "tts_model": {
+            "type": "string",
+            "description": "Voice engine id from `GET /voices`. Default for a new agent: `google`."
+          },
+          "voice": {
+            "type": "string",
+            "description": "A voice of `tts_model` (`GET /voices`). Changing `tts_model` needs a voice of the new engine."
+          },
+          "opening_line": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The first thing the agent says. `{{placeholders}}` are filled per call."
+          },
+          "system_prompt": {
+            "type": "string",
+            "maxLength": 60000,
+            "description": "The agent's script and instructions."
+          },
+          "extraction_questions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "description": "Questions whose answers come back in `outcome.answers`."
+          },
+          "dispositions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Labels the agent may give a call. Empty = your account's defaults."
+          },
+          "handoff_numbers": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            },
+            "description": "E.164 numbers the agent can transfer a caller to."
+          },
+          "max_call_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 30,
+            "description": "`null` = 10 minutes."
+          },
+          "pace": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.5,
+            "maximum": 2.0,
+            "description": "Speaking rate; `null` = default."
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.01,
+            "maximum": 2.0,
+            "description": "Voice expressiveness; `null` = engine default."
+          },
+          "voice_modulation": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1.0,
+            "maximum": 2.5,
+            "description": "Pitch-range expansion; `null` = off."
+          },
+          "booking_page_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A booking page of your account the agent books on."
+          },
+          "send_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A post-call or mid-call action (send a WhatsApp template or an email, or book a meeting) and when it fires. Same rules as the dashboard's agent editor, snake_case (`action_type`, `message_body`, `booking_page_id`, `when.meeting_requested` …). Not used on API calls."
+            }
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "This is your account's default agent (`GET /settings/default-agent`)."
+          },
+          "speech_cache_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "fixed",
+              "full"
+            ],
+            "description": "Read-only; set by support."
+          },
+          "uses_contact_name": {
+            "type": "boolean"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "waiting_calls_canceled": {
+            "type": "integer",
+            "description": "On disable (and a PATCH of `enabled`): calls that were waiting for this agent and were canceled."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "description": "Non-fatal notes about what was (not) done, e.g. `mobile_number_missing`."
+          },
+          "idempotent_replay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateAgent": {
+        "type": "object",
+        "required": [
+          "name",
+          "system_prompt",
+          "opening_line"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Unique in your account, ignoring case."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "outbound",
+              "inbound",
+              "both"
+            ],
+            "default": "outbound",
+            "description": "`outbound` places calls, `inbound` answers your numbers, `both` does both."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "hinglish, hindi, english, punjabi, marathi, gujarati, bengali, tamil, telugu, kannada, malayalam, odia, a code (`hi`) or a tag (`hi-IN`). `null` = Hindi or Hinglish.",
+            "example": "hinglish"
+          },
+          "tts_model": {
+            "type": "string",
+            "description": "Voice engine id from `GET /voices`. Default for a new agent: `google`."
+          },
+          "voice": {
+            "type": "string",
+            "description": "A voice of `tts_model` (`GET /voices`). Changing `tts_model` needs a voice of the new engine."
+          },
+          "opening_line": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The first thing the agent says. `{{placeholders}}` are filled per call."
+          },
+          "system_prompt": {
+            "type": "string",
+            "maxLength": 60000,
+            "description": "The agent's script and instructions."
+          },
+          "extraction_questions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "description": "Questions whose answers come back in `outcome.answers`."
+          },
+          "dispositions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Labels the agent may give a call. Empty = your account's defaults."
+          },
+          "handoff_numbers": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            },
+            "description": "E.164 numbers the agent can transfer a caller to."
+          },
+          "max_call_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 30,
+            "description": "`null` = 10 minutes."
+          },
+          "pace": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.5,
+            "maximum": 2.0,
+            "description": "Speaking rate; `null` = default."
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.01,
+            "maximum": 2.0,
+            "description": "Voice expressiveness; `null` = engine default."
+          },
+          "voice_modulation": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1.0,
+            "maximum": 2.5,
+            "description": "Pitch-range expansion; `null` = off."
+          },
+          "booking_page_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A booking page of your account the agent books on."
+          },
+          "send_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A post-call or mid-call action (send a WhatsApp template or an email, or book a meeting) and when it fires. Same rules as the dashboard's agent editor, snake_case (`action_type`, `message_body`, `booking_page_id`, `when.meeting_requested` …). Not used on API calls."
+            }
+          }
+        }
+      },
+      "UpdateAgent": {
+        "type": "object",
+        "minProperties": 1,
+        "description": "Only the fields you send change. Send `null` to clear a nullable field.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Unique in your account, ignoring case."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "outbound",
+              "inbound",
+              "both"
+            ],
+            "default": "outbound",
+            "description": "`outbound` places calls, `inbound` answers your numbers, `both` does both."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "hinglish, hindi, english, punjabi, marathi, gujarati, bengali, tamil, telugu, kannada, malayalam, odia, a code (`hi`) or a tag (`hi-IN`). `null` = Hindi or Hinglish.",
+            "example": "hinglish"
+          },
+          "tts_model": {
+            "type": "string",
+            "description": "Voice engine id from `GET /voices`. Default for a new agent: `google`."
+          },
+          "voice": {
+            "type": "string",
+            "description": "A voice of `tts_model` (`GET /voices`). Changing `tts_model` needs a voice of the new engine."
+          },
+          "opening_line": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The first thing the agent says. `{{placeholders}}` are filled per call."
+          },
+          "system_prompt": {
+            "type": "string",
+            "maxLength": 60000,
+            "description": "The agent's script and instructions."
+          },
+          "extraction_questions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "description": "Questions whose answers come back in `outcome.answers`."
+          },
+          "dispositions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Labels the agent may give a call. Empty = your account's defaults."
+          },
+          "handoff_numbers": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            },
+            "description": "E.164 numbers the agent can transfer a caller to."
+          },
+          "max_call_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 30,
+            "description": "`null` = 10 minutes."
+          },
+          "pace": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.5,
+            "maximum": 2.0,
+            "description": "Speaking rate; `null` = default."
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.01,
+            "maximum": 2.0,
+            "description": "Voice expressiveness; `null` = engine default."
+          },
+          "voice_modulation": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1.0,
+            "maximum": 2.5,
+            "description": "Pitch-range expansion; `null` = off."
+          },
+          "booking_page_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A booking page of your account the agent books on."
+          },
+          "send_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A post-call or mid-call action (send a WhatsApp template or an email, or book a meeting) and when it fires. Same rules as the dashboard's agent editor, snake_case (`action_type`, `message_body`, `booking_page_id`, `when.meeting_requested` …). Not used on API calls."
+            }
+          }
+        }
+      },
+      "Voice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "TtsModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "google"
+          },
+          "object": {
+            "type": "string",
+            "const": "tts_model"
+          },
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "default_voice": {
+            "type": "string"
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Languages this engine speaks well. Only `deepgram` (English only) is enforced."
+          },
+          "pricing": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "credits_per_minute": {
+                "type": "number",
+                "description": "What a connected minute on this engine costs in total."
+              },
+              "ai_credits_per_minute": {
+                "type": "number"
+              },
+              "telephony_credits_per_minute": {
+                "type": "number"
+              }
+            }
+          },
+          "voices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Voice"
+            }
+          }
+        }
+      },
+      "VoiceList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TtsModel"
+            }
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every `language` an agent accepts."
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DefaultAgent": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "default_agent"
+          },
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "object": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "direction": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean",
+                "description": "The step points at an agent that no longer exists."
+              }
+            }
+          },
+          "ai_calling_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider your workflow and bulk AI calls use (`VACADEMY_AI` for Telleo agents)."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "description": "Non-fatal notes about what was (not) done, e.g. `mobile_number_missing`."
+          }
+        }
+      },
+      "Number": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "number"
+          },
+          "phone_number": {
+            "type": "string",
+            "example": "+918045001234"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "example": "plivo",
+            "description": "Only Vacademy Voice (`plivo`) numbers answer with an AI agent."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "agent": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "object": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "direction": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean",
+                "description": "The step points at an agent that no longer exists."
+              }
+            }
+          },
+          "routing": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ai_agent",
+                  "menu_with_ai_agent",
+                  "menu_with_several_ai_agents",
+                  "menu_without_ai_agent",
+                  "no_menu"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "menu_id": {
+                "type": "string"
+              },
+              "menu_name": {
+                "type": "string"
+              },
+              "ai_agent_steps": {
+                "type": "integer"
+              },
+              "shared_with": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Other numbers that play the same menu."
+              },
+              "agents": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "direction": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean",
+                      "description": "The step points at an agent that no longer exists."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NumberList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Number"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentRef": {
+        "type": "object",
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
           }
         }
       }

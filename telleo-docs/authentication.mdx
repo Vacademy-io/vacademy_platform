@@ -23,7 +23,7 @@ Use one key per system (CRM, website, automation tool). The table shows when eac
 
 ## Scopes
 
-A key created in the dashboard has `calls:read`, `calls:write` and `webhooks:manage`. The two **human-call** scopes are only on keys created with **Can ring counsellors (human calls)** ticked, because they let a key ring your staff's phones and list their names and emails. A request the key is not allowed to make fails with `403 insufficient_scope`.
+A key created in the dashboard has `calls:read`, `calls:write` and `webhooks:manage`. The **human-call** and **management** scopes are only on keys created with their box ticked, because they let a key ring your staff's phones, add logins to your account or change what your callers hear. A request the key is not allowed to make fails with `403 insufficient_scope`.
 
 | Scope | Allows |
 |---|---|
@@ -32,8 +32,12 @@ A key created in the dashboard has `calls:read`, `calls:write` and `webhooks:man
 | `webhooks:manage` | Everything under `/webhook` |
 | `human_calls:read` | `GET /counsellors`, `GET /human-calls`, `GET /human-calls/{id}`, `GET /dispositions` |
 | `human_calls:write` | `POST /human-calls`, `POST /human-calls/{id}/disposition` |
+| `counsellors:manage` | `POST /counsellors`, `PATCH` and `DELETE /counsellors/{id}`; also `GET /counsellors` and `GET /counsellors/{id}` (with mobile numbers). Box: **Can manage counsellors**. |
+| `agents:manage` | `POST /agents`, `PATCH` and `DELETE /agents/{id}`, `POST /agents/{id}/enable` and `/disable`, `PUT /settings/default-agent`, `PUT /numbers/{id}/agent`. Box: **Can manage AI agents**. |
 
-Keys cannot be changed after they are created. To use [human calls](/concepts/human-calls) with an existing integration, create a new key with the box ticked, switch your server to it, then revoke the old one. Keys created before 17 October 2026 never have the human-call scopes.
+`calls:read` also reads `GET /agents/{id}`, `GET /voices`, `GET /settings/default-agent` and `GET /numbers`; `human_calls:read` also reads `GET /counsellors/{id}`.
+
+Keys cannot be changed after they are created. To use [human calls](/concepts/human-calls) or the management endpoints with an existing integration, create a new key with the box ticked, switch your server to it, then revoke the old one. Keys created before 17 October 2026 never have the human-call scopes, and keys created before 19 October 2026 never have the management scopes.
 
 ## Errors
 

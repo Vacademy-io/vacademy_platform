@@ -7,7 +7,8 @@ what it promises. The client-facing guide lives at https://docs.telleo.ai (Mintl
   ingress rewrites this to `/admin-core-service/open/ai-calling/v1/...` on admin_core.
 - **Code:**
   - `admin_core_service/.../telephony/publicapi/` (controller, service, views, webhooks, auth)
-  - migration `V572__Ai_calling_public_api_v1.sql`; human calls (v1.2, §10): `V594__Human_call_public_api.sql`
+  - migration `V572__Ai_calling_public_api_v1.sql`; human calls (v1.2, §10): `V594__Human_call_public_api.sql`;
+    counsellor / agent management (v1.3, §11): `V597__Ai_calling_api_idempotency.sql`
 
 ## 1. What a client can do
 
@@ -19,7 +20,7 @@ what it promises. The client-facing guide lives at https://docs.telleo.ai (Mintl
 | POST | `/calls/{id}/cancel` | calls:write | Cancel a call that is still queued |
 | POST | `/batches` | calls:write | Up to 1000 calls in one request; each row is accepted or rejected on its own |
 | GET | `/batches/{id}` | calls:read | Batch progress: counts per status |
-| GET | `/agents` | calls:read | Agents the key can name, plus the `{{variables}}` each one's script uses |
+| GET | `/agents` | calls:read | Agents the key can name, plus the `{{variables}}` each one's script uses (`include_disabled=true`: every agent) |
 | GET | `/credits` | calls:read | Credit balance, can_place_calls, calls_waiting |
 | GET | `/usage` | calls:read | Calls, connected, talk seconds, credits per day |
 | GET / PUT / DELETE | `/webhook` | webhooks:manage | The one webhook endpoint per account |
@@ -479,4 +480,132 @@ institute's extension.
   applicant whose current application stage belongs to the institute
   (`AudienceResponseRepository.isApplicantLeadInInstitute`). The human-call API's lead
   linking still only matches campaign leads.
+
+## 11. v1.3 (2026-10-19): counsellor and AI agent management
+
+Two new opt-in scopes, never in the defaults and never on legacy `vak_live_` keys:
+`counsellors:manage` and `agents:manage` (`InstituteApiKeyService.AI_CALLING_ALLOWED_SCOPES`;
+dashboard checkboxes "Can manage counsellors" / "Can manage AI agents" in `AiCallingApiCard`).
+
+**Code:** `publicapi/PublicAiCallingManagementController` (same base path; the old
+controller's catch-all `KNOWN_PATHS` covers the new paths for 404/405; the error advice
+covers both controllers), `CounsellorApiService`, `AgentApiService`,
+`InboundNumberApiService`, `ApiIdempotencyStore` (table `ai_calling_api_idempotency`, V597),
+`telephony/core/AiCallingSettingsMutator`. Audit: `admin_activity_log` rows with
+`actor_id = "api:<keyId>"` (`InstituteApiAuditWriter.recordApi`); the default-agent change
+and the agent registry bridge also record `api:<keyId>` in `institute_setting_history`.
+
+### Endpoints
+
+| Route | Scope | |
+|---|---|---|
+| `GET /v1/counsellors` | human_calls:read or counsellors:manage | + `status`; `mobile_number` only for counsellors:manage |
+| `GET /v1/counsellors/{id}` | human_calls:read or counsellors:manage | COUNSELLOR/COUNSELOR/ADMIN of the institute, any status |
+| `POST /v1/counsellors` | counsellors:manage | `{name, email, mobile_number?, airtel_extension?, send_welcome_email=true}`; Idempotency-Key |
+| `PATCH /v1/counsellors/{id}` | counsellors:manage | `name?`, `mobile_number?`, `airtel_extension?` (null removes), `active?` |
+| `DELETE /v1/counsellors/{id}` | counsellors:manage | deactivate (idempotent) |
+| `GET /v1/agents/{id}` | calls:read | full config, snake_case, `send_rules` snake_case |
+| `POST /v1/agents` | agents:manage | required `name`, `system_prompt`, `opening_line`; Idempotency-Key |
+| `PATCH /v1/agents/{id}` | agents:manage | partial |
+| `POST /v1/agents/{id}/enable` · `/disable` | agents:manage | disable reports `waiting_calls_canceled` |
+| `DELETE /v1/agents/{id}` | agents:manage | 409 `agent_in_use` with `used_by` |
+| `GET /v1/voices` | calls:read | `TtsVoiceCatalog.models()` + `TtsModelPricingAnnotator` |
+| `GET` / `PUT /v1/settings/default-agent` | calls:read / agents:manage | |
+| `GET /v1/numbers` · `PUT /v1/numbers/{id}/agent` | calls:read / agents:manage | IVR-capable (Plivo) numbers |
+
+### Counsellors
+
+- auth_service is the only store of users and roles; everything goes through HMAC-internal
+  routes and is STRICT (a failure is 503 `temporarily_unavailable`, never "no such user"):
+  `GET /auth-service/internal/user/by-email` (percent-encoded: a raw `+` in a query string is
+  read back as a space), `GET /auth-service/internal/v1/user-roles/memberships` (new),
+  `PUT /auth-service/internal/v1/user-roles/role-status` (new; only the named roles, one
+  institute), `POST /auth-service/internal/v1/user-roles/add-user-roles` (strict variant),
+  `POST /auth-service/v1/user/internal/create-user-or-get-existing?isNotify=`, `PUT …/update-user`.
+- **New email:** create-user-or-get-existing with roles `[COUNSELLOR]`, ACTIVE, `isNotify =
+  send_welcome_email` (the platform welcome mail with username + generated password, admin
+  portal link). The mobile number is NOT sent to that call: for an institute whose user
+  identifier is PHONE, `AuthService.createUser` looks the user up by mobile first and would
+  attach the role to whichever account has the number. It is set afterwards with update-user
+  (digits only, root flag copied — update-user writes `isRootUser` unconditionally).
+- **Existing email:** add-user-roles `[COUNSELLOR]` in this institute only; no profile change,
+  no email (the only "you have an account" template, `sendKeepingCredentialsWelcomeMailToUser`,
+  mails the stored PASSWORD). Already a live counsellor here → 200 `created: false`; any other
+  role here → 409 `account_has_other_role`; a paused counsellor row → 409 `counsellor_inactive`.
+  After every grant the memberships are re-read; no live COUNSELLOR row → 500 `role_unavailable`
+  (e.g. no built-in role named COUNSELLOR).
+- **Email lock:** a row `('global', 'lock', sha256(email))` in `ai_calling_api_idempotency`
+  serialises creates of the same email across pods/institutes (2-minute takeover). Without it
+  two concurrent creates both see "no user" and auth_service's second create finds the first
+  and mails the stored password. The dashboard's invite path does not take it.
+- **Manageable:** only users whose non-deleted rows in the institute are all COUNSELLOR /
+  COUNSELOR; anyone else (ADMIN, TEACHER, STUDENT, custom) → 403 `counsellor_not_manageable`.
+- **Shared account:** name / mobile changes only when every non-deleted role row of the user
+  is in this institute (`409 shared_account` otherwise) — email and mobile are the global login.
+- **Deactivate:** role-status DISABLED for COUNSELLOR/COUNSELOR in this institute (other
+  institutes untouched; the authUserDetails cache is evicted, lastTokenUpdate bumped);
+  `counselor_pool_member.status = 'INACTIVE'` for this institute's pools (leads stay assigned;
+  shift rows untouched); the user id removed from this institute's `ivr_node.dial_user_ids`
+  (`no_one_left` flags a DIAL step left with nobody); `LastCounsellorInboundRouter` skips users
+  without an ACTIVE role in the institute (fails open if auth_service is down). The Airtel
+  extension mapping is kept (history attribution).
+- **Reactivate** (`PATCH active=true`): role-status ACTIVE (DISABLED/INACTIVE rows only, never
+  DELETED). Pool rows stay INACTIVE and IVR lists are not refilled — nothing records which an
+  admin paused on purpose — and the response says so.
+
+### Agents
+
+- Every write goes through `AiAgentService.saveWithResult(dto, "api:<keyId>")`: the registry
+  bridge, speech warm and rule checks apply. PATCH loads `dtoOf(stored)`, sets
+  `ttsModel`/`speechCacheMode`/`sendRules` to null (= keep stored) and overlays only the
+  present JSON fields (camelCase aliases accepted).
+- Strict where the dashboard repairs: unknown engine → 422 `unsupported_tts_model`
+  (`valid_tts_models`); voice not in the engine's palette → 422 `invalid_voice` (`valid_voices`;
+  checked whenever `tts_model` or `voice` is sent, and on create); language outside the bot's
+  `_STT_LANGS` names / codes / `xx-YY` tags → 422 `unsupported_language`; deepgram + non-English
+  → 422 `voice_language_mismatch`; pace/temperature/voice_modulation/max_call_minutes (1–30)
+  out of range → 400 (never clamped); handoff numbers E.164; booking pages (agent and rules)
+  must be the institute's; names unique ignoring case (409 `agent_name_taken`; the DB
+  constraint is case-sensitive); `speech_cache_mode` read-only (support sets it).
+- `TtsVoiceCatalog.normalizeModel` now rejects any spelling containing "muga" ("silk muga"
+  with a space used to resolve to Rumik).
+- `ai_agent.updated_at` had no trigger and is read-only in the entity: `AiAgentRepository.
+  touchUpdatedAt` stamps it on every save (and clears the persistence context so the next
+  read sees the DB timestamps).
+- **agent_in_use** (`AgentApiService.usage`): default agent (`defaultCampaignId` = id or name),
+  `ivr_node` AI_AGENT steps of the institute's menus (enabled or not), CALL_AI node templates
+  (status ACTIVE) of workflows in ACTIVE/DRAFT whose `config_json` or mapping `override_config`
+  names the agent by `campaignId` or `campaignName`, and QUEUED/DISPATCHING queue items.
+- **Default agent:** `PUT` needs an enabled, non-INBOUND agent and AI provider VACADEMY_AI or
+  unset (warning `provider_not_set`); 409 `ai_provider_not_supported` for AAVTAAR etc. Written
+  by `AiCallingSettingsMutator` (row lock on the institute, refresh, change `data` only,
+  `InstituteSettingWriter.putSettingKey`). The agent registry bridge now uses the same mutator,
+  so the two never undo each other. NOT covered: the dashboard settings page saves its whole
+  stale blob.
+- **Numbers:** IVR_BUILDER-capable providers only (Plivo). The menu is resolved exactly like
+  `PlivoCallbackController.answerInbound` (`IvrMenuService.resolveMenu(institute, number,
+  inbound_ivr_menu_id)`). `PUT …/agent` edits `ivr_node.ai_agent_id` with a conditional UPDATE
+  only when the menu has exactly one AI_AGENT step and no other number resolves to it; else 409
+  `number_routing_complex` with `reason` (`no_menu`, `menu_without_ai_agent`,
+  `menu_with_several_ai_agents`, `menu_shared`). The dashboard has no one-click "answer with AI"
+  that creates a menu, so neither does the API. The agent must be enabled and INBOUND/BOTH.
+
+### Behaviour changes shipped with v1.3
+
+- **Queue (all triggers):** `AiCallQueueDrainJob.agentRefusal` cancels a waiting call whose
+  agent is off or gone for EVERY trigger, resolving it as placeCall does (VACADEMY_AI only;
+  campaign id, else name via the registry, else the default; a name-only item for a disabled
+  agent is not swapped for the default). Before, only API items were cancelled and the rest
+  dialled with the generic "Vacademy Agent" persona. `AiAgentService` also cancels the agent's
+  QUEUED items at once when it is turned off or deleted (any path), and no longer warms the
+  speech cache of a disabled agent.
+- **IVR admin routes** (`/v1/telephony/ivr/menus`) now require membership of the menu's
+  institute (they had no check); a save cannot re-home another institute's menu or node ids;
+  an AI_AGENT step must name an enabled agent of the menu's institute.
+- **Airtel extensions** resolve within the record's institute only; an upsert refuses an
+  extension already mapped to another user of the institute (409).
+- **auth_service** role endpoints are institute-scoped (see the auth_service commit):
+  add-user-roles dedupes per institute and never uses another institute's custom role;
+  remove-user-roles deletes one institute's rows and is guarded; update-role-status is guarded
+  (self, or staff — admin for an admin target).
 

@@ -76,10 +76,31 @@ class AiCallQueueAgentRefusalTest {
         }
     }
 
+    /** Non-API triggers: every trigger except API. */
+    private static List<CallTrigger> nonApi() {
+        return java.util.Arrays.stream(CallTrigger.values()).filter(t -> t != CallTrigger.API).toList();
+    }
+
     @Test
-    void aDeletedAgentIsRefusedForEveryTrigger() {
-        for (CallTrigger t : CallTrigger.values()) {
-            assertNotNull(job.agentRefusal(item("VACADEMY_AI", "gone", null), t), t.name());
+    void aMissingAgentStillDialsWithTheFallbackPersonaForWorkflowBulkAndManual() {
+        // Prod runs on this (an institute with no agents at all, a default naming no agent).
+        for (CallTrigger t : nonApi()) {
+            assertNull(job.agentRefusal(item("VACADEMY_AI", "gone", null), t), t.name());
+        }
+    }
+
+    @Test
+    void aMissingAgentIsStillCanceledForApiCallsAsBefore() {
+        assertEquals(AiCallQueueDrainJob.AGENT_OFF, job.agentRefusal(item("VACADEMY_AI", "gone", null), CallTrigger.API));
+        assertEquals(AiCallQueueDrainJob.AGENT_OFF, job.agentRefusal(item("VACADEMY_AI", null, null), CallTrigger.API));
+    }
+
+    @Test
+    void aDefaultThatNamesNoAgentStillDials() {
+        settings.setDefaultCampaignId("f724144e-0000-0000-0000-000000000000");
+        for (CallTrigger t : nonApi()) {
+            assertNull(job.agentRefusal(item("VACADEMY_AI", null, null), t), t.name());
+            assertNull(job.agentRefusal(item("VACADEMY_AI", null, "Some old agent name"), t), t.name());
         }
     }
 
@@ -114,7 +135,9 @@ class AiCallQueueAgentRefusalTest {
     void aDefaultHoldingAnAgentNameIsCheckedByName() {
         agent("a-2", "Jin AI", false, "OUTBOUND");
         settings.setDefaultCampaignId("Jin AI");
-        assertNotNull(job.agentRefusal(item("VACADEMY_AI", null, null), CallTrigger.BULK_MANUAL));
+        for (CallTrigger t : nonApi()) {
+            assertNotNull(job.agentRefusal(item("VACADEMY_AI", null, null), t), t.name());
+        }
     }
 
     @Test

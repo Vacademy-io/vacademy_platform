@@ -33,7 +33,7 @@ curl https://api.telleo.ai/v1/agents -H "X-API-Key: $TELLEO_API_KEY"
 }
 ```
 
-Only agents that are **turned on** and can **call out** are listed; add `?include_disabled=true` to list every agent, including those turned off and inbound-only ones. `GET /v1/agents/{id}` returns one agent's whole configuration. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`. If an agent is turned off or deleted while calls are waiting for it in the queue, those calls are canceled, not dialled with another voice — whether they came from the API, a workflow, a bulk campaign or the dashboard.
+Only agents that are **turned on** and can **call out** are listed; add `?include_disabled=true` to list every agent, including those turned off and inbound-only ones. `GET /v1/agents/{id}` returns one agent's whole configuration. Using one that is turned off returns `409 agent_disabled`; an inbound-only agent returns `409 agent_inbound_only`. If an agent is turned off while calls are waiting for it in the queue, those calls are canceled, not dialled with another voice — whether they came from the API, a workflow, a bulk campaign or the dashboard. API calls whose agent is deleted are canceled too.
 
 ## Personalising the call
 

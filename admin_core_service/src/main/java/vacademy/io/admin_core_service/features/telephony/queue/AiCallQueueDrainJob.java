@@ -491,22 +491,27 @@ public class AiCallQueueDrainJob {
     }
 
     static final String AGENT_OFF = "The agent was turned off or deleted.";
-    static final String NAMED_AGENT_OFF = "The AI agent \"%s\" is turned off or was deleted, so this call was not placed.";
+    static final String NAMED_AGENT_OFF = "The AI agent \"%s\" is turned off, so this call was not placed.";
     static final String RESOLVED_AGENT_OFF =
-            "The AI agent this call resolves to (%s) is turned off or was deleted, so this call was not placed.";
+            "The AI agent this call resolves to (%s) is turned off, so this call was not placed.";
 
     /**
      * Why this waiting call must not be dialled because of its AI agent, or null.
      *
-     * <p>A public API call ({@link CallTrigger#API}) names its agent by id and must reach an
-     * enabled agent that places outbound calls. Every other trigger (workflow CALL_AI node,
-     * bulk campaign, manual button) on the Vacademy AI provider is checked the way
-     * {@code AiCallService.placeCall} resolves it: the item's campaign id, else its agent
-     * name through the campaigns registry, else the institute default. The call is refused
-     * when that resolves to an agent that is off, or to nothing that is an agent of this
-     * institute — before this, both dialled with the generic persona. Items whose campaign
-     * resolves to nothing at all are left to placeCall's own "no campaign configured" error,
-     * and other providers (Aavtaar, Mock) carry their own campaign ids and are not checked.
+     * <p>A public API call ({@link CallTrigger#API}) names its agent by id and, as since v1.1,
+     * must reach an existing, enabled agent that places outbound calls; otherwise it is
+     * cancelled.
+     *
+     * <p>Every other trigger (workflow CALL_AI node, bulk campaign, manual button) on the
+     * Vacademy AI provider is resolved the way {@code AiCallService.placeCall} resolves it —
+     * the item's campaign id, else its agent name through the campaigns registry, else the
+     * institute default — and is cancelled ONLY when that resolves to an agent that EXISTS
+     * and is turned OFF (dialling it would reach the contact with the generic persona instead
+     * of the agent the admin switched off). When nothing resolves to an existing agent
+     * (deleted, never created, or a default that names no agent) the call dials exactly as
+     * before, with the voice bot's fallback persona: prod has institutes that run on it
+     * (2026-10-19 replica check: one institute with no agents at all, 26/26 calls in 30 days).
+     * Other providers (Aavtaar, Mock) carry their own campaign ids and are not checked.
      */
     String agentRefusal(AiCallQueueItem item, CallTrigger trigger) {
         if (trigger == CallTrigger.API) {
@@ -539,8 +544,8 @@ public class AiCallQueueDrainJob {
         }
         Boolean enabled = enabledById(agents, campaignId);
         if (enabled == null) enabled = enabledByName(agents, campaignId); // a default that holds a NAME
-        if (Boolean.TRUE.equals(enabled)) return null;
-        return String.format(RESOLVED_AGENT_OFF, campaignId);
+        // null = no such agent: keep the pre-existing fallback-persona behaviour.
+        return Boolean.FALSE.equals(enabled) ? String.format(RESOLVED_AGENT_OFF, campaignId) : null;
     }
 
     private static Boolean enabledById(List<Object[]> agents, String id) {

@@ -88,6 +88,10 @@ The response warns you when the agent is your [default agent](#the-default-agent
 
 `POST /v1/agents/{id}/enable` turns it back on. Calls canceled while it was off are not restored; start them again.
 
+<Note>
+Cancelling applies to an agent that exists and is turned **off**. When a waiting call's agent cannot be found at all — it was deleted, or your default agent setting names an agent that does not exist — API calls are canceled, but workflow, bulk and manual calls still dial with a generic voice, as they always have. Set a [default agent](#the-default-agent) that exists to avoid that.
+</Note>
+
 ## Voices
 
 `GET /v1/voices` lists every engine with its voices and what a connected minute costs:

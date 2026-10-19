@@ -70,7 +70,6 @@ public class AiAgentService {
     }
 
     static final String CANCEL_REASON_DISABLED = "The AI agent was turned off, so this call was not placed.";
-    static final String CANCEL_REASON_DELETED = "The AI agent was deleted, so this call was not placed.";
 
     public AiAgentDTO save(AiAgentDTO dto) {
         return saveWithResult(dto).agent();
@@ -80,8 +79,8 @@ public class AiAgentService {
      * Create or replace an agent. Turning an enabled agent off also cancels every call still
      * waiting for it in the AI call queue (any trigger: workflow, bulk, manual, API), with a
      * reason on each item: those calls would otherwise reach the contact with the generic
-     * built-in persona. The drain job refuses them at dial time as well, for items that name
-     * the agent in ways this cancel cannot match (the institute default).
+     * built-in persona. The drain job refuses them at dial time as well (same rule: the
+     * agent exists and is off), for items that reach it through the institute default.
      */
     public SaveResult saveWithResult(AiAgentDTO dto) {
         return saveWithResult(dto, null);
@@ -165,7 +164,12 @@ public class AiAgentService {
         return new SaveResult(out, cancelled);
     }
 
-    /** Deletes the agent and cancels the calls still waiting for it. Returns how many were cancelled. */
+    /**
+     * Deletes the agent. Waiting calls are NOT cancelled here: once the agent is gone, a
+     * workflow / bulk / manual call that named it dials with the fallback persona exactly as
+     * before v1.3 (see AiCallQueueDrainJob.agentRefusal), and a public API call naming it is
+     * cancelled by the drain job at dial time, as since v1.1. Returns 0 (kept for callers).
+     */
     @Transactional
     public int delete(String agentId, String instituteId) {
         return delete(agentId, instituteId, null);
@@ -175,10 +179,9 @@ public class AiAgentService {
     public int delete(String agentId, String instituteId, String actorId) {
         AiAgent agent = repo.findByIdAndInstituteId(agentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Agent not found"));
-        int cancelled = cancelWaitingCalls(agent, CANCEL_REASON_DELETED);
         repo.delete(agent);
         bridgeIntoSettings(agent, /* remove= */ true, actorId);
-        return cancelled;
+        return 0;
     }
 
     /** The wire shape of a stored agent (lists parsed, rules read), for a caller that merges into it. */

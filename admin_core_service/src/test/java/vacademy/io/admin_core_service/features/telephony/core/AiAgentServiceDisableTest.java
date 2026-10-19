@@ -67,9 +67,11 @@ class AiAgentServiceDisableTest {
     }
 
     @Test
-    void deletingCancelsWaitingCalls() {
-        assertEquals(4, service.delete("a-1", "inst-1"));
-        verify(queue).cancelQueuedForAgent("inst-1", "a-1", "Riya", AiAgentService.CANCEL_REASON_DELETED);
+    void deletingLeavesWaitingCallsToTheDrainJob() {
+        // A deleted agent is a MISSING agent: workflow/bulk/manual calls keep dialling with the
+        // fallback persona as before; API calls are canceled by the drain job at dial time.
+        assertEquals(0, service.delete("a-1", "inst-1"));
+        verify(queue, never()).cancelQueuedForAgent(any(), any(), any(), any());
         verify(repo).delete(stored);
     }
 

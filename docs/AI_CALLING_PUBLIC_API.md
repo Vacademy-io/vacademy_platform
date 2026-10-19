@@ -592,13 +592,18 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
 
 ### Behaviour changes shipped with v1.3
 
-- **Queue (all triggers):** `AiCallQueueDrainJob.agentRefusal` cancels a waiting call whose
-  agent is off or gone for EVERY trigger, resolving it as placeCall does (VACADEMY_AI only;
-  campaign id, else name via the registry, else the default; a name-only item for a disabled
-  agent is not swapped for the default). Before, only API items were cancelled and the rest
-  dialled with the generic "Vacademy Agent" persona. `AiAgentService` also cancels the agent's
-  QUEUED items at once when it is turned off or deleted (any path), and no longer warms the
-  speech cache of a disabled agent.
+- **Queue (all triggers):** `AiCallQueueDrainJob.agentRefusal` cancels a waiting call of ANY
+  trigger whose agent EXISTS and is DISABLED, resolving it as placeCall does (VACADEMY_AI
+  only; campaign id, else name via the registry, else the default; a name-only item for a
+  disabled agent is not swapped for the default). When nothing resolves to an existing agent
+  (deleted, never created, a default naming no agent) workflow / bulk / manual items dial with
+  the generic "Vacademy Agent" persona exactly as before — prod depends on it (2026-10-19
+  replica check, last 30 days: Jumpstart has no ai_agent rows and a default that does not
+  exist, 26/26 AI calls; CRM 16; Shiksha Nation 6; zero disabled agents anywhere). API items
+  keep the v1.1 rule: cancelled when their agent is off, deleted or inbound-only.
+  `AiAgentService` cancels the agent's QUEUED items at once when it is turned OFF (any path;
+  this is `waiting_calls_canceled`); deleting cancels nothing (the drain job handles API items),
+  and a disabled agent's speech cache is no longer warmed.
 - **IVR admin routes** (`/v1/telephony/ivr/menus`) now require membership of the menu's
   institute (they had no check); a save cannot re-home another institute's menu or node ids;
   an AI_AGENT step must name an enabled agent of the menu's institute.

@@ -15,6 +15,17 @@ public interface AiAgentRepository extends JpaRepository<AiAgent, String> {
     Optional<AiAgent> findByIdAndInstituteId(String id, String instituteId);
 
     /**
+     * id, name, enabled of every agent of an institute, without the prompts: the queue's
+     * pre-dial check resolves an item's agent by id or by name on every dispatch.
+     */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT a.id, a.name, a.enabled FROM AiAgent a WHERE a.instituteId = :instituteId")
+    List<Object[]> findIdNameEnabledByInstituteId(
+            @org.springframework.data.repository.query.Param("instituteId") String instituteId);
+
+    boolean existsByInstituteIdAndNameIgnoreCase(String instituteId, String name);
+
+    /**
      * Bulk id -> agent name. Saving an agent auto-registers it as a VACADEMY_AI campaign
      * with {@code campaignId = agent id}, so this resolves the agent behind a queued or
      * placed call without loading the prompts, send rules and voice config with it.

@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallActionRu
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository;
+import vacademy.io.admin_core_service.features.telephony.queue.repository.AiCallQueueItemRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -46,6 +47,7 @@ public class AiAgentService {
     private final InstituteRepository instituteRepository;
     private final InstituteSettingService instituteSettingService;
     private final AiAgentSpeechWarmer speechWarmer;
+    private final AiCallQueueItemRepository queueRepository;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -71,7 +73,25 @@ public class AiAgentService {
         });
     }
 
+    /** What a save did besides storing the agent: calls cancelled because it was turned off. */
+    public record SaveResult(AiAgentDTO agent, int cancelledCalls) {
+    }
+
+    static final String CANCEL_REASON_DISABLED = "The AI agent was turned off, so this call was not placed.";
+    static final String CANCEL_REASON_DELETED = "The AI agent was deleted, so this call was not placed.";
+
     public AiAgentDTO save(AiAgentDTO dto) {
+        return saveWithResult(dto).agent();
+    }
+
+    /**
+     * Create or replace an agent. Turning an enabled agent off also cancels every call still
+     * waiting for it in the AI call queue (any trigger: workflow, bulk, manual, API), with a
+     * reason on each item: those calls would otherwise reach the contact with the generic
+     * built-in persona. The drain job refuses them at dial time as well, for items that name
+     * the agent in ways this cancel cannot match (the institute default).
+     */
+    public SaveResult saveWithResult(AiAgentDTO dto) {
         if (dto.getInstituteId() == null || dto.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
         }
@@ -83,6 +103,7 @@ public class AiAgentService {
                 ? repo.findByIdAndInstituteId(dto.getId(), dto.getInstituteId())
                         .orElseThrow(() -> new VacademyException("Agent not found"))
                 : new AiAgent();
+        boolean wasEnabled = agent.getId() != null && Boolean.TRUE.equals(agent.getEnabled());
         agent.setInstituteId(dto.getInstituteId());
         agent.setName(dto.getName().trim());
         agent.setEnabled(dto.getEnabled() == null ? Boolean.TRUE : dto.getEnabled());
@@ -114,27 +135,52 @@ public class AiAgentService {
         }
         AiAgent saved = repo.save(agent);
 
-        bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
+        boolean enabledNow = Boolean.TRUE.equals(saved.getEnabled());
+        int cancelled = wasEnabled && !enabledNow
+                ? cancelWaitingCalls(saved, CANCEL_REASON_DISABLED) : 0;
+
+        bridgeIntoSettings(saved, /* remove= */ !enabledNow);
         AiAgentDTO out = toDto(saved);
         // Pre-render this agent's fixed lines into the voice bot's speech cache so
         // they are served from cache on call #1 instead of being learned slowly.
         // Fire-and-forget by contract: a warm that fails just means the first calls
-        // pay the vendor, which is exactly today's behaviour.
-        try {
-            speechWarmer.warm(out);
-        } catch (Exception e) {
-            log.warn("ai agent speech warm dispatch failed agent={}: {}",
-                    saved.getId(), e.getMessage());
+        // pay the vendor, which is exactly today's behaviour. A disabled agent places
+        // no calls, so warming it only spends vendor characters.
+        if (enabledNow) {
+            try {
+                speechWarmer.warm(out);
+            } catch (Exception e) {
+                log.warn("ai agent speech warm dispatch failed agent={}: {}",
+                        saved.getId(), e.getMessage());
+            }
         }
-        return out;
+        return new SaveResult(out, cancelled);
     }
 
+    /** Deletes the agent and cancels the calls still waiting for it. Returns how many were cancelled. */
     @Transactional
-    public void delete(String agentId, String instituteId) {
+    public int delete(String agentId, String instituteId) {
         AiAgent agent = repo.findByIdAndInstituteId(agentId, instituteId)
                 .orElseThrow(() -> new VacademyException("Agent not found"));
+        int cancelled = cancelWaitingCalls(agent, CANCEL_REASON_DELETED);
         repo.delete(agent);
         bridgeIntoSettings(agent, /* remove= */ true);
+        return cancelled;
+    }
+
+    /** Cancel the QUEUED calls for this agent (by id, or by name for a name-only item). */
+    public int cancelWaitingCalls(AiAgent agent, String reason) {
+        try {
+            int n = queueRepository.cancelQueuedForAgent(agent.getInstituteId(), agent.getId(), agent.getName(), reason);
+            if (n > 0) {
+                log.info("ai-agent {}: cancelled {} waiting call(s): {}", agent.getId(), n, reason);
+            }
+            return n;
+        } catch (RuntimeException e) {
+            // The drain job refuses these at dial time anyway; never fail the save for it.
+            log.warn("ai-agent {}: could not cancel waiting calls: {}", agent.getId(), e.getMessage());
+            return 0;
+        }
     }
 
     /**

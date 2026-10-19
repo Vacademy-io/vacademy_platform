@@ -861,6 +861,34 @@ public class AuthService {
      * Returns an empty map on failure; callers must treat "no roles" as "no
      * privileges", never as "unrestricted".
      */
+    /**
+     * {@link #getInstituteRoles} that THROWS when auth_service cannot answer, so a caller can
+     * tell "holds no ACTIVE role here" (empty) from "could not ask" (exception).
+     */
+    public Map<String, List<String>> getInstituteRolesStrict(String instituteId, List<String> userIds) {
+        if (instituteId == null || instituteId.isBlank() || userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            String path = AuthServiceRoutes.GET_INSTITUTE_ROLES
+                    + "?instituteId=" + instituteId
+                    + "&userIds=" + String.join(",", userIds);
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.GET.name(), authServerBaseUrl, path, null);
+            if (response == null || response.getBody() == null || !response.getStatusCode().is2xxSuccessful()) {
+                throw new VacademyException("institute-roles lookup failed");
+            }
+            Map<String, List<String>> out = new ObjectMapper().readValue(response.getBody(),
+                    new TypeReference<Map<String, List<String>>>() {
+                    });
+            return out == null ? Map.of() : out;
+        } catch (VacademyException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new VacademyException("institute-roles lookup failed: " + e.getMessage());
+        }
+    }
+
     public Map<String, List<String>> getInstituteRoles(String instituteId, List<String> userIds) {
         if (instituteId == null || instituteId.isBlank() || userIds == null || userIds.isEmpty()) {
             return Map.of();

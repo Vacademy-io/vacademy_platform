@@ -85,6 +85,13 @@ public class TelephonyCounsellorEndpointController {
         if (e.getId() == null && !isEligibleUser(instituteId, body.getCounsellorUserId())) {
             throw new VacademyException("This user is not a counsellor or admin of this institute");
         }
+        // An extension identifies the caller on the institute's Airtel account; two people on
+        // one extension would make every imported call record ambiguous.
+        String extension = body.getExtension() == null ? null : blankToNull(body.getExtension());
+        if (extension != null
+                && extensionHolder(repo, instituteId, providerType, extension, body.getCounsellorUserId()) != null) {
+            throw new ConflictException("Extension " + extension + " is already mapped to another user of this institute.");
+        }
         e.setInstituteId(instituteId);
         e.setCounsellorUserId(body.getCounsellorUserId());
         e.setProviderType(providerType);
@@ -157,6 +164,16 @@ public class TelephonyCounsellorEndpointController {
         instituteAccessValidator.requireInstituteStaff(user, row.getInstituteId());
         repo.delete(row);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Another user of this institute already mapped to {@code extension} on this provider, or null. */
+    public static String extensionHolder(TelephonyCounsellorEndpointRepository repo, String instituteId,
+                                         String providerType, String extension, String userId) {
+        if (extension == null || extension.isBlank()) return null;
+        return repo.findByInstituteIdAndProviderTypeAndExtension(instituteId, providerType, extension.trim()).stream()
+                .map(TelephonyCounsellorEndpoint::getCounsellorUserId)
+                .filter(u -> u != null && !u.equals(userId))
+                .findFirst().orElse(null);
     }
 
     private boolean isEligibleUser(String instituteId, String userId) {

@@ -1,0 +1,28 @@
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { CoursePageSettingsCard } from './CoursePageSettingsCard';
+
+/** Global Settings → Course page: parts of the public course page, on unless stored false. */
+describe('CoursePageSettingsCard', () => {
+    const switches = () => screen.getAllByRole('switch');
+
+    it('shows every part on when nothing is stored', () => {
+        render(<CoursePageSettingsCard value={undefined} onChange={vi.fn()} />);
+        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['true', 'true']);
+    });
+
+    it('stores false to hide Course content and keeps the other courseDetails keys', () => {
+        const onChange = vi.fn();
+        render(<CoursePageSettingsCard value={{ layout: 'standard', appBanner: false }} onChange={onChange} />);
+        fireEvent.click(switches()[0]!);
+        expect(onChange).toHaveBeenCalledWith({ layout: 'standard', appBanner: false, content: false });
+    });
+
+    it('drops the key again when switched back on', () => {
+        const onChange = vi.fn();
+        render(<CoursePageSettingsCard value={{ content: false, series: false, layout: 'standard' }} onChange={onChange} />);
+        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'false']);
+        fireEvent.click(switches()[1]!);
+        expect(onChange).toHaveBeenCalledWith({ content: false, layout: 'standard' });
+    });
+});

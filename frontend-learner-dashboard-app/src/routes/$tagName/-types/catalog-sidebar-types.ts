@@ -85,8 +85,15 @@ export interface CatalogCustomFilterConfig {
   label: string;
   /** Default true. */
   enabled?: boolean;
-  /** 'courseFormats' = the options are globalSettings.courseFormats (shared format helper). */
-  source?: "courseFormats" | "options" | string;
+  /**
+   * 'courseFormats' = the options are globalSettings.courseFormats (shared format helper).
+   * 'tags' = the authored options, then every course tag starting with `prefix` ("for parents" → Parents).
+   */
+  source?: "courseFormats" | "options" | "tags" | string;
+  /** source 'tags': the leading word(s) of the group's tags ("for"). */
+  prefix?: string;
+  /** source 'tags': tags never listed (the whole tag "for everyone" or the rest "everyone"). */
+  exclude?: string[];
   /** Default: the section's showFilterCounts. */
   showCounts?: boolean;
   /** Default true: zero-count options are listed, greyed and disabled. */

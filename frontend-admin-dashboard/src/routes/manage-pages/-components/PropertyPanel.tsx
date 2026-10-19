@@ -82,6 +82,7 @@ import { LearningPathEditor } from './learning-path/LearningPathEditor';
 import { VisibleWhenEditor } from './settings/VisibleWhenEditor';
 import { CourseLanguagesSettingsCard } from './settings/CourseLanguagesSettingsCard';
 import { CourseFormatsCard } from './settings/CourseFormatsCard';
+import { CoursePageSettingsCard } from './settings/CoursePageSettingsCard';
 import { SitePaletteCard } from './settings/SitePaletteCard';
 import { SiteCartSettingsCard } from './settings/SiteCartSettingsCard';
 import { SectionJsonDialog } from './SectionJsonDialog';
@@ -1807,10 +1808,16 @@ const GlobalSettingsEditor = ({
                             Array.isArray(gs.courseFormatOrder) ? gs.courseFormatOrder : undefined
                         }
                         onChange={(next) => updateGlobalSettings(next)}
+                        fromTags={gs.courseFormatsFromTags}
+                        onFromTagsChange={(next) => updateField('courseFormatsFromTags', next)}
                         i18n={gs.i18n}
                         readOnlyNames={!!editingLocale}
                     />
             )}
+            <CoursePageSettingsCard
+                value={gs.courseDetails}
+                onChange={(next) => updateField('courseDetails', next)}
+            />
             <SiteCartSettingsCard value={gs.siteCart} onChange={(next) => updateField('siteCart', next)} />
 
             {/* Enquiry */}

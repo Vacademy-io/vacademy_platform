@@ -1428,8 +1428,15 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         : null,
     [standardLayout, catalogueData?.pages, catalogStreamsConfig],
   );
+  // globalSettings.courseDetails (Manage Pages → Course page): series = false leaves the
+  // "Part of <path>" chips off, content = false the Course content (modules & slides) tab.
+  const courseDetailsSettings = (
+    catalogueData?.globalSettings as { courseDetails?: { series?: unknown; content?: unknown } } | undefined
+  )?.courseDetails;
+  const seriesOn = courseDetailsSettings?.series !== false;
+  const contentOn = courseDetailsSettings?.content !== false;
   const courseSeries = useCourseSeries({
-    enabled: standardLayout,
+    enabled: standardLayout && seriesOn,
     instituteId,
     libraryId: pathLibraryId,
     streamSlug: coursePlace.stream?.slug,
@@ -2206,6 +2213,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               return label ? siteT(label) : "";
             }}
             outline={courseStructure}
+            showContent={contentOn}
             related={
               coursePlace.related ? (
                 <CourseShowcaseComponent
@@ -2442,7 +2450,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                 </div>
 
                 {/* Course Structure */}
-                {!isOutlineView && courseStructure}
+                {!isOutlineView && contentOn && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the

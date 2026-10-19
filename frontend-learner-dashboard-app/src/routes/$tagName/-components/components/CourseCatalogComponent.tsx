@@ -120,7 +120,13 @@ import { StreamTabs } from "./catalog/StreamTabs";
 import { DiscoveryFilterGroup } from "./catalog/DiscoveryFilterGroup";
 // Feature 'sidebar': category scope + authored option groups (customFilters).
 import { categoriesInScope } from "./catalog/catalog-sidebar-config";
-import { clearedCustomState, selectedCustomOptions } from "./catalog/catalog-custom-filters";
+import {
+  clearedCustomState,
+  resolveCustomFilters,
+  selectedCustomOptions,
+  withTagOptions,
+} from "./catalog/catalog-custom-filters";
+import { tagKey, withTagFormats } from "../../-utils/course-format";
 import { AppliedFilterChips } from "./catalog/AppliedFilterChips";
 import { QuickFilterBar } from "./catalog/QuickFilterBar";
 import { CourseBadgePills, LanguageChips } from "./catalog/CardDiscoveryMeta";
@@ -669,7 +675,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   const siteT = useSiteT();
   const filterHeadings = useCatalogueFilterHeadings();
   const { locale: siteLocale } = useCatalogueLocale();
-  const discovery = useMemo(
+  // Resolved from the section props alone; `discovery` below adds what the
+  // courses' tags bring (source 'tags' groups, courseFormatsFromTags).
+  const baseDiscovery = useMemo(
     () =>
       resolveCatalogDiscovery(
         {
@@ -711,7 +719,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   const [isLoading, setIsLoading] = useState(true);
   // With syncUrl the search box starts from ?q= (a shared link reproduces the view).
   const [searchTerm, setSearchTerm] = useState(() =>
-    discovery.syncUrl ? readSearchParam(searchStr, URL_PARAMS.query) ?? "" : "",
+    baseDiscovery.syncUrl ? readSearchParam(searchStr, URL_PARAMS.query) ?? "" : "",
   );
   // Opening sort comes from the catalogue JSON so each institute picks its own
   // (e.g. "Price: Low to High" leads with free courses, since price 0 sorts
@@ -767,14 +775,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         // a language ("Hindi") is what the EN / हिं chips already say.
         .filter(
           (level) =>
-            !discovery.grouping || !isPureLanguageLevel(level, discovery.languages),
+            !baseDiscovery.grouping || !isPureLanguageLevel(level, baseDiscovery.languages),
         )
         .map((level) => ({ id: level, name: displayLevelName(level) }))
         // Admin-set order first (levelOrder); the rest sort naturally so the
         // list is stable and reads sensibly (Class 6, 7, 8 … 12, then
         // non-numeric levels) regardless of the order courses arrive from the API.
         .sort(byAuthoredOrder(levelOrder)),
-    [courses, discovery.grouping, discovery.languages, levelOrder],
+    [courses, baseDiscovery.grouping, baseDiscovery.languages, levelOrder],
   );
   // Same sentinel rule as levels: the placeholder "DEFAULT" session must not
   // surface as a "Default" checkbox next to real streams, and an institute
@@ -1180,8 +1188,41 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   // ── Stream tabs + filter state (URL-synced or local) ───────────────────
   const { streams: streamList, isLoading: streamsLoading } = useCatalogStreams(
     instituteId,
-    discovery.streams,
+    baseDiscovery.streams,
   );
+  // [sidebar] What follows the courses' tags, so a tag added to a course shows
+  // with no site edit: globalSettings.courseFormatsFromTags turns unclaimed
+  // tags into formats (FORMAT options + card pills), and source 'tags' groups
+  // ("for parents" → For: Parents) list the tags carrying their prefix.
+  // Stream, language and other filter tags are never formats; while the
+  // streams load (or when they could not be read) nothing is added, so a
+  // stream tag never shows up as a format.
+  const effectiveGlobalSettings = useMemo(() => {
+    if (baseDiscovery.streams && (streamsLoading || !streamList.length)) return globalSettings;
+    const claimed = new Set<string>();
+    streamList.forEach((st) => st.tags.forEach((tag) => claimed.add(tagKey(tag))));
+    const prefixes: string[] = [];
+    baseDiscovery.customFilters.forEach((f) => {
+      if (f.labelFromSite) return;
+      f.options.forEach((o) => o.tags.forEach((tag) => claimed.add(tag)));
+      if (f.fromTags) prefixes.push(f.fromTags.prefix);
+    });
+    return withTagFormats(
+      globalSettings,
+      courses,
+      (key) => claimed.has(key) || prefixes.some((p) => key.startsWith(`${p}-`)),
+    );
+  }, [globalSettings, courses, streamList, streamsLoading, baseDiscovery.streams, baseDiscovery.customFilters]);
+  const discovery = useMemo(() => {
+    if (effectiveGlobalSettings === globalSettings && !baseDiscovery.customFilters.some((f) => f.fromTags)) {
+      return baseDiscovery;
+    }
+    const customFilters = withTagOptions(
+      resolveCustomFilters(componentProps.customFilters, effectiveGlobalSettings),
+      courses,
+    );
+    return { ...baseDiscovery, customFilters };
+  }, [baseDiscovery, effectiveGlobalSettings, globalSettings, componentProps.customFilters, courses]);
   // The languages the sidebar language filter lists: the ones some course is in.
   const presentLanguages = useMemo(
     () =>
@@ -2059,7 +2100,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
             t("courseCatalog.authors");
   const slotContext: CatalogSlotContext = {
     props: componentProps,
-    globalSettings,
+    globalSettings: effectiveGlobalSettings,
     instituteId,
     tagName,
     t,

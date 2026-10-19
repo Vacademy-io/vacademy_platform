@@ -120,6 +120,9 @@ export interface CourseItem {
     enrolled_student_count?: number | null;
 }
 
+/** Courses per page on the All / Authored courses tabs. */
+const COURSES_PAGE_SIZE = 20;
+
 export interface AllCoursesApiResponse {
     totalPages: number;
     totalElements: number;
@@ -544,7 +547,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     // Only fetch data for the active tab to prevent unnecessary API calls
     const { data: fetchedAllCoursesData, isLoading: isLoadingAllCourses } = useQuery({
         queryKey: ['allCourses', instituteDetails?.id, page, filtersKey],
-        queryFn: () => getAllCoursesWithFilters(page, 10, instituteDetails?.id, filtersKey),
+        queryFn: () => getAllCoursesWithFilters(page, COURSES_PAGE_SIZE, instituteDetails?.id, filtersKey),
         enabled: !!instituteDetails?.id && selectedTab === 'AllCourses',
         staleTime: 30000, // Data is fresh for 30 seconds
         gcTime: 300000, // Cache for 5 minutes
@@ -557,7 +560,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                 ...filtersKey,
                 faculty_ids: tokenData?.user ? [tokenData.user] : [],
             };
-            return getAllCoursesWithFilters(page, 10, instituteDetails?.id, authoredFilters);
+            return getAllCoursesWithFilters(page, COURSES_PAGE_SIZE, instituteDetails?.id, authoredFilters);
         },
         enabled: !!instituteDetails?.id && !!tokenData?.user && selectedTab === 'AuthoredCourses',
         staleTime: 30000,

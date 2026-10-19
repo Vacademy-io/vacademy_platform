@@ -207,7 +207,21 @@
       "contentWidthHint": "Width of the page content in pixels, from {{min}} to {{max}}. Leave empty for the default.",
       "contentWidthNotSaved": "Not saved: enter a whole number from {{min}} to {{max}}."
     },
+    "coursePage": {
+      "heading": "Course page",
+      "hint": "Choose which parts show on each course's public page. Everything is on by default.",
+      "content": "Course content (modules & slides)",
+      "contentHint": "The Course content tab (Table of Contents on e-books) with the course's modules and slides.",
+      "series": "Part of a learning path",
+      "seriesHint": "The \"Part of …\" chips listing the other steps of the learning path the course is in, and the \"Next in the series\" card."
+    },
     "courseFormats": {
+      "fromTags": {
+        "enable": "Add new course tags as formats",
+        "hint": "On: every course tag that is not a language, a stream or category, or one of the skips below becomes a format by itself — it shows in the Format filter and on cards with no edit here. Formats above keep their names.",
+        "skipPrefixes": "Never formats: tags starting with",
+        "skip": "Never formats: these tags"
+      },
       "heading": "Course formats",
       "hint": "Formats such as E-books or Live sessions show on course cards and in the Format filter. A course gets a format from its tag format-<id>.",
       "namesInTranslations": "Format names are translated in Languages → Translations. Switch the editor to the base language to rename or add a format.",
@@ -591,6 +605,12 @@
       },
       "filterTitle": "Filter: {{name}}",
       "formatsNote": "The options are the course formats in Site settings.",
+      "fromTags": "Also list course tags",
+      "tagPrefix": "Tags starting with",
+      "tagPrefixHint": "Every course tag starting with this word becomes an option, after the options below: \"for parents\" shows as Parents. A new tag on a course shows here with no edit.",
+      "tagPrefixMissing": "Type the word the tags start with (for example: for).",
+      "tagExclude": "Never list these tags",
+      "tagExcludeHint": "Comma-separated, the whole tag or the part after the word (for example: everyone).",
       "optionN": "Option {{n}}",
       "tags": "Course tags",
       "tagsHint": "Separated by commas. A course with any of these tags matches.",

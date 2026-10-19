@@ -1,18 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Coins, Sparkle, Trash, WarningCircle } from '@phosphor-icons/react';
+import {
+    Coins,
+    ListChecks,
+    PencilSimple,
+    Sparkle,
+    Trash,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { cn } from '@/lib/utils';
 import type { ChoicePolicy, DigitisedPaper } from '@/services/paper-digitise';
 import { MathHtml } from '@/routes/knowledge-base/-components/paper/MathHtml';
+import { AddEditCriteriaDialog } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/AddEditCriteriaDialog';
+import type { CriteriaJson } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/criteria-services';
+import {
+    CopyCheckSettingsFields,
+    type CopyCheckSettingsValue,
+} from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
+import { toEditableCriteria } from '@/services/copy-check-criteria';
 
 /** One question the teacher has accepted, with the marks the checker will use. */
 export interface ReviewedQuestion {
     /** Index into `paper.questions` / `paper.raw_questions`. */
     index: number;
     marks: number;
+    /** Set only when the teacher changed this question's evaluation criteria here. */
+    criteria?: CriteriaJson;
 }
 
 /** "Answer any FOUR of these five", as the teacher confirmed it: positions in `paper.questions`. */
@@ -27,6 +43,8 @@ interface RowState {
     index: number;
     marks: string;
     removed: boolean;
+    /** The teacher's own criteria for this question, once edited here. */
+    criteria?: CriteriaJson;
 }
 
 interface ChoiceState {
@@ -51,6 +69,17 @@ const liveChoices = (choices: ChoiceState[], keptIndexes: Set<number>): Reviewed
             policy: c.policy,
         }))
         .filter((c) => c.indexes.length >= 2 && c.attempt >= 1 && c.attempt < c.indexes.length);
+
+const parseJson = (json: string | null | undefined): unknown => {
+    if (!json) return null;
+    try {
+        return JSON.parse(json);
+    } catch {
+        return null;
+    }
+};
+
+const fmtMarks = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 const stripHtml = (html: string | null | undefined): string => {
     if (!html) return '';
@@ -90,6 +119,8 @@ export const PaperDigitiseReviewDialog = ({
     onClose,
     secondaryLabel,
     primaryLabel,
+    aiSettings,
+    onAiSettingsChange,
 }: {
     open: boolean;
     paper: DigitisedPaper | null;
@@ -104,10 +135,14 @@ export const PaperDigitiseReviewDialog = ({
     secondaryLabel?: string;
     /** The primary action's label; defaults to "Create test with N questions". */
     primaryLabel?: (count: number) => string;
+    /** How the AI checks the sheets (subject, marking scheme, grammar); shown when given. */
+    aiSettings?: CopyCheckSettingsValue;
+    onAiSettingsChange?: (value: CopyCheckSettingsValue) => void;
 }) => {
     const { t } = useTranslation('studyLibraryAssessmentCreateForm');
     const [rows, setRows] = useState<RowState[]>([]);
     const [choices, setChoices] = useState<ChoiceState[]>([]);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
     useEffect(() => {
         if (!paper) return;
@@ -167,11 +202,26 @@ export const PaperDigitiseReviewDialog = ({
     const restore = (index: number) =>
         setRows((prev) => prev.map((row) => (row.index === index ? { ...row, removed: false } : row)));
 
+    /** The criteria the AI will mark this question by: the teacher's edit, else the paper read's. */
+    const criteriaOf = (row: RowState): CriteriaJson | undefined =>
+        row.criteria ??
+        toEditableCriteria(
+            parseJson(paper.questions[row.index]?.evaluation_criteria_json),
+            parseFloat(row.marks) || 0
+        );
+    const setCriteria = (index: number, criteria: CriteriaJson) =>
+        setRows((prev) => prev.map((row) => (row.index === index ? { ...row, criteria } : row)));
+    const editingRow = editingIndex == null ? null : rows.find((row) => row.index === editingIndex);
+
     const setChoice = (label: string, patch: Partial<ChoiceState>) =>
         setChoices((prev) => prev.map((c) => (c.label === label ? { ...c, ...patch } : c)));
 
     const confirm = () => {
-        const accepted = kept.map((row) => ({ index: row.index, marks: parseFloat(row.marks) }));
+        const accepted = kept.map((row) => ({
+            index: row.index,
+            marks: parseFloat(row.marks),
+            ...(row.criteria ? { criteria: row.criteria } : {}),
+        }));
         if (live.length > 0) onConfirm(accepted, live);
         else onConfirm(accepted);
     };
@@ -258,6 +308,22 @@ export const PaperDigitiseReviewDialog = ({
                         <span>{t('review.paperDuration', { count: paper.duration_minutes })}</span>
                     )}
                 </div>
+
+                {aiSettings && onAiSettingsChange && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+                        <div className="flex flex-col">
+                            <p className="text-sm font-medium text-neutral-800">
+                                {t('review.ai.title')}
+                            </p>
+                            <p className="text-caption text-neutral-500">{t('review.ai.hint')}</p>
+                        </div>
+                        <CopyCheckSettingsFields
+                            value={aiSettings}
+                            onChange={onAiSettingsChange}
+                            disabled={busy}
+                        />
+                    </div>
+                )}
 
                 {paper.warnings.length > 0 && (
                     <ul className="flex flex-col gap-1 rounded-lg border border-warning-200 bg-warning-50 p-3">
@@ -452,6 +518,38 @@ export const PaperDigitiseReviewDialog = ({
                                             </span>
                                         )}
                                     </div>
+                                    {!row.removed && (
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-neutral-500">
+                                            <ListChecks className="size-4 shrink-0 text-primary-400" />
+                                            <span>
+                                                {(() => {
+                                                    const criteria = criteriaOf(row);
+                                                    return criteria && criteria.criteria.length > 0
+                                                        ? criteria.criteria
+                                                              .map(
+                                                                  (c) =>
+                                                                      `${c.name} (${fmtMarks(Number(c.max_marks) || 0)})`
+                                                              )
+                                                              .join(' · ')
+                                                        : t('review.criteria.none');
+                                                })()}
+                                            </span>
+                                            {row.criteria && (
+                                                <span className="rounded-md bg-success-50 px-2 py-0.5 text-success-700">
+                                                    {t('review.criteria.edited')}
+                                                </span>
+                                            )}
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
+                                                disable={busy || !(parseFloat(row.marks) > 0)}
+                                                onClick={() => setEditingIndex(row.index)}
+                                            >
+                                                <PencilSimple className="size-3.5" />
+                                                {t('review.criteria.edit')}
+                                            </MyButton>
+                                        </div>
+                                    )}
                                 </div>
                                 {row.removed ? (
                                     <MyButton
@@ -495,6 +593,24 @@ export const PaperDigitiseReviewDialog = ({
                     })}
                 </ol>
             </div>
+            {editingRow && (
+                <AddEditCriteriaDialog
+                    open
+                    question={{
+                        text: stripHtml(paper.questions[editingRow.index]?.text?.content),
+                        question_type: String(
+                            paper.questions[editingRow.index]?.question_type ||
+                                paper.raw_questions[editingRow.index]?.question_type ||
+                                'LONG_ANSWER'
+                        ),
+                        max_marks: parseFloat(editingRow.marks) || 0,
+                        subject: aiSettings?.subject || undefined,
+                    }}
+                    existingCriteria={criteriaOf(editingRow)}
+                    onSave={(criteria) => setCriteria(editingRow.index, criteria)}
+                    onClose={() => setEditingIndex(null)}
+                />
+            )}
         </MyDialog>
     );
 };

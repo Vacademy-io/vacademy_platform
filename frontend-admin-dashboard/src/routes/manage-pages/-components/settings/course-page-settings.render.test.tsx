@@ -8,7 +8,7 @@ describe('CoursePageSettingsCard', () => {
 
     it('shows every part on when nothing is stored', () => {
         render(<CoursePageSettingsCard value={undefined} onChange={vi.fn()} />);
-        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['true', 'true']);
+        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['true', 'true', 'true']);
     });
 
     it('stores false to hide Course content and keeps the other courseDetails keys', () => {
@@ -18,11 +18,18 @@ describe('CoursePageSettingsCard', () => {
         expect(onChange).toHaveBeenCalledWith({ layout: 'standard', appBanner: false, content: false });
     });
 
+    it('stores false to hide only the Course content heading', () => {
+        const onChange = vi.fn();
+        render(<CoursePageSettingsCard value={{ series: false }} onChange={onChange} />);
+        fireEvent.click(switches()[1]!);
+        expect(onChange).toHaveBeenCalledWith({ series: false, contentHeading: false });
+    });
+
     it('drops the key again when switched back on', () => {
         const onChange = vi.fn();
         render(<CoursePageSettingsCard value={{ content: false, series: false, layout: 'standard' }} onChange={onChange} />);
-        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'false']);
-        fireEvent.click(switches()[1]!);
+        expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+        fireEvent.click(switches()[2]!);
         expect(onChange).toHaveBeenCalledWith({ content: false, layout: 'standard' });
     });
 });

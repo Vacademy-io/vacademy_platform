@@ -1429,12 +1429,16 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     [standardLayout, catalogueData?.pages, catalogStreamsConfig],
   );
   // globalSettings.courseDetails (Manage Pages → Course page): series = false leaves the
-  // "Part of <path>" chips off, content = false the Course content (modules & slides) tab.
+  // "Part of <path>" chips off, content = false the Course content (modules & slides) tab,
+  // contentHeading = false only the "Course Content (Modules & Slides)" line above the structure.
   const courseDetailsSettings = (
-    catalogueData?.globalSettings as { courseDetails?: { series?: unknown; content?: unknown } } | undefined
+    catalogueData?.globalSettings as
+      | { courseDetails?: { series?: unknown; content?: unknown; contentHeading?: unknown } }
+      | undefined
   )?.courseDetails;
   const seriesOn = courseDetailsSettings?.series !== false;
   const contentOn = courseDetailsSettings?.content !== false;
+  const contentHeadingOn = courseDetailsSettings?.contentHeading !== false;
   const courseSeries = useCourseSeries({
     enabled: standardLayout && seriesOn,
     instituteId,
@@ -1941,6 +1945,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       packageSessionId={courseData.packageSessionId}
       levelId={courseData.levelId}
       variant={structureVariant}
+      showContentHeading={contentHeadingOn}
     />
   );
 

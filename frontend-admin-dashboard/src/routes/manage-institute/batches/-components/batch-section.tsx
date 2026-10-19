@@ -9,6 +9,7 @@ import {
 } from '@/routes/manage-institute/batches/-types/manage-batches-types';
 import {
     BookOpen,
+    CalendarBlank,
     Copy,
     DotsThreeVertical,
     Eye,
@@ -253,6 +254,7 @@ const BatchCard = ({ batch }: { batch: BatchType }) => {
     const { t } = useTranslation('manageInstituteBatchSection');
     const { viewBatch, copyInviteLink, menu, deleteDialog } = useBatchActions(batch);
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const start = batch.start_date ? dayjs(batch.start_date) : null;
 
     return (
         <>
@@ -265,12 +267,25 @@ const BatchCard = ({ batch }: { batch: BatchType }) => {
                         {menu}
                     </div>
                     <BatchStatusPill batch={batch} />
-                    <div className="flex items-center gap-2 text-body text-neutral-600">
-                        <Users size={18} />
-                        {t('batchCard.studentCount', {
-                            count: batch.count_students,
-                            term: learnerTerm,
-                        })}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body text-neutral-600">
+                        <span className="flex items-center gap-2">
+                            <Users size={18} />
+                            {t('batchCard.studentCount', {
+                                count: batch.count_students,
+                                term: learnerTerm,
+                            })}
+                        </span>
+                        {start?.isValid() && (
+                            <span className="flex items-center gap-2 text-neutral-500">
+                                <CalendarBlank size={18} />
+                                {t(
+                                    start.isAfter(dayjs(), 'day')
+                                        ? 'batchCard.startsOn'
+                                        : 'batchCard.startedOn',
+                                    { date: start.format('DD MMM YYYY') }
+                                )}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-3 text-body text-neutral-600">
                         {t('batchCard.inviteCodeLabel')}
@@ -392,6 +407,15 @@ const CourseHeader = ({
                     </span>
                 </p>
             </div>
+            <MyButton
+                buttonType="secondary"
+                scale="medium"
+                onClick={onCreateBatch}
+                className="hidden gap-1.5 sm:flex"
+            >
+                <Plus size={16} />
+                {t('course.addBatch', { term: batchTerm })}
+            </MyButton>
             <MyDropdown
                 dropdownList={[
                     {

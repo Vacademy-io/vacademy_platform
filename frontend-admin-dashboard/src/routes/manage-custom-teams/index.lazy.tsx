@@ -11,7 +11,8 @@ import { getTerminologyPlural } from '@/components/common/layout-container/sideb
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { SubOrgModuleGate } from './-components/sub-org-module-gate';
 import { isSubOrgAssignmentScoped } from '@/lib/display-settings/sub-org-module';
-import { LinkSimple, Monitor } from '@phosphor-icons/react';
+import { Buildings, LinkSimple, Monitor } from '@phosphor-icons/react';
+import { ScreenHeader } from '@/components/shared/crm-enhance/screen-header';
 import { SubOrgSummaryCards } from './sub-orgs/-components/sub-org-summary-cards';
 
 export const Route = createLazyFileRoute('/manage-custom-teams/')({
@@ -52,17 +53,13 @@ function ManageCustomTeams() {
                 {/* Title and the headline figures share one row: the cards are page
                     furniture, and stacking them full-width below pushed the table itself
                     below the fold on a laptop. */}
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-neutral-900">
-                            {t('heading', { termPlural: subOrgTermPlural })}
-                        </h1>
-                        <p className="mt-1 text-sm text-neutral-500">
-                            {t('subtitle', { termPlural: subOrgTermPlural })}
-                        </p>
-                    </div>
-                    <SubOrgSummaryCards />
-                </div>
+                <ScreenHeader
+                    className="mb-5"
+                    icon={Buildings}
+                    title={t('heading', { termPlural: subOrgTermPlural })}
+                    subtitle={t('subtitle', { termPlural: subOrgTermPlural })}
+                    actions={<SubOrgSummaryCards />}
+                />
 
                 <SubOrgModuleGate>
                     <Tabs value={selectedTab} onValueChange={setSelectedTab}>

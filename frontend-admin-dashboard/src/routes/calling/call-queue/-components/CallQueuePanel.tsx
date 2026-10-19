@@ -16,10 +16,33 @@
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowsClockwise, Pause, Play, Prohibit, Warning } from '@phosphor-icons/react';
+import {
+    ArrowsClockwise,
+    HourglassMedium,
+    Info,
+    ListNumbers,
+    Pause,
+    PauseCircle,
+    PhoneCall,
+    Play,
+    Prohibit,
+    Timer,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { MyButton } from '@/components/design-system/button';
+import { StatStrip } from '@/components/shared/crm-enhance';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -44,6 +67,8 @@ import {
 /** Poll cadence. The drainer ticks every 2s server-side; this is a human-facing view. */
 const REFETCH_MS = 10_000;
 const PAGE_SIZE = 25;
+// Radix Select cannot hold an empty value, so "All sources" uses a sentinel.
+const ALL_SOURCES = '__all__';
 
 const STATUS_FILTERS: Array<{ key: QueueFilter; label: string }> = [
     // Default. Waiting + already dialling: a manual call dials the moment a line is
@@ -150,6 +175,15 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
     });
 
     const summary = summaryQuery.data;
+    // A count on each status filter, from the summary this panel
+    // already polls. "Active" has no single honest number, so it stays bare.
+    const queueCount = (key: QueueFilter): number | undefined => {
+        if (!summary) return undefined;
+        if (key === 'QUEUED') return summary.queued;
+        if (key === 'LIVE') return summary.inFlight;
+        if (key === 'ACTIVE') return undefined;
+        return summary.byStatus?.[key];
+    };
     const rows = itemsQuery.data?.content ?? [];
     const totalPages = itemsQuery.data?.totalPages ?? 0;
 
@@ -158,35 +192,60 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
             {/* Depth, what is live, and the honest wait. Deliberately no capacity
                 figures and no "x of y" — the size of the calling pool is internal, and
                 a denominator here would disclose it. */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <StatCard
-                    label="Waiting"
-                    value={summary ? String(summary.queued) : '—'}
-                    hint="calls queued"
-                />
-                <StatCard
-                    label="On a call now"
-                    value={summary ? String(summary.inFlight) : '—'}
-                    hint="calls in progress"
-                />
-                <StatCard
-                    label="Clears in"
-                    value={summary ? formatEta(summary.etaMinutes) : '—'}
-                    hint="estimated"
-                />
-            </div>
+            <StatStrip
+                items={[
+                    {
+                        key: 'waiting',
+                        icon: HourglassMedium,
+                        label: 'Waiting',
+                        value: summary ? String(summary.queued) : '—',
+                        detail: 'calls queued',
+                        loading: summaryQuery.isLoading,
+                    },
+                    {
+                        key: 'live',
+                        icon: PhoneCall,
+                        tint: 'success',
+                        label: 'On a call now',
+                        value: summary ? String(summary.inFlight) : '—',
+                        detail: 'calls in progress',
+                        loading: summaryQuery.isLoading,
+                    },
+                    {
+                        key: 'eta',
+                        icon: Timer,
+                        tint: 'info',
+                        label: 'Clears in',
+                        value: summary ? formatEta(summary.etaMinutes) : '—',
+                        detail: 'estimated · at the current pace',
+                        loading: summaryQuery.isLoading,
+                    },
+                ]}
+            />
 
             {summary?.paused && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
-                    <Warning size={16} weight="fill" />
-                    Calling is paused for this institute — {summary.queued} queued call
-                    {summary.queued === 1 ? ' is' : 's are'} held and will dial when you resume.
-                    Nothing has been cancelled.
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning-200 bg-warning-50 p-3 text-body text-warning-700">
+                    <PauseCircle size={18} weight="fill" className="shrink-0" />
+                    <span className="min-w-0 flex-1">
+                        <span className="font-semibold">Calling is paused for this institute</span>{' '}
+                        — {summary.queued} queued call
+                        {summary.queued === 1 ? ' is' : 's are'} held and will dial when you resume.
+                        Nothing has been cancelled.
+                    </span>
+                    <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        disable={togglePause.isPending}
+                        onClick={() => togglePause.mutate(false)}
+                    >
+                        <Play size={12} className="mr-1" />
+                        Resume queue
+                    </MyButton>
                 </div>
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-1">
+                <div className="flex flex-wrap items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1">
                     {STATUS_FILTERS.map((f) => (
                         <button
                             key={f.key}
@@ -196,13 +255,18 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                                 setPage(0);
                             }}
                             className={cn(
-                                'rounded px-2.5 py-1 text-xs',
+                                'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
                                 status === f.key
                                     ? 'bg-primary-500 text-white'
                                     : 'text-neutral-600 hover:bg-neutral-50'
                             )}
                         >
                             {f.label}
+                            {queueCount(f.key) !== undefined && (
+                                <span className="ml-1.5 tabular-nums opacity-80">
+                                    {queueCount(f.key)}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>
@@ -210,45 +274,53 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                     scan by eye, and there is no way back to the run whose progress
                     dialog you closed. */}
                 {(runs.data?.length ?? 0) > 0 && (
-                    <select
-                        value={runId}
-                        onChange={(e) => {
-                            setRunId(e.target.value);
+                    <Select
+                        value={runId || ALL_SOURCES}
+                        onValueChange={(v) => {
+                            setRunId(v === ALL_SOURCES ? '' : v);
                             setPage(0);
                         }}
-                        className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
                     >
-                        <option value="">All sources</option>
-                        {runs.data?.map((r) => (
-                            <option key={r.audienceId} value={r.audienceId}>
-                                {r.name} ({r.total})
-                            </option>
-                        ))}
-                    </select>
+                        <SelectTrigger
+                            className="h-9 w-full bg-white sm:w-64"
+                            aria-label="Source (campaign run)"
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ALL_SOURCES}>All sources</SelectItem>
+                            {runs.data?.map((r) => (
+                                <SelectItem key={r.audienceId} value={r.audienceId}>
+                                    {r.name} ({r.total})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 )}
-                <div className="ml-auto flex items-center gap-2">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
+                <span className="text-caption text-neutral-500">Ordered by place in line</span>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        className="gap-1.5"
                         onClick={() => invalidate()}
-                        disabled={itemsQuery.isFetching}
+                        disable={itemsQuery.isFetching}
                     >
                         <ArrowsClockwise
                             size={14}
                             className={cn(itemsQuery.isFetching && 'animate-spin')}
                         />
                         Refresh
-                    </Button>
+                    </MyButton>
                     {/* The label names its own blast radius. Unscoped, this stops every
                         waiting call the institute has — including automations and other
                         people's manual calls — which is not what someone stopping one
                         campaign expects. */}
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        disabled={togglePause.isPending || !summary}
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        className="gap-1.5"
+                        disable={togglePause.isPending || !summary}
                         onClick={() => togglePause.mutate(!summary?.paused)}
                         title={
                             summary?.paused
@@ -258,13 +330,13 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                     >
                         {summary?.paused ? <Play size={14} /> : <Pause size={14} />}
                         {summary?.paused ? 'Resume queue' : 'Pause queue'}
-                    </Button>
+                    </MyButton>
 
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2 text-danger-600"
-                        disabled={!summary?.queued || cancelAll.isPending}
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        className="gap-1.5 !text-danger-600"
+                        disable={!summary?.queued || cancelAll.isPending}
                         onClick={() => {
                             const scope = runName
                                 ? `Cancel the calls still waiting in "${runName}"?`
@@ -274,85 +346,180 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                     >
                         <Prohibit size={14} />
                         {runName ? 'Cancel this campaign' : 'Cancel all waiting'}
-                    </Button>
+                    </MyButton>
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-16">#</TableHead>
-                            <TableHead>Lead</TableHead>
-                            <TableHead>Agent</TableHead>
-                            <TableHead>Queued by</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Waits</TableHead>
-                            <TableHead className="w-24" />
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {itemsQuery.isLoading ? (
+            <Card className="overflow-hidden rounded-xl border-neutral-200 shadow-sm">
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
                             <TableRow>
-                                <TableCell
-                                    colSpan={7}
-                                    className="py-10 text-center text-sm text-neutral-500"
-                                >
-                                    Loading the queue…
-                                </TableCell>
+                                <TableHead className="w-16">#</TableHead>
+                                <TableHead>Lead</TableHead>
+                                <TableHead>Agent</TableHead>
+                                <TableHead>Queued by</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Waits</TableHead>
+                                <TableHead className="w-24" />
                             </TableRow>
-                        ) : rows.length === 0 ? (
-                            <TableRow>
-                                <TableCell
-                                    colSpan={7}
-                                    className="py-10 text-center text-sm text-neutral-500"
-                                >
-                                    {status === 'ACTIVE'
-                                        ? 'Nothing in the queue — no AI calls are waiting or in progress.'
-                                        : status === 'QUEUED'
-                                          ? 'Nothing is waiting — AI calls are going out as they are requested.'
-                                          : status === 'LIVE'
-                                            ? 'No AI calls are on a call right now.'
-                                            : 'No calls in this state.'}
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            rows.map((item) => (
-                                <QueueRow
-                                    key={item.id}
-                                    item={item}
-                                    onCancel={() => cancelOne.mutate(item.id)}
-                                    cancelling={cancelOne.isPending}
-                                />
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-
-            {totalPages > 1 && (
-                <div className="flex items-center justify-end gap-2">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={page <= 0}
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    >
-                        Previous
-                    </Button>
-                    <span className="text-xs text-neutral-600">
-                        Page {page + 1} of {totalPages}
-                    </span>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={page + 1 >= totalPages}
-                        onClick={() => setPage((p) => p + 1)}
-                    >
-                        Next
-                    </Button>
+                        </TableHeader>
+                        <TableBody>
+                            {itemsQuery.isLoading ? (
+                                [0, 1, 2].map((i) => (
+                                    <TableRow key={i}>
+                                        <TableCell colSpan={7}>
+                                            <Skeleton className="h-8 w-full" />
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : rows.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={7} className="py-12">
+                                        <div className="flex flex-col items-center gap-2 text-center">
+                                            <ListNumbers
+                                                size={32}
+                                                weight="duotone"
+                                                className="text-neutral-300"
+                                            />
+                                            <p className="text-body font-medium text-neutral-600">
+                                                {status === 'ACTIVE'
+                                                    ? 'Nothing in the queue — no AI calls are waiting or in progress.'
+                                                    : status === 'QUEUED'
+                                                      ? 'Nothing is waiting — AI calls are going out as they are requested.'
+                                                      : status === 'LIVE'
+                                                        ? 'No AI calls are on a call right now.'
+                                                        : 'No calls in this state.'}
+                                            </p>
+                                            <p className="max-w-md text-caption text-neutral-500">
+                                                Calls enter the queue from a bulk AI call, a
+                                                workflow AI-call step, or a manual AI call when
+                                                every line is busy.
+                                            </p>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                rows.map((item) => (
+                                    <QueueRow
+                                        key={item.id}
+                                        item={item}
+                                        onCancel={() => cancelOne.mutate(item.id)}
+                                        cancelling={cancelOne.isPending}
+                                    />
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
                 </div>
-            )}
+
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-end gap-2 border-t border-neutral-100 px-4 py-3">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            disable={page <= 0}
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        >
+                            Previous
+                        </MyButton>
+                        <span className="text-caption text-neutral-600">
+                            Page {page + 1} of {totalPages}
+                        </span>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            disable={page + 1 >= totalPages}
+                            onClick={() => setPage((p) => p + 1)}
+                        >
+                            Next
+                        </MyButton>
+                    </div>
+                )}
+            </Card>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {/* The runs this page already loads for the source filter, as a list
+                    you can jump back into. */}
+                <Card className="rounded-xl border-neutral-200 p-4 shadow-sm lg:col-span-2">
+                    <div className="mb-3 flex items-center gap-2">
+                        <UsersThree size={16} className="text-neutral-500" />
+                        <h3 className="text-subtitle font-semibold text-neutral-800">
+                            Campaign runs
+                        </h3>
+                        <span className="text-caption text-neutral-500">· latest bulk runs</span>
+                    </div>
+                    {runs.isLoading ? (
+                        <div className="flex flex-col gap-2">
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                        </div>
+                    ) : (runs.data?.length ?? 0) === 0 ? (
+                        <p className="text-body text-neutral-500">
+                            No bulk AI-call runs yet. A run appears here when you call a list of
+                            leads with AI.
+                        </p>
+                    ) : (
+                        <div className="flex flex-col divide-y divide-neutral-100">
+                            {runs.data?.map((r) => (
+                                <div
+                                    key={r.audienceId}
+                                    className="flex flex-wrap items-center gap-3 py-2.5"
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-body font-medium text-neutral-800">
+                                            {r.name}
+                                        </p>
+                                        <p className="text-caption text-neutral-500">
+                                            {r.total} call{r.total === 1 ? '' : 's'} queued
+                                            {r.startedAt
+                                                ? ` · started ${new Date(r.startedAt).toLocaleString()}`
+                                                : ''}
+                                        </p>
+                                    </div>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        disable={runId === r.audienceId}
+                                        onClick={() => {
+                                            setRunId(r.audienceId);
+                                            setStatus('ALL');
+                                            setPage(0);
+                                        }}
+                                    >
+                                        {runId === r.audienceId ? 'Showing' : 'Show calls'}
+                                    </MyButton>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Card>
+
+                <Card className="rounded-xl border-neutral-200 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2">
+                        <Info size={16} className="text-neutral-500" />
+                        <h3 className="text-subtitle font-semibold text-neutral-800">
+                            How the queue works
+                        </h3>
+                    </div>
+                    <ul className="flex list-disc flex-col gap-1.5 pl-4 text-caption text-neutral-600">
+                        <li>
+                            <span className="font-semibold">Only AI calls</span> queue. A
+                            counsellor&apos;s click-to-call never waits here.
+                        </li>
+                        <li>
+                            <span className="font-semibold">Pause</span> holds every waiting call;
+                            nothing is cancelled. <span className="font-semibold">Cancel</span>{' '}
+                            removes calls for good.
+                        </li>
+                        <li>
+                            &ldquo;#&rdquo; is the place in your institute&apos;s line;{' '}
+                            <span className="font-semibold">Waits</span> is an estimated time.
+                        </li>
+                        <li>Calls outside the calling shift wait until the next shift.</li>
+                    </ul>
+                </Card>
+            </div>
         </div>
     );
 }
@@ -435,16 +602,6 @@ function QueueRow({
                 )}
             </TableCell>
         </TableRow>
-    );
-}
-
-function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-    return (
-        <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-            <div className="text-xs text-neutral-600">{label}</div>
-            <div className="mt-1 text-xl font-semibold text-neutral-900">{value}</div>
-            <div className="text-xs text-neutral-500">{hint}</div>
-        </div>
     );
 }
 

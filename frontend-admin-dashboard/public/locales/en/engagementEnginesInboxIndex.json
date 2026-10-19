@@ -18,7 +18,8 @@
     "priority": "priority {{value}}",
     "kind": {
         "reply": "Reply",
-        "autoSend": "Auto-send"
+        "autoSend": "Auto-send",
+        "task": "Task"
     },
     "actions": {
         "reviewAndSend": "Review & send",
@@ -36,5 +37,43 @@
         "sending": "Sending…",
         "sendNow": "Send now"
     },
-    "needsTemplate": "WhatsApp can only send an approved template, and this task has none. Handle it another way, or dismiss it."
+    "needsTemplate": "WhatsApp can only send an approved template, and this task has none. Handle it another way, or dismiss it.",
+    "toolbar": {
+        "search": "Search drafts, reasons, engines or templates",
+        "allEngines": "All engines",
+        "allChannels": "All channels",
+        "allKinds": "All kinds",
+        "kindTask": "Tasks only",
+        "kindReply": "Replies only",
+        "kindSend": "Auto-sends only",
+        "sortPriority": "Priority first",
+        "sortOldest": "Oldest first",
+        "sortNewest": "Newest first",
+        "pageNote": "Search and filters apply to the tasks on this page."
+    },
+    "filteredEmpty": "No tasks on this page match these filters.",
+    "priorityShort": "P{{value}}",
+    "age": {
+        "minutes": "{{count}}m",
+        "hours": "{{count}}h",
+        "days": "{{count}}d"
+    },
+    "detail": {
+        "why": "Why the AI picked this",
+        "draft": "Draft",
+        "sentMessage": "Sent message",
+        "callBrief": "Call brief",
+        "template": "Template {{name}}",
+        "simulated": "Dry-run draft — nothing was sent",
+        "timing": "Timing",
+        "created": "Drafted",
+        "scheduledFor": "Scheduled for",
+        "expiresAt": "Expires",
+        "dispatchedAt": "Dispatched",
+        "completedAt": "Completed",
+        "outcome": "Outcome",
+        "openEngine": "Open engine",
+        "draftedAgo": "Drafted {{age}} ago"
+    },
+    "footnote": "A send whose delivery can’t be confirmed moves to Failed. Dry-run drafts stay in their own bucket and are never sent."
 }

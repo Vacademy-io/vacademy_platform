@@ -61,5 +61,10 @@
         "hot": "HOT",
         "warm": "WARM",
         "cold": "COLD"
+    },
+    "pageSubtitle": "Responses to your enquiry forms — follow up, then convert to an application or admission.",
+    "formStatus": "Form {{status}}",
+    "quickViews": {
+        "all": "All enquiries"
     }
 }

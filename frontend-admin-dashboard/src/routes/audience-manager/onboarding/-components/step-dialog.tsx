@@ -13,7 +13,7 @@
  * be handed to a COUNSELLOR or any custom role, which is what lets a non-admin staff
  * member actually work the step.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -31,6 +31,9 @@ import { RoleAccessGrid } from './role-access-grid';
 import { StepFieldConfigEditor, newFieldRowFromCatalog, type FieldRow } from './step-field-config-editor';
 import { StepWorkflowTriggersCard } from './step-workflow-triggers-card';
 import { MultiSelect } from '@/components/design-system/multi-select';
+import type { Icon } from '@phosphor-icons/react';
+import { instituteTerms } from '@/components/shared/crm-enhance/institute-terms';
+import { ClipboardText, GraduationCap, ListBullets, ShieldCheck } from '@phosphor-icons/react';
 import {
     createOnboardingStep,
     updateOnboardingStep,
@@ -317,77 +320,73 @@ export function StepDialog({
             dialogWidth="max-w-2xl"
         >
             <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5 px-6 py-6">
-                    <FormField
-                        control={form.control}
-                        name="step_name"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>{t('fields.stepName.label')}</FormLabel>
-                                <FormControl>
-                                    <MyInput
-                                        inputType="text"
-                                        inputPlaceholder={t('fields.stepName.placeholder')}
-                                        input={field.value}
-                                        onChangeFunction={field.onChange}
-                                        required
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4 p-6">
+                    <DialogSection icon={ClipboardText} title={t('sections.step')}>
+                        <FormField
+                            control={form.control}
+                            name="step_name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>{t('fields.stepName.label')}</FormLabel>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="text"
+                                            inputPlaceholder={t('fields.stepName.placeholder')}
+                                            input={field.value}
+                                            onChangeFunction={field.onChange}
+                                            required
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
 
-                    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="step-optional" className="cursor-pointer text-body">
-                                {t('switches.optional')}
-                            </Label>
-                            <Switch
+                        <div className="flex flex-col divide-y divide-neutral-100">
+                            <SwitchRow
                                 id="step-optional"
+                                label={t('switches.optional')}
+                                hint={t('switchHints.optional')}
                                 checked={form.watch('is_optional')}
                                 onCheckedChange={(v) => form.setValue('is_optional', v, { shouldDirty: true })}
                             />
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="step-grants-role" className="cursor-pointer text-body">
-                                {t('switches.grantsStudentRole')}
-                            </Label>
-                            <Switch
+                            <SwitchRow
                                 id="step-grants-role"
+                                label={t('switches.grantsStudentRole')}
                                 checked={form.watch('grants_student_role')}
                                 onCheckedChange={(v) =>
                                     form.setValue('grants_student_role', v, { shouldDirty: true })
                                 }
                             />
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="step-sends-creds" className="cursor-pointer text-body">
-                                {t('switches.sendsLoginCredentials')}
-                            </Label>
-                            <Switch
+                            <SwitchRow
                                 id="step-sends-creds"
+                                label={t('switches.sendsLoginCredentials')}
                                 checked={form.watch('sends_login_credentials')}
                                 onCheckedChange={(v) =>
                                     form.setValue('sends_login_credentials', v, { shouldDirty: true })
                                 }
                             />
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="step-create-student" className="cursor-pointer text-body">
-                                {t('switches.createStudent')}
-                            </Label>
-                            <Switch
+                            <SwitchRow
                                 id="step-create-student"
+                                label={t('switches.createStudent')}
+                                hint={t('switchHints.createStudent', {
+                                    course: instituteTerms().course.toLowerCase(),
+                                })}
                                 checked={form.watch('create_student')}
                                 onCheckedChange={(v) =>
                                     form.setValue('create_student', v, { shouldDirty: true })
                                 }
                             />
                         </div>
-                        {form.watch('create_student') && (
+                    </DialogSection>
+
+                    {form.watch('create_student') && (
+                        <DialogSection
+                            icon={GraduationCap}
+                            title={t('fields.coursePool.label')}
+                            description={t('fields.coursePool.helperText')}
+                        >
                             <FormItem>
-                                <FormLabel>{t('fields.coursePool.label')}</FormLabel>
                                 <FormControl>
                                     <MultiSelect
                                         options={poolOptions}
@@ -401,35 +400,27 @@ export function StepDialog({
                                         disabled={poolOptionsQuery.isLoading}
                                     />
                                 </FormControl>
-                                <p className="text-caption text-neutral-500">
-                                    {t('fields.coursePool.helperText')}
-                                </p>
                             </FormItem>
-                        )}
-                        {form.watch('create_student') && (
-                            <div className="flex items-center justify-between">
-                                <Label htmlFor="step-skip-if-enrolled" className="cursor-pointer text-body">
-                                    {t('switches.skipIfAlreadyEnrolled')}
-                                </Label>
-                                <Switch
-                                    id="step-skip-if-enrolled"
-                                    checked={form.watch('skip_if_already_enrolled')}
-                                    onCheckedChange={(v) =>
-                                        form.setValue('skip_if_already_enrolled', v, { shouldDirty: true })
-                                    }
-                                />
-                            </div>
-                        )}
-                    </div>
+                            <SwitchRow
+                                id="step-skip-if-enrolled"
+                                label={t('switches.skipIfAlreadyEnrolled')}
+                                checked={form.watch('skip_if_already_enrolled')}
+                                onCheckedChange={(v) =>
+                                    form.setValue('skip_if_already_enrolled', v, {
+                                        shouldDirty: true,
+                                    })
+                                }
+                            />
+                        </DialogSection>
+                    )}
 
-                    <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">{t('sections.stepAccess')}</Label>
+                    <DialogSection icon={ShieldCheck} title={t('sections.stepAccess')}>
                         <RoleAccessGrid
                             value={roleAccess}
                             onChange={setRoleAccess}
                             assignableRoles={assignableRoles}
                         />
-                    </div>
+                    </DialogSection>
 
                     {isEditing && editingStep && (
                         <StepWorkflowTriggersCard
@@ -439,8 +430,11 @@ export function StepDialog({
                         />
                     )}
 
-                    <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">{t('sections.formFields')}</Label>
+                    <DialogSection
+                        icon={ListBullets}
+                        title={t('sections.formFields')}
+                        description={t('sections.formFieldsHint')}
+                    >
                         {loadingFields ? (
                             <div className="text-caption text-neutral-500">{t('sections.loadingFields')}</div>
                         ) : (
@@ -453,9 +447,64 @@ export function StepDialog({
                                 onPendingSelectionChange={setHasPendingFieldSelection}
                             />
                         )}
-                    </div>
+                    </DialogSection>
                 </form>
             </Form>
         </MyDialog>
+    );
+}
+
+/** A titled block of the step dialog. */
+function DialogSection({
+    icon: IconCmp,
+    title,
+    description,
+    children,
+}: {
+    icon: Icon;
+    title: string;
+    description?: string;
+    children: ReactNode;
+}) {
+    return (
+        <section className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="flex items-start gap-2.5">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                    <IconCmp size={16} weight="duotone" />
+                </span>
+                <div className="min-w-0">
+                    <h3 className="text-body font-semibold text-neutral-900">{title}</h3>
+                    {description && <p className="text-caption text-neutral-500">{description}</p>}
+                </div>
+            </div>
+            {children}
+        </section>
+    );
+}
+
+/** One labelled switch, with an optional line explaining it. */
+function SwitchRow({
+    id,
+    label,
+    hint,
+    checked,
+    onCheckedChange,
+}: {
+    id: string;
+    label: string;
+    hint?: string;
+    checked: boolean;
+    onCheckedChange: (v: boolean) => void;
+}) {
+    return (
+        <div className="flex items-center justify-between gap-4 py-2.5">
+            <div className="min-w-0">
+                <Label htmlFor={id} className="cursor-pointer text-body">
+                    {label}
+                </Label>
+                {hint && <p className="text-caption text-neutral-500">{hint}</p>}
+            </div>
+            <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+        </div>
     );
 }

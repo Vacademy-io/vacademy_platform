@@ -74,7 +74,10 @@
         "viewingDeletedButton": "عرض المحذوفين",
         "exporting": "جارٍ التصدير…",
         "export": "تصدير",
-        "addLead": "إضافة عميل محتمل"
+        "addLead": "إضافة عميل محتمل",
+        "filters": "عوامل التصفية",
+        "summaryShow": "إظهار الملخص",
+        "summaryHide": "إخفاء الملخص"
     },
     "chips": {
         "search": "بحث: {{query}}",
@@ -188,5 +191,17 @@
         "bulkStatusUnchanged_other": null,
         "bulkStatusPartial": null,
         "bulkStatusFailed": null
+    },
+    "filtersPanel": {
+        "title": "عوامل التصفية",
+        "active": "{{count}} نشطة",
+        "close": "إغلاق عوامل التصفية",
+        "sections": {
+            "pipeline": "مسار المبيعات",
+            "owner": "المسؤول والمصدر",
+            "activity": "النشاط",
+            "campaign": "روابط الحملات",
+            "custom": "حقول مخصصة"
+        }
     }
 }

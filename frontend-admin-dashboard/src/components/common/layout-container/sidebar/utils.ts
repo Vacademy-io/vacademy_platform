@@ -31,6 +31,7 @@ import {
     ChartLineUp,
     SealCheck,
     UserCircle,
+    SquaresFour,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -290,6 +291,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:instituteOverview'),
+                subItemLink: '/manage-institute/overview',
+                subItemId: 'institute-overview',
+                adminOnly: true,
+            },
+            {
                 subItem: getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch),
                 subItemLink: '/manage-institute/batches',
                 subItemId: 'batches',
@@ -344,6 +351,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'manage-contacts',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:contactsDashboard'),
+                subItemLink: '/manage-contacts/dashboard',
+                subItemId: 'contacts-dashboard',
+                adminOnly: true,
+            },
             {
                 subItem: sidebarT('sidebar:allContacts'),
                 subItemLink: '/manage-contacts',
@@ -473,6 +486,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:messagingDashboard'),
+                subItemLink: '/communication/dashboard',
+                subItemId: 'messaging-dashboard',
+                adminOnly: true,
+            },
+            {
                 subItem: sidebarT('sidebar:inAppMessages'),
                 subItemLink: '/chat',
                 subItemId: 'chat',
@@ -526,6 +545,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'automations',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:automationDashboard'),
+                subItemLink: '/automation/dashboard',
+                subItemId: 'automation-dashboard',
+                adminOnly: true,
+            },
             {
                 subItem: sidebarT('sidebar:workflows'),
                 subItemLink: '/workflow/list',
@@ -635,6 +660,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: sidebarT('sidebar:callingDashboard'),
+                subItemLink: '/calling/dashboard',
+                subItemId: 'calling-dashboard',
+            },
+            {
                 subItem: sidebarT('sidebar:callLog'),
                 subItemLink: '/audience-manager/call-log',
                 subItemId: 'calling-call-log',
@@ -667,6 +697,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'meetings',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:meetingsDashboard'),
+                subItemLink: '/meetings/dashboard',
+                subItemId: 'meetings-dashboard',
+            },
             {
                 subItem: sidebarT('sidebar:mySchedule'),
                 subItemLink: '/meetings/my-schedule',
@@ -722,6 +757,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'engagement-engines',
         category: 'CRM',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:engagementDashboard'),
+                subItemLink: '/engagement-engines/dashboard',
+                subItemId: 'engagement-dashboard',
+                adminOnly: true,
+            },
             {
                 subItem: sidebarT('sidebar:engines'),
                 subItemLink: '/engagement-engines',
@@ -957,6 +998,15 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
 
     // LMS
+    // LMS Dashboard — the learning cards moved off the home page. Shown only to roles
+    // whose home is the CRM Dashboard (mySidebar.tsx shows it only to people whose sidebar has Leads).
+    {
+        icon: SquaresFour,
+        title: sidebarT('sidebar:lmsDashboard'),
+        id: 'lms-dashboard',
+        to: '/lms-dashboard',
+        category: 'LMS',
+    },
     {
         icon: Books,
         title: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),

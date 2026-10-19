@@ -18,14 +18,17 @@
         "retry": "Réessayer",
         "cancel": "Annuler",
         "deleting": "Suppression…",
-        "deleteFlow": "Supprimer le parcours"
+        "deleteFlow": "Supprimer le parcours",
+        "settings": "Onboarding settings"
     },
     "columns": {
         "name": "Nom",
         "description": "Description",
         "status": "Statut",
         "steps": "Étapes",
-        "actions": "Actions"
+        "actions": "Actions",
+        "noSteps": "No steps yet",
+        "updated": "Updated"
     },
     "statusLabels": {
         "draft": "Brouillon",
@@ -46,5 +49,18 @@
     "toasts": {
         "deleted": "Parcours d'intégration supprimé",
         "deleteError": "Impossible de supprimer le parcours. Veuillez réessayer."
+    },
+    "summary": {
+        "activeFlows": "Active flows",
+        "drafts_one": "{{count}} draft not live yet",
+        "drafts_other": "{{count}} drafts not live yet",
+        "inProgress": "In progress",
+        "inProgressDetail": "People part-way through a flow",
+        "completed": "Completed",
+        "abandoned": "Abandoned"
+    },
+    "table": {
+        "title": "Flows",
+        "subtitle": "Deleting a flow archives it — people already on it keep going."
     }
 }

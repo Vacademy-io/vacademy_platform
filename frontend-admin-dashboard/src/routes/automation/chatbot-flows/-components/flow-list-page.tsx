@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FlowsEnhancedCounts } from './FlowsEnhancedCounts';
 import { useNavigate } from '@tanstack/react-router';
 import { Plus, Copy, Trash, Play, Pause, ChartBar, Warning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -180,6 +181,10 @@ export function FlowListPage() {
                     </button>
                 ))}
             </div>
+
+            {tab !== 'usage' && !loading && (
+                <FlowsEnhancedCounts statuses={flows.map((f) => f.status ?? 'DRAFT')} />
+            )}
 
             {tab === 'usage' ? (
                 <FlowAiUsagePanel />

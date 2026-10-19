@@ -39,5 +39,8 @@
     },
     "table": {
         "sortBy": "Sort by {{label}}"
+    },
+    "planCounts": {
+        "all": "All"
     }
 }

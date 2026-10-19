@@ -52,5 +52,9 @@
         "overdueTooltip": "Overdue: {{percent}}%",
         "dueTooltip": "Due: {{percent}}%",
         "paidLabel": "{{percent}}% paid"
+    },
+    "redesign": {
+        "rosterTitle": "Fee roster",
+        "rosterHint": "· click a row for the fee-type breakdown, the eye icon for every installment"
     }
 }

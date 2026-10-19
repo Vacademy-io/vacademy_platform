@@ -4,6 +4,7 @@
  * shows one person at a time; this is for the admin who needs to see who's
  * pending, on which flow, and stuck at which step, across the whole institute.
  */
+import { OnboardingEnhancedHeader } from './OnboardingEnhancedHeader';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -161,6 +162,17 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
                 <h1 className="text-h1 font-medium text-neutral-900">{t('page.title')}</h1>
                 <p className="text-subtitle text-neutral-500">{t('page.subtitle')}</p>
             </div>
+
+            {/* Summary header. */}
+            <OnboardingEnhancedHeader
+                instituteId={instituteId}
+                flowId={effectiveFlowId}
+                status={effectiveStatus}
+                onStatus={(next) => {
+                    setStatus(next ?? ALL_VALUE);
+                    setPage(0);
+                }}
+            />
 
             <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1">

@@ -76,5 +76,19 @@
     "formText": {
         "title": "Titre et texte du formulaire",
         "description": "Le titre en haut du formulaire public (par défaut le nom de cette liste) et le texte au-dessus des champs — aligné à gauche, au centre ou à droite."
+    },
+    "wizard": {
+        "ariaLabel": "Steps",
+        "steps": {
+            "basics": "Basics",
+            "fields": "Form fields",
+            "afterSubmit": "After submit",
+            "appearance": "Appearance",
+            "notify": "Notifications & scoring"
+        },
+        "stepOf": "Step {{current}} of {{total}}",
+        "back": "Back",
+        "next": "Next: {{step}}",
+        "hasErrors": "This step has errors"
     }
 }

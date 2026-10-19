@@ -6,7 +6,8 @@
         "opened": "المفتوحة",
         "clicked": "المنقور عليها",
         "bounced": "المرتدة",
-        "inbound": "الردود الواردة"
+        "inbound": "الردود الواردة",
+        "complaints": "الشكاوى"
     },
     "waStats": {
         "out": "واتساب صادر",
@@ -32,5 +33,14 @@
     "batchesCompleted_few": "الدفعات المكتملة ({{count}} أيام)",
     "batchesCompleted_many": "الدفعات المكتملة ({{count}} يومًا)",
     "batchesCompleted_other": "الدفعات المكتملة ({{count}} يوم)",
-    "viewStat": "عرض {{label}}"
+    "viewStat": "عرض {{label}}",
+    "rates": {
+        "ofSent": "{{rate}} من المُرسَل",
+        "open": "معدل الفتح {{rate}}",
+        "click": "معدل النقر {{rate}}",
+        "bounce": "معدل الارتداد {{rate}}",
+        "complaints": "تم وضع علامة كرسائل مزعجة"
+    },
+    "windowLabel_one": "آخر 24 ساعة",
+    "windowLabel_other": "آخر {{count}} يومًا"
 }

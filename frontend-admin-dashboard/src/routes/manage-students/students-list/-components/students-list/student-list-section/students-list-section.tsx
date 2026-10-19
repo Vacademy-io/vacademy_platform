@@ -308,10 +308,14 @@ export const StudentsListSection = () => {
     // Header badge counts (Total / Active / Inactive) — independent of the status
     // filter so the breakdown is always visible. Pass the same pinned
     // package_session_id the table uses so counts match in the Course Details tab.
+    // The Invited badge shows on the learner list only, not when this section is
+    // pinned to one batch inside Course Details.
+    const learnersEnhanced = !search.package_session_id;
     const studentCounts = useStudentCounts(
         appliedFilters,
         !isLoading && showCountBadges,
-        search.package_session_id ? [search.package_session_id] : null
+        search.package_session_id ? [search.package_session_id] : null,
+        learnersEnhanced
     );
 
     const leadSettings = useLeadSettings();
@@ -421,6 +425,7 @@ export const StudentsListSection = () => {
                             total={studentCounts.total}
                             active={studentCounts.active}
                             inactive={studentCounts.inactive}
+                            invited={studentCounts.invited}
                             countsLoading={studentCounts.isLoading}
                         />
                     </InviteFormProvider>

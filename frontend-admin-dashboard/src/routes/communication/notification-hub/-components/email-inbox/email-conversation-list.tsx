@@ -69,11 +69,11 @@ export function EmailConversationList({
     return (
         <aside
             className={cn(
-                'w-full md:w-80 shrink-0 border-r flex-col bg-card',
+                'w-full shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 md:w-80',
                 selectedEmail ? 'hidden md:flex' : 'flex'
             )}
         >
-            <div className="p-3 border-b">
+            <div className="border-b border-neutral-200 bg-white p-3">
                 <div className="relative">
                     <MagnifyingGlass
                         size={14}
@@ -132,7 +132,7 @@ export function EmailConversationList({
                             </div>
                         )}
                         {!hasMore && conversations.length > 0 && (
-                            <p className="text-center text-[11px] text-muted-foreground py-3">
+                            <p className="py-3 text-center text-caption text-neutral-400">
                                 {t('endOfConversations')}
                             </p>
                         )}
@@ -175,7 +175,7 @@ function ConversationRow({
                     'w-full text-left px-3 py-3 flex items-start gap-3 transition-colors',
                     selected
                         ? 'border-l-2 border-l-primary-500 bg-primary-50'
-                        : 'border-l-2 border-l-transparent hover:bg-muted/60'
+                        : 'border-l-2 border-l-transparent bg-white hover:bg-neutral-50'
                 )}
             >
                 <Avatar className="h-9 w-9 shrink-0">
@@ -194,13 +194,13 @@ function ConversationRow({
                         >
                             {display}
                         </p>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                        <span className="shrink-0 whitespace-nowrap text-caption text-neutral-400">
                             {c.lastMessageTime ? formatTime(c.lastMessageTime, t, locale) : ''}
                         </span>
                     </div>
 
                     {system && (
-                        <p className="flex items-center gap-1 truncate text-xs font-medium text-amber-700">
+                        <p className="flex items-center gap-1 truncate text-xs font-medium text-warning-700">
                             <Warning size={12} weight="fill" className="shrink-0" />
                             {t('deliveryFailed')}
                         </p>
@@ -220,7 +220,7 @@ function ConversationRow({
                             {system ? (
                                 <Warning
                                     size={12}
-                                    className="shrink-0 text-amber-600"
+                                    className="shrink-0 text-warning-600"
                                     weight="fill"
                                 />
                             ) : (
@@ -231,7 +231,7 @@ function ConversationRow({
                         {unread > 0 && (
                             <Badge
                                 variant="default"
-                                className="h-5 min-w-[20px] px-1.5 text-[10px] flex items-center justify-center"
+                                className="flex h-5 min-w-5 items-center justify-center px-1.5 text-2xs"
                             >
                                 {unread > 99 ? '99+' : unread}
                             </Badge>
@@ -247,7 +247,7 @@ function DirectionIcon({ outgoing }: { outgoing: boolean }) {
     return outgoing ? (
         <PaperPlaneTilt size={12} className="shrink-0 text-primary-500" weight="fill" />
     ) : (
-        <ArrowFatDown size={12} className="text-emerald-600 shrink-0" weight="fill" />
+        <ArrowFatDown size={12} className="shrink-0 text-success-600" weight="fill" />
     );
 }
 

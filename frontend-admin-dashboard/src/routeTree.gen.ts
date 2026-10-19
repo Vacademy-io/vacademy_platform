@@ -36,6 +36,7 @@ import { Route as ManageCustomTeamsIndexRouteImport } from "./routes/manage-cust
 import { Route as ManageContactsIndexRouteImport } from "./routes/manage-contacts/index"
 import { Route as ManageBookingsIndexRouteImport } from "./routes/manage-bookings/index"
 import { Route as LoginIndexRouteImport } from "./routes/login/index"
+import { Route as LmsDashboardIndexRouteImport } from "./routes/lms-dashboard/index"
 import { Route as LiveActivityIndexRouteImport } from "./routes/live-activity/index"
 import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insights/index"
 import { Route as KnowledgeBaseIndexRouteImport } from "./routes/knowledge-base/index"
@@ -95,6 +96,7 @@ import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/
 import { Route as MentorshipDashboardIndexRouteImport } from "./routes/mentorship/dashboard/index"
 import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
 import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
+import { Route as MeetingsDashboardIndexRouteImport } from "./routes/meetings/dashboard/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
@@ -102,7 +104,9 @@ import { Route as ManagePagesProductPagesIndexRouteImport } from "./routes/manag
 import { Route as ManagePagesBlogIndexRouteImport } from "./routes/manage-pages/blog/index"
 import { Route as ManageInstituteTeamsIndexRouteImport } from "./routes/manage-institute/teams/index"
 import { Route as ManageInstituteSessionsIndexRouteImport } from "./routes/manage-institute/sessions/index"
+import { Route as ManageInstituteOverviewIndexRouteImport } from "./routes/manage-institute/overview/index"
 import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage-institute/batches/index"
+import { Route as ManageContactsDashboardIndexRouteImport } from "./routes/manage-contacts/dashboard/index"
 import { Route as LoginForgotPasswordIndexRouteImport } from "./routes/login/forgot-password/index"
 import { Route as LoginKeyIndexRouteImport } from "./routes/login/$key/index"
 import { Route as HomeworkCreationAssessmentListIndexRouteImport } from "./routes/homework-creation/assessment-list/index"
@@ -120,15 +124,19 @@ import { Route as ErpLeaveIndexRouteImport } from "./routes/erp/leave/index"
 import { Route as ErpComplianceIndexRouteImport } from "./routes/erp/compliance/index"
 import { Route as ErpAttendanceIndexRouteImport } from "./routes/erp/attendance/index"
 import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
+import { Route as EngagementEnginesDashboardIndexRouteImport } from "./routes/engagement-engines/dashboard/index"
 import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
 import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
+import { Route as CommunicationDashboardIndexRouteImport } from "./routes/communication/dashboard/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
+import { Route as CallingDashboardIndexRouteImport } from "./routes/calling/dashboard/index"
 import { Route as CallingCallQueueIndexRouteImport } from "./routes/calling/call-queue/index"
 import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
+import { Route as AutomationDashboardIndexRouteImport } from "./routes/automation/dashboard/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
@@ -429,6 +437,13 @@ const LoginIndexRoute = LoginIndexRouteImport.update({
   path: "/login/",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/login/index.lazy").then((d) => d.Route))
+const LmsDashboardIndexRoute = LmsDashboardIndexRouteImport.update({
+  id: "/lms-dashboard/",
+  path: "/lms-dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/lms-dashboard/index.lazy").then((d) => d.Route),
+)
 const LiveActivityIndexRoute = LiveActivityIndexRouteImport.update({
   id: "/live-activity/",
   path: "/live-activity/",
@@ -853,6 +868,13 @@ const MeetingsMyScheduleIndexRoute = MeetingsMyScheduleIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/meetings/my-schedule/index.lazy").then((d) => d.Route),
 )
+const MeetingsDashboardIndexRoute = MeetingsDashboardIndexRouteImport.update({
+  id: "/meetings/dashboard/",
+  path: "/meetings/dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/meetings/dashboard/index.lazy").then((d) => d.Route),
+)
 const ManageStudentsStudentsListIndexRoute =
   ManageStudentsStudentsListIndexRouteImport.update({
     id: "/manage-students/students-list/",
@@ -912,6 +934,16 @@ const ManageInstituteSessionsIndexRoute =
       (d) => d.Route,
     ),
   )
+const ManageInstituteOverviewIndexRoute =
+  ManageInstituteOverviewIndexRouteImport.update({
+    id: "/manage-institute/overview/",
+    path: "/manage-institute/overview/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-institute/overview/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const ManageInstituteBatchesIndexRoute =
   ManageInstituteBatchesIndexRouteImport.update({
     id: "/manage-institute/batches/",
@@ -919,6 +951,16 @@ const ManageInstituteBatchesIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/manage-institute/batches/index.lazy").then((d) => d.Route),
+  )
+const ManageContactsDashboardIndexRoute =
+  ManageContactsDashboardIndexRouteImport.update({
+    id: "/manage-contacts/dashboard/",
+    path: "/manage-contacts/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-contacts/dashboard/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const LoginForgotPasswordIndexRoute =
   LoginForgotPasswordIndexRouteImport.update({
@@ -1063,6 +1105,16 @@ const EngagementEnginesInboxIndexRoute =
   } as any).lazy(() =>
     import("./routes/engagement-engines/inbox/index.lazy").then((d) => d.Route),
   )
+const EngagementEnginesDashboardIndexRoute =
+  EngagementEnginesDashboardIndexRouteImport.update({
+    id: "/engagement-engines/dashboard/",
+    path: "/engagement-engines/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/dashboard/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const EngagementEnginesCreateIndexRoute =
   EngagementEnginesCreateIndexRouteImport.update({
     id: "/engagement-engines/create/",
@@ -1115,6 +1167,14 @@ const CommunicationInboxIndexRoute = CommunicationInboxIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/communication/inbox/index.lazy").then((d) => d.Route),
 )
+const CommunicationDashboardIndexRoute =
+  CommunicationDashboardIndexRouteImport.update({
+    id: "/communication/dashboard/",
+    path: "/communication/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/communication/dashboard/index.lazy").then((d) => d.Route),
+  )
 const CertificateGenerationStudentDataIndexRoute =
   CertificateGenerationStudentDataIndexRouteImport.update({
     id: "/certificate-generation/student-data/",
@@ -1125,6 +1185,13 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
+const CallingDashboardIndexRoute = CallingDashboardIndexRouteImport.update({
+  id: "/calling/dashboard/",
+  path: "/calling/dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/dashboard/index.lazy").then((d) => d.Route),
+)
 const CallingCallQueueIndexRoute = CallingCallQueueIndexRouteImport.update({
   id: "/calling/call-queue/",
   path: "/calling/call-queue/",
@@ -1139,6 +1206,14 @@ const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
 )
+const AutomationDashboardIndexRoute =
+  AutomationDashboardIndexRouteImport.update({
+    id: "/automation/dashboard/",
+    path: "/automation/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/automation/dashboard/index.lazy").then((d) => d.Route),
+  )
 const AutomationChatbotFlowsIndexRoute =
   AutomationChatbotFlowsIndexRouteImport.update({
     id: "/automation/chatbot-flows/",
@@ -2116,6 +2191,7 @@ export interface FileRoutesByFullPath {
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/live-activity/": typeof LiveActivityIndexRoute
+  "/lms-dashboard/": typeof LmsDashboardIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
   "/manage-contacts/": typeof ManageContactsIndexRoute
@@ -2179,15 +2255,19 @@ export interface FileRoutesByFullPath {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/automation/dashboard/": typeof AutomationDashboardIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/calling/call-queue/": typeof CallingCallQueueIndexRoute
+  "/calling/dashboard/": typeof CallingDashboardIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/dashboard/": typeof CommunicationDashboardIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/dashboard/": typeof EngagementEnginesDashboardIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
@@ -2205,7 +2285,9 @@ export interface FileRoutesByFullPath {
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
+  "/manage-contacts/dashboard/": typeof ManageContactsDashboardIndexRoute
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
+  "/manage-institute/overview/": typeof ManageInstituteOverviewIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
@@ -2213,6 +2295,7 @@ export interface FileRoutesByFullPath {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/dashboard/": typeof MeetingsDashboardIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
@@ -2354,6 +2437,7 @@ export interface FileRoutesByTo {
   "/knowledge-base": typeof KnowledgeBaseIndexRoute
   "/learner-insights": typeof LearnerInsightsIndexRoute
   "/live-activity": typeof LiveActivityIndexRoute
+  "/lms-dashboard": typeof LmsDashboardIndexRoute
   "/login": typeof LoginIndexRoute
   "/manage-bookings": typeof ManageBookingsIndexRoute
   "/manage-contacts": typeof ManageContactsIndexRoute
@@ -2417,15 +2501,19 @@ export interface FileRoutesByTo {
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
+  "/automation/dashboard": typeof AutomationDashboardIndexRoute
   "/calling/ai-agents": typeof CallingAiAgentsIndexRoute
   "/calling/call-queue": typeof CallingCallQueueIndexRoute
+  "/calling/dashboard": typeof CallingDashboardIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/dashboard": typeof CommunicationDashboardIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/dashboard": typeof EngagementEnginesDashboardIndexRoute
   "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
   "/erp/attendance": typeof ErpAttendanceIndexRoute
   "/erp/compliance": typeof ErpComplianceIndexRoute
@@ -2443,7 +2531,9 @@ export interface FileRoutesByTo {
   "/homework-creation/assessment-list": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key": typeof LoginKeyIndexRoute
   "/login/forgot-password": typeof LoginForgotPasswordIndexRoute
+  "/manage-contacts/dashboard": typeof ManageContactsDashboardIndexRoute
   "/manage-institute/batches": typeof ManageInstituteBatchesIndexRoute
+  "/manage-institute/overview": typeof ManageInstituteOverviewIndexRoute
   "/manage-institute/sessions": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog": typeof ManagePagesBlogIndexRoute
@@ -2451,6 +2541,7 @@ export interface FileRoutesByTo {
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/dashboard": typeof MeetingsDashboardIndexRoute
   "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team": typeof MeetingsTeamIndexRoute
   "/mentorship/dashboard": typeof MentorshipDashboardIndexRoute
@@ -2594,6 +2685,7 @@ export interface FileRoutesById {
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/live-activity/": typeof LiveActivityIndexRoute
+  "/lms-dashboard/": typeof LmsDashboardIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
   "/manage-contacts/": typeof ManageContactsIndexRoute
@@ -2657,15 +2749,19 @@ export interface FileRoutesById {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/automation/dashboard/": typeof AutomationDashboardIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/calling/call-queue/": typeof CallingCallQueueIndexRoute
+  "/calling/dashboard/": typeof CallingDashboardIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/dashboard/": typeof CommunicationDashboardIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/dashboard/": typeof EngagementEnginesDashboardIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
@@ -2683,7 +2779,9 @@ export interface FileRoutesById {
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
+  "/manage-contacts/dashboard/": typeof ManageContactsDashboardIndexRoute
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
+  "/manage-institute/overview/": typeof ManageInstituteOverviewIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
   "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
@@ -2691,6 +2789,7 @@ export interface FileRoutesById {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/dashboard/": typeof MeetingsDashboardIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
@@ -2835,6 +2934,7 @@ export interface FileRouteTypes {
     | "/knowledge-base/"
     | "/learner-insights/"
     | "/live-activity/"
+    | "/lms-dashboard/"
     | "/login/"
     | "/manage-bookings/"
     | "/manage-contacts/"
@@ -2898,15 +2998,19 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/automation/dashboard/"
     | "/calling/ai-agents/"
     | "/calling/call-queue/"
+    | "/calling/dashboard/"
     | "/certificate-generation/student-data/"
+    | "/communication/dashboard/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
     | "/engagement-engines/create/"
+    | "/engagement-engines/dashboard/"
     | "/engagement-engines/inbox/"
     | "/erp/attendance/"
     | "/erp/compliance/"
@@ -2924,7 +3028,9 @@ export interface FileRouteTypes {
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
+    | "/manage-contacts/dashboard/"
     | "/manage-institute/batches/"
+    | "/manage-institute/overview/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
     | "/manage-pages/blog/"
@@ -2932,6 +3038,7 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/dashboard/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
     | "/mentorship/dashboard/"
@@ -3073,6 +3180,7 @@ export interface FileRouteTypes {
     | "/knowledge-base"
     | "/learner-insights"
     | "/live-activity"
+    | "/lms-dashboard"
     | "/login"
     | "/manage-bookings"
     | "/manage-contacts"
@@ -3136,15 +3244,19 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
+    | "/automation/dashboard"
     | "/calling/ai-agents"
     | "/calling/call-queue"
+    | "/calling/dashboard"
     | "/certificate-generation/student-data"
+    | "/communication/dashboard"
     | "/communication/inbox"
     | "/communication/notification-hub"
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
     | "/engagement-engines/create"
+    | "/engagement-engines/dashboard"
     | "/engagement-engines/inbox"
     | "/erp/attendance"
     | "/erp/compliance"
@@ -3162,7 +3274,9 @@ export interface FileRouteTypes {
     | "/homework-creation/assessment-list"
     | "/login/$key"
     | "/login/forgot-password"
+    | "/manage-contacts/dashboard"
     | "/manage-institute/batches"
+    | "/manage-institute/overview"
     | "/manage-institute/sessions"
     | "/manage-institute/teams"
     | "/manage-pages/blog"
@@ -3170,6 +3284,7 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
     | "/manage-students/students-list"
+    | "/meetings/dashboard"
     | "/meetings/my-schedule"
     | "/meetings/team"
     | "/mentorship/dashboard"
@@ -3312,6 +3427,7 @@ export interface FileRouteTypes {
     | "/knowledge-base/"
     | "/learner-insights/"
     | "/live-activity/"
+    | "/lms-dashboard/"
     | "/login/"
     | "/manage-bookings/"
     | "/manage-contacts/"
@@ -3375,15 +3491,19 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/automation/dashboard/"
     | "/calling/ai-agents/"
     | "/calling/call-queue/"
+    | "/calling/dashboard/"
     | "/certificate-generation/student-data/"
+    | "/communication/dashboard/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
     | "/engagement-engines/create/"
+    | "/engagement-engines/dashboard/"
     | "/engagement-engines/inbox/"
     | "/erp/attendance/"
     | "/erp/compliance/"
@@ -3401,7 +3521,9 @@ export interface FileRouteTypes {
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
+    | "/manage-contacts/dashboard/"
     | "/manage-institute/batches/"
+    | "/manage-institute/overview/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
     | "/manage-pages/blog/"
@@ -3409,6 +3531,7 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/dashboard/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
     | "/mentorship/dashboard/"
@@ -3551,6 +3674,7 @@ export interface RootRouteChildren {
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
   KnowledgeBaseIndexRoute: typeof KnowledgeBaseIndexRoute
   LiveActivityIndexRoute: typeof LiveActivityIndexRoute
+  LmsDashboardIndexRoute: typeof LmsDashboardIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   ManageBookingsIndexRoute: typeof ManageBookingsIndexRoute
   ManageContactsIndexRoute: typeof ManageContactsIndexRoute
@@ -3614,15 +3738,19 @@ export interface RootRouteChildren {
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
+  AutomationDashboardIndexRoute: typeof AutomationDashboardIndexRoute
   CallingAiAgentsIndexRoute: typeof CallingAiAgentsIndexRoute
   CallingCallQueueIndexRoute: typeof CallingCallQueueIndexRoute
+  CallingDashboardIndexRoute: typeof CallingDashboardIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
+  CommunicationDashboardIndexRoute: typeof CommunicationDashboardIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
+  EngagementEnginesDashboardIndexRoute: typeof EngagementEnginesDashboardIndexRoute
   EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
   ErpAttendanceIndexRoute: typeof ErpAttendanceIndexRoute
   ErpComplianceIndexRoute: typeof ErpComplianceIndexRoute
@@ -3640,7 +3768,9 @@ export interface RootRouteChildren {
   HomeworkCreationAssessmentListIndexRoute: typeof HomeworkCreationAssessmentListIndexRoute
   LoginKeyIndexRoute: typeof LoginKeyIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
+  ManageContactsDashboardIndexRoute: typeof ManageContactsDashboardIndexRoute
   ManageInstituteBatchesIndexRoute: typeof ManageInstituteBatchesIndexRoute
+  ManageInstituteOverviewIndexRoute: typeof ManageInstituteOverviewIndexRoute
   ManageInstituteSessionsIndexRoute: typeof ManageInstituteSessionsIndexRoute
   ManageInstituteTeamsIndexRoute: typeof ManageInstituteTeamsIndexRoute
   ManagePagesBlogIndexRoute: typeof ManagePagesBlogIndexRoute
@@ -3648,6 +3778,7 @@ export interface RootRouteChildren {
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
+  MeetingsDashboardIndexRoute: typeof MeetingsDashboardIndexRoute
   MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
   MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
   MentorshipDashboardIndexRoute: typeof MentorshipDashboardIndexRoute
@@ -3957,6 +4088,13 @@ declare module "@tanstack/react-router" {
       path: "/login"
       fullPath: "/login/"
       preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/lms-dashboard/": {
+      id: "/lms-dashboard/"
+      path: "/lms-dashboard"
+      fullPath: "/lms-dashboard/"
+      preLoaderRoute: typeof LmsDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/live-activity/": {
@@ -4372,6 +4510,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof MeetingsMyScheduleIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/meetings/dashboard/": {
+      id: "/meetings/dashboard/"
+      path: "/meetings/dashboard"
+      fullPath: "/meetings/dashboard/"
+      preLoaderRoute: typeof MeetingsDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/manage-students/students-list/": {
       id: "/manage-students/students-list/"
       path: "/manage-students/students-list"
@@ -4421,11 +4566,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ManageInstituteSessionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/manage-institute/overview/": {
+      id: "/manage-institute/overview/"
+      path: "/manage-institute/overview"
+      fullPath: "/manage-institute/overview/"
+      preLoaderRoute: typeof ManageInstituteOverviewIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/manage-institute/batches/": {
       id: "/manage-institute/batches/"
       path: "/manage-institute/batches"
       fullPath: "/manage-institute/batches/"
       preLoaderRoute: typeof ManageInstituteBatchesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/manage-contacts/dashboard/": {
+      id: "/manage-contacts/dashboard/"
+      path: "/manage-contacts/dashboard"
+      fullPath: "/manage-contacts/dashboard/"
+      preLoaderRoute: typeof ManageContactsDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/login/forgot-password/": {
@@ -4547,6 +4706,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EngagementEnginesInboxIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/engagement-engines/dashboard/": {
+      id: "/engagement-engines/dashboard/"
+      path: "/engagement-engines/dashboard"
+      fullPath: "/engagement-engines/dashboard/"
+      preLoaderRoute: typeof EngagementEnginesDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/engagement-engines/create/": {
       id: "/engagement-engines/create/"
       path: "/engagement-engines/create"
@@ -4589,11 +4755,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CommunicationInboxIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/communication/dashboard/": {
+      id: "/communication/dashboard/"
+      path: "/communication/dashboard"
+      fullPath: "/communication/dashboard/"
+      preLoaderRoute: typeof CommunicationDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/certificate-generation/student-data/": {
       id: "/certificate-generation/student-data/"
       path: "/certificate-generation/student-data"
       fullPath: "/certificate-generation/student-data/"
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/calling/dashboard/": {
+      id: "/calling/dashboard/"
+      path: "/calling/dashboard"
+      fullPath: "/calling/dashboard/"
+      preLoaderRoute: typeof CallingDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/calling/call-queue/": {
@@ -4608,6 +4788,13 @@ declare module "@tanstack/react-router" {
       path: "/calling/ai-agents"
       fullPath: "/calling/ai-agents/"
       preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/automation/dashboard/": {
+      id: "/automation/dashboard/"
+      path: "/automation/dashboard"
+      fullPath: "/automation/dashboard/"
+      preLoaderRoute: typeof AutomationDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/automation/chatbot-flows/": {
@@ -5465,6 +5652,7 @@ const rootRouteChildren: RootRouteChildren = {
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
   KnowledgeBaseIndexRoute: KnowledgeBaseIndexRoute,
   LiveActivityIndexRoute: LiveActivityIndexRoute,
+  LmsDashboardIndexRoute: LmsDashboardIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   ManageBookingsIndexRoute: ManageBookingsIndexRoute,
   ManageContactsIndexRoute: ManageContactsIndexRoute,
@@ -5533,10 +5721,13 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
+  AutomationDashboardIndexRoute: AutomationDashboardIndexRoute,
   CallingAiAgentsIndexRoute: CallingAiAgentsIndexRoute,
   CallingCallQueueIndexRoute: CallingCallQueueIndexRoute,
+  CallingDashboardIndexRoute: CallingDashboardIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
+  CommunicationDashboardIndexRoute: CommunicationDashboardIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
   CommunicationNotificationHubIndexRoute:
     CommunicationNotificationHubIndexRoute,
@@ -5545,6 +5736,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
+  EngagementEnginesDashboardIndexRoute: EngagementEnginesDashboardIndexRoute,
   EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
   ErpAttendanceIndexRoute: ErpAttendanceIndexRoute,
   ErpComplianceIndexRoute: ErpComplianceIndexRoute,
@@ -5567,7 +5759,9 @@ const rootRouteChildren: RootRouteChildren = {
     HomeworkCreationAssessmentListIndexRoute,
   LoginKeyIndexRoute: LoginKeyIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
+  ManageContactsDashboardIndexRoute: ManageContactsDashboardIndexRoute,
   ManageInstituteBatchesIndexRoute: ManageInstituteBatchesIndexRoute,
+  ManageInstituteOverviewIndexRoute: ManageInstituteOverviewIndexRoute,
   ManageInstituteSessionsIndexRoute: ManageInstituteSessionsIndexRoute,
   ManageInstituteTeamsIndexRoute: ManageInstituteTeamsIndexRoute,
   ManagePagesBlogIndexRoute: ManagePagesBlogIndexRoute,
@@ -5576,6 +5770,7 @@ const rootRouteChildren: RootRouteChildren = {
     ManageStudentsEnrollRequestsIndexRoute,
   ManageStudentsInviteIndexRoute: ManageStudentsInviteIndexRoute,
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
+  MeetingsDashboardIndexRoute: MeetingsDashboardIndexRoute,
   MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
   MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
   MentorshipDashboardIndexRoute: MentorshipDashboardIndexRoute,

@@ -52,5 +52,9 @@
         "overdueTooltip": "अतिदेय: {{percent}}%",
         "dueTooltip": "बकाया: {{percent}}%",
         "paidLabel": "{{percent}}% भुगतान किया गया"
+    },
+    "redesign": {
+        "rosterTitle": "शुल्क रोस्टर",
+        "rosterHint": "· शुल्क-प्रकार का विवरण देखने के लिए पंक्ति पर, हर किस्त के लिए आंख आइकन पर क्लिक करें"
     }
 }

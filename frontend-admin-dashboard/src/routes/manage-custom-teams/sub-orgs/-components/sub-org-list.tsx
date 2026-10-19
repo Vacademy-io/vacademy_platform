@@ -50,6 +50,7 @@ import {
     type SubOrgColumn,
 } from '../../-utils/sub-org-columns';
 import { CreateSubOrgModal } from './create-sub-org-modal';
+import { SubOrgPlanCounts } from './SubOrgPlanCounts';
 import { ShareAdminCredentialsDialog } from './share-admin-credentials-dialog';
 import { FilterChip } from '../../-components/filter-chip';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -422,6 +423,13 @@ export function SubOrgList() {
 
     return (
         <div className="space-y-4">
+            {/* Plan-status counts over the loaded list; a click sets the Status filter. */}
+            <SubOrgPlanCounts
+                rows={allSubOrgs}
+                noPlanKey={NO_PLAN}
+                selected={statusFilter}
+                onSelect={setStatusFilter}
+            />
             {/*
               One row: search, the four filters, then the actions pinned right.
               The per-control <Label> stack this used to carry is gone — MultiSelectFilter

@@ -76,5 +76,19 @@
     "formText": {
         "title": "عنوان النموذج ونصه",
         "description": "العنوان في أعلى النموذج العام (افتراضيًا اسم هذه القائمة) والنص فوق الحقول — بمحاذاة لليسار أو الوسط أو اليمين."
+    },
+    "wizard": {
+        "ariaLabel": "Steps",
+        "steps": {
+            "basics": "Basics",
+            "fields": "Form fields",
+            "afterSubmit": "After submit",
+            "appearance": "Appearance",
+            "notify": "Notifications & scoring"
+        },
+        "stepOf": "Step {{current}} of {{total}}",
+        "back": "Back",
+        "next": "Next: {{step}}",
+        "hasErrors": "This step has errors"
     }
 }

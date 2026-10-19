@@ -2,16 +2,17 @@ import { useAddSession } from '@/services/study-library/session-management/addSe
 import { AddSessionDialog } from './session-operations/add-session/add-session-dialog';
 import { AddSessionDataType } from './session-operations/add-session/add-session-form';
 import { toast } from 'sonner';
-import { useRef, useState } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
-import { Plus } from '@phosphor-icons/react';
+import { CalendarDots, Plus } from '@phosphor-icons/react';
+import { ScreenHeader } from '@/components/shared/crm-enhance/screen-header';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-export default function SessionHeader() {
+export default function SessionHeader({ actions }: { actions?: ReactNode } = {}) {
     const { t } = useTranslation('manageInstituteSessionHeader');
     const [disableAddButton, setDisableAddButton] = useState(true);
     const { instituteDetails } = useInstituteDetailsStore();
@@ -72,7 +73,7 @@ export default function SessionHeader() {
                 buttonType="primary"
                 layoutVariant="default"
                 scale="large"
-                className="w-[140px]"
+                className="w-36"
                 disable={disableAddButton}
                 onClick={() => formSubmitRef.current()}
             >
@@ -85,68 +86,60 @@ export default function SessionHeader() {
         formSubmitRef.current = fn;
     };
 
+    const sessionTerm = getTerminology(ContentTerms.Session, SystemTerms.Session);
+    const addButtonLabel = t('addNew', { session: sessionTerm });
+
     return (
-        <div className="flex flex-col gap-4 text-neutral-600 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-2">
-                <div className="text-lg font-[600] sm:text-xl">
-                    {t('manageYourSessions', {
-                        session: getTerminology(ContentTerms.Session, SystemTerms.Session),
-                    })}
-                </div>
-                <div className="text-sm sm:text-base">
-                    {t('description', {
-                        learnerPlural: getTerminologyPlural(
-                            RoleTerms.Learner,
-                            SystemTerms.Learner
-                        ).toLocaleLowerCase(),
-                    })}
-                </div>
-            </div>
-            <div className="self-end sm:self-auto">
-                {!instituteDetails?.batches_for_sessions.length ? (
-                    <div className="flex flex-col items-center gap-1">
+        <ScreenHeader
+            icon={CalendarDots}
+            title={t('manageYourSessions', { session: sessionTerm })}
+            subtitle={t('subtitle', {
+                session: sessionTerm.toLocaleLowerCase(),
+                course: getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase(),
+                level: getTerminology(ContentTerms.Level, SystemTerms.Level).toLocaleLowerCase(),
+                batch: getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLocaleLowerCase(),
+                learnerPlural: getTerminologyPlural(
+                    RoleTerms.Learner,
+                    SystemTerms.Learner
+                ).toLocaleLowerCase(),
+            })}
+            actions={
+                <>
+                    {actions}
+                    {!instituteDetails?.batches_for_sessions.length ? (
                         <NoCourseDialog
                             isOpen={isOpen}
                             setIsOpen={setIsOpen}
                             type={t('noCourseDialog.type')}
                             content={t('noCourseDialog.content')}
                             trigger={
-                                <MyButton>
-                                    <Plus />{' '}
-                                    {t('addNew', {
-                                        session: getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        ),
-                                    })}
+                                <MyButton scale="large">
+                                    <Plus /> {addButtonLabel}
                                 </MyButton>
                             }
                         />
-                    </div>
-                ) : (
-                    <AddSessionDialog
-                        isAddSessionDiaogOpen={isAddSessionDiaogOpen}
-                        handleOpenAddSessionDialog={handleOpenAddSessionDialog}
-                        handleSubmit={handleAddSession}
-                        trigger={
-                            <div className="flex flex-col items-center gap-1">
-                                <MyButton disable={!instituteDetails?.batches_for_sessions.length}>
-                                    <Plus />{' '}
-                                    {t('addNew', {
-                                        session: getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        ),
-                                    })}
-                                </MyButton>
-                            </div>
-                        }
-                        submitButton={submitButton}
-                        setDisableAddButton={setDisableAddButton}
-                        submitFn={submitFn}
-                    />
-                )}
-            </div>
-        </div>
+                    ) : (
+                        <AddSessionDialog
+                            isAddSessionDiaogOpen={isAddSessionDiaogOpen}
+                            handleOpenAddSessionDialog={handleOpenAddSessionDialog}
+                            handleSubmit={handleAddSession}
+                            trigger={
+                                <div className="flex flex-col items-center gap-1">
+                                    <MyButton
+                                        scale="large"
+                                        disable={!instituteDetails?.batches_for_sessions.length}
+                                    >
+                                        <Plus /> {addButtonLabel}
+                                    </MyButton>
+                                </div>
+                            }
+                            submitButton={submitButton}
+                            setDisableAddButton={setDisableAddButton}
+                            submitFn={submitFn}
+                        />
+                    )}
+                </>
+            }
+        />
     );
 }

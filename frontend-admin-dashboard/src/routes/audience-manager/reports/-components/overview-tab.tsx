@@ -8,7 +8,7 @@
  *
  * Data: GET /v1/reports/leads/summary (read-only — purely visual aggregation).
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
@@ -182,9 +182,9 @@ export function OverviewTab({
                 />
             </div>
 
-            {/* Status donut + Daily trend side by side */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            {/* Status donut + Daily trend side by side; each card keeps its own height. */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
+                <section className="flex min-w-0 flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center gap-2">
                         <Funnel size={18} className="text-neutral-500" />
                         <h2 className="text-base font-semibold text-neutral-900">
@@ -286,8 +286,17 @@ interface StatusDonutProps {
     /** Drill-through — legend rows navigate to the filtered Recent Leads list. */
     onSelectStatus?: (statusKey: string) => void;
 }
+/** Legend rows shown before "Show all": the biggest statuses. */
+const LEGEND_COLLAPSED = 6;
+
 function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
     const { t } = useTranslation('audienceManagerOverviewTab');
+    const { t: tCrm } = useTranslation('crmDashboard');
+    const [expanded, setExpanded] = useState(false);
+    // Biggest first, so the collapsed legend shows what most leads are in.
+    const legend = useMemo(() => [...data].sort((a, b) => b.count - a.count), [data]);
+    const collapsible = legend.length > LEGEND_COLLAPSED;
+    const shownLegend = collapsible && !expanded ? legend.slice(0, LEGEND_COLLAPSED) : legend;
     const SIZE = 180;
     const THICKNESS = 26;
     const RADIUS = (SIZE - THICKNESS) / 2;
@@ -304,7 +313,7 @@ function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
     });
 
     return (
-        <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <div className="flex flex-col items-center gap-4">
             <div className="relative shrink-0">
                 <svg
                     viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -359,8 +368,8 @@ function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
                     <span className="text-xs text-neutral-500">{t('status.totalUnit')}</span>
                 </div>
             </div>
-            <ul className="flex w-full flex-col gap-1">
-                {data.map((d) => {
+            <ul className="flex w-full min-w-0 flex-col gap-1">
+                {shownLegend.map((d) => {
                     const pct = total > 0 ? (d.count / total) * 100 : 0;
                     return (
                         <li key={d.status_key}>
@@ -398,6 +407,19 @@ function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
                     );
                 })}
             </ul>
+            {collapsible && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    className="self-start font-medium text-primary-600 hover:text-primary-700"
+                >
+                    <span className="text-caption">
+                        {expanded
+                            ? tCrm('pipeline.showLess')
+                            : tCrm('pipeline.showAll', { count: legend.length })}
+                    </span>
+                </button>
+            )}
         </div>
     );
 }

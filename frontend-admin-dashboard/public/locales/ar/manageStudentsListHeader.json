@@ -4,7 +4,8 @@
         "counts": {
             "total": "الإجمالي",
             "active": "نشط",
-            "inactive": "غير نشط"
+            "inactive": "غير نشط",
+            "invited": "مدعوون"
         },
         "actions": {
             "invite": "دعوة",

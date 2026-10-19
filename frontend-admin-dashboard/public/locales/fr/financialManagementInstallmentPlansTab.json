@@ -46,5 +46,26 @@
         "packageCount_one": "Affichage de {{count}} forfait",
         "packageCount_many": "Affichage de {{count}} de forfaits",
         "packageCount_other": "Affichage de {{count}} forfaits"
+    },
+    "redesign": {
+        "feeTypesHeading": "Fee types & installment schedules",
+        "stats": {
+            "plans": "Fee plans",
+            "plansDetail": "{{count}} active",
+            "avg": "Average plan value",
+            "avgDetail": "Across {{count}} plans with a fee",
+            "feeTypes": "Fee types in use",
+            "feeTypesDetail": "Distinct fee types across these plans",
+            "classes": "{{batches}} linked",
+            "classesDetail": "Linked to at least one plan",
+            "unlinked_one": "{{count}} plan has no {{batch}} linked",
+            "unlinked_other": "{{count}} plans have no {{batch}} linked"
+        },
+        "views": {
+            "all": "All plans"
+        },
+        "searchPlaceholder": "Search plan or fee type",
+        "sessionAria": "Session",
+        "noMatch": "No fee plans match this search."
     }
 }

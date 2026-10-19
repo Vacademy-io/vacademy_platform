@@ -9,5 +9,12 @@
         "noSessionsAvailable": "कोई सेशन उपलब्ध नहीं है",
         "createBatchHint": "शुरू करने के लिए इस सेशन में एक नया बैच बनाएं।",
         "createSessionHint": "बैच जोड़ने से पहले कृपया पहले एक सेशन बनाएं।"
+    },
+    "export": "निर्यात करें",
+    "summary": "{{total}} में से {{shown}} {{batches}} · {{learners}} {{learnerTerm}}",
+    "csv": {
+        "status": "स्थिति",
+        "inviteCode": "आमंत्रण कोड",
+        "startDate": "आरंभ तिथि"
     }
 }

@@ -196,7 +196,7 @@ export function KpiCard({
     return (
         <div
             className={cn(
-                'group flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md',
+                'group flex min-w-0 flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md',
                 onClick && 'cursor-pointer hover:border-primary-200'
             )}
             onClick={onClick}
@@ -213,14 +213,14 @@ export function KpiCard({
                     : undefined
             }
         >
-            <div className="flex items-start justify-between">
-                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 text-xs font-medium uppercase tracking-wide text-neutral-500">
                     {label}
                 </span>
                 {icon && (
                     <div
                         className={cn(
-                            'flex size-10 items-center justify-center rounded-lg',
+                            'flex size-9 shrink-0 items-center justify-center rounded-lg',
                             toneToIconClass[tone]
                         )}
                     >
@@ -231,7 +231,9 @@ export function KpiCard({
             {loading ? (
                 <span className="h-8 w-24 animate-pulse rounded bg-neutral-100" />
             ) : (
-                <span className="text-3xl font-bold tracking-tight text-neutral-900">{value}</span>
+                <span className="text-2xl font-bold tabular-nums tracking-tight text-neutral-900">
+                    {value}
+                </span>
             )}
             {(sub || onClick) && (
                 <span className="flex items-center justify-between text-xs text-neutral-500">

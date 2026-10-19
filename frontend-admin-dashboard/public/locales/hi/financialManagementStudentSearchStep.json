@@ -17,5 +17,9 @@
     "pagination": {
         "showing": "दिखा रहे हैं",
         "of": "में से"
+    },
+    "redesign": {
+        "findTitle": "{{learner}} खोजें",
+        "findHint": "किस्तें देखने के लिए किसी {{learner}} पर क्लिक करें"
     }
 }

@@ -11,7 +11,9 @@
         "enrollButton": "Enroll {{term}}",
         "viewBatchButton": "View Batch",
         "enrollShort": "Enroll",
-        "viewShort": "View"
+        "viewShort": "View",
+        "startsOn": "Starts {{date}}",
+        "startedOn": "Started {{date}}"
     },
     "deleteDialog": {
         "heading": "Delete Batch",
@@ -41,7 +43,8 @@
         "totalBatches": "Total {{term}}: {{count}}",
         "totalLearners": "Total {{term}}: {{count}}",
         "createBatch": "Create {{term}} here",
-        "openCourse": "Open {{term}}"
+        "openCourse": "Open {{term}}",
+        "addBatch": "Add {{term}}"
     },
     "list": {
         "name": "Name",

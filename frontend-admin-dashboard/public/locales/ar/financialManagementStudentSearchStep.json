@@ -17,5 +17,9 @@
     "pagination": {
         "showing": "عرض",
         "of": "من"
+    },
+    "redesign": {
+        "findTitle": "Find the {{learner}}",
+        "findHint": "click a {{learner}} to see their installments"
     }
 }

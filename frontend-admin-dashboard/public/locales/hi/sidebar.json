@@ -56,6 +56,11 @@
     "finance": "वित्त",
     "followUps": "फॉलो-अप",
     "inAppMessages": "इन-ऐप संदेश",
+    "callingDashboard": "कॉलिंग डैशबोर्ड",
+    "meetingsDashboard": "मीटिंग डैशबोर्ड",
+    "messagingDashboard": "मैसेजिंग डैशबोर्ड",
+    "instituteOverview": "संस्थान अवलोकन",
+    "lmsDashboard": "LMS डैशबोर्ड",
     "institutePulse": "संस्थान पल्स",
     "instructorCopilot": "प्रशिक्षक कोपायलट",
     "interactiveClass": "इंटरैक्टिव कक्षा",
@@ -138,5 +143,8 @@
     "whatsappTemplates": "व्हाट्सएप टेम्पलेट",
     "workflows": "वर्कफ़्लो",
     "dailyEngagement": "दैनिक सहभागिता",
-    "leadLookup": "लीड जाँचें"
+    "leadLookup": "लीड जाँचें",
+    "contactsDashboard": "कॉन्टैक्ट्स डैशबोर्ड",
+    "automationDashboard": "ऑटोमेशन डैशबोर्ड",
+    "engagementDashboard": "एंगेजमेंट डैशबोर्ड"
 }

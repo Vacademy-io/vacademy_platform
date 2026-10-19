@@ -2,7 +2,9 @@
     "header": {
         "title": "نموذج القبول الافتراضي",
         "admissionForm": "نموذج القبول",
-        "bulkImport": "استيراد جماعي"
+        "bulkImport": "استيراد جماعي",
+        "subtitle": "Admissions and applications for a session — start a new one or convert an enquiry.",
+        "sessionLabel": "Session"
     },
     "filters": {
         "status": "الحالة",
@@ -116,5 +118,10 @@
         "enterIdOrPhone": "يرجى إدخال رقم الطلب أو رقم الهاتف",
         "noApplicationFound": "لم يتم العثور على طلب بالتفاصيل المدخلة.",
         "fetchFailed": "فشل جلب تفاصيل الطلب. يرجى التحقق من الرقم أو رقم الهاتف."
+    },
+    "quickViews": {
+        "admitted": "Admitted",
+        "applications": "Applications",
+        "all": "All records"
     }
 }

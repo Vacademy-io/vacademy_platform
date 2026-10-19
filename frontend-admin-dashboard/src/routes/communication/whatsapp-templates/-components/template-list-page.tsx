@@ -1,10 +1,36 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { TemplatesEnhancedCounts, type TemplateStatusView } from './TemplatesEnhancedCounts';
 import { useTranslation } from 'react-i18next';
 import {
-    Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle,
-    BracketsCurly, CaretDown, CaretUp, EnvelopeSimple, HandTap, ImageSquare,
+    Plus,
+    ArrowClockwise,
+    Trash,
+    PaperPlaneRight,
+    PencilSimple,
+    ArrowSquareOut,
+    Info,
+    WarningCircle,
+    BracketsCurly,
+    CaretDown,
+    CaretUp,
+    EnvelopeSimple,
+    HandTap,
+    ImageSquare,
+    ChatTeardropText,
+    MagnifyingGlass,
+    X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { MyButton } from '@/components/design-system/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { reportApiError } from '@/lib/report-api-error';
@@ -25,6 +51,12 @@ export function TemplateListPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeProvider, setActiveProvider] = useState<string>('');
     const [channelFilter, setChannelFilter] = useState<'ALL' | 'WHATSAPP' | 'EMAIL'>('ALL');
+    // Client-side views over the loaded list (no extra requests).
+    const [statusFilter, setStatusFilter] = useState<TemplateStatusView>('ALL');
+    const [categoryFilter, setCategoryFilter] = useState<string>(ANY);
+    const [languageFilter, setLanguageFilter] = useState<string>(ANY);
+    // Language labels live with the builder's language picker.
+    const { t: tBuilder } = useTranslation('communicationTemplateBuilder');
     const instituteId = getInstituteId() || '';
 
     // Meta/COMBOT can create templates via API; WATI must use WATI dashboard
@@ -126,12 +158,12 @@ export function TemplateListPage() {
 
     const statusBadge = (status: string) => {
         const styles: Record<string, string> = {
-            DRAFT: 'bg-gray-100 text-gray-600',
-            PENDING: 'bg-yellow-100 text-yellow-700',
-            APPROVED: 'bg-green-100 text-green-700',
-            REJECTED: 'bg-red-100 text-red-600',
-            DISABLED: 'bg-orange-100 text-orange-600',
-            DELETED: 'bg-gray-200 text-gray-400',
+            DRAFT: 'bg-neutral-100 text-neutral-600',
+            PENDING: 'bg-warning-50 text-warning-700',
+            APPROVED: 'bg-success-50 text-success-700',
+            REJECTED: 'bg-danger-50 text-danger-600',
+            DISABLED: 'bg-warning-100 text-warning-700',
+            DELETED: 'bg-neutral-200 text-neutral-400',
         };
         const labels: Record<string, string> = {
             DRAFT: t('status.draft'),
@@ -142,17 +174,23 @@ export function TemplateListPage() {
             DELETED: t('status.deleted'),
         };
         return (
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status] || styles.DRAFT}`}>
-                {labels[status] || status}
+            <span
+                className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold',
+                    styles[status] || styles.DRAFT
+                )}
+            >
+                <span className="size-1.5 rounded-full bg-current" aria-hidden />
+                <span className="text-caption">{labels[status] || status}</span>
             </span>
         );
     };
 
     const categoryBadge = (cat: string) => {
         const styles: Record<string, string> = {
-            MARKETING: 'bg-purple-50 text-purple-600',
-            UTILITY: 'bg-blue-50 text-blue-600',
-            AUTHENTICATION: 'bg-cyan-50 text-cyan-600',
+            MARKETING: 'bg-primary-50 text-primary-600',
+            UTILITY: 'bg-info-50 text-info-600',
+            AUTHENTICATION: 'bg-neutral-100 text-neutral-700',
         };
         const labels: Record<string, string> = {
             MARKETING: t('category.marketing'),
@@ -160,50 +198,106 @@ export function TemplateListPage() {
             AUTHENTICATION: t('category.authentication'),
         };
         return (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${styles[cat] || 'bg-gray-50 text-gray-500'}`}>
-                {labels[cat] || cat}
+            <span
+                className={cn(
+                    'rounded-md px-1.5 py-0.5 font-medium',
+                    styles[cat] || 'bg-neutral-50 text-neutral-500'
+                )}
+            >
+                <span className="text-caption">{labels[cat] || cat}</span>
             </span>
         );
     };
 
-    const filtered = templates.filter((t) =>
-        t.status !== 'DELETED' &&
-        (channelFilter === 'ALL' || (t.channelType || 'WHATSAPP') === channelFilter) &&
-        (t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         (t.bodyText || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-         (t.subject || '').toLowerCase().includes(searchQuery.toLowerCase()))
+    const filtered = templates.filter(
+        (t) =>
+            t.status !== 'DELETED' &&
+            (channelFilter === 'ALL' || (t.channelType || 'WHATSAPP') === channelFilter) &&
+            (statusFilter === 'ALL' || (t.status || 'DRAFT') === statusFilter) &&
+            (categoryFilter === ANY || t.category === categoryFilter) &&
+            (languageFilter === ANY || t.language === languageFilter) &&
+            (t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (t.bodyText || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (t.subject || '').toLowerCase().includes(searchQuery.toLowerCase()))
     );
+    // Only the languages the loaded templates actually use.
+    const languageOptions = Array.from(
+        new Set(
+            templates.filter((x) => x.status !== 'DELETED' && x.language).map((x) => x.language)
+        )
+    ).sort();
+    const filtersActive =
+        searchQuery !== '' ||
+        channelFilter !== 'ALL' ||
+        statusFilter !== 'ALL' ||
+        categoryFilter !== ANY ||
+        languageFilter !== ANY;
+    const clearFilters = () => {
+        setSearchQuery('');
+        setChannelFilter('ALL');
+        setStatusFilter('ALL');
+        setCategoryFilter(ANY);
+        setLanguageFilter(ANY);
+    };
 
     return (
-        <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">{t('pageTitle')}</h1>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {canCreateViaApi
-                            ? t('subtitleApi')
-                            : t('subtitleWati')}
-                    </p>
+        <div className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+            {/* Page header */}
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                        <ChatTeardropText size={20} weight="duotone" />
+                    </span>
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="font-semibold text-neutral-900">
+                                <span className="text-h3">{t('pageTitle')}</span>
+                            </h1>
+                            {activeProvider && (
+                                <span className="rounded-full bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
+                                    {t('providerChip', { provider: providerLabel })}
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-neutral-500">
+                            <span className="text-caption">
+                                {canCreateViaApi ? t('subtitleApi') : t('subtitleWati')}
+                            </span>
+                        </p>
+                    </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.WhatsApp}
                         label={t('whatsappSettings')}
                     />
-                    <button onClick={handleSync} disabled={syncing}
-                        className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={handleSync}
+                        disable={syncing}
+                        className="gap-1.5 sm:min-w-0"
+                    >
                         <ArrowClockwise size={16} className={syncing ? 'animate-spin' : ''} />
                         {syncing ? t('syncing') : t('syncTemplates')}
-                    </button>
+                    </MyButton>
 
                     {canCreateViaApi ? (
-                        <button onClick={() => setIsCreating(true)}
-                            className="flex items-center gap-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={() => setIsCreating(true)}
+                            className="gap-1.5 sm:min-w-0"
+                        >
                             <Plus size={16} /> {t('createTemplate')}
-                        </button>
+                        </MyButton>
                     ) : (
-                        <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        <a
+                            href="https://app.wati.io/template-messages"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex h-9 items-center gap-1.5 rounded-md bg-primary-500 px-3 text-body font-semibold text-neutral-50 hover:bg-primary-400"
+                        >
                             <ArrowSquareOut size={16} /> {t('createInWati')}
                         </a>
                     )}
@@ -212,82 +306,198 @@ export function TemplateListPage() {
 
             {/* Provider info banner */}
             {activeProvider === 'WATI' && (
-                <div className="flex items-start gap-2 p-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                    <div className="text-xs text-blue-700">
-                        <p className="font-medium">{t('watiBanner.title')}</p>
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-info-100 bg-info-50 p-3">
+                    <Info size={18} className="mt-0.5 shrink-0 text-info-600" />
+                    <div className="text-caption text-neutral-700">
+                        <p className="font-semibold text-neutral-800">{t('watiBanner.title')}</p>
                         <p className="mt-0.5">
                             {t('watiBanner.beforeLink')}{' '}
-                            <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer" className="underline font-medium">{t('watiBanner.linkText')}</a>
+                            <a
+                                href="https://app.wati.io/template-messages"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-info-600 underline"
+                            >
+                                {t('watiBanner.linkText')}
+                            </a>
                             {t('watiBanner.afterLink')}
                         </p>
                     </div>
                 </div>
             )}
 
-            {/* Channel filter tabs */}
-            <div className="flex gap-1 mb-3">
-                {(['ALL', 'WHATSAPP', 'EMAIL'] as const).map((tab) => (
-                    <button key={tab} onClick={() => setChannelFilter(tab)}
-                        className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${
-                            channelFilter === tab
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}>
-                        {tab === 'ALL' ? t('tabAll') : tab === 'WHATSAPP' ? t('tabWhatsapp') : t('tabEmail')}
-                    </button>
-                ))}
+            {/* Status counts — click one to show only those templates. */}
+            <TemplatesEnhancedCounts
+                statuses={templates.map((x) => x.status ?? 'DRAFT')}
+                active={statusFilter}
+                onSelect={setStatusFilter}
+            />
+
+            {/* Toolbar: search + channel / category / language over the loaded list */}
+            <div className="mb-4 flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-3 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                    <MagnifyingGlass
+                        size={16}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <Input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t('searchPlaceholder')}
+                        className="h-9 pl-9"
+                    />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+                        {(['ALL', 'WHATSAPP', 'EMAIL'] as const).map((tab) => (
+                            <button
+                                key={tab}
+                                type="button"
+                                onClick={() => setChannelFilter(tab)}
+                                aria-pressed={channelFilter === tab}
+                                className={cn(
+                                    'rounded-md px-3 py-1 text-xs font-medium transition',
+                                    channelFilter === tab
+                                        ? 'bg-white text-primary-600 shadow-sm'
+                                        : 'text-neutral-500 hover:text-neutral-700'
+                                )}
+                            >
+                                {tab === 'ALL'
+                                    ? t('tabAll')
+                                    : tab === 'WHATSAPP'
+                                      ? t('tabWhatsapp')
+                                      : t('tabEmail')}
+                            </button>
+                        ))}
+                    </div>
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                        <SelectTrigger
+                            className="h-9 w-44 bg-white text-xs"
+                            aria-label={t('filters.allCategories')}
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ANY}>{t('filters.allCategories')}</SelectItem>
+                            <SelectItem value="MARKETING">{t('category.marketing')}</SelectItem>
+                            <SelectItem value="UTILITY">{t('category.utility')}</SelectItem>
+                            <SelectItem value="AUTHENTICATION">
+                                {t('category.authentication')}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Select value={languageFilter} onValueChange={setLanguageFilter}>
+                        <SelectTrigger
+                            className="h-9 w-44 bg-white text-xs"
+                            aria-label={t('filters.allLanguages')}
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ANY}>{t('filters.allLanguages')}</SelectItem>
+                            {languageOptions.map((code) => (
+                                <SelectItem key={code} value={code}>
+                                    {tBuilder(`languages.${code}`, { defaultValue: code })}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {filtersActive && (
+                        <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="flex items-center gap-1 rounded-md px-2 py-1 text-caption font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                        >
+                            <X size={12} /> {t('filters.clear')}
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Search */}
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('searchPlaceholder')}
-                className="w-full px-3 py-2 text-sm border rounded-lg mb-4" />
-
             {loading ? (
-                <p className="text-center text-gray-400 py-8">{t('loadingTemplates')}</p>
+                <div
+                    className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    aria-label={t('loadingTemplates')}
+                >
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <Skeleton key={i} className="h-56 rounded-xl" />
+                    ))}
+                </div>
             ) : loadError ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 py-10 text-center">
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-danger-200 bg-danger-50 py-10 text-center">
                     <WarningCircle size={24} className="text-danger-600" />
                     <p className="max-w-md px-4 text-sm text-danger-600">{loadError}</p>
-                    <button onClick={loadTemplates}
-                        className="rounded-lg border border-danger-200 bg-white px-4 py-2 text-sm hover:bg-danger-50">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={loadTemplates}
+                        className="bg-white"
+                    >
                         {t('tryAgain')}
-                    </button>
+                    </MyButton>
                 </div>
             ) : filtered.length === 0 ? (
-                <div className="text-center py-12">
-                    <p className="text-gray-400 mb-4">
+                <div className="flex flex-col items-center rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-12 text-center">
+                    <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-neutral-50 text-neutral-300">
+                        <ChatTeardropText size={28} weight="duotone" />
+                    </span>
+                    <p className="mb-4 text-neutral-500">
                         {templates.length === 0
                             ? t('noTemplatesYet', { provider: providerLabel })
                             : t('noTemplatesMatchSearch')}
                     </p>
-                    {templates.length === 0 && canCreateViaApi && (
-                        <button onClick={() => setIsCreating(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            {t('createTemplate')}
-                        </button>
-                    )}
+                    {templates.length === 0 && canCreateViaApi ? (
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={() => setIsCreating(true)}
+                            className="gap-1.5"
+                        >
+                            <Plus size={16} /> {t('createTemplate')}
+                        </MyButton>
+                    ) : filtersActive ? (
+                        <MyButton buttonType="secondary" scale="medium" onClick={clearFilters}>
+                            {t('filters.clear')}
+                        </MyButton>
+                    ) : null}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {filtered.map((tpl) => (
-                        <TemplateCard
-                            key={tpl.id}
-                            tpl={tpl}
-                            statusBadge={statusBadge(tpl.status || 'DRAFT')}
-                            categoryBadge={categoryBadge(tpl.category)}
-                            canEdit={canCreateViaApi && (tpl.status === 'DRAFT' || tpl.status === 'REJECTED')}
-                            onEdit={() => setEditingTemplate(tpl)}
-                            onSubmit={() => handleSubmit(tpl.id!)}
-                            onDelete={() => handleDelete(tpl)}
-                        />
-                    ))}
-                </div>
+                <>
+                    <p className="mb-2 text-caption text-neutral-500">
+                        {t('resultsCount', { count: filtered.length })}
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {filtered.map((tpl) => (
+                            <TemplateCard
+                                key={tpl.id}
+                                tpl={tpl}
+                                statusBadge={statusBadge(tpl.status || 'DRAFT')}
+                                categoryBadge={categoryBadge(tpl.category)}
+                                canEdit={
+                                    canCreateViaApi &&
+                                    (tpl.status === 'DRAFT' || tpl.status === 'REJECTED')
+                                }
+                                onEdit={() => setEditingTemplate(tpl)}
+                                onSubmit={() => handleSubmit(tpl.id!)}
+                                onDelete={() => handleDelete(tpl)}
+                            />
+                        ))}
+                    </div>
+                    {canCreateViaApi && (
+                        <p className="mt-4 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-caption text-neutral-600">
+                            <Info size={14} className="mt-0.5 shrink-0 text-neutral-400" />
+                            {t('actionsNote')}
+                        </p>
+                    )}
+                </>
             )}
         </div>
     );
 }
+
+/** Select value for "no filter" (Radix Select can't use an empty string). */
+const ANY = '__any__';
 
 const PLACEHOLDER_TOKEN = /\{\{\s*[\w.]+\s*\}\}/g;
 
@@ -327,9 +537,9 @@ function TemplateCard({
     const chip = 'flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-caption text-neutral-600';
 
     return (
-        <div className="flex flex-col overflow-hidden rounded-lg border bg-card transition hover:border-primary-200 hover:shadow-sm">
+        <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:border-primary-200 hover:shadow-md">
             {/* Name + status */}
-            <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
+            <div className="flex items-start justify-between gap-2 border-b border-neutral-100 px-4 py-3">
                 <div className="min-w-0">
                     <p className="break-all font-mono text-body font-semibold text-neutral-800">
                         {tpl.name}
@@ -337,7 +547,9 @@ function TemplateCard({
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         {statusBadge}
                         {categoryBadge}
-                        <span className="text-caption text-neutral-400">{tpl.language}</span>
+                        <span className="font-mono text-caption text-neutral-400">
+                            {tpl.language}
+                        </span>
                         {!isWhatsApp && (
                             <span className="flex items-center gap-1 text-caption text-neutral-500">
                                 <EnvelopeSimple size={12} /> {t('tabEmail')}

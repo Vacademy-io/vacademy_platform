@@ -1,4 +1,6 @@
 import { createLazyFileRoute, useNavigate, useParams } from '@tanstack/react-router';
+import { ShiftsTodayCard } from './-components/ShiftsTodayCard';
+import { CounsellorsEnhancedHeader } from './-components/CounsellorsEnhancedHeader';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -445,6 +447,10 @@ export function WorkbenchPage() {
                     />
                 </div>
             </div>
+
+            {/* Summary header. */}
+            <CounsellorsEnhancedHeader counsellors={statSource} />
+            <ShiftsTodayCard counsellors={statSource} />
 
             {/* ── Search + filter bar ────────────────────────────── */}
             <div className="mb-4 flex flex-wrap items-center gap-3">

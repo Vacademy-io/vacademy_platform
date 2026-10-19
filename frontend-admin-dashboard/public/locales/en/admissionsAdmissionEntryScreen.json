@@ -2,7 +2,9 @@
     "header": {
         "title": "Default Admission Form",
         "admissionForm": "Admission Form",
-        "bulkImport": "Bulk Import"
+        "bulkImport": "Bulk Import",
+        "subtitle": "Admissions and applications for a session — start a new one or convert an enquiry.",
+        "sessionLabel": "Session"
     },
     "filters": {
         "status": "Status",
@@ -116,5 +118,10 @@
         "enterIdOrPhone": "Please enter either application ID or phone number",
         "noApplicationFound": "No application found with the given details.",
         "fetchFailed": "Failed to fetch application details. Please check the ID or phone number."
+    },
+    "quickViews": {
+        "admitted": "Admitted",
+        "applications": "Applications",
+        "all": "All records"
     }
 }

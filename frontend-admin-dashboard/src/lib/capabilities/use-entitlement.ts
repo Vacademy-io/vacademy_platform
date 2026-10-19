@@ -34,6 +34,8 @@ export interface NavSnapshot {
     instituteId: string;
     items: SidebarItemsType[];
     sidebarCategories: CategoryState[] | null;
+    /** True once the role's display settings were applied (false = still the defaults). */
+    settingsReady?: boolean;
 }
 
 export const useNavSnapshotStore = create<{

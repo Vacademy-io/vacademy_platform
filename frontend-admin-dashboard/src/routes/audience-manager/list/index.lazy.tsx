@@ -1,6 +1,7 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { AudienceInvite } from './-components/audience-invite/audience-invite';
+import { LeadListEnhancedHeader } from './-components/LeadListEnhancedHeader';
 import { AudienceInviteFormProvider } from './-context/useAudienceInviteFormContext';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
@@ -34,6 +35,7 @@ export function AudienceManagerListPage() {
     return (
         <AudienceInviteFormProvider>
             <LayoutContainer>
+                <LeadListEnhancedHeader />
                 {instituteId && <PerformanceOverview instituteId={instituteId} />}
                 <AudienceInvite />
             </LayoutContainer>

@@ -53,5 +53,9 @@
         "overdueTooltip": "En retard : {{percent}} %",
         "dueTooltip": "Dû : {{percent}} %",
         "paidLabel": "{{percent}} % payé"
+    },
+    "redesign": {
+        "rosterTitle": "Fee roster",
+        "rosterHint": "· click a row for the fee-type breakdown, the eye icon for every installment"
     }
 }

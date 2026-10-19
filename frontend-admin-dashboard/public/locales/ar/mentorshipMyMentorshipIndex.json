@@ -17,7 +17,10 @@
         "menteesAssigned_two": "{{count}} مسترشدان معيّنان",
         "menteesAssigned_few": "{{count}} مسترشدين معيّنين",
         "menteesAssigned_many": "{{count}} مسترشدًا معيّنًا",
-        "menteesAssigned_other": "{{count}} مسترشد معيّن"
+        "menteesAssigned_other": "{{count}} مسترشد معيّن",
+        "ratingChip_one": "{{rating}} · {{count}} rating",
+        "ratingChip_other": "{{rating}} · {{count}} ratings",
+        "expertise": "Expertise: {{tags}}"
     },
     "googleCalendar": {
         "title": "تقويم Google",
@@ -49,7 +52,8 @@
         "heading_other": "{{count}} جلسة بحاجة إلى التسجيل",
         "description": "إلى أن تسجلها، لا تُحتسب الجلسة كمُنجزة في أي مكان.",
         "menteeFallback": "مسترشد",
-        "record": "تسجيل"
+        "record": "تسجيل",
+        "notCounted": "Not counted yet"
     },
     "mentees": {
         "heading": "المسترشدون",
@@ -75,5 +79,20 @@
         "messageAriaLabel": "مراسلة {{name}}",
         "openAriaLabel": "فتح {{name}}",
         "openRowTitle": "تقدم التعلم والملاحظات والمكالمات المجدولة"
+    },
+    "header": {
+        "schedule": "Schedule 1:1"
+    },
+    "kpi": {
+        "mentees": "My mentees",
+        "menteesLeft_one": "{{count}} place left of {{cap}}",
+        "menteesLeft_other": "{{count}} places left of {{cap}}",
+        "menteesNoLimit": "No limit set",
+        "rating": "My average rating",
+        "ratingDetail_one": "{{count}} rated session",
+        "ratingDetail_other": "{{count}} rated sessions",
+        "ratingNone": "No ratings yet",
+        "toRecord": "Sessions to record",
+        "toRecordDetail": "Not counted as delivered until recorded"
     }
 }

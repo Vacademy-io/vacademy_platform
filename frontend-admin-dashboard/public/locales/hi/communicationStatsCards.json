@@ -6,7 +6,8 @@
         "opened": "खोले गए",
         "clicked": "क्लिक किए गए",
         "bounced": "बाउंस हुए",
-        "inbound": "आने वाले जवाब"
+        "inbound": "आने वाले जवाब",
+        "complaints": "शिकायतें"
     },
     "waStats": {
         "out": "WhatsApp आउटगोइंग",
@@ -28,5 +29,14 @@
     "activeBatches": "सक्रिय बैच",
     "batchesCompleted_one": "पूरे हुए बैच ({{count}} दिन)",
     "batchesCompleted_other": "पूरे हुए बैच ({{count}} दिन)",
-    "viewStat": "{{label}} देखें"
+    "viewStat": "{{label}} देखें",
+    "rates": {
+        "ofSent": "भेजे गए का {{rate}}",
+        "open": "{{rate}} ओपन दर",
+        "click": "{{rate}} क्लिक दर",
+        "bounce": "{{rate}} बाउंस दर",
+        "complaints": "स्पैम के रूप में चिह्नित"
+    },
+    "windowLabel_one": "पिछले 24 घंटे",
+    "windowLabel_other": "पिछले {{count}} दिन"
 }

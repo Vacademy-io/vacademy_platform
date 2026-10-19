@@ -71,5 +71,25 @@
         "recurring": "Récurrent",
         "recurringWithCron": "Récurrent · {{cron}}",
         "cronWithLabel": "CRON {{cron}}"
+    },
+    "subheading": "A calendar of every planned announcement and email campaign. Pick a day to schedule something new.",
+    "viewLabel": "Calendar view",
+    "legend": {
+        "recurring": "Recurring"
+    },
+    "countInView_one": "{{count}} announcement",
+    "countInView_other": "{{count}} announcements",
+    "nothingScheduled": "Nothing scheduled",
+    "lists": {
+        "upNext": {
+            "title": "Coming up in this view",
+            "empty": "Nothing is planned in this range."
+        },
+        "pending": {
+            "title": "Waiting for approval",
+            "empty": "Nothing in this range is waiting for approval.",
+            "openQueue": "Open queue",
+            "notSentYet": "not sent until approved"
+        }
     }
 }

@@ -32,7 +32,9 @@
         "noChannels": "لا شيء",
         "language": "اللغة",
         "cadenceLabel": "الوتيرة",
-        "cadence": "كل {{hours}} ساعة"
+        "cadence": "كل {{hours}} ساعة",
+        "quietHours": "Quiet hours",
+        "dataPoints": "Data points"
     },
     "amendDialog": {
         "heading": "تعديل الموجز",
@@ -70,5 +72,25 @@
         "description": "سيتوقف نهائيًا عن اتخاذ القرارات والإرسال. تبقى المهام الموجودة في صندوق الوارد والرسائل السابقة.",
         "cancel": "الإبقاء عليه",
         "confirm": "أرشفة"
+    },
+    "kpi": {
+        "members": "Active members",
+        "holdout": "{{pct}}% held out (never messaged)",
+        "noHoldout": "No holdout",
+        "approved": "Approved sends",
+        "graduateAfter": "A channel auto-sends after {{n}} approved sends",
+        "cadence": "Check-in cadence",
+        "quiet": "Quiet hours {{window}}",
+        "nextRun": "Next check-in",
+        "notScheduled": "Not scheduled",
+        "lastRun": "Last run {{when}}"
+    },
+    "status": {
+        "title": "Status & audience",
+        "sources": "Sources",
+        "people": "people",
+        "change": "Change status",
+        "noTransitions": "Archived engines can’t change status.",
+        "footnote": "Pause stops the engine deciding and sending. “Keep as copilot” only stops auto-sending."
     }
 }

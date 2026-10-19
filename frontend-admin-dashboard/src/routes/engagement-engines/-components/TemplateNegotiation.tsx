@@ -1,6 +1,18 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { ArrowsClockwise, Plus, Sparkle, Trash } from '@phosphor-icons/react';
+import {
+    ArrowsClockwise,
+    CaretRight,
+    Check,
+    Info,
+    PaperPlaneTilt,
+    PencilSimple,
+    Plus,
+    Sparkle,
+    Trash,
+    WhatsappLogo,
+    XCircle,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Card } from '@/components/ui/card';
@@ -14,17 +26,87 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { SectionCard } from '@/routes/study-library/live-session/-components/dashboard/dashboard-charts';
+import { cn } from '@/lib/utils';
 import { ToneBadge } from './ToneBadge';
+import { Chip } from './engine-ui';
 import { buildProposalStatusMeta, buildTemplateCategoryOptions } from '../-constants';
 import { useTemplateMutation, useTemplates } from '../-hooks';
 import { safeParse } from '../-utils';
 import type {
     EngagementTemplateProposal,
+    ProposalStatus,
     TemplateCategory,
     TemplateEditRequest,
 } from '../-types';
 
 const EDITABLE = new Set(['AI_PROPOSED', 'USER_REVIEW', 'META_REJECTED']);
+
+const FLOW_KEYS = ['propose', 'approve', 'submit', 'meta', 'send'] as const;
+
+/** How far along the propose → approve → submit → Meta → send flow a proposal is. */
+const FLOW_REACHED: Partial<Record<ProposalStatus, number>> = {
+    AI_PROPOSED: 1,
+    USER_REVIEW: 1,
+    USER_APPROVED: 2,
+    SUBMITTED: 3,
+    META_PENDING: 3,
+    META_REJECTED: 3,
+    META_APPROVED: 5,
+    META_RECATEGORISED: 5,
+};
+
+/** The five stages, ticked up to the furthest any current proposal has reached. */
+function FlowStrip({ reached }: { reached: number }) {
+    const { t } = useTranslation('engagementEnginesTemplateNegotiation');
+    return (
+        <div className="flex flex-wrap items-center gap-1.5">
+            {FLOW_KEYS.map((key, i) => {
+                const done = i < reached;
+                return (
+                    <Fragment key={key}>
+                        {i > 0 && <CaretRight size={12} className="text-neutral-300" />}
+                        <span
+                            className={cn(
+                                'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium',
+                                done
+                                    ? 'border-success-200 bg-success-50 text-success-700'
+                                    : 'border-neutral-200 bg-white text-neutral-500'
+                            )}
+                        >
+                            {done ? (
+                                <Check size={12} weight="bold" />
+                            ) : (
+                                <span className="text-caption">{i + 1}</span>
+                            )}
+                            <span className="text-caption">{t(`flow.${key}`)}</span>
+                        </span>
+                    </Fragment>
+                );
+            })}
+        </div>
+    );
+}
+
+/** The template body with its {{n}} placeholders picked out. */
+function TemplateBody({ body }: { body: string }) {
+    const parts = body.split(/(\{\{\d+\}\})/g);
+    return (
+        <p className="whitespace-pre-wrap rounded-lg border border-success-100 bg-success-50 p-3 text-neutral-800">
+            <span className="text-body">
+                {parts.map((part, i) =>
+                    /^\{\{\d+\}\}$/.test(part) ? (
+                        <span key={i} className="font-semibold text-success-700">
+                            {part}
+                        </span>
+                    ) : (
+                        <Fragment key={i}>{part}</Fragment>
+                    )
+                )}
+            </span>
+        </p>
+    );
+}
 
 export function TemplateNegotiation({ engineId }: { engineId: string }) {
     const { t } = useTranslation('engagementEnginesTemplateNegotiation');
@@ -33,15 +115,17 @@ export function TemplateNegotiation({ engineId }: { engineId: string }) {
     const [editing, setEditing] = useState<EngagementTemplateProposal | null>(null);
 
     const anyProposals = (proposals?.length ?? 0) > 0;
+    const reached = Math.max(0, ...(proposals ?? []).map((p) => FLOW_REACHED[p.status] ?? 0));
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                    <p className="text-subtitle font-semibold text-neutral-700">{t('heading')}</p>
-                    <p className="text-caption text-neutral-500">{t('subheading')}</p>
-                </div>
-                <div className="flex items-center gap-2">
+        <SectionCard
+            title={t('heading')}
+            subtitle={
+                anyProposals ? t('proposalCount', { count: proposals?.length ?? 0 }) : undefined
+            }
+            icon={WhatsappLogo}
+            right={
+                <div className="flex flex-wrap items-center gap-2">
                     <MyButton
                         buttonType="secondary"
                         scale="small"
@@ -71,30 +155,42 @@ export function TemplateNegotiation({ engineId }: { engineId: string }) {
                         </MyButton>
                     )}
                 </div>
-            </div>
+            }
+        >
+            <div className="flex flex-col gap-4">
+                <p className="text-neutral-600">
+                    <span className="text-body">{t('subheading')}</span>
+                </p>
+                <FlowStrip reached={reached} />
 
-            {isLoading && <Skeleton className="h-24 w-full rounded-lg" />}
+                {isLoading && <Skeleton className="h-24 w-full rounded-lg" />}
 
-            {!isLoading && isError && (
-                <Card className="p-6 text-center text-body text-danger-600">
-                    {t('errors.loadFailed')}
-                </Card>
-            )}
+                {!isLoading && isError && (
+                    <Card className="p-6 text-center text-body text-danger-600">
+                        {t('errors.loadFailed')}
+                    </Card>
+                )}
 
-            {!isLoading && !isError && !anyProposals && (
-                <Card className="p-6 text-center text-body text-neutral-500">{t('emptyState')}</Card>
-            )}
+                {!isLoading && !isError && !anyProposals && (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-neutral-200 p-8 text-center">
+                        <WhatsappLogo size={28} className="text-neutral-300" />
+                        <p className="max-w-md text-neutral-500">
+                            <span className="text-body">{t('emptyState')}</span>
+                        </p>
+                    </div>
+                )}
 
-            <div className="flex flex-col gap-3">
-                {proposals?.map((p) => (
-                    <ProposalCard
-                        key={p.id}
-                        p={p}
-                        engineId={engineId}
-                        onEdit={() => setEditing(p)}
-                        mutations={m}
-                    />
-                ))}
+                <div className="grid gap-3 lg:grid-cols-2">
+                    {proposals?.map((p) => (
+                        <ProposalCard
+                            key={p.id}
+                            p={p}
+                            engineId={engineId}
+                            onEdit={() => setEditing(p)}
+                            mutations={m}
+                        />
+                    ))}
+                </div>
             </div>
 
             {editing && (
@@ -111,7 +207,7 @@ export function TemplateNegotiation({ engineId }: { engineId: string }) {
                     saving={m.edit.isPending}
                 />
             )}
-        </div>
+        </SectionCard>
     );
 }
 
@@ -137,52 +233,54 @@ function ProposalCard({
         mutations.approve.isPending || mutations.submit.isPending || mutations.withdraw.isPending;
 
     return (
-        <Card className="p-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-caption text-neutral-500">{p.name}</span>
-                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-neutral-500">
-                            {p.proposedCategory}
-                        </span>
-                        <span className="text-caption text-neutral-400">
-                            {t('proposalCard.round', { value: p.round })}
-                        </span>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap text-body text-neutral-700">{p.proposedBody}</p>
-                    {vars.length > 0 && (
-                        <p className="mt-1 text-caption text-neutral-400">
-                            {t('proposalCard.variables', { list: vars.join(', ') })}
-                        </p>
-                    )}
-                    {p.rationale && (
-                        <p className="mt-1 text-caption italic text-neutral-400">{p.rationale}</p>
-                    )}
-                    {p.status === 'META_REJECTED' && p.rejectionReason && (
-                        <p className="mt-2 rounded bg-danger-50 p-2 text-caption text-danger-600">
-                            {t('proposalCard.metaRejected', { reason: p.rejectionReason })}
-                        </p>
-                    )}
-                    {p.status === 'META_RECATEGORISED' && (
-                        <p className="mt-2 rounded bg-warning-50 p-2 text-caption text-warning-600">
-                            <Trans
-                                i18nKey="engagementEnginesTemplateNegotiation:proposalCard.metaRecategorised"
-                                values={{
-                                    metaCategory: p.metaCategory,
-                                    proposedCategory: p.proposedCategory,
-                                }}
-                                components={{ b: <b /> }}
-                            />
-                        </p>
-                    )}
-                </div>
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 truncate font-mono font-semibold text-neutral-800">
+                    <span className="text-caption">{p.name}</span>
+                </span>
+                {p.language && <Chip label={p.language} />}
                 <ToneBadge label={meta.label} tone={meta.tone} />
+                <span className="ms-auto text-neutral-400">
+                    <span className="text-caption">
+                        {t('proposalCard.round', { value: p.round })} · {p.proposedCategory}
+                    </span>
+                </span>
             </div>
+            <TemplateBody body={p.proposedBody} />
+            {vars.length > 0 && (
+                <p className="text-caption text-neutral-500">
+                    {t('proposalCard.variables', { list: vars.join(', ') })}
+                </p>
+            )}
+            {p.rationale && <p className="text-caption italic text-neutral-400">{p.rationale}</p>}
+            {p.status === 'META_REJECTED' && p.rejectionReason && (
+                <p className="flex items-start gap-2 rounded-lg bg-danger-50 p-2 text-danger-600">
+                    <XCircle size={14} className="mt-0.5 shrink-0" />
+                    <span className="text-caption">
+                        {t('proposalCard.metaRejected', { reason: p.rejectionReason })}
+                    </span>
+                </p>
+            )}
+            {p.status === 'META_RECATEGORISED' && (
+                <p className="flex items-start gap-2 rounded-lg bg-warning-50 p-2 text-warning-700">
+                    <Info size={14} className="mt-0.5 shrink-0" />
+                    <span className="text-caption">
+                        <Trans
+                            i18nKey="engagementEnginesTemplateNegotiation:proposalCard.metaRecategorised"
+                            values={{
+                                metaCategory: p.metaCategory,
+                                proposedCategory: p.proposedCategory,
+                            }}
+                            components={{ b: <b /> }}
+                        />
+                    </span>
+                </p>
+            )}
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-auto flex flex-wrap items-center gap-2">
                 {EDITABLE.has(p.status) && (
                     <MyButton buttonType="secondary" scale="small" disable={busy} onClick={onEdit}>
-                        {t('actions.edit')}
+                        <PencilSimple className="me-1 size-3.5" /> {t('actions.edit')}
                     </MyButton>
                 )}
                 {(p.status === 'AI_PROPOSED' || p.status === 'USER_REVIEW') && (
@@ -192,7 +290,7 @@ function ProposalCard({
                         disable={busy}
                         onClick={() => mutations.approve.mutate({ id: p.id, engineId })}
                     >
-                        {t('actions.approve')}
+                        <Check className="me-1 size-3.5" /> {t('actions.approve')}
                     </MyButton>
                 )}
                 {p.status === 'USER_APPROVED' && (
@@ -202,7 +300,7 @@ function ProposalCard({
                         disable={busy}
                         onClick={() => mutations.submit.mutate({ id: p.id, engineId })}
                     >
-                        {t('actions.submitToMeta')}
+                        <PaperPlaneTilt className="me-1 size-3.5" /> {t('actions.submitToMeta')}
                     </MyButton>
                 )}
                 {['AI_PROPOSED', 'USER_REVIEW', 'USER_APPROVED', 'META_REJECTED', 'META_RECATEGORISED'].includes(
@@ -218,7 +316,7 @@ function ProposalCard({
                     </MyButton>
                 )}
             </div>
-        </Card>
+        </div>
     );
 }
 
@@ -295,6 +393,16 @@ function EditTemplateDialog({
                         {t('editDialog.bodyLabel', { p1: '{{1}}', p2: '{{2}}' })}
                     </label>
                     <Textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
+                    <p
+                        className={cn(
+                            'mt-1 text-end tabular-nums',
+                            body.length > 1024 ? 'text-danger-600' : 'text-neutral-400'
+                        )}
+                    >
+                        <span className="text-caption">
+                            {t('editDialog.charCount', { count: body.length })}
+                        </span>
+                    </p>
                 </div>
                 <div className="w-48">
                     <label className="mb-1 block text-caption text-neutral-500">
@@ -344,6 +452,7 @@ function EditTemplateDialog({
                             />
                             <button
                                 type="button"
+                                aria-label={t('editDialog.removeVariable')}
                                 className="text-neutral-400 hover:text-danger-600"
                                 onClick={() => setPairs((prev) => prev.filter((_, idx) => idx !== i))}
                             >

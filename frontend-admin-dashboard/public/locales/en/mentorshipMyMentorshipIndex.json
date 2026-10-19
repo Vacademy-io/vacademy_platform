@@ -13,7 +13,10 @@
         "youFallback": "You",
         "mentorFallback": "Mentor",
         "menteesAssigned_one": "{{count}} mentee assigned",
-        "menteesAssigned_other": "{{count}} mentees assigned"
+        "menteesAssigned_other": "{{count}} mentees assigned",
+        "ratingChip_one": "{{rating}} · {{count}} rating",
+        "ratingChip_other": "{{rating}} · {{count}} ratings",
+        "expertise": "Expertise: {{tags}}"
     },
     "googleCalendar": {
         "title": "Google Calendar",
@@ -41,7 +44,8 @@
         "heading_other": "{{count}} sessions to record",
         "description": "Until you record it, a session doesn't count as delivered anywhere.",
         "menteeFallback": "Mentee",
-        "record": "Record"
+        "record": "Record",
+        "notCounted": "Not counted yet"
     },
     "mentees": {
         "heading": "Mentees",
@@ -67,5 +71,20 @@
         "messageAriaLabel": "Message {{name}}",
         "openAriaLabel": "Open {{name}}",
         "openRowTitle": "Learning progress, notes and scheduled calls"
+    },
+    "header": {
+        "schedule": "Schedule 1:1"
+    },
+    "kpi": {
+        "mentees": "My mentees",
+        "menteesLeft_one": "{{count}} place left of {{cap}}",
+        "menteesLeft_other": "{{count}} places left of {{cap}}",
+        "menteesNoLimit": "No limit set",
+        "rating": "My average rating",
+        "ratingDetail_one": "{{count}} rated session",
+        "ratingDetail_other": "{{count}} rated sessions",
+        "ratingNone": "No ratings yet",
+        "toRecord": "Sessions to record",
+        "toRecordDetail": "Not counted as delivered until recorded"
     }
 }

@@ -13,7 +13,7 @@ export const CountBadge = ({
 }: {
     label: string;
     value: number;
-    tone: 'total' | 'active' | 'inactive';
+    tone: 'total' | 'active' | 'inactive' | 'invited';
     isCompact: boolean;
 }) => {
     // Fixed semantic scales (not the white-labeled `primary`, whose per-institute
@@ -22,6 +22,7 @@ export const CountBadge = ({
         total: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
         active: 'bg-success-50 text-success-700 ring-success-200',
         inactive: 'bg-warning-50 text-warning-700 ring-warning-200',
+        invited: 'bg-info-50 text-info-700 ring-info-200',
     }[tone];
 
     return (

@@ -9,5 +9,12 @@
         "noSessionsAvailable": "Aucune session disponible",
         "createBatchHint": "Créez un nouveau lot dans cette session pour commencer.",
         "createSessionHint": "Veuillez d'abord créer une session avant d'ajouter des lots."
+    },
+    "export": "Export",
+    "summary": "{{shown}} of {{total}} {{batches}} · {{learners}} {{learnerTerm}}",
+    "csv": {
+        "status": "Status",
+        "inviteCode": "Invite code",
+        "startDate": "Start date"
     }
 }

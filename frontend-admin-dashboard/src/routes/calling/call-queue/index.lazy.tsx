@@ -14,6 +14,7 @@
 import { useEffect } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
+import { ListNumbers } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -38,13 +39,22 @@ function CallQueuePage() {
             </Helmet>
             <div className="flex flex-col gap-5 p-1">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h1 className="text-h3 font-semibold text-neutral-700">Call Queue</h1>
-                        <p className="max-w-2xl text-body text-neutral-500">
-                            AI calls waiting to go out, and the ones on a call right now. Calls
-                            leave the queue automatically — cancel any you no longer want placed.
-                        </p>
+                    <div className="flex items-start gap-3">
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                            <ListNumbers size={20} weight="duotone" />
+                        </span>
+                        <div>
+                            <h1 className="text-h3 font-semibold text-neutral-900">Call Queue</h1>
+                            <p className="max-w-2xl text-body text-neutral-500">
+                                AI calls waiting to go out, and the ones on a call right now. Calls
+                                leave the queue automatically — cancel any you no longer want
+                                placed.
+                            </p>
+                        </div>
                     </div>
+                    <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-caption text-neutral-600">
+                        Refreshes every 10 s
+                    </span>
                 </div>
 
                 {!instituteId ? (

@@ -30,6 +30,7 @@ import {
     fetchCounsellors,
 } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
+import { PlaceCallDialog } from './PlaceCallDialog';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
@@ -134,6 +135,9 @@ export function CallLogPage() {
     };
 
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const { t: tPages } = useTranslation('crmPages');
+    const [logTab, setLogTab] = useState<'calls' | 'intel'>('calls');
+    const tabbed = !!callIntelligenceEnabled;
     const refresh = async () => {
         setIsRefreshing(true);
         try {
@@ -177,6 +181,7 @@ export function CallLogPage() {
                         <ArrowsClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
                         {t('header.refresh')}
                     </Button>
+                    <PlaceCallDialog />
                 </div>
             </header>
 
@@ -279,11 +284,32 @@ export function CallLogPage() {
                 </div>
             </div>
 
+            {/* Calls and Call Intelligence as tabs instead of stacked. */}
+            {tabbed && (
+                <div className="flex w-fit rounded-lg border border-neutral-200 bg-white p-0.5">
+                    {(['calls', 'intel'] as const).map((k) => (
+                        <button
+                            key={k}
+                            type="button"
+                            onClick={() => setLogTab(k)}
+                            className={cn(
+                                'rounded-md px-4 py-1.5 font-medium transition-colors',
+                                logTab === k
+                                    ? 'bg-primary-500 text-white'
+                                    : 'text-neutral-600 hover:bg-neutral-100'
+                            )}
+                        >
+                            <span className="text-caption">{tPages(`callLog.tabs.${k}`)}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {!instituteId ? (
                 <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700">
                     {t('filters.noInstitute')}
                 </div>
-            ) : (
+            ) : tabbed && logTab === 'intel' ? null : (
                 <CallLogTab
                     instituteId={instituteId}
                     fromDate={applied.from}
@@ -297,7 +323,7 @@ export function CallLogPage() {
 
             {/* AI Call Intelligence analytics — team quality, outcome/sentiment mix,
                 per-counsellor leaderboard. Only when the institute has it enabled. */}
-            {instituteId && callIntelligenceEnabled && (
+            {instituteId && callIntelligenceEnabled && (!tabbed || logTab === 'intel') && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-base font-semibold text-neutral-900">
                         {t('callIntelligence.heading')}

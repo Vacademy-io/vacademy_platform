@@ -3,6 +3,8 @@ import {
     Check,
     ChatCenteredDots,
     Clock,
+    HourglassMedium,
+    Info,
     MagnifyingGlass,
     TrayArrowDown,
     UsersThree,
@@ -19,6 +21,10 @@ import { MyPagination } from '@/components/design-system/pagination';
 import { MyTable } from '@/components/design-system/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ColumnDef } from '@tanstack/react-table';
+import { StatStrip } from '@/components/shared/crm-enhance';
+import { instituteTerms } from '@/components/shared/crm-enhance/institute-terms';
+import { cn } from '@/lib/utils';
+import { relativeDay, timeOfDay } from '../-utils/format-session-time';
 import { useDecideMentorRequest, useMentorRequests, useMentors } from '../-hooks/use-mentorship';
 import { MentorshipPageHeader } from './MentorshipPageHeader';
 import type { MentorDTO, MentorRequestDTO } from '../-types/mentorship-types';
@@ -41,6 +47,12 @@ function fmtDate(v?: number | null, locale?: string): string {
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(locale);
 }
 
+/** Whole days since a timestamp, for "waiting 3d" on a pending request. */
+function daysSince(v?: number | null): number {
+    if (!v) return 0;
+    return Math.max(0, Math.floor((Date.now() - v) / 86_400_000));
+}
+
 function initials(name?: string | null): string {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
@@ -59,6 +71,7 @@ function initials(name?: string | null): string {
  */
 export function MentorRequestsPanel({ instituteId }: { instituteId: string | undefined }) {
     const { t, i18n } = useTranslation('mentorshipMentorRequestsPanel');
+    const { t: tFormat } = useTranslation('mentorshipFormatSessionTimeUtils');
     const TABS = useMemo(() => buildTabs(t), [t]);
     const [status, setStatus] = useState<string>('PENDING');
     const [page, setPage] = useState(0);
@@ -209,11 +222,30 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
                 id: 'requested',
                 header: t('columnRequested'),
                 size: 160,
-                cell: ({ row }) => (
-                    <span className="flex items-center gap-1 text-caption text-neutral-500">
-                        <Clock size={12} /> {fmtDate(row.original.created_at, i18n.language)}
-                    </span>
-                ),
+                cell: ({ row }) => {
+                    const r = row.original;
+                    const waiting = r.status === 'PENDING' ? daysSince(r.created_at) : 0;
+                    return (
+                        <span
+                            className="flex flex-col"
+                            title={fmtDate(r.created_at, i18n.language)}
+                        >
+                            <span className="flex items-center gap-1 text-caption text-neutral-600">
+                                <Clock size={12} />{' '}
+                                {relativeDay(r.created_at, tFormat, i18n.language)}
+                            </span>
+                            <span className="text-caption text-neutral-400">
+                                {timeOfDay(r.created_at, i18n.language)}
+                                {waiting >= 2 && (
+                                    <b className="font-semibold text-danger-600">
+                                        {' · '}
+                                        {t('waitingDays', { count: waiting })}
+                                    </b>
+                                )}
+                            </span>
+                        </span>
+                    );
+                },
             },
             {
                 id: 'actions',
@@ -253,144 +285,207 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
         [t, i18n.language]
     );
 
+    // Pending-queue figures, from the page already loaded (the endpoint has no
+    // summary call). The total is the server's; the rest describe this page.
+    const oldest = allRequests.reduce<number | null>(
+        (min, r) => (r.created_at && (min == null || r.created_at < min) ? r.created_at : min),
+        null
+    );
+    const oldestDays = daysSince(oldest);
+    const oldestHours = oldest ? Math.max(0, Math.floor((Date.now() - oldest) / 3_600_000)) : 0;
+    const openEnded = allRequests.filter((r) => !r.mentor_id).length;
+    const learnerTerm = instituteTerms().learner.toLowerCase();
+
     return (
         <div className="flex flex-col gap-6 p-6">
-            <MentorshipPageHeader title={t('pageTitle')} subtitle={t('pageSubtitle')} />
+            <MentorshipPageHeader
+                title={t('pageTitle')}
+                subtitle={t('pageSubtitle')}
+                icon={TrayArrowDown}
+            />
 
-            <div className="flex flex-wrap gap-2 border-b border-neutral-200">
-                {TABS.map((tab) => (
-                    <button
-                        key={tab.key}
-                        type="button"
-                        onClick={() => switchTab(tab.key)}
-                        className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
-                            status === tab.key
-                                ? 'border-primary-500 font-medium text-primary-600'
-                                : 'border-transparent text-neutral-500 hover:text-neutral-700'
-                        }`}
-                    >
-                        {tab.label}
-                        {tab.key === status && (data?.total_elements ?? 0) > 0 && (
-                            <span className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption text-neutral-500">
-                                {data?.total_elements}
-                            </span>
-                        )}
-                    </button>
-                ))}
-            </div>
+            {status === 'PENDING' && !isLoading && !isError && allRequests.length > 0 && (
+                <StatStrip
+                    items={[
+                        {
+                            key: 'waiting',
+                            icon: TrayArrowDown,
+                            tint: 'warning',
+                            label: t('kpiWaitingLabel'),
+                            value: data?.total_elements ?? allRequests.length,
+                            detail: t('kpiWaitingDetail', { count: openEnded }),
+                        },
+                        {
+                            key: 'oldest',
+                            icon: HourglassMedium,
+                            tint: oldestDays >= 2 ? 'danger' : 'info',
+                            label: t('kpiOldestLabel'),
+                            value:
+                                oldestDays >= 1
+                                    ? t('kpiOldestDays', { count: oldestDays })
+                                    : t('kpiOldestHours', { count: oldestHours }),
+                            detail: t('kpiOldestDetail'),
+                        },
+                        {
+                            key: 'openEnded',
+                            icon: UsersThree,
+                            tint: 'primary',
+                            label: t('kpiAnyMentorLabel'),
+                            value: openEnded,
+                            detail: t('kpiAnyMentorDetail'),
+                        },
+                    ]}
+                />
+            )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                    <MagnifyingGlass
-                        size={16}
-                        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
-                    />
-                    <MyInput
-                        input={search}
-                        onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setSearch(e.target.value)
-                        }
-                        inputType="text"
-                        inputPlaceholder={t('searchPlaceholder')}
-                        className="pl-9 sm:w-full"
-                    />
-                </div>
-                {query && (
-                    <span className="text-caption text-neutral-500">
-                        {t('pageMatchCount', {
-                            visible: requests.length,
-                            count: allRequests.length,
-                        })}
-                        {' · '}
+            <div className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap gap-2 border-b border-neutral-200">
+                    {TABS.map((tab) => (
                         <button
+                            key={tab.key}
                             type="button"
-                            className="font-medium text-primary-500 hover:text-primary-600"
+                            onClick={() => switchTab(tab.key)}
+                            className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
+                                status === tab.key
+                                    ? 'border-primary-500 font-medium text-primary-600'
+                                    : 'border-transparent text-neutral-500 hover:text-neutral-700'
+                            }`}
+                        >
+                            {tab.label}
+                            {tab.key === status && (data?.total_elements ?? 0) > 0 && (
+                                <span
+                                    className={cn(
+                                        'ml-1.5 rounded-full px-1.5 py-0.5 text-caption',
+                                        tab.key === 'PENDING'
+                                            ? 'bg-warning-50 text-warning-700'
+                                            : 'bg-neutral-100 text-neutral-500'
+                                    )}
+                                >
+                                    {data?.total_elements}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                        />
+                        <MyInput
+                            input={search}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setSearch(e.target.value)
+                            }
+                            inputType="text"
+                            inputPlaceholder={t('searchPlaceholder')}
+                            className="pl-9 sm:w-full"
+                        />
+                    </div>
+                    {query && (
+                        <span className="text-caption text-neutral-500">
+                            {t('pageMatchCount', {
+                                visible: requests.length,
+                                count: allRequests.length,
+                            })}
+                            {' · '}
+                            <button
+                                type="button"
+                                className="font-medium text-primary-500 hover:text-primary-600"
+                                onClick={() => setSearch('')}
+                            >
+                                {t('clearButton')}
+                            </button>
+                        </span>
+                    )}
+                </div>
+
+                {isLoading ? (
+                    <div className="flex flex-col gap-3">
+                        {[1, 2, 3].map((i) => (
+                            <div
+                                key={i}
+                                className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Skeleton className="size-10 rounded-full" />
+                                    <div className="flex flex-col gap-1.5">
+                                        <Skeleton className="h-3.5 w-40" />
+                                        <Skeleton className="h-3 w-56" />
+                                    </div>
+                                </div>
+                                <Skeleton className="h-8 w-40" />
+                            </div>
+                        ))}
+                    </div>
+                ) : isError ? (
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                        <div className="flex items-center gap-2">
+                            <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                            <p className="text-body text-danger-600">{t('errorLoadRequests')}</p>
+                        </div>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => refetch()}
+                        >
+                            {t('retryButton')}
+                        </MyButton>
+                    </div>
+                ) : allRequests.length === 0 ? (
+                    <EmptyRequests status={status} />
+                ) : requests.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                        <MagnifyingGlass size={32} className="text-neutral-300" />
+                        <p className="text-body font-medium text-neutral-700">
+                            {t('noRequestsMatchSearch', { search: search.trim() })}
+                        </p>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
                             onClick={() => setSearch('')}
                         >
-                            {t('clearButton')}
-                        </button>
-                    </span>
+                            {t('clearSearchButton')}
+                        </MyButton>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                            <MyTable<MentorRequestDTO>
+                                data={{
+                                    content: requests,
+                                    total_pages: data?.total_pages ?? 1,
+                                    page_no: page,
+                                    page_size: PAGE_SIZE,
+                                    total_elements: data?.total_elements ?? requests.length,
+                                    last: data?.last ?? true,
+                                }}
+                                columns={columns}
+                                isLoading={false}
+                                error={null}
+                                currentPage={page}
+                                scrollable
+                            />
+                        </div>
+                        {!query && (data?.total_pages ?? 0) > 1 && (
+                            <MyPagination
+                                currentPage={page}
+                                totalPages={data?.total_pages ?? 1}
+                                onPageChange={setPage}
+                            />
+                        )}
+                    </div>
                 )}
             </div>
 
-            {isLoading ? (
-                <div className="flex flex-col gap-3">
-                    {[1, 2, 3].map((i) => (
-                        <div
-                            key={i}
-                            className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
-                        >
-                            <div className="flex items-center gap-3">
-                                <Skeleton className="size-10 rounded-full" />
-                                <div className="flex flex-col gap-1.5">
-                                    <Skeleton className="h-3.5 w-40" />
-                                    <Skeleton className="h-3 w-56" />
-                                </div>
-                            </div>
-                            <Skeleton className="h-8 w-40" />
-                        </div>
-                    ))}
-                </div>
-            ) : isError ? (
-                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
-                    <div className="flex items-center gap-2">
-                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">{t('errorLoadRequests')}</p>
-                    </div>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => refetch()}
-                    >
-                        {t('retryButton')}
-                    </MyButton>
-                </div>
-            ) : allRequests.length === 0 ? (
-                <EmptyRequests status={status} />
-            ) : requests.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
-                    <MagnifyingGlass size={32} className="text-neutral-300" />
-                    <p className="text-body font-medium text-neutral-700">
-                        {t('noRequestsMatchSearch', { search: search.trim() })}
-                    </p>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => setSearch('')}
-                    >
-                        {t('clearSearchButton')}
-                    </MyButton>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-                        <MyTable<MentorRequestDTO>
-                            data={{
-                                content: requests,
-                                total_pages: data?.total_pages ?? 1,
-                                page_no: page,
-                                page_size: PAGE_SIZE,
-                                total_elements: data?.total_elements ?? requests.length,
-                                last: data?.last ?? true,
-                            }}
-                            columns={columns}
-                            isLoading={false}
-                            error={null}
-                            currentPage={page}
-                            scrollable
-                        />
-                    </div>
-                    {!query && (data?.total_pages ?? 0) > 1 && (
-                        <MyPagination
-                            currentPage={page}
-                            totalPages={data?.total_pages ?? 1}
-                            onPageChange={setPage}
-                        />
-                    )}
-                </div>
-            )}
+            <p className="flex items-start gap-2 rounded-lg border border-info-100 bg-info-50 px-3 py-2 text-caption text-neutral-600">
+                <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
+                {t('queueNote', { learner: learnerTerm })}
+            </p>
 
             <DecisionDialog
                 instituteId={instituteId}

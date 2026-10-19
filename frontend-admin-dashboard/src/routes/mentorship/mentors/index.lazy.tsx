@@ -7,6 +7,7 @@ import {
     Copy,
     DotsThreeVertical,
     Eye,
+    Info,
     MagnifyingGlass,
     NotePencil,
     Plus,
@@ -82,6 +83,8 @@ import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
 import { CapacityChip, CapacityMeter, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import { QuickViews, type QuickView } from '@/components/shared/crm-enhance';
+import { instituteTerms } from '@/components/shared/crm-enhance/institute-terms';
 import {
     applyMentorFilters,
     DEFAULT_MENTOR_FILTERS,
@@ -151,6 +154,67 @@ function MentorsPage() {
     // silently hide matches sitting on other pages.
     const searching = !isDefaultMentorFilters(filters);
     const visibleMentors = searching ? applyMentorFilters(mentors, filters) : pagedMentors;
+
+    // Quick views: counts over the full mentor list the dashboard already loaded, each
+    // one a preset of the same filters below — so a count and its list always agree.
+    // Built every render (not memoised) so the labels follow a language switch.
+    const facetOnly = (f: Partial<MentorFilters>): MentorFilters => ({
+        ...DEFAULT_MENTOR_FILTERS,
+        search: filters.search,
+        ...f,
+    });
+    const sameFacets = (a: MentorFilters, b: MentorFilters) =>
+        a.status.join() === b.status.join() &&
+        a.discoverable.join() === b.discoverable.join() &&
+        a.capacity.join() === b.capacity.join();
+    const quickViewDefs: Array<{
+        key: string;
+        label: string;
+        preset: MentorFilters;
+        tone?: QuickView['tone'];
+    }> = [
+        { key: 'all', label: t('quickViewAll'), preset: facetOnly({}) },
+        {
+            key: 'active',
+            label: t('quickViewActive'),
+            preset: facetOnly({ status: ['active'] }),
+            tone: 'success',
+        },
+        {
+            key: 'inactive',
+            label: t('quickViewInactive'),
+            preset: facetOnly({ status: ['inactive'] }),
+        },
+        {
+            key: 'listed',
+            label: t('quickViewListed'),
+            preset: facetOnly({ discoverable: ['listed'] }),
+            tone: 'info',
+        },
+        {
+            key: 'full',
+            label: t('quickViewFull'),
+            preset: facetOnly({ capacity: ['full'] }),
+            tone: 'danger',
+        },
+        {
+            key: 'noBooking',
+            label: t('quickViewNoBooking'),
+            preset: facetOnly({ capacity: ['no-booking'] }),
+            tone: 'warning',
+        },
+    ];
+    const quickViews: QuickView[] = quickViewDefs.map((v) => ({
+        key: v.key,
+        label: v.label,
+        tone: v.tone,
+        count: applyMentorFilters(mentors, { ...v.preset, search: '' }).length,
+        active: sameFacets(filters, v.preset),
+        onSelect: () => {
+            setFilters(v.preset);
+            setPage(0);
+        },
+    }));
 
     // Upcoming load per mentor, from the sessions endpoint the dashboard already
     // uses. The mentor row is where an admin decides who to assign next, so "how
@@ -300,15 +364,26 @@ function MentorsPage() {
                 header: t('columnStatus'),
                 size: 100,
                 cell: ({ row }) => (
-                    <StatusChips
-                        status={
-                            (row.original.status || 'ACTIVE').toUpperCase() === 'ACTIVE'
-                                ? 'ACTIVE'
-                                : 'INACTIVE'
-                        }
-                    >
-                        {(row.original.status || 'ACTIVE').toLowerCase()}
-                    </StatusChips>
+                    <div className="flex flex-col items-start gap-1">
+                        <StatusChips
+                            status={
+                                (row.original.status || 'ACTIVE').toUpperCase() === 'ACTIVE'
+                                    ? 'ACTIVE'
+                                    : 'INACTIVE'
+                            }
+                        >
+                            {(row.original.status || 'ACTIVE').toLowerCase()}
+                        </StatusChips>
+                        <span className="text-caption text-neutral-400">
+                            {row.original.is_discoverable ? t('statusListed') : t('statusHidden')}
+                            {!row.original.booking_page_slug && (
+                                <span className="text-warning-600">
+                                    {' · '}
+                                    {t('statusNoBookingPage')}
+                                </span>
+                            )}
+                        </span>
+                    </div>
                 ),
             },
             {
@@ -438,7 +513,11 @@ function MentorsPage() {
 
     return (
         <div className="flex flex-col gap-6 p-6">
-            <MentorshipPageHeader title={t('pageTitle')} subtitle={t('pageSubtitle')}>
+            <MentorshipPageHeader
+                title={t('pageTitle')}
+                subtitle={t('pageSubtitle')}
+                icon={UsersThree}
+            >
                 <MyButton
                     type="button"
                     buttonType="secondary"
@@ -476,7 +555,9 @@ function MentorsPage() {
                 </MyButton>
             </MentorshipPageHeader>
 
-            <div className="flex flex-col gap-3">
+            {!isLoading && !isError && mentors.length > 0 && <QuickViews views={quickViews} />}
+
+            <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="relative w-full sm:w-80">
                         <MagnifyingGlass
@@ -538,91 +619,96 @@ function MentorsPage() {
                         </button>
                     </span>
                 )}
+
+                {isLoading || mentorsPage.isLoading ? (
+                    <div className="flex flex-col gap-3">
+                        {[1, 2, 3].map((i) => (
+                            <div
+                                key={i}
+                                className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Skeleton className="size-10 rounded-full" />
+                                    <div className="flex flex-col gap-1.5">
+                                        <Skeleton className="h-3.5 w-32" />
+                                        <Skeleton className="h-3 w-20" />
+                                    </div>
+                                </div>
+                                <Skeleton className="h-8 w-24" />
+                            </div>
+                        ))}
+                    </div>
+                ) : isError || mentorsPage.isError ? (
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                        <div className="flex items-center gap-2">
+                            <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                            <p className="text-body text-danger-600">{t('errorLoadMentors')}</p>
+                        </div>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => {
+                                refetch();
+                                mentorsPage.refetch();
+                            }}
+                        >
+                            {t('retryButton')}
+                        </MyButton>
+                    </div>
+                ) : pagedMentors.length === 0 && mentors.length === 0 ? (
+                    <EmptyMentors t={t} onAdd={() => setAddOpen(true)} />
+                ) : visibleMentors.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                        <MagnifyingGlass size={32} className="text-neutral-300" />
+                        <p className="text-body font-medium text-neutral-700">
+                            {t('noMentorsMatchSearch', { search: search.trim() })}
+                        </p>
+                        <p className="text-caption text-neutral-500">{t('noMentorsMatchHint')}</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                            <MyTable<MentorDTO>
+                                data={{
+                                    content: visibleMentors,
+                                    total_pages: searching ? 1 : mentorsPage.data?.total_pages ?? 1,
+                                    page_no: searching ? 0 : page,
+                                    page_size: MENTORS_PAGE_SIZE,
+                                    total_elements: totalCount,
+                                    last: searching ? true : mentorsPage.data?.last ?? true,
+                                }}
+                                columns={columns}
+                                isLoading={false}
+                                error={null}
+                                currentPage={searching ? 0 : page}
+                                scrollable
+                            />
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <span className="text-caption text-neutral-500">
+                                {t('resultsSummary', {
+                                    start: rangeStart,
+                                    end: rangeEnd,
+                                    count: totalCount,
+                                })}
+                            </span>
+                            {!searching && (mentorsPage.data?.total_pages ?? 0) > 1 && (
+                                <MyPagination
+                                    currentPage={page}
+                                    totalPages={mentorsPage.data?.total_pages ?? 1}
+                                    onPageChange={setPage}
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {isLoading || mentorsPage.isLoading ? (
-                <div className="flex flex-col gap-3">
-                    {[1, 2, 3].map((i) => (
-                        <div
-                            key={i}
-                            className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
-                        >
-                            <div className="flex items-center gap-3">
-                                <Skeleton className="size-10 rounded-full" />
-                                <div className="flex flex-col gap-1.5">
-                                    <Skeleton className="h-3.5 w-32" />
-                                    <Skeleton className="h-3 w-20" />
-                                </div>
-                            </div>
-                            <Skeleton className="h-8 w-24" />
-                        </div>
-                    ))}
-                </div>
-            ) : isError || mentorsPage.isError ? (
-                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
-                    <div className="flex items-center gap-2">
-                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">{t('errorLoadMentors')}</p>
-                    </div>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => {
-                            refetch();
-                            mentorsPage.refetch();
-                        }}
-                    >
-                        {t('retryButton')}
-                    </MyButton>
-                </div>
-            ) : pagedMentors.length === 0 && mentors.length === 0 ? (
-                <EmptyMentors t={t} onAdd={() => setAddOpen(true)} />
-            ) : visibleMentors.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
-                    <MagnifyingGlass size={32} className="text-neutral-300" />
-                    <p className="text-body font-medium text-neutral-700">
-                        {t('noMentorsMatchSearch', { search: search.trim() })}
-                    </p>
-                    <p className="text-caption text-neutral-500">{t('noMentorsMatchHint')}</p>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-                        <MyTable<MentorDTO>
-                            data={{
-                                content: visibleMentors,
-                                total_pages: searching ? 1 : mentorsPage.data?.total_pages ?? 1,
-                                page_no: searching ? 0 : page,
-                                page_size: MENTORS_PAGE_SIZE,
-                                total_elements: totalCount,
-                                last: searching ? true : mentorsPage.data?.last ?? true,
-                            }}
-                            columns={columns}
-                            isLoading={false}
-                            error={null}
-                            currentPage={searching ? 0 : page}
-                            scrollable
-                        />
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-caption text-neutral-500">
-                            {t('resultsSummary', {
-                                start: rangeStart,
-                                end: rangeEnd,
-                                count: totalCount,
-                            })}
-                        </span>
-                        {!searching && (mentorsPage.data?.total_pages ?? 0) > 1 && (
-                            <MyPagination
-                                currentPage={page}
-                                totalPages={mentorsPage.data?.total_pages ?? 1}
-                                onPageChange={setPage}
-                            />
-                        )}
-                    </div>
-                </div>
-            )}
+            <p className="flex items-start gap-2 rounded-lg border border-info-100 bg-info-50 px-3 py-2 text-caption text-neutral-600">
+                <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
+                {t('listNote', { learners: instituteTerms().learners.toLowerCase() })}
+            </p>
 
             {instituteId && (
                 <AddMentorDialog

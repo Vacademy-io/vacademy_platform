@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SessionStatsCounts } from './-components/SessionStatsCounts';
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { CalendarPlus } from '@phosphor-icons/react';
+import { CalendarDots, CalendarPlus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
@@ -28,7 +28,11 @@ function MentorSessionsRoute() {
     return (
         <LayoutContainer>
             <div className="flex flex-col gap-6 p-6">
-                <MentorshipPageHeader title={t('title')} subtitle={t('subtitle')}>
+                <MentorshipPageHeader
+                    title={t('title')}
+                    subtitle={t('subtitle')}
+                    icon={CalendarDots}
+                >
                     <MyButton
                         type="button"
                         buttonType="primary"

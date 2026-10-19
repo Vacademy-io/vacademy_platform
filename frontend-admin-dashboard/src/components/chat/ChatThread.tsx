@@ -172,7 +172,7 @@ export function ChatThread({
                         <div key={m.id}>
                             {showDay && (
                                 <div className="my-3 flex justify-center">
-                                    <span className="rounded-full bg-neutral-200 px-3 py-1 text-caption font-medium text-neutral-600">
+                                    <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-caption font-medium text-neutral-600">
                                         {dayLabel(m.createdAt)}
                                     </span>
                                 </div>

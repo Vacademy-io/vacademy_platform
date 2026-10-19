@@ -69,5 +69,13 @@
         "duration": "अवधि",
         "topic": "विषय",
         "bookingStatus": "बुकिंग स्थिति"
+    },
+    "searchPlaceholder": "मेंटर, {{learner}} या विषय से खोजें",
+    "shownCount_one": "{{count}} सत्र दिखाया गया",
+    "shownCount_other": "{{count}} सत्र दिखाए गए",
+    "week": {
+        "title": "इस सप्ताह",
+        "subtitle": "आज और अगले छह दिन · विवरण के लिए किसी सत्र पर क्लिक करें",
+        "more": "+{{count}} और"
     }
 }

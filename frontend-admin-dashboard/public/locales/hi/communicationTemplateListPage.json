@@ -66,5 +66,14 @@
         "footer": "फ़ुटर"
     },
     "showFullMessage": "पूरा मैसेज देखें",
-    "showLess": "कम दिखाएँ"
+    "showLess": "कम दिखाएँ",
+    "providerChip": "प्रदाता: {{provider}}",
+    "filters": {
+        "allCategories": "सभी श्रेणियाँ",
+        "allLanguages": "सभी भाषाएँ",
+        "clear": "फ़िल्टर हटाएँ"
+    },
+    "resultsCount_one": "{{count}} टेम्पलेट",
+    "resultsCount_other": "{{count}} टेम्पलेट",
+    "actionsNote": "संपादन और Meta को सबमिट करना केवल ड्राफ़्ट और अस्वीकृत टेम्पलेट के लिए उपलब्ध है। स्वीकृत और लंबित टेम्पलेट केवल हटाए जा सकते हैं।"
 }

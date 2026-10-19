@@ -98,7 +98,7 @@ export function MyScheduleCard({ instituteId }: MyScheduleCardProps) {
     if (!isLoading && sessions.length === 0) return null;
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
                 <CalendarBlank size={18} weight="bold" className="text-primary-600" />
                 <span className="text-body font-semibold text-neutral-700">{t('heading')}</span>

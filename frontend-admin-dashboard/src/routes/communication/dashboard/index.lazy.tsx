@@ -90,11 +90,11 @@ function MessagingDashboardPage() {
             href: '/communication/inbox',
         });
     }
-    if (data && data.batches.active > 0) {
+    if ((data?.batches?.active ?? 0) > 0) {
         insights.push({
             key: 'batches',
             tone: 'info',
-            title: t('messaging.insights.batches.title', { total: data.batches.active }),
+            title: t('messaging.insights.batches.title', { total: data?.batches?.active ?? 0 }),
             text: t('messaging.insights.batches.text'),
             href: '/announcement/history',
         });

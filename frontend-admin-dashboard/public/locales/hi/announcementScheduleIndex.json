@@ -70,5 +70,25 @@
         "recurring": "आवर्ती",
         "recurringWithCron": "आवर्ती · {{cron}}",
         "cronWithLabel": "CRON {{cron}}"
+    },
+    "subheading": "हर नियोजित घोषणा और ईमेल अभियान का कैलेंडर। कुछ नया शेड्यूल करने के लिए कोई दिन चुनें।",
+    "viewLabel": "कैलेंडर दृश्य",
+    "legend": {
+        "recurring": "दोहराई जाने वाली"
+    },
+    "countInView_one": "{{count}} घोषणा",
+    "countInView_other": "{{count}} घोषणाएँ",
+    "nothingScheduled": "कुछ भी शेड्यूल नहीं है",
+    "lists": {
+        "upNext": {
+            "title": "इस दृश्य में आगे",
+            "empty": "इस अवधि में कुछ भी नियोजित नहीं है।"
+        },
+        "pending": {
+            "title": "स्वीकृति की प्रतीक्षा में",
+            "empty": "इस अवधि में कुछ भी स्वीकृति की प्रतीक्षा में नहीं है।",
+            "openQueue": "कतार खोलें",
+            "notSentYet": "स्वीकृति तक नहीं भेजी जाएगी"
+        }
     }
 }

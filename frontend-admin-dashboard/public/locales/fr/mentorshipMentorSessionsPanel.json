@@ -71,5 +71,13 @@
         "duration": "Durée",
         "topic": "Sujet",
         "bookingStatus": "Statut de réservation"
+    },
+    "searchPlaceholder": "Search by mentor, {{learner}} or topic",
+    "shownCount_one": "{{count}} session shown",
+    "shownCount_other": "{{count}} sessions shown",
+    "week": {
+        "title": "This week",
+        "subtitle": "Today and the next six days · click a session for details",
+        "more": "+{{count}} more"
     }
 }

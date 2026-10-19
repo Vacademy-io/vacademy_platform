@@ -40,7 +40,10 @@
         "create": "Create Template",
         "saveDraft": "Save Draft",
         "submitting": "Submitting...",
-        "submitForApproval": "Submit for Approval"
+        "submitForApproval": "Submit for Approval",
+        "back": "Back to templates",
+        "subtitleCreate": "Build a template and submit it to Meta. Approval usually takes minutes, at most 24 hours.",
+        "subtitleEdit": "{{name}} · fix anything flagged and submit again."
     },
     "fields": {
         "templateName": "Template Name",
@@ -101,5 +104,23 @@
         "language": "Language:",
         "placeholders": "Placeholders:",
         "buttonsCount": "Buttons:"
+    },
+    "sections": {
+        "basics": {
+            "title": "Basics",
+            "description": "Name, category and language decide how Meta reviews and prices the template."
+        },
+        "header": {
+            "description": "Optional. A bold line, or an image, video or document shown above the message."
+        },
+        "body": {
+            "description": "What the recipient reads. Variables are numbered {{first}}, {{second}} and so on, in order."
+        },
+        "footer": {
+            "description": "Optional small grey line under the message. No variables."
+        },
+        "buttons": {
+            "description": "Optional, up to 3. {{used}}/3 used."
+        }
     }
 }

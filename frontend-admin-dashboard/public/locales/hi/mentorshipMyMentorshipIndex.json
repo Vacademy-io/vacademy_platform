@@ -13,7 +13,10 @@
         "youFallback": "आप",
         "mentorFallback": "मेंटर",
         "menteesAssigned_one": "{{count}} मेंटी असाइन किया गया",
-        "menteesAssigned_other": "{{count}} मेंटी असाइन किए गए"
+        "menteesAssigned_other": "{{count}} मेंटी असाइन किए गए",
+        "ratingChip_one": "{{rating}} · {{count}} रेटिंग",
+        "ratingChip_other": "{{rating}} · {{count}} रेटिंग",
+        "expertise": "विशेषज्ञता: {{tags}}"
     },
     "googleCalendar": {
         "title": "Google कैलेंडर",
@@ -41,7 +44,8 @@
         "heading_other": "{{count}} सत्र रिकॉर्ड करने बाकी हैं",
         "description": "जब तक आप इसे रिकॉर्ड नहीं करते, तब तक यह सत्र कहीं भी पूर्ण नहीं गिना जाता।",
         "menteeFallback": "मेंटी",
-        "record": "रिकॉर्ड करें"
+        "record": "रिकॉर्ड करें",
+        "notCounted": "अभी गिना नहीं गया"
     },
     "mentees": {
         "heading": "मेंटी",
@@ -67,5 +71,20 @@
         "messageAriaLabel": "{{name}} को संदेश भेजें",
         "openAriaLabel": "{{name}} खोलें",
         "openRowTitle": "सीखने की प्रगति, नोट्स और शेड्यूल की गई कॉल"
+    },
+    "header": {
+        "schedule": "1:1 शेड्यूल करें"
+    },
+    "kpi": {
+        "mentees": "मेरे मेंटी",
+        "menteesLeft_one": "{{cap}} में से {{count}} जगह बाकी",
+        "menteesLeft_other": "{{cap}} में से {{count}} जगहें बाकी",
+        "menteesNoLimit": "कोई सीमा तय नहीं",
+        "rating": "मेरी औसत रेटिंग",
+        "ratingDetail_one": "{{count}} रेटेड सत्र",
+        "ratingDetail_other": "{{count}} रेटेड सत्र",
+        "ratingNone": "अभी कोई रेटिंग नहीं",
+        "toRecord": "दर्ज करने वाले सत्र",
+        "toRecordDetail": "दर्ज होने तक पूरे हुए नहीं गिने जाते"
     }
 }

@@ -42,7 +42,10 @@
         "create": "Créer un modèle",
         "saveDraft": "Enregistrer le brouillon",
         "submitting": "Envoi en cours...",
-        "submitForApproval": "Soumettre pour approbation"
+        "submitForApproval": "Soumettre pour approbation",
+        "back": "Retour aux modèles",
+        "subtitleCreate": "Créez un modèle et soumettez-le à Meta. L'approbation prend généralement quelques minutes, 24 heures au maximum.",
+        "subtitleEdit": "{{name}} · corrigez les points signalés et soumettez à nouveau."
     },
     "fields": {
         "templateName": "Nom du modèle",
@@ -103,5 +106,23 @@
         "language": "Langue :",
         "placeholders": "Variables :",
         "buttonsCount": "Boutons :"
+    },
+    "sections": {
+        "basics": {
+            "title": "Informations de base",
+            "description": "Le nom, la catégorie et la langue déterminent comment Meta examine et facture le modèle."
+        },
+        "header": {
+            "description": "Facultatif. Une ligne en gras, ou une image, une vidéo ou un document affiché au-dessus du message."
+        },
+        "body": {
+            "description": "Ce que lit le destinataire. Les variables sont numérotées {{first}}, {{second}} et ainsi de suite, dans l'ordre."
+        },
+        "footer": {
+            "description": "Petite ligne grise facultative sous le message. Sans variables."
+        },
+        "buttons": {
+            "description": "Facultatif, jusqu'à 3. {{used}}/3 utilisés."
+        }
     }
 }

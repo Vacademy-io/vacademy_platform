@@ -48,7 +48,10 @@
         "recipientsMore": "+{{count}} آخرين",
         "channels": "أُرسل عبر",
         "loadFailed": "تعذر تحميل الإعلانات.",
-        "noMatch": "لا توجد إعلانات في هذه الصفحة تطابق البحث."
+        "noMatch": "لا توجد إعلانات في هذه الصفحة تطابق البحث.",
+        "announcement": "Announcement",
+        "appearsIn": "Appears in · via",
+        "inProductOnly": "In-product only"
     },
     "actions": {
         "view": "عرض",

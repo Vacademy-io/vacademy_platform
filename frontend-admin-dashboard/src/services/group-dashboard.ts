@@ -95,7 +95,9 @@ export const fetchGroupDashboard = async <S>(
             },
         }
     );
-    return res.data;
+    // A response without sections (older server, proxy error page) renders empty
+    // cards rather than crashing the page.
+    return { ...res.data, sections: res.data?.sections ?? {}, errors: res.data?.errors ?? {} };
 };
 
 /**

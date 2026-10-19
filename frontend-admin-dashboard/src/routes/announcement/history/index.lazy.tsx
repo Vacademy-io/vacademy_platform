@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
     CheckCircle,
+    ClockCounterClockwise,
     DotsThreeVertical,
     MagnifyingGlass,
     Megaphone,
@@ -58,12 +59,12 @@ import {
     type HistoryPage,
     type HistoryView,
 } from './-types';
-import { humanize, utcParts } from './-utils/format';
+import { humanize, joinParts, utcParts } from './-utils/format';
 import { useDescribeRecipient, useUserNames } from './-hooks/useRecipientNames';
 import {
     AnnouncementStatusChip,
-    DateTimeStack,
-    EnumChips,
+    ModeIcons,
+    NameAvatar,
     ScheduleSummary,
 } from './-components/primitives';
 import { AnnouncementDetailsDialog } from './-components/AnnouncementDetailsDialog';
@@ -220,7 +221,7 @@ function AnnouncementHistoryPage() {
         () => [
             {
                 id: 'title',
-                header: t('table.title'),
+                header: t('table.announcement'),
                 size: 280,
                 cell: ({ row }) => {
                     const a = row.original;
@@ -234,7 +235,7 @@ function AnnouncementHistoryPage() {
                             <button
                                 type="button"
                                 onClick={() => setDetails(a)}
-                                className="truncate text-left text-body font-semibold text-neutral-900 hover:text-primary-600"
+                                className="block max-w-full truncate text-left text-body font-semibold text-neutral-900 hover:text-primary-600"
                             >
                                 {a.title}
                             </button>
@@ -256,17 +257,23 @@ function AnnouncementHistoryPage() {
             },
             {
                 id: 'channels',
-                header: t('table.channels'),
+                header: t('table.appearsIn'),
                 size: 190,
                 cell: ({ row }) => {
                     const modes = (row.original.modes ?? []).map((m) => m.modeType);
                     const mediums = (row.original.mediums ?? []).map((m) => m.mediumType);
                     return (
                         <div className="flex flex-col gap-1">
-                            <EnumChips group="modes" values={modes} />
-                            {mediums.length > 0 && (
-                                <EnumChips group="mediums" variant="outline" values={mediums} />
-                            )}
+                            <ModeIcons values={modes} />
+                            <span className="text-caption text-neutral-500">
+                                {mediums.length > 0
+                                    ? mediums
+                                          .map((m) =>
+                                              t(`mediums.${m}`, { defaultValue: humanize(m) })
+                                          )
+                                          .join(' · ')
+                                    : t('table.inProductOnly')}
+                            </span>
                         </div>
                     );
                 },
@@ -284,30 +291,30 @@ function AnnouncementHistoryPage() {
             {
                 id: 'createdBy',
                 header: t('table.createdBy'),
-                size: 160,
+                size: 220,
                 cell: ({ row }) => {
                     const a = row.original;
+                    const name = a.createdByName || t('detailsDialog.system');
+                    const created = utcParts(a.createdAt);
+                    const role = a.createdByRole
+                        ? t(`roles.${a.createdByRole}`, {
+                              defaultValue: humanize(a.createdByRole),
+                          })
+                        : '';
                     return (
-                        <div className="min-w-0">
-                            <div className="truncate text-body text-neutral-800">
-                                {a.createdByName || t('detailsDialog.system')}
-                            </div>
-                            {a.createdByRole && (
-                                <div className="text-caption text-neutral-500">
-                                    {t(`roles.${a.createdByRole}`, {
-                                        defaultValue: humanize(a.createdByRole),
-                                    })}
+                        <div className="flex min-w-0 items-center gap-2">
+                            <NameAvatar name={name} muted={!a.createdByName} />
+                            <div className="min-w-0">
+                                <div className="truncate text-body text-neutral-800">{name}</div>
+                                <div className="truncate text-caption text-neutral-500">
+                                    {[role, created ? joinParts(created) : '']
+                                        .filter(Boolean)
+                                        .join(' · ')}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     );
                 },
-            },
-            {
-                id: 'createdAt',
-                header: t('table.createdAt'),
-                size: 130,
-                cell: ({ row }) => <DateTimeStack parts={utcParts(row.original.createdAt)} />,
             },
             {
                 id: 'actions',
@@ -408,9 +415,14 @@ function AnnouncementHistoryPage() {
     return (
         <div className="flex flex-col gap-6 p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-h2-semibold text-neutral-900">{t('heading')}</h1>
-                    <p className="mt-1 text-body text-neutral-500">{t('subheading')}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                        <ClockCounterClockwise className="size-6" weight="duotone" />
+                    </span>
+                    <div className="min-w-0">
+                        <h1 className="text-h2-semibold text-neutral-900">{t('heading')}</h1>
+                        <p className="mt-1 text-body text-neutral-500">{t('subheading')}</p>
+                    </div>
                 </div>
                 <MyButton
                     buttonType="primary"
@@ -432,30 +444,44 @@ function AnnouncementHistoryPage() {
                 }}
             />
 
-            <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
-                <Tabs
-                    value={view}
-                    onValueChange={(v: string) => {
-                        setView(v as HistoryView);
-                        setPage(0);
-                    }}
-                >
-                    <TabsList>
-                        <TabsTrigger value="all">{t('tabs.all')}</TabsTrigger>
-                        <TabsTrigger value="planned">{t('tabs.planned')}</TabsTrigger>
-                        <TabsTrigger value="past">{t('tabs.past')}</TabsTrigger>
-                    </TabsList>
-                </Tabs>
+            <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-4 pt-4">
+                    <Tabs
+                        value={view}
+                        onValueChange={(v: string) => {
+                            setView(v as HistoryView);
+                            setPage(0);
+                        }}
+                    >
+                        <TabsList className="h-auto gap-1 rounded-none bg-transparent p-0">
+                            {(['all', 'planned', 'past'] as const).map((v) => (
+                                <TabsTrigger
+                                    key={v}
+                                    value={v}
+                                    className="rounded-none border-b-2 border-transparent px-3 pb-3 pt-1 text-body text-neutral-500 data-[state=active]:border-primary-500 data-[state=active]:bg-transparent data-[state=active]:text-primary-600 data-[state=active]:shadow-none"
+                                >
+                                    {t(`tabs.${v}`)}
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                    </Tabs>
+                    {!isLoading && !isError && (
+                        <span className="pb-3 text-caption text-neutral-500">
+                            {t('results', { count: totalElements })}
+                        </span>
+                    )}
+                </div>
 
-                <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-wrap items-end gap-3 border-b border-neutral-100 bg-neutral-50 px-4 py-3">
                     <div className="w-full sm:w-72">
-                        <Label className="mb-1 block text-caption text-neutral-600">
+                        <Label htmlFor="announcement-history-search" className="sr-only">
                             {t('toolbar.searchLabel')}
                         </Label>
                         <div className="relative">
                             <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                             <Input
-                                className="pl-9"
+                                id="announcement-history-search"
+                                className="bg-white pl-9"
                                 placeholder={t('toolbar.searchPlaceholder')}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
@@ -464,9 +490,7 @@ function AnnouncementHistoryPage() {
                     </div>
                     {view === 'all' ? (
                         <div className="w-full sm:w-56">
-                            <Label className="mb-1 block text-caption text-neutral-600">
-                                {t('toolbar.statusLabel')}
-                            </Label>
+                            <Label className="sr-only">{t('toolbar.statusLabel')}</Label>
                             <Select
                                 value={status ?? 'ALL'}
                                 onValueChange={(v) => {
@@ -474,11 +498,16 @@ function AnnouncementHistoryPage() {
                                     setPage(0);
                                 }}
                             >
-                                <SelectTrigger>
+                                <SelectTrigger
+                                    className="bg-white"
+                                    aria-label={t('toolbar.statusLabel')}
+                                >
                                     <SelectValue placeholder={t('toolbar.statusAll')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="ALL">{t('toolbar.statusAll')}</SelectItem>
+                                    <SelectItem value="ALL">
+                                        {t('toolbar.statusLabel')}: {t('toolbar.statusAll')}
+                                    </SelectItem>
                                     {allStatuses.map((s) => (
                                         <SelectItem key={s} value={s}>
                                             {t(`status.${s}`, { defaultValue: humanize(s) })}
@@ -489,12 +518,17 @@ function AnnouncementHistoryPage() {
                         </div>
                     ) : (
                         <>
-                            <div className="w-full sm:w-56">
-                                <Label className="mb-1 block text-caption text-neutral-600">
+                            <div className="flex w-full items-center gap-2 sm:w-auto">
+                                <Label
+                                    htmlFor="announcement-history-from"
+                                    className="shrink-0 text-caption text-neutral-600"
+                                >
                                     {t('toolbar.fromLabel')}
                                 </Label>
                                 <Input
+                                    id="announcement-history-from"
                                     type="datetime-local"
+                                    className="bg-white sm:w-56"
                                     value={from}
                                     onChange={(e) => {
                                         setFrom(e.target.value);
@@ -502,12 +536,17 @@ function AnnouncementHistoryPage() {
                                     }}
                                 />
                             </div>
-                            <div className="w-full sm:w-56">
-                                <Label className="mb-1 block text-caption text-neutral-600">
+                            <div className="flex w-full items-center gap-2 sm:w-auto">
+                                <Label
+                                    htmlFor="announcement-history-to"
+                                    className="shrink-0 text-caption text-neutral-600"
+                                >
                                     {t('toolbar.toLabel')}
                                 </Label>
                                 <Input
+                                    id="announcement-history-to"
                                     type="datetime-local"
+                                    className="bg-white sm:w-56"
                                     value={to}
                                     onChange={(e) => {
                                         setTo(e.target.value);
@@ -519,46 +558,64 @@ function AnnouncementHistoryPage() {
                     )}
                 </div>
 
-                {isError ? (
-                    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-danger-200 p-10 text-center">
-                        <p className="text-body text-danger-600">{t('table.loadFailed')}</p>
-                        <MyButton buttonType="secondary" scale="small" onClick={() => refetch()}>
-                            {t('retry')}
-                        </MyButton>
-                    </div>
-                ) : !isLoading && rows.length === 0 ? (
-                    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
-                        <Megaphone className="size-10 text-neutral-300" />
-                        <p className="text-body text-neutral-500">
-                            {search.trim() ? t('table.noMatch') : t('table.empty')}
-                        </p>
-                    </div>
-                ) : (
-                    <MyTable<Announcement>
-                        data={tableData}
-                        columns={columns}
-                        isLoading={isLoading}
-                        error={error}
-                        currentPage={page}
-                        enableColumnResizing={false}
-                        scrollable
-                    />
-                )}
+                <div className="flex flex-col gap-4 p-4">
+                    {isError ? (
+                        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-danger-200 p-10 text-center">
+                            <p className="text-body text-danger-600">{t('table.loadFailed')}</p>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => refetch()}
+                            >
+                                {t('retry')}
+                            </MyButton>
+                        </div>
+                    ) : !isLoading && rows.length === 0 ? (
+                        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                            <span className="flex size-12 items-center justify-center rounded-full bg-primary-50 text-primary-400">
+                                <Megaphone className="size-6" weight="duotone" />
+                            </span>
+                            <p className="text-body text-neutral-500">
+                                {search.trim() ? t('table.noMatch') : t('table.empty')}
+                            </p>
+                            {!search.trim() && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => navigate({ to: '/announcement/create' })}
+                                >
+                                    <Plus className="size-4" weight="bold" />
+                                    {t('createAnnouncement')}
+                                </MyButton>
+                            )}
+                        </div>
+                    ) : (
+                        <MyTable<Announcement>
+                            data={tableData}
+                            columns={columns}
+                            isLoading={isLoading}
+                            error={error}
+                            currentPage={page}
+                            enableColumnResizing={false}
+                            scrollable
+                        />
+                    )}
 
-                {totalPages > 0 && (
-                    <MyPagination
-                        currentPage={page}
-                        totalPages={totalPages}
-                        onPageChange={setPage}
-                        totalElements={totalElements}
-                        pageSize={size}
-                        onPageSizeChange={(s) => {
-                            setSize(s);
-                            setPage(0);
-                        }}
-                        pageSizeOptions={[10, 20, 50]}
-                    />
-                )}
+                    {totalPages > 0 && (
+                        <MyPagination
+                            currentPage={page}
+                            totalPages={totalPages}
+                            onPageChange={setPage}
+                            totalElements={totalElements}
+                            pageSize={size}
+                            onPageSizeChange={(s) => {
+                                setSize(s);
+                                setPage(0);
+                            }}
+                            pageSizeOptions={[10, 20, 50]}
+                        />
+                    )}
+                </div>
             </div>
 
             <AnnouncementDetailsDialog

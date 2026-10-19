@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
     ArrowLeft,
+    CheckCircle,
     DeviceMobile,
     EnvelopeSimple,
     Eye,
@@ -12,6 +13,7 @@ import {
     ListChecks,
     LockSimple,
     PaperPlaneTilt,
+    WarningCircle,
 } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -485,7 +487,7 @@ function EmailCampaigningPage({ editingId }: { editingId?: string }) {
 
                         {/* Preview + summary rail */}
                         <aside className="min-w-0 space-y-6 self-start xl:sticky xl:top-6 xl:col-span-4">
-                            <Card className="border-border/80 shadow-sm">
+                            <Card className="rounded-xl border-neutral-200 shadow-sm">
                                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
                                     <CardTitle className="flex items-center gap-2 text-subtitle font-semibold">
                                         <Eye className="size-5 text-primary-500" weight="duotone" />
@@ -535,7 +537,7 @@ function EmailCampaigningPage({ editingId }: { editingId?: string }) {
                                 </CardContent>
                             </Card>
 
-                            <Card className="border-border/80 shadow-sm">
+                            <Card className="rounded-xl border-neutral-200 shadow-sm">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-subtitle font-semibold">
                                         <ListChecks
@@ -558,7 +560,7 @@ function EmailCampaigningPage({ editingId }: { editingId?: string }) {
                                 </CardContent>
                             </Card>
 
-                            <div className="flex items-start gap-2 rounded-md border border-info-400 bg-info-50 p-3 text-caption text-info-600">
+                            <div className="flex items-start gap-2 rounded-xl border border-info-200 bg-info-50 p-3 text-caption text-info-600">
                                 <Lightbulb className="mt-0.5 size-4 shrink-0" weight="fill" />
                                 <p>
                                     <span className="font-semibold">{t('rail.tipTitle')} </span>
@@ -573,12 +575,28 @@ function EmailCampaigningPage({ editingId }: { editingId?: string }) {
             {/* Sticky action bar */}
             <div className="sticky bottom-0 z-20 border-t bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
                 <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3">
-                    <p className="hidden text-caption text-muted-foreground sm:block">
-                        {attempted && blockers.length > 0
-                            ? t('footer.blocked', { count: blockers.length })
-                            : recipients.length > 0
-                              ? t('footer.ready', { count: recipients.length })
-                              : t('footer.noAudience')}
+                    <p className="hidden items-center gap-2 text-caption text-muted-foreground sm:flex">
+                        {attempted && blockers.length > 0 ? (
+                            <>
+                                <WarningCircle
+                                    className="size-4 shrink-0 text-danger-600"
+                                    weight="fill"
+                                />
+                                {t('footer.blocked', { count: blockers.length })}
+                            </>
+                        ) : recipients.length > 0 ? (
+                            <>
+                                <CheckCircle
+                                    className="size-4 shrink-0 text-success-600"
+                                    weight="fill"
+                                />
+                                <span className="font-semibold text-foreground">
+                                    {t('footer.ready', { count: recipients.length })}
+                                </span>
+                            </>
+                        ) : (
+                            t('footer.noAudience')
+                        )}
                     </p>
                     <div className="ms-auto flex flex-wrap items-center justify-end gap-3">
                         <MyButton

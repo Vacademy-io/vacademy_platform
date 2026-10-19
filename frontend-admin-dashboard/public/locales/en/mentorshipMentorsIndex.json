@@ -65,5 +65,15 @@
     "toastBookingPageSetUp": "Booking page set up",
     "errorSetUpBookingPage": "Failed to set up booking page",
     "toastBookingLinkCopied": "Booking link copied",
-    "errorCopyLink": "Could not copy link"
+    "errorCopyLink": "Could not copy link",
+    "quickViewAll": "All mentors",
+    "quickViewActive": "Active",
+    "quickViewInactive": "Inactive",
+    "quickViewListed": "Listed in the directory",
+    "quickViewFull": "At their limit",
+    "quickViewNoBooking": "No booking page",
+    "statusListed": "Listed",
+    "statusHidden": "Hidden",
+    "statusNoBookingPage": "no booking page",
+    "listNote": "Click a mentor to open their profile, {{learners}}, availability, sessions and feedback. The counts and filters cover every mentor, not just this page. A blank or 0 max mentees means no limit."
 }

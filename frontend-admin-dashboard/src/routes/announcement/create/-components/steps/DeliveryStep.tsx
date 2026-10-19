@@ -241,6 +241,8 @@ export function DeliveryStep(props: DeliveryStepProps) {
             )}
 
             <SectionCard
+                id="announcement-schedule"
+                className="scroll-mt-24"
                 title={t('schedule.title')}
                 Icon={CalendarBlank}
                 invalid={Boolean(err('schedule.startDate') || err('schedule.cronExpression'))}

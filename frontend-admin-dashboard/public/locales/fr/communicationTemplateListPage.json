@@ -27,17 +27,17 @@
     "submitToMeta": "Soumettre à Meta",
     "delete": "Supprimer",
     "status": {
-        "draft": "BROUILLON",
-        "pending": "EN ATTENTE",
-        "approved": "APPROUVÉ",
-        "rejected": "REJETÉ",
-        "disabled": "DÉSACTIVÉ",
-        "deleted": "SUPPRIMÉ"
+        "draft": "Brouillon",
+        "pending": "En attente",
+        "approved": "Approuvé",
+        "rejected": "Rejeté",
+        "disabled": "Désactivé",
+        "deleted": "Supprimé"
     },
     "category": {
-        "marketing": "MARKETING",
-        "utility": "UTILITAIRE",
-        "authentication": "AUTHENTIFICATION"
+        "marketing": "Marketing",
+        "utility": "Utilitaire",
+        "authentication": "Authentification"
     },
     "couldNotLoadTemplates": "Impossible de charger les modèles.",
     "syncedCount_one": "{{count}} modèle synchronisé depuis {{provider}}",
@@ -67,5 +67,14 @@
         "footer": "Pied de page"
     },
     "showFullMessage": "Voir le message complet",
-    "showLess": "Voir moins"
+    "showLess": "Voir moins",
+    "providerChip": "Fournisseur : {{provider}}",
+    "filters": {
+        "allCategories": "Toutes les catégories",
+        "allLanguages": "Toutes les langues",
+        "clear": "Effacer les filtres"
+    },
+    "resultsCount_one": "{{count}} modèle",
+    "resultsCount_other": "{{count}} modèles",
+    "actionsNote": "Modifier et Soumettre à Meta sont disponibles pour les brouillons et les modèles rejetés. Les modèles approuvés et en attente peuvent seulement être supprimés."
 }

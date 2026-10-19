@@ -51,6 +51,17 @@
             "rowCount_few": "{{count}} صفوف",
             "rowCount_many": "{{count}} صفًا",
             "rowCount_other": "{{count}} صف"
-        }
+        },
+        "charCount": "{{count}} / 1024 characters",
+        "removeVariable": "Remove variable"
+    },
+    "proposalCount_one": "{{count}} proposal",
+    "proposalCount_other": "{{count}} proposals",
+    "flow": {
+        "propose": "AI proposes",
+        "approve": "You edit & approve",
+        "submit": "Submit to Meta",
+        "meta": "Meta approves",
+        "send": "Engine can send"
     }
 }

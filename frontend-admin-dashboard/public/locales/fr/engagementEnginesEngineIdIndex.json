@@ -29,7 +29,9 @@
         "noChannels": "Aucun",
         "language": "Langue",
         "cadenceLabel": "Cadence",
-        "cadence": "toutes les {{hours}} h"
+        "cadence": "toutes les {{hours}} h",
+        "quietHours": "Quiet hours",
+        "dataPoints": "Data points"
     },
     "amendDialog": {
         "heading": "Modifier le brief",
@@ -64,5 +66,25 @@
         "description": "Il cesse définitivement de décider et d'envoyer. Les tâches déjà dans la boîte de réception et les messages envoyés sont conservés.",
         "cancel": "Le garder",
         "confirm": "Archiver"
+    },
+    "kpi": {
+        "members": "Active members",
+        "holdout": "{{pct}}% held out (never messaged)",
+        "noHoldout": "No holdout",
+        "approved": "Approved sends",
+        "graduateAfter": "A channel auto-sends after {{n}} approved sends",
+        "cadence": "Check-in cadence",
+        "quiet": "Quiet hours {{window}}",
+        "nextRun": "Next check-in",
+        "notScheduled": "Not scheduled",
+        "lastRun": "Last run {{when}}"
+    },
+    "status": {
+        "title": "Status & audience",
+        "sources": "Sources",
+        "people": "people",
+        "change": "Change status",
+        "noTransitions": "Archived engines can’t change status.",
+        "footnote": "Pause stops the engine deciding and sending. “Keep as copilot” only stops auto-sending."
     }
 }

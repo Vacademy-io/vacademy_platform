@@ -45,7 +45,10 @@
         "recipientsMore": "+{{count}} de plus",
         "channels": "Envoyé via",
         "loadFailed": "Impossible de charger les annonces.",
-        "noMatch": "Aucune annonce de cette page ne correspond à la recherche."
+        "noMatch": "Aucune annonce de cette page ne correspond à la recherche.",
+        "announcement": "Announcement",
+        "appearsIn": "Appears in · via",
+        "inProductOnly": "In-product only"
     },
     "actions": {
         "view": "Voir",

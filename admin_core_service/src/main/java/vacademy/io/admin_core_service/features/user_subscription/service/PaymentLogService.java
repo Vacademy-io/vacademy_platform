@@ -1,5 +1,10 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -101,6 +106,9 @@ public class PaymentLogService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private LiveActivityRecorder liveActivityRecorder;
@@ -434,37 +442,75 @@ public class PaymentLogService {
 
         recordLedgerCreditForPlanPayment(paymentLog, instituteId);
 
-        // Single-transaction semantics: invoice generation failure propagates so
-        // the original cause is preserved end-to-end (see handlePostPaymentLogic
-        // for the full rationale). Swallowing here did not actually protect the
-        // payment — generateInvoice's @Transactional had already marked the
-        // outer transaction rollback-only.
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-            // Honor the invoice-PDF-placement setting on the synchronous path too. Synchronous
-            // gateways (eWay, Stripe charge_automatically, etc.) confirm the payment in-request via
-            // the 4-arg updatePaymentLog and there is NO later webhook to send the confirmation —
-            // so in consolidated mode we suppress the separate invoice email and send the single
-            // payment-confirmation email (with the PDF attached) right here.
-            InvoicePdfPlacement pdfPlacement = invoiceService.getInvoicePdfPlacement(instituteId);
-            boolean attachInvoiceToConfirmation = pdfPlacement == InvoicePdfPlacement.PAYMENT_CONFIRMATION_EMAIL;
-            log.info("Generating invoice for payment log ID: {} (sync path, pdfPlacement={})",
-                    paymentLog.getId(), pdfPlacement);
-            InvoiceService.InvoiceGenerationResult invoiceResult = invoiceService.generateInvoiceWithResult(
-                    paymentLog.getUserPlan(),
-                    paymentLog,
-                    instituteId,
-                    /* sendEmail */ !attachInvoiceToConfirmation);
-            log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
+            scheduleSyncInvoiceAfterCommit(paymentLog, instituteId);
+        }
+    }
 
-            // Send the consolidated confirmation only on a freshly-generated invoice. A re-run for an
-            // already-invoiced payment log (or a later polling/webhook delivery) means the single
-            // email already went out — the webhook path's dedup guard relies on the same signal.
-            if (attachInvoiceToConfirmation && invoiceResult != null && !invoiceResult.isAlreadyExisted()) {
-                String invoiceNumber = invoiceResult.getInvoice() != null
-                        ? invoiceResult.getInvoice().getInvoiceNumber()
-                        : null;
-                sendSyncPaymentConfirmation(paymentLog, instituteId, invoiceResult.getPdfBytes(), invoiceNumber);
+    /**
+     * Invoice (and, in consolidated mode, the single payment-confirmation email carrying its PDF)
+     * for a synchronous gateway — eWay, Stripe charge_automatically — once the caller's
+     * transaction has COMMITTED.
+     *
+     * <p>This used to run inline, inside the enrolment transaction that created the payment log.
+     * InvoiceService saves the invoice in a REQUIRES_NEW transaction, which cannot see that still
+     * uncommitted log, so the {@code invoice_payment_log_mapping.payment_log_id} foreign key
+     * rejected the insert. The failure marked the shared transaction rollback-only; catching it in
+     * {@link #updatePaymentLog} did not clear that, and the commit then failed with "Transaction
+     * silently rolled back" — after the card had already been charged, with no payment, plan or
+     * invoice left behind. Running after commit makes the payment stand first; the worst case is
+     * now a recorded payment without an invoice, which can be regenerated. Same reasoning as
+     * {@link InvoiceService#generateInvoiceAfterCommit}.
+     *
+     * <p>Runs inline when no transaction is active, so a non-transactional caller still gets it.
+     */
+    void scheduleSyncInvoiceAfterCommit(PaymentLog paymentLog, String instituteId) {
+        // Honor the invoice-PDF-placement setting on the synchronous path too. Synchronous gateways
+        // confirm the payment in-request and there is NO later webhook to send the confirmation —
+        // so in consolidated mode the separate invoice email is suppressed and the single
+        // payment-confirmation email (with the PDF attached) is sent from here.
+        InvoicePdfPlacement pdfPlacement = invoiceService.getInvoicePdfPlacement(instituteId);
+        boolean attachInvoiceToConfirmation = pdfPlacement == InvoicePdfPlacement.PAYMENT_CONFIRMATION_EMAIL;
+        String paymentLogId = paymentLog.getId();
+        Runnable task = () -> {
+            try {
+                log.info("Generating invoice for payment log ID: {} (sync path, after commit, pdfPlacement={})",
+                        paymentLogId, pdfPlacement);
+                InvoiceService.InvoiceGenerationResult invoiceResult =
+                        invoiceService.generateInvoiceWithResultForCommittedPayment(
+                                paymentLogId, instituteId, /* sendEmail */ !attachInvoiceToConfirmation);
+                // Send the consolidated confirmation only on a freshly-generated invoice. A re-run
+                // for an already-invoiced payment log means the single email already went out —
+                // the webhook path's dedup guard relies on the same signal.
+                if (attachInvoiceToConfirmation && invoiceResult != null && !invoiceResult.isAlreadyExisted()) {
+                    String invoiceNumber = invoiceResult.getInvoice() != null
+                            ? invoiceResult.getInvoice().getInvoiceNumber()
+                            : null;
+                    // Its own transaction: after commit the caller's has ended, and the email reads
+                    // the plan / course through lazy relations of the reloaded log.
+                    TransactionTemplate tx = new TransactionTemplate(transactionManager);
+                    tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    tx.executeWithoutResult(status -> sendSyncPaymentConfirmation(
+                            paymentLogRepository.findById(paymentLogId).orElse(paymentLog),
+                            instituteId, invoiceResult.getPdfBytes(), invoiceNumber));
+                }
+            } catch (Exception e) {
+                // The payment is committed and must stand; the invoice can be regenerated.
+                log.error("Post-commit invoice/confirmation failed for payment log {}: {}",
+                        paymentLogId, e.getMessage(), e);
+                SentryLogger.logError(e, "Sync-path invoice generation failed after commit",
+                        Map.of("payment.log.id", paymentLogId, "operation", "scheduleSyncInvoiceAfterCommit"));
             }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
         }
     }
 

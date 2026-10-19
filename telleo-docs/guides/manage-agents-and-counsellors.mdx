@@ -25,6 +25,10 @@ This guide connects two everyday jobs to your own systems: **onboarding and offb
             "email": emp["work_email"],
             "mobile_number": emp["mobile"],          # E.164, e.g. +919876543210
         })
+        if r.status_code == 409 and r.json()["error"]["code"] == "email_in_use_elsewhere":
+            # Their email is someone's login in another account: ask for a work email,
+            # or have an admin add them in the dashboard.
+            return notify_hr(emp, r.json()["error"]["message"])
         if r.status_code == 409 and r.json()["error"]["code"] == "counsellor_inactive":
             # They worked here before: reactivate instead of re-adding.
             cid = r.json()["error"]["details"]["counsellor_id"]
@@ -37,7 +41,7 @@ This guide connects two everyday jobs to your own systems: **onboarding and offb
         return c
     ```
 
-    A new person receives the welcome email with their login. Someone who already has a login on the platform keeps it and receives nothing: tell them to sign in as usual. Store the returned `id`.
+    A new person receives the welcome email with their login. Someone you had removed earlier gets their old login back and receives nothing: tell them to sign in as usual. Store the returned `id`.
   </Step>
 
   <Step title="Keep their details in step">

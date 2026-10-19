@@ -37,7 +37,7 @@ Only people already set up in your account can take human calls: **active users 
 - **Vacademy Voice and Exotel** ring the counsellor's **mobile number**, so it must be on their profile, as a full number with the country code.
 - **Airtel** dials from the counsellor's **Airtel extension**, mapped under *Settings → Calling*.
 
-Phone numbers are only returned to keys with `counsellors:manage`. Name a counsellor in a call by `counsellor_id` or by `counsellor_email` (exactly one). To add, update or deactivate counsellors through the API, see [Counsellors](/concepts/counsellors).
+Phone numbers are never listed; `GET /v1/counsellors/{id}` shows one only to a key with `counsellors:manage`, and only for a login that belongs to your account alone. Name a counsellor in a call by `counsellor_id` or by `counsellor_email` (exactly one). To add, update or deactivate counsellors through the API, see [Counsellors](/concepts/counsellors).
 
 ## Starting a call
 

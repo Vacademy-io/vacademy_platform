@@ -83,12 +83,20 @@ public class LastCounsellorInboundRouter implements InboundLeadRouter {
                 .build());
     }
 
-    /** True when the user holds an ACTIVE role in the institute. Unknown (auth_service down) counts as active. */
+    /**
+     * True when the user holds an ACTIVE or INVITED role in the institute (an invited counsellor
+     * who has not signed in yet still owns their leads). DISABLED / DELETED / no role = false.
+     * Unknown (auth_service down) counts as active, as before this check existed.
+     */
     boolean activeInInstitute(String instituteId, String userId) {
         if (authService == null) return true;
         try {
-            List<String> roles = authService.getInstituteRolesStrict(instituteId, List.of(userId)).get(userId);
-            return roles != null && !roles.isEmpty();
+            for (java.util.Map<String, String> r : authService.getRoleMembershipsStrict(userId)) {
+                if (r == null || !instituteId.equals(r.get("institute_id"))) continue;
+                String status = r.get("status") == null ? "" : r.get("status").toUpperCase(java.util.Locale.ROOT);
+                if ("ACTIVE".equals(status) || "INVITED".equals(status)) return true;
+            }
+            return false;
         } catch (RuntimeException e) {
             log.warn("inbound last-counsellor: could not check {} in {}: {}", userId, instituteId, e.getMessage());
             return true;

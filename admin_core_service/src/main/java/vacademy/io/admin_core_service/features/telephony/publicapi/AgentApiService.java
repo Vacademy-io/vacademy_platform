@@ -109,9 +109,22 @@ public class AgentApiService {
 
     // ── Read ─────────────────────────────────────────────────────────────────────
 
-    /** GET /v1/agents/{id}: the agent's whole configuration. */
+    /** Fields only a key with agents:manage sees: the script, staff phone numbers, internal rules. */
+    static final List<String> MANAGE_ONLY_FIELDS = List.of("system_prompt", "handoff_numbers", "send_rules",
+            "booking_page_id");
+
+    /**
+     * GET /v1/agents/{id}: the whole configuration for an agents:manage key; for a calls:read
+     * key (every existing key) a summary without {@link #MANAGE_ONLY_FIELDS} — the script and
+     * the handoff numbers (staff mobiles) were never readable through the API before v1.3.
+     */
     public Map<String, Object> getAgent(AiCallingApiAuth.Principal p, String id) {
-        return view(requireAgent(p.instituteId(), id), defaultAgentId(p.instituteId()));
+        Map<String, Object> m = view(requireAgent(p.instituteId(), id), defaultAgentId(p.instituteId()));
+        if (!p.has(vacademy.io.admin_core_service.features.institute_api.service.InstituteApiKeyService.SCOPE_AGENTS_MANAGE)) {
+            MANAGE_ONLY_FIELDS.forEach(m::remove);
+            m.put("configuration", "summary");
+        }
+        return m;
     }
 
     Map<String, Object> view(AiAgent a, String defaultAgentId) {
@@ -145,6 +158,7 @@ public class AgentApiService {
         m.put("variables", vars);
         m.put("created_at", iso(a.getCreatedAt()));
         m.put("updated_at", iso(a.getUpdatedAt()));
+        m.put("configuration", "full");
         return m;
     }
 
@@ -191,11 +205,27 @@ public class AgentApiService {
 
     /** PATCH /v1/agents/{id}: only the fields in the body change. */
     public Map<String, Object> patchAgent(AiCallingApiAuth.Principal p, String id, JsonNode body) {
+        return patchAgent(p, id, body, null);
+    }
+
+    /**
+     * As {@link #patchAgent(AiCallingApiAuth.Principal, String, JsonNode)}, with optimistic
+     * concurrency: {@code ifMatch} (the If-Match header) or the body's {@code expected_updated_at}
+     * is the agent's {@code updated_at} as last read. When given and the agent changed since,
+     * 409 version_conflict and nothing is saved. Optional: without it the last write wins, as
+     * before.
+     */
+    public Map<String, Object> patchAgent(AiCallingApiAuth.Principal p, String id, JsonNode body, String ifMatch) {
         if (body == null || !body.isObject() || body.isEmpty()) {
             throw AiCallingApiException.invalid("Send a JSON body with the fields to change.");
         }
         String instituteId = p.instituteId();
         AiAgent stored = requireAgent(instituteId, id);
+        java.time.Instant expected = expectedVersion(ifMatch, body);
+        if (body.has("expected_updated_at")) {
+            body = ((com.fasterxml.jackson.databind.node.ObjectNode) body.deepCopy()).without("expected_updated_at");
+            if (body.isEmpty()) throw AiCallingApiException.invalid("Send a JSON body with the fields to change.");
+        }
         Fields f = Fields.parse(body);
         AiAgentDTO dto = agentService.dtoOf(stored);
         // Absent = keep: AiAgentService keeps the stored engine, cache tier and rules on null.
@@ -204,6 +234,7 @@ public class AgentApiService {
         dto.setSendRules(null);
         apply(instituteId, f, dto, stored);
         if (f.has("name")) requireNameFree(instituteId, dto.getName(), stored.getId());
+        if (expected != null) claimVersion(stored, expected);
         AiAgentService.SaveResult r = save(dto, p);
         AiAgent saved = requireAgent(instituteId, stored.getId());
         safeAudit(p, saved.getId(), "AGENT_UPDATE", "AI agent updated through the API",
@@ -249,6 +280,41 @@ public class AgentApiService {
         }
         out.put("warnings", warnings);
         return out;
+    }
+
+    /** The version the client last read, from If-Match (quotes and W/ ignored) or expected_updated_at. */
+    static java.time.Instant expectedVersion(String ifMatch, JsonNode body) {
+        String raw = null;
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            raw = ifMatch.trim();
+            if (raw.startsWith("W/")) raw = raw.substring(2);
+            raw = raw.replace("\"", "").trim();
+        } else if (body != null && body.hasNonNull("expected_updated_at")) {
+            raw = body.get("expected_updated_at").asText().trim();
+        }
+        if (raw == null || raw.isEmpty()) return null;
+        try {
+            return java.time.Instant.parse(raw);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw AiCallingApiException.invalid("If-Match / expected_updated_at must be the agent's updated_at, "
+                    + "e.g. 2026-10-19T10:15:00.123456Z.");
+        }
+    }
+
+    /**
+     * Atomically checks and bumps the version: a conditional UPDATE of updated_at, so two
+     * PATCHes that read the same version cannot both pass. Runs after validation, so a refused
+     * request never moves the version.
+     */
+    private void claimVersion(AiAgent stored, java.time.Instant expected) {
+        int n = agents.claimVersion(stored.getId(), Timestamp.from(expected));
+        if (n != 1) {
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("expected_updated_at", expected.toString());
+            d.put("current_updated_at", iso(stored.getUpdatedAt()));
+            throw new AiCallingApiException(HttpStatus.CONFLICT, "version_conflict",
+                    "The agent changed since you read it. GET it again, re-apply your change and retry.", d);
+        }
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────────

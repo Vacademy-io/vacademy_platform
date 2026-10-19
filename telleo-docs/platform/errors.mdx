@@ -54,6 +54,8 @@ Errors use standard HTTP status codes and always return this body:
 | 409 | `number_not_inbound_capable` | Only Vacademy Voice numbers can be answered by an AI agent. |
 | 409 | `number_routing_changed` | The number's menu changed during the request. Read it again and retry. |
 | 409 | `account_has_other_role` | The email belongs to an admin or other member of your account. |
+| 409 | `email_in_use_elsewhere` | The email's login belongs to another account on the platform. Use another email, or have an admin add them in the dashboard. |
+| 409 | `version_conflict` | `PATCH /agents/{id}` with `If-Match`: the agent changed since you read it. Read it again and retry. |
 | 409 | `counsellor_inactive` | The email belongs to a deactivated counsellor. Reactivate with `PATCH {"active": true}`. |
 | 409 | `shared_account` | The counsellor's login also belongs to another account; their name and mobile number cannot be changed through the API. |
 | 409 | `extension_taken` / `extension_managed_elsewhere` | The Airtel extension is someone else's in your account, or this person's extension is managed by another account. |
@@ -77,6 +79,7 @@ Errors use standard HTTP status codes and always return this body:
 | 429 | `rate_limited` | Wait the seconds in `Retry-After`, then retry. |
 | 429 | `test_limit_reached` | More than 500 test calls in 24 hours. |
 | 500 | `internal_error` | Retry with backoff. If it persists, contact us with the `request_id`. |
+| 500 | `role_update_failed` | A counsellor's role could not be disabled or restored; nothing else was changed. Contact us with the `request_id`. |
 | 500 | `role_unavailable` | The counsellor role could not be granted in your account. Contact us with the `request_id`. |
 | 502 | `dial_failed` | Your calling provider refused the call; the message says why. Nothing rang. |
 | 503 | `auth_unavailable` | Keys could not be checked for a moment. Retry shortly. |

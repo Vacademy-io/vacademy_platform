@@ -56,7 +56,7 @@ class AiCallingManagementRoutesTest {
         when(counsellors.deactivateCounsellor(any(), any())).thenReturn(body);
         when(agents.createAgent(any(), any(), any())).thenReturn(new ApiIdempotencyStore.Outcome(body, false, true));
         when(agents.getAgent(any(), any())).thenReturn(body);
-        when(agents.patchAgent(any(), any(), any())).thenReturn(body);
+        when(agents.patchAgent(any(), any(), any(), any())).thenReturn(body);
         when(agents.setEnabled(any(), any(), anyBoolean())).thenReturn(body);
         when(agents.deleteAgent(any(), any())).thenReturn(body);
         when(agents.voices()).thenReturn(body);
@@ -86,7 +86,7 @@ class AiCallingManagementRoutesTest {
         controller.deactivateCounsellor(r, "u-1");
         assertEquals(HttpStatus.CREATED, controller.createAgent(r, null, json("{\"name\":\"x\"}")).getStatusCode());
         controller.getAgent(r, "a-1");
-        controller.patchAgent(r, "a-1", json("{\"pace\":1.1}"));
+        controller.patchAgent(r, "a-1", null, json("{\"pace\":1.1}"));
         controller.enableAgent(r, "a-1");
         controller.disableAgent(r, "a-1");
         controller.deleteAgent(r, "a-1");

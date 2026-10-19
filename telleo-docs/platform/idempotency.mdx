@@ -40,6 +40,6 @@ Without a key, a re-sent batch is still partly protected: a number that already 
 
 ## Counsellors and agents
 
-`POST /v1/counsellors` and `POST /v1/agents` take an `Idempotency-Key` too (up to 255 characters, 24 hours), with the same rules: the same request returns the counsellor or agent the first one made (`200`, `idempotent_replay: true`, as it is now), a different request is `409 idempotency_key_reused`, and a retry while the first is still running is `409 request_in_progress` (`Retry-After: 5`). A request that failed leaves the key free to retry.
+`POST /v1/counsellors` and `POST /v1/agents` take an `Idempotency-Key` too (up to 255 characters, 24 hours), with the same rules: the same request returns the counsellor or agent the first one made (`200`, `idempotent_replay: true`, as it is now), a different request is `409 idempotency_key_reused`, and a retry while the first is still running is `409 request_in_progress` (`Retry-After: 5`). A request that failed leaves the key free to retry, and a request that was cut off (no answer within two minutes) no longer blocks it: after two minutes a retry runs.
 
 Adding a counsellor is also safe without a key: an email that is already a counsellor in your account comes back with `created: false` and nothing changes.

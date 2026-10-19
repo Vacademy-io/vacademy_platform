@@ -117,9 +117,33 @@ class CounsellorApiServiceTest {
     }
 
     @Test
-    void anExistingAccountOnlyGetsTheRoleNoEmailNoProfileChange() {
+    void anAccountOfAnotherInstituteIsRefusedAndNothingIsRevealed() {
         user("u-old", "Asha R", "asha@school.in", "919811111111");
         role("u-old", "inst-9", "STUDENT", "ACTIVE");
+        when(auth.findUserByEmailStrict("asha@school.in")).thenReturn(Optional.of(users.get("u-old")));
+
+        AiCallingApiException e = assertThrows(AiCallingApiException.class,
+                () -> service.createCounsellor(P, create("+919800000001"), null));
+
+        assertEquals("email_in_use_elsewhere", e.getCode());
+        assertNull(e.getDetails());                              // no id, no name, no number
+        assertFalse(e.getMessage().contains("Asha"));
+        verify(auth, never()).addRolesToUserStrict(any(), any(), any());
+        verify(auth, never()).createUserFromAuthService(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void anAccountWithNoMembershipAnywhereIsRefusedToo() {
+        user("u-orphan", "Somebody", "asha@school.in", "919811111111");
+        when(auth.findUserByEmailStrict("asha@school.in")).thenReturn(Optional.of(users.get("u-orphan")));
+        assertEquals("email_in_use_elsewhere", assertThrows(AiCallingApiException.class,
+                () -> service.createCounsellor(P, create(null), null)).getCode());
+    }
+
+    @Test
+    void aFormerMemberOfThisInstituteGetsTheRoleBackNoEmailNoProfileChange() {
+        user("u-old", "Asha R", "asha@school.in", "919811111111");
+        role("u-old", INST, "COUNSELLOR", "DELETED");
         when(auth.findUserByEmailStrict("asha@school.in")).thenReturn(Optional.of(users.get("u-old")));
         doAnswer(i -> {
             role("u-old", INST, "COUNSELLOR", "ACTIVE");
@@ -133,11 +157,34 @@ class CounsellorApiServiceTest {
         assertTrue(out.created());
         assertEquals(true, out.body().get("existing_account"));
         assertEquals(false, out.body().get("welcome_email_sent"));
-        assertEquals(true, out.body().get("shared_account"));
+        assertEquals(false, out.body().get("shared_account"));
         @SuppressWarnings("unchecked")
         List<Map<String, String>> warnings = (List<Map<String, String>>) out.body().get("warnings");
         assertTrue(warnings.stream().anyMatch(w -> "mobile_number_ignored".equals(w.get("code"))));
         assertTrue(warnings.stream().anyMatch(w -> "name_ignored".equals(w.get("code"))));
+    }
+
+    @Test
+    void aRetryAfterAHalfDoneCreateFillsInTheMissingMobile() {
+        user("u-1", "Asha Rao", "asha@school.in", null);          // created, mobile never set
+        role("u-1", INST, "COUNSELLOR", "ACTIVE");
+        when(auth.findUserByEmailStrict("asha@school.in")).thenReturn(Optional.of(users.get("u-1")));
+        ApiIdempotencyStore.Outcome out = service.createCounsellor(P, create("+919800000001"), "idem-1");
+        assertFalse(out.created());
+        ArgumentCaptor<UserDTO> patch = ArgumentCaptor.forClass(UserDTO.class);
+        verify(auth).updateUser(patch.capture(), eq("u-1"));
+        assertEquals("919800000001", patch.getValue().getMobileNumber());
+    }
+
+    @Test
+    void aSharedLoginsMobileIsNeverShown() {
+        user("u-1", "Asha", "asha@school.in", "919800000001");
+        role("u-1", INST, "COUNSELLOR", "ACTIVE");
+        role("u-1", "inst-2", "STUDENT", "ACTIVE");
+        Map<String, Object> view = service.getCounsellor(P, "u-1");
+        assertTrue(view.containsKey("mobile_number"));
+        assertNull(view.get("mobile_number"));
+        assertEquals(true, view.get("shared_account"));
     }
 
     @Test
@@ -369,6 +416,7 @@ class CounsellorApiServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> effects = (Map<String, Object>) out.get("effects");
         assertEquals(true, effects.get("role_disabled"));
+        assertEquals("this_account", effects.get("sessions_revoked"));
         assertEquals(3, effects.get("pool_memberships_deactivated"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> steps = (List<Map<String, Object>>) effects.get("ivr_dial_steps_updated");
@@ -383,6 +431,29 @@ class CounsellorApiServiceTest {
         ArgumentCaptor<SqlParameterSource> pool = ArgumentCaptor.forClass(SqlParameterSource.class);
         verify(jdbc).update(contains("counselor_pool_member"), pool.capture());
         assertEquals(INST, pool.getValue().getValue("i"));
+    }
+
+    @Test
+    void aMixedCaseRoleIsDisabledByItsStoredName() {
+        user("u-1", "Asha", "asha@school.in", null);
+        role("u-1", INST, "Counsellor", "ACTIVE");
+        when(auth.updateRoleStatusForRoles(eq(INST), eq("u-1"), anyList(), eq("DISABLED"))).thenReturn(1);
+        service.deactivateCounsellor(P, "u-1");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> names = ArgumentCaptor.forClass(List.class);
+        verify(auth).updateRoleStatusForRoles(eq(INST), eq("u-1"), names.capture(), eq("DISABLED"));
+        assertTrue(names.getValue().contains("Counsellor"));
+    }
+
+    @Test
+    void aRoleThatDidNotChangeStopsBeforePoolsAndIvr() {
+        user("u-1", "Asha", "asha@school.in", null);
+        role("u-1", INST, "COUNSELLOR", "ACTIVE");
+        when(auth.updateRoleStatusForRoles(any(), any(), anyList(), any())).thenReturn(0);
+        AiCallingApiException e = assertThrows(AiCallingApiException.class, () -> service.deactivateCounsellor(P, "u-1"));
+        assertEquals("role_update_failed", e.getCode());
+        verify(jdbc, never()).update(anyString(), any(SqlParameterSource.class));
+        verify(jdbc, never()).queryForList(anyString(), any(SqlParameterSource.class));
     }
 
     @Test

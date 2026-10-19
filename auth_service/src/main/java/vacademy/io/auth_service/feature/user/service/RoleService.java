@@ -158,6 +158,7 @@ public class RoleService {
      * counsellors and nothing else). Same transitions as
      * {@link #updateUserRoleStatusByInstituteIdAndUserId}: disable moves live rows (ACTIVE /
      * INVITED), enable moves paused rows (DISABLED / INACTIVE); deleted rows never come back.
+     * Role names match ignoring case.
      *
      * @return how many rows changed
      */
@@ -180,16 +181,22 @@ public class RoleService {
         User user = getUserById(userId);
         List<UserRole> changed = new ArrayList<>();
         for (UserRole ur : userRoleRepository.findByUser(user)) {
-            if (instituteId.equals(ur.getInstituteId()) && ur.getRole() != null
-                    && roleNames.contains(ur.getRole().getName()) && from.contains(ur.getStatus())) {
+            // Role names are matched ignoring case: institutes hold "COUNSELLOR", "Counsellor"
+            // and "COUNSELOR", and a caller that checked one spelling must change them all.
+            if (instituteId.equals(ur.getInstituteId()) && ur.getRole() != null && ur.getRole().getName() != null
+                    && roleNames.stream().anyMatch(ur.getRole().getName()::equalsIgnoreCase)
+                    && from.contains(ur.getStatus())) {
                 ur.setStatus(newStatus);
                 changed.add(ur);
             }
         }
         if (!changed.isEmpty()) {
             userRoleRepository.saveAll(changed);
-            userService.updateLastTokenUpdatedTime(List.of(userId));
         }
+        // Like the dashboard's update-role-status: only this institute's cached identity is
+        // dropped, so the change applies to the member's next request HERE. The user-wide
+        // "token updated" stamp is deliberately not bumped — it is one value for every
+        // institute the user belongs to.
         evictCachedIdentities(instituteId, List.of(userId));
         return changed.size();
     }

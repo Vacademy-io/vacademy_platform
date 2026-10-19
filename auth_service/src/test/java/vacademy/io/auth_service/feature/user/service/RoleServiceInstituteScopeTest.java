@@ -29,6 +29,7 @@ class RoleServiceInstituteScopeTest {
 
     private static final String A = "inst-a";
     private static final String B = "inst-b";
+    private static final String INST_A_CUSTOM = "inst-a";
 
     private RoleRepository roles;
     private UserRepository users;
@@ -166,6 +167,14 @@ class RoleServiceInstituteScopeTest {
         assertEquals("ACTIVE", elsewhere.getStatus());
         assertEquals("ACTIVE", teacherHere.getStatus());
         assertEquals("DELETED", deleted.getStatus());
+    }
+
+    @Test
+    void roleNamesMatchIgnoringCaseAndNoUserWideTokenStampIsBumped() {
+        UserRole mixed = row(role("r-c2", "Counsellor", INST_A_CUSTOM), A, "ACTIVE");
+        assertEquals(1, service.updateRoleStatusForRoles(A, "u-1", List.of("COUNSELLOR"), "DISABLED"));
+        assertEquals("DISABLED", mixed.getStatus());
+        verify(userService, never()).updateLastTokenUpdatedTime(anyList());
     }
 
     @Test

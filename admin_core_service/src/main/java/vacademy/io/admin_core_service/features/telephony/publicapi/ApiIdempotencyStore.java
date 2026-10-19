@@ -34,6 +34,8 @@ import java.util.function.Supplier;
 public class ApiIdempotencyStore {
 
     static final int IN_PROGRESS_RETRY_AFTER = 5;
+    /** A claim still without a resource after this long belongs to a request that died. */
+    static final java.time.Duration IN_PROGRESS_TTL = java.time.Duration.ofMinutes(2);
     private static final ObjectMapper CANONICAL = new ObjectMapper()
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
 
@@ -62,6 +64,15 @@ public class ApiIdempotencyStore {
         if (row != null && row.createdAt() != null
                 && row.createdAt().plus(AiCallingApiService.IDEMPOTENCY_TTL).isBefore(Instant.now())) {
             expire(instituteId, operation, key);
+            row = null;
+        }
+        if (row != null && row.resourceId() == null && row.createdAt() != null
+                && row.createdAt().plus(IN_PROGRESS_TTL).isBefore(Instant.now())) {
+            // The request that claimed this key died before finishing (pod restart, timeout):
+            // let this retry run instead of answering request_in_progress for 24 hours. A
+            // create it half-did is found again by the create itself (e.g. the counsellor's
+            // email now exists and is a counsellor here).
+            releaseStale(instituteId, operation, key);
             row = null;
         }
         if (row == null && !claim(instituteId, operation, key, hash, keyId)) {
@@ -135,6 +146,14 @@ public class ApiIdempotencyStore {
         jdbc.update("""
                 DELETE FROM ai_calling_api_idempotency
                  WHERE institute_id = :i AND operation = :o AND idempotency_key = :k AND resource_id IS NULL
+                """, params(instituteId, operation, key));
+    }
+
+    void releaseStale(String instituteId, String operation, String key) {
+        jdbc.update("""
+                DELETE FROM ai_calling_api_idempotency
+                 WHERE institute_id = :i AND operation = :o AND idempotency_key = :k
+                   AND resource_id IS NULL AND created_at < NOW() - INTERVAL '2 minutes'
                 """, params(instituteId, operation, key));
     }
 

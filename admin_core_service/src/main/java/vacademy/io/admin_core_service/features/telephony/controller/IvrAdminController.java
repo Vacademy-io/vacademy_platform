@@ -13,8 +13,9 @@ import java.util.List;
 
 /**
  * Admin CRUD for IVR menus (the multi-level inbound tree builder backing API).
- * JWT-protected (default Spring auth — not in ALLOWED_PATHS) and limited to members of
- * the institute the menu belongs to (the request's instituteId, or the stored menu's own
+ * JWT-protected (default Spring auth — not in ALLOWED_PATHS) and limited to STAFF of
+ * the institute the menu belongs to (requireInstituteStaff, no root-user bypass: learners
+ * and invited staff are root users; the dashboard sends that institute as clientId) (the request's instituteId, or the stored menu's own
  * institute for routes that carry only a menu id). Before that check any signed-in user
  * could read, rewrite or delete another institute's inbound menus. The frontend tree
  * builder reads/writes whole menus here; the inbound call flow consumes them at runtime
@@ -31,7 +32,7 @@ public class IvrAdminController {
     @GetMapping("/menus")
     public ResponseEntity<List<IvrMenuDTO>> list(@RequestParam("instituteId") String instituteId,
                                                  @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(ivrMenuService.listMenus(instituteId));
     }
 
@@ -46,7 +47,7 @@ public class IvrAdminController {
     @PostMapping("/menus")
     public ResponseEntity<IvrMenuDTO> save(@RequestBody IvrMenuDTO dto,
                                            @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, dto == null ? null : dto.getInstituteId());
+        instituteAccessValidator.requireInstituteStaff(user, dto == null ? null : dto.getInstituteId());
         return ResponseEntity.ok(ivrMenuService.saveMenu(dto));
     }
 
@@ -64,6 +65,6 @@ public class IvrAdminController {
     private void requireMenuAccess(String menuId, CustomUserDetails user) {
         String instituteId = ivrMenuService.menuInstitute(menuId)
                 .orElseThrow(() -> new VacademyException("IVR menu not found"));
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
     }
 }

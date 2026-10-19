@@ -8,7 +8,7 @@ Everything you can do on the dashboard's **AI Agents** screen you can also do th
 | Request | What it does |
 |---|---|
 | `GET /v1/agents` | Agents you can call with. `?include_disabled=true` lists every agent. |
-| `GET /v1/agents/{id}` | One agent's whole configuration, script included. |
+| `GET /v1/agents/{id}` | One agent's whole configuration with `agents:manage`; a summary (no script, handoff numbers, action rules or booking page) with only `calls:read`. |
 | `POST /v1/agents` | Creates an agent. |
 | `PATCH /v1/agents/{id}` | Changes only the fields you send. |
 | `POST /v1/agents/{id}/enable` / `disable` | Turns it on or off. |
@@ -79,6 +79,17 @@ curl -X PATCH https://api.telleo.ai/v1/agents/17ea33d2-5b6c-4c1e-9a1f-2d4e6f8a9b
 ```
 
 Changing `tts_model` needs a `voice` of the new engine in the same request, because the engines share no voices.
+
+### Avoiding lost updates
+
+Two systems editing the same agent can overwrite each other's changes. Send the agent's `updated_at` from your last read as an `If-Match` header (or as `expected_updated_at` in the body): when the agent changed since, the request is refused with `409 version_conflict` (`details.current_updated_at`) and nothing is saved. Read it again, re-apply your change and retry. Without the header the last write wins, as before.
+
+```bash
+curl -X PATCH https://api.telleo.ai/v1/agents/17ea33d2-… \
+  -H "X-API-Key: $TELLEO_API_KEY" -H "Content-Type: application/json" \
+  -H 'If-Match: "2026-10-19T10:15:00.123456Z"' \
+  -d '{ "max_call_minutes": 6 }'
+```
 
 ## Turning an agent off
 

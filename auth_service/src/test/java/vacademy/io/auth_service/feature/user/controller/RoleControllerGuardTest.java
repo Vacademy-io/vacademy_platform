@@ -67,7 +67,7 @@ class RoleControllerGuardTest {
     @Test
     void roleStatusChangeAsksTheGuardFirst() {
         doThrow(new VacademyException(HttpStatus.FORBIDDEN, "no")).when(guard)
-                .requireCanChangeRoleStatus(caller, "inst-b", List.of("victim"));
+                .requireCanChangeRoleStatus(caller, "inst-b", List.of("victim"), "DISABLED");
         assertThrows(VacademyException.class,
                 () -> controller.updateUserRoleStatus("inst-b", List.of("victim"), "DISABLED", caller));
         verifyNoInteractions(roleService);

@@ -28,6 +28,7 @@ class ApiIdempotencyStoreTest {
         doNothing().when(store).complete(any(), any(), any(), any());
         doNothing().when(store).release(any(), any(), any());
         doNothing().when(store).expire(any(), any(), any());
+        doNothing().when(store).releaseStale(any(), any(), any());
     }
 
     private ApiIdempotencyStore.Outcome run(String key, Object request) {
@@ -79,6 +80,17 @@ class ApiIdempotencyStoreTest {
         assertEquals("request_in_progress", e.getCode());
         assertNotNull(e.getRetryAfterSeconds());
         assertEquals(0, creates.get());
+    }
+
+    @Test
+    void aClaimLeftByADeadRequestIsTakenOverAfterTwoMinutes() {
+        String hash = ApiIdempotencyStore.hash(Map.of("name", "x"));
+        doReturn(new ApiIdempotencyStore.Row(hash, null, Instant.now().minus(Duration.ofMinutes(3))))
+                .when(store).find(any(), any(), any());
+        ApiIdempotencyStore.Outcome o = run("k", Map.of("name", "x"));
+        assertTrue(o.created());
+        verify(store).releaseStale("inst-1", "agent.create", "k");
+        assertEquals(1, creates.get());
     }
 
     @Test

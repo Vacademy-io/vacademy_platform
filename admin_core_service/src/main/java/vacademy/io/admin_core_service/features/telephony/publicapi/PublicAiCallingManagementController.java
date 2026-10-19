@@ -84,9 +84,10 @@ public class PublicAiCallingManagementController {
 
     @PatchMapping("/agents/{id}")
     public ResponseEntity<Map<String, Object>> patchAgent(HttpServletRequest http, @PathVariable String id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
             @RequestBody(required = false) JsonNode body) {
         var p = auth.authenticate(http, InstituteApiKeyService.SCOPE_AGENTS_MANAGE);
-        return ok(HttpStatus.OK, agents.patchAgent(p, id, body));
+        return ok(HttpStatus.OK, agents.patchAgent(p, id, body, ifMatch));
     }
 
     @PostMapping("/agents/{id}/enable")

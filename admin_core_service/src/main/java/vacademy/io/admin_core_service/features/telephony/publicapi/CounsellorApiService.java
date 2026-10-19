@@ -60,6 +60,7 @@ public class CounsellorApiService {
     static final List<String> COUNSELLOR_ROLES = List.of("COUNSELLOR", "COUNSELOR");
     static final Set<String> ELIGIBLE_ROLES = Set.of("COUNSELLOR", "COUNSELOR", "ADMIN");
     static final Set<String> LIVE = Set.of("ACTIVE", "INVITED");
+    static final Set<String> PAUSED = Set.of("DISABLED", "INACTIVE");
     static final String OP_CREATE = "counsellor.create";
     static final int MAX_NAME = 120;
     static final int MAX_EMAIL = 254;
@@ -93,11 +94,31 @@ public class CounsellorApiService {
 
     // ── Standing in the institute ────────────────────────────────────────────────
 
-    record Membership(String instituteId, String role, String status) {
+    /** {@code role} upper-cased for comparisons; {@code rawRole} as stored (auth_service matches it). */
+    record Membership(String instituteId, String role, String rawRole, String status) {
     }
 
-    /** A user's non-deleted role rows: here, and everywhere. */
-    record Standing(String instituteId, List<Membership> here, List<Membership> all) {
+    /**
+     * A user's non-deleted role rows, here and everywhere, and whether they once belonged here
+     * (a DELETED row in this institute).
+     */
+    record Standing(String instituteId, List<Membership> here, List<Membership> all, boolean deletedHere) {
+
+        Standing(String instituteId, List<Membership> here, List<Membership> all) {
+            this(instituteId, here, all, false);
+        }
+
+        /** The stored names of the counsellor roles held here, for auth_service. */
+        List<String> counsellorRoleNamesHere() {
+            List<String> names = new ArrayList<>(COUNSELLOR_ROLES);
+            here.stream().filter(m -> COUNSELLOR_ROLES.contains(m.role())).map(Membership::rawRole)
+                    .filter(r -> !names.contains(r)).forEach(names::add);
+            return names;
+        }
+
+        boolean pausedCounsellorHere() {
+            return here.stream().anyMatch(m -> COUNSELLOR_ROLES.contains(m.role()) && PAUSED.contains(m.status()));
+        }
 
         boolean eligibleHere() {
             return here.stream().anyMatch(m -> ELIGIBLE_ROLES.contains(m.role()));
@@ -138,14 +159,19 @@ public class CounsellorApiService {
             throw unavailable();
         }
         List<Membership> all = new ArrayList<>();
+        boolean deletedHere = false;
         for (Map<String, String> r : rows == null ? List.<Map<String, String>>of() : rows) {
             if (r == null || r.get("institute_id") == null || r.get("role_name") == null) continue;
             String status = r.get("status") == null ? "" : r.get("status").toUpperCase(Locale.ROOT);
-            if ("DELETED".equals(status)) continue;
-            all.add(new Membership(r.get("institute_id"), r.get("role_name").toUpperCase(Locale.ROOT), status));
+            if ("DELETED".equals(status)) {
+                deletedHere |= instituteId.equals(r.get("institute_id"));
+                continue;
+            }
+            all.add(new Membership(r.get("institute_id"), r.get("role_name").toUpperCase(Locale.ROOT),
+                    r.get("role_name"), status));
         }
         List<Membership> here = all.stream().filter(m -> instituteId.equals(m.instituteId())).toList();
-        return new Standing(instituteId, here, all);
+        return new Standing(instituteId, here, all, deletedHere);
     }
 
     // ── Read ─────────────────────────────────────────────────────────────────────
@@ -178,7 +204,9 @@ public class CounsellorApiService {
         m.put("can_call", blocked == null);
         m.put("blocked_reason", blocked);
         if (p.has(InstituteApiKeyService.SCOPE_COUNSELLORS_MANAGE)) {
-            m.put("mobile_number", mobile);
+            // A login shared with another institute is that person's identity there too: its
+            // mobile number is never shown through this account's key.
+            m.put("mobile_number", st.onlyThisInstitute() ? mobile : null);
             m.put("airtel_extension", extensionOf(instituteId, userId));
             m.put("manageable", st.counsellorOnlyHere());
             m.put("shared_account", !st.onlyThisInstitute());
@@ -267,6 +295,11 @@ public class CounsellorApiService {
             if (st.liveCounsellorHere() && st.counsellorOnlyHere()) {
                 added = false;
                 warnings.add(warning("already_counsellor", "This email is already a counsellor of this account; nothing was changed."));
+                // A retry of a create that died after the account was made but before its mobile
+                // number was set: fill it in (only a missing one, only on an account of ours alone).
+                if (n.mobile() != null && blankToNull(u.getMobileNumber()) == null && st.onlyThisInstitute()) {
+                    setMobile(userId, u.isRootUser(), n.mobile(), warnings);
+                }
             } else if (!st.here().isEmpty() && !st.counsellorOnlyHere()) {
                 throw new AiCallingApiException(HttpStatus.CONFLICT, "account_has_other_role",
                         "This email belongs to a member of this account with another role (" + String.join(", ", st.rolesHere())
@@ -276,7 +309,15 @@ public class CounsellorApiService {
                 throw new AiCallingApiException(HttpStatus.CONFLICT, "counsellor_inactive",
                         "This counsellor was deactivated. Reactivate them with PATCH /v1/counsellors/" + userId
                                 + " and {\"active\": true}.", Map.of("counsellor_id", userId));
+            } else if (!st.deletedHere() || !st.all().isEmpty()) {
+                // The login exists but is not this institute's: attaching it would expose the
+                // person's details (name, mobile) to this key and confirm the account. Only an
+                // admin, in the dashboard, adds someone from outside.
+                throw new AiCallingApiException(HttpStatus.CONFLICT, "email_in_use_elsewhere",
+                        "This email already has a login on the platform that does not belong to this account. "
+                                + "Use a different email, or ask an admin to add them from the dashboard.");
             } else {
+                // A former member of THIS institute (only deleted rows here, no other membership).
                 requireExtensionFree(instituteId, userId, n.extension());
                 grantRole(instituteId, userId);
                 if (n.mobile() != null && !sameNumber(n.mobile(), u.getMobileNumber())) {
@@ -438,7 +479,8 @@ public class CounsellorApiService {
         }
         Map<String, Object> effects = null;
         if (in.active() != null) {
-            effects = Boolean.TRUE.equals(in.active()) ? reactivate(instituteId, userId) : deactivate(instituteId, userId);
+            effects = Boolean.TRUE.equals(in.active()) ? reactivate(instituteId, userId, st)
+                    : deactivate(instituteId, userId, st);
             changes.put("active", in.active());
         }
         safeAudit(p, userId, "COUNSELLOR_UPDATE", "Counsellor updated through the API", changes);
@@ -453,21 +495,29 @@ public class CounsellorApiService {
     /** DELETE /v1/counsellors/{id}: deactivation, idempotent. */
     public Map<String, Object> deactivateCounsellor(AiCallingApiAuth.Principal p, String id) {
         String userId = requireId(id);
-        requireManageable(p.instituteId(), userId);
-        Map<String, Object> effects = deactivate(p.instituteId(), userId);
+        Standing st = requireManageable(p.instituteId(), userId);
+        Map<String, Object> effects = deactivate(p.instituteId(), userId, st);
         safeAudit(p, userId, "COUNSELLOR_DEACTIVATE", "Counsellor deactivated through the API", effects);
         Map<String, Object> body = getCounsellor(p, userId);
         body.put("effects", effects);
         return body;
     }
 
-    Map<String, Object> deactivate(String instituteId, String userId) {
+    Map<String, Object> deactivate(String instituteId, String userId, Standing st) {
         int roles;
         try {
-            roles = authService.updateRoleStatusForRoles(instituteId, userId, COUNSELLOR_ROLES, "DISABLED");
+            roles = authService.updateRoleStatusForRoles(instituteId, userId, st.counsellorRoleNamesHere(), "DISABLED");
         } catch (RuntimeException e) {
             log.warn("counsellor-api: disable failed for {}: {}", userId, e.getMessage());
             throw unavailable();
+        }
+        if (roles == 0 && st.liveCounsellorHere()) {
+            // A live counsellor role that did not change: never half-apply (pools and IVR lists
+            // would be stripped from someone who can still sign in and take calls).
+            log.error("counsellor-api: disable changed no role row for {} in {} (roles {})", userId, instituteId,
+                    st.rolesHere());
+            throw new AiCallingApiException(HttpStatus.INTERNAL_SERVER_ERROR, "role_update_failed",
+                    "The counsellor's role could not be disabled, so nothing was changed. Contact support with the request_id.");
         }
         int pools = jdbc.update("""
                 UPDATE counselor_pool_member SET status = 'INACTIVE', updated_at = NOW()
@@ -477,19 +527,27 @@ public class CounsellorApiService {
         List<Map<String, Object>> ivr = removeFromIvrDialLists(instituteId, userId);
         Map<String, Object> effects = new LinkedHashMap<>();
         effects.put("role_disabled", roles > 0);
+        // Only this account's sign-in is cut (its cached identity is dropped); the person stays
+        // signed in to any other account they belong to.
+        effects.put("sessions_revoked", "this_account");
         effects.put("pool_memberships_deactivated", pools);
         effects.put("ivr_dial_steps_updated", ivr);
         effects.put("leads_reassigned", 0);
         return effects;
     }
 
-    Map<String, Object> reactivate(String instituteId, String userId) {
+    Map<String, Object> reactivate(String instituteId, String userId, Standing st) {
         int roles;
         try {
-            roles = authService.updateRoleStatusForRoles(instituteId, userId, COUNSELLOR_ROLES, "ACTIVE");
+            roles = authService.updateRoleStatusForRoles(instituteId, userId, st.counsellorRoleNamesHere(), "ACTIVE");
         } catch (RuntimeException e) {
             log.warn("counsellor-api: enable failed for {}: {}", userId, e.getMessage());
             throw unavailable();
+        }
+        if (roles == 0 && st.pausedCounsellorHere()) {
+            log.error("counsellor-api: enable changed no role row for {} in {}", userId, instituteId);
+            throw new AiCallingApiException(HttpStatus.INTERNAL_SERVER_ERROR, "role_update_failed",
+                    "The counsellor's role could not be restored. Contact support with the request_id.");
         }
         Map<String, Object> effects = new LinkedHashMap<>();
         effects.put("role_restored", roles > 0);
@@ -556,9 +614,13 @@ public class CounsellorApiService {
         String holder = TelephonyCounsellorEndpointController.extensionHolder(endpoints, instituteId,
                 ProviderType.AIRTEL, extension, userId);
         if (holder != null) {
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("airtel_extension", extension);
+            d.put("held_by", holder);
             throw new AiCallingApiException(HttpStatus.CONFLICT, "extension_taken",
-                    "Airtel extension " + extension + " is already mapped to another person in this account.",
-                    Map.of("airtel_extension", extension));
+                    "Airtel extension " + extension + " is already mapped to "
+                            + TelephonyCounsellorEndpointController.describeUser(authService, holder)
+                            + " in this account.", d);
         }
         if (userId != null) {
             endpoints.findByCounsellorUserIdAndProviderType(userId, ProviderType.AIRTEL)

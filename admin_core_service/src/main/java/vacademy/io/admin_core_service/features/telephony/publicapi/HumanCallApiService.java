@@ -128,10 +128,9 @@ public class HumanCallApiService {
             m.put("status", "active");
             m.put("can_call", blocked == null);
             m.put("blocked_reason", blocked);
-            if (p.has(vacademy.io.admin_core_service.features.institute_api.service.InstituteApiKeyService
-                    .SCOPE_COUNSELLORS_MANAGE)) {
-                m.put("mobile_number", c.mobile());
-            }
+            // No phone numbers in the list, for any key: whether a login is shared with another
+            // institute is only known per person (GET /v1/counsellors/{id} shows the number to a
+            // counsellors:manage key when the login is this institute's alone).
             data.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();

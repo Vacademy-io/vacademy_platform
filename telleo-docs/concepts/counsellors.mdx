@@ -55,15 +55,16 @@ What happens depends on whether the email already has a login on the platform:
 | The email… | Result | Email sent |
 |---|---|---|
 | is new | A new login, **active at once**, with the Counsellor role in your account. | The welcome email with their username, password and the dashboard link (unless `send_welcome_email: false`). |
-| already has a login (for example they work for another institute on the platform, or were once a learner) | The **same** login gets the Counsellor role in your account. Their name, mobile number and password stay exactly as they are (`warnings` says when what you sent was not applied). | None. They sign in with the login they already have. |
+| already has a login that belongs to **another** account on the platform (or to no account) | `409 email_in_use_elsewhere`. The API never attaches someone else's login, because that would show your key their details. Use a different email, or have an admin add them from the dashboard. | None. |
+| belonged to a person you removed from your account earlier (and to no other account) | The **same** login gets the Counsellor role back. Their name, mobile number and password stay exactly as they are (`warnings` says when what you sent was not applied). | None. They sign in with the login they already have. |
 | is already a counsellor in your account | Nothing changes: `200` with `created: false`. | None. |
 | is an admin, teacher or other member of your account | `409 account_has_other_role`. Give them the counsellor role in the dashboard if you mean to. | None. |
 | belongs to a counsellor you deactivated | `409 counsellor_inactive`. [Reactivate](#reactivating) them instead. | None. |
 
 - **`mobile_number`** is needed before they can take calls on Vacademy Voice and Exotel: their phone rings first. Without one the response carries a `mobile_number_missing` warning and `can_call` is `false`. It is stored as digits with the country code (`919876543210`).
 - **`airtel_extension`** maps their Airtel IQ extension when your calling provider is Airtel. An extension can belong to one person in your account (`409 extension_taken` otherwise).
-- Send an [`Idempotency-Key`](/platform/idempotency) so that a retried request never adds the person twice. Two requests for the same email at the same moment are handled one after the other; the second gets `409 request_in_progress` and should retry.
-- A key with `counsellors:manage` also sees `mobile_number` (and, on single counsellors, `airtel_extension`, `manageable` and `shared_account`). Keys with only `human_calls:read` never see phone numbers.
+- Send an [`Idempotency-Key`](/platform/idempotency) so that a retried request never adds the person twice. Two requests for the same email at the same moment are handled one after the other; the second gets `409 request_in_progress` and should retry. If a request was cut off after the login was created, retrying it returns the counsellor (`created: false`) and sets the mobile number it carried if none was saved.
+- `GET /v1/counsellors/{id}` shows a key with `counsellors:manage` the `mobile_number`, `airtel_extension`, `manageable` and `shared_account`. The mobile number is `null` when the login also belongs to another account (`shared_account: true`), and `GET /v1/counsellors` never includes phone numbers.
 
 ## Keeping details current
 
@@ -91,7 +92,7 @@ Deactivating is what you do when someone leaves or stops taking leads. It never 
 
 | | Effect |
 |---|---|
-| Sign-in | Their role in your account is disabled, so they can no longer open it. A login they hold for another account is untouched. |
+| Sign-in | Their role in your account is disabled, so they can no longer open it from their next request (`effects.sessions_revoked: "this_account"`). They stay signed in to any other account they belong to. |
 | Human calls | They drop out of `GET /v1/counsellors`; `POST /v1/human-calls` naming them fails with `counsellor_not_found`. |
 | Lead pools | They are set **inactive in every lead pool** of your account, so new leads are no longer assigned to them. Leads already assigned to them **stay with them**; reassign those in the dashboard if needed. |
 | IVR | They are taken out of every "ring these people" list in your IVR menus. A step left ringing nobody is flagged with `no_one_left: true`. |
@@ -102,6 +103,7 @@ The response is the counsellor (`status: "inactive"`) with an `effects` object:
 ```json
 "effects": {
   "role_disabled": true,
+  "sessions_revoked": "this_account",
   "pool_memberships_deactivated": 3,
   "ivr_dial_steps_updated": [
     { "menu_id": "m-1", "menu_name": "Main", "step_id": "n-4", "step_label": "Sales", "no_one_left": false }
@@ -129,8 +131,10 @@ This restores their role, so they can sign in and take human calls again. Their 
 | 403 | `counsellor_not_manageable` | The person is an admin or other staff of your account. |
 | 404 | `counsellor_not_found` | No counsellor or admin with this id in your account. |
 | 409 | `account_has_other_role` | The email belongs to a member of your account with another role. |
+| 409 | `email_in_use_elsewhere` | The email's login belongs to another account on the platform. Use another email, or add them in the dashboard. |
 | 409 | `counsellor_inactive` | The email belongs to a deactivated counsellor; reactivate them. |
 | 409 | `shared_account` | The login also belongs to another account; its name and mobile cannot be changed through the API. |
 | 409 | `extension_taken` / `extension_managed_elsewhere` | The Airtel extension is already someone else's, or the person's extension is managed by another account. |
 | 409 | `request_in_progress` | The same email is being added by another request right now. |
+| 500 | `role_update_failed` | The role could not be disabled or restored, so nothing else was changed. Contact us with the `request_id`. |
 | 503 | `temporarily_unavailable` | The user directory could not be reached. Retry; nothing was created. |

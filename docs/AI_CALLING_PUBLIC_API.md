@@ -499,14 +499,14 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
 
 | Route | Scope | |
 |---|---|---|
-| `GET /v1/counsellors` | human_calls:read or counsellors:manage | + `status`; `mobile_number` only for counsellors:manage |
+| `GET /v1/counsellors` | human_calls:read or counsellors:manage | + `status`; never phone numbers |
 | `GET /v1/counsellors/{id}` | human_calls:read or counsellors:manage | COUNSELLOR/COUNSELOR/ADMIN of the institute, any status |
 | `POST /v1/counsellors` | counsellors:manage | `{name, email, mobile_number?, airtel_extension?, send_welcome_email=true}`; Idempotency-Key |
 | `PATCH /v1/counsellors/{id}` | counsellors:manage | `name?`, `mobile_number?`, `airtel_extension?` (null removes), `active?` |
 | `DELETE /v1/counsellors/{id}` | counsellors:manage | deactivate (idempotent) |
-| `GET /v1/agents/{id}` | calls:read | full config, snake_case, `send_rules` snake_case |
+| `GET /v1/agents/{id}` | calls:read | summary (`configuration: "summary"`, no system_prompt / handoff_numbers / send_rules / booking_page_id); full config with agents:manage |
 | `POST /v1/agents` | agents:manage | required `name`, `system_prompt`, `opening_line`; Idempotency-Key |
-| `PATCH /v1/agents/{id}` | agents:manage | partial |
+| `PATCH /v1/agents/{id}` | agents:manage | partial; optional `If-Match` / `expected_updated_at` → 409 `version_conflict` |
 | `POST /v1/agents/{id}/enable` · `/disable` | agents:manage | disable reports `waiting_calls_canceled` |
 | `DELETE /v1/agents/{id}` | agents:manage | 409 `agent_in_use` with `used_by` |
 | `GET /v1/voices` | calls:read | `TtsVoiceCatalog.models()` + `TtsModelPricingAnnotator` |
@@ -528,12 +528,20 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
   identifier is PHONE, `AuthService.createUser` looks the user up by mobile first and would
   attach the role to whichever account has the number. It is set afterwards with update-user
   (digits only, root flag copied — update-user writes `isRootUser` unconditionally).
-- **Existing email:** add-user-roles `[COUNSELLOR]` in this institute only; no profile change,
-  no email (the only "you have an account" template, `sendKeepingCredentialsWelcomeMailToUser`,
-  mails the stored PASSWORD). Already a live counsellor here → 200 `created: false`; any other
-  role here → 409 `account_has_other_role`; a paused counsellor row → 409 `counsellor_inactive`.
+- **Existing email** (review 2026-10-19: attaching any platform account let a key read another
+  institute's learner's name and mobile): only an account that belongs to THIS institute is
+  ever touched. Already a live counsellor here → 200 `created: false` (and a missing mobile from
+  the request is filled in when the login is ours alone — the retry of a create cut off before
+  setMobile); any other role here → 409 `account_has_other_role`; a paused counsellor row → 409
+  `counsellor_inactive`; only DELETED rows here and no other membership → add-user-roles
+  `[COUNSELLOR]` (a former member), no profile change, no email (the only "you have an
+  account" template mails the stored PASSWORD); anything else (a login of another institute,
+  or of none) → 409 `email_in_use_elsewhere`, no details. `mobile_number` is null in every
+  response for a login shared with another institute, and the list never carries numbers.
   After every grant the memberships are re-read; no live COUNSELLOR row → 500 `role_unavailable`
   (e.g. no built-in role named COUNSELLOR).
+- **Stale claims:** an Idempotency-Key claim still without a resource after 2 minutes belongs to a
+  request that died and is taken over by the retry (`ApiIdempotencyStore.releaseStale`).
 - **Email lock:** a row `('global', 'lock', sha256(email))` in `ai_calling_api_idempotency`
   serialises creates of the same email across pods/institutes (2-minute takeover). Without it
   two concurrent creates both see "no user" and auth_service's second create finds the first
@@ -542,12 +550,17 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
   COUNSELOR; anyone else (ADMIN, TEACHER, STUDENT, custom) → 403 `counsellor_not_manageable`.
 - **Shared account:** name / mobile changes only when every non-deleted role row of the user
   is in this institute (`409 shared_account` otherwise) — email and mobile are the global login.
-- **Deactivate:** role-status DISABLED for COUNSELLOR/COUNSELOR in this institute (other
-  institutes untouched; the authUserDetails cache is evicted, lastTokenUpdate bumped);
+- **Deactivate:** role-status DISABLED for the user's counsellor roles in this institute, sent
+  by their stored names (auth_service also matches ignoring case — a "Counsellor" row used to
+  pass the counsellors-only check and then change nothing). If a live counsellor role exists and
+  0 rows changed → 500 `role_update_failed` BEFORE pools / IVR are touched. Other institutes are
+  untouched: only this institute's authUserDetails cache entry is evicted, and the user-wide
+  lastTokenUpdate stamp is NOT bumped (`effects.sessions_revoked: "this_account"`);
   `counselor_pool_member.status = 'INACTIVE'` for this institute's pools (leads stay assigned;
   shift rows untouched); the user id removed from this institute's `ivr_node.dial_user_ids`
   (`no_one_left` flags a DIAL step left with nobody); `LastCounsellorInboundRouter` skips users
-  without an ACTIVE role in the institute (fails open if auth_service is down). The Airtel
+  without an ACTIVE or INVITED role in the institute (memberships lookup; fails open if
+  auth_service is down). The Airtel
   extension mapping is kept (history attribution).
 - **Reactivate** (`PATCH active=true`): role-status ACTIVE (DISABLED/INACTIVE rows only, never
   DELETED). Pool rows stay INACTIVE and IVR lists are not refilled — nothing records which an
@@ -567,6 +580,10 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
   out of range → 400 (never clamped); handoff numbers E.164; booking pages (agent and rules)
   must be the institute's; names unique ignoring case (409 `agent_name_taken`; the DB
   constraint is case-sensitive); `speech_cache_mode` read-only (support sets it).
+- **Optimistic concurrency:** PATCH with `If-Match` (quotes / `W/` ignored) or
+  `expected_updated_at` runs, after validation, `UPDATE ai_agent SET updated_at = now WHERE id
+  AND updated_at = :expected` (`AiAgentRepository.claimVersion`); 0 rows → 409 `version_conflict`
+  with `current_updated_at`. Without it the last write wins.
 - `TtsVoiceCatalog.normalizeModel` now rejects any spelling containing "muga" ("silk muga"
   with a space used to resolve to Rumik).
 - `ai_agent.updated_at` had no trigger and is read-only in the entity: `AiAgentRepository.
@@ -604,13 +621,15 @@ and the agent registry bridge also record `api:<keyId>` in `institute_setting_hi
   `AiAgentService` cancels the agent's QUEUED items at once when it is turned OFF (any path;
   this is `waiting_calls_canceled`); deleting cancels nothing (the drain job handles API items),
   and a disabled agent's speech cache is no longer warmed.
-- **IVR admin routes** (`/v1/telephony/ivr/menus`) now require membership of the menu's
-  institute (they had no check); a save cannot re-home another institute's menu or node ids;
+- **IVR admin routes** (`/v1/telephony/ivr/menus`) now require STAFF of the menu's institute
+  (`requireInstituteStaff`, no root bypass; the dashboard's axios instance sends that institute
+  as clientId; they had no check at all); a save cannot re-home another institute's menu or node ids;
   an AI_AGENT step must name an enabled agent of the menu's institute.
 - **Airtel extensions** resolve within the record's institute only; an upsert refuses an
-  extension already mapped to another user of the institute (409).
+  extension already mapped (enabled rows only) to another user of the institute (409 naming them).
 - **auth_service** role endpoints are institute-scoped (see the auth_service commit):
   add-user-roles dedupes per institute and never uses another institute's custom role;
   remove-user-roles deletes one institute's rows and is guarded; update-role-status is guarded
-  (self, or staff — admin for an admin target).
+  (a member may only DELETE their own rows — the learner app's account deletion; anything else
+  needs staff, and admin for an admin target).
 

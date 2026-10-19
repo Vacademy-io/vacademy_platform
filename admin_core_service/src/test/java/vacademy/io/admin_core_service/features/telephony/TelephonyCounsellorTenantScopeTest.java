@@ -95,11 +95,28 @@ class TelephonyCounsellorTenantScopeTest {
         body.setProviderType("AIRTEL");
         body.setExtension("201");
 
-        assertThrows(ConflictException.class, () -> c.upsert("inst-1", body, mock(CustomUserDetails.class)));
+        AuthService auth = (AuthService) ReflectionTestUtils.getField(c, "authService");
+        vacademy.io.common.auth.dto.UserDTO holder = new vacademy.io.common.auth.dto.UserDTO();
+        holder.setId("u-1");
+        holder.setFullName("Priya Sharma");
+        holder.setEmail("priya@school.in");
+        when(auth.getUsersFromAuthServiceByUserIds(List.of("u-1"))).thenReturn(List.of(holder));
+        ConflictException e = assertThrows(ConflictException.class,
+                () -> c.upsert("inst-1", body, mock(CustomUserDetails.class)));
+        assertTrue(e.getMessage().contains("Priya Sharma (priya@school.in)"), e.getMessage());
         verify(repo, never()).save(any());
         // Re-saving your own extension is not a conflict.
         assertNull(TelephonyCounsellorEndpointController.extensionHolder(repo, "inst-1", "AIRTEL", "201", "u-1"));
         assertEquals("u-1", TelephonyCounsellorEndpointController.extensionHolder(repo, "inst-1", "AIRTEL", " 201 ", "u-2"));
+    }
+
+    @Test
+    void aDisabledMappingDoesNotBlockTheExtension() {
+        TelephonyCounsellorEndpointRepository repo = mock(TelephonyCounsellorEndpointRepository.class);
+        TelephonyCounsellorEndpoint off = ep("inst-1", "u-1", "201");
+        off.setEnabled(false);
+        when(repo.findByInstituteIdAndProviderTypeAndExtension("inst-1", "AIRTEL", "201")).thenReturn(List.of(off));
+        assertNull(TelephonyCounsellorEndpointController.extensionHolder(repo, "inst-1", "AIRTEL", "201", "u-2"));
     }
 
     // ── Inbound "last counsellor" routing ────────────────────────────────────────
@@ -124,21 +141,32 @@ class TelephonyCounsellorTenantScopeTest {
     @Test
     void anActiveCounsellorStillGetsTheirLeadsCallback() {
         AuthService auth = mock(AuthService.class);
-        when(auth.getInstituteRolesStrict("inst-1", List.of("c-1"))).thenReturn(Map.of("c-1", List.of("COUNSELLOR")));
+        when(auth.getRoleMembershipsStrict("c-1")).thenReturn(List.of(
+                Map.of("institute_id", "inst-1", "role_name", "COUNSELLOR", "status", "ACTIVE")));
+        assertTrue(router(auth).route(call()).isPresent());
+    }
+
+    @Test
+    void anInvitedCounsellorStillGetsTheirLeadsCallback() {
+        AuthService auth = mock(AuthService.class);
+        when(auth.getRoleMembershipsStrict("c-1")).thenReturn(List.of(
+                Map.of("institute_id", "inst-1", "role_name", "COUNSELLOR", "status", "INVITED")));
         assertTrue(router(auth).route(call()).isPresent());
     }
 
     @Test
     void aDeactivatedCounsellorIsSkipped() {
         AuthService auth = mock(AuthService.class);
-        when(auth.getInstituteRolesStrict("inst-1", List.of("c-1"))).thenReturn(Map.of());
+        when(auth.getRoleMembershipsStrict("c-1")).thenReturn(List.of(
+                Map.of("institute_id", "inst-1", "role_name", "COUNSELLOR", "status", "DISABLED"),
+                Map.of("institute_id", "inst-2", "role_name", "COUNSELLOR", "status", "ACTIVE")));
         assertTrue(router(auth).route(call()).isEmpty());
     }
 
     @Test
     void anAuthOutageKeepsRoutingAsBefore() {
         AuthService auth = mock(AuthService.class);
-        when(auth.getInstituteRolesStrict(anyString(), anyList())).thenThrow(new VacademyException("down"));
+        when(auth.getRoleMembershipsStrict(anyString())).thenThrow(new VacademyException("down"));
         assertTrue(router(auth).route(call()).isPresent());
     }
 }

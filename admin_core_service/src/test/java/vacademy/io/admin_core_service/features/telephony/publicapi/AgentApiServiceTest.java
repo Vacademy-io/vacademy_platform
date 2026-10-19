@@ -127,6 +127,41 @@ class AgentApiServiceTest {
     }
 
     @Test
+    void aCallsReadKeySeesASummaryWithoutTheScriptOrStaffNumbers() {
+        AiCallingApiAuth.Principal reader = new AiCallingApiAuth.Principal(INST, "key-r", List.of("calls:read"));
+        Map<String, Object> a = service.getAgent(reader, "a-1");
+        for (String hidden : List.of("system_prompt", "handoff_numbers", "send_rules", "booking_page_id")) {
+            assertFalse(a.containsKey(hidden), hidden);
+        }
+        assertEquals("summary", a.get("configuration"));
+        assertEquals("Hi {{name}}!", a.get("opening_line"));
+        assertEquals("full", service.getAgent(P, "a-1").get("configuration"));
+        assertTrue(service.getAgent(P, "a-1").containsKey("system_prompt"));
+    }
+
+    @Test
+    void aStaleIfMatchIs409AndNothingIsSaved() {
+        store.get("a-1").setUpdatedAt(java.sql.Timestamp.from(java.time.Instant.parse("2026-10-19T10:15:00.123456Z")));
+        when(repo.claimVersion(eq("a-1"), any())).thenReturn(0);
+        AiCallingApiException e = fails(() -> service.patchAgent(P, "a-1", json("{\"pace\":1.0}"),
+                "\"2026-10-19T10:00:00Z\""));
+        assertEquals("version_conflict", e.getCode());
+        assertEquals("2026-10-19T10:15:00.123456Z", e.getDetails().get("current_updated_at"));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void aCurrentVersionSavesAndNoVersionKeepsLastWriteWins() {
+        when(repo.claimVersion(eq("a-1"), any())).thenReturn(1);
+        service.patchAgent(P, "a-1", json("{\"pace\":1.0,\"expected_updated_at\":\"2026-10-19T10:15:00.123456Z\"}"), null);
+        verify(repo).claimVersion("a-1", java.sql.Timestamp.from(java.time.Instant.parse("2026-10-19T10:15:00.123456Z")));
+        assertEquals(1.0, store.get("a-1").getPace());
+        service.patchAgent(P, "a-1", json("{\"pace\":1.2}"), null);
+        verify(repo, times(1)).claimVersion(any(), any());
+        assertEquals("invalid_request", fails(() -> service.patchAgent(P, "a-1", json("{\"pace\":1.0}"), "yesterday")).getCode());
+    }
+
+    @Test
     void anotherInstitutesAgentIsNotFound() {
         assertEquals("agent_not_found", fails(() -> service.getAgent(P, "x-1")).getCode());
         assertEquals("agent_not_found", fails(() -> service.patchAgent(P, "x-1", json("{\"pace\":1.0}"))).getCode());

@@ -88,9 +88,11 @@ public class TelephonyCounsellorEndpointController {
         // An extension identifies the caller on the institute's Airtel account; two people on
         // one extension would make every imported call record ambiguous.
         String extension = body.getExtension() == null ? null : blankToNull(body.getExtension());
-        if (extension != null
-                && extensionHolder(repo, instituteId, providerType, extension, body.getCounsellorUserId()) != null) {
-            throw new ConflictException("Extension " + extension + " is already mapped to another user of this institute.");
+        String holder = extension == null ? null
+                : extensionHolder(repo, instituteId, providerType, extension, body.getCounsellorUserId());
+        if (holder != null) {
+            throw new ConflictException("Extension " + extension + " is already mapped to "
+                    + describeUser(authService, holder) + ". Remove it there first.");
         }
         e.setInstituteId(instituteId);
         e.setCounsellorUserId(body.getCounsellorUserId());
@@ -166,14 +168,38 @@ public class TelephonyCounsellorEndpointController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Another user of this institute already mapped to {@code extension} on this provider, or null. */
+    /**
+     * Another user of this institute whose ENABLED mapping uses {@code extension} on this
+     * provider, or null. A disabled mapping attributes no calls (the importer reads enabled
+     * rows only), so it does not block the extension.
+     */
     public static String extensionHolder(TelephonyCounsellorEndpointRepository repo, String instituteId,
                                          String providerType, String extension, String userId) {
         if (extension == null || extension.isBlank()) return null;
         return repo.findByInstituteIdAndProviderTypeAndExtension(instituteId, providerType, extension.trim()).stream()
+                .filter(e -> !Boolean.FALSE.equals(e.getEnabled()))
                 .map(TelephonyCounsellorEndpoint::getCounsellorUserId)
                 .filter(u -> u != null && !u.equals(userId))
                 .findFirst().orElse(null);
+    }
+
+    /** "Name (email)" of a user of this institute for a conflict message; the id when unknown. */
+    public static String describeUser(AuthService authService, String userId) {
+        try {
+            List<vacademy.io.common.auth.dto.UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+            if (users != null) {
+                for (vacademy.io.common.auth.dto.UserDTO u : users) {
+                    if (u == null || !userId.equals(u.getId())) continue;
+                    String name = u.getFullName() == null || u.getFullName().isBlank() ? null : u.getFullName().trim();
+                    String email = u.getEmail() == null || u.getEmail().isBlank() ? null : u.getEmail().trim();
+                    if (name != null && email != null) return name + " (" + email + ")";
+                    if (name != null || email != null) return name != null ? name : email;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // A name is a courtesy in an error message; the id still identifies the person.
+        }
+        return "user " + userId;
     }
 
     private boolean isEligibleUser(String instituteId, String userId) {

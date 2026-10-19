@@ -115,9 +115,9 @@ public class RoleController {
                                                        @RequestBody List<String> userIds,
                                                        @RequestParam String status,
                                                        @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        // A member may change their own rows (the learner app's "delete my account");
+        // A member may delete their own rows (the learner app's "delete my account");
         // anyone else's need staff of the institute, and an admin there for an admin.
-        userAccountAccessGuard.requireCanChangeRoleStatus(customUserDetails, instituteId, userIds);
+        userAccountAccessGuard.requireCanChangeRoleStatus(customUserDetails, instituteId, userIds, status);
         String response = roleService.updateUserRoleStatusByInstituteIdAndUserId(status, instituteId, userIds, customUserDetails);
         return ResponseEntity.ok(response);
     }

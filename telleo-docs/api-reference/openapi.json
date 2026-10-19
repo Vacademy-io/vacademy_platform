@@ -2634,7 +2634,7 @@
     "/counsellors": {
       "get": {
         "summary": "List counsellors",
-        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are returned only to keys with `counsellors:manage`. Deactivated counsellors are not listed; read one with `GET /counsellors/{id}`.\n\nScope: `human_calls:read` or `counsellors:manage`.",
+        "description": "The people in your account who can take human calls (active users with a Counsellor or Admin role), whether each can be called now, and why not. Phone numbers are never listed. Deactivated counsellors are not listed; read one with `GET /counsellors/{id}`.\n\nScope: `human_calls:read` or `counsellors:manage`.",
         "tags": [
           "Human calls"
         ],
@@ -2778,7 +2778,7 @@
       },
       "post": {
         "summary": "Add a counsellor",
-        "description": "Makes a person a counsellor of your account. A NEW email gets a dashboard login (active at once) and, unless `send_welcome_email` is false, the welcome email with their username and password. An email that already has a login is reused: the counsellor role is added in your account only, their name, mobile number and password stay as they are, and no email is sent. The API only ever grants the counsellor role.\n\nScope: `counsellors:manage`.",
+        "description": "Makes a person a counsellor of your account. A NEW email gets a dashboard login (active at once) and, unless `send_welcome_email` is false, the welcome email with their username and password. An email whose login belongs to another account on the platform (or to none) is refused with `409 email_in_use_elsewhere`, so your key never sees someone else's details. The login of a person removed from your account earlier is reused: the counsellor role is added back, their name, mobile number and password stay as they are, and no email is sent. The API only ever grants the counsellor role.\n\nScope: `counsellors:manage`.",
         "tags": [
           "Counsellors"
         ],
@@ -2903,6 +2903,15 @@
                       "error": {
                         "code": "account_has_other_role",
                         "message": "This email belongs to a member of this account with another role (ADMIN)…",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "email_in_use_elsewhere": {
+                    "value": {
+                      "error": {
+                        "code": "email_in_use_elsewhere",
+                        "message": "This email already has a login on the platform that does not belong to this account…",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -4739,6 +4748,7 @@
                   "shared_account": false,
                   "effects": {
                     "role_disabled": true,
+                    "sessions_revoked": "this_account",
                     "pool_memberships_deactivated": 3,
                     "ivr_dial_steps_updated": [
                       {
@@ -4799,6 +4809,32 @@
                       "error": {
                         "code": "counsellor_not_found",
                         "message": "No counsellor 6b7e… in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The role did not change; nothing else was changed.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "role_update_failed": {
+                    "value": {
+                      "error": {
+                        "code": "role_update_failed",
+                        "message": "The counsellor's role could not be disabled, so nothing was changed…",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -4917,7 +4953,7 @@
     "/agents/{id}": {
       "get": {
         "summary": "Get an agent",
-        "description": "The agent's whole configuration, including its script.\n\nScope: `calls:read`.",
+        "description": "With `agents:manage`, the agent's whole configuration including its script (`configuration: \"full\"`). With only `calls:read`, a summary without `system_prompt`, `handoff_numbers`, `send_rules` and `booking_page_id` (`configuration: \"summary\"`).\n\nScope: `calls:read`.",
         "tags": [
           "Agents"
         ],
@@ -5078,7 +5114,7 @@
       },
       "patch": {
         "summary": "Update an agent",
-        "description": "Changes only the fields you send; everything else keeps its stored value. Setting `enabled: false` cancels the calls waiting for it (`waiting_calls_canceled`).\n\nScope: `agents:manage`.",
+        "description": "Changes only the fields you send; everything else keeps its stored value. Setting `enabled: false` cancels the calls waiting for it (`waiting_calls_canceled`). Send the `updated_at` you last read as `If-Match` (or `expected_updated_at` in the body) to refuse the change with `409 version_conflict` if someone saved the agent since.\n\nScope: `agents:manage`.",
         "tags": [
           "Agents"
         ],
@@ -5177,7 +5213,7 @@
             }
           },
           "409": {
-            "description": "The name is taken.",
+            "description": "The name is taken, or the agent changed since `If-Match`.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/RequestId"
@@ -5194,6 +5230,15 @@
                       "error": {
                         "code": "agent_name_taken",
                         "message": "An agent named Kabir already exists in this account.",
+                        "request_id": "req_8f2c1a7e"
+                      }
+                    }
+                  },
+                  "version_conflict": {
+                    "value": {
+                      "error": {
+                        "code": "version_conflict",
+                        "message": "The agent changed since you read it. GET it again, re-apply your change and retry.",
                         "request_id": "req_8f2c1a7e"
                       }
                     }
@@ -5314,6 +5359,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's `updated_at` as you last read it, e.g. `\"2026-10-19T10:15:00.123456Z\"`. Optional."
           }
         ],
         "requestBody": {
@@ -7868,7 +7922,7 @@
               "string",
               "null"
             ],
-            "description": "Only for keys with `counsellors:manage`. Digits with the country code, as stored on the profile.",
+            "description": "Only on `GET /counsellors/{id}` (and write responses) for keys with `counsellors:manage`, and `null` when the login also belongs to another account (`shared_account`). Digits with the country code, as stored on the profile.",
             "example": "919876543210"
           },
           "airtel_extension": {
@@ -8409,7 +8463,7 @@
           "email": {
             "type": "string",
             "format": "email",
-            "description": "Their dashboard login. An email that already has an account is reused (see `existing_account`)."
+            "description": "Their dashboard login. An email whose login belongs to another account is refused (`email_in_use_elsewhere`); the login of someone removed from your account earlier is reused (see `existing_account`)."
           },
           "mobile_number": {
             "type": "string",
@@ -8597,6 +8651,14 @@
               "full"
             ],
             "description": "Read-only; set by support."
+          },
+          "configuration": {
+            "type": "string",
+            "enum": [
+              "full",
+              "summary"
+            ],
+            "description": "`summary` for a key without `agents:manage`: `system_prompt`, `handoff_numbers`, `send_rules` and `booking_page_id` are left out."
           },
           "uses_contact_name": {
             "type": "boolean"

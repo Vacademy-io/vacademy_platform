@@ -34,10 +34,14 @@ class UserRoleStatusGuardTest {
     }
 
     private void role(String userId, String institute, String roleName) {
+        role(userId, institute, roleName, "ACTIVE");
+    }
+
+    private void role(String userId, String institute, String roleName, String status) {
         InstituteRoleRow row = new InstituteRoleRow() {
             public String getInstituteId() { return institute; }
             public String getRoleName() { return roleName; }
-            public String getStatus() { return "ACTIVE"; }
+            public String getStatus() { return status; }
         };
         rows.computeIfAbsent(userId, k -> new ArrayList<>()).add(row);
     }
@@ -53,7 +57,17 @@ class UserRoleStatusGuardTest {
     @Test
     void aLearnerMayDeleteTheirOwnAccount() {
         role("learner", A, "STUDENT");
-        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("learner")));
+        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("learner"), "DELETED"));
+    }
+
+    @Test
+    void aDisabledMemberCannotReactivateThemselves() {
+        role("member", B, "TEACHER");          // signed in through another institute
+        role("member", A, "COUNSELLOR", "DISABLED"); // disabled here
+        assertThrows(VacademyException.class,
+                () -> guard.requireCanChangeRoleStatus(caller("member"), A, List.of("member"), "ACTIVE"));
+        assertThrows(VacademyException.class,
+                () -> guard.requireCanChangeRoleStatus(caller("member"), A, List.of("member"), "DISABLED"));
     }
 
     @Test
@@ -61,9 +75,9 @@ class UserRoleStatusGuardTest {
         role("learner", A, "STUDENT");
         role("victim", A, "STUDENT");
         assertThrows(VacademyException.class,
-                () -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("victim")));
+                () -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("victim"), "DISABLED"));
         assertThrows(VacademyException.class,
-                () -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("learner", "victim")));
+                () -> guard.requireCanChangeRoleStatus(caller("learner"), A, List.of("learner", "victim"), "DISABLED"));
     }
 
     @Test
@@ -71,7 +85,7 @@ class UserRoleStatusGuardTest {
         role("admin", B, "ADMIN");
         role("victim", A, "TEACHER");
         assertThrows(VacademyException.class,
-                () -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of("victim")));
+                () -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of("victim"), "DISABLED"));
     }
 
     @Test
@@ -80,17 +94,17 @@ class UserRoleStatusGuardTest {
         role("admin", A, "ADMIN");
         role("learner", A, "STUDENT");
         role("admin2", A, "ADMIN");
-        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("teacher"), A, List.of("learner")));
+        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("teacher"), A, List.of("learner"), "DISABLED"));
         assertThrows(VacademyException.class,
-                () -> guard.requireCanChangeRoleStatus(caller("teacher"), A, List.of("learner", "admin2")));
-        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of("admin2")));
+                () -> guard.requireCanChangeRoleStatus(caller("teacher"), A, List.of("learner", "admin2"), "DISABLED"));
+        assertDoesNotThrow(() -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of("admin2"), "DISABLED"));
     }
 
     @Test
     void emptyTargetsOrInstituteAreRefused() {
         role("admin", A, "ADMIN");
-        assertThrows(VacademyException.class, () -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of()));
+        assertThrows(VacademyException.class, () -> guard.requireCanChangeRoleStatus(caller("admin"), A, List.of(), "DISABLED"));
         assertThrows(VacademyException.class,
-                () -> guard.requireCanChangeRoleStatus(caller("admin"), " ", List.of("x")));
+                () -> guard.requireCanChangeRoleStatus(caller("admin"), " ", List.of("x"), "DISABLED"));
     }
 }

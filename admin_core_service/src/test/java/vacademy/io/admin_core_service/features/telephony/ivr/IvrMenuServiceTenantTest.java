@@ -97,7 +97,7 @@ class IvrMenuServiceTenantTest {
     void adminRoutesCheckTheMenusInstitute() {
         InstituteAccessValidator validator = mock(InstituteAccessValidator.class);
         CustomUserDetails user = mock(CustomUserDetails.class);
-        doThrow(new VacademyException("no")).when(validator).validateUserAccess(user, "inst-2");
+        doThrow(new VacademyException("no")).when(validator).requireInstituteStaff(user, "inst-2");
         IvrMenuService svc = mock(IvrMenuService.class);
         when(svc.menuInstitute("m-2")).thenReturn(Optional.of("inst-2"));
         IvrAdminController c = new IvrAdminController(svc, validator);

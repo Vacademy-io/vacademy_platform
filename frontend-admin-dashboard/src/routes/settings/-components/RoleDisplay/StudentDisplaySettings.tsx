@@ -882,6 +882,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             checked={settings.courseSettings.quiz.moveOnlyOnCorrectAnswer}
                             onCheckedChange={(v) =>
                                 update('courseSettings', {
+                                    ...settings.courseSettings,
                                     quiz: {
                                         ...settings.courseSettings.quiz,
                                         moveOnlyOnCorrectAnswer: v,
@@ -896,6 +897,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             checked={settings.courseSettings.quiz.celebrateOnQuizComplete}
                             onCheckedChange={(v) =>
                                 update('courseSettings', {
+                                    ...settings.courseSettings,
                                     quiz: {
                                         ...settings.courseSettings.quiz,
                                         celebrateOnQuizComplete: v,
@@ -910,6 +912,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             checked={settings.courseSettings.quiz.showReportAndCorrectAnswers}
                             onCheckedChange={(v) =>
                                 update('courseSettings', {
+                                    ...settings.courseSettings,
                                     quiz: {
                                         ...settings.courseSettings.quiz,
                                         showReportAndCorrectAnswers: v,
@@ -919,6 +922,26 @@ export default function StudentDisplaySettings(): JSX.Element {
                         />
                         <Label className="text-xs">{t('courseSettings.showReportAndAnswers')}</Label>
                     </div>
+                    <p className="pt-2 text-xs font-semibold text-neutral-600">
+                        {t('courseSettings.assignmentHeading')}
+                    </p>
+                    {(['hideAttemptsAllowed', 'hideRepeatedTitle'] as const).map((key) => (
+                        <div key={key} className="flex items-center gap-2">
+                            <Switch
+                                checked={settings.courseSettings.assignment[key]}
+                                onCheckedChange={(v) =>
+                                    update('courseSettings', {
+                                        ...settings.courseSettings,
+                                        assignment: {
+                                            ...settings.courseSettings.assignment,
+                                            [key]: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">{t(`courseSettings.${key}`)}</Label>
+                        </div>
+                    ))}
                 </div>
             </Card>
 

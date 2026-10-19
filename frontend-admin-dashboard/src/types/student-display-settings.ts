@@ -302,6 +302,13 @@ export interface StudentCourseSettings {
         celebrateOnQuizComplete: boolean;
         showReportAndCorrectAnswers: boolean;
     };
+    /** Assignment slide. Both off by default (today's slide). */
+    assignment: {
+        /** Hide the "Attempts Allowed: …" line. */
+        hideAttemptsAllowed: boolean;
+        /** Hide the card title when it only repeats the slide name shown above it. */
+        hideRepeatedTitle: boolean;
+    };
 }
 
 // All Courses page settings

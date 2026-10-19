@@ -314,6 +314,14 @@ function mergeWithDefaults(
                     incoming?.courseSettings?.quiz?.showReportAndCorrectAnswers ??
                     d.courseSettings.quiz.showReportAndCorrectAnswers,
             },
+            assignment: {
+                hideAttemptsAllowed:
+                    incoming?.courseSettings?.assignment?.hideAttemptsAllowed ??
+                    d.courseSettings.assignment.hideAttemptsAllowed,
+                hideRepeatedTitle:
+                    incoming?.courseSettings?.assignment?.hideRepeatedTitle ??
+                    d.courseSettings.assignment.hideRepeatedTitle,
+            },
         },
         allCourses: {
             tabs: mergeArrayById(incoming?.allCourses?.tabs, d.allCourses.tabs).map((t) => ({

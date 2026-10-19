@@ -89,7 +89,10 @@
         "cardDescription": "Interactions globales des cours",
         "moveOnlyOnCorrect": "Avancer uniquement en cas de bonne réponse",
         "celebrateOnComplete": "Célébrer à la fin du quiz",
-        "showReportAndAnswers": "Afficher le rapport et les bonnes réponses"
+        "showReportAndAnswers": "Afficher le rapport et les bonnes réponses",
+        "assignmentHeading": "Devoir",
+        "hideAttemptsAllowed": "Masquer « Tentatives autorisées » sur les devoirs",
+        "hideRepeatedTitle": "Masquer le titre du devoir lorsqu'il répète le nom de la diapositive"
     },
     "permissions": {
         "cardTitle": "Autorisations",

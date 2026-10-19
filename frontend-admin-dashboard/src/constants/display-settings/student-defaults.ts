@@ -195,6 +195,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
             celebrateOnQuizComplete: true,
             showReportAndCorrectAnswers: true,
         },
+        assignment: {
+            hideAttemptsAllowed: false,
+            hideRepeatedTitle: false,
+        },
     },
     allCourses: {
         tabs: [

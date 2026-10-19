@@ -26,7 +26,9 @@ interface CachedSettings {
     instituteId: string;
 }
 
-const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): AssessmentSettingsData => {
+export const mergeWithDefaults = (
+    settings: Partial<AssessmentSettingsData>
+): AssessmentSettingsData => {
     return {
         offlineEntry: {
             ...DEFAULT_ASSESSMENT_SETTINGS.offlineEntry,
@@ -43,6 +45,12 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
         examExperience: mergeExamExperience(settings?.examExperience),
         aiCopyCheck: {
             commentPlacement: normalizeCommentPlacement(settings?.aiCopyCheck?.commentPlacement),
+            ...(typeof settings?.aiCopyCheck?.instructions === 'string' && {
+                instructions: settings.aiCopyCheck.instructions,
+            }),
+            ...(settings?.aiCopyCheck?.languageFeedback === 'HIGHLIGHT' && {
+                languageFeedback: 'HIGHLIGHT' as const,
+            }),
         },
         assessmentFolders: {
             enabled: settings?.assessmentFolders?.enabled === true,

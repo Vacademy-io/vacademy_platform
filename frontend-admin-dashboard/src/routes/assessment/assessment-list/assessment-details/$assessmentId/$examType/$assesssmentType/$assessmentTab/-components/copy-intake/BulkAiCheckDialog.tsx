@@ -11,11 +11,20 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { countPdfPages } from '@/services/pdf-page-count';
 import { cn } from '@/lib/utils';
-import { startCopyIntake, type CopyIntakeBatch } from '../../-services/copy-intake-services';
+import {
+    getCopyCheckConfig,
+    startCopyIntake,
+    type CopyIntakeBatch,
+} from '../../-services/copy-intake-services';
 import {
     CommentPlacementPicker,
     useInstituteCommentPlacement,
 } from '@/components/common/ai-copy-check/CommentPlacementPicker';
+import {
+    CopyCheckSettingsFields,
+    toCopyCheckConfig,
+    useCopyCheckSettings,
+} from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
 
 interface PendingFile {
     key: string;
@@ -59,6 +68,10 @@ export const BulkAiCheckDialog = ({
     const [notifyEmail, setNotifyEmail] = useState(true);
     // Preselected from the institute's default (Settings → Assessment); the teacher can change it per batch.
     const [commentPlacement, setCommentPlacement] = useInstituteCommentPlacement(open);
+    // Subject, marking instructions and language feedback: the assessment's own, else the institute's.
+    const [copyCheckSettings, setCopyCheckSettings] = useCopyCheckSettings(open, () =>
+        getCopyCheckConfig(assessmentId, instituteId)
+    );
     const [, setIsUploading] = useState(false);
     const { uploadFile } = useFileUpload();
     const userId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
@@ -198,7 +211,8 @@ export const BulkAiCheckDialog = ({
                 uploaded,
                 undefined,
                 notifyEmail,
-                commentPlacement
+                commentPlacement,
+                toCopyCheckConfig(copyCheckSettings)
             );
         },
         onSuccess: (batch) => {
@@ -327,6 +341,12 @@ export const BulkAiCheckDialog = ({
                 <CommentPlacementPicker
                     value={commentPlacement}
                     onChange={setCommentPlacement}
+                    disabled={start.isPending}
+                />
+
+                <CopyCheckSettingsFields
+                    value={copyCheckSettings}
+                    onChange={setCopyCheckSettings}
                     disabled={start.isPending}
                 />
 

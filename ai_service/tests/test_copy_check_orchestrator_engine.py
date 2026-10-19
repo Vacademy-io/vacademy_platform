@@ -442,3 +442,78 @@ def test_any_other_template_value_renders_the_usual_copy(env):
         env["posts"].clear()
         _run(_payload(comment_placement=value))
         assert _posts(env, "complete")[0]["evaluated_file_id"] == "checked-copy-1"
+
+
+def _language_env(env, monkeypatch):
+    calls = []
+
+    async def find_errors(llm, layout_map, model, **kwargs):
+        calls.append(model)
+        return {"p1_r1": [{"row": "p1_r1", "page_id": "p1", "wrong": "the first", "correct": "The first",
+                           "kind": "punctuation", "why": "capital letter", "span": [0.1, 0.3]}]}
+
+    from app.services.copy_check import language_feedback
+    monkeypatch.setattr(language_feedback, "find_errors", find_errors)
+    return calls
+
+
+def test_language_highlight_lists_errors_without_touching_marks(env, monkeypatch):
+    calls = _language_env(env, monkeypatch)
+    _run(_payload(exam_context={"language_feedback": "HIGHLIGHT"}))
+    assert len(calls) == 1
+    by_q = {p["question_id"]: p for p in _posts(env, "question")}
+    assert by_q["q1"]["marks_awarded"] == 2
+    assert by_q["q1"]["feedback"] == ('fb\n\nLanguage: "the first" → "The first" (capital letter).')
+    assert by_q["q2"]["feedback"] == "fb"
+    # No language mark in the callback's annotations: the dashboard overlay is unchanged.
+    assert all(a.get("style") != "language" for a in by_q["q1"]["annotations"])
+    assert _posts(env, "complete")[0]["total_marks_awarded"] == 9
+    q1 = next(v for v in env["rendered"] if v["question_id"] == "q1")
+    marks = [a for a in q1["annotations"] if a["style"] == "language"]
+    assert [(m["target"], m["anchor_text"], m["text"]) for m in marks] == [("p1_r1", "the first", "The first")]
+    # The deduction remark comes from the grader, never from the language list.
+    notes = [a["text"] for a in q1["annotations"] if a["style"] == "margin_note"]
+    assert notes and not any("Language" in n for n in notes)
+    assert q1["feedback"].endswith("(capital letter).")
+
+
+def test_language_check_is_off_unless_asked(env, monkeypatch):
+    calls = _language_env(env, monkeypatch)
+    _run(_payload(exam_context={"subject": "English"}))
+    _run(_payload(exam_context={"language_feedback": "HIGHLIGHT", "answer_language": "Hindi"}))
+    assert calls == []
+    assert all("Language" not in p["feedback"] for p in _posts(env, "question"))
+
+
+def test_answer_left_out_by_a_choice_group_says_so_on_the_copy(env):
+    _run(_payload(choice_groups=[{"question_ids": ["q1", "q2", "q3"], "attempt": 2, "policy": "best"}],
+                  paper_max=10))
+    notes = {v["question_id"]: [a["text"] for a in v["annotations"] if a.get("style") == "margin_note"]
+             for v in env["rendered"]}
+    assert orchestrator.NOT_COUNTED_NOTE in notes["q1"]
+    assert all(orchestrator.NOT_COUNTED_NOTE not in notes[q] for q in ("q2", "q3"))
+    q1 = next(v for v in env["rendered"] if v["question_id"] == "q1")
+    note = next(a for a in q1["annotations"] if a.get("text") == orchestrator.NOT_COUNTED_NOTE)
+    score = next(a for a in q1["annotations"] if a.get("style") == "score")
+    assert note["target"] == score["target"]
+    # The dashboard overlay (question callbacks) is unchanged by it.
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(p.get("annotations")) for p in _posts(env, "question"))
+
+
+def test_no_choice_groups_no_extra_note(env):
+    _run(_payload())
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(v["annotations"]) for v in env["rendered"])
+
+
+def test_instructions_reach_grading_on_dashboard_runs_only(env):
+    _run(_payload(exam_context={"instructions": "Format 1."}))
+    assert env["grader_kwargs"]["grading_instructions"] is True
+    _run(_payload(exam_context={"instructions": "Format 1."}, billing_actor="apikey:key-1",
+                  page_count=1, rate_snapshot=SNAPSHOT))
+    assert env["grader_kwargs"]["grading_instructions"] is False
+
+
+def test_partner_copy_is_drawn_as_before_under_internal_choice(env):
+    _run(_payload(choice_groups=[{"question_ids": ["q1", "q2", "q3"], "attempt": 2, "policy": "best"}],
+                  paper_max=10, billing_actor="apikey:key-1", page_count=1, rate_snapshot=SNAPSHOT))
+    assert all(orchestrator.NOT_COUNTED_NOTE not in str(v["annotations"]) for v in env["rendered"])

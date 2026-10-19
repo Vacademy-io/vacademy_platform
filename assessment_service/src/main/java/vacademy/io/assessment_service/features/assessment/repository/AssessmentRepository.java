@@ -397,4 +397,15 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     @Query(value = "UPDATE assessment SET copy_comment_placement = :placement WHERE id = :assessmentId",
             nativeQuery = true)
     int updateCopyCommentPlacement(@Param("assessmentId") String assessmentId, @Param("placement") String placement);
+
+    /** Store how the AI checks this paper's copies, without rewriting the rest of the row. */
+    @Modifying
+    @Query(value = "UPDATE assessment SET copy_check_config = CAST(:config AS jsonb) WHERE id = :assessmentId",
+            nativeQuery = true)
+    int updateCopyCheckConfig(@Param("assessmentId") String assessmentId, @Param("config") String config);
+
+    /** Clear the AI checking settings, so the institute default applies again. */
+    @Modifying
+    @Query(value = "UPDATE assessment SET copy_check_config = NULL WHERE id = :assessmentId", nativeQuery = true)
+    int clearCopyCheckConfig(@Param("assessmentId") String assessmentId);
 }

@@ -18,6 +18,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { cn } from '@/lib/utils';
 import {
+    getCopyCheckConfig,
     previewSubmittedCheck,
     startSubmittedCheck,
     type CopyIntakeBatch,
@@ -26,6 +27,11 @@ import {
     CommentPlacementPicker,
     useInstituteCommentPlacement,
 } from '@/components/common/ai-copy-check/CommentPlacementPicker';
+import {
+    CopyCheckSettingsFields,
+    toCopyCheckConfig,
+    useCopyCheckSettings,
+} from '@/components/common/ai-copy-check/CopyCheckSettingsFields';
 
 export const SUBMITTED_CHECK_PREVIEW_KEY = 'COPY_INTAKE_SUBMITTED_PREVIEW';
 
@@ -62,6 +68,10 @@ export const CheckSubmittedCopiesDialog = ({
     const [notifyEmail, setNotifyEmail] = useState(true);
     // Preselected from the institute's default (Settings → Assessment); the teacher can change it per batch.
     const [commentPlacement, setCommentPlacement] = useInstituteCommentPlacement(open);
+    // Subject, marking instructions and language feedback: the assessment's own, else the institute's.
+    const [copyCheckSettings, setCopyCheckSettings] = useCopyCheckSettings(open, () =>
+        getCopyCheckConfig(assessmentId, instituteId)
+    );
     const scoped = Boolean(attemptIds && attemptIds.length > 0);
 
     const preview = useQuery({
@@ -107,6 +117,7 @@ export const CheckSubmittedCopiesDialog = ({
                 // No preferred_model: the platform's evaluation default applies.
                 notify_email: notifyEmail,
                 comment_placement: commentPlacement,
+                copy_check_config: toCopyCheckConfig(copyCheckSettings),
             }),
         onSuccess: (batch) => {
             toast.success(t('submitted.toastStarted', { count: batch.total_items }));
@@ -244,6 +255,12 @@ export const CheckSubmittedCopiesDialog = ({
                 <CommentPlacementPicker
                     value={commentPlacement}
                     onChange={setCommentPlacement}
+                    disabled={start.isPending}
+                />
+
+                <CopyCheckSettingsFields
+                    value={copyCheckSettings}
+                    onChange={setCopyCheckSettings}
                     disabled={start.isPending}
                 />
 

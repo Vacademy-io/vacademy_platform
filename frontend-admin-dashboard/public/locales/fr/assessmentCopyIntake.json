@@ -135,5 +135,17 @@
         "partial": "{{count}} copies téléchargées ; {{failed}} n'ont pas pu être récupérées",
         "failed": "Impossible de télécharger les copies corrigées",
         "none": "Aucune copie corrigée dans ce lot pour l'instant"
+    },
+    "aiSettings": {
+        "subject": "Matière",
+        "subjectPlaceholder": "ex. English Language and Literature",
+        "level": "Classe / programme",
+        "levelPlaceholder": "ex. CBSE Classe X",
+        "instructions": "Consignes pour le correcteur IA",
+        "instructionsPlaceholder": "ex. Suivre le barème CBSE. Lettre : format 1, contenu 2, expression 2. Citer les points manquants dans le commentaire.",
+        "instructionsHint": "Utilisées pour chaque copie de cette évaluation, avec le corrigé et la grille",
+        "instructionsDefaultHint": "Utilisées pour chaque évaluation qui n'a pas ses propres consignes",
+        "language": "Signaler les fautes d'orthographe et de grammaire",
+        "languageHint": "Chaque faute est soulignée avec sa correction et listée dans le commentaire de la réponse. Aucun point n'est retiré. Pour les réponses rédigées en anglais."
     }
 }

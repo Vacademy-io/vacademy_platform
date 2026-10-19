@@ -72,6 +72,15 @@ public class Assessment {
     private String copyCommentPlacement;
 
     /**
+     * How the AI checks this paper's copies (V59): subject, level, the institute's
+     * marking instructions and the language-feedback choice, as JSON. See
+     * {@link vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckConfig}.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "copy_check_config", columnDefinition = "jsonb")
+    private String copyCheckConfig;
+
+    /**
      * Proctoring tier + knobs as JSON (V50); see
      * {@link vacademy.io.assessment_service.features.proctoring.dto.ProctoringConfigDTO}.
      * NULL means off -- the behaviour of every assessment that predates it. Read and

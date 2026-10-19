@@ -218,7 +218,7 @@
   },
   "subOrgLearners": {
     "page": {
-      "navHeading": "Practise Member Management",
+      "navHeading": "Practice Member Management",
       "toast": {
         "notAuthenticated": "User not authenticated",
         "instituteNotFound": "Institute ID not found",
